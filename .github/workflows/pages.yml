@@ -35,3 +35,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: webapp
           command: deploy
+          # Script-less "assets only" Workers (no `main`) need Wrangler 4 --
+          # 3.x (what the action falls back to otherwise) demands an entry
+          # point even when there's nothing but static assets to serve.
+          wranglerVersion: "4"
