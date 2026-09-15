@@ -362,10 +362,10 @@ bool porta_proto_parse_slot_state(const porta_frame_t *f, porta_slot_state_event
 }
 
 // subtype | epoch(4) | flags | power_dw(2) | swr_c(2) | battery_pct(1) |
-// reason_len(1) | reason... | text...
+// offset_hz(2) | reason_len(1) | reason... | text...
 // reason is length-prefixed (short, and text still needs to be the trailing
 // free-running field); text runs to the end of the frame same as elsewhere.
-#define TX_HUD_FIXED_LEN (EVENT_HEADER_LEN + 1u + 2u + 2u + 1u + 1u)
+#define TX_HUD_FIXED_LEN (EVENT_HEADER_LEN + 1u + 2u + 2u + 1u + 2u + 1u)
 
 size_t porta_proto_encode_tx_hud(const porta_tx_hud_event_t *h, uint8_t *out, size_t out_cap)
 {
@@ -385,7 +385,8 @@ size_t porta_proto_encode_tx_hud(const porta_tx_hud_event_t *h, uint8_t *out, si
     put_u16(&payload[6], (uint16_t)h->power_dw);
     put_u16(&payload[8], (uint16_t)h->swr_c);
     payload[10] = (uint8_t)h->battery_pct;
-    payload[11] = (uint8_t)reason_n;
+    put_u16(&payload[11], h->offset_hz);
+    payload[13] = (uint8_t)reason_n;
     size_t p = TX_HUD_FIXED_LEN;
     if (reason_n > 0) {
         memcpy(&payload[p], h->reason, reason_n);
@@ -414,8 +415,9 @@ bool porta_proto_parse_tx_hud(const porta_frame_t *f, porta_tx_hud_event_t *out)
     out->power_dw        = (int16_t)get_u16(&f->payload[6]);
     out->swr_c           = (int16_t)get_u16(&f->payload[8]);
     out->battery_pct     = (int8_t)f->payload[10];
+    out->offset_hz       = get_u16(&f->payload[11]);
 
-    const uint8_t reason_n = f->payload[11];
+    const uint8_t reason_n = f->payload[13];
     if (reason_n > PORTA_TX_HUD_REASON_MAX || TX_HUD_FIXED_LEN + reason_n > f->len) {
         return false;
     }

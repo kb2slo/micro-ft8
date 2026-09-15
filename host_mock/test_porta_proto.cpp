@@ -478,6 +478,7 @@ static void test_tx_hud_event()
     in.power_dw = 42;   // 4.2 W
     in.swr_c = 135;     // 1.35
     in.battery_pct = 87;
+    in.offset_hz = 1500;
     std::snprintf(in.text, sizeof(in.text), "CQ KB2SLO FN30");
 
     size_t n = porta_proto_encode_tx_hud(&in, buf, sizeof(buf));
@@ -490,6 +491,7 @@ static void test_tx_hud_event()
         check(out.power_dw == 42, "power_dw round-trips");
         check(out.swr_c == 135, "swr_c round-trips");
         check(out.battery_pct == 87, "battery_pct round-trips");
+        check(out.offset_hz == 1500, "offset_hz round-trips");
         check(std::string(out.text) == "CQ KB2SLO FN30", "text round-trips");
         check(std::string(out.reason).empty(), "reason empty when not aborted");
 
@@ -519,9 +521,10 @@ static void test_tx_hud_event()
         check(porta_proto_parse_tx_hud(&got[0], &out) &&
               !out.active && out.aborted && out.writes_blocked &&
               out.power_dw == -1 && out.swr_c == -1 && out.battery_pct == -1 &&
+              out.offset_hz == 0 &&
               std::string(out.reason) == "low battery" &&
               std::string(out.text) == "CQ KB2SLO FN30",
-              "unknown sentinels, abort reason, and text round-trip together");
+              "unknown sentinels (offset_hz's is 0, not -1 -- it's unsigned), abort reason, and text round-trip together");
     }
 }
 

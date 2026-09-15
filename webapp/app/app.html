@@ -64,9 +64,7 @@ button:disabled{opacity:.45}
 #opSlotBarFill.odd{background:#a51818}
 #opSlotBarFill.halt{background:#c98a10}
 #opSlotBarCursor{position:absolute;top:-1px;width:5px;height:8px;border-radius:1px;background:#1478c8;transition:left .2s linear}
-#slotSub{font-size:.7rem;color:GrayText;margin-top:.3rem}
 .pill{display:inline-block;font-size:.7rem;font-weight:700;padding:.15rem .5rem;border-radius:999px}
-.pill-parity{background:#dbeafe;color:#1e3a8a}
 .pill-beacon-on{background:#dcfce7;color:#14532d}
 .pill-beacon-off{background:color-mix(in srgb, GrayText 20%, transparent);color:GrayText}
 #opLive{display:flex;justify-content:space-between;align-items:center;font-family:ui-monospace,monospace;font-size:.75rem;color:GrayText;margin-top:.6rem}
@@ -194,10 +192,6 @@ button:disabled{opacity:.45}
       <div id=opSlotBar>
         <div id=opSlotBarFill></div>
         <div id=opSlotBarCursor hidden></div>
-      </div>
-      <div class=top>
-        <div id=slotSub>—</div>
-        <span id=parityPill class="pill pill-parity">—</span>
       </div>
       <div id=opDots>
         <span><span id=dotCat class=dot></span>CAT</span>
@@ -1045,10 +1039,7 @@ function radioLive() {
 function renderCountdown() {
   var fill = document.getElementById('opSlotBarFill');
   var cursor = document.getElementById('opSlotBarCursor');
-  var pill = document.getElementById('parityPill');
   if (!radioLive()) {
-    document.getElementById('slotSub').textContent = 'Connect radio + audio to see slot timing';
-    pill.textContent = '—';
     fill.style.width = '0%';
     fill.className = '';
     cursor.hidden = true;
@@ -1059,8 +1050,6 @@ function renderCountdown() {
   var intoSlot = now % p;
   var parity = Math.floor(now / p) % 2;
   var frac = intoSlot / p;
-  document.getElementById('slotSub').textContent = 'to TX · ' + (parity ? 'ODD' : 'EVEN') + ' slot';
-  pill.textContent = parity ? 'ODD' : 'EVEN';
   fill.style.width = (frac * 100).toFixed(1) + '%';
   fill.className = (txHud && txHud.active && txHud.aborted) ? 'halt' : (parity ? 'odd' : '');
   var hz = slotState && slotState.hz;
@@ -1308,7 +1297,9 @@ function wfColorForSnr(snr) {
 }
 
 function pushWaterfallRow(decodes) {
-  wfRows.push((decodes || []).map(function (d) { return { hz: d.hz, snr: d.snr }; }));
+  wfRows.push((decodes || []).map(function (d) {
+    return d.tx ? { hz: d.hz, tx: true } : { hz: d.hz, snr: d.snr };
+  }));
   if (wfRows.length > WF_ROWS_MAX) wfRows.shift();
   renderWaterfall();
 }
@@ -1340,6 +1331,17 @@ function renderWaterfall() {
       if (typeof d.hz !== 'number') return;
       var frac = (d.hz - WF_HZ_MIN) / (WF_HZ_MAX - WF_HZ_MIN);
       var x = Math.max(0, Math.min(1, frac)) * cssW;
+      if (d.tx) {
+        // Our own TX, not a received decode -- distinct from the SNR-ramp
+        // dots on purpose: bright white, full row height, wider, with a
+        // thin dark outline so it reads clearly against a strong (yellow)
+        // decode sharing the same offset.
+        ctx.fillStyle = '#000';
+        ctx.fillRect(x - 4, y, 8, WF_ROW_H);
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(x - 3, y + 1, 6, WF_ROW_H - 2);
+        return;
+      }
       ctx.fillStyle = wfColorForSnr(d.snr);
       ctx.fillRect(x - 2, y + 2, 4, WF_ROW_H - 4);
     });
@@ -1419,8 +1421,15 @@ function applyEvent(e) {
   } else if (e.d === 3) {
     slotState = { sp: e.sp, bm: e.bm, hz: e.hz };
   } else if (e.d === 4) {
+    var wasTxActive = !!(txHud && txHud.active);
     txHud = { active: !!e.active, aborted: !!e.aborted, wrblk: !!e.wrblk,
-             pw: e.pw, swr: e.swr, batt: e.batt, reason: e.reason || '', x: e.x };
+             pw: e.pw, swr: e.swr, batt: e.batt, hz: e.hz, reason: e.reason || '', x: e.x };
+    // Rising edge only -- TX_HUD repeats every ~500ms while active, but a TX
+    // slot gets exactly one waterfall row, same as an RX slot gets one per
+    // decode batch, not one per poll tick.
+    if (txHud.active && !wasTxActive && typeof txHud.hz === 'number' && txHud.hz > 0) {
+      pushWaterfallRow([{ hz: txHud.hz, tx: true }]);
+    }
   }
 }
 

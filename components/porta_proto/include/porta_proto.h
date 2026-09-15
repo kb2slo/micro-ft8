@@ -275,6 +275,13 @@ bool porta_proto_parse_slot_state(const porta_frame_t *f, porta_slot_state_event
 // TX_HUD_LEN-carried banner-visible flag (tx_hud_visible(): TX running, or
 // the post-abort linger window) -- the browser hides its panel the instant
 // an event arrives with this false, rather than guessing from a timeout.
+// offset_hz is not part of TxHudBannerInput (the on-screen banner has no
+// reason to show it -- the operator can see the cursor on STATUS) but is the
+// one genuinely new field here: g_pending_tx.offset_hz, the same value
+// log_rxtx_line() already treats as "what's actually going on air" -- unlike
+// SLOT_STATE's resolved_offset_hz, which is only ever the *next* beacon/CQ
+// offset and says nothing about an established QSO's reply. 0 = unknown,
+// same convention as SLOT_STATE's own offset field.
 #define PORTA_TX_HUD_TEXT_MAX PORTA_EVENT_TEXT_MAX
 #define PORTA_TX_HUD_REASON_MAX 24u
 
@@ -286,6 +293,7 @@ typedef struct {
     int16_t  power_dw;      // deciwatts (power_w * 10), -1 = unknown
     int16_t  swr_c;         // SWR * 100, -1 = unknown
     int8_t   battery_pct;   // -1 = unknown
+    uint16_t offset_hz;     // what's actually being transmitted at, 0 = unknown
     char     reason[PORTA_TX_HUD_REASON_MAX + 1];  // why `aborted`, e.g. "low battery";
                                                     // empty when not aborted -- sourced from
                                                     // the actual abort site, not guessed

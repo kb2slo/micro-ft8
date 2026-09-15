@@ -1483,7 +1483,7 @@ static void porta_tx_hud_tick() {
     // Falling edge: tell the browser to hide its panel, exactly once, rather
     // than making it guess from a timeout.
     s_last_active = false;
-    porta_emit_tx_hud(false, false, false, "", -1.f, -1.f, -1, "");
+    porta_emit_tx_hud(false, false, false, "", -1.f, -1.f, -1, 0, "");
     return;
   }
   s_last_ms = now_ms;
@@ -1505,8 +1505,13 @@ static void porta_tx_hud_tick() {
     (void)radio_control_get_tx_power_swr(&power_w, &swr);
   }
 
+  // g_pending_tx.offset_hz is already what's going on air (see log_rxtx_line's
+  // own comment to that effect) -- covers a QSO reply the same as a beacon/CQ,
+  // unlike SLOT_STATE's resolved_offset_hz which only ever tracks the latter.
   porta_emit_tx_hud(true, aborted, ps.writes_blocked, tx_text, power_w, swr,
-                    ps.valid ? ps.percent : -1, aborted ? g_tx_abort_reason : "");
+                    ps.valid ? ps.percent : -1,
+                    g_pending_tx_valid ? g_pending_tx.offset_hz : 0,
+                    aborted ? g_tx_abort_reason : "");
 }
 
 static void draw_rx_screen(int flash_index = -1) {

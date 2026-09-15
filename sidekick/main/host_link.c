@@ -76,7 +76,8 @@ typedef struct {
     entry_kind_t kind;
     char     text[PORTA_EVENT_TEXT_MAX + 1];  // LOG, DECODE, TX_HUD
     int8_t   snr;                             // DECODE
-    uint16_t offset_hz;                       // DECODE; SLOT_STATE's resolved_offset_hz
+    uint16_t offset_hz;                       // DECODE; SLOT_STATE's resolved_offset_hz;
+                                               // TX_HUD's own offset_hz (what's on air)
     int16_t  dt_centis;                       // DECODE
     bool     is_cq;                           // DECODE
     bool     is_to_me;                        // DECODE
@@ -209,10 +210,10 @@ static esp_err_t get_events(httpd_req_t *req)
             n = snprintf(row, sizeof(row),
                          "%s{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":4,"
                          "\"active\":%d,\"aborted\":%d,\"wrblk\":%d,"
-                         "\"pw\":%d,\"swr\":%d,\"batt\":%d,\"reason\":\"%s\",\"x\":\"%s\"}",
+                         "\"pw\":%d,\"swr\":%d,\"batt\":%d,\"hz\":%u,\"reason\":\"%s\",\"x\":\"%s\"}",
                          first ? "" : ",", e.seq, e.epoch_secs,
                          e.tx_active ? 1 : 0, e.tx_aborted ? 1 : 0, e.tx_writes_blocked ? 1 : 0,
-                         e.tx_power_dw, e.tx_swr_c, e.tx_battery_pct, esc_reason, esc);
+                         e.tx_power_dw, e.tx_swr_c, e.tx_battery_pct, e.offset_hz, esc_reason, esc);
             break;
         }
         case ENTRY_LOG:
@@ -961,6 +962,7 @@ static void porta_rx_task(void *arg)
                 e.tx_power_dw = hud.power_dw;
                 e.tx_swr_c = hud.swr_c;
                 e.tx_battery_pct = hud.battery_pct;
+                e.offset_hz = hud.offset_hz;
                 strncpy(e.tx_reason, hud.reason, sizeof(e.tx_reason) - 1);
                 strncpy(e.text, hud.text, sizeof(e.text) - 1);
                 ring_push(&e);
