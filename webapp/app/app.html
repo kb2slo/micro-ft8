@@ -1,6 +1,6 @@
 <!doctype html>
 <meta name=viewport content='width=device-width,initial-scale=1'>
-<title>Mini-FT8</title>
+<title>Micro-FT8</title>
 <!--
   Entry asset for the installed app (RFC 0004 §11). Three screens behind one
   bottom tab bar: Operate (default) collapses what the ADV's 240x135 splits
@@ -158,7 +158,7 @@ button:disabled{opacity:.45}
   </div>
 </div>
 <div class=wrap>
-  <h1>Mini-FT8</h1>
+  <h1>Micro-FT8</h1>
   <p id=m>Loading…</p>
 
   <!-- ================= OPERATE ================= -->
@@ -649,7 +649,7 @@ function applyOperateLive(cfg) {
   var clockSet = yn(cfg.clock_set) === 'yes';
   var dotClock = document.getElementById('dotClock');
   dotClock.classList.toggle('up', clockSet);
-  dotClock.classList.toggle('bad', !clockSet && !!MiniFT8Pairing.getToken());
+  dotClock.classList.toggle('bad', !clockSet && !!MicroFT8Pairing.getToken());
   var srcName = cfg.clock_source ? (CLOCK_SOURCE_NAMES[cfg.clock_source] || cfg.clock_source) : 'Internal';
   document.getElementById('clockLabel').textContent = clockSet ? ('Clock: ' + srcName) : 'Clock';
 
@@ -663,19 +663,19 @@ function applyOperateLive(cfg) {
 // path, one fix. A single-field PUT rather than the full Settings form, so
 // picking a band applies immediately and never touches any other field.
 async function putConfigLine(line, busyMsg) {
-  if (!MiniFT8Pairing.getToken()) {
+  if (!MicroFT8Pairing.getToken()) {
     setMsg('Press the sidekick button to pair first.');
-    MiniFT8Pairing.needsReauth();
+    MicroFT8Pairing.needsReauth();
     return;
   }
   setMsg(busyMsg);
-  var r = await MiniFT8Pairing.authFetch('/api/config', {
+  var r = await MicroFT8Pairing.authFetch('/api/config', {
     method: 'PUT',
     headers: { 'Content-Type': 'text/plain' },
     body: line
   });
   if (r.status == 401) {
-    MiniFT8Pairing.needsReauth();
+    MicroFT8Pairing.needsReauth();
     setMsg('Press the sidekick button to pair');
     return;
   }
@@ -693,11 +693,11 @@ async function putConfigLine(line, busyMsg) {
 // status line and one final config reload at the end, not one of each per
 // call.
 async function authPostQuiet(path, body) {
-  if (!MiniFT8Pairing.getToken()) return false;
+  if (!MicroFT8Pairing.getToken()) return false;
   var opts = { method: 'POST' };
   if (body !== undefined) opts.body = body;
   try {
-    var r = await MiniFT8Pairing.authFetch(path, opts);
+    var r = await MicroFT8Pairing.authFetch(path, opts);
     return r.ok;
   } catch (e) {
     return false;
@@ -751,7 +751,7 @@ async function loadConfig() {
       setMsg('ADV returned empty config — is Port A linked?');
       return;
     }
-    setMsg(MiniFT8Pairing.getToken()
+    setMsg(MicroFT8Pairing.getToken()
       ? ('Loaded ' + n + ' fields from ADV — edit and save')
       : 'Loaded from ADV — press the sidekick button to pair before saving');
   } catch (e) {
@@ -782,19 +782,19 @@ async function pollLiveStatus() {
 }
 
 async function saveConfig() {
-  if (!MiniFT8Pairing.getToken()) {
+  if (!MicroFT8Pairing.getToken()) {
     setMsg('Press the sidekick button to pair first.');
-    MiniFT8Pairing.needsReauth();
+    MicroFT8Pairing.needsReauth();
     return;
   }
   setMsg('Saving…');
-  var r = await MiniFT8Pairing.authFetch('/api/config', {
+  var r = await MicroFT8Pairing.authFetch('/api/config', {
     method: 'PUT',
     headers: { 'Content-Type': 'text/plain' },
     body: formBody()
   });
   if (r.status == 401) {
-    MiniFT8Pairing.needsReauth();
+    MicroFT8Pairing.needsReauth();
     setMsg('Press the sidekick button to pair');
     return;
   }
@@ -821,10 +821,10 @@ var CLOCK_AUTO_SYNC_MS = 180000; // re-check every 3 min: crystal drift, not urg
 var CLOCK_SOURCE_NAMES = { R: 'DS3231', G: 'GPS', P: 'Phone', W: 'Browser' };
 
 async function autoSyncClock(manual) {
-  if (!MiniFT8Pairing.getToken()) {
+  if (!MicroFT8Pairing.getToken()) {
     if (manual) {
       setMsg('Press the sidekick button to pair first.');
-      MiniFT8Pairing.needsReauth();
+      MicroFT8Pairing.needsReauth();
     }
     return;
   }
@@ -836,12 +836,12 @@ async function autoSyncClock(manual) {
   // time at the midpoint of the exchange, not when we started asking.
   var t0 = Date.now();
   try {
-    var r = await MiniFT8Pairing.authFetch('/api/time', {
+    var r = await MicroFT8Pairing.authFetch('/api/time', {
       method: 'POST',
       body: String(t0 + Math.round((Date.now() - t0) / 2))
     });
     if (r.status == 401) {
-      MiniFT8Pairing.needsReauth();
+      MicroFT8Pairing.needsReauth();
       if (manual) setMsg('Press the sidekick button to pair');
       return;
     }
@@ -864,17 +864,17 @@ async function autoSyncClock(manual) {
 }
 
 async function radioPost(path, body, busyMsg) {
-  if (!MiniFT8Pairing.getToken()) {
+  if (!MicroFT8Pairing.getToken()) {
     setMsg('Press the sidekick button to pair first.');
-    MiniFT8Pairing.needsReauth();
+    MicroFT8Pairing.needsReauth();
     return;
   }
   setMsg(busyMsg);
   var opts = { method: 'POST' };
   if (body !== undefined) opts.body = body;
-  var r = await MiniFT8Pairing.authFetch(path, opts);
+  var r = await MicroFT8Pairing.authFetch(path, opts);
   if (r.status == 401) {
-    MiniFT8Pairing.needsReauth();
+    MicroFT8Pairing.needsReauth();
     setMsg('Press the sidekick button to pair');
     return;
   }
@@ -1362,7 +1362,7 @@ function greatCircle(a, b) {
 // which unit fmtDistBearing() below shows everywhere it's used. Operator-
 // requested -- either unit, not both, so every grid-distance display picks
 // up whatever was last chosen instead of each deciding independently.
-var DIST_UNIT_KEY = 'minift8_dist_unit_v1';
+var DIST_UNIT_KEY = 'microft8_dist_unit_v1';
 var distUnit = 'km'; // 'km' or 'mi'
 function loadDistUnit() {
   try {
@@ -1403,7 +1403,7 @@ function fmtDistBearing(myGrid, theirGrid) {
 // tries again next decode; false positives (caching a WRONG grid) are what
 // actually misleads the operator, so anything ambiguous is skipped rather
 // than guessed at.
-var CALLSIGN_GRID_CACHE_KEY = 'minift8_callsign_grids_v1';
+var CALLSIGN_GRID_CACHE_KEY = 'microft8_callsign_grids_v1';
 var callsignGridCache = {};
 function loadCallsignGridCache() {
   try {
@@ -1753,7 +1753,7 @@ async function downloadAllAdif(linkEl) {
       var rows = await fetchAllEntries(file);
       rows.forEach(function (q) { parts.push(buildAdifRecord(q, dateStr)); });
     }
-    triggerAdifDownload('mini-ft8-log', 'ADIF EXPORT\n<eoh>\n' + parts.join(''));
+    triggerAdifDownload('micro-ft8-log', 'ADIF EXPORT\n<eoh>\n' + parts.join(''));
   } catch (e) {
     setMsg(String(e && e.message ? e.message : e));
   } finally {
@@ -1900,7 +1900,7 @@ setInterval(refreshLogHead, LOG_REFRESH_MS);
 
 // ===================== boot =====================
 
-MiniFT8Pairing.boot({
+MicroFT8Pairing.boot({
   status: m,
   onPaired: function () {
     enableWrites(true);
@@ -1908,7 +1908,7 @@ MiniFT8Pairing.boot({
     autoSyncClock(false);
   }
 });
-if (MiniFT8Pairing.getToken()) {
+if (MicroFT8Pairing.getToken()) {
   enableWrites(true);
   autoSyncClock(false);
 }
@@ -1923,7 +1923,7 @@ if (MiniFT8Pairing.getToken()) {
 // what it is (old) rather than pretending to be fresh. saveStateCache() is
 // called after every place these variables actually change -- loadConfig(),
 // pollLiveStatus(), pollEvents() -- not on a separate timer.
-var STATE_CACHE_KEY = 'minift8_state_v1';
+var STATE_CACHE_KEY = 'microft8_state_v1';
 function saveStateCache() {
   try {
     localStorage.setItem(STATE_CACHE_KEY, JSON.stringify({

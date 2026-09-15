@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare Mini-FT8 RTC with host UTC clock by detecting second transition."""
+"""Compare Micro-FT8 RTC with host UTC clock by detecting second transition."""
 
 import sys
 import time

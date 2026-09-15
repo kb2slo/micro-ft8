@@ -478,7 +478,7 @@ static bool g_rx_dirty = false;
 
 
 static std::vector<std::string> g_startup_lines = {
-    "** Mini-FT8 " MINIFT8_VERSION_LINE " **",
+    "** Micro-FT8 " MICROFT8_VERSION_LINE " **",
     " S/R/T: Operate",
     " M/N/O: Menu",
     " Q/F/D: File",
@@ -581,7 +581,7 @@ int g_freq_osr = 1;
 static OffsetSrc g_offset_src = OffsetSrc::RANDOM;
 static RadioType g_radio = RadioType::QMX;       
 static int g_gps_baud = 115200;
-static std::string g_comment1 = "MiniFT8 /Radio";   
+static std::string g_comment1 = "MicroFT8 /Radio";   
 static std::string g_ignore_prefix_text;
 static std::vector<std::string> g_ignore_prefixes;  
 static bool g_rxtx_log = true;
@@ -2096,7 +2096,7 @@ static void charge_mode_paint() {
   }
 
   char title[40];
-  snprintf(title, sizeof(title), "Mini-FT8 %s", MINIFT8_VERSION_LINE);
+  snprintf(title, sizeof(title), "Micro-FT8 %s", MICROFT8_VERSION_LINE);
 
   M5.Display.fillScreen(k_launcher_bgcolor);
   M5.Display.setTextColor(fg, k_launcher_bgcolor);
@@ -4146,7 +4146,7 @@ static void cts_iphone_start_from_ui() {
   }
   log_mem_caps("CTS_BEFORE");
   char name[20];
-  std::snprintf(name, sizeof(name), "Mini-FT8-%.8s", g_call.c_str());
+  std::snprintf(name, sizeof(name), "Micro-FT8-%.8s", g_call.c_str());
   if (cts_ble_start_iphone(name) != ESP_OK) {
     debug_log_line("CTS: start fail");
     restore_usb_host_after_cts();
@@ -4376,7 +4376,7 @@ static void draw_bt_view(bool force_redraw) {
   lines.push_back("1: Start sync");
   lines.push_back("nRF Connect");
   char name[20];
-  std::snprintf(name, sizeof(name), "Mini-FT8-%.8s", g_call.c_str());
+  std::snprintf(name, sizeof(name), "Micro-FT8-%.8s", g_call.c_str());
   lines.push_back(name);
   // What pressing 2 will actually do, decided by the probe that ran when the
   // device was plugged in rather than by hope.
@@ -4601,7 +4601,7 @@ static void draw_perf_view(bool force_redraw) {
   perf_make_heap_line(lines[2], sizeof(lines[2]), "8B", MALLOC_CAP_8BIT);
   perf_make_heap_line(lines[3], sizeof(lines[3]), "IN", MALLOC_CAP_INTERNAL);
   perf_make_heap_line(lines[4], sizeof(lines[4]), "DM", MALLOC_CAP_DMA);
-  snprintf(lines[5], sizeof(lines[5]), "%s", MINIFT8_VERSION_LINE);
+  snprintf(lines[5], sizeof(lines[5]), "%s", MICROFT8_VERSION_LINE);
 
   const int line_h = 19;
   const int start_y = UI_START_Y;

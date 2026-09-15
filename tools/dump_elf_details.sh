@@ -8,10 +8,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD="$ROOT/build"
-ELF="$BUILD/mini_ft8.elf"
-MAP="$BUILD/mini_ft8.map"
-APP_BIN="$BUILD/mini_ft8.bin"
-MERGED_BIN="$BUILD/MiniFT8_Merged_Auto.bin"
+ELF="$BUILD/micro_ft8.elf"
+MAP="$BUILD/micro_ft8.map"
+APP_BIN="$BUILD/micro_ft8.bin"
+MERGED_BIN="$BUILD/MicroFT8_Merged_Auto.bin"
 IDENTITY="$BUILD/generated/build_identity.h"
 STAGE="$ROOT/components/sidekick_flasher/target_firmware"
 PARTITIONS="$ROOT/partitions.csv"
@@ -26,11 +26,11 @@ kib() { python3 -c "print(f'{$1/1024:.1f} KiB')"; }
 
 echo "== Build identity =="
 if [[ -f "$IDENTITY" ]]; then
-    ver=$(sed -n 's/.*MINIFT8_VERSION_LINE "\(.*\)"/\1/p' "$IDENTITY")
-    sha=$(sed -n 's/.*MINIFT8_GIT_SHA "\(.*\)"/\1/p' "$IDENTITY")
-    dirty=$(sed -n 's/.*MINIFT8_GIT_DIRTY \(.*\)/\1/p' "$IDENTITY")
-    kind=$(sed -n 's/.*MINIFT8_BUILD_KIND "\(.*\)"/\1/p' "$IDENTITY")
-    bin=$(sed -n 's/.*MINIFT8_MERGED_BIN_NAME "\(.*\)"/\1/p' "$IDENTITY")
+    ver=$(sed -n 's/.*MICROFT8_VERSION_LINE "\(.*\)"/\1/p' "$IDENTITY")
+    sha=$(sed -n 's/.*MICROFT8_GIT_SHA "\(.*\)"/\1/p' "$IDENTITY")
+    dirty=$(sed -n 's/.*MICROFT8_GIT_DIRTY \(.*\)/\1/p' "$IDENTITY")
+    kind=$(sed -n 's/.*MICROFT8_BUILD_KIND "\(.*\)"/\1/p' "$IDENTITY")
+    bin=$(sed -n 's/.*MICROFT8_MERGED_BIN_NAME "\(.*\)"/\1/p' "$IDENTITY")
     dirty_note="clean"; [[ "$dirty" == "1" ]] && dirty_note="DIRTY — uncommitted changes were in the tree at build time"
     echo "  version=$ver kind=$kind sha=$sha ($dirty_note)"
     echo "  merged bin name: $bin"
@@ -45,12 +45,12 @@ if [[ -f "$APP_BIN" ]]; then
     factory_hex=$(awk -F',' '/^factory,/{gsub(/ /,"",$5); print $5}' "$PARTITIONS")
     factory_size=$((factory_hex))
     pct=$(python3 -c "print(f'{100*$app_size/$factory_size:.1f}')")
-    echo "  mini_ft8.bin (app only):     $app_size bytes ($(kib "$app_size"))"
+    echo "  micro_ft8.bin (app only):     $app_size bytes ($(kib "$app_size"))"
     echo "  factory partition budget:    $factory_size bytes ($(kib "$factory_size")) — app uses ${pct}%"
 fi
 if [[ -f "$MERGED_BIN" ]]; then
     merged_size=$(file_size "$MERGED_BIN")
-    echo "  MiniFT8_Merged_Auto.bin:     $merged_size bytes ($(kib "$merged_size")) — bootloader + partition table + app, flash at 0x0"
+    echo "  MicroFT8_Merged_Auto.bin:     $merged_size bytes ($(kib "$merged_size")) — bootloader + partition table + app, flash at 0x0"
 fi
 
 echo
@@ -67,7 +67,7 @@ for section in data.get("layout", []):
         print(f"  {name}: {used}/{total} bytes used ({pct:.1f}%), {free} free")
 '
 else
-    echo "  (need build/mini_ft8.map and a sourced esp-idf/export.sh — source it and rebuild)"
+    echo "  (need build/micro_ft8.map and a sourced esp-idf/export.sh — source it and rebuild)"
 fi
 
 echo

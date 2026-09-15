@@ -1,5 +1,5 @@
 /*
- * autoseq.cpp - FT8 CQ/QSO auto-sequencing engine for Mini-FT8
+ * autoseq.cpp - FT8 CQ/QSO auto-sequencing engine for Micro-FT8
  *
  * Ported from DX-FT8-MULTIBAND-TABLET-TRANSCEIVER autoseq_engine.c
  * Adapted for ESP32/C++ with integrated TX scheduling.

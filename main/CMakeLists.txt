@@ -37,5 +37,5 @@ idf_component_register(
              driver esp_driver_i2c fatfs sdmmc wear_levelling
 )
 target_compile_options(${COMPONENT_LIB} PRIVATE -Werror)
-add_dependencies(${COMPONENT_LIB} minift8_build_identity)
+add_dependencies(${COMPONENT_LIB} microft8_build_identity)
 target_include_directories(${COMPONENT_LIB} PRIVATE ${CMAKE_BINARY_DIR}/generated)

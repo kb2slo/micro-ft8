@@ -7,8 +7,8 @@ Two paths, both defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.
 
 | Path | Trigger | Job | Tag | Asset |
 | --- | --- | --- | --- | --- |
-| Rolling | push to `main` that can change the binary | `release-main` | `continuous`, force-moved every run | `YYYYMMDD-minift8-<commit>.bin` |
-| Versioned | push of a tag matching `v*` | `release` | the tag you pushed, immovable | `MiniFT8-<tag>-Merged.bin` |
+| Rolling | push to `main` that can change the binary | `release-main` | `continuous`, force-moved every run | `YYYYMMDD-microft8-<commit>.bin` |
+| Versioned | push of a tag matching `v*` | `release` | the tag you pushed, immovable | `MicroFT8-<tag>-Merged.bin` |
 
 Both publish the same merged image — flash at `0x0`, 8 MB, custom FATFS partition table — under different
 names. The firmware artifact is skipped entirely for docs-only commits (the `changes` path filter, D7), so a
@@ -34,7 +34,7 @@ Corollaries an agent should not re-derive:
   commit in the body or by the tag, never by that date.
 - `prerelease: true` and `make_latest: false` are deliberate: they keep the rolling build from taking the
   "Latest release" badge away from the newest real version. This is also why the tag is not called `latest`.
-- **The asset name changes every merge, on purpose.** `YYYYMMDD-minift8-<commit>.bin` still identifies itself
+- **The asset name changes every merge, on purpose.** `YYYYMMDD-microft8-<commit>.bin` still identifies itself
   after download, where several same-named files in one Downloads folder do not — the same reasoning as the
   hash-first build names (D12). The date is the *commit* date in UTC, so rebuilding a commit reproduces the
   name. The cost is that there is no stable download URL; a script should resolve the asset from the release
@@ -77,8 +77,8 @@ The presence or absence of a version number is the signal:
 
 | Build | Device displays | Merged image |
 | --- | --- | --- |
-| `v3.0.0` tag, via CI | `Mini-FT8 3.0.0` | `<sha>-minift8-3.0.0.bin` |
-| anything else | `Mini-FT8 dev <sha>` (`*` if dirty) | `<sha>-minift8-dev.bin` |
+| `v3.0.0` tag, via CI | `Micro-FT8 3.0.0` | `<sha>-microft8-3.0.0.bin` |
+| anything else | `Micro-FT8 dev <sha>` (`*` if dirty) | `<sha>-microft8-dev.bin` |
 
 This is a guarantee rather than a label, because `rel` is **gated in the build, not in the release script**.
 [`tools/gen_build_identity.cmake`](../tools/gen_build_identity.cmake) hard-fails a `rel` build unless all
@@ -86,7 +86,7 @@ three hold:
 
 1. **It is running in CI** (`CI` set in the environment). The workflow passes `-e CI=true` explicitly, since
    the ESP-IDF build container does not inherit the runner's environment.
-2. **A version was handed to it** (`MINIFT8_RELEASE_VERSION`), which CI takes from `github.ref_name` on a tag
+2. **A version was handed to it** (`MICROFT8_RELEASE_VERSION`), which CI takes from `github.ref_name` on a tag
    push — so the number on screen cannot disagree with the tag it was cut from.
 3. **The tree is clean**, so the version names a commit that actually contains what was built.
 
@@ -120,10 +120,10 @@ deliberate overwrite.
 
 The rest is naming, but all of it is operator-visible:
 
-- Asset and tag names in `ci.yml` (`MiniFT8-<tag>-Merged.bin`, `YYYYMMDD-minift8-<commit>.bin`).
+- Asset and tag names in `ci.yml` (`MicroFT8-<tag>-Merged.bin`, `YYYYMMDD-microft8-<commit>.bin`).
 - `MERGED_BIN_NAME` in `gen_build_identity.cmake` — the hash-first name M5Launcher truncates (D12).
-- The `MINIFT8_*` macro names, and `project(mini_ft8)` in `CMakeLists.txt`.
-- The mDNS hostname `minift8.local` (RFC 0001 §5.0), which is in operators' browser history.
+- The `MICROFT8_*` macro names, and `project(micro_ft8)` in `CMakeLists.txt`.
+- The mDNS hostname `microft8.local` (RFC 0001 §5.0), which is in operators' browser history.
 - Clone URLs and release links in `README.md` and `docs/`. GitHub redirects a renamed repo, so these keep
   working — but redirects are not a plan.
 

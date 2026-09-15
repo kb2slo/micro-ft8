@@ -1,7 +1,7 @@
 <!doctype html>
 <meta charset=utf-8>
 <meta name=viewport content='width=device-width,initial-scale=1'>
-<title>Mini-FT8 ADV log</title>
+<title>Micro-FT8 ADV log</title>
 
 <!--
   ADV log and decode stream (Port A), served at /log. Everything in the list
@@ -101,7 +101,7 @@ function setTxBusy(busy) {
 
 async function sync() {
   if (synced || syncInFlight) return;
-  if (!MiniFT8Pairing.getToken()) return;
+  if (!MicroFT8Pairing.getToken()) return;
   if (Date.now() < nextSyncAfter) return;
   syncInFlight = true;
   // Round-trip halving, the same reasoning NTP uses: the host should be set to
@@ -110,13 +110,13 @@ async function sync() {
   // it is belt and braces rather than necessity.
   var t0 = Date.now();
   try {
-    var r = await MiniFT8Pairing.authFetch('/api/time', {
+    var r = await MicroFT8Pairing.authFetch('/api/time', {
       method: 'POST',
       body: String(t0 + Math.round((Date.now() - t0) / 2))
     });
     if (r.status == 401) {
       synced = false;
-      MiniFT8Pairing.needsReauth();
+      MicroFT8Pairing.needsReauth();
       return
     }
     var j = await r.json();
@@ -140,16 +140,16 @@ async function sync() {
 }
 
 async function postTx(url, body) {
-  if (!MiniFT8Pairing.getToken()) {
-    MiniFT8Pairing.needsReauth();
+  if (!MicroFT8Pairing.getToken()) {
+    MicroFT8Pairing.needsReauth();
     return
   }
   if (txBusy) return;
   setTxBusy(true);
   try {
-    var r = await MiniFT8Pairing.authFetch(url, { method: 'POST', body: body || '' });
+    var r = await MicroFT8Pairing.authFetch(url, { method: 'POST', body: body || '' });
     if (r.status == 401) {
-      MiniFT8Pairing.needsReauth();
+      MicroFT8Pairing.needsReauth();
       return
     }
     var j = await r.json();
@@ -183,7 +183,7 @@ cancelBtn.addEventListener('click', function () {
   postTx('/api/tx/cancel', '');
 });
 
-MiniFT8Pairing.boot({
+MicroFT8Pairing.boot({
   status: s,
   onPaired: function () { synced = false; nextSyncAfter = 0; sync() }
 });
@@ -208,7 +208,7 @@ async function tick() {
     // backoff must stand, or a stream of t=0 events would POST every second.
     if (sawUnset) synced = false;
     // Do not overwrite a pairing prompt, clock-error, or brief TX-error line.
-    if (MiniFT8Pairing.getToken() && s.textContent.indexOf('Press the sidekick') < 0 &&
+    if (MicroFT8Pairing.getToken() && s.textContent.indexOf('Press the sidekick') < 0 &&
         s.textContent.indexOf('clock not set') < 0 &&
         Date.now() >= txStatusUntil) {
       stat();

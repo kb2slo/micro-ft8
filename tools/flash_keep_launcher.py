@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Flash mini_ft8.bin into Launcher's OTA app slot.
+"""Flash micro_ft8.bin into Launcher's OTA app slot.
 
 Reads the *device* partition table (not this repo's partitions.csv). Writes only
 the app image. Never writes bootloader, partition table, factory (Launcher),
 otadata, or fatfs.
 
-First install Mini-FT8 once from Launcher so an OTA slot exists and is sized.
+First install Micro-FT8 once from Launcher so an OTA slot exists and is sized.
 After that, this is the daily CLI path that leaves Launcher in factory.
 
-Must be USB Serial/JTAG (Launcher menu or Mini-FT8). Leave Launcher USB/MSC.
+Must be USB Serial/JTAG (Launcher menu or Micro-FT8). Leave Launcher USB/MSC.
 Radio unplugged from Cardputer USB-C.
 """
 
@@ -28,7 +28,7 @@ PTABLE_LEN = 0xC00
 APP_TYPE = 0x00
 OTA_SUBTYPE_MIN = 0x10
 OTA_SUBTYPE_MAX = 0x1F  # ota_0 .. ota_15
-# This Cardputer's Mini-FT8 Launcher slot (PMan name). Prefer when present.
+# This Cardputer's Micro-FT8 Launcher slot (PMan name). Prefer when present.
 PREFERRED_OTA = "bt4000"
 
 
@@ -151,9 +151,9 @@ def pick_ota(table, name: str | None):
     ota = [p for p in table if is_ota_app(p)]
     if not ota:
         die(
-            "no OTA app partition on this device. That is Mini-FT8's native "
+            "no OTA app partition on this device. That is Micro-FT8's native "
             "factory-only layout (Launcher is not resident).\n"
-            "Flash Launcher at 0x0, install Mini-FT8 once from Launcher "
+            "Flash Launcher at 0x0, install Micro-FT8 once from Launcher "
             "(SD or WUI), then rerun this script.\n"
             "Do not use `idf.py flash` or `idf.py app-flash` on a Launcher unit."
         )
@@ -181,7 +181,7 @@ def flash_ota(port: str, part, image: Path) -> None:
     if size > part.size:
         die(
             f"{image} is {size} bytes but '{part.name}' is only {part.size} "
-            f"(0x{part.size:x}). Install Mini-FT8 once from Launcher so PMan "
+            f"(0x{part.size:x}). Install Micro-FT8 once from Launcher so PMan "
             "sizes the slot, or enlarge that OTA partition in PMan."
         )
     # write-flash erases only the image sectors, not the whole OTA slot.
@@ -215,8 +215,8 @@ def main() -> None:
     ap.add_argument(
         "--bin",
         type=Path,
-        default=REPO / "build" / "mini_ft8.bin",
-        help="app image (default: build/mini_ft8.bin, not the merged image)",
+        default=REPO / "build" / "micro_ft8.bin",
+        help="app image (default: build/micro_ft8.bin, not the merged image)",
     )
     ap.add_argument("--no-build", action="store_true", help="do not run idf.py build first")
     ap.add_argument(
@@ -226,9 +226,9 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    if args.bin.resolve() != (REPO / "build" / "mini_ft8.bin").resolve():
-        if "merged" in args.bin.name.lower() or args.bin.name.startswith("MiniFT8"):
-            die(f"{args.bin} looks like a merged image. Use mini_ft8.bin only.")
+    if args.bin.resolve() != (REPO / "build" / "micro_ft8.bin").resolve():
+        if "merged" in args.bin.name.lower() or args.bin.name.startswith("MicroFT8"):
+            die(f"{args.bin} looks like a merged image. Use micro_ft8.bin only.")
 
     idf_path = require_idf()
     gen = load_gen_esp32part(idf_path)
@@ -269,8 +269,8 @@ def main() -> None:
 
     flash_ota(port, target, args.bin)
     print()
-    print("Wrote Mini-FT8 to the OTA slot. Launcher in factory is unchanged.")
-    print("Reset: Mini-FT8 if that slot is the boot default; catch Launcher on the splash.")
+    print("Wrote Micro-FT8 to the OTA slot. Launcher in factory is unchanged.")
+    print("Reset: Micro-FT8 if that slot is the boot default; catch Launcher on the splash.")
 
 
 if __name__ == "__main__":

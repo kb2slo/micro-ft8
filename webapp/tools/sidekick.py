@@ -27,7 +27,7 @@ from typing import Callable, Optional, TypeVar
 
 ROOT = Path(__file__).resolve().parents[2]
 TOKEN_CACHE = Path(__file__).resolve().parent / ".sidekick_token"
-HEADER = "X-MiniFT8-Token"
+HEADER = "X-MicroFT8-Token"
 POLL_S = 1.0
 
 T = TypeVar("T")

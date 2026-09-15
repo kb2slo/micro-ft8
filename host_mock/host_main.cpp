@@ -1,5 +1,5 @@
 /*
- * host_main.cpp — Mini-FT8 autoseq host-mock test harness
+ * host_main.cpp — Micro-FT8 autoseq host-mock test harness
  *
  * Loads a JSON scenario, drives autoseq through CQ/QSO cycles,
  * and prints state transitions for verification.

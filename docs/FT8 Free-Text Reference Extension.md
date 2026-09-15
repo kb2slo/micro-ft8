@@ -80,9 +80,9 @@ Only **one reference** should be sent per QSO per station.
 
 ---
 
-## 5. Mini-FT8 Sequence Adaptation
+## 5. Micro-FT8 Sequence Adaptation
 
-Mini-FT8 integrates FTRX with two user settings for backward compatibility with WSJT-X.
+Micro-FT8 integrates FTRX with two user settings for backward compatibility with WSJT-X.
 
 ### 5.1 Settings
 
@@ -96,7 +96,7 @@ Mini-FT8 integrates FTRX with two user settings for backward compatibility with 
 
 ### 5.2 Rule
 
-When Mini-FT8 is about to transmit a **sign-off** (`RR73` or `73`):
+When Micro-FT8 is about to transmit a **sign-off** (`RR73` or `73`):
 
 - If `Send_Ref > 0`, `Ref` is set, and `ref_tx_count < Send_Ref`:
   - transmit `T = Ref + DX2 + MY2` (FTRX)
@@ -106,7 +106,7 @@ When Mini-FT8 is about to transmit a **sign-off** (`RR73` or `73`):
 
 ### 5.3 Fallback
 
-After 1–2 FTRX attempts (per `Send_Ref`), if the other station does not converge cleanly, Mini-FT8 **falls back to normal sign-off** messages to complete the QSO in standard WSJT-X style.
+After 1–2 FTRX attempts (per `Send_Ref`), if the other station does not converge cleanly, Micro-FT8 **falls back to normal sign-off** messages to complete the QSO in standard WSJT-X style.
 
 ---
 

@@ -1,4 +1,4 @@
-# Shared git SHA + dirty-flag computation, honoring the same MINIFT8_GIT_SHA
+# Shared git SHA + dirty-flag computation, honoring the same MICROFT8_GIT_SHA
 # override (CMake var or env var) CI uses to pin the reported SHA to the
 # actual PR/commit head rather than trusting a bare `git rev-parse HEAD` —
 # CI checks out a GitHub-synthesized merge commit for a PR, which is a
@@ -10,7 +10,7 @@
 # built firmwares' version strings to be exactly comparable — one shared
 # implementation, not two copies that can drift apart.
 #
-# Input:  GIT_DIR (required), MINIFT8_GIT_SHA (optional override)
+# Input:  GIT_DIR (required), MICROFT8_GIT_SHA (optional override)
 # Output: SHA, DIRTY (0 or 1) — set in the caller's scope
 
 if(NOT GIT_DIR)
@@ -19,10 +19,10 @@ endif()
 
 set(SHA "unknown")
 set(_sha_in "")
-if(MINIFT8_GIT_SHA)
-  set(_sha_in "${MINIFT8_GIT_SHA}")
-elseif(DEFINED ENV{MINIFT8_GIT_SHA} AND NOT "$ENV{MINIFT8_GIT_SHA}" STREQUAL "")
-  set(_sha_in "$ENV{MINIFT8_GIT_SHA}")
+if(MICROFT8_GIT_SHA)
+  set(_sha_in "${MICROFT8_GIT_SHA}")
+elseif(DEFINED ENV{MICROFT8_GIT_SHA} AND NOT "$ENV{MICROFT8_GIT_SHA}" STREQUAL "")
+  set(_sha_in "$ENV{MICROFT8_GIT_SHA}")
 endif()
 if(_sha_in)
   string(SUBSTRING "${_sha_in}" 0 7 SHA)

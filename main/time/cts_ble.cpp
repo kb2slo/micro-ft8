@@ -398,7 +398,7 @@ esp_err_t cts_ble_start_iphone(const char* adv_name)
     }
 
     if (adv_name == nullptr || adv_name[0] == '\0') {
-        adv_name = "Mini-FT8";
+        adv_name = "Micro-FT8";
     }
     std::strncpy(s_name, adv_name, sizeof(s_name) - 1);
     s_name[sizeof(s_name) - 1] = '\0';

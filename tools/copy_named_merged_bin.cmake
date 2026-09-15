@@ -1,9 +1,9 @@
-# Copy MiniFT8_Merged_Auto.bin to the hash-first name in merged_bin_name.txt.
+# Copy MicroFT8_Merged_Auto.bin to the hash-first name in merged_bin_name.txt.
 if(NOT BUILD_DIR)
   message(FATAL_ERROR "copy_named_merged_bin.cmake needs BUILD_DIR")
 endif()
 set(name_file "${BUILD_DIR}/generated/merged_bin_name.txt")
-set(src "${BUILD_DIR}/MiniFT8_Merged_Auto.bin")
+set(src "${BUILD_DIR}/MicroFT8_Merged_Auto.bin")
 if(NOT EXISTS "${src}")
   message(WARNING "Merged bin missing: ${src}")
   return()

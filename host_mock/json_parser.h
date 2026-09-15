@@ -1,5 +1,5 @@
 #pragma once
-// JSON test-data parser for Mini-FT8 host mock.
+// JSON test-data parser for Micro-FT8 host mock.
 // Adapted from dxft8-tests — uses C++ UiRxLine with std::string fields.
 
 #include <string>

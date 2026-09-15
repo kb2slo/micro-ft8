@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Set Mini-FT8 RTC to current UTC time, then enter deep sleep."""
+"""Set Micro-FT8 RTC to current UTC time, then enter deep sleep."""
 
 import sys
 import time
@@ -28,7 +28,7 @@ def send_cmd(ser, cmd):
     deadline = time.monotonic() + 2.0
     while time.monotonic() < deadline:
         line = ser.readline().decode(errors="replace").strip()
-        if line and not line.startswith("MINIFT8>"):
+        if line and not line.startswith("MICROFT8>"):
             return line
     return ""
 

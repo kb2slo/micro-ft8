@@ -19,7 +19,7 @@ This RFC is the campaign plan and the Done-when. `docs/STYLE.md` is the short co
 
 1. **Written standard.** `docs/STYLE.md` is the coding rule for *our* C/C++. New and extracted code follows it. Vendored `M5*` / `ft8_lib` do not.
 2. **Module ratchet.** New behavior does not land as more `main.cpp`. It gets a named unit, a header that is the API, and a host test if it is parse / format / policy. `main.cpp` may only shrink.
-3. **Vendor boundary.** `ft8_lib` is a pinned upstream (SHA) plus Mini-FT8 wrappers. Protocol patches are rebaseable commits on our fork. Bump path is 3-way merge + `tx_e2e` golden RX/encode. Karlis’s files look like Karlis’s files.
+3. **Vendor boundary.** `ft8_lib` is a pinned upstream (SHA) plus Micro-FT8 wrappers. Protocol patches are rebaseable commits on our fork. Bump path is 3-way merge + `tx_e2e` golden RX/encode. Karlis’s files look like Karlis’s files.
 4. **Radio boundary.** Core talks `radio_control` **ops + capabilities**. QMX CAT, TX power/SWR, `MD8`, `PS0;`, and UAC profile live in the QMX backend. `main.cpp` does not `if (QMX)`. QMX and QMX+ are one backend until CAT differs.
 5. **Host tests stay green.** Field-only paths (USB/CDC/CAT, UAC timing/DRAM, display/SPI, full-slot audio) are unchanged unless a dedicated follow-up says otherwise.
 
@@ -29,7 +29,7 @@ This RFC is the campaign plan and the Done-when. `docs/STYLE.md` is the short co
 - Repo-wide clang-format / astyle / rename of `main.cpp`.
 - Class hierarchies for Station, ADIF, or decode sort.
 - New radios (FTX-1, FT-817) or QMX product features (I8/I9/I10) in this campaign. Those wait until the radio object can refuse them.
-- Mergeability with `upstream` (`wcheng95/Mini-FT8`).
+- Mergeability with `upstream` (`wcheng95/Micro-FT8`).
 - Making KH1/QDX “field proven.” They keep compiling. Only QMX/QMX+ is hardware we have.
 
 ## 4. Coding standard
@@ -84,10 +84,10 @@ A first pass demoted only `station`, `band_config`, and `usb_c_presence` — the
 
 Third-party source we did not write:
 
-- Pin is the git submodule `components/ft8_lib/vendor` → [kb2slo/ft8_lib](https://github.com/kb2slo/ft8_lib) (fork of [wcheng95/ft8_lib](https://github.com/wcheng95/ft8_lib) / [kgoba/ft8_lib](https://github.com/kgoba/ft8_lib)). Clone Mini-FT8 with `--recurse-submodules`.
-- Mini-FT8 wrappers only, in `components/ft8_lib/` (not in the submodule): `common/fft_wrapper`, `common/monitor` (static BSS arenas), IDF `CMakeLists.txt`, `common/stpcpy_compat` (Windows host only). Do not compile `vendor/common/monitor.c`.
+- Pin is the git submodule `components/ft8_lib/vendor` → [kb2slo/ft8_lib](https://github.com/kb2slo/ft8_lib) (fork of [wcheng95/ft8_lib](https://github.com/wcheng95/ft8_lib) / [kgoba/ft8_lib](https://github.com/kgoba/ft8_lib)). Clone Micro-FT8 with `--recurse-submodules`.
+- Micro-FT8 wrappers only, in `components/ft8_lib/` (not in the submodule): `common/fft_wrapper`, `common/monitor` (static BSS arenas), IDF `CMakeLists.txt`, `common/stpcpy_compat` (Windows host only). Do not compile `vendor/common/monitor.c`.
 - Protocol patches live as rebaseable commits on `kb2slo/ft8_lib`: Wei’s Field Day (`d8a41e6`, `bb3d94d`, also [kgoba#54](https://github.com/kgoba/ft8_lib/pull/54)) and DXpedition type 0.1 (`5d095f4`). Nonstd is already upstream (`9fec6ca`). Do not push DXpedition onto Wei’s `master` or onto #54.
-- **Wei patches his in-tree copy, not `wcheng95/ft8_lib`.** That repo is stale at `bb3d94d` (2026-03) and fully absorbed here; his live protocol work lands in Mini-FT8 `upstream`’s `components/ft8_lib/ft8/`. Because his tree has no submodule and ours no in-tree copy, **merging `upstream/main` cannot deliver a protocol fix** — it resurrects a `ft8/message.c` that neither build compiles and leaves the pin untouched. Port by hand. B41 is the worked example.
+- **Wei patches his in-tree copy, not `wcheng95/ft8_lib`.** That repo is stale at `bb3d94d` (2026-03) and fully absorbed here; his live protocol work lands in Micro-FT8 `upstream`’s `components/ft8_lib/ft8/`. Because his tree has no submodule and ours no in-tree copy, **merging `upstream/main` cannot deliver a protocol fix** — it resurrects a `ft8/message.c` that neither build compiles and leaves the pin untouched. Port by hand. B41 is the worked example.
 - Contribute back only Karlis-shaped fixes (correctness, protocol). Never “make it compile on ESP32-S3.”
 - Do not clang-format or re-indent that tree.
 - **Bump:**

@@ -1,7 +1,7 @@
 // Shared pairing for every sidekick page (RFC 0004 section 7).
 //
 // Served at /pairing.js. Pages include it with <script src=/pairing.js></script>
-// and call MiniFT8Pairing.boot(...) so re-auth is the same gesture everywhere:
+// and call MicroFT8Pairing.boot(...) so re-auth is the same gesture everywhere:
 // press the sidekick button; this script claims the token while the disclosure
 // window is open. No copy-paste, no prompt().
 //
@@ -11,8 +11,8 @@
 // every other already-paired browser.
 
 (function (global) {
-  var KEY = 'minift8_token';
-  var HEADER = 'X-MiniFT8-Token';
+  var KEY = 'microft8_token';
+  var HEADER = 'X-MicroFT8-Token';
   var POLL_MS = 1000;
   var polling = false;
   var statusEl = null;
@@ -101,7 +101,7 @@
     pollUntilPaired();
   }
 
-  global.MiniFT8Pairing = {
+  global.MicroFT8Pairing = {
     KEY: KEY,
     HEADER: HEADER,
     getToken: getToken,

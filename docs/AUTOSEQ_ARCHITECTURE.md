@@ -1,7 +1,7 @@
 # Autoseq Architecture: Reference Project Design
 
 This document describes the single-threaded state machine architecture used in the
-DX-FT8 reference project and how Mini-FT8 implements the same pattern.
+DX-FT8 reference project and how Micro-FT8 implements the same pattern.
 
 ## Core Principle: Three Events, Strict Ordering
 
@@ -204,9 +204,9 @@ void autoseq_tick(void) {
 6. Since Event 2 always before Event 3, queue is stable when tick() runs
 ```
 
-## Mini-FT8 Implementation
+## Micro-FT8 Implementation
 
-Mini-FT8 now follows the same pattern:
+Micro-FT8 now follows the same pattern:
 
 ```cpp
 // State machine variables
@@ -331,7 +331,7 @@ if (DSP_Flag) {
 }
 ```
 
-### Why This Matters for Mini-FT8
+### Why This Matters for Micro-FT8
 
 **Problem with wall clock timing:**
 - TX starts at slot boundary (t=0ms)
@@ -346,7 +346,7 @@ if (DSP_Flag) {
 - 79 symbols × 7,680 = 606,720 samples for full TX
 - TX completion is guaranteed before slot boundary detection
 
-### Mini-FT8 Implementation Options
+### Micro-FT8 Implementation Options
 
 **Option 1: Sample-Counted TX**
 ```cpp

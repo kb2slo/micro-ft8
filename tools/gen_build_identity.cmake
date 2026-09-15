@@ -1,7 +1,7 @@
 # Generate build_identity.h and merged_bin_name.txt from git.
 # Required: GIT_DIR, OUT_DIR
-# Optional: MINIFT8_BUILD_KIND (default dev)
-#           MINIFT8_RELEASE_VERSION (required when kind is rel)
+# Optional: MICROFT8_BUILD_KIND (default dev)
+#           MICROFT8_RELEASE_VERSION (required when kind is rel)
 #
 # A `rel` build is a claim the device makes about itself on screen, so it is
 # gated rather than merely labelled: it must come from CI, carry a version
@@ -14,8 +14,8 @@ if(NOT GIT_DIR OR NOT OUT_DIR)
   message(FATAL_ERROR "gen_build_identity.cmake needs GIT_DIR and OUT_DIR")
 endif()
 
-if(NOT MINIFT8_BUILD_KIND)
-  set(MINIFT8_BUILD_KIND "dev")
+if(NOT MICROFT8_BUILD_KIND)
+  set(MICROFT8_BUILD_KIND "dev")
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/git_version.cmake")  # sets SHA, DIRTY
@@ -28,7 +28,7 @@ else()
   set(DIRTY_MARK "")
 endif()
 
-set(KIND "${MINIFT8_BUILD_KIND}")
+set(KIND "${MICROFT8_BUILD_KIND}")
 if(KIND STREQUAL "release" OR KIND STREQUAL "rel")
   set(KIND "rel")
 
@@ -37,33 +37,33 @@ if(KIND STREQUAL "release" OR KIND STREQUAL "rel")
       "rel builds come from CI only. Tag with tools/cut_release.py and let the "
       "workflow build it; a desk build cannot be a release.")
   endif()
-  if(NOT MINIFT8_RELEASE_VERSION)
+  if(NOT MICROFT8_RELEASE_VERSION)
     message(FATAL_ERROR
-      "rel build needs MINIFT8_RELEASE_VERSION -- the version comes from the "
+      "rel build needs MICROFT8_RELEASE_VERSION -- the version comes from the "
       "v* tag, so the number on screen cannot disagree with the tag it was "
       "cut from.")
   endif()
   if(DIRTY)
     message(FATAL_ERROR
-      "rel build refuses a dirty tree: '${MINIFT8_RELEASE_VERSION}' would name "
+      "rel build refuses a dirty tree: '${MICROFT8_RELEASE_VERSION}' would name "
       "a commit that does not contain what was built.")
   endif()
 
   # A release states its version and nothing else. A dev build has no version
   # to state, so it names its kind and commit instead -- the presence or
   # absence of a version number is what tells the two apart on the screen.
-  set(VERSION_LINE "${MINIFT8_RELEASE_VERSION}")
-  set(MERGED_BIN_NAME "${SHA}-minift8-${MINIFT8_RELEASE_VERSION}.bin")
+  set(VERSION_LINE "${MICROFT8_RELEASE_VERSION}")
+  set(MERGED_BIN_NAME "${SHA}-microft8-${MICROFT8_RELEASE_VERSION}.bin")
 else()
   set(KIND "dev")
   set(VERSION_LINE "dev ${SHA}${DIRTY_MARK}")
   # Hash first so M5Launcher's truncated names still show the unique bit.
-  set(MERGED_BIN_NAME "${SHA}${DIRTY_INFIX}-minift8-dev.bin")
+  set(MERGED_BIN_NAME "${SHA}${DIRTY_INFIX}-microft8-dev.bin")
 endif()
 
 file(MAKE_DIRECTORY "${OUT_DIR}")
 
-# minift8_build_identity is an add_custom_target (main/CMakeLists.txt depends
+# microft8_build_identity is an add_custom_target (main/CMakeLists.txt depends
 # on it), so it reruns unconditionally on every build by design — that's the
 # only way to catch a newly-dirtied tree. But a plain file(WRITE) rewrites
 # the destination's mtime even when the content is byte-identical, and
@@ -80,14 +80,14 @@ file(REMOVE "${OUT_DIR}/merged_bin_name.txt.tmp")
 file(WRITE "${OUT_DIR}/build_identity.h.tmp" "\
 #pragma once
 
-#define MINIFT8_GIT_SHA \"${SHA}\"
-#define MINIFT8_GIT_DIRTY ${DIRTY}
-#define MINIFT8_BUILD_KIND \"${KIND}\"
-#define MINIFT8_VERSION_LINE \"${VERSION_LINE}\"
-#define MINIFT8_MERGED_BIN_NAME \"${MERGED_BIN_NAME}\"
+#define MICROFT8_GIT_SHA \"${SHA}\"
+#define MICROFT8_GIT_DIRTY ${DIRTY}
+#define MICROFT8_BUILD_KIND \"${KIND}\"
+#define MICROFT8_VERSION_LINE \"${VERSION_LINE}\"
+#define MICROFT8_MERGED_BIN_NAME \"${MERGED_BIN_NAME}\"
 ")
 execute_process(COMMAND ${CMAKE_COMMAND} -E copy_if_different
     "${OUT_DIR}/build_identity.h.tmp" "${OUT_DIR}/build_identity.h")
 file(REMOVE "${OUT_DIR}/build_identity.h.tmp")
 
-message(STATUS "Mini-FT8 identity: ${VERSION_LINE} -> ${MERGED_BIN_NAME}")
+message(STATUS "Micro-FT8 identity: ${VERSION_LINE} -> ${MERGED_BIN_NAME}")

@@ -1,6 +1,6 @@
 <!doctype html>
 <meta name=viewport content='width=device-width,initial-scale=1'>
-<title>Mini-FT8 sidekick</title>
+<title>Micro-FT8 sidekick</title>
 
 <!--
   Station-mode status, served at / once joined. Open to anyone who can reach
@@ -22,7 +22,7 @@ button{width:100%;padding:.7rem;font-size:1rem;margin-top:1.5rem}
 #m{color:#666;font-size:.85rem;min-height:1.2em}
 </style>
 
-<h2>Mini-FT8 sidekick</h2>
+<h2>Micro-FT8 sidekick</h2>
 <dl>
   <dt>Network</dt><dd>{{ssid}}</dd>
   <dt>Address</dt><dd>{{ip}}</dd>
@@ -42,25 +42,25 @@ button{width:100%;padding:.7rem;font-size:1rem;margin-top:1.5rem}
 <script>
 var m = document.getElementById('m');
 
-MiniFT8Pairing.boot({
+MicroFT8Pairing.boot({
   status: m,
   onPaired: function () { m.textContent = 'Paired' }
 });
 
 document.getElementById('f').onclick = async function () {
   if (!confirm('Forget this network and restart into setup?')) return;
-  if (!MiniFT8Pairing.getToken()) {
+  if (!MicroFT8Pairing.getToken()) {
     m.textContent = 'Press the sidekick button to pair first.';
-    MiniFT8Pairing.needsReauth();
+    MicroFT8Pairing.needsReauth();
     return
   }
-  var r = await MiniFT8Pairing.authFetch('/forget', { method: 'POST' });
+  var r = await MicroFT8Pairing.authFetch('/forget', { method: 'POST' });
   if (r.status == 401) {
-    MiniFT8Pairing.needsReauth();
+    MicroFT8Pairing.needsReauth();
     m.textContent = 'Press the sidekick button to pair';
   } else {
     document.body.innerHTML = '<h2>Forgotten</h2>'
-      + '<p>Restarting into setup. Look for the <b>MiniFT8-SK-…</b> network.</p>'
+      + '<p>Restarting into setup. Look for the <b>MicroFT8-SK-…</b> network.</p>'
   }
 }
 
@@ -68,10 +68,10 @@ document.getElementById('f').onclick = async function () {
 // dialog with no status text and no POST, which looked like a dead button.
 var rhArmed = false;
 document.getElementById('rh').onclick = async function () {
-  if (!MiniFT8Pairing.getToken()) {
+  if (!MicroFT8Pairing.getToken()) {
     rhArmed = false;
     m.textContent = 'Press the sidekick button to pair first.';
-    MiniFT8Pairing.needsReauth();
+    MicroFT8Pairing.needsReauth();
     return;
   }
   if (!rhArmed) {
@@ -82,9 +82,9 @@ document.getElementById('rh').onclick = async function () {
   rhArmed = false;
   m.textContent = 'Restoring…';
   try {
-    var r = await MiniFT8Pairing.authFetch('/api/web/rehydrate', { method: 'POST' });
+    var r = await MicroFT8Pairing.authFetch('/api/web/rehydrate', { method: 'POST' });
     if (r.status == 401) {
-      MiniFT8Pairing.needsReauth();
+      MicroFT8Pairing.needsReauth();
       m.textContent = 'Press the sidekick button to pair';
       return;
     }

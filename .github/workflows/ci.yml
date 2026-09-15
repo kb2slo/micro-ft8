@@ -1,6 +1,6 @@
 # Production firmware + host tests.
 # Merged image is the same POST_BUILD output as a local `idf.py build`:
-#   build/MiniFT8_Merged_Auto.bin  — flash at 0x0 (8 MB, custom partitions).
+#   build/MicroFT8_Merged_Auto.bin  — flash at 0x0 (8 MB, custom partitions).
 #
 # Firmware + the rolling `continuous` release run only when sources that can
 # change the binary (or this workflow) change. Docs/roadmap-only commits skip
@@ -164,7 +164,7 @@ jobs:
       # in sidekick/CMakeLists.txt would disagree with the ADV's pinned
       # version — defeating the exact-match comparison RFC 0001 §5.2c
       # relies on. Must match the firmware job's value exactly.
-      MINIFT8_GIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      MICROFT8_GIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -178,7 +178,7 @@ jobs:
           # sidekick/CMakeLists.txt pins IDF_TARGET too; keep the two agreeing.
           target: esp32s3
           path: sidekick
-          extra_docker_args: -e MINIFT8_GIT_SHA=${{ env.MINIFT8_GIT_SHA }}
+          extra_docker_args: -e MICROFT8_GIT_SHA=${{ env.MICROFT8_GIT_SHA }}
           command: idf.py build
 
       # Use the script rather than re-listing the files here. This step used
@@ -206,7 +206,7 @@ jobs:
       contents: read
       pull-requests: write
     env:
-      MINIFT8_GIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      MICROFT8_GIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -220,11 +220,11 @@ jobs:
       - name: Decide build kind
         run: |
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            echo "MINIFT8_BUILD_KIND=rel" >> "$GITHUB_ENV"
-            echo "MINIFT8_RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+            echo "MICROFT8_BUILD_KIND=rel" >> "$GITHUB_ENV"
+            echo "MICROFT8_RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           else
-            echo "MINIFT8_BUILD_KIND=dev" >> "$GITHUB_ENV"
-            echo "MINIFT8_RELEASE_VERSION=" >> "$GITHUB_ENV"
+            echo "MICROFT8_BUILD_KIND=dev" >> "$GITHUB_ENV"
+            echo "MICROFT8_RELEASE_VERSION=" >> "$GITHUB_ENV"
           fi
 
       - name: Download sidekick firmware
@@ -262,9 +262,9 @@ jobs:
           esp_idf_version: v5.5.1
           target: esp32s3
           extra_docker_args: >-
-            -e MINIFT8_GIT_SHA=${{ env.MINIFT8_GIT_SHA }}
-            -e MINIFT8_BUILD_KIND=${{ env.MINIFT8_BUILD_KIND }}
-            -e MINIFT8_RELEASE_VERSION=${{ env.MINIFT8_RELEASE_VERSION }}
+            -e MICROFT8_GIT_SHA=${{ env.MICROFT8_GIT_SHA }}
+            -e MICROFT8_BUILD_KIND=${{ env.MICROFT8_BUILD_KIND }}
+            -e MICROFT8_RELEASE_VERSION=${{ env.MICROFT8_RELEASE_VERSION }}
             -e CI=true
           command: idf.py build
 
@@ -279,7 +279,7 @@ jobs:
           {
             echo "ref=${GITHUB_REF}"
             echo "sha=${GITHUB_SHA}"
-            echo "head=${MINIFT8_GIT_SHA:0:7}"
+            echo "head=${MICROFT8_GIT_SHA:0:7}"
             echo "idf=v5.5.1"
             echo "target=esp32s3"
             echo "bin=${name}"
@@ -292,7 +292,7 @@ jobs:
         id: bin
         uses: actions/upload-artifact@v6
         with:
-          name: MiniFT8-Cardputer-ADV
+          name: MicroFT8-Cardputer-ADV
           if-no-files-found: error
           retention-days: 30
           path: |
@@ -306,7 +306,7 @@ jobs:
             echo "## Firmware artifact"
             echo
             echo "- Image: \`${BIN_FILE}\`"
-            echo "- [MiniFT8-Cardputer-ADV](${{ steps.bin.outputs.artifact-url }})"
+            echo "- [MicroFT8-Cardputer-ADV](${{ steps.bin.outputs.artifact-url }})"
             echo "- [This run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
             echo
             echo '```'
@@ -323,7 +323,7 @@ jobs:
           BIN_FILE: ${{ env.BIN_FILE }}
         with:
           script: |
-            const marker = '<!-- minift8-ci-firmware -->';
+            const marker = '<!-- microft8-ci-firmware -->';
             const sha = process.env.HEAD_SHA;
             const short = sha.slice(0, 7);
             const bin = process.env.BIN_FILE;
@@ -338,7 +338,7 @@ jobs:
               '',
               `- Commit: [\`${short}\`](${commitUrl})`,
               `- File: \`${bin}\` (hash first, for M5Launcher)`,
-              `- Download: [MiniFT8-Cardputer-ADV](${artifactUrl})`,
+              `- Download: [MicroFT8-Cardputer-ADV](${artifactUrl})`,
               `- [Workflow run](${runUrl})`,
               '',
               '```',
@@ -369,7 +369,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v7
         with:
-          name: MiniFT8-Cardputer-ADV
+          name: MicroFT8-Cardputer-ADV
           path: dist
 
       - name: Name tagged binaries
@@ -378,20 +378,20 @@ jobs:
           bin="$(awk -F= '/^bin=/{print $2}' dist/BUILD.txt)"
           test -n "$bin"
           test -f "dist/${bin}"
-          cp "dist/${bin}" "dist/MiniFT8-${tag}-Merged.bin"
-          sha256sum "dist/MiniFT8-${tag}-Merged.bin" | tee "dist/MiniFT8-${tag}-Merged.bin.sha256"
+          cp "dist/${bin}" "dist/MicroFT8-${tag}-Merged.bin"
+          sha256sum "dist/MicroFT8-${tag}-Merged.bin" | tee "dist/MicroFT8-${tag}-Merged.bin.sha256"
 
       - uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           files: |
-            dist/MiniFT8-${{ github.ref_name }}-Merged.bin
-            dist/MiniFT8-${{ github.ref_name }}-Merged.bin.sha256
+            dist/MicroFT8-${{ github.ref_name }}-Merged.bin
+            dist/MicroFT8-${{ github.ref_name }}-Merged.bin.sha256
           body: |
             Flash the merged image at `0x0` (full 8 MB image, custom FATFS partition table).
 
             ```
-            esptool.py --chip esp32s3 write_flash 0x0 MiniFT8-${{ github.ref_name }}-Merged.bin
+            esptool.py --chip esp32s3 write_flash 0x0 MicroFT8-${{ github.ref_name }}-Merged.bin
             ```
 
             First boot may format the FATFS partition.
@@ -417,13 +417,13 @@ jobs:
 
       - uses: actions/download-artifact@v7
         with:
-          name: MiniFT8-Cardputer-ADV
+          name: MicroFT8-Cardputer-ADV
           path: dist
 
       # Self-identifying on disk: several of these land in one Downloads folder
       # during a bench session, where a fixed name plus "(3)" says nothing.
       # Date is the *commit* date in UTC, not the build date, so rebuilding a
-      # commit reproduces the name. `minift8` is the one string here that a
+      # commit reproduces the name. `microft8` is the one string here that a
       # project rename would have to change (docs/RELEASE_PROCESS.md).
       - name: Name rolling main binary
         run: |
@@ -432,7 +432,7 @@ jobs:
           test -f "dist/${bin}"
           short="${GITHUB_SHA:0:7}"
           day="$(TZ=UTC git show -s --format=%cd --date=format-local:%Y%m%d "${GITHUB_SHA}")"
-          asset="${day}-minift8-${short}.bin"
+          asset="${day}-microft8-${short}.bin"
           cp "dist/${bin}" "dist/${asset}"
           sha256sum "dist/${asset}" | tee "dist/${asset}.sha256"
           echo "SHORT_SHA=${short}" >> "$GITHUB_ENV"
@@ -456,7 +456,7 @@ jobs:
       - uses: softprops/action-gh-release@v3
         with:
           tag_name: continuous
-          name: Mini-FT8 continuous (${{ env.SHORT_SHA }})
+          name: Micro-FT8 continuous (${{ env.SHORT_SHA }})
           prerelease: true
           make_latest: false
           files: |

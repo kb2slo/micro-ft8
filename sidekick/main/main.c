@@ -180,7 +180,7 @@ static void button_init(void)
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "Mini-FT8 sidekick booting (IDF %s)", esp_get_idf_version());
+    ESP_LOGI(TAG, "Micro-FT8 sidekick booting (IDF %s)", esp_get_idf_version());
 
     // Beacon first, WiFi second. The PORTA companion link is what the ADV
     // depends on; a sidekick that cannot reach WiFi is degraded, not broken,

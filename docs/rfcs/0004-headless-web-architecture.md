@@ -1,4 +1,4 @@
-# RFC 0004: Headless Mini-FT8 — the phone is the UI, the sidekick is a peripheral
+# RFC 0004: Headless Micro-FT8 — the phone is the UI, the sidekick is a peripheral
 
 * **Status:** Draft. Design agreed in chat 2026-09-10; I28a protocol and I28b pairing are in tree (field proof still owed). **Storage model amended 2026-09-13** (§3/§4): the web root is a LittleFS partition, hydrated from firmware embed, not an empty blob filled only by POST. Supersedes nothing; extends [RFC 0001](0001-ble-companion.md) §5.0/§5.2d, which established WiFi-plus-browser as the phone path and moved sidekick updates from a PORTA push to an HTTPS pull. **§11 extended 2026-09-14** (Log's day-file model and third-party sync, a shared offline/online info-expand pattern, and the phone-grid map handoff) — a wireframe design pass ahead of the next I28d slice, same day as the screen-model lock.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
@@ -10,7 +10,7 @@
 
 ## 1. Why
 
-Mini-FT8's UI is a 240-pixel screen and a thumb keyboard. The north star ([I27](../ROADMAP.md)) is a
+Micro-FT8's UI is a 240-pixel screen and a thumb keyboard. The north star ([I27](../ROADMAP.md)) is a
 headless two-MCU radio with no screen and no keyboard at all, where a phone is the only interface. That is
 not a skin over the current UI — it means every operator-reachable function has to leave the device and
 arrive in a browser, and the transport that carries it has to be designed rather than grown.
@@ -51,7 +51,7 @@ flowchart TB
         maps["Map tiles"]
     end
     subgraph phone["Phone or computer — the only device with internet"]
-        app["Mini-FT8 web app<br/>downloaded from the sidekick, runs here"]
+        app["Micro-FT8 web app<br/>downloaded from the sidekick, runs here"]
     end
     subgraph sk["Sidekick — no TLS, no CA bundle"]
         http["HTTP server<br/>control API"]
@@ -87,7 +87,7 @@ the TLS stack, the CA bundle and its expiry come back.
 Both halves of that matter and they were argued separately.
 
 **Served by the sidekick, not loaded from the internet**, because of constraint 1. A page served from
-`https://kb2slo.kalikstein.com` *cannot* reach `http://minift8.local` — browsers block active mixed content
+`https://kb2slo.kalikstein.com` *cannot* reach `http://microft8.local` — browsers block active mixed content
 with no exception for private addresses, so an internet-hosted app cannot talk to the device at all. The
 inverse works: an HTTP page may load HTTPS subresources. But an app that fetches itself from the internet
 each session is an app that does not exist on a summit. Serving it locally also makes the whole question
@@ -128,7 +128,7 @@ a bundle, and that is all. Constraint 2 is what makes this acceptable.
 
 **The phone relays, and the browser's own TLS connection is what proves the source.**
 
-1. Phone opens `http://minift8.local/` — after hydrate, the sidekick serves the bootstrap page **from the
+1. Phone opens `http://microft8.local/` — after hydrate, the sidekick serves the bootstrap page **from the
    web FS** (seeded from firmware embed on first boot or recovery).
 2. That page fetches the bundle from the bundle host over HTTPS (HTTP page, HTTPS fetch: allowed, and the
    host must send `Access-Control-Allow-Origin` — see the host requirements below).
@@ -192,11 +192,11 @@ both works; GitHub Pages is the implementation, not the architecture.
 2. **An `Access-Control-Allow-Origin` that lets a plain-HTTP origin read the response.**
 
 **Why the second one matters at all is worth stating, because it looks like a security concern and is not.**
-CORS here is a *capability* question. The bootstrap page is an origin (`http://minift8.local`) fetching from
+CORS here is a *capability* question. The bootstrap page is an origin (`http://microft8.local`) fetching from
 a different origin (the bundle host), so the browser will issue the request but withhold the response body
 from our own script unless the host opts in. Nothing is being defended; the browser is simply refusing to let
 us read bytes we need to read. And we need to read them because the browser is the courier: mixed content
-forbids an HTTPS page from reaching `http://minift8.local` (§3), so the app must be served locally, so it
+forbids an HTTPS page from reaching `http://microft8.local` (§3), so the app must be served locally, so it
 must first be carried onto the device, and a courier has to be able to read the parcel. Were the sidekick
 willing to speak TLS it would fetch the bundle itself and CORS would never arise — that is the ~116 KB and
 the CA bundle §2 declined. Cross-origin `<img>` and `<script>` loads need no CORS but yield rendering or
@@ -204,7 +204,7 @@ execution, never bytes to re-POST.
 
 Since it is a precondition nobody here controls, it was measured rather than assumed — the same discipline
 §8 applied to QRZ, where the answer inverted the assumption. Measured 2026-09-12 with
-`Origin: http://minift8.local`:
+`Origin: http://microft8.local`:
 
 | Host | `Access-Control-Allow-Origin` | Readable by browser JS |
 | --- | --- | --- |
@@ -217,7 +217,7 @@ Since it is a precondition nobody here controls, it was measured rather than ass
 Observed behaviour, not documented policy — the same caveat §8 carries for QRZ. Re-check any row with:
 
 ```bash
-curl -sS -D - -o /dev/null -H 'Origin: http://minift8.local' <url> | grep -i access-control
+curl -sS -D - -o /dev/null -H 'Origin: http://microft8.local' <url> | grep -i access-control
 ```
 
 `pages.github.com` is the custom-domain row and `microsoft.github.io` the subdomain row — neither is ours,
@@ -229,7 +229,7 @@ Two constraints follow, and both are free to adopt now and irritating to retrofi
   body or the URL path, never a request header. This does not touch §7's pairing token, which guards the
   sidekick's own same-origin API.
 * **Manifest URLs stay relative to the manifest's own location.** A project-repo Pages site serves under
-  `/Mini-FT8/` while a custom domain serves at the root, so absolute paths would break on any move.
+  `/Micro-FT8/` while a custom domain serves at the root, so absolute paths would break on any move.
 * **The bundle host base URL is stored in NVS, not compiled in**, with a build-time default — set alongside
   the WiFi credentials at provisioning. This is what makes host-independence real instead of aspirational: a
   provider swap becomes a config change rather than a reflash of every device. It is a **token-guarded
@@ -239,7 +239,7 @@ Two constraints follow, and both are free to adopt now and irritating to retrofi
 **Host-independence has one rider: the CORS header is per-provider and must be measured, not assumed.** A
 provider that fails requirement 2 breaks the relay outright — the browser fetches and the script cannot read
 — so the `curl` above is the gate on adopting any new host, including our own. Note the two hostnames that
-are easy to conflate: `minift8.local` is the *sidekick's own* mDNS name and stays in firmware; the bundle
+are easy to conflate: `microft8.local` is the *sidekick's own* mDNS name and stays in firmware; the bundle
 host is the separate, NVS-stored one.
 
 **`kb2slo.kalikstein.com` is a later step and costs nothing to defer.** CNAMEd onto the same Pages deployment
@@ -293,12 +293,12 @@ from the bundle host.
 
 | URL | Audience |
 | --- | --- |
-| `https://kb2slo.github.io/Mini-FT8/` | Humans — landing / about |
-| `https://kb2slo.github.io/Mini-FT8/app/` | Machines — `manifest.json` + assets |
+| `https://kb2slo.github.io/micro-ft8/` | Humans — landing / about |
+| `https://kb2slo.github.io/micro-ft8/app/` | Machines — `manifest.json` + assets |
 
 NVS (and the compile-time default) stores the **app** base with no trailing slash:
-`https://kb2slo.github.io/Mini-FT8/app`. Soft identity: a product rename changes that default string (and
-optionally one NVS write), not the install protocol. Device day-to-day UI remains `http://minift8.local/`.
+`https://kb2slo.github.io/micro-ft8/app`. Soft identity: a product rename changes that default string (and
+optionally one NVS write), not the install protocol. Device day-to-day UI remains `http://microft8.local/`.
 Seed page `/update` fetches `{base}/manifest.json` and drives the wire protocol above.
 
 ## 5. Provisioning and first run
@@ -310,7 +310,7 @@ flowchart LR
         cp --> ni["No internet here<br/>cannot fetch the app"]
     end
     subgraph s2["2 · Join"]
-        rs["Sidekick restarts<br/>joins wifi"] --> md["Reachable by name<br/>minift8.local"]
+        rs["Sidekick restarts<br/>joins wifi"] --> md["Reachable by name<br/>microft8.local"]
     end
     subgraph s3["3 · Bootstrap"]
         p3["Phone<br/>wifi and internet"] --> fb["Fetch bundle<br/>from GitHub Pages"]
@@ -517,7 +517,7 @@ Roadmap rows, sequenced. The protocol gates everything else.
 **Decided 2026-09-14, after surveying WSJT-X, FT8CN, iFTx and the standalone touchscreen builds
 (DX-FT8 / Pocket FT8 / sBitx). The survey's result was not the one expected.** A phone FT8 UI has four
 questions to settle — how the TX offset is chosen, how calling and answering are sequenced, how a QSO in
-progress is represented, and how the screens divide. **Mini-FT8's existing paradigm already answers the
+progress is represented, and how the screens divide. **Micro-FT8's existing paradigm already answers the
 first three, and answers them better than the reference apps do**, leaving only the fourth genuinely
 open. So this section is mostly a record of what *not* to import. It
 sits next to §6 in spirit rather than in numbering — the screens decide the verbs, which is why the
@@ -529,7 +529,7 @@ host tests and the roadmap; renumbering would churn all of them for a section or
 ### No waterfall, because `offset_src` already replaced its job
 
 In all three reference applications the waterfall's primary *control* role is picking the TX audio
-offset: shift-click in WSJT-X, tap the waterfall in FT8CN, tap to set TX in iFTx. Mini-FT8 does not ask
+offset: shift-click in WSJT-X, tap the waterfall in FT8CN, tap to set TX in iFTx. Micro-FT8 does not ask
 the operator that question at all — `resolve_tx_offset()` takes Random (fresh roll in 500–2500 Hz per
 transmission), RX (answer on the caller's own offset, except for CQ) or Fixed.
 
@@ -558,7 +558,7 @@ and a CQ is short-lived — one transmission, then `tick()` pops it (`AUTOSEQ_AR
 
 So the operator turns the beacon on with a parity and the machine interleaves; replies take priority
 without anyone choosing. **There is therefore no mode control on the operate screen, and no mode the
-operator can be in the wrong one of.** EVEN/ODD is the one genuinely Mini-FT8-specific control, because
+operator can be in the wrong one of.** EVEN/ODD is the one genuinely Micro-FT8-specific control, because
 it decides which half of the cycle we occupy.
 
 ### The queue is a set of concurrent QSOs, not a conversation
@@ -648,14 +648,14 @@ still waits behind whatever enrichment work reaches it.
 The operator's grid square is a manually-edited field today, same as every reference app. Auto-filling it
 from the phone's own location looks like a browser-API question; it is actually the same one §3 already
 paid for and declined to solve. `navigator.geolocation` is gated on a **secure context**, and
-`http://minift8.local` is deliberately not one — a fact that holds regardless of whether the phone has
+`http://microft8.local` is deliberately not one — a fact that holds regardless of whether the phone has
 internet at that moment, because the browser refuses the API on the origin's scheme alone. §3 already
 named this loss ("losing geolocation is the one that stings... the price of not owning a certificate")
 without a way around it. There is one, but it is not the obvious one.
 
 **An iframe does not work, and the reason is worth recording because it is not obvious.** The Secure
 Contexts spec walks the whole ancestor chain, not just the document calling the API: an HTTPS iframe
-nested inside `http://minift8.local` is still not a secure context, because its parent is not. Google's or
+nested inside `http://microft8.local` is still not a secure context, because its parent is not. Google's or
 Apple's own "locate me" code, run inside such an iframe, is denied exactly like our own code would be.
 Only a real top-level navigation reaches a genuinely secure context — embedding cannot fake one.
 

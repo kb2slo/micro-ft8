@@ -599,7 +599,7 @@ static void mdns_bring_up(void)
     }
     started = true;
     mdns_hostname_set(WIFI_PROV_MDNS_HOST);
-    mdns_instance_name_set("Mini-FT8 sidekick");
+    mdns_instance_name_set("Micro-FT8 sidekick");
     // Advertising the service as well as the hostname is what makes the device
     // show up in network browsers, not just resolve when you already know the
     // name.
@@ -720,7 +720,7 @@ static void ap_name(char *out, size_t out_len)
     uint8_t mac[6] = {0};
     esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
     // MAC suffix so two sidekicks on one bench are distinguishable.
-    snprintf(out, out_len, "MiniFT8-SK-%02X%02X", mac[4], mac[5]);
+    snprintf(out, out_len, "MicroFT8-SK-%02X%02X", mac[4], mac[5]);
 }
 
 static void start_ap(void)

@@ -47,7 +47,7 @@ AdifMergeStatus adif_merge_export(const std::string& archive,
                                   std::string& out);
 
 // Same union, streaming. `archive` may be nullptr (empty SD file). Writes a
-// Mini-FT8 header then records; does not hold either file in RAM.
+// Micro-FT8 header then records; does not hold either file in RAM.
 AdifMergeStatus adif_merge_stdio(std::FILE* archive, std::FILE* incoming, std::FILE* out);
 
 // In-memory same-call window for the live logger. Not used by merge/export.

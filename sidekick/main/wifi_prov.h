@@ -39,10 +39,10 @@ const char* wifi_prov_ssid(void);
 bool wifi_prov_ap_active(void);
 
 // Hostname the sidekick answers to over mDNS, in both AP and station mode:
-// http://minift8.local/ . Without it the operator has to read an IP off a
+// http://microft8.local/ . Without it the operator has to read an IP off a
 // serial console -- which is precisely the console the finished product will
 // not have attached.
-#define WIFI_PROV_MDNS_HOST "minift8"
+#define WIFI_PROV_MDNS_HOST "microft8"
 
 // Forget the stored network and restart into provisioning. Does not return.
 //

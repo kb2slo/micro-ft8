@@ -1,6 +1,6 @@
 <!doctype html>
 <meta name=viewport content='width=device-width,initial-scale=1'>
-<title>Mini-FT8 sidekick</title>
+<title>Micro-FT8 sidekick</title>
 
 <!--
   WiFi provisioning, served at / while the AP is up.
@@ -25,7 +25,7 @@ button{width:100%;padding:.7rem;font-size:1rem}
 .failure{background:#fee;padding:.6rem;border-radius:.3rem}
 </style>
 
-<h2>Mini-FT8 sidekick</h2>
+<h2>Micro-FT8 sidekick</h2>
 
 <p>Join this device to your WiFi. <b>2.4 GHz only</b> — this radio cannot see
 5 GHz networks. An iPhone Personal Hotspot needs <i>Maximize Compatibility</i>
@@ -68,5 +68,5 @@ switched on before it will appear.</p>
 <script>
 // Same re-auth path as status/log: a button press while on this page
 // stores the token so the first STA page does not need a second gesture.
-MiniFT8Pairing.boot();
+MicroFT8Pairing.boot();
 </script>

@@ -4,7 +4,7 @@
 #include "ft8/constants.h"
 
 // ---------------------------------------------------------------------------
-// Runtime protocol configuration for Mini-FT8.
+// Runtime protocol configuration for Micro-FT8.
 //
 // g_protocol points to the active protocol's ProtocolConfig.  It is set once
 // at boot by load_station_data() based on the protocol_mode field in

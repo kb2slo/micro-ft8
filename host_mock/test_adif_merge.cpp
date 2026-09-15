@@ -139,7 +139,7 @@ static AdifLogFields sample_fields() {
     f.my_gridsquare    = "EM10";
     f.rst_sent         = 14;
     f.rst_rcvd         = -9;
-    f.comment          = "MiniFT8";
+    f.comment          = "MicroFT8";
     return f;
 }
 
@@ -151,7 +151,7 @@ static void test_log_record_byte_compatible() {
     const std::string want =
         "<call:6>KE4PLU <gridsquare:4>EM58 <mode:3>FT8<qso_date:8>20260908 "
         "<time_on:6>142600 <freq:6>14.074 <station_callsign:6>KB2SLO "
-        "<my_gridsquare:4>EM10 <rst_sent:2>14 <rst_rcvd:2>-9 <comment:7>MiniFT8 <eor>\n";
+        "<my_gridsquare:4>EM10 <rst_sent:2>14 <rst_rcvd:2>-9 <comment:8>MicroFT8 <eor>\n";
     expect_eq_str(adif_format_log_record(sample_fields()), want, "log record byte layout");
 }
 
@@ -194,7 +194,7 @@ static void test_log_record_lengths_match_values() {
     f.gridsquare  = "MK68";
     f.rst_sent    = -100;      // 4 chars including the sign
     f.rst_rcvd    = 5;         // 1 char
-    f.comment     = "MiniFT8 QMX /P";
+    f.comment     = "MicroFT8 QMX /P";
     const std::string out = adif_format_log_record(f);
     size_t pos = 0;
     while ((pos = out.find('<', pos)) != std::string::npos) {
@@ -262,7 +262,7 @@ int main() {
         rec("K1ABC", "FN42", "20260817", "153000", "N0CALL", "other-op");
 
     const std::string incoming = adi_file({k1, k2});
-    parsed = must_parse(incoming, "parse mini-ft8 incoming");
+    parsed = must_parse(incoming, "parse micro-ft8 incoming");
     expect_true(parsed.size() == 2, "two incoming records");
 
     std::string out;

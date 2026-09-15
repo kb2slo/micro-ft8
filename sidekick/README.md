@@ -1,6 +1,6 @@
 # sidekick
 
-M5Stack AtomS3 Lite (ESP32-S3FN8) firmware for the Mini-FT8 companion link.
+M5Stack AtomS3 Lite (ESP32-S3FN8) firmware for the Micro-FT8 companion link.
 
 Retargeted from the NanoC6 (ESP32-C6, SKU C125) on 2026-09-08 — see I3 for why: the AtomS3 Lite has the dual-core headroom the decided WiFi + browser phone path needs (RFC 0001 §5.0/§5.1). A sidekick never needs to be a USB host, so §4.6's finding that the AtomS3 Lite cannot host a QMX does not apply here.
 Plan and rationale live in [`docs/rfcs/0001-ble-companion.md`](../docs/rfcs/0001-ble-companion.md); status is tracked as `I3` in [`docs/ROADMAP.md`](../docs/ROADMAP.md). Do not duplicate the plan here.

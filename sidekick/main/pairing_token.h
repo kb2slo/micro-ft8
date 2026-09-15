@@ -66,7 +66,7 @@ extern "C" {
 // issued by JavaScript the sidekick itself serves, which can set a header, so
 // a plain HTML form never needs to carry a token. The open provisioning form
 // is the one that stays a plain form, and it needs no token at all.
-#define PAIRING_TOKEN_HEADER "X-MiniFT8-Token"
+#define PAIRING_TOKEN_HEADER "X-MicroFT8-Token"
 
 // Renders `PAIRING_TOKEN_BYTES` of caller-supplied entropy as a NUL-terminated
 // lowercase hex token. `out` must hold PAIRING_TOKEN_BUF bytes.

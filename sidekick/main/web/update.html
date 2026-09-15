@@ -40,9 +40,9 @@ function joinUrl(base, rel) {
 }
 
 async function install() {
-  if (!MiniFT8Pairing.getToken()) {
+  if (!MicroFT8Pairing.getToken()) {
     setMsg('Press the sidekick button to pair first.');
-    MiniFT8Pairing.needsReauth();
+    MicroFT8Pairing.needsReauth();
     return;
   }
   go.disabled = true;
@@ -58,13 +58,13 @@ async function install() {
     }
 
     setMsg('Begin install…');
-    var br = await MiniFT8Pairing.authFetch('/api/bundle/begin', {
+    var br = await MicroFT8Pairing.authFetch('/api/bundle/begin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: manifestText
     });
     if (br.status == 401) {
-      MiniFT8Pairing.needsReauth();
+      MicroFT8Pairing.needsReauth();
       throw new Error('pairing required');
     }
     if (!br.ok) throw new Error('begin: ' + (await br.text()));
@@ -80,21 +80,21 @@ async function install() {
         throw new Error(a.path + ' size ' + buf.byteLength + ' != ' + a.size);
       }
       setMsg('Uploading ' + a.path);
-      var ur = await MiniFT8Pairing.authFetch(
+      var ur = await MicroFT8Pairing.authFetch(
         '/api/bundle/file?path=' + encodeURIComponent(a.path),
         { method: 'PUT', body: buf }
       );
       if (ur.status == 401) {
-        MiniFT8Pairing.needsReauth();
+        MicroFT8Pairing.needsReauth();
         throw new Error('pairing required');
       }
       if (!ur.ok) throw new Error('put ' + a.path + ': ' + (await ur.text()));
     }
 
     setMsg('Commit…');
-    var cr = await MiniFT8Pairing.authFetch('/api/bundle/commit', { method: 'POST' });
+    var cr = await MicroFT8Pairing.authFetch('/api/bundle/commit', { method: 'POST' });
     if (cr.status == 401) {
-      MiniFT8Pairing.needsReauth();
+      MicroFT8Pairing.needsReauth();
       throw new Error('pairing required');
     }
     if (!cr.ok) throw new Error('commit: ' + (await cr.text()));
@@ -118,10 +118,10 @@ async function install() {
 // In-page confirm — native confirm() often cancels silently on phones.
 var rhArmed = false;
 async function rehydrate() {
-  if (!MiniFT8Pairing.getToken()) {
+  if (!MicroFT8Pairing.getToken()) {
     rhArmed = false;
     setMsg('Press the sidekick button to pair first.');
-    MiniFT8Pairing.needsReauth();
+    MicroFT8Pairing.needsReauth();
     return;
   }
   if (!rhArmed) {
@@ -132,9 +132,9 @@ async function rehydrate() {
   rhArmed = false;
   setMsg('Restoring…');
   try {
-    var r = await MiniFT8Pairing.authFetch('/api/web/rehydrate', { method: 'POST' });
+    var r = await MicroFT8Pairing.authFetch('/api/web/rehydrate', { method: 'POST' });
     if (r.status == 401) {
-      MiniFT8Pairing.needsReauth();
+      MicroFT8Pairing.needsReauth();
       setMsg('Press the sidekick button to pair');
       return;
     }
@@ -148,14 +148,14 @@ async function rehydrate() {
   }
 }
 
-MiniFT8Pairing.boot({
+MicroFT8Pairing.boot({
   status: m,
   onPaired: function () {
     setMsg('Paired — ready to install');
     go.disabled = false;
   }
 });
-if (MiniFT8Pairing.getToken()) {
+if (MicroFT8Pairing.getToken()) {
   setMsg('Paired — ready to install');
   go.disabled = false;
 } else {

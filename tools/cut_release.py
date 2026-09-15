@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Cut a versioned Mini-FT8 release.
+"""Cut a versioned Micro-FT8 release.
 
 Creates and pushes an annotated `v<version>` tag. CI does the rest: the
-firmware job sees a tag build, builds with MINIFT8_BUILD_KIND=rel and the
+firmware job sees a tag build, builds with MICROFT8_BUILD_KIND=rel and the
 version taken from the tag, and the release job publishes the binary.
 
 This script edits no source file. The version the device displays is derived
@@ -147,8 +147,8 @@ def main() -> int:
     print(f"  tag     {tag}")
     print(f"  commit  {sha[:7]}  {subject}")
     print(f"  branch  {branch}")
-    print(f"  builds  MINIFT8_BUILD_KIND=rel, version {version} from the tag")
-    print(f"  device  will display 'Mini-FT8 {version}'")
+    print(f"  builds  MICROFT8_BUILD_KIND=rel, version {version} from the tag")
+    print(f"  device  will display 'Micro-FT8 {version}'")
 
     if not args.yes:
         if input("\npush this tag? [y/N] ").strip().lower() not in ("y", "yes"):
@@ -156,7 +156,7 @@ def main() -> int:
             return 1
 
     try:
-        run("git", "tag", "-a", tag, "-m", f"Mini-FT8 {version}")
+        run("git", "tag", "-a", tag, "-m", f"Micro-FT8 {version}")
         run("git", "push", REMOTE, tag)
     except Abort as exc:
         print(f"error: {exc}", file=sys.stderr)

@@ -55,7 +55,7 @@ An unproven fix is still worth making. Pretending it is proven is not.
 
 - Added or changed a host-testable unit (parse / format / policy) → add or update its row under `host_mock` coverage, in the same commit as the code.
 - Touched a field-only path (USB/UAC, CAT, display, GPS, RTC, SD, flash, TX timing) → add a row to **Pending** naming the commit and the exact check. "Test the radio" is not a check; "MENU P3 `5` reports `Copied OK`" is.
-- Removed code that was provably never in the image — linker map plus `nm` on the ELF, byte-identical `mini_ft8.bin` — say so and add no row. That evidence *is* the test.
+- Removed code that was provably never in the image — linker map plus `nm` on the ELF, byte-identical `micro_ft8.bin` — say so and add no row. That evidence *is* the test.
 - Removed a harness or a check → drop its row and say why in the commit message.
 
 State which of these you did in the turn you report the work. **"No test-plan change needed" is a valid answer and must be said out loud**, exactly like the README audit — an audit you skipped and an audit you did are otherwise indistinguishable.
@@ -68,7 +68,7 @@ State which of these you did in the turn you report the work. **"No test-plan ch
 
 Do not expand `main.cpp` without extracting a tested function. Extract/style/radio/`ft8_lib` campaign [RFC 0002](rfcs/0002-extract-and-boundaries.md) is Done. STYLE still applies. Radio-profile remainder is Backlog B14. Read the current Now from `ROADMAP.md` rather than trusting a name written here — this line has gone stale before.
 
-This project ships on **`origin/main`** (`kb2slo/micro-ft8`, private). De-forked 2026-09-15 from `kb2slo/Mini-FT8` (now archived, public) — there is no `upstream` git remote. Wei's `wcheng95/Mini-FT8` is watched for portable fixes (**Upstream watches** below), not tracked as a fork; never push or open a PR there unless the operator explicitly asks.
+This project ships on **`origin/main`** (`kb2slo/micro-ft8`, private). De-forked 2026-09-15 from `kb2slo/Micro-FT8` (now archived, public) — there is no `upstream` git remote. Wei's `wcheng95/Micro-FT8` is watched for portable fixes (**Upstream watches** below), not tracked as a fork; never push or open a PR there unless the operator explicitly asks.
 
 ### Clone (submodules)
 
@@ -134,7 +134,7 @@ every agent and every operator can see them — see "Memory lives in this repo" 
 
 - **Build locally; do not round-trip CI for a test binary.** `idf.py build` is ~40 s against ~5 min for the
   firmware CI job, and during bench debugging that latency dominates. The merged image lands in `build/`
-  (`POST_BUILD` writes `<sha>-minift8-dev.bin` alongside `MiniFT8_Merged_Auto.bin`). CI is for pre-merge
+  (`POST_BUILD` writes `<sha>-microft8-dev.bin` alongside `MicroFT8_Merged_Auto.bin`). CI is for pre-merge
   verification, where its value is real: it builds the PR *merge commit*, which is what actually lands, and
   it runs the sidekick and host-test jobs too. Stated 2026-09-04.
 
@@ -178,7 +178,7 @@ on:
 The test: **would a fresh clone and a fresh flash need this line?** If only an existing install needs it, it
 goes.
 
-**The one exception is upstream.** Deltas from Wei's Mini-FT8 stay documented — the fork section of
+**The one exception is upstream.** Deltas from Wei's Micro-FT8 stay documented — the fork section of
 [`../README.md`](../README.md) above the delimiter, and divergence notes in RFCs and roadmap rows. Someone
 arriving from upstream needs to know what is different here, and an agent needs it to avoid "fixing" a
 deliberate divergence back to upstream behaviour.
@@ -226,7 +226,7 @@ Three watches, different cadences. Network fail → skip (any of them); do not i
 
 #### `ft8_lib` pin — every session start
 
-Scoped to the submodule pin ([RFC 0002](rfcs/0002-extract-and-boundaries.md) §6) only. General Mini-FT8 firmware drift is the separate watch below, not this one. The pin has **two** parents and both need watching. GitHub **Sync fork** on `kb2slo/ft8_lib` is off (parent is Wei, not Karlis).
+Scoped to the submodule pin ([RFC 0002](rfcs/0002-extract-and-boundaries.md) §6) only. General Micro-FT8 firmware drift is the separate watch below, not this one. The pin has **two** parents and both need watching. GitHub **Sync fork** on `kb2slo/ft8_lib` is off (parent is Wei, not Karlis).
 
 **Karlis** — protocol upstream:
 
@@ -237,10 +237,10 @@ git -C components/ft8_lib/vendor merge-base --is-ancestor <kgoba-sha> HEAD
 
 If the submodule is missing, skip. If Karlis’s SHA **is** an ancestor of the pin, we already have him. If it is **not**, he moved.
 
-**Wei** — the other parent. Do **not** watch `wcheng95/ft8_lib`: that repo is stale at `bb3d94d` (2026-03) and already fully absorbed into the pin. His protocol fixes land in Mini-FT8’s *in-tree* `components/ft8_lib/ft8/` instead, and reach us only by hand — his tree has no submodule, so merging `upstream/main` cannot move our pin:
+**Wei** — the other parent. Do **not** watch `wcheng95/ft8_lib`: that repo is stale at `bb3d94d` (2026-03) and already fully absorbed into the pin. His protocol fixes land in Micro-FT8’s *in-tree* `components/ft8_lib/ft8/` instead, and reach us only by hand — his tree has no submodule, so merging `upstream/main` cannot move our pin:
 
 ```bash
-git fetch https://github.com/wcheng95/Mini-FT8.git main
+git fetch https://github.com/wcheng95/Micro-FT8.git main
 for f in $(git ls-tree -r --name-only FETCH_HEAD components/ft8_lib/ft8/ | sed 's|.*/ft8/||'); do
   diff -q <(git show FETCH_HEAD:components/ft8_lib/ft8/$f) \
           <(git -C components/ft8_lib/vendor show HEAD:ft8/$f) >/dev/null 2>&1 || echo "DIFFERS $f"
@@ -253,16 +253,16 @@ Expect `message.c` to differ by our own `stpcpy_compat` removal (`f211146`); any
 
 Then draft a Backlog row in chat. Do not commit it yet. Do not merge, bump the submodule, or open a kgoba PR in that turn. Done-when: written take (sync now / wait / drop). Sync uses RFC 0002 §6 and is a separate Now. Goldens gate the pin. If a row for that SHA already exists, remind; do not duplicate.
 
-#### Wei's Mini-FT8 (`wcheng95/Mini-FT8`) — at least weekly
+#### Wei's Micro-FT8 (`wcheng95/Micro-FT8`) — at least weekly
 
 Watched, not tracked: no `upstream` remote exists (this repo de-forked 2026-09-15), so the check below fetches Wei's `main` straight from its URL into `FETCH_HEAD` rather than a persistent remote-tracking branch.
 
 **Last checked:** 2026-09-12 — 11 commits on Wei's `main` not in our `main`. `491e757` ("Fix telemetry decode buffer overflow") is already ported by hand as B41; the other 10 are upstream's own CI/test-tooling commits for an "RX-1A" reference-dump/regression harness, nothing that looks portable here. No row drafted.
 
-General drift, not just the `ft8_lib` files this repo shares with Wei's tree (that's the watch above). Feeds [I12](ROADMAP.md) ("Mine public Mini-FT8 forks"), which is Ideas, not a standing workflow — this session-start check is what keeps it from going stale between the occasional full sweep (the kind B39 did once by hand).
+General drift, not just the `ft8_lib` files this repo shares with Wei's tree (that's the watch above). Feeds [I12](ROADMAP.md) ("Mine public Micro-FT8 forks"), which is Ideas, not a standing workflow — this session-start check is what keeps it from going stale between the occasional full sweep (the kind B39 did once by hand).
 
 ```bash
-git fetch https://github.com/wcheng95/Mini-FT8.git main
+git fetch https://github.com/wcheng95/Micro-FT8.git main
 git log --oneline main..FETCH_HEAD
 ```
 
@@ -282,25 +282,25 @@ If the date above is more than **7 days** old, look at what changed since the la
 
 ### Local IDF build / flash
 
-**Local build first. CI is not an iteration loop.** Iterate with local `idf.py build` — roughly 15–40 s incremental — and hand the operator the merged image straight from `build/` (`POST_BUILD` writes `<sha>-minift8-dev.bin` beside `MiniFT8_Merged_Auto.bin`). Do **not** push a branch and wait on a CI artifact merely to produce a test binary: the firmware job alone is ~4–5 minutes, and during bench debugging that latency dominates the session. CI is for **pre-merge verification** — it builds the PR *merge commit* (what actually lands, not the branch tip) and runs the sidekick and host-test jobs that a local ADV build does not. Pushing is also gated by **Chat gates** below: it waits until the operator asks. Do not push in order to get a build.
+**Local build first. CI is not an iteration loop.** Iterate with local `idf.py build` — roughly 15–40 s incremental — and hand the operator the merged image straight from `build/` (`POST_BUILD` writes `<sha>-microft8-dev.bin` beside `MicroFT8_Merged_Auto.bin`). Do **not** push a branch and wait on a CI artifact merely to produce a test binary: the firmware job alone is ~4–5 minutes, and during bench debugging that latency dominates the session. CI is for **pre-merge verification** — it builds the PR *merge commit* (what actually lands, not the branch tip) and runs the sidekick and host-test jobs that a local ADV build does not. Pushing is also gated by **Chat gates** below: it waits until the operator asks. Do not push in order to get a build.
 
 Clone with submodules first (see **Clone (submodules)** above).
 
 After `source` of the idf5.5 venv and `esp-idf/export.sh`. Radio unplugged from Cardputer USB-C. Leave Launcher **USB** (MSC) first so `/dev/cu.usbmodem*` exists.
 
-**Keep Launcher** (daily iterate once Mini-FT8 has been installed from Launcher once):
+**Keep Launcher** (daily iterate once Micro-FT8 has been installed from Launcher once):
 
 ```bash
 python tools/flash_keep_launcher.py
 ```
 
-Reads the *device* partition table and writes `build/mini_ft8.bin` into an OTA slot only. Never factory (Launcher), bootloader, or the table. `--dry-run` prints the layout. `--no-build` skips `idf.py build`.
+Reads the *device* partition table and writes `build/micro_ft8.bin` into an OTA slot only. Never factory (Launcher), bootloader, or the table. `--dry-run` prints the layout. `--no-build` skips `idf.py build`.
 
-This Cardputer’s Mini-FT8 slot is **`bt4000`** (Launcher PMan name). The helper prefers that partition when it exists; `--partition NAME` overrides.
+This Cardputer’s Micro-FT8 slot is **`bt4000`** (Launcher PMan name). The helper prefers that partition when it exists; `--partition NAME` overrides.
 
 Do **not** use `idf.py flash` or `idf.py app-flash` on a Launcher unit: both write `0x10000` / factory and replace Launcher.
 
-**No Launcher** (factory-only Mini-FT8 layout):
+**No Launcher** (factory-only Micro-FT8 layout):
 
 ```bash
 idf.py build flash

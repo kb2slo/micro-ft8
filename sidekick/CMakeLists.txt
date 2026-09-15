@@ -2,7 +2,7 @@
 # CMakeLists in this exact order for cmake to work correctly
 cmake_minimum_required(VERSION 3.16)
 
-# Separate idf.py project from the ADV app (mini_ft8). ESP-IDF locks target
+# Separate idf.py project from the ADV app (micro_ft8). ESP-IDF locks target
 # and sdkconfig per project, so the ADV app and this one cannot share a
 # configure even though both are esp32s3 now —
 # see RFC 0001 §5.1. Pinned here so `idf.py build` works without a manual
@@ -14,7 +14,7 @@ set(IDF_TARGET esp32s3)
 # tools/gen_build_identity.cmake uses for the ADV, not a second copy that
 # can drift. Same repo, same commit, so "does the embedded sidekick.bin
 # match what's on the Nano" is an exact string comparison (RFC 0001 §5.2b/
-# §5.2c) — including under CI's MINIFT8_GIT_SHA pin, which a bare
+# §5.2c) — including under CI's MICROFT8_GIT_SHA pin, which a bare
 # `git rev-parse HEAD` here would not otherwise honor. Must be set before
 # project() — that's the only hook ESP-IDF's build system gives PROJECT_VER
 # before it falls back to `git describe`.

@@ -20,7 +20,7 @@ endif()
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-unused-parameter -Wno-format")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-unused-parameter")
 
-# Protocol/FFT from the pinned fork; monitor and fft_wrapper stay Mini-FT8.
+# Protocol/FFT from the pinned fork; monitor and fft_wrapper stay Micro-FT8.
 set(FT8_LIB_DIR ${CMAKE_SOURCE_DIR}/../../components/ft8_lib)
 set(FT8_LIB_SOURCES
     ${FT8_LIB_DIR}/vendor/ft8/decode.c

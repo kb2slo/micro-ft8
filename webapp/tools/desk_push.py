@@ -6,7 +6,7 @@ then pushes using a cached pairing token if one is on disk (see sidekick.py)
 — the button is only needed the first time, or if the cached token gets
 rejected (401), or with --forget-token.
 
-Close any browser tab on minift8.local first if the button *is* needed —
+Close any browser tab on microft8.local first if the button *is* needed —
 pairing.js also claims the token, and the first successful GET wins.
 
 Usage:
@@ -38,7 +38,7 @@ from sidekick import (  # noqa: E402
 
 APP = ROOT / "webapp" / "app"
 MANIFEST = APP / "manifest.json"
-DEFAULT_HOST = "http://minift8.local"
+DEFAULT_HOST = "http://microft8.local"
 WAIT_S = 120.0
 
 

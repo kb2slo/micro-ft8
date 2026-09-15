@@ -13,7 +13,7 @@
 
 The Cardputer ADV is the right place to decode, autoseq, CAT, and TX. A phone is the right place for maps, QRZ lookups, grid helpers, and PSK Reporter spots. Those auxiliary tasks compete heavily with the 240×135 screen and the ESP32-S3 internal DRAM budget if attempted on-device.
 
-USB Drive mode (`C`) is gone (ROADMAP B23 — it never actually enumerated on a host, see RFC history). Copy Files to SD remains, but B23 removed the last non-companion way to get logs off the ADV over a cable. That raises the stakes on the sidekick actually working, not lowers them. Operators in the field frequently have cellular connectivity on their phone but no laptop. A low-overhead link from a coprocessor (not the ADV) lets the phone pull logs and monitor live decodes while Mini-FT8 continues uninterrupted. **How the phone talks to the sidekick is WiFi + a plain browser** (§5.0) — settled 2026-09-05, not open. iOS Safari has no Web Bluetooth support at all (a long-standing, Apple-wide platform limitation), so a genuine "no app, works on iPhone or Android" companion cannot use BLE as its transport regardless of any other tradeoff; that fact alone decides §5.0, it isn't a preference.
+USB Drive mode (`C`) is gone (ROADMAP B23 — it never actually enumerated on a host, see RFC history). Copy Files to SD remains, but B23 removed the last non-companion way to get logs off the ADV over a cable. That raises the stakes on the sidekick actually working, not lowers them. Operators in the field frequently have cellular connectivity on their phone but no laptop. A low-overhead link from a coprocessor (not the ADV) lets the phone pull logs and monitor live decodes while Micro-FT8 continues uninterrupted. **How the phone talks to the sidekick is WiFi + a plain browser** (§5.0) — settled 2026-09-05, not open. iOS Safari has no Web Bluetooth support at all (a long-standing, Apple-wide platform limitation), so a genuine "no app, works on iPhone or Android" companion cannot use BLE as its transport regardless of any other tradeoff; that fact alone decides §5.0, it isn't a preference.
 
 **How the sidekick attaches:** the ADV does **not** run NimBLE while the QMX is up, and does not run WiFi/lwIP on the ADV either (unchanged non-goal, §2). A second MCU (AtomS3 Lite, replacing NanoC6 — §5.1) owns the phone link. The ADV talks TTL UART to it over PORTA, exactly as designed for the Nano. The phone UI is a browser page the sidekick itself serves; no native app, no App Store review, no separate iOS/Android codebases for the MVP.
 
@@ -45,7 +45,7 @@ We will **not**:
     * **Aside, since these boards are indistinguishable over USB:** `flash_id` reports the chip, and both are the same part; in USB-Serial/JTAG mode both enumerate as Espressif's generic `303A:1001` with no board string. The **MAC** is the only reliable discriminator (recorded above). The differing flash vendor is a production-batch artifact, not a model identifier — do not key anything off it.
 * Ship on-chip `ENABLE_BLE` in official `dev` / tagged binaries
 * Treat two ATOMs/Nanos (no USB-host brain) as a QMX radio
-* Use a Morserino-32 or M32 Pocket as the BLE coprocessor (classic 4-pin header or Pocket USB). Leave those boxes as CW. I17 (Pocket as a Mini-FT8 *host*) is Ideas, not this path.
+* Use a Morserino-32 or M32 Pocket as the BLE coprocessor (classic 4-pin header or Pocket USB). Leave those boxes as CW. I17 (Pocket as a Micro-FT8 *host*) is Ideas, not this path.
 * Use IR or the headphone jack as the companion pipe
 
 The Cardputer remains the single source of truth and operation. The phone acts strictly as a **spectator and librarian**.
@@ -138,7 +138,7 @@ The number that killed QMX TX was not DIRAM remain. It was **no contiguous DMA b
 
 | Metric | How | What it tells |
 |---|---|---|
-| DIRAM used / remain | `python $IDF_PATH/tools/idf_size.py build/mini_ft8.map` | Static cost of NimBLE in the ADV binary |
+| DIRAM used / remain | `python $IDF_PATH/tools/idf_size.py build/micro_ft8.map` | Static cost of NimBLE in the ADV binary |
 | 8-bit / internal free | PERF + `log_mem_caps` | Runtime heap after tasks |
 | **Largest DMA block** | PERF **DM** **L**, or `heap_caps_get_largest_free_block(MALLOC_CAP_DMA)` | The QMX-safe figure |
 | 8-bit minimum ever | `heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT)` | Fragmentation and decode peaks |
@@ -180,7 +180,7 @@ A chat-only exploration (never landed in this file, so no revert needed elsewher
 
 ### 5.0 Phone path — WiFi + browser is primary, decided 2026-09-05
 
-Hardware split is locked: **ADV (QMX + Mini-FT8, unchanged) + sidekick (AtomS3 Lite) on UART**. What the phone uses is now decided for the MVP:
+Hardware split is locked: **ADV (QMX + Micro-FT8, unchanged) + sidekick (AtomS3 Lite) on UART**. What the phone uses is now decided for the MVP:
 
 | Path | Status |
 |---|---|
@@ -189,7 +189,7 @@ Hardware split is locked: **ADV (QMX + Mini-FT8, unchanged) + sidekick (AtomS3 L
 | Sidekick-as-STA joining phone Personal Hotspot or home WiFi | In scope, real reason to prefer it over AP-only for the field case: joining a Personal Hotspot means the *phone* is the one sharing its own cellular connection — standard, Apple-documented behavior — rather than the phone trying to be a WiFi client of the sidekick while hoping iOS keeps LTE (I19's original, undocumented DHCP-based risk). Credential bootstrap for this direction: SoftAP provisioning (below), not BLE. |
 | BLE GATT + native app (§5.3 / §6) | **Parked, not deleted.** No role in the MVP given the Safari constraint above. Revisit only if a native-app phase is explicitly opened later; the GATT design in §5.3 stays as reference for that. |
 | Credential bootstrap for STA modes | **SoftAP provisioning** (ESP-IDF's `wifi_provisioning`, `scheme_softap.h` — verified present in this project's IDF 5.5.1 install): sidekick temporarily becomes its own setup AP, operator's browser (phone *or* Mac, device-agnostic) joins it, submits the real target SSID/password via a plain page, sidekick reboots as STA. No app, no BLE. Reuses AP-mode capability the sidekick needs anyway for the row above — not new radio work. |
-| Internet-routable (port-forward/DDNS, cloud tunnel, VPN mesh) | **Out of scope for this project entirely**, decided 2026-09-05, not just deferred. Local-network reachability only. If an operator wants remote/internet access, that is their own VPN/tunnel to set up — Mini-FT8 does not attempt it, and does not take on the auth/exposure risk of a licensed station's control surface being internet-reachable by default. |
+| Internet-routable (port-forward/DDNS, cloud tunnel, VPN mesh) | **Out of scope for this project entirely**, decided 2026-09-05, not just deferred. Local-network reachability only. If an operator wants remote/internet access, that is their own VPN/tunnel to set up — Micro-FT8 does not attempt it, and does not take on the auth/exposure risk of a licensed station's control surface being internet-reachable by default. |
 | HTTP-over-BLE, Wi-Fi on the ADV | Out (unchanged). |
 
 I19's original DHCP-no-gateway field test was never actually run — superseded by the Safari/Web-Bluetooth finding above before it became necessary, since AP-vs-STA-vs-hotspot is now a mode choice within the WiFi path, not a competing candidate against GATT.
@@ -198,7 +198,7 @@ I19's original DHCP-no-gateway field test was never actually run — superseded 
 
 | Piece | Role |
 |---|---|
-| **ADV** | Mini-FT8, QMX USB host, decode, CAT, UI. **No NimBLE**, no WiFi/lwIP for companion (unchanged non-goal). UART TX of decode/log bytes from a low-priority task (never the DSP task). |
+| **ADV** | Micro-FT8, QMX USB host, decode, CAT, UI. **No NimBLE**, no WiFi/lwIP for companion (unchanged non-goal). UART TX of decode/log bytes from a low-priority task (never the DSP task). |
 | **AtomS3 Lite** | Phone link: WiFi (AP and/or STA, §5.0) + a browser-served HTTP UI. USB-C CDC for desk flash and optional ADV-log bridge. UART from ADV over PORTA, unchanged mechanism from the Nano design. |
 
 **Why AtomS3 Lite over NanoC6, specifically:** dual-core ESP32-S3 (240 MHz ×2) vs the C6's single core (160 MHz) is real, not marginal, headroom for running WiFi + lwIP + an HTTP server concurrently with PORTA UART parsing — a common ESP-IDF pattern pins the network stack to one core, leaving the other free. NanoC6's WiFi 6 / 802.15.4 extras buy nothing for a local HTTP server at FT8 data rates. **What did *not* change the decision:** AtomS3 Lite cannot act as a USB host (§4.6) — irrelevant here, since a sidekick never hosts anything over USB; its own USB-C only needs device mode (flashing), already proven all session via plain `esptool.py`.
@@ -270,7 +270,7 @@ Both transports funnel into one shared version-compare function on the ADV side;
 
 **Companion beacon, not a bare sync byte.** A single unvalidated `0xC6` is too weak to trust as "companion present" — indistinguishable from a stray noise byte. `sidekick/main/main.c` instead transmits a full frame roughly once a second: `0xC6` + `version[32]` (from `esp_app_get_description()`, NUL-padded) + a 1-byte XOR checksum over the preceding 33 bytes. `porta.cpp` only locks `kCompanion` once the whole frame validates; a checksum failure is discarded as noise and scanning resumes, matching how GPS detection already requires a full NMEA checksum rather than a bare `$`. A partial frame stuck mid-collection for >250ms (a bit error, not slow arrival — 34 bytes at 115200 baud is ~3ms) is abandoned rather than blocking GPS detection indefinitely.
 
-**Version comparison, not just presence.** On a validated beacon, `porta.cpp` compares the received version against this ADV's own embedded `sidekick` build via a new `sidekick_flasher_embedded_version()` getter (the same version-comparison data `sidekick_flasher_flash_embedded()` already uses for the USB-C path, reachable now without a USB-C session) and logs a clear match/mismatch — `porta_get_companion_version()` / `porta_companion_version_matches()` expose the result. **Deliberately simplified versioning (2026-09-04 decision):** rather than track ADV and sidekick versions independently and compare two different git states, `tools/git_version.cmake` is now shared by both `tools/gen_build_identity.cmake` (ADV) and `sidekick/CMakeLists.txt` — same repo, same commit, same override-aware logic, so an exact string match is the whole test. This closed a real, latent CI bug in passing: CI checks out a synthesized merge commit for a PR, not `github.event.pull_request.head.sha`, so the ADV firmware job pins `MINIFT8_GIT_SHA` explicitly — but the sidekick build job never received that same pin before this change, so a CI-built pair could have silently disagreed on "the same commit"'s version string even though a local build never would have.
+**Version comparison, not just presence.** On a validated beacon, `porta.cpp` compares the received version against this ADV's own embedded `sidekick` build via a new `sidekick_flasher_embedded_version()` getter (the same version-comparison data `sidekick_flasher_flash_embedded()` already uses for the USB-C path, reachable now without a USB-C session) and logs a clear match/mismatch — `porta_get_companion_version()` / `porta_companion_version_matches()` expose the result. **Deliberately simplified versioning (2026-09-04 decision):** rather than track ADV and sidekick versions independently and compare two different git states, `tools/git_version.cmake` is now shared by both `tools/gen_build_identity.cmake` (ADV) and `sidekick/CMakeLists.txt` — same repo, same commit, same override-aware logic, so an exact string match is the whole test. This closed a real, latent CI bug in passing: CI checks out a synthesized merge commit for a PR, not `github.event.pull_request.head.sha`, so the ADV firmware job pins `MICROFT8_GIT_SHA` explicitly — but the sidekick build job never received that same pin before this change, so a CI-built pair could have silently disagreed on "the same commit"'s version string even though a local build never would have.
 
 **Deliberately not built here:** no auto-update over PORTA. A version mismatch is flagged (logged; state exposed for a future UI), not acted on — reflashing stays a manual step over the existing, hardware-proven USB-C path (§5.2). Auto-updating over PORTA would need a bootloader-entry hook on sidekick, a command channel back from the ADV (this beacon is one-way, sidekick → ADV only), and `esp-serial-flasher`'s UART transport instead of the USB-CDC transport already proven — real scope, deliberately deferred rather than folded in here, especially given PORTA's 4-wire no-flow-control link is meaningfully less reliable than the direct USB-C link the current flash path already uses.
 
@@ -397,7 +397,7 @@ CTS time on the Nano (read iPhone `0x2A2B`, print epoch on UART, ADV `settimeofd
 * **B18 (done):** 2 s toast on USB-C attach/detach (not a blocking modal). QMX/QDX, Green Nano, or raw VID/PID. Empty jack: no toast.
 * **Install prompt (I3 pivot, new):** on a **factory/unflashed** Green Nano (distinguishable from an already-flashed companion Nano — exact detection TBD, e.g. a version characteristic once the Nano runs companion firmware vs silence from stock Espressif firmware), the toast becomes a prompt: "Install companion firmware? Y/N". On yes, ADV parks the QMX host path the same way it does for **C** / CTS (§5.5 step 4), flashes the embedded `.bin` over the ROM bootloader, shows progress, then reinstalls the host. On no or timeout, behaves like today's toast. Never auto-flashes without confirmation. Never flashes while QMX is the attached device (VID/PID gates this).
 * Companion / Nano UART link **OFF / ON** (menu or BT screen) stays I3. Default off.
-* ADV advertising name is irrelevant; the **Nano** advertises (name TBD, e.g. `Mini-FT8-<call>`).
+* ADV advertising name is irrelevant; the **Nano** advertises (name TBD, e.g. `Micro-FT8-<call>`).
 * Status: Nano present / phone subscribed. Informational only.
 * Enabling the UART link must never reset USB host. **S → 2** attaches UAC/CDC to the live host.
 
@@ -433,7 +433,7 @@ Skip this section’s App Store app if I19’s Safari path passes and we lock th
 
 The phone application provides **value-add helpers**, not radio controls. It connects to the **Nano**, not to the ADV.
 
-1. **Live Decode Snoop:** Real-time stream of calls and grids decoded by Mini-FT8.
+1. **Live Decode Snoop:** Real-time stream of calls and grids decoded by Micro-FT8.
 2. **Callsign Helpers:** Prefix-to-region lookup; single tap to open QRZ.com.
 3. **Grid Helpers:** 4/6-character grid calculations (lat/lon, bearing, distance from operator).
 4. **Mapping:** Visual map rendering of heard grids and worked stations via native MapKit.
@@ -488,7 +488,7 @@ I3 is sequenced ([ROADMAP.md](../ROADMAP.md) Now), amended 2026-09-05 for the ch
 
 ---
 
-## 9. Ask of the Mini-FT8 Maintainers
+## 9. Ask of the Micro-FT8 Maintainers
 
 1. Accept §4.1b: on-chip companion BLE is **rejected** on ADV+QMX.
 2. Accept §4.6: headless-Atom-as-main is **closed, hardware-confirmed** — AtomS3 Lite cannot USB-host a QMX. Phase 1 is not headless. The ADV remains the main FT8 processor, unchanged, indefinitely unless a *different*, proven-USB-host board is sourced and separately bench-tested.

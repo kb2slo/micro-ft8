@@ -151,7 +151,7 @@ bool ensure_uart_driver() {
 
 void release_uart_pins_from_gpio() {
   // Clear any prior OUTPUT drive (e.g. Launcher 2.8 parks G13/G15 HIGH) before
-  // attaching the UART matrix. Safe across a warm start into Mini-FT8.
+  // attaching the UART matrix. Safe across a warm start into Micro-FT8.
   if (s_pins.tx != GPIO_NUM_NC) gpio_reset_pin(s_pins.tx);
   if (s_pins.rx != GPIO_NUM_NC) gpio_reset_pin(s_pins.rx);
 }
