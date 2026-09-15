@@ -213,6 +213,8 @@ Since it is a precondition nobody here controls, it was measured rather than ass
 | Pages, binary asset | `*` | Yes |
 | Pages, preflight `OPTIONS` | — (HTTP 405) | Simple requests only |
 | GitHub Releases asset | absent | **No** |
+| Cloudflare Workers Static Assets, default | absent | **No** — measured 2026-09-15 after the move off GitHub Pages; broke `/update` install with a generic browser fetch failure until fixed |
+| Cloudflare Workers Static Assets, behind `webapp/worker.js` | `*` | Yes — a script-less assets-only Worker cannot add response headers at all, so `main` came back specifically to wrap `env.ASSETS.fetch()` and set this header |
 
 Observed behaviour, not documented policy — the same caveat §8 carries for QRZ. Re-check any row with:
 

@@ -2,8 +2,10 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "micro-ft8",
   "compatibility_date": "2026-09-15",
+  "main": "worker.js",
   "assets": {
-    "directory": "."
+    "directory": ".",
+    "binding": "ASSETS"
   },
   "routes": [
     {

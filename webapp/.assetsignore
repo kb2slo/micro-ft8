@@ -2,4 +2,6 @@
 # webapp in .github/workflows/pages.yml) -- none of this is site content.
 node_modules
 wrangler.jsonc
+worker.js
+.assetsignore
 .wrangler
