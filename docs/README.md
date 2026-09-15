@@ -220,6 +220,24 @@ The grooming *workflow* is still TBD. Until then:
 - While grooming, run `awk '{ print length, NR }' docs/ROADMAP.md | sort -rn | head -5` and name any outlier row. Say what's in it and let the operator decide: trim in place, extract to an RFC (the "long features get an RFC" rule), or leave it — do not refine or extract unprompted.
 - Do not repeat the reminder in later turns of the same session, and do not interrupt an in-progress coding task.
 
+### Bench-test grooming reminder (session start)
+
+Stated 2026-09-15, after a marathon hardware session cleared 15 rows in one sitting and the operator
+asked to be nudged going forward rather than let a comparable backlog re-accumulate silently.
+
+**Last bench session:** 2026-09-15 — 15 rows moved to passed/N/A and dropped; 57 remain owed.
+
+- Once per session start, if the date above is more than **7 days** old, remind the operator once that
+  a bench session is due. Name roughly how many rows are currently owed in `docs/TEST_PLAN.md`'s
+  **Pending** table (data rows whose Status does not start with `passed`/`N/A`), and point at the
+  **"Bench run — everything owed"** section — it exists specifically to close a backlog like this in
+  one ordered ~1-hour pass rather than piecemeal.
+- After a real bench session: drop the rows that passed the same way this session did — do not archive,
+  git history is the record, same discipline as `ROADMAP.md`'s Now/Backlog rows — and update the date
+  above regardless of how many rows moved, same discipline as the upstream watches below.
+- Do not repeat the reminder in later turns of the same session, and do not interrupt an in-progress
+  coding task.
+
 ### Upstream watches (session start)
 
 Three watches, different cadences. Network fail → skip (any of them); do not interrupt an in-progress coding task.
