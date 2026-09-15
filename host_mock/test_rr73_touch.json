@@ -1,0 +1,69 @@
+{
+  "comment": "Regression for the RR73-as-gridsquare bug: tapping a third station's RR73 (not a CQ, not addressed to us -- the 'tail-ending' feature) must not latch 'RR73' into dxgrid. Mirrors test_fd_touch.json's touch-then-complete shape.",
+  "config": {
+    "MY_CALLSIGN": "KB2SLO",
+    "MY_GRID": "FN20",
+    "DX_CALLSIGN": "W1ABC",
+    "DX_GRID": "",
+    "TX_ON_EVEN": true
+  },
+  "periods": [
+    {
+      "comment": "Period 0 (even): idle",
+      "messages": []
+    },
+    {
+      "comment": "Period 1 (odd): W1ABC closes out a QSO with a THIRD station (K3XYZ), not us -- not a CQ. We touch it to tail-end reply.",
+      "messages": [
+        {
+          "call_to": "K3XYZ",
+          "call_from": "${DX_CALLSIGN}",
+          "locator": "RR73",
+          "snr": -8,
+          "slot": 1,
+          "freq_hz": 1200
+        }
+      ],
+      "touch_event": {
+        "time_offset": 14.0,
+        "message_index": 0
+      }
+    },
+    {
+      "comment": "Period 2 (even): we send TX1 (our grid) to W1ABC",
+      "messages": []
+    },
+    {
+      "comment": "Period 3 (odd): W1ABC replies with our signal report (never a grid -- standard FT8 only exchanges the initiator's grid)",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "${DX_CALLSIGN}",
+          "locator": "-05",
+          "snr": -6,
+          "slot": 1
+        }
+      ]
+    },
+    {
+      "comment": "Period 4 (even): we send R + report (TX3)",
+      "messages": []
+    },
+    {
+      "comment": "Period 5 (odd): W1ABC sends RR73 (TX4) -- QSO-closing, same keyword that caused the original bug",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "${DX_CALLSIGN}",
+          "locator": "RR73",
+          "snr": 0,
+          "slot": 1
+        }
+      ]
+    },
+    {
+      "comment": "Period 6 (even): we send 73 (TX5), QSO complete -- ADIF logs here. dxgrid must be empty, not 'RR73'.",
+      "messages": []
+    }
+  ]
+}

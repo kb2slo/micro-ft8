@@ -1418,8 +1418,21 @@ static void sort_and_clean() {
 static bool looks_like_grid(const std::string& s) {
     if (s.size() != 4) return false;
     // Pattern: AA00 (letters, letters, digits, digits)
-    return isalpha((unsigned char)s[0]) && isalpha((unsigned char)s[1]) &&
-           isdigit((unsigned char)s[2]) && isdigit((unsigned char)s[3]);
+    if (!(isalpha((unsigned char)s[0]) && isalpha((unsigned char)s[1]) &&
+          isdigit((unsigned char)s[2]) && isdigit((unsigned char)s[3]))) {
+        return false;
+    }
+    // RR73 matches AA00 by shape but is a protocol closing message, not a
+    // grid. parse_rcvd_msg() already keyword-checks f3 before ever calling
+    // this, so it never hits the ambiguity -- but autoseq_on_touch()'s
+    // "treat as calling CQ" fallback (tail-ending someone's RR73 to another
+    // station, a deliberate feature) called this directly and had no such
+    // guard, so a tail-ended reply could latch "RR73" into dxgrid and log
+    // it as the DX's grid square. RRR and 73 don't match the AA00 shape at
+    // all, so only RR73 needs excluding here.
+    std::string upper = s;
+    for (auto& ch : upper) ch = static_cast<char>(toupper((unsigned char)ch));
+    return upper != "RR73";
 }
 
 static bool looks_like_report(const std::string& s, int& out) {

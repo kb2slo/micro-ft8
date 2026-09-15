@@ -29,7 +29,7 @@ surfaced in CI. The commands below are the full local set.
 
 | Binary | Covers |
 | --- | --- |
-| `host_test` | Autoseq engine: JSON-driven QSO, Field Day, beacon, reincarnation, deadlock, freetext scenarios |
+| `host_test` | Autoseq engine: JSON-driven QSO, Field Day, beacon, reincarnation, deadlock, freetext, tail-end-touch scenarios. **This runner only asserts via exit code, not scenario content** — `for f in test_*.json; do ./host_test "$f" \|\| failed=1; done` in `ci.yml` fails only on a crash, not a wrong transcript. `test_rr73_touch.json`'s regression coverage was verified by hand (reverted the fix, confirmed the scenario reproduces `grid=RR73`; reapplied, confirmed `grid=` empty) — CI runs it every time but won't independently catch a future regression here the way an assertion-based `host_test_*` binary would |
 | `host_test_unique_callsign` | Unique-callsign touch dedupe and promote. **`QsoContext::entry_id` (I28d, RFC 0004 §11, 2026-09-14):** distinct per real entry, survives being moved by a reshuffle that keeps the same contact, gets a fresh id when a re-touch actually drops and re-creates the context, and `autoseq_drop_by_entry_id` cancels by that stable id — finds an entry regardless of its current position, rejects the `0` sentinel and an id nothing carries without mutating the queue, and fails the second time on an id already dropped |
 | `host_test_beacon_cancel` | Beacon-off cancels a queued CQ |
 | `host_test_adif_merge` | ADIF merge export, the logger's 10-minute dedupe window, and record formatting: byte-for-byte layout against a real field record, the omit rules for empty grid / unset reports / empty comment, `<tag:N>` lengths matching their values, and a round-trip back through `adif_parse()` |
