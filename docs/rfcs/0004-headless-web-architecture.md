@@ -289,15 +289,15 @@ live tree:
 All three are `PAIRING_REQUIRED` (§7). Seed page `/update` drives this sequence after the HTTPS fetch
 from the bundle host.
 
-**Hosted site layout (same repo, `webapp/`).** GitHub Pages publishes the `webapp/` tree:
+**Hosted site layout (same repo, `webapp/`).** A Cloudflare Worker (Static Assets, `webapp/wrangler.jsonc`) publishes the `webapp/` tree at a custom domain (moved off GitHub Pages 2026-09-15 -- the repo is private and GitHub Pages on a private repo needs a paid plan; the operator already runs their domain's DNS through Cloudflare. Classic Cloudflare Pages was the first choice but Cloudflare now steers new deploys to Workers Static Assets instead):
 
 | URL | Audience |
 | --- | --- |
-| `https://kb2slo.github.io/micro-ft8/` | Humans — landing / about |
-| `https://kb2slo.github.io/micro-ft8/app/` | Machines — `manifest.json` + assets |
+| `https://micro-ft8.kalikstein.com/` | Humans — landing / about |
+| `https://micro-ft8.kalikstein.com/app/` | Machines — `manifest.json` + assets |
 
 NVS (and the compile-time default) stores the **app** base with no trailing slash:
-`https://kb2slo.github.io/micro-ft8/app`. Soft identity: a product rename changes that default string (and
+`https://micro-ft8.kalikstein.com/app`. Soft identity: a product rename changes that default string (and
 optionally one NVS write), not the install protocol. Device day-to-day UI remains `http://microft8.local/`.
 Seed page `/update` fetches `{base}/manifest.json` and drives the wire protocol above.
 
@@ -660,7 +660,7 @@ Apple's own "locate me" code, run inside such an iframe, is denied exactly like 
 Only a real top-level navigation reaches a genuinely secure context — embedding cannot fake one.
 
 **The fix reuses infrastructure §4 already paid for, instead of adding new infrastructure.** The bundle
-host (`kb2slo.github.io` today) already carries a publicly-trusted certificate, for the unrelated reason
+host (`micro-ft8.kalikstein.com` today) already carries a publicly-trusted certificate, for the unrelated reason
 that §4's host requirement #1 needs one to serve the app bundle over HTTPS. A page hosted there is already
 inside a valid secure context, so it can call `navigator.geolocation` without the sidekick ever owning a
 certificate of its own. **Settings' "Set from map" therefore does a full top-level navigation out to that

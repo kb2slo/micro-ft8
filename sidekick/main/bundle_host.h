@@ -14,7 +14,7 @@ extern "C" {
 // Default Pages prefix for this repo. No trailing slash. Overridable in NVS;
 // do not treat this string as a permanent product identity.
 #ifndef BUNDLE_HOST_DEFAULT
-#define BUNDLE_HOST_DEFAULT "https://kb2slo.github.io/micro-ft8/app"
+#define BUNDLE_HOST_DEFAULT "https://micro-ft8.kalikstein.com/app"
 #endif
 
 #define BUNDLE_HOST_MAX 128

@@ -1,5 +1,9 @@
-# GitHub Pages: human landing + machine bundle under webapp/ (RFC 0004 §4).
-# Path-filtered so firmware-only commits do not redeploy the site.
+# Cloudflare Worker (static assets): human landing + machine bundle under
+# webapp/ (RFC 0004 §4). Path-filtered so firmware-only commits do not
+# redeploy the site. Static passthrough -- no build step, webapp/ is served
+# as-is at micro-ft8.kalikstein.com. Uses Workers Static Assets rather than
+# classic Cloudflare Pages -- Cloudflare steers new deploys there now, and
+# webapp/wrangler.jsonc's `routes` entry is what attaches the custom domain.
 name: Pages
 
 on:
@@ -12,8 +16,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -21,18 +23,15 @@ concurrency:
 
 jobs:
   deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - name: Verify manifest matches assets
         run: python3 webapp/tools/gen_manifest.py --check
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
         with:
-          path: webapp
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: webapp
+          command: deploy

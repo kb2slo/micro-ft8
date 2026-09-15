@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "micro-ft8",
+  "compatibility_date": "2026-09-15",
+  "assets": {
+    "directory": "."
+  },
+  "routes": [
+    {
+      "pattern": "micro-ft8.kalikstein.com",
+      "custom_domain": true
+    }
+  ]
+}
