@@ -72,3 +72,9 @@ sidekick/stock_backup/
 # credential that guards transmit control on a licensed radio, scoped to one
 # physical device. Never belongs in source control.
 webapp/tools/.sidekick_token
+
+# Wrangler installs itself here at deploy time (.github/workflows/pages.yml);
+# webapp/.assetsignore keeps it out of the deployed site, this keeps it out
+# of git.
+webapp/node_modules/
+webapp/.wrangler/

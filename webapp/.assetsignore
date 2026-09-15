@@ -1,0 +1,5 @@
+# Wrangler's own tooling installs itself here at deploy time (workingDirectory:
+# webapp in .github/workflows/pages.yml) -- none of this is site content.
+node_modules
+wrangler.jsonc
+.wrangler
