@@ -17,14 +17,14 @@ This is Jeff KB2SLO’s continuation of Wei AG6AQ’s Mini-FT8 for the Cardputer
 To build from source, clone with the `ft8_lib` submodule. GitHub’s default clone leaves `components/ft8_lib/vendor` empty, and host `tx_e2e` / `idf.py build` will fail.
 
 ```
-git clone --recurse-submodules https://github.com/kb2slo/Mini-FT8.git
+git clone --recurse-submodules git@github.com:kb2slo/micro-ft8.git
 ```
 
 Existing trees: `git submodule update --init`.
 
 Pushes and pull requests run GitHub Actions (ESP-IDF **v5.5.1**, target **esp32s3**). When firmware sources change, the job uploads a flashable merged image as artifact **MiniFT8-Cardputer-ADV** (hash-first `.bin` inside the zip). Docs-only commits (roadmap, README, and similar) skip the IDF build and do not refresh the rolling image.
 
-- Each merge to `main` that changes the firmware updates a prerelease at tag [`continuous`](https://github.com/kb2slo/Mini-FT8/releases/tag/continuous), holding one image named `YYYYMMDD-minift8-<commit>.bin` so it still says what it is after it lands in your Downloads folder. The tag always points at the tip of `main`. Flash at `0x0`.
+- Each merge to `main` that changes the firmware updates a prerelease at tag [`continuous`](https://github.com/kb2slo/micro-ft8/releases/tag/continuous), holding one image named `YYYYMMDD-minift8-<commit>.bin` so it still says what it is after it lands in your Downloads folder. The tag always points at the tip of `main`. Flash at `0x0`.
 - Tags matching `v*` also create a versioned GitHub Release (`MiniFT8-<tag>-Merged.bin`).
 
 **Telling the two apart on the device:** a released build shows a version and nothing else (`Mini-FT8 3.0.0`); any other build shows its kind and commit and claims no version (`Mini-FT8 dev 60b64e3`, with `*` if it was built from a modified tree). The build refuses to claim a version unless it came from CI on a `v*` tag with a clean tree, so a number on that line is a guarantee rather than a label. Details, and how a release is cut, are in [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md).

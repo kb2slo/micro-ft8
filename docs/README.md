@@ -68,14 +68,14 @@ State which of these you did in the turn you report the work. **"No test-plan ch
 
 Do not expand `main.cpp` without extracting a tested function. Extract/style/radio/`ft8_lib` campaign [RFC 0002](rfcs/0002-extract-and-boundaries.md) is Done. STYLE still applies. Radio-profile remainder is Backlog B14. Read the current Now from `ROADMAP.md` rather than trusting a name written here — this line has gone stale before.
 
-This fork ships on **`origin/main`** (`kb2slo/Mini-FT8`). Do **not** push or open PRs to `upstream` (`wcheng95/Mini-FT8`) unless the operator explicitly asks. Staying mergeable with upstream is not a goal.
+This project ships on **`origin/main`** (`kb2slo/micro-ft8`, private). De-forked 2026-09-15 from `kb2slo/Mini-FT8` (now archived, public) — there is no `upstream` git remote. Wei's `wcheng95/Mini-FT8` is watched for portable fixes (**Upstream watches** below), not tracked as a fork; never push or open a PR there unless the operator explicitly asks.
 
 ### Clone (submodules)
 
-`ft8_lib` is the git submodule `components/ft8_lib/vendor`. Host `tx_e2e` and `idf.py build` need it. GitHub’s default clone does not fetch it.
+`ft8_lib` is the git submodule `components/ft8_lib/vendor`. Host `tx_e2e` and `idf.py build` need it. GitHub’s default clone does not fetch it. The repo is private — clone needs your own GitHub auth (SSH key or PAT), not just the URL.
 
 ```bash
-git clone --recurse-submodules https://github.com/kb2slo/Mini-FT8.git
+git clone --recurse-submodules git@github.com:kb2slo/micro-ft8.git
 ```
 
 Existing trees: `git submodule update --init`. Pin and bump path: [RFC 0002](rfcs/0002-extract-and-boundaries.md) §6.
@@ -240,9 +240,9 @@ If the submodule is missing, skip. If Karlis’s SHA **is** an ancestor of the p
 **Wei** — the other parent. Do **not** watch `wcheng95/ft8_lib`: that repo is stale at `bb3d94d` (2026-03) and already fully absorbed into the pin. His protocol fixes land in Mini-FT8’s *in-tree* `components/ft8_lib/ft8/` instead, and reach us only by hand — his tree has no submodule, so merging `upstream/main` cannot move our pin:
 
 ```bash
-git fetch upstream
-for f in $(git ls-tree -r --name-only upstream/main components/ft8_lib/ft8/ | sed 's|.*/ft8/||'); do
-  diff -q <(git show upstream/main:components/ft8_lib/ft8/$f) \
+git fetch https://github.com/wcheng95/Mini-FT8.git main
+for f in $(git ls-tree -r --name-only FETCH_HEAD components/ft8_lib/ft8/ | sed 's|.*/ft8/||'); do
+  diff -q <(git show FETCH_HEAD:components/ft8_lib/ft8/$f) \
           <(git -C components/ft8_lib/vendor show HEAD:ft8/$f) >/dev/null 2>&1 || echo "DIFFERS $f"
 done
 ```
@@ -253,15 +253,17 @@ Expect `message.c` to differ by our own `stpcpy_compat` removal (`f211146`); any
 
 Then draft a Backlog row in chat. Do not commit it yet. Do not merge, bump the submodule, or open a kgoba PR in that turn. Done-when: written take (sync now / wait / drop). Sync uses RFC 0002 §6 and is a separate Now. Goldens gate the pin. If a row for that SHA already exists, remind; do not duplicate.
 
-#### Mini-FT8 upstream (`wcheng95/Mini-FT8`) — at least weekly
+#### Wei's Mini-FT8 (`wcheng95/Mini-FT8`) — at least weekly
 
-**Last checked:** 2026-09-12 — 11 commits on `upstream/main` not in our `main`. `491e757` ("Fix telemetry decode buffer overflow") is already ported by hand as B41; the other 10 are upstream's own CI/test-tooling commits for an "RX-1A" reference-dump/regression harness, nothing that looks portable here. No row drafted.
+Watched, not tracked: no `upstream` remote exists (this repo de-forked 2026-09-15), so the check below fetches Wei's `main` straight from its URL into `FETCH_HEAD` rather than a persistent remote-tracking branch.
+
+**Last checked:** 2026-09-12 — 11 commits on Wei's `main` not in our `main`. `491e757` ("Fix telemetry decode buffer overflow") is already ported by hand as B41; the other 10 are upstream's own CI/test-tooling commits for an "RX-1A" reference-dump/regression harness, nothing that looks portable here. No row drafted.
 
 General drift, not just the `ft8_lib` files this repo shares with Wei's tree (that's the watch above). Feeds [I12](ROADMAP.md) ("Mine public Mini-FT8 forks"), which is Ideas, not a standing workflow — this session-start check is what keeps it from going stale between the occasional full sweep (the kind B39 did once by hand).
 
 ```bash
-git fetch upstream
-git log --oneline main..upstream/main
+git fetch https://github.com/wcheng95/Mini-FT8.git main
+git log --oneline main..FETCH_HEAD
 ```
 
 If the date above is more than **7 days** old, run it even though it repeats what might be a no-op week to week, and update the date (and the one-line finding) regardless of outcome — that line is the only record of when this last actually ran. Something worth taking → draft an Ideas/Backlog row in chat citing the commit, same discipline as the pin watch: do not merge, do not commit the date bump silently — say what you found first.
