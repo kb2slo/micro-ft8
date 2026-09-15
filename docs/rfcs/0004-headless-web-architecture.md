@@ -214,7 +214,8 @@ Since it is a precondition nobody here controls, it was measured rather than ass
 | Pages, preflight `OPTIONS` | — (HTTP 405) | Simple requests only |
 | GitHub Releases asset | absent | **No** |
 | Cloudflare Workers Static Assets, default | absent | **No** — measured 2026-09-15 after the move off GitHub Pages; broke `/update` install with a generic browser fetch failure until fixed |
-| Cloudflare Workers Static Assets, behind `webapp/worker.js` | `*` | Yes — a script-less assets-only Worker cannot add response headers at all, so `main` came back specifically to wrap `env.ASSETS.fetch()` and set this header |
+| Cloudflare Workers Static Assets, `worker.js` alone | absent, on real asset hits | **No, and misleading** — a matching static file (or its own clean-URL redirect, e.g. `app.html` -> `/app/app`) is served directly by Cloudflare's asset router by default, bypassing `worker.js` entirely; only a path with no matching asset (a genuine 404) ever reached the fetch handler, so it looked fixed against a nonexistent-path test and wasn't |
+| Cloudflare Workers Static Assets, `worker.js` + `assets.run_worker_first: true` | `*` | Yes, confirmed on manifest, redirect, and final destination |
 
 Observed behaviour, not documented policy — the same caveat §8 carries for QRZ. Re-check any row with:
 
