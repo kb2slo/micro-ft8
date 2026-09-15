@@ -23,7 +23,16 @@ label{display:block;font-size:.7rem;color:GrayText;text-transform:uppercase;lett
 input,select{width:100%;box-sizing:border-box;padding:.45rem;font-size:1rem;margin-top:.15rem;background:Field;color:FieldText}
 button{padding:.6rem;font-size:.95rem;background:ButtonFace;color:ButtonText;border:1px solid GrayText;border-radius:.4rem}
 button:disabled{opacity:.45}
-.wrap{max-width:26rem;margin:0 auto;padding:0 1rem}
+.wrap{max-width:26rem;margin:0 auto;padding:0 1rem;box-sizing:border-box;display:flex;flex-direction:column;min-height:calc(100dvh - 3.75rem)}
+
+/* ---- swipeable tab track ---- */
+/* min-height:0 is load-bearing: without it a flex child won't shrink below
+   its content size, so #viewport would grow to fit the tallest panel
+   (Log's infinite-scroll list, unbounded) instead of scrolling within a
+   fixed strip. */
+#viewport{flex:1 1 auto;min-height:0;overflow:hidden;position:relative}
+#viewTrack{display:flex;height:100%;width:300%}
+#viewTrack>section{flex:0 0 33.3333%;width:33.3333%;height:100%;overflow-y:auto;box-sizing:border-box;-webkit-overflow-scrolling:touch}
 #m{color:GrayText;font-size:.85rem;min-height:1.2em;margin:.5rem 0}
 .row{display:flex;gap:.5rem}
 .row>*{flex:1}
@@ -39,6 +48,9 @@ button:disabled{opacity:.45}
 /* ---- operate: state header ---- */
 #opHeader{padding:.75rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
 #opHeader .top{display:flex;justify-content:space-between;align-items:flex-end}
+
+/* ---- operate: quasi-waterfall ---- */
+#opWaterfall{width:100%;height:9rem;display:block;border-radius:.3rem;margin:.4rem 0;background:#04060c}
 #countdown{font-family:ui-monospace,monospace;font-size:1.9rem;font-weight:700;line-height:1}
 #slotSub{font-size:.7rem;color:GrayText}
 .pill{display:inline-block;font-size:.7rem;font-weight:700;padding:.15rem .5rem;border-radius:999px}
@@ -161,6 +173,8 @@ button:disabled{opacity:.45}
   <h1>Micro-FT8</h1>
   <p id=m>Loading…</p>
 
+<div id=viewport>
+<div id=viewTrack>
   <!-- ================= OPERATE ================= -->
   <section id=view-operate>
     <div id=opHeader>
@@ -205,6 +219,7 @@ button:disabled{opacity:.45}
 
     <div id=opDecodes>
       <div class=hd>Decodes &middot; tap a callsign for info</div>
+      <canvas id=opWaterfall></canvas>
       <div id=opDecodeRows></div>
     </div>
   </section>
@@ -214,7 +229,7 @@ button:disabled{opacity:.45}
        dividers, lazy-loaded older entries, no file picker. loadMoreLog()
        walks logFiles transparently: file boundaries are an implementation
        detail, not something the operator navigates. -->
-  <section id=view-log hidden>
+  <section id=view-log>
     <div id=logToolbar>
       <a id=logDownloadAll class=dlink href=#>Download full ADI</a>
       <a id=logClearAll class="dlink dlink-danger" href=#>Clear all ADI files</a>
@@ -226,7 +241,7 @@ button:disabled{opacity:.45}
   <!-- ================= SETTINGS ================= -->
   <!-- Same flat hairline-row list language as Operate/Log (.hd + .setrow),
        not the boxed <section>/<h2> form look this page used to have. -->
-  <section id=view-settings hidden>
+  <section id=view-settings>
     <div class=hd>Station</div>
     <div class=setrow><label>Call <input id=call autocomplete=off spellcheck=false></label></div>
     <div class=setrow><label>Grid <input id=grid autocomplete=off spellcheck=false></label></div>
@@ -319,6 +334,8 @@ button:disabled{opacity:.45}
     </nav>
     <div style="padding:0 1rem 1rem;font-size:.75rem;color:GrayText">App: <span id=appVersion>—</span></div>
   </section>
+</div>
+</div>
 </div>
 
 <nav id=tabbar>
@@ -447,19 +464,32 @@ async function checkAppStale() {
 document.addEventListener('visibilitychange', checkAppStale);
 document.getElementById('staleBannerReload').onclick = function () { location.reload(); };
 
-// ===================== tabs =====================
+// ===================== tabs (swipeable track) =====================
+// Three panels laid out side by side in #viewTrack (300% wide, each panel
+// 33.3333% = one viewport-width); #viewport clips to one panel at a time.
+// A percent transform is relative to the transformed element's own box, so
+// -idx*(100/3)% always lands on panel idx regardless of actual pixel width
+// -- no resize listener needed to keep it correct.
 
 var VIEWS = ['operate', 'log', 'settings'];
 var currentView = 'operate';
+var viewIndex = 0;
+var viewTrack = document.getElementById('viewTrack');
 
-function showView(name) {
+function trackPercentFor(idx) { return -idx * (100 / VIEWS.length); }
+
+function setTrackTransform(percent, animate) {
+  viewTrack.style.transition = animate ? 'transform .25s ease' : 'none';
+  viewTrack.style.transform = 'translateX(' + percent + '%)';
+}
+
+function showView(name, animate) {
   currentView = name;
-  VIEWS.forEach(function (v) {
-    document.getElementById('view-' + v).hidden = (v !== name);
-  });
+  viewIndex = VIEWS.indexOf(name);
   document.querySelectorAll('#tabbar button').forEach(function (b) {
     b.classList.toggle('on', b.getAttribute('data-view') === name);
   });
+  setTrackTransform(trackPercentFor(viewIndex), animate !== false);
   if (name === 'log' && !logLoadedOnce) {
     logLoadedOnce = true;
     document.getElementById('logList').innerHTML = '<p style="padding:0 1rem;color:GrayText">Loading…</p>';
@@ -469,6 +499,59 @@ function showView(name) {
 document.querySelectorAll('#tabbar button').forEach(function (b) {
   b.onclick = function () { showView(b.getAttribute('data-view')); };
 });
+
+// Live drag: the track follows the finger 1:1 (no transition -- it would
+// fight the live position), then snaps on release to whichever panel is
+// closer, animated. A drag commits past COMMIT_FRACTION of the viewport
+// width; short of that it springs back to where it started. The gesture is
+// only claimed as a horizontal swipe once it has moved more horizontally
+// than DRAG_CLAIM_PX than vertically -- short of that, it's left alone so a
+// panel's own vertical scroll (Log's list in particular) works normally.
+// Dragging past the first/last panel gets resistance rather than a hard
+// stop, same as most native pagers.
+(function () {
+  var COMMIT_FRACTION = 0.28, DRAG_CLAIM_PX = 12;
+  var viewport = document.getElementById('viewport');
+  var startX = 0, startY = 0, dx = 0, dragging = null; // null=undecided, true=horizontal, false=vertical/other
+
+  viewport.addEventListener('touchstart', function (e) {
+    if (e.touches.length !== 1) { dragging = false; return; }
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    dx = 0;
+    dragging = null;
+  }, { passive: true });
+
+  viewport.addEventListener('touchmove', function (e) {
+    if (dragging === false) return;
+    var t = e.touches[0];
+    dx = t.clientX - startX;
+    var dy = t.clientY - startY;
+    if (dragging === null) {
+      if (Math.abs(dx) < DRAG_CLAIM_PX && Math.abs(dy) < DRAG_CLAIM_PX) return;
+      dragging = Math.abs(dx) > Math.abs(dy);
+      if (!dragging) return; // vertical -- let the panel scroll, touch it no further
+    }
+    e.preventDefault(); // claimed as a horizontal drag: no vertical scroll fighting it
+    var atStart = viewIndex === 0 && dx > 0;
+    var atEnd = viewIndex === VIEWS.length - 1 && dx < 0;
+    var effDx = (atStart || atEnd) ? dx / 3 : dx; // rubber-band past the ends
+    var w = viewport.clientWidth || 1;
+    setTrackTransform(trackPercentFor(viewIndex) + (effDx / w) * (100 / VIEWS.length), false);
+  }, { passive: false });
+
+  viewport.addEventListener('touchend', function () {
+    if (dragging) {
+      var w = viewport.clientWidth || 1;
+      var frac = dx / w;
+      var idx = viewIndex;
+      if (frac <= -COMMIT_FRACTION && viewIndex < VIEWS.length - 1) idx = viewIndex + 1;
+      else if (frac >= COMMIT_FRACTION && viewIndex > 0) idx = viewIndex - 1;
+      showView(VIEWS[idx]);
+    }
+    dragging = null;
+  }, { passive: true });
+})();
 
 // ===================== config (shared: Operate live header + Settings form) =====================
 
@@ -1158,6 +1241,61 @@ function isReplyableDecode(d) {
   return last === '73' || last === 'RR73';
 }
 
+// ===================== Operate: quasi-waterfall =====================
+// Not a real spectral waterfall -- there is no raw audio/FFT data on this
+// side of the link, only what each decode already carries: offset (hz) and
+// SNR (snr), the same fields shown in the text list below. One row per
+// decode batch (one FT8 slot), newest at the top. Deliberately a separate,
+// deeper buffer from decodeSlots -- that one caps at DECODE_SLOTS_MAX (3)
+// for the text list's own reasons, which would make for a useless sliver
+// of a waterfall.
+var WF_HZ_MIN = 0, WF_HZ_MAX = 3000; // FT8 passband convention (RFC 0004/I26 waterfall notes)
+var WF_ROWS_MAX = 48;
+var wfRows = []; // each entry: [{hz, snr}, ...] for one slot's decodes, newest first
+
+// Conventional waterfall ramp (weak->strong): blue -> green -> yellow -> red.
+// -24..+20 dB covers the practical FT8 SNR range; clamped outside it.
+function wfColorForSnr(snr) {
+  var t = Math.max(0, Math.min(1, ((typeof snr === 'number' ? snr : 0) + 24) / 44));
+  var hue = 240 - t * 240;
+  var light = 35 + t * 30;
+  return 'hsl(' + hue.toFixed(0) + ',85%,' + light.toFixed(0) + '%)';
+}
+
+function pushWaterfallRow(decodes) {
+  wfRows.unshift((decodes || []).map(function (d) { return { hz: d.hz, snr: d.snr }; }));
+  if (wfRows.length > WF_ROWS_MAX) wfRows.length = WF_ROWS_MAX;
+  renderWaterfall();
+}
+
+function renderWaterfall() {
+  var canvas = document.getElementById('opWaterfall');
+  if (!canvas) return;
+  var dpr = window.devicePixelRatio || 1;
+  var cssW = canvas.clientWidth || 300, cssH = canvas.clientHeight || 144;
+  var pxW = Math.round(cssW * dpr), pxH = Math.round(cssH * dpr);
+  if (canvas.width !== pxW || canvas.height !== pxH) {
+    canvas.width = pxW;
+    canvas.height = pxH;
+  }
+  var ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#04060c';
+  ctx.fillRect(0, 0, cssW, cssH);
+  var rowH = cssH / WF_ROWS_MAX;
+  wfRows.forEach(function (row, i) {
+    var y = i * rowH;
+    row.forEach(function (d) {
+      if (typeof d.hz !== 'number') return;
+      var frac = (d.hz - WF_HZ_MIN) / (WF_HZ_MAX - WF_HZ_MIN);
+      var x = Math.max(0, Math.min(1, frac)) * cssW;
+      ctx.fillStyle = wfColorForSnr(d.snr);
+      ctx.fillRect(x - 2, y, 4, Math.max(2, rowH));
+    });
+  });
+}
+window.addEventListener('resize', renderWaterfall);
+
 function renderDecodes() {
   var rows = document.getElementById('opDecodeRows');
   rows.innerHTML = decodeSlots.map(function (slot, i) {
@@ -1250,6 +1388,7 @@ async function pollEvents() {
         pendingDecodes.freqKhz = lastCfg.freq_khz || '';
         decodeSlots.unshift(pendingDecodes);
         if (decodeSlots.length > DECODE_SLOTS_MAX) decodeSlots.length = DECODE_SLOTS_MAX;
+        pushWaterfallRow(pendingDecodes);
       }
       renderDecodes();
       renderBeacon();
@@ -1937,6 +2076,7 @@ function saveStateCache() {
       decodeSlots: decodeSlots.map(function (slot) {
         return { ts: slot.ts, band: slot.band, freqKhz: slot.freqKhz, rows: slot };
       }),
+      wfRows: wfRows,
       slotState: slotState, txHud: txHud
     }));
   } catch (e) { /* private browsing, quota, or unavailable -- no seed next time */ }
@@ -1957,6 +2097,7 @@ function loadStateCache() {
         return slot;
       });
     }
+    if (s.wfRows) wfRows = s.wfRows;
     if (s.slotState) slotState = s.slotState;
     if (s.txHud) txHud = s.txHud;
   } catch (e) { /* corrupt or unavailable -- boot normally, no seed */ }
@@ -1976,6 +2117,7 @@ renderCountdown();
 renderBeacon();
 renderQueue();
 renderDecodes();
+renderWaterfall();
 renderTxHud();
 
 function tick() {
