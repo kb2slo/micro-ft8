@@ -20,7 +20,7 @@ extern "C" {
 #include "ft8/decode.h"
 }
 
-void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, bool update_ui);
+void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg);
 int64_t rtc_now_ms();
 
 #ifndef FT8_SAMPLE_RATE
@@ -176,7 +176,7 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                     } else if (decode_tx_state_get_decode_enabled()) {
                         decode_tx_state_set_decode_slot_idx(slot_idx);
                         decode_tx_state_set_decode_in_progress(true);
-                        decode_monitor_results(&mon, &mon_cfg, false);
+                        decode_monitor_results(&mon, &mon_cfg);
                     } else {
                         ESP_LOGD(tag, "Decode paused; skipping");
                         if (slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {

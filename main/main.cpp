@@ -439,7 +439,7 @@ static int64_t rx_flash_deadline = 0;
 static void draw_menu_view();
 static void draw_status_view();
 static void draw_status_line(int idx, const std::string& text, bool highlight);
-void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, bool update_ui);
+void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg);
 static void update_countdown();
 static void redraw_countdown_now();
 static void consume_cdc_initial_sync();
@@ -3028,16 +3028,15 @@ static int dec_sort_cmp(const void* a, const void* b) {
   return decode_sort_cmp(&ea, &eb);
 }
 
-static void keep_rx_list_stale(bool update_ui) {
+// Marks the RX list stale in the UI component and flags core 0's dispatch
+// loop to redraw it. Decode logic never draws directly -- drawing is the
+// UI-consumer's job, triggered by the dirty flag it already polls.
+static void keep_rx_list_stale() {
   ui_mark_rx_list_stale();
-  if (update_ui) {
-    draw_rx_screen();
-  } else {
-    g_rx_dirty = true;
-  }
+  g_rx_dirty = true;
 }
 
-void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, bool update_ui) {
+void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
   // One operator-log line per slot (B53 shape, slim). ESP_LOGD above is compiled
   // out at CONFIG_LOG_MAXIMUM_LEVEL=3; debug_log_line reaches P-then-. and the
   // browser. Cheap: two timestamps and counts already in hand — no extra decode work.
@@ -3106,7 +3105,7 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, bool up
 
   if (num_candidates <= 0) {
     ESP_LOGD(TAG, "No candidates found; keeping RX list");
-    keep_rx_list_stale(update_ui);
+    keep_rx_list_stale();
     // No candidates means we processed the slot's audio but found nothing —
     // still counts as "applied" for the TX-trigger guard.
     if (decode_tx_state_get_decode_slot_idx() > decode_tx_state_get_decode_applied_slot_idx()) {
@@ -3318,17 +3317,10 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, bool up
       porta_emit_decode(decode_id, e.text, e.snr, e.offset_hz, e.time_s,
                         e.is_cq, e.is_to_me, e.is_recent_qso);
     }
-    if (update_ui) {
-      draw_rx_screen();
-      char buf[64];
-      snprintf(buf, sizeof(buf), "Heap %u", heap_caps_get_free_size(MALLOC_CAP_DEFAULT));
-      debug_log_line(buf);
-    } else {
-      g_rx_dirty = true;
-    }
+    g_rx_dirty = true;
   } else {
     ESP_LOGD(TAG, "No messages decoded; keeping RX list");
-    keep_rx_list_stale(update_ui);
+    keep_rx_list_stale();
   }
 
   // ---- heap instrumentation (exit) ----
