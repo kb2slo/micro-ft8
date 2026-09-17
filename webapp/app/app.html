@@ -16,7 +16,89 @@
   opposite: refreshed on every poll tick, never touches the form.
 -->
 <style>
-:root{color-scheme:light dark}
+/* Semantic color tokens: plain CSS system colors (Canvas, CanvasText,
+   GrayText, Field, ButtonFace...) already theme-adapt for free via
+   color-scheme below, and are used directly throughout -- these tokens are
+   only for the handful of semantic accent/status colors (pills, decode
+   highlighting, danger/warn text) that need a *hand-picked* dark
+   equivalent rather than a browser-computed one, since a pale pastel
+   background with dark text (the natural light-mode choice for a status
+   pill) doesn't invert into anything legible.
+   Three-layer rule (Settings > Theme wires this): light values live bare on
+   :root; the @media block overrides them for a *system* dark preference,
+   guarded so an explicit "Light" choice (data-theme=light) suppresses it;
+   :root[data-theme=dark] repeats the same dark values unconditionally so an
+   explicit "Dark" choice wins even on a light system. Never add a token
+   whose only definition is inside one of the conditional blocks -- bare
+   :root is the light default every override starts from.
+   color-scheme itself needs the same explicit override: bare :root leaves
+   it as "light dark" (follow the OS/browser), which is right for the
+   default "System" choice but means Canvas/CanvasText/Field/etc. would
+   otherwise ignore an explicit Light/Dark pick that disagrees with the
+   real system preference. :root[data-theme=light|dark] pins color-scheme
+   so those native colors follow the explicit choice too.
+   The waterfall canvas and slot bar are deliberately exempt: a waterfall
+   reads as itself only against a near-black background regardless of the
+   surrounding page's theme, matching every other waterfall display (SDRs,
+   WSJT-X) -- those colors stay hardcoded dark in both themes on purpose. */
+:root{
+  color-scheme:light dark;
+  --accent:#1d4ed8;        /* links, badges: .dlink, .drow .me, .frow .grid, #callInfoQrz */
+  --accent-border:#93c5fd; /* border paired with --accent on badges */
+  --danger:#b91c1c;        /* .dlink-danger, #opTxHud .hd */
+  --danger-strong:#ff0000; /* .c-me -- a hotter red, decode text addressed to me */
+  --bad:#ef4444;           /* .dot.bad, #opTxHud's tinted background source */
+  --warn:#b45309;          /* #opTxHud.aborted .hd */
+  --warn-bg:#fef3c7;       /* .qs-1/2/3, #staleBanner */
+  --warn-fg:#78350f;       /* .qs-1/2/3, #staleBanner */
+  --good:#22c55e;          /* .dot.up */
+  --good-hot:#00c800;      /* .c-cq -- brighter green, decode text for a fresh CQ */
+  --good-bg:#dcfce7;       /* .pill-beacon-on, .qs-4/5 */
+  --good-fg:#14532d;       /* .pill-beacon-on, .qs-4/5 */
+  --info-bg:#dbeafe;       /* .qs-0 */
+  --info-fg:#1e3a8a;       /* .qs-0 */
+  --muted-strong:#787878;  /* .c-recent */
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]){
+    --accent:#7aa2f7;
+    --accent-border:#3b5998;
+    --danger:#f87171;
+    --danger-strong:#ff6b6b;
+    --bad:#f87171;
+    --warn:#fbbf24;
+    --warn-bg:#3a2a0a;
+    --warn-fg:#fcd34d;
+    --good:#4ade80;
+    --good-hot:#4ade80;
+    --info-bg:#1e2a4a;
+    --info-fg:#93c5fd;
+    --good-bg:#0f2e1a;
+    --good-fg:#86efac;
+    --muted-strong:#a3a3a3;
+  }
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --accent:#7aa2f7;
+  --accent-border:#3b5998;
+  --danger:#f87171;
+  --danger-strong:#ff6b6b;
+  --bad:#f87171;
+  --warn:#fbbf24;
+  --warn-bg:#3a2a0a;
+  --warn-fg:#fcd34d;
+  --good:#4ade80;
+  --good-hot:#4ade80;
+  --info-bg:#1e2a4a;
+  --info-fg:#93c5fd;
+  --good-bg:#0f2e1a;
+  --good-fg:#86efac;
+  --muted-strong:#a3a3a3;
+}
 body{font-family:system-ui;margin:0;padding:0 0 3.75rem;line-height:1.35;background:Canvas;color:CanvasText}
 h1{font-size:1.15rem;margin:0}
 label{display:block;font-size:.7rem;color:GrayText;text-transform:uppercase;letter-spacing:.04em;margin-top:0}
@@ -65,24 +147,24 @@ button:disabled{opacity:.45}
 #opSlotBarFill.halt{background:#c98a10}
 #opSlotBarCursor{position:absolute;top:-1px;width:5px;height:8px;border-radius:1px;background:#1478c8;transition:left .2s linear}
 .pill{display:inline-block;font-size:.7rem;font-weight:700;padding:.15rem .5rem;border-radius:999px}
-.pill-beacon-on{background:#dcfce7;color:#14532d}
+.pill-beacon-on{background:var(--good-bg);color:var(--good-fg)}
 .pill-beacon-off{background:color-mix(in srgb, GrayText 20%, transparent);color:GrayText}
 #opLive{display:flex;justify-content:space-between;align-items:center;font-family:ui-monospace,monospace;font-size:.75rem;color:GrayText;margin-top:.6rem}
 #opBandSel{width:auto;margin-top:0;padding:.25rem .4rem;font-size:.75rem;font-family:ui-monospace,monospace;background:Field;color:FieldText}
 #opDots{display:flex;gap:.9rem;margin-top:.6rem;font-size:.7rem;color:GrayText}
 .dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:.3rem;background:GrayText}
-.dot.up{background:#22c55e}
-.dot.bad{background:#ef4444}
+.dot.up{background:var(--good)}
+.dot.bad{background:var(--bad)}
 #clockDotWrap{cursor:pointer}
 #opConnRow button{font-size:.85rem}
 #opBeaconRow{display:flex;justify-content:space-between;align-items:center;margin-top:.6rem;font-size:.85rem}
 #beaconSel{width:auto;margin-top:0;padding:.25rem .4rem;font-size:.8rem;font-family:inherit}
 
 /* ---- operate: TX HUD ---- */
-#opTxHud{padding:.6rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent);background:color-mix(in srgb, #ef4444 8%, transparent)}
-#opTxHud .hd{font-size:.7rem;color:#b91c1c;text-transform:uppercase;letter-spacing:.04em;font-weight:700}
-#opTxHud.aborted{background:color-mix(in srgb, #f59e0b 14%, transparent)}
-#opTxHud.aborted .hd{color:#b45309}
+#opTxHud{padding:.6rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent);background:color-mix(in srgb, var(--bad) 8%, transparent)}
+#opTxHud .hd{font-size:.7rem;color:var(--danger);text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+#opTxHud.aborted{background:color-mix(in srgb, var(--warn) 14%, transparent)}
+#opTxHud.aborted .hd{color:var(--warn)}
 #opTxHudText{font-family:ui-monospace,monospace;font-weight:700;font-size:1rem;margin-top:.2rem;min-height:1.2em}
 #opTxHudMeta{font-family:ui-monospace,monospace;font-size:.8rem;color:GrayText;margin-top:.15rem}
 
@@ -93,9 +175,9 @@ button:disabled{opacity:.45}
 .qrow .call{font-family:ui-monospace,monospace;font-weight:700;flex:1}
 .qrow .retry{font-size:.7rem;color:GrayText;display:block}
 .qstate{font-size:.65rem;font-weight:700;padding:.15rem .4rem;border-radius:.3rem;white-space:nowrap}
-.qs-0{background:#dbeafe;color:#1e3a8a}                    /* CALLING */
-.qs-1,.qs-2,.qs-3{background:#fef3c7;color:#78350f}          /* REPLYING/REPORT/ROGER_REPORT */
-.qs-4,.qs-5{background:#dcfce7;color:#14532d}                /* ROGERS/SIGNOFF */
+.qs-0{background:var(--info-bg);color:var(--info-fg)}                    /* CALLING */
+.qs-1,.qs-2,.qs-3{background:var(--warn-bg);color:var(--warn-fg)}          /* REPLYING/REPORT/ROGER_REPORT */
+.qs-4,.qs-5{background:var(--good-bg);color:var(--good-fg)}                /* ROGERS/SIGNOFF */
 .qcancel{background:transparent;border:0;color:GrayText;font-size:1rem;padding:0 .2rem}
 #opQueueEmpty{padding:.6rem 1rem;font-size:.8rem;color:GrayText}
 
@@ -103,32 +185,52 @@ button:disabled{opacity:.45}
 #opDecodes{padding-bottom:.5rem}
 #opDecodes .hd{padding:.6rem 1rem .2rem;font-size:.7rem;color:GrayText;text-transform:uppercase;letter-spacing:.04em}
 .drow{padding:.4rem 1rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
-.drow .meta{font-family:ui-monospace,monospace;font-size:.7rem;color:GrayText;display:flex;justify-content:space-between}
+/* DT and Hz are fixed-width, left-justified columns (each column's leading
+   character shares an x down the whole decode list). Hz's column starts
+   wide -- centered in the row, not hugging DT -- per operator direction.
+   dB is the *last* column, 1fr so it claims all remaining row width, and
+   right-justified so it lands flush at the row's right margin instead of
+   bunching up right after Hz with dead space trailing it. */
+.drow .meta{font-family:ui-monospace,monospace;font-size:.7rem;color:GrayText;display:grid;grid-template-columns:15em 5em 1fr}
+.drow .meta span:last-child{text-align:right}
 .drow-body{display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;margin-top:.1rem}
 .replyBtn{flex:none;font-size:.7rem;padding:.15rem .5rem;background:ButtonFace;color:ButtonText;border:1px solid GrayText;border-radius:.3rem}
 .drow .txt{font-size:.85rem;flex:1;min-width:0}
 /* Same precedence as ui.cpp's draw_rx_line(): to_me red, else recent_qso gray,
    else cq green, else default text color. */
-.drow .txt.c-me{color:#ff0000;font-weight:700}
-.drow .txt.c-recent{color:#787878}
-.drow .txt.c-cq{color:#00c800}
-.drow .me{font-size:.65rem;font-weight:700;color:#1d4ed8;border:1px solid #93c5fd;border-radius:.3rem;padding:0 .3rem;margin-left:.3rem}
-.ddist{font-size:.7rem;color:GrayText;font-family:ui-monospace,monospace;margin-top:.1rem}
+.drow .txt.c-me{color:var(--danger-strong);font-weight:700}
+.drow .txt.c-recent{color:var(--muted-strong)}
+.drow .txt.c-cq{color:var(--good-hot)}
+.drow .me{font-size:.65rem;font-weight:700;color:var(--accent);border:1px solid var(--accent-border);border-radius:.3rem;padding:0 .3rem;margin-left:.3rem}
+/* Exactly two fields (their grid, our distance/bearing to them) -- plain
+   flex space-between is already stable full-width left/right with only
+   two items (no middle item to drift, unlike the 3-field .meta above). */
+.ddist{font-size:.7rem;color:GrayText;font-family:ui-monospace,monospace;margin-top:.1rem;display:flex;justify-content:space-between}
 .dslotdiv{border-top:2px dashed color-mix(in srgb, GrayText 45%, transparent);margin:.35rem 1rem}
 
 /* ---- log ---- */
 #logList{padding-bottom:.5rem}
 .day{padding:.6rem 1rem .2rem;font-size:.75rem;font-weight:700;color:GrayText;display:flex;justify-content:space-between;align-items:baseline;gap:.5rem}
-.dlink{font-weight:400;color:#1d4ed8;text-decoration:none}
+.dlink{font-weight:400;color:var(--accent);text-decoration:none}
 .dlink:active{opacity:.6}
 #logToolbar{display:flex;justify-content:space-between;align-items:center;padding:.6rem 1rem;font-size:.85rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
-.dlink-danger{color:#b91c1c}
+.dlink-danger{color:var(--danger)}
 .frow{padding:.5rem 1rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
-.frow-main{display:flex;justify-content:space-between;align-items:center}
+.frow-main>div:first-child{display:flex;align-items:center}
 .frow .call{font-family:ui-monospace,monospace;font-weight:700}
-.frow .grid{font-size:.65rem;font-weight:700;color:#1d4ed8;border:1px solid #93c5fd;border-radius:.3rem;padding:0 .3rem;margin-left:.3rem}
-.frow .sub{font-size:.7rem;color:GrayText;text-align:right}
+.frow .grid{font-size:.65rem;font-weight:700;color:var(--accent);border:1px solid var(--accent-border);border-radius:.3rem;padding:0 .3rem;margin-left:.3rem}
+/* Time and band+freq are fixed-width, left-justified columns; RST is the
+   *last* column, 1fr so it claims all remaining row width, right-justified
+   -- same rule as the decode-row meta fix above, applied consistently.
+   Column 2 is wide enough that "40m · 7.074 MHz" never wraps. */
+.frow .sub{display:grid;grid-template-columns:5.5em 11em 1fr;gap:.6em;font-family:ui-monospace,monospace;font-size:.7rem;color:GrayText;margin-top:.3rem;white-space:nowrap}
+.frow .sub span:last-child{text-align:right}
 .frow-extra{margin-top:.25rem;font-size:.7rem;color:GrayText;display:flex;flex-wrap:wrap;gap:.6rem}
+/* Same "last field right-justified, full width used" rule as the two grid
+   fixes above, applied to this flex row: the last badge (whichever one it
+   is -- comment when present, else distbearing) gets pushed to the right
+   margin, unless it's also the *only* child (DE grid alone stays left). */
+.frow-extra>:last-child:not(:first-child){margin-left:auto}
 .frow-extra .degrid{font-family:ui-monospace,monospace;font-weight:700}
 .frow-extra .distbearing{font-family:ui-monospace,monospace}
 .frow-extra .comment{font-style:italic;overflow-wrap:anywhere}
@@ -141,6 +243,9 @@ button:disabled{opacity:.45}
 .hd.sep{border-top:1px solid color-mix(in srgb, GrayText 30%, transparent);margin-top:.5rem}
 .setrow{padding:.5rem 1rem .55rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
 .setrow label{margin-top:0}
+#view-settings input,#view-settings select{
+  border:0;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent);
+  border-radius:0;padding:.3rem 0;font-size:.9rem;background:transparent;color:CanvasText}
 .setnote{padding:0 1rem;font-size:.8rem;color:GrayText;margin-top:0}
 .bandrow{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
 .bandcheck{display:flex;align-items:center;gap:.4rem;font-size:.85rem;text-transform:none;letter-spacing:normal;color:CanvasText;margin:0}
@@ -148,7 +253,7 @@ button:disabled{opacity:.45}
 .bandfreqwrap{display:flex;align-items:center;gap:.3rem;font-size:.8rem;color:GrayText;white-space:nowrap}
 .bandfreq{width:5.5rem;margin:0;padding:.3rem .4rem;font-size:.85rem}
 .bandfreq:disabled{opacity:.5}
-#staleBanner{background:#fef3c7;color:#78350f;padding:.5rem 1rem;font-size:.85rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem}
+#staleBanner{background:var(--warn-bg);color:var(--warn-fg);padding:.5rem 1rem;font-size:.85rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem}
 #staleBanner button{padding:.3rem .6rem;font-size:.8rem}
 .callink{text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
 .qrow .call,.frow .call{cursor:pointer;text-decoration:underline;text-decoration-style:dotted}
@@ -161,7 +266,7 @@ button:disabled{opacity:.45}
 .ci-row{padding:.5rem 0;border-top:1px solid color-mix(in srgb, GrayText 20%, transparent);font-size:.85rem}
 .ci-label{font-size:.7rem;color:GrayText;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.15rem}
 .ci-heard{font-family:ui-monospace,monospace;font-size:.75rem;padding:.15rem 0}
-#callInfoQrz{display:block;text-align:center;margin-top:.8rem;padding:.6rem;background:ButtonFace;color:#1d4ed8;border:1px solid GrayText;border-radius:.4rem;text-decoration:none;font-weight:700}
+#callInfoQrz{display:block;text-align:center;margin-top:.8rem;padding:.6rem;background:ButtonFace;color:var(--accent);border:1px solid GrayText;border-radius:.4rem;text-decoration:none;font-weight:700}
 </style>
 
 <div id=staleBanner hidden>
@@ -325,6 +430,15 @@ button:disabled{opacity:.45}
         <select id=dist_unit>
           <option value=km>Kilometers</option>
           <option value=mi>Miles</option>
+        </select>
+      </label>
+    </div>
+    <div class=setrow>
+      <label>Theme
+        <select id=theme_pref>
+          <option value=system>Match phone</option>
+          <option value=light>Light</option>
+          <option value=dark>Dark</option>
         </select>
       </label>
     </div>
@@ -999,6 +1113,7 @@ document.getElementById('protocol_mode').onchange = function () {
   buildBandRows(lastCfg, this.value === 'FT4');
 };
 document.getElementById('dist_unit').onchange = function () { setDistUnit(this.value); };
+document.getElementById('theme_pref').onchange = function () { setTheme(this.value); };
 document.getElementById('save').onclick = function () {
   saveConfig().catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 };
@@ -1380,7 +1495,7 @@ function renderDecodes() {
           (d.me ? '<span class=me>&rarr; ME</span>' : '') + '</div>' +
           (isReplyableDecode(d) ? '<button type=button class=replyBtn data-id="' + d.id + '">Reply</button>' : '') +
         '</div>' +
-        (distBearing ? '<div class=ddist>' + esc(theirGrid) + ' · ' + esc(distBearing) + '</div>' : '') +
+        (distBearing ? '<div class=ddist><span>' + esc(theirGrid) + '</span><span>' + esc(distBearing) + '</span></div>' : '') +
         '</div>';
     }).join('');
   }).join('');
@@ -1578,6 +1693,35 @@ function setDistUnit(v) {
   distUnit = v;
   try { localStorage.setItem(DIST_UNIT_KEY, v); } catch (e) { /* applies live even if not persisted */ }
   renderDecodes(); // cheap, already-in-memory data; Log rows already on screen don't retroactively update
+}
+
+// 'system' (default) tracks the phone's own prefers-color-scheme via CSS
+// alone -- no attribute set, so the @media block in <style> does the work.
+// 'light'/'dark' sets data-theme, which both suppresses that @media block
+// (:not([data-theme="light"])) and repeats the same dark values
+// unconditionally for 'dark' -- see the CSS custom-property comment at the
+// top of <style> for why the values live in two places on purpose.
+var THEME_KEY = 'microft8_theme_v1';
+var themePref = 'system'; // 'system' | 'light' | 'dark'
+function loadTheme() {
+  try {
+    var v = localStorage.getItem(THEME_KEY);
+    if (v === 'light' || v === 'dark') themePref = v;
+  } catch (e) { /* default stands */ }
+  applyTheme();
+}
+function setTheme(v) {
+  if (v !== 'system' && v !== 'light' && v !== 'dark') return;
+  themePref = v;
+  try { localStorage.setItem(THEME_KEY, v); } catch (e) { /* applies live even if not persisted */ }
+  applyTheme();
+}
+function applyTheme() {
+  if (themePref === 'system') {
+    document.documentElement.removeAttribute('data-theme');
+  } else {
+    document.documentElement.setAttribute('data-theme', themePref);
+  }
 }
 
 // "1,234 km 047°" or "723 mi 047°", per the operator's chosen distUnit --
@@ -1803,9 +1947,9 @@ function appendLogRows(file, rows, prependGroup) {
       '<div class=frow-main>' +
         '<div><span class="call callink" data-call="' + esc(q.call) + '">' + esc(q.call) + '</span>' +
         (q.grid ? '<span class=grid>' + esc(q.grid) + '</span>' : '') + '</div>' +
-        '<span class=sub>' + esc(q.time) + ' · ' + esc(q.band) +
-        (q.freq ? ' · ' + esc(q.freq) + ' MHz' : '') + ' · ' +
-        fmtRst(q.rst_sent) + '/' + fmtRst(q.rst_rcvd) + '</span>' +
+        '<span class=sub><span>' + esc(q.time) + '</span><span>' + esc(q.band) +
+        (q.freq ? ' · ' + esc(q.freq) + ' MHz' : '') + '</span><span>' +
+        fmtRst(q.rst_sent) + '/' + fmtRst(q.rst_rcvd) + '</span></span>' +
       '</div>' +
       (function () {
         var distBearing = (q.my_grid && q.grid) ? fmtDistBearing(q.my_grid, q.grid) : '';
@@ -2170,6 +2314,8 @@ loadStateCache();
 loadCallsignGridCache();
 loadDistUnit();
 document.getElementById('dist_unit').value = distUnit;
+loadTheme();
+document.getElementById('theme_pref').value = themePref;
 if (Object.keys(lastCfg).length) {
   setForm(lastCfg);
   applyOperateLive(lastCfg);
