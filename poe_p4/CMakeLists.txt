@@ -11,3 +11,12 @@ set(IDF_TARGET esp32p4)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(poe_p4)
+
+# Single flashable image, same shape as the ADV's own POST_BUILD merge step
+# (root CMakeLists.txt) but for esp32p4 -- a release should be able to ship
+# one file, not three offsets an operator has to know by hand.
+add_custom_command(TARGET app POST_BUILD
+    COMMAND ${PYTHON} -m esptool --chip esp32p4 merge_bin -o "poe_p4_merged.bin" @flash_args
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    COMMENT "Generating merged image poe_p4_merged.bin"
+)

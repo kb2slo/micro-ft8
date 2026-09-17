@@ -230,6 +230,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           path: |
+            poe_p4/build/poe_p4_merged.bin
             poe_p4/build/poe_p4.bin
             poe_p4/build/bootloader/bootloader.bin
             poe_p4/build/partition_table/partition-table.bin
@@ -398,7 +399,7 @@ jobs:
 
   release:
     name: GitHub Release (tag)
-    needs: [host-tests, firmware]
+    needs: [host-tests, firmware, poe_p4-firmware]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -409,6 +410,11 @@ jobs:
           name: MicroFT8-Cardputer-ADV
           path: dist
 
+      - uses: actions/download-artifact@v7
+        with:
+          name: poe_p4-firmware
+          path: dist-poe-p4
+
       - name: Name tagged binaries
         run: |
           tag="${GITHUB_REF_NAME}"
@@ -418,14 +424,20 @@ jobs:
           cp "dist/${bin}" "dist/MicroFT8-${tag}-Merged.bin"
           sha256sum "dist/MicroFT8-${tag}-Merged.bin" | tee "dist/MicroFT8-${tag}-Merged.bin.sha256"
 
+          test -f "dist-poe-p4/poe_p4_merged.bin"
+          cp "dist-poe-p4/poe_p4_merged.bin" "dist/MicroFT8-PoE-P4-${tag}-Merged.bin"
+          sha256sum "dist/MicroFT8-PoE-P4-${tag}-Merged.bin" | tee "dist/MicroFT8-PoE-P4-${tag}-Merged.bin.sha256"
+
       - uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           files: |
             dist/MicroFT8-${{ github.ref_name }}-Merged.bin
             dist/MicroFT8-${{ github.ref_name }}-Merged.bin.sha256
+            dist/MicroFT8-PoE-P4-${{ github.ref_name }}-Merged.bin
+            dist/MicroFT8-PoE-P4-${{ github.ref_name }}-Merged.bin.sha256
           body: |
-            Flash the merged image at `0x0` (full 8 MB image, custom FATFS partition table).
+            Cardputer ADV: flash the merged image at `0x0` (full 8 MB image, custom FATFS partition table).
 
             ```
             esptool.py --chip esp32s3 write_flash 0x0 MicroFT8-${{ github.ref_name }}-Merged.bin
@@ -433,9 +445,15 @@ jobs:
 
             First boot may format the FATFS partition.
 
+            M5Stack Unit PoE-P4 (U213): RFC 0005 Phase 0 boot-only skeleton -- no radio, no UI, no decode yet. Flash at `0x0` over the USB-C port next to the RJ45 (labeled `USB-C PROG & OTG`).
+
+            ```
+            esptool.py --chip esp32p4 write_flash 0x0 MicroFT8-PoE-P4-${{ github.ref_name }}-Merged.bin
+            ```
+
   release-main:
     name: GitHub Release (main)
-    needs: [host-tests, firmware]
+    needs: [host-tests, firmware, poe_p4-firmware]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -457,6 +475,11 @@ jobs:
           name: MicroFT8-Cardputer-ADV
           path: dist
 
+      - uses: actions/download-artifact@v7
+        with:
+          name: poe_p4-firmware
+          path: dist-poe-p4
+
       # Self-identifying on disk: several of these land in one Downloads folder
       # during a bench session, where a fixed name plus "(3)" says nothing.
       # Date is the *commit* date in UTC, not the build date, so rebuilding a
@@ -475,6 +498,12 @@ jobs:
           echo "SHORT_SHA=${short}" >> "$GITHUB_ENV"
           echo "HASH_BIN=${bin}" >> "$GITHUB_ENV"
           echo "ASSET=${asset}" >> "$GITHUB_ENV"
+
+          test -f "dist-poe-p4/poe_p4_merged.bin"
+          asset_p4="${day}-microft8-poe-p4-${short}.bin"
+          cp "dist-poe-p4/poe_p4_merged.bin" "dist/${asset_p4}"
+          sha256sum "dist/${asset_p4}" | tee "dist/${asset_p4}.sha256"
+          echo "ASSET_P4=${asset_p4}" >> "$GITHUB_ENV"
 
       # The asset name changes every merge, so uploads would otherwise pile up
       # on this one rolling release forever. Clear the old ones; the release
@@ -499,18 +528,24 @@ jobs:
           files: |
             dist/${{ env.ASSET }}
             dist/${{ env.ASSET }}.sha256
+            dist/${{ env.ASSET_P4 }}
+            dist/${{ env.ASSET_P4 }}.sha256
             dist/BUILD.txt
           body: |
             Rolling firmware from `main`, rebuilt on every merge that can change the binary. Not a versioned release — see `docs/RELEASE_PROCESS.md`.
 
             - Commit: `${{ github.sha }}`
-            - Build image: `${{ env.HASH_BIN }}`
-            - Download: `${{ env.ASSET }}`
 
-            Flash at `0x0` (full 8 MB image, custom FATFS partition table).
+            **Cardputer ADV** — build image: `${{ env.HASH_BIN }}`, download: `${{ env.ASSET }}`. Flash at `0x0` (full 8 MB image, custom FATFS partition table).
 
             ```
             esptool.py --chip esp32s3 write_flash 0x0 ${{ env.ASSET }}
             ```
 
             First boot may format the FATFS partition.
+
+            **M5Stack Unit PoE-P4 (U213)** — download: `${{ env.ASSET_P4 }}`. RFC 0005 Phase 0 boot-only skeleton — no radio, no UI, no decode yet. Flash at `0x0` over the USB-C port next to the RJ45 (labeled `USB-C PROG & OTG`).
+
+            ```
+            esptool.py --chip esp32p4 write_flash 0x0 ${{ env.ASSET_P4 }}
+            ```

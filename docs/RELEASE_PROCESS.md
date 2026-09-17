@@ -5,14 +5,22 @@ file is the working agreement, this one is what CI publishes and what a human mu
 
 Two paths, both defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). Nothing else publishes.
 
-| Path | Trigger | Job | Tag | Asset |
-| --- | --- | --- | --- | --- |
-| Rolling | push to `main` that can change the binary | `release-main` | `continuous`, force-moved every run | `YYYYMMDD-microft8-<commit>.bin` |
-| Versioned | push of a tag matching `v*` | `release` | the tag you pushed, immovable | `MicroFT8-<tag>-Merged.bin` |
+| Path | Trigger | Job | Tag | ADV asset | PoE-P4 asset |
+| --- | --- | --- | --- | --- | --- |
+| Rolling | push to `main` that can change the binary | `release-main` | `continuous`, force-moved every run | `YYYYMMDD-microft8-<commit>.bin` | `YYYYMMDD-microft8-poe-p4-<commit>.bin` |
+| Versioned | push of a tag matching `v*` | `release` | the tag you pushed, immovable | `MicroFT8-<tag>-Merged.bin` | `MicroFT8-PoE-P4-<tag>-Merged.bin` |
 
-Both publish the same merged image — flash at `0x0`, 8 MB, custom FATFS partition table — under different
-names. The firmware artifact is skipped entirely for docs-only commits (the `changes` path filter, D7), so a
-roadmap-only merge neither rebuilds nor re-tags.
+Both publish two merged images now — the ADV (esp32s3, 0x0, 8 MB, custom FATFS partition table) and the
+M5Stack Unit PoE-P4 (esp32p4, 0x0, ESP-IDF's own default partition table — `poe_p4/` has no custom one yet) —
+under paired names. The firmware
+artifact is skipped entirely for docs-only commits (the `changes` path filter, D7), so a roadmap-only merge
+neither rebuilds nor re-tags either binary.
+
+**The PoE-P4 asset carries no version identity of its own yet.** RFC 0005 Phase 0 (`poe_p4/`) is a boot-only
+skeleton with none of `gen_build_identity.cmake`'s `rel`/`dev` machinery below — every release, rolling or
+tagged, ships whatever `poe_p4/` happens to build to at that commit, with no version string burned into the
+image and no `Micro-FT8 dev <sha>`-style device display (it has no display). That is honest for what exists
+today, not a gap to silently work around — revisit once the port has something on-device worth versioning.
 
 ## The rolling `continuous` release
 
