@@ -7,9 +7,6 @@ idf_component_register(
          "audio/audio_source.cpp"
          "time/gps.cpp"
          "porta.cpp"
-         "radio/radio_control.cpp"
-         "radio/radio_control_qmx.cpp"
-         "radio/radio_control_qdx.cpp"
          "audio/ft8_audio_pipeline.cpp"
          "audio/stream_uac.cpp"
          "audio/dds_q15.cpp"
@@ -31,7 +28,7 @@ idf_component_register(
          "time/external_rtc.cpp"
          "storage/storage_service.cpp"
     INCLUDE_DIRS "." "radio" "audio" "storage" "time"
-    REQUIRES ui M5Unified M5GFX M5Cardputer board_cardputer_adv ft8_lib sidekick_flasher porta_proto
+    REQUIRES ui M5Unified M5GFX M5Cardputer board_cardputer_adv ft8_lib sidekick_flasher porta_proto radio_control
              usb_host_uac usb_host_cdc_acm usb espressif__esp_tinyusb
              bt nvs_flash efuse esp_partition esp_hw_support
              driver esp_driver_i2c fatfs sdmmc wear_levelling

@@ -6,6 +6,7 @@
 
 #include "esp_err.h"
 #include "ft8_audio_pipeline.h"
+#include "radio_transport.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,19 +44,8 @@ void uac_stop(void);
 esp_err_t uac_host_ensure_started(void);
 esp_err_t uac_ensure_host_uninstalled(void);
 
-
-bool cat_cdc_ready(void);
-esp_err_t cat_cdc_send(const uint8_t* data, size_t len, uint32_t timeout_ms);
-void cat_cdc_reset_parsed_meters(void);
-bool cat_cdc_get_parsed_meters(int* pc_tenths, int* sw_hundredths);
-
-bool uac_tx_begin_cpfsk(float base_hz,
-                        const uint8_t* symbols,
-                        size_t symbol_count,
-                        float tone_spacing_hz,
-                        uint32_t samples_per_symbol);
-bool uac_tx_begin_tune(float tone_hz);
-void uac_tx_end(void);
+// cat_cdc_*/uac_tx_* declared in radio_transport.h; this file provides the
+// ADV's implementation (stream_uac.cpp) but does not redeclare the interface.
 
 #ifdef __cplusplus
 }

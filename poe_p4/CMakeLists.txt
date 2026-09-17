@@ -9,6 +9,12 @@ cmake_minimum_required(VERSION 3.16)
 # See docs/rfcs/0005-p4-poe-headless-port.md ("RFC 0005"), Phase 0.
 set(IDF_TARGET esp32p4)
 
+# Shared with the ADV rather than duplicated (RFC 0005 §5, RFC 0002 §5.1's
+# named exception for components/ across more than one idf.py project --
+# the same pattern sidekick already uses for porta_proto). Only the one
+# component this project actually needs, not the whole components/ tree.
+set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/../components/radio_control")
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(poe_p4)
 
