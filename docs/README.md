@@ -96,6 +96,8 @@ The operator reviews in chat, then green-lights each step. A good previous turn 
 
 4. **Commit / push only when asked.** Local edits are fine when they asked for the work. `git commit` waits until they have seen the plan or diff and said to commit. `git push origin` waits until they said to push. “Commit and push” is both, using the agreed message. Do not treat “ship on main”, a green host test, or “local commits are fine” as standing permission.
 
+   **A scope instruction is not a push instruction, even mid-session.** Field-found 2026-09-17: after several rounds of the operator explicitly saying "commit and push" earlier in one long session, an agent then received "yes fix it now" — approval to make a specific correction — and pushed it without being asked, reasoning from the session's *pattern* rather than that turn's actual words. The rule above already said not to do this ("a good previous turn is not permission to skip a gate," restated here because it still happened): each push needs its own explicit trigger in that turn — "push", "commit and push", or equivalent — not inferred from momentum, from how the last few turns went, or from the change being correct and well-tested. Being right about the fix does not retroactively authorize the push.
+
 5. **Undo with git, not a second edit.** Do not invert your last turn by re-editing files. That is slow and easy to get wrong when other uncommitted work is in the same tree.
    - Already a commit: `git revert` (or drop a *local, unpushed* commit only if they asked).
    - Uncommitted, and those paths contain *only* the work to undo: `git restore -- <paths>`.
