@@ -39,6 +39,7 @@ jobs:
               - 'main/**'
               - 'components/**'
               - 'sidekick/**'
+              - 'poe_p4/**'
               - 'CMakeLists.txt'
               - 'sdkconfig'
               - 'sdkconfig.defaults'
@@ -197,6 +198,41 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           path: components/sidekick_flasher/target_firmware/
+
+  poe_p4-firmware:
+    name: PoE-P4 (ESP32-P4)
+    needs: changes
+    if: startsWith(github.ref, 'refs/tags/v') || needs.changes.outputs.firmware == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      # RFC 0005 Phase 0: every build produces both the ADV (esp32s3) and
+      # PoE-P4 (esp32p4) binaries, not one-or-the-other (docs/rfcs/0005-p4-poe-headless-port.md
+      # §7) -- this job is that requirement, not an opt-in target. Separate
+      # idf.py project from both main/ and sidekick/ (poe_p4/CMakeLists.txt
+      # pins esp32p4), so it needs no MICROFT8_GIT_SHA/build-identity plumbing
+      # of its own yet. No radio, no UI: boot-only skeleton for now.
+      - name: Build poe_p4 with ESP-IDF 5.5.1
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5.1
+          target: esp32p4
+          path: poe_p4
+          command: idf.py build
+
+      - name: Upload poe_p4 firmware
+        uses: actions/upload-artifact@v6
+        with:
+          name: poe_p4-firmware
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            poe_p4/build/poe_p4.bin
+            poe_p4/build/bootloader/bootloader.bin
+            poe_p4/build/partition_table/partition-table.bin
 
   firmware:
     name: Firmware (ESP32-S3)
