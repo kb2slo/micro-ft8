@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 #include <functional>
-#include "ui.h"
+#include "decode_types.h"
 
 // Queue size: active + inactive entries.
 constexpr int AUTOSEQ_MAX_QUEUE = 30;
