@@ -152,6 +152,12 @@ every agent and every operator can see them — see "Memory lives in this repo" 
   row IDs are fine bare when the surrounding text already says what the check does. Inside `ROADMAP.md` and
   commit messages the bare ID is correct — this is about chat. Stated 2026-09-10.
 
+- **Announce a field/bench test in chat, not just as a `TEST_PLAN.md` row.** When a change needs an
+  operator-run check — anything landing in `TEST_PLAN.md`'s Pending table per this doc's verifiability
+  tiers — say so directly in the same chat turn: what to flash/press/run, and what result confirms it
+  passed. The doc row is the durable record; a row nobody was told about in chat is easy to leave unrun,
+  since the operator does not necessarily re-read that file after every turn. Stated 2026-09-16.
+
 - **Prose is authoritative; a diagram is derived.** Never let a fact live only in a diagram. Agents read
   the prose and may not reconstruct a constraint that exists only as an arrow, and a diagram that is the sole
   source of something goes stale without anyone noticing. Where a diagram earns its place, write it as
