@@ -6,6 +6,7 @@ CFLAGS   = -DHOST_MOCK -g -Wall
 # host_mock first so mock esp_log.h shadows the real one
 INCLUDES = -I. -I../main -I../main/radio -I../main/audio -I../main/storage -I../main/time \
            -I../components/ui/include \
+           -I../components/radio_control/include \
            -I../components/ft8_lib -I../components/ft8_lib/vendor \
            -I../components/ft8_lib/vendor/ft8 \
            -I../components/board_cardputer_adv/include
