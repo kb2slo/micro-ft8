@@ -8,12 +8,11 @@ INCLUDES = -I. -I../main -I../main/radio -I../main/audio -I../main/storage -I../
            -I../components/ui/include \
            -I../components/decode_types/include \
            -I../components/radio_control/include \
-           -I../components/autoseq/include \
            -I../components/ft8_lib -I../components/ft8_lib/vendor \
            -I../components/ft8_lib/vendor/ft8 \
            -I../components/board_cardputer_adv/include
 
-CORE_SRC   = ../components/autoseq/autoseq.cpp
+CORE_SRC   = ../main/autoseq.cpp
 MOCK_SRC   = host_main.cpp host_mocks.cpp json_parser.cpp
 # FT8 encode sources (uncomment to link real encoder):
 # FT8_SRC  = ../components/ft8_lib/vendor/ft8/encode.c ../components/ft8_lib/vendor/ft8/message.c \
@@ -63,11 +62,11 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET
 $(TARGET): $(OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
-UNIQUE_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_unique_callsign.o
+UNIQUE_OBJ = ../main/autoseq.o host_mocks.o test_unique_callsign.o
 $(UNIQUE_TARGET): $(UNIQUE_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
-CANCEL_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_beacon_cancel.o
+CANCEL_OBJ = ../main/autoseq.o host_mocks.o test_beacon_cancel.o
 $(CANCEL_TARGET): $(CANCEL_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 

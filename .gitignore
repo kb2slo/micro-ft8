@@ -6,7 +6,6 @@
 *.map
 idf_py_*
 main/*.o
-components/autoseq/*.o
 
 # ESP-IDF managed components (auto-fetched by idf.py build)
 /managed_components/
