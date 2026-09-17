@@ -222,7 +222,7 @@ bool porta_proto_parse_decode(const porta_frame_t *f, porta_decode_event_t *out)
 // and DECODE above.
 //
 // QUEUE_ENTRY reports one autoseq context. `state` is the wire form of
-// AutoseqState (main/autoseq.h): 0=CALLING, 1=REPLYING, 2=REPORT,
+// AutoseqState (components/autoseq/include/autoseq.h): 0=CALLING, 1=REPLYING, 2=REPORT,
 // 3=ROGER_REPORT, 4=ROGERS, 5=SIGNOFF, 6=IDLE -- and IDLE *is* the removal
 // signal, since that is already what the state means on the host (evicted by
 // sort_and_clean). No separate "removed" flag is needed.

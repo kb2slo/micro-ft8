@@ -3,7 +3,6 @@ idf_component_register(
          "storage/copy_to_sd.cpp"
          "storage/file_list_worker.cpp"
          "storage/station_save_worker.cpp"
-         "autoseq.cpp"
          "audio/audio_source.cpp"
          "time/gps.cpp"
          "porta.cpp"
@@ -28,7 +27,7 @@ idf_component_register(
          "time/external_rtc.cpp"
          "storage/storage_service.cpp"
     INCLUDE_DIRS "." "radio" "audio" "storage" "time"
-    REQUIRES ui M5Unified M5GFX M5Cardputer board_cardputer_adv ft8_lib sidekick_flasher porta_proto radio_control decode_types
+    REQUIRES ui M5Unified M5GFX M5Cardputer board_cardputer_adv ft8_lib sidekick_flasher porta_proto radio_control decode_types autoseq
              usb_host_uac usb_host_cdc_acm usb espressif__esp_tinyusb
              bt nvs_flash efuse esp_partition esp_hw_support
              driver esp_driver_i2c fatfs sdmmc wear_levelling
