@@ -318,7 +318,7 @@ static void cdc_try_open(void) {
             s_cdc_iface = 0;
             ESP_LOGI(TAG, "CDC-ACM opened (QMX iface 0, VID 0x%04x PID 0x%04x)", k_qmx_vid, k_qmx_pid);
             cdc_acm_host_desc_print(handle);
-            g_cdc_initial_sync_pending = true;  // main loop will auto-sync VFO + RX mode
+            decode_tx_state_set_cdc_initial_sync_pending(true);  // main loop will auto-sync VFO + RX mode
             return;
         } else if (err != ESP_ERR_NOT_FOUND) {
             ESP_LOGW(TAG, "CDC open QMX iface 0 failed: %s", esp_err_to_name(err));
@@ -335,7 +335,7 @@ static void cdc_try_open(void) {
             s_cdc_iface = s_cdc_iface_hint;
             ESP_LOGI(TAG, "CDC-ACM opened (hint iface %d)", s_cdc_iface_hint);
             cdc_acm_host_desc_print(handle);
-            g_cdc_initial_sync_pending = true;  // main loop will auto-sync VFO + RX mode
+            decode_tx_state_set_cdc_initial_sync_pending(true);  // main loop will auto-sync VFO + RX mode
             return;
         } else {
             ESP_LOGW(TAG, "CDC open hint iface %d failed: %s",
@@ -352,7 +352,7 @@ static void cdc_try_open(void) {
             s_cdc_iface = iface;
             ESP_LOGI(TAG, "CDC-ACM opened (iface %d)", iface);
             cdc_acm_host_desc_print(handle);
-            g_cdc_initial_sync_pending = true;  // main loop will auto-sync VFO + RX mode
+            decode_tx_state_set_cdc_initial_sync_pending(true);  // main loop will auto-sync VFO + RX mode
             break;
         } else if (err != ESP_ERR_NOT_FOUND) {
             ESP_LOGW(TAG, "CDC open iface %d failed: %s", iface, esp_err_to_name(err));
@@ -690,7 +690,7 @@ static void uac_lib_task(void* arg) {
 
                     s_mic_handle = handle;
                     s_state = UAC_STATE_STREAMING;
-                    g_streaming = true;
+                    decode_tx_state_set_streaming(true);
                     snprintf(s_status_string, sizeof(s_status_string),
                              "Streaming %s %luk/%u/%u",
                              profile_name(s_profile),
@@ -880,7 +880,7 @@ static void stream_uac_task(void* arg) {
     };
     ft8_audio_pipeline_run(&pipe_cfg);
 
-    g_streaming = false;
+    decode_tx_state_set_streaming(false);
     s_stream_task_handle = NULL;
     ESP_LOGI(TAG, "Audio streaming task stopped");
     vTaskDelete(NULL);
@@ -1066,7 +1066,7 @@ void uac_stop(void) {
 
     ESP_LOGI(TAG, "Stopping UAC (host stays up)");
     s_stop_requested = true;
-    g_streaming = false;
+    decode_tx_state_set_streaming(false);
     cdc_close();
 
     if (s_event_queue) {

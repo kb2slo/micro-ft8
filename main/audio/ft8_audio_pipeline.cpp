@@ -70,8 +70,8 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
         .f_min = 200.0f,
         .f_max = 2900.0f,
         .sample_rate = FT8_SAMPLE_RATE,
-        .time_osr = g_time_osr,
-        .freq_osr = g_freq_osr,
+        .time_osr = decode_tx_state_get_time_osr(),
+        .freq_osr = decode_tx_state_get_freq_osr(),
         .protocol = g_protocol->protocol_id
     };
 
@@ -154,8 +154,8 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                     ESP_LOGD(tag, "Slot boundary %lld->%lld blocks=%d wf=%d",
                              (long long)slot_idx, (long long)now_idx,
                              slot_blocks, mon.wf.num_blocks);
-                    if (slot_idx > g_decode_applied_slot_idx) {
-                        g_decode_applied_slot_idx = slot_idx;
+                    if (slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
+                        decode_tx_state_set_decode_applied_slot_idx(slot_idx);
                     }
                     slot_idx = now_idx;
                     slot_start_ms = slot_idx * slot_ms;
@@ -167,20 +167,20 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                            mon.wf.num_blocks >= g_protocol->total_symbols) {
                     ESP_LOGD(tag, "Triggering decode at slot %lld blocks=%d wf=%d",
                              (long long)slot_idx, slot_blocks, mon.wf.num_blocks);
-                    if (g_tx_active || g_was_txing) {
+                    if (decode_tx_state_get_tx_active() || decode_tx_state_get_was_txing()) {
                         ESP_LOGD(tag, "Skipping decode on TX slot %lld",
                                  (long long)slot_idx);
-                        if (slot_idx > g_decode_applied_slot_idx) {
-                            g_decode_applied_slot_idx = slot_idx;
+                        if (slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
+                            decode_tx_state_set_decode_applied_slot_idx(slot_idx);
                         }
-                    } else if (g_decode_enabled) {
-                        g_decode_slot_idx = slot_idx;
-                        g_decode_in_progress = true;
+                    } else if (decode_tx_state_get_decode_enabled()) {
+                        decode_tx_state_set_decode_slot_idx(slot_idx);
+                        decode_tx_state_set_decode_in_progress(true);
                         decode_monitor_results(&mon, &mon_cfg, false);
                     } else {
                         ESP_LOGD(tag, "Decode paused; skipping");
-                        if (slot_idx > g_decode_applied_slot_idx) {
-                            g_decode_applied_slot_idx = slot_idx;
+                        if (slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
+                            decode_tx_state_set_decode_applied_slot_idx(slot_idx);
                         }
                     }
                     monitor_reset(&mon);

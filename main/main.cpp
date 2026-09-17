@@ -14,6 +14,7 @@ extern "C" {
 
 #include "board_power.h"
 #include "build_identity.h"
+#include "callsign_hashtable.h"
 #include "ui.h"
 #include "tx_hud_banner.h"
 #include <vector>
@@ -145,188 +146,6 @@ static bool storage_is_active_log_name(const std::string& name_or_path) {
 
 // .adi files are union-merged onto the SD archive; other files overwrite.
 
-// 128 entries × 16 bytes = 2 KB of BSS. 256 was the original size but
-// well over typical working set (FT8 rarely sees >50 unique hashed
-// callsigns in an active period; the aging + eviction logic keeps it
-// fresh). Reducing by 2 KB gives the USB DMA buffer (4608 bytes) a
-// Keep this compact so USB host setup retains contiguous heap.
-// fragmentation.
-#define CALLSIGN_HASHTABLE_SIZE 128
-
-static struct
-{
-    char callsign[12]; /// Up to 11 symbols of callsign + trailing zero
-    uint32_t hash;     /// 8 MSBs = age, 22 LSBs = hash value
-} callsign_hashtable[CALLSIGN_HASHTABLE_SIZE];
-
-static int callsign_hashtable_size;
-
-void hashtable_init(void)
-{
-    callsign_hashtable_size = 0;
-    memset(callsign_hashtable, 0, sizeof(callsign_hashtable));
-}
-
-// Increment age for all existing entries (saturate at 255). Call once per slot.
-static void hashtable_age_all(void)
-{
-    for (int i = 0; i < CALLSIGN_HASHTABLE_SIZE; ++i)
-    {
-        if (callsign_hashtable[i].callsign[0] != '\0')
-        {
-            uint8_t age = (uint8_t)(callsign_hashtable[i].hash >> 24);
-            if (age < 255)
-            {
-                age++;
-                callsign_hashtable[i].hash =
-                    ((uint32_t)age << 24) | (callsign_hashtable[i].hash & 0x003FFFFFu);
-            }
-        }
-    }
-}
-
-// Trim the hash table if it grows too large by evicting the oldest entries
-void hashtable_trim_size(int max_size)
-{
-    while (callsign_hashtable_size > max_size)
-    {
-        int oldest_idx = -1;
-        uint8_t oldest_age = 0;
-
-        for (int i = 0; i < CALLSIGN_HASHTABLE_SIZE; ++i)
-        {
-            if (callsign_hashtable[i].callsign[0] == '\0')
-                continue;
-
-            uint8_t age = (uint8_t)(callsign_hashtable[i].hash >> 24);
-            if (oldest_idx < 0 || age > oldest_age)
-            {
-                oldest_idx = i;
-                oldest_age = age;
-            }
-        }
-
-        if (oldest_idx < 0)
-            break;
-
-        LOG(LOG_INFO, "Hashtable trim: removing oldest [%s], age=%u\n",
-            callsign_hashtable[oldest_idx].callsign, (unsigned)oldest_age);
-
-        callsign_hashtable[oldest_idx].callsign[0] = '\0';
-        callsign_hashtable[oldest_idx].hash = 0;
-        callsign_hashtable_size--;
-    }
-}
-
-void hashtable_add(const char* callsign, uint32_t hash)
-{
-    if (!callsign || !callsign[0])
-        return;
-
-    uint32_t hash_payload = hash & 0x003FFFFFu;   // 22-bit value
-    uint16_t hash10 = (hash_payload >> 12) & 0x03FFu;
-    int idx = (hash10 * 23) % CALLSIGN_HASHTABLE_SIZE;
-    int start_idx = idx;
-
-    while (callsign_hashtable_size >= CALLSIGN_HASHTABLE_SIZE)
-    {
-        hashtable_trim_size(CALLSIGN_HASHTABLE_SIZE - 50);
-        if (callsign_hashtable_size >= CALLSIGN_HASHTABLE_SIZE)
-        {
-            LOG(LOG_INFO, "Hash table full; ignoring new callsign [%s]\n", callsign);
-            return;
-        }
-    }
-
-    // Linear probing: must match lookup logic
-    while (callsign_hashtable[idx].callsign[0] != '\0')
-    {
-        uint32_t existing_hash = callsign_hashtable[idx].hash & 0x003FFFFFu;
-
-        if ((existing_hash == hash_payload) &&
-            (strcmp(callsign_hashtable[idx].callsign, callsign) == 0))
-        {
-            // Refresh age to 0, keep same callsign/hash
-            callsign_hashtable[idx].hash = hash_payload;
-            LOG(LOG_DEBUG, "Found duplicate [%s], refreshed age\n", callsign);
-            return;
-        }
-
-        if (existing_hash == hash_payload)
-        {
-            // Same 22-bit hash but different callsign: replace old one
-            LOG(LOG_INFO, "Replacing [%s] with [%s] on same hash\n",
-                callsign_hashtable[idx].callsign, callsign);
-
-            strncpy(callsign_hashtable[idx].callsign, callsign, 11);
-            callsign_hashtable[idx].callsign[11] = '\0';
-            callsign_hashtable[idx].hash = hash_payload;
-            return;
-        }
-
-        idx = (idx + 1) % CALLSIGN_HASHTABLE_SIZE;
-        if (idx == start_idx)
-        {
-            LOG(LOG_INFO, "Hash table probe wrapped; abort insert for [%s]\n", callsign);
-            return;
-        }
-    }
-
-    strncpy(callsign_hashtable[idx].callsign, callsign, 11);
-    callsign_hashtable[idx].callsign[11] = '\0';
-    callsign_hashtable[idx].hash = hash_payload;  // age=0
-    callsign_hashtable_size++;
-}
-
-bool hashtable_lookup(ftx_callsign_hash_type_t hash_type, uint32_t hash, char* callsign)
-{
-    if (!callsign)
-        return false;
-
-    uint8_t hash_shift =
-        (hash_type == FTX_CALLSIGN_HASH_10_BITS) ? 12 :
-        (hash_type == FTX_CALLSIGN_HASH_12_BITS) ? 10 : 0;
-
-    // Derive the same start bucket from the top 10 bits of the 22-bit hash.
-    // For 10-bit lookup: hash is already the top 10 bits.
-    // For 12-bit lookup: top 10 bits are hash >> 2.
-    // For 22-bit lookup: top 10 bits are hash >> 12.
-    uint16_t hash10 =
-        (hash_type == FTX_CALLSIGN_HASH_10_BITS) ? (hash & 0x03FFu) :
-        (hash_type == FTX_CALLSIGN_HASH_12_BITS) ? ((hash >> 2) & 0x03FFu) :
-                                                   ((hash >> 12) & 0x03FFu);
-
-    int idx = (hash10 * 23) % CALLSIGN_HASHTABLE_SIZE;
-    // Important: entries can be deleted by hashtable_trim_size(), which creates
-    // empty holes in probe chains. Stopping at the first empty slot can miss
-    // valid entries that were inserted later in that chain. Scan the full table.
-    for (int probe = 0; probe < CALLSIGN_HASHTABLE_SIZE; ++probe)
-    {
-        int scan_idx = (idx + probe) % CALLSIGN_HASHTABLE_SIZE;
-        if (callsign_hashtable[scan_idx].callsign[0] == '\0')
-            continue;
-
-        uint32_t existing_hash = callsign_hashtable[scan_idx].hash & 0x003FFFFFu;
-
-        if ((existing_hash >> hash_shift) == hash)
-        {
-            strcpy(callsign, callsign_hashtable[scan_idx].callsign);
-
-            // Reset age to 0 on successful hit, preserve 22-bit payload.
-            callsign_hashtable[scan_idx].hash = existing_hash;
-            return true;
-        }
-    }
-
-    callsign[0] = '\0';
-    return false;
-}
-
-static ftx_callsign_hash_interface_t hash_if = {
-    .lookup_hash = hashtable_lookup,
-    .save_hash = hashtable_add
-};
-
 static std::string normalize_call_token(std::string s) {
   // trim <> wrappers used for hashed nonstd calls
   if (!s.empty() && s.front() == '<') s.erase(s.begin());
@@ -380,17 +199,6 @@ static int tx_page = 0;
 // as a static RxDecodeEntry array inside ui.cpp, populated via
 // ui_set_rx_list_static() and read back via ui_get_rx_entry()/ui_get_rx_count().
 static volatile bool g_tx_view_dirty = false;  // Set when autoseq state changes
-int64_t g_decode_slot_idx = -1; // set at decode trigger to tag RX lines with slot parity
-// Monotonic index of the most recent slot whose decode has been fully applied to
-// autoseq state (or whose audio was never decoded, e.g. paused/skipped). Enforces
-// the sequential invariant "TX in slot N is blocked until decode for slot N-1 is
-// applied." Written by stream_uac_task on core 1, read by check_slot_boundary on
-// core 0. Initialized to -1 so the first TX after boot isn't blocked.
-volatile int64_t g_decode_applied_slot_idx = -1;
-
-// Set after CDC-ACM opens during an explicit user connection. The main loop
-// consumes it once to synchronize the selected band and mode.
-volatile bool g_cdc_initial_sync_pending = false;
 
 // Deferred-save flag. main.cpp owns storage; callers only request
 // a deferred save.
@@ -402,8 +210,6 @@ static volatile bool g_config_save_pending = false;
 // Non-static: un-staticked for core_api.cpp (54fc986), which is gone (B30).
 static volatile bool g_qso_xmit = false;        // TX is pending
 static volatile int g_target_slot_parity = 0;   // 0=even, 1=odd - parity of slot to TX on
-volatile bool g_was_txing = false;              // We were transmitting (for tick timing)
-volatile bool g_decode_in_progress = false; // Block TX trigger while decoding
 static int g_last_slot_parity = -1;             // For slot boundary detection (just parity, like reference)
 
 static volatile uint32_t g_perf_idle_count[2] = {0, 0};
@@ -575,9 +381,6 @@ static std::string g_grid_saved_manual = "CM97";
 static bool g_grid_from_gps = false;
 static bool g_time_synced_from_gps = false;
 static std::string g_grid_gps_display8;
-bool g_decode_enabled = true;
-int g_time_osr = 2;
-int g_freq_osr = 1;
 static OffsetSrc g_offset_src = OffsetSrc::RANDOM;
 static RadioType g_radio = RadioType::QMX;       
 static int g_gps_baud = 115200;
@@ -596,7 +399,6 @@ static std::string normalize_grid_maidenhead(const std::string& src);
 std::string grid_ft8_4(const std::string& grid);
 // Single-threaded TX state machine (replaces separate tx_send_task)
 // TX runs in main loop via tx_tick(), one tone at a time
-volatile bool g_tx_active = false;         // TX state machine is running
 static int g_tx_tone_idx = 0;              // Current tone index (0..total_symbols-1)
 static int64_t g_tx_next_tone_time = 0;    // When to send next tone (ms)
 static int64_t g_tx_slot_start_ms = 0;     // Slot boundary time for tone alignment
@@ -608,7 +410,7 @@ static int g_tx_last_ta_int = -1;          // For TA command deduplication
 static int g_tx_last_ta_frac = -1;
 
 static bool storage_should_guard_active_logs() {
-  return g_tx_active || g_decode_in_progress || audio_source_is_streaming();
+  return decode_tx_state_get_tx_active() || decode_tx_state_get_decode_in_progress() || audio_source_is_streaming();
 }
 
 static bool storage_reject_active_log_user_mutation(const std::string& name_or_path) {
@@ -634,7 +436,6 @@ static int menu_flash_idx = -1;          // absolute index to flash highlight
 static int64_t menu_flash_deadline = 0;  // ms timestamp when flash ends
 static int rx_flash_idx = -1;
 static int64_t rx_flash_deadline = 0;
-bool g_streaming = false;
 static void draw_menu_view();
 static void draw_status_view();
 static void draw_status_line(int idx, const std::string& text, bool highlight);
@@ -1361,14 +1162,14 @@ static char g_tx_abort_text[48] = {0};
 static char g_tx_abort_reason[PORTA_TX_HUD_REASON_MAX + 1] = {0};
 
 static bool tx_hud_visible() {
-  return ui_mode == UIMode::RX && (g_tx_active || g_tx_abort_hud);
+  return ui_mode == UIMode::RX && (decode_tx_state_get_tx_active() || g_tx_abort_hud);
 }
 
 static void draw_tx_hud(bool force) {
   if (!tx_hud_visible()) return;
   ui_set_tx_hud_banner(true);
 
-  const bool aborted = g_tx_abort_hud && !g_tx_active;
+  const bool aborted = g_tx_abort_hud && !decode_tx_state_get_tx_active();
 
   static int64_t s_last_ms = 0;
   const int64_t now_ms = rtc_now_ms();
@@ -1407,7 +1208,7 @@ static void draw_tx_hud(bool force) {
   if (power_w >= 0.f) s_last_power = power_w;
   if (swr >= 0.f) s_last_swr = swr;
 
-  if (g_tx_active && !s_was_tx) {
+  if (decode_tx_state_get_tx_active() && !s_was_tx) {
     char line[64];
     snprintf(line, sizeof(line), "TX %.40s", tx_text[0] ? tx_text : "(empty)");
     debug_log_line(line);
@@ -1415,7 +1216,7 @@ static void draw_tx_hud(bool force) {
     s_last_swr = -1.f;
     s_mid_hud_logged = false;
     s_tx_began_ms = now_ms;
-  } else if (g_tx_active && s_was_tx && !s_mid_hud_logged &&
+  } else if (decode_tx_state_get_tx_active() && s_was_tx && !s_mid_hud_logged &&
              (now_ms - s_tx_began_ms) >= 3000) {
     char msg[24];
     char status[24];
@@ -1432,7 +1233,7 @@ static void draw_tx_hud(bool force) {
     snprintf(line, sizeof(line), "TX HUD %s", status);
     debug_log_line(line);
     s_mid_hud_logged = true;
-  } else if (!g_tx_active && s_was_tx) {
+  } else if (!decode_tx_state_get_tx_active() && s_was_tx) {
     char line[64];
     if (aborted) {
       snprintf(line, sizeof(line), "TX abort %.32s", g_tx_abort_text);
@@ -1456,7 +1257,7 @@ static void draw_tx_hud(bool force) {
     debug_log_line(line);
     s_mid_hud_logged = false;
   }
-  s_was_tx = g_tx_active;
+  s_was_tx = decode_tx_state_get_tx_active();
 }
 
 // Mirrors draw_tx_hud() onto Port A (I28d, RFC 0004 §11) so app.html's
@@ -1489,7 +1290,7 @@ static void porta_tx_hud_tick() {
   s_last_ms = now_ms;
   s_last_active = true;
 
-  const bool aborted = g_tx_abort_hud && !g_tx_active;
+  const bool aborted = g_tx_abort_hud && !decode_tx_state_get_tx_active();
   const char* tx_text = "";
   if (aborted && g_tx_abort_text[0]) {
     tx_text = g_tx_abort_text;
@@ -1537,7 +1338,7 @@ static void restore_rx_after_tx() {
 // site today is a low-battery halt; the parameter exists so a future second
 // abort reason is a call-site change here, not a wire-protocol one.
 static void begin_low_batt_tx_abort_hud(const char* reason = "low battery") {
-  if (g_tx_active) return;
+  if (decode_tx_state_get_tx_active()) return;
   if (g_pending_tx_valid && !g_pending_tx.text.empty()) {
     snprintf(g_tx_abort_text, sizeof(g_tx_abort_text), "%s", g_pending_tx.text.c_str());
   }
@@ -1549,7 +1350,7 @@ static void begin_low_batt_tx_abort_hud(const char* reason = "low battery") {
 }
 
 static void tx_abort_hud_tick() {
-  if (!g_tx_abort_hud || g_tx_active) return;
+  if (!g_tx_abort_hud || decode_tx_state_get_tx_active()) return;
   if (rtc_now_ms() < g_tx_abort_hud_until_ms) return;
   g_tx_abort_hud = false;
   g_tx_abort_text[0] = '\0';
@@ -1711,7 +1512,7 @@ static bool start_rx_audio_for_current_radio(const char* reason, bool notify_cat
   if (is_uac_backend) log_mem_caps("UAC_AFTER_START");
 
   debug_log_line("Audio start ok");
-  g_decode_enabled = true;
+  decode_tx_state_set_decode_enabled(true);
   ui_set_paused(false);
   ui_clear_waterfall();
 
@@ -1835,7 +1636,7 @@ static void gps_runtime_tick() {
     }
 
     bool do_time_sync = !s_time_synced_once;
-    if (!do_time_sync && parsed_time && !g_tx_active && !g_decode_in_progress) {
+    if (!do_time_sync && parsed_time && !decode_tx_state_get_tx_active() && !decode_tx_state_get_decode_in_progress()) {
       if (m == 0 && s <= 5 && hour_key >= 0 && hour_key != s_last_time_sync_hour_key) {
         do_time_sync = true;
       }
@@ -2154,7 +1955,7 @@ static bool charge_mode_set_cpu_mhz(uint32_t mhz) {
 // success or a short reason a caller can log or NAK with. Shared by the
 // on-device R-tap (below) and Port A's QUEUE_REPLY action.
 static const char* apply_reply_touch(const UiRxLine& msg) {
-  const AutoseqTouchResult touch = autoseq_on_touch(msg, g_tx_active);
+  const AutoseqTouchResult touch = autoseq_on_touch(msg, decode_tx_state_get_tx_active());
   if (touch == AutoseqTouchResult::IgnoredInProgress) {
     g_tx_view_dirty = true;
     return "QSO in progress";
@@ -2165,7 +1966,7 @@ static const char* apply_reply_touch(const UiRxLine& msg) {
 
   // Do not replace the in-flight pending TX.
   AutoseqTxEntry pending{};
-  if (!g_tx_active && autoseq_fetch_pending_tx(pending)) {
+  if (!decode_tx_state_get_tx_active() && autoseq_fetch_pending_tx(pending)) {
     arm_pending_tx(pending);
   }
   g_tx_view_dirty = true;
@@ -2273,11 +2074,11 @@ void ui_mark_config_dirty(void) {
 static void enter_charge_mode() {
   ESP_LOGI(TAG, "Entering charge mode (Launcher-style)");
   request_tx_cancel();
-  if (g_tx_active) {
+  if (decode_tx_state_get_tx_active()) {
     tx_tick();
   }
   const bool was_streaming = audio_source_is_streaming();
-  g_decode_enabled = false;
+  decode_tx_state_set_decode_enabled(false);
   audio_source_stop();
 
   const uint8_t saved_bright = M5.Display.getBrightness();
@@ -2332,7 +2133,7 @@ static void enter_charge_mode() {
   redraw_countdown_now();
   if (was_streaming) {
     start_rx_audio_for_current_radio("charge mode exit", true);
-    g_decode_enabled = true;
+    decode_tx_state_set_decode_enabled(true);
   }
   draw_menu_view();
 }
@@ -2761,13 +2562,13 @@ static void rtc_tick() {
 // Called from: QMX first-connect path (consume_cdc_initial_sync), STATUS
 // exit (enter_mode), and S->3 band-change key handler. Guards:
 //   - radio_control_ready(): CAT link must be up
-//   - !g_tx_active: never interrupt an ongoing transmission
+//   - !decode_tx_state_get_tx_active(): never interrupt an ongoing transmission
 // Returns true on success. Callers can use the return value to decide
 // whether to clear a deferred-sync flag.
 // The `reason` string is logged for debugging.
 bool sync_radio_to_current_band(const char* reason) {
   if (!radio_control_ready()) return false;
-  if (g_tx_active) return false;
+  if (decode_tx_state_get_tx_active()) return false;
   int freq_hz = (int)(g_bands[g_band_sel].freq * 1000.0f);
   radio_control_end_tx();  // ensure RX mode (idempotent)
   esp_err_t rc = radio_control_sync_frequency_mode(freq_hz);
@@ -2789,9 +2590,9 @@ bool sync_radio_to_current_band(const char* reason) {
 // per CDC open — cleared on successful sync, retries on later iterations
 // until CAT becomes ready and we're not TXing.
 static void consume_cdc_initial_sync() {
-  if (!g_cdc_initial_sync_pending) return;
+  if (!decode_tx_state_get_cdc_initial_sync_pending()) return;
   if (sync_radio_to_current_band("initial QMX connect")) {
-    g_cdc_initial_sync_pending = false;
+    decode_tx_state_set_cdc_initial_sync_pending(false);
   }
 }
 
@@ -2873,7 +2674,7 @@ void arm_pending_tx(const AutoseqTxEntry& pending) {
 // Used after RX decode (including empty slots) and after TX tick so a quiet
 // band cannot stall beacon.
 static void arm_from_autoseq_or_beacon() {
-  if (board_power_halted() || g_tx_active) return;
+  if (board_power_halted() || decode_tx_state_get_tx_active()) return;
   AutoseqTxEntry pending;
   if (autoseq_fetch_pending_tx(pending)) {
     arm_pending_tx(pending);
@@ -2902,15 +2703,15 @@ static void check_slot_boundary() {
 
   // Call tick AFTER TX has completed (not while TX is still active)
   // This ensures autoseq_tick() operates on the correct completed TX entry
-  if (g_was_txing && !g_tx_active) {
+  if (decode_tx_state_get_was_txing() && !decode_tx_state_get_tx_active()) {
     ESP_LOGI(TAG, "TX completed, calling tick (slot %lld, parity %d)",
              (long long)slot_idx, slot_parity);
     autoseq_tick(slot_idx, slot_parity, 0);
-    g_was_txing = false;
+    decode_tx_state_set_was_txing(false);
     g_tx_view_dirty = true;
   }
 
-  if (!g_was_txing && !g_tx_active &&
+  if (!decode_tx_state_get_was_txing() && !decode_tx_state_get_tx_active() &&
       !(g_qso_xmit && g_pending_tx_valid)) {
     arm_from_autoseq_or_beacon();
   }
@@ -2918,7 +2719,7 @@ static void check_slot_boundary() {
   // TX trigger: check if we should start TX in this slot
   // Conditions: qso_xmit flag set, correct parity, early enough in slot, not already TXing,
   // and decode must be complete (TX is always triggered by decode results).
-  // Additional guard (g_decode_applied_slot_idx): enforces that decode for the
+  // Additional guard (decode_tx_state_get_decode_applied_slot_idx()): enforces that decode for the
   // previous RX slot (slot_idx - 1) has been fully applied to autoseq state before
   // we fire TX. Without this, a slot boundary that arrives before audio capture
   // has completed (FT8: ~12.6s of 15s slot; FT4: ~5.0s of 7.5s slot) could fire
@@ -2928,9 +2729,9 @@ static void check_slot_boundary() {
       !board_power_halted() &&
       g_target_slot_parity == slot_parity &&
       slot_ms < (g_protocol->slot_time_ms * 4 / 15) &&
-      !g_tx_active &&
-      !g_decode_in_progress &&
-      g_decode_applied_slot_idx >= slot_idx - 1) {
+      !decode_tx_state_get_tx_active() &&
+      !decode_tx_state_get_decode_in_progress() &&
+      decode_tx_state_get_decode_applied_slot_idx() >= slot_idx - 1) {
 
     ESP_LOGI(TAG, "TX trigger: starting TX in slot %lld (parity %d)",
              (long long)slot_idx, slot_parity);
@@ -2945,7 +2746,7 @@ static void check_slot_boundary() {
       // writing g_pending_tx on core 1 while we read it on core 0.
       if (g_pending_tx_valid && !g_pending_tx.text.empty()) {
         g_qso_xmit = false;  // Clear flag only AFTER validation succeeds
-        g_was_txing = true;  // Set IMMEDIATELY when TX starts (prevents decode_monitor_results from re-setting flags)
+        decode_tx_state_set_was_txing(true);  // Set IMMEDIATELY when TX starts (prevents decode_monitor_results from re-setting flags)
 
         // Offset was resolved at scheduling time by arm_pending_tx, so
         // g_pending_tx.offset_hz is already what's going on air.
@@ -3260,7 +3061,7 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, bool up
   ESP_LOGD(TAG, "Candidates found: %d", num_candidates);
 
   // ---- slot index + once-per-slot hashtable maintenance ----
-  int64_t slot_idx = (g_decode_slot_idx >= 0) ? g_decode_slot_idx : rtc_now_ms() / g_protocol->slot_time_ms;
+  int64_t slot_idx = (decode_tx_state_get_decode_slot_idx() >= 0) ? decode_tx_state_get_decode_slot_idx() : rtc_now_ms() / g_protocol->slot_time_ms;
   int slot_id = (int)(slot_idx & 1);
 
   static int64_t s_last_aged_slot = -1;
@@ -3308,11 +3109,11 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, bool up
     keep_rx_list_stale(update_ui);
     // No candidates means we processed the slot's audio but found nothing —
     // still counts as "applied" for the TX-trigger guard.
-    if (g_decode_slot_idx > g_decode_applied_slot_idx) {
-      g_decode_applied_slot_idx = g_decode_slot_idx;
+    if (decode_tx_state_get_decode_slot_idx() > decode_tx_state_get_decode_applied_slot_idx()) {
+      decode_tx_state_set_decode_applied_slot_idx(decode_tx_state_get_decode_slot_idx());
     }
-    g_decode_in_progress = false;
-    if (!g_was_txing) {
+    decode_tx_state_set_decode_in_progress(false);
+    if (!decode_tx_state_get_was_txing()) {
       arm_from_autoseq_or_beacon();
       char buf[56];
       snprintf(buf, sizeof(buf), "SLOT cand=0/%d msg=0 dec=%lldms",
@@ -3469,7 +3270,7 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, bool up
   qsort(s_dec, s_dec_count, sizeof(DecodeMsg), dec_sort_cmp);
 
   // ---- Autoseq: build small to_me vector at boundary (only to_me entries) ----
-  if (!g_was_txing && !board_power_halted()) {
+  if (!decode_tx_state_get_was_txing() && !board_power_halted()) {
     std::vector<UiRxLine> to_me_auto;
     for (int i = 0; i < s_dec_count; ++i) {
       if (!s_dec[i].is_to_me) break;  // sorted, so once we pass to_me we're done
@@ -3542,7 +3343,7 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, bool up
              (int)heap_exit - (int)heap_entry);
   }
 
-  if (!g_was_txing) {
+  if (!decode_tx_state_get_was_txing()) {
     char buf[56];
     snprintf(buf, sizeof(buf), "SLOT cand=%d/%d msg=%d dec=%lldms",
              num_candidates, max_cand, s_dec_count,
@@ -3553,10 +3354,10 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, bool up
   // Mark this slot's decode as fully applied BEFORE clearing the in-progress
   // flag. Readers (TX trigger on core 0) must see the applied marker as soon
   // as in_progress drops, not later.
-  if (g_decode_slot_idx > g_decode_applied_slot_idx) {
-    g_decode_applied_slot_idx = g_decode_slot_idx;
+  if (decode_tx_state_get_decode_slot_idx() > decode_tx_state_get_decode_applied_slot_idx()) {
+    decode_tx_state_set_decode_applied_slot_idx(decode_tx_state_get_decode_slot_idx());
   }
-  g_decode_in_progress = false;
+  decode_tx_state_set_decode_in_progress(false);
 }
 
 static void draw_menu_long_edit() {
@@ -3652,7 +3453,7 @@ static void tx_send_ta(float tone_hz) {
 // Uses g_pending_tx which was prepared by check_slot_boundary with correct offset
 static void tx_start(int skip_tones) {
   // Already transmitting?
-  if (g_tx_active) {
+  if (decode_tx_state_get_tx_active()) {
     return;
   }
 
@@ -3745,14 +3546,14 @@ static void tx_start(int skip_tones) {
 
   // Mark TX as active
   ui_set_rx_waterfall_muted(true);
-  g_tx_active = true;
+  decode_tx_state_set_tx_active(true);
   draw_rx_screen();
 }
 
 // TX state machine tick - called from main loop
 // Sends one tone at a time, non-blocking
 static void tx_tick() {
-  if (!g_tx_active) {
+  if (!decode_tx_state_get_tx_active()) {
     return;
   }
 
@@ -3765,10 +3566,10 @@ static void tx_tick() {
       radio_control_end_tx();
     }
     ui_set_rx_waterfall_muted(false);
-    g_tx_active = false;
+    decode_tx_state_set_tx_active(false);
     g_pending_tx_valid = false;
     g_tx_cancel_requested = false;
-    g_was_txing = false;  // TX was cancelled - don't call tick at slot boundary
+    decode_tx_state_set_was_txing(false);  // TX was cancelled - don't call tick at slot boundary
     g_tx_view_dirty = true;
     restore_rx_after_tx();
     return;
@@ -3789,9 +3590,9 @@ static void tx_tick() {
     // Record slot index for spacing and notify autoseq
     s_last_tx_slot_idx = g_tx_slot_idx;
     autoseq_mark_sent(g_tx_slot_idx);
-    // g_was_txing stays true - tick will be called at slot boundary
+    // was_txing stays true - tick will be called at slot boundary
 
-    g_tx_active = false;
+    decode_tx_state_set_tx_active(false);
     g_pending_tx_valid = false;
     g_tx_cancel_requested = false;
     g_tx_view_dirty = true;
@@ -3989,8 +3790,8 @@ static void ma_band_config() {
 static void ma_copy_to_sd() {
   CopyBlockInputs in;
   in.writes_blocked   = storage_writes_blocked();
-  in.tx_active        = g_tx_active;
-  in.decode_active    = g_decode_in_progress;
+  in.tx_active        = decode_tx_state_get_tx_active();
+  in.decode_active    = decode_tx_state_get_decode_in_progress();
   in.audio_streaming  = audio_source_is_streaming();
   in.firmware_owns    = (storage_service_owner() == StorageOwner::FIRMWARE);
   in.open_streams     = storage_service_open_stream_count();
@@ -4138,7 +3939,7 @@ static void restore_usb_host_after_cts() {
 }
 
 static void cts_iphone_start_from_ui() {
-  if (g_tx_active) {
+  if (decode_tx_state_get_tx_active()) {
     debug_log_line("CTS: TX busy");
     return;
   }
@@ -4226,7 +4027,7 @@ static void sidekick_probe_attached_device() {
   }
   g_sidekick_probe_pending = false;
   if (!g_espressif_rom_present || !sidekick_flasher_has_firmware() ||
-      g_nano_flash_in_progress || g_tx_active) {
+      g_nano_flash_in_progress || decode_tx_state_get_tx_active()) {
     return;
   }
   g_sidekick_probed_since_attach = true;
@@ -4269,7 +4070,7 @@ static void sidekick_probe_attached_device() {
 }
 
 static void sidekick_flash_start_from_ui() {
-  if (g_tx_active) {
+  if (decode_tx_state_get_tx_active()) {
     debug_log_line("Nano flash: TX busy");
     return;
   }
@@ -4899,7 +4700,7 @@ const char* porta_host_config_set(const char* key, const char* value) {
     // that do not necessarily mean "and retune immediately", so they stay
     // silent on a sync miss, same as before.
     if (strcmp(key, "band_sel") == 0 && !synced) {
-      return g_tx_active ? "band saved, VFO not moved (TX active)"
+      return decode_tx_state_get_tx_active() ? "band saved, VFO not moved (TX active)"
                           : "band saved, VFO not moved (CAT not ready)";
     }
   }
@@ -4952,9 +4753,9 @@ static void apply_beacon_mode(BeaconMode new_mode) {
   debug_log_line(std::string("Beacon ") + beacon_name(g_beacon));
 
   if (g_beacon == BeaconMode::OFF) {
-    autoseq_cancel_cq(g_tx_active);
+    autoseq_cancel_cq(decode_tx_state_get_tx_active());
     AutoseqTxEntry pending;
-    if (!g_tx_active) {
+    if (!decode_tx_state_get_tx_active()) {
       if (autoseq_fetch_pending_tx(pending)) {
         arm_pending_tx(pending);
       } else {
@@ -4971,10 +4772,10 @@ static void apply_beacon_mode(BeaconMode new_mode) {
     }
   } else {
     // EVEN <-> ODD: drop the old-parity CQ and arm the new one.
-    autoseq_cancel_cq(g_tx_active);
+    autoseq_cancel_cq(decode_tx_state_get_tx_active());
     enqueue_beacon_cq();
     AutoseqTxEntry pending;
-    if (!g_tx_active && autoseq_fetch_pending_tx(pending)) {
+    if (!decode_tx_state_get_tx_active() && autoseq_fetch_pending_tx(pending)) {
       arm_pending_tx(pending);
     }
   }
@@ -5479,7 +5280,7 @@ autoseq_set_cabrillo_fd_callback(log_cabrillo_fd_entry);
     porta_queue_state_tick();
     porta_tx_hud_tick();
     cts_ble_poll();
-    if (g_tx_active) {
+    if (decode_tx_state_get_tx_active()) {
       cts_ble_abort();
     }
     {
@@ -5619,8 +5420,8 @@ autoseq_set_cabrillo_fd_callback(log_cabrillo_fd_entry);
   }
 
   // Ensure decode is enabled whenever streaming becomes active.
-  if (audio_source_is_streaming() && !g_decode_enabled) {
-    g_decode_enabled = true;
+  if (audio_source_is_streaming() && !decode_tx_state_get_decode_enabled()) {
+    decode_tx_state_set_decode_enabled(true);
     ui_set_paused(false);
   }
 
