@@ -34,6 +34,15 @@ static int64_t now_ms(void) {
 static void cdc_event_cb(const cdc_acm_host_dev_event_data_t *event, void * /*user_ctx*/) {
     if (event->type == CDC_ACM_HOST_DEVICE_DISCONNECTED) {
         ESP_LOGI(TAG, "QMX CDC disconnected");
+        // Field-found 2026-09-17: cdc_acm_host_close() must be called even
+        // though the device is already gone, or the driver's interface/
+        // endpoint claim for this handle leaks. The next cdc_acm_host_open()
+        // then fails to claim the interface (EP alloc / claim errors), and
+        // repeated retries against that leaked state eventually hang
+        // usb_lib_task inside descriptor parsing (watchdog reboot loop).
+        // Matches the ADV's own cdc_close() in main/audio/stream_uac.cpp,
+        // which already does this unconditionally.
+        cdc_acm_host_close(s_cdc_handle);
         s_cdc_handle = nullptr;
     } else if (event->type == CDC_ACM_HOST_ERROR) {
         ESP_LOGW(TAG, "QMX CDC error: %d", event->data.error);
