@@ -9,3 +9,13 @@ CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 # no code that uses it; enabling it blind, before anything exercises it, is
 # exactly the kind of unverified config this project's docs warn against.
 # Revisit when Phase 2 (decode/TX port) actually needs it.
+
+# Bench-found 2026-09-17 (B59): the IDF default (256 B) is too small for the
+# config descriptor of an ordinary USB device (flash drive), which fails
+# enumeration with "Configuration descriptor larger than control transfer
+# max length" -- the console kept running through the error, so this is not
+# a two-port/power problem, just an undersized default. Carried over from
+# the ADV's own sdkconfig, which already proved 2048 works for a QMX (a much
+# larger composite descriptor than a plain flash drive) rather than guessing
+# a smaller number blind.
+CONFIG_USB_HOST_CONTROL_TRANSFER_MAX_SIZE=2048
