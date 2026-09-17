@@ -61,6 +61,13 @@ test_apps/atoms3_qmx_host_poc/sdkconfig
 test_apps/atoms3_qmx_host_poc/dependencies.lock
 sidekick/sdkconfig.old
 
+# poe_p4: separate idf.py project, ESP32-P4 (RFC 0005 Phase 0)
+poe_p4/build/
+poe_p4/managed_components/
+poe_p4/sdkconfig
+poe_p4/sdkconfig.old
+poe_p4/dependencies.lock
+
 # Per-device full-flash backups of a physical Nano's factory state
 # (tools/restore_nano_stock.sh). Vendor firmware (M5Stack), not ours to
 # redistribute, and a snapshot of one specific unit besides — already caught

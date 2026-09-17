@@ -1,0 +1,11 @@
+# M5Stack Unit PoE-P4 (SKU U213): 16 MB flash, 32 MB octal PSRAM
+# (docs.m5stack.com/en/unit/Unit_PoE-P4, checked directly -- RFC 0005 §4).
+# Without this the build takes ESP-IDF's default flash size and writes a
+# wrong flash-size field into the bootloader header, same reasoning as
+# sidekick/sdkconfig.defaults.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+
+# PSRAM is deliberately not enabled yet. Phase 0 is a boot-only skeleton with
+# no code that uses it; enabling it blind, before anything exercises it, is
+# exactly the kind of unverified config this project's docs warn against.
+# Revisit when Phase 2 (decode/TX port) actually needs it.
