@@ -11,6 +11,7 @@ Ship on `origin/main`. Talk through changes before a local commit (see [README.m
 
 | ID  | Item | Why / constraint |
 | --- | ---- | ---------------- |
+| B60 | RFC 0005 Phase 1: USB host QMX bring-up on P4 | The actual B26-successor bench test [RFC 0005](rfcs/0005-p4-poe-headless-port.md) named from the start. `poe_p4/main/main.cpp` now installs `usb_host_cdc_acm` and opens the QMX by its known VID:PID (`0x0483`/`0xA34C`, same identity B57 already established), then sends the same safe, receive-side-only sequence RFC 0001 §4.6's AtomS3 test and `main/radio/radio_control_qmx.cpp`'s `qmx_sync_frequency_mode()` use — `MD6; FR0; FT0; FA00007074000;`, no `TX;`, safe with no antenna. Supersedes B59's generic USB-host scaffolding in the same file, now that the two-port claim it existed to prove is confirmed. `idf.py build` proven clean; not yet run on hardware. Field-only from here — needs the U213 and a real QMX. Done-when: the QMX's own screen shows 7.074 MHz after the sequence runs, verified visually, not from this log alone (RFC 0001 §4.6's own pass condition, unchanged here). See [TEST_PLAN.md](TEST_PLAN.md) Pending for the exact check. |
 
 
 

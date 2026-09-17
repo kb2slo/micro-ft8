@@ -2,3 +2,9 @@
 dependencies:
   idf:
     version: '>=5.0'
+  # USB Host CDC for CAT (RFC 0005 Phase 1). Pinned exact, same version and
+  # same reason as the ADV's main/idf_component.yml: a fresh component-
+  # manager resolve otherwise drifts this to the newest 2.x, and CAT is a
+  # field-only path this row exists specifically to prove, not to re-verify
+  # against a moving dependency.
+  espressif/usb_host_cdc_acm: 2.2.0
