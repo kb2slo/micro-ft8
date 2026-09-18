@@ -70,6 +70,7 @@ extern "C" {
 
 #include "storage_service.h"
 #include "adif.h"
+#include "adif_logger.h"
 #include "cts_ble.h"
 #include "band_config.h"
 #include "sidekick_flasher.h"
@@ -889,62 +890,25 @@ const char* porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take
 // into it, not decide "already worked" (that's decode_monitor_results' job).
 extern AdifLoggerDedupe s_adif_logger_dedupe;
 
-static bool log_adif_entry(const std::string& dxcall, const std::string& dxgrid, int rst_sent, int rst_rcvd) {
-  if (storage_writes_blocked()) {
-    ESP_LOGW(TAG, "ADIF write skipped: low battery halt");
-    debug_log_line("ADIF skip: batt write halt");
-    return false;
-  }
-  const int64_t now_ms = rtc_now_ms();
-  const std::string call_norm = normalize_call_token(dxcall);
-  if (adif_logger_dedupe_is_duplicate(&s_adif_logger_dedupe, call_norm, now_ms)) {
-    ESP_LOGI(TAG, "ADIF dedupe skip %s (within 10 min)", call_norm.c_str());
-    return true;  // treat as success so autoseq does not retry-write
-  }
-
-  time_t now = (time_t)(now_ms / 1000);
-  struct tm t;
-  localtime_r(&now, &t);
-  char date[16];
-  int year = t.tm_year + 1900;
-  int month = t.tm_mon + 1;
-  int day = t.tm_mday;
-  snprintf(date, sizeof(date), "%04d%02d%02d", year % 10000, month % 100, day % 100);
-  char path[64];
-  snprintf(path, sizeof(path), "%s.adi", date);
-
-  char time_on[16];
-  int hour = t.tm_hour;
-  int min = t.tm_min;
-  int sec = t.tm_sec;
-  snprintf(time_on, sizeof(time_on), "%02d%02d%02d", hour % 100, min % 100, sec % 100);
-  double freq_mhz = 0.001 * (double)g_bands[g_band_sel].freq;
+static bool log_adif_entry(const std::string& dxcall, const std::string& dxgrid, int rst_sent,
+                           int rst_rcvd) {
+  AdifLogQsoInput in;
+  in.dxcall = dxcall;
+  in.dxgrid = dxgrid;
+  in.rst_sent = rst_sent;
+  in.rst_rcvd = rst_rcvd;
+  in.station_callsign = g_call;
+  in.my_gridsquare = grid_ft8_4(g_grid);
+  in.mode = g_protocol->name;
   char freq_str[16];
-  snprintf(freq_str, sizeof(freq_str), "%.3f", freq_mhz);
-
-  AdifLogFields fields;
-  fields.call             = dxcall;
-  fields.gridsquare       = dxgrid;          // omitted when the DX sent no grid
-  fields.mode             = g_protocol->name;
-  fields.qso_date         = date;
-  fields.time_on          = time_on;
-  fields.freq             = freq_str;
-  fields.station_callsign = g_call;
-  fields.my_gridsquare    = grid_ft8_4(g_grid);
-  fields.rst_sent         = rst_sent;        // kAdifNoReport (-99) omits
-  fields.rst_rcvd         = rst_rcvd;
-  fields.comment          = expand_comment_macros(g_comment1);
-  const std::string line = adif_format_log_record(fields);
-
-  bool ok = storage_append_text_locked_path(path, line, "ADIF EXPORT\n<eoh>\n", true);
+  snprintf(freq_str, sizeof(freq_str), "%.3f", 0.001 * (double)g_bands[g_band_sel].freq);
+  in.freq_mhz = freq_str;
+  in.comment = expand_comment_macros(g_comment1);
+  const bool ok = adif_log_qso(in, &s_adif_logger_dedupe);
   if (!ok) {
-    ESP_LOGW(TAG, "ADIF write failed: %s owner=%s",
-             path, storage_owner_label(storage_service_owner()));
-    debug_log_line(std::string("ADIF fail ") + path);
-    return false;
+    debug_log_line("ADIF fail");
   }
-  adif_logger_dedupe_remember(&s_adif_logger_dedupe, call_norm, now_ms);
-  return true;
+  return ok;
 }
 
 

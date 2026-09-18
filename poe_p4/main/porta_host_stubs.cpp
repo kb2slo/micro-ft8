@@ -3,18 +3,25 @@
 #include <cstring>
 #include <string>
 
+#include "adif_logger.h"
 #include "autoseq.h"
+#include "decode_pipeline.h"
+#include "decode_tx_state.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "file_list.h"
 #include "porta.h"
+#include "porta_proto.h"
+#include "protocol.h"
 #include "qmx_transport.h"
+#include "qso_browse.h"
 #include "radio_control.h"
 #include "rtc_core.h"
 #include "station.h"
 #include "storage_service.h"
 #include "tx_scheduler.h"
 
-// B67/B68: Station.txt + Connect/VFO + CAT tone TX. I29: LittleFS persist.
+// B67–B70: Station.txt + Connect/VFO + CAT TX + Operate reply/cancel/FT/tune.
 
 static const char *TAG = "porta_host";
 
@@ -22,6 +29,11 @@ extern std::string g_call;
 
 static StationSettings s_station;
 static bool s_seeded = false;
+static bool s_tune = false;
+
+extern const ProtocolConfig *g_protocol;
+extern volatile bool g_tx_view_dirty;
+extern AdifLoggerDedupe s_adif_logger_dedupe;
 
 // Same FT8 table as ADV main.cpp's g_bands initializer.
 static const char *kBandNames[kStationBandCount] = {
@@ -173,6 +185,31 @@ void porta_p4_station_boot(void) {
     load_station_from_storage();
 }
 
+static bool log_adif_entry(const std::string &dxcall, const std::string &dxgrid, int rst_sent,
+                           int rst_rcvd) {
+    ensure_seeded();
+    AdifLogQsoInput in;
+    in.dxcall = dxcall;
+    in.dxgrid = dxgrid;
+    in.rst_sent = rst_sent;
+    in.rst_rcvd = rst_rcvd;
+    in.station_callsign = s_station.call;
+    in.my_gridsquare = grid_ft8_4(s_station.grid);
+    in.mode = g_protocol ? g_protocol->name : "FT8";
+    char freq_str[16];
+    // station_freq_hz is Hz; ADIF wants MHz (e.g. 14.074).
+    snprintf(freq_str, sizeof(freq_str), "%.3f", (double)station_freq_hz() / 1e6);
+    in.freq_mhz = freq_str;
+    // Comment macros (/Radio, /Grid) stay ADV-only for now; raw Station comment.
+    in.comment = s_station.comment1;
+    return adif_log_qso(in, &s_adif_logger_dedupe);
+}
+
+void porta_p4_adif_register(void) {
+    autoseq_set_adif_callback(log_adif_entry);
+    ESP_LOGI(TAG, "ADIF archive callback registered");
+}
+
 int porta_p4_station_freq_hz(void) {
     ensure_seeded();
     return station_freq_hz();
@@ -294,8 +331,25 @@ const char *porta_host_set_clock(uint32_t epoch_secs, uint16_t millis) {
     return nullptr;
 }
 
-const char *porta_host_tx_free(const char * /*text*/) {
-    return "TX not wired on P4 yet";
+const char *porta_host_tx_free(const char *text) {
+    if (!text || text[0] == '\0') {
+        return "empty";
+    }
+    if (!g_protocol) {
+        return "no protocol";
+    }
+    const int64_t now_slot = rtc_now_ms() / g_protocol->slot_time_ms;
+    const int fallback_parity = (int)((now_slot + 1) & 1);
+    if (!autoseq_schedule_freetext(text, fallback_parity)) {
+        return "FT already queued";
+    }
+    AutoseqTxEntry pending;
+    if (autoseq_fetch_pending_tx(pending)) {
+        arm_pending_tx(pending);
+    }
+    g_tx_view_dirty = true;
+    ESP_LOGI(TAG, "Queued: %s", text);
+    return nullptr;
 }
 
 void porta_host_tx_cancel(void) {
@@ -322,8 +376,8 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
     snprintf(live, sizeof(live),
              "streaming=%d\ncat_ready=%d\ntune=%d\nband_name=%s\nfreq_khz=%d\n"
              "audio_rx=%d\nclock_set=%d\nclock_source=%s\nbeacon=%u\n",
-             qmx_audio_ready() ? 1 : 0, radio_control_ready() ? 1 : 0, 0, band_name, freq_khz,
-             qmx_audio_ready() ? 1 : 0, rtc_valid ? 1 : 0, clock_source_name(),
+             qmx_audio_ready() ? 1 : 0, radio_control_ready() ? 1 : 0, s_tune ? 1 : 0, band_name,
+             freq_khz, qmx_audio_ready() ? 1 : 0, rtc_valid ? 1 : 0, clock_source_name(),
              (unsigned)tx_scheduler_beacon_mode());
     text += live;
 
@@ -390,8 +444,24 @@ const char *porta_host_connect(void) {
     return nullptr;
 }
 
-const char *porta_host_tune(bool /*on*/) {
-    return "tune not wired on P4 yet";
+const char *porta_host_tune(bool on) {
+    ensure_seeded();
+    if (on && !radio_control_ready()) {
+        return "CAT not ready";
+    }
+    s_tune = on;
+    if (radio_control_ready()) {
+        const int freq_hz = station_freq_hz();
+        const int tune_hz =
+            (s_station.offset_src == 1) ? s_station.offset_hz : 1500;  // 1=CURSOR
+        if (radio_control_set_tune(s_tune, freq_hz, tune_hz) != ESP_OK) {
+            return "CAT tune failed";
+        }
+        ESP_LOGI(TAG, "CAT tune: %s", s_tune ? "TX" : "RX");
+    } else {
+        ESP_LOGI(TAG, "CAT tune: off (no CAT)");
+    }
+    return nullptr;
 }
 
 const char *porta_host_beacon(uint8_t mode) {
@@ -399,19 +469,171 @@ const char *porta_host_beacon(uint8_t mode) {
     return nullptr;
 }
 
-const char *porta_host_queue_cancel(uint16_t /*entry_id*/) {
-    return "queue not wired on P4 yet";
+static const char *apply_reply_touch(const UiRxLine &msg) {
+    const AutoseqTouchResult touch =
+        autoseq_on_touch(msg, decode_tx_state_get_tx_active());
+    if (touch == AutoseqTouchResult::IgnoredInProgress) {
+        g_tx_view_dirty = true;
+        return "QSO in progress";
+    }
+    if (touch == AutoseqTouchResult::NoRoom) {
+        return "TX queue full";
+    }
+    AutoseqTxEntry pending{};
+    if (!decode_tx_state_get_tx_active() && autoseq_fetch_pending_tx(pending)) {
+        arm_pending_tx(pending);
+    }
+    g_tx_view_dirty = true;
+    return nullptr;
 }
 
-const char *porta_host_queue_reply(uint32_t /*decode_id*/) {
-    return "queue not wired on P4 yet";
+const char *porta_host_queue_cancel(uint16_t entry_id) {
+    if (!autoseq_drop_by_entry_id(entry_id)) {
+        return "unknown entry";
+    }
+    g_tx_view_dirty = true;
+    ESP_LOGI(TAG, "queue cancel entry_id=%u", (unsigned)entry_id);
+    return nullptr;
 }
 
-const char *porta_host_file_list_begin(uint8_t /*kind*/, uint16_t /*skip*/, uint8_t /*take*/) {
-    return "file list not wired on P4 yet";
+const char *porta_host_queue_reply(uint32_t decode_id) {
+    UiRxLine msg;
+    if (!find_decode_for_reply(decode_id, &msg)) {
+        return "unknown decode";
+    }
+    const char *why = apply_reply_touch(msg);
+    if (why) {
+        ESP_LOGI(TAG, "queue reply decode_id=%lu: %s", (unsigned long)decode_id, why);
+        return why;
+    }
+    ESP_LOGI(TAG, "queue reply decode_id=%lu ok", (unsigned long)decode_id);
+    return nullptr;
 }
 
-const char *porta_host_file_read_begin(const char * /*filename*/, uint16_t /*skip*/,
-                                       uint8_t /*take*/) {
-    return "file read not wired on P4 yet";
+const char *porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take) {
+    if (kind != PORTA_FILE_LIST_QSO_DAILY) {
+        return "unknown kind";
+    }
+    if (take == 0) {
+        return "take must be > 0";
+    }
+    // Sync list: P4 has no on-device Q/Delete drain to race, and LittleFS
+    // day-file counts stay small. Burst-then-ACK matches ADV's Port A shape.
+    std::vector<std::string> all_names;
+    if (!storage_file_list(all_names)) {
+        FileListFail fail = FileListFail::Failed;
+        switch (storage_service_owner()) {
+            case StorageOwner::TRANSITION:
+                fail = FileListFail::Busy;
+                break;
+            case StorageOwner::UNAVAILABLE:
+                fail = FileListFail::Unavailable;
+                break;
+            case StorageOwner::FIRMWARE:
+                fail = FileListFail::Failed;
+                break;
+        }
+        return file_list_fail_text(fail);
+    }
+    std::vector<std::string> files;
+    std::vector<std::string> lines_unused;
+    file_list_apply(FileListKind::QsoDaily, FileListFail::None, all_names, &files, &lines_unused);
+    for (size_t i = skip; i < files.size() && (i - skip) < take; ++i) {
+        porta_emit_file_name(files[i].c_str());
+    }
+    porta_emit_ack(PORTA_MSG_FILE_LIST);
+    ESP_LOGI(TAG, "FILE_LIST qso daily names=%u skip=%u take=%u", (unsigned)files.size(),
+             (unsigned)skip, (unsigned)take);
+    return nullptr;
+}
+
+namespace {
+
+constexpr int kQsoBrowseLinesPerTick = 16;
+
+StorageStream *s_porta_read_stream = nullptr;
+QsoBrowsePager s_porta_read_pager;
+std::vector<QsoBrowseBand> s_porta_read_bands;
+bool s_porta_read_active = false;
+
+void fill_browse_bands(void) {
+    ensure_seeded();
+    s_porta_read_bands.clear();
+    s_porta_read_bands.reserve(kStationBandCount);
+    for (int i = 0; i < kStationBandCount; ++i) {
+        const float khz =
+            (s_station.band_freq_set[i] ? s_station.band_freq[i] : kFt8DefaultKhz[i]);
+        s_porta_read_bands.push_back({kBandNames[i], khz});
+    }
+}
+
+}  // namespace
+
+const char *porta_host_file_read_begin(const char *filename, uint16_t skip, uint8_t take) {
+    if (!filename || filename[0] == '\0' || take == 0) {
+        return "malformed";
+    }
+    if (s_porta_read_stream) {
+        storage_stream_close(s_porta_read_stream);
+        s_porta_read_stream = nullptr;
+        s_porta_read_active = false;
+    }
+    s_porta_read_stream = storage_stream_open(filename, StorageOpenMode::READ);
+    if (!s_porta_read_stream) {
+        return "open failed";
+    }
+    qso_browse_pager_reset(&s_porta_read_pager, skip, take);
+    fill_browse_bands();
+    s_porta_read_active = true;
+    ESP_LOGI(TAG, "FILE_READ begin %s skip=%u take=%u", filename, (unsigned)skip,
+             (unsigned)take);
+    return nullptr;
+}
+
+void porta_p4_file_tick(void) {
+    if (!s_porta_read_active || !s_porta_read_stream) {
+        return;
+    }
+    char line[512];
+    int n = 0;
+    bool more = true;
+    while (n < kQsoBrowseLinesPerTick) {
+        if (!storage_stream_read_line(s_porta_read_stream, line, sizeof(line))) {
+            more = false;
+            break;
+        }
+        ++n;
+        if (!qso_browse_pager_feed(&s_porta_read_pager, std::string(line),
+                                   s_porta_read_bands.data(),
+                                   static_cast<int>(s_porta_read_bands.size()))) {
+            more = false;
+            break;
+        }
+    }
+    if (more) {
+        return;
+    }
+
+    storage_stream_close(s_porta_read_stream);
+    s_porta_read_stream = nullptr;
+    s_porta_read_active = false;
+
+    for (const QsoLogEntry &e : s_porta_read_pager.entries) {
+        porta_qso_entry_row_t row = {};
+        std::snprintf(row.time_on, sizeof(row.time_on), "%s", e.time_on.c_str());
+        std::snprintf(row.band, sizeof(row.band), "%s", e.band.c_str());
+        std::snprintf(row.call, sizeof(row.call), "%s", e.call.c_str());
+        row.rst_sent = (int8_t)(e.has_rst_sent ? e.rst_sent : -99);
+        row.rst_rcvd = (int8_t)(e.has_rst_rcvd ? e.rst_rcvd : -99);
+        std::snprintf(row.grid, sizeof(row.grid), "%s", e.grid.c_str());
+        std::snprintf(row.freq, sizeof(row.freq), "%s", e.freq.c_str());
+        std::snprintf(row.my_grid, sizeof(row.my_grid), "%s", e.my_grid.c_str());
+        std::snprintf(row.comment, sizeof(row.comment), "%s", e.comment.c_str());
+        std::snprintf(row.mode, sizeof(row.mode), "%s", e.mode.c_str());
+        std::snprintf(row.station_callsign, sizeof(row.station_callsign), "%s",
+                      e.station_callsign.c_str());
+        porta_emit_file_entry(row);
+    }
+    porta_emit_ack(PORTA_MSG_FILE_READ);
+    ESP_LOGI(TAG, "FILE_READ done entries=%u", (unsigned)s_porta_read_pager.entries.size());
 }

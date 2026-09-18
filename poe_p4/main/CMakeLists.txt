@@ -11,6 +11,11 @@ idf_component_register(
          "../../main/storage/station.cpp"
          # I29: same LittleFS storage_service as ADV (Station.txt persist).
          "../../main/storage/storage_service.cpp"
+         # B71: shared ADIF QSO archive writer (same unit ADV uses).
+         "../../main/storage/adif_logger.cpp"
+         # B71: Log tab FILE_LIST/READ (same parse/list units as ADV).
+         "../../main/storage/qso_browse.cpp"
+         "../../main/storage/file_list.cpp"
     INCLUDE_DIRS "."
                  "../../main/storage"
     REQUIRES usb usb_host_cdc_acm usb_host_uac esp_timer radio_control

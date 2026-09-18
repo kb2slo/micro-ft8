@@ -59,6 +59,7 @@ extern "C" void app_main(void) {
     hashtable_init();
     autoseq_init();
     porta_p4_station_boot();
+    porta_p4_adif_register();
 
     radio_control_set_backend(RADIO_CONTROL_QMX);
     qmx_transport_start();
@@ -72,6 +73,7 @@ extern "C" void app_main(void) {
         porta_tick();
         porta_p4_companion_status_tick();
         porta_p4_tx_hud_tick();
+        porta_p4_file_tick();
         tx_scheduler_tick();
         vTaskDelay(pdMS_TO_TICKS(10));
         if (!synced && radio_control_ready()) {

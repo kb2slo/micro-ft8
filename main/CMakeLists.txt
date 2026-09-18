@@ -10,6 +10,7 @@ idf_component_register(
          "audio/dds_q15.cpp"
          "storage/station.cpp"
          "storage/station_save_queue.cpp"
+         "storage/adif_logger.cpp"
          "band_config.cpp"
          "menu_model.cpp"
          "screen_model.cpp"
