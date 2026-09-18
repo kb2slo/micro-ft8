@@ -126,6 +126,36 @@
     padding-left: 0.85rem;
     margin: 1rem 0 0;
   }
+  table.bom {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+    margin: 0.5rem 0 0.75rem;
+  }
+  table.bom th,
+  table.bom td {
+    text-align: left;
+    padding: 0.45rem 0.35rem;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  table.bom th {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  table.bom td.price {
+    white-space: nowrap;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  table.bom tr.total td {
+    border-bottom: none;
+    padding-top: 0.65rem;
+    font-weight: 600;
+  }
   footer {
     margin-top: 2.75rem;
     padding-top: 1.25rem;
@@ -190,6 +220,49 @@
     <p>
       This is a <strong>sneak peek</strong>, not a public release. The Cardputer ADV remains a
       first-class daily driver. Firmware and field packaging are still settling.
+    </p>
+  </section>
+
+  <section>
+    <h2>Headless BOM (M5Stack)</h2>
+    <p>
+      The 35&nbsp;g compute stack is two catalogue parts plus the Grove cable that ships with the
+      PoE-P4. Radio and power are separate.
+    </p>
+    <table class="bom">
+      <thead>
+        <tr>
+          <th>Part</th>
+          <th>Role</th>
+          <th class="price">List</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <a href="https://shop.m5stack.com/products/unit-poe-with-esp32-p4">Unit PoE-P4</a>
+            (SKU&nbsp;U213)
+          </td>
+          <td>Radio host — USB to QMX, decode, CAT. Includes a 20&nbsp;cm Grove cable.</td>
+          <td class="price">$21.50</td>
+        </tr>
+        <tr>
+          <td>
+            <a href="https://shop.m5stack.com/products/atoms3-lite-esp32s3-dev-kit">AtomS3&nbsp;Lite</a>
+          </td>
+          <td>Wi‑Fi companion — serves the browser UI over the LAN.</td>
+          <td class="price">$7.50</td>
+        </tr>
+        <tr class="total">
+          <td colspan="2">M5Stack compute BOM (list, excl. shipping)</td>
+          <td class="price">~$29</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="note">
+      Prices from <a href="https://shop.m5stack.com/">shop.m5stack.com</a> (USD, checked
+      2026-09-18). Does <strong>not</strong> include QMX/QDX, USB-C power bank/cables, or phone.
+      ADV path: Cardputer ADV you already own + AtomS3&nbsp;Lite (~$7.50) on Port&nbsp;A.
     </p>
   </section>
 
