@@ -1,4 +1,4 @@
-// Adds CORS so the sidekick's plain-HTTP page (http://microft8.local) can
+// Adds CORS so the sidekick's plain-HTTP page (http://micro-ft8.local/) can
 // fetch this bundle cross-origin -- Cloudflare Workers Static Assets serves
 // files with no CORS header by default, unlike GitHub Pages, which is what
 // RFC 0004 SS4's "publicly-trusted certificate, and a CORS header permitting

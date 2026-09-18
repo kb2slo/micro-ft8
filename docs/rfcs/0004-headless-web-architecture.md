@@ -87,7 +87,7 @@ the TLS stack, the CA bundle and its expiry come back.
 Both halves of that matter and they were argued separately.
 
 **Served by the sidekick, not loaded from the internet**, because of constraint 1. A page served from
-`https://kb2slo.kalikstein.com` *cannot* reach `http://microft8.local` — browsers block active mixed content
+`https://kb2slo.kalikstein.com` *cannot* reach `http://micro-ft8.local` — browsers block active mixed content
 with no exception for private addresses, so an internet-hosted app cannot talk to the device at all. The
 inverse works: an HTTP page may load HTTPS subresources. But an app that fetches itself from the internet
 each session is an app that does not exist on a summit. Serving it locally also makes the whole question
@@ -128,7 +128,7 @@ a bundle, and that is all. Constraint 2 is what makes this acceptable.
 
 **The phone relays, and the browser's own TLS connection is what proves the source.**
 
-1. Phone opens `http://microft8.local/` — after hydrate, the sidekick serves the bootstrap page **from the
+1. Phone opens `http://micro-ft8.local/` — after hydrate, the sidekick serves the bootstrap page **from the
    web FS** (seeded from firmware embed on first boot or recovery).
 2. That page fetches the bundle from the bundle host over HTTPS (HTTP page, HTTPS fetch: allowed, and the
    host must send `Access-Control-Allow-Origin` — see the host requirements below).
@@ -192,11 +192,11 @@ both works; GitHub Pages is the implementation, not the architecture.
 2. **An `Access-Control-Allow-Origin` that lets a plain-HTTP origin read the response.**
 
 **Why the second one matters at all is worth stating, because it looks like a security concern and is not.**
-CORS here is a *capability* question. The bootstrap page is an origin (`http://microft8.local`) fetching from
+CORS here is a *capability* question. The bootstrap page is an origin (`http://micro-ft8.local`) fetching from
 a different origin (the bundle host), so the browser will issue the request but withhold the response body
 from our own script unless the host opts in. Nothing is being defended; the browser is simply refusing to let
 us read bytes we need to read. And we need to read them because the browser is the courier: mixed content
-forbids an HTTPS page from reaching `http://microft8.local` (§3), so the app must be served locally, so it
+forbids an HTTPS page from reaching `http://micro-ft8.local` (§3), so the app must be served locally, so it
 must first be carried onto the device, and a courier has to be able to read the parcel. Were the sidekick
 willing to speak TLS it would fetch the bundle itself and CORS would never arise — that is the ~116 KB and
 the CA bundle §2 declined. Cross-origin `<img>` and `<script>` loads need no CORS but yield rendering or
@@ -204,7 +204,7 @@ execution, never bytes to re-POST.
 
 Since it is a precondition nobody here controls, it was measured rather than assumed — the same discipline
 §8 applied to QRZ, where the answer inverted the assumption. Measured 2026-09-12 with
-`Origin: http://microft8.local`:
+`Origin: http://micro-ft8.local`:
 
 | Host | `Access-Control-Allow-Origin` | Readable by browser JS |
 | --- | --- | --- |
@@ -220,7 +220,7 @@ Since it is a precondition nobody here controls, it was measured rather than ass
 Observed behaviour, not documented policy — the same caveat §8 carries for QRZ. Re-check any row with:
 
 ```bash
-curl -sS -D - -o /dev/null -H 'Origin: http://microft8.local' <url> | grep -i access-control
+curl -sS -D - -o /dev/null -H 'Origin: http://micro-ft8.local' <url> | grep -i access-control
 ```
 
 `pages.github.com` is the custom-domain row and `microsoft.github.io` the subdomain row — neither is ours,
@@ -242,7 +242,7 @@ Two constraints follow, and both are free to adopt now and irritating to retrofi
 **Host-independence has one rider: the CORS header is per-provider and must be measured, not assumed.** A
 provider that fails requirement 2 breaks the relay outright — the browser fetches and the script cannot read
 — so the `curl` above is the gate on adopting any new host, including our own. Note the two hostnames that
-are easy to conflate: `microft8.local` is the *sidekick's own* mDNS name and stays in firmware; the bundle
+are easy to conflate: `micro-ft8.local` is the *sidekick's own* mDNS name and stays in firmware; the bundle
 host is the separate, NVS-stored one.
 
 **`kb2slo.kalikstein.com` is a later step and costs nothing to defer.** CNAMEd onto the same Pages deployment
@@ -301,7 +301,7 @@ from the bundle host.
 
 NVS (and the compile-time default) stores the **app** base with no trailing slash:
 `https://micro-ft8.kalikstein.com/app`. Soft identity: a product rename changes that default string (and
-optionally one NVS write), not the install protocol. Device day-to-day UI remains `http://microft8.local/`.
+optionally one NVS write), not the install protocol. Device day-to-day UI remains `http://micro-ft8.local/`.
 Seed page `/update` fetches `{base}/manifest.json` and drives the wire protocol above.
 
 ## 5. Provisioning and first run
@@ -313,7 +313,7 @@ flowchart LR
         cp --> ni["No internet here<br/>cannot fetch the app"]
     end
     subgraph s2["2 · Join"]
-        rs["Sidekick restarts<br/>joins wifi"] --> md["Reachable by name<br/>microft8.local"]
+        rs["Sidekick restarts<br/>joins wifi"] --> md["Reachable by name<br/>micro-ft8.local"]
     end
     subgraph s3["3 · Bootstrap"]
         p3["Phone<br/>wifi and internet"] --> fb["Fetch bundle<br/>from GitHub Pages"]
@@ -651,14 +651,14 @@ still waits behind whatever enrichment work reaches it.
 The operator's grid square is a manually-edited field today, same as every reference app. Auto-filling it
 from the phone's own location looks like a browser-API question; it is actually the same one §3 already
 paid for and declined to solve. `navigator.geolocation` is gated on a **secure context**, and
-`http://microft8.local` is deliberately not one — a fact that holds regardless of whether the phone has
+`http://micro-ft8.local` is deliberately not one — a fact that holds regardless of whether the phone has
 internet at that moment, because the browser refuses the API on the origin's scheme alone. §3 already
 named this loss ("losing geolocation is the one that stings... the price of not owning a certificate")
 without a way around it. There is one, but it is not the obvious one.
 
 **An iframe does not work, and the reason is worth recording because it is not obvious.** The Secure
 Contexts spec walks the whole ancestor chain, not just the document calling the API: an HTTPS iframe
-nested inside `http://microft8.local` is still not a secure context, because its parent is not. Google's or
+nested inside `http://micro-ft8.local` is still not a secure context, because its parent is not. Google's or
 Apple's own "locate me" code, run inside such an iframe, is denied exactly like our own code would be.
 Only a real top-level navigation reaches a genuinely secure context — embedding cannot fake one.
 
