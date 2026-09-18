@@ -1244,6 +1244,11 @@ function renderTxHud() {
 // ===================== Operate: queue =====================
 
 var queue = {}; // entry_id -> {dxcall, state, retry_count, retry_limit, lastSeenMs}
+// Display order follows host emit order (autoseq priority), not state enum.
+// porta_queue_state_tick re-sends the full active list ~1Hz; rebuild from each
+// poll's QUEUE_ENTRY stream (latest full emit wins). Sorting by state (B64)
+// put a fresh REPLYING below CALLING/CQ.
+var queueOrder = [];
 
 // Safety net against a lost IDLE (RFC 0004 §11's removal signal): /api/events
 // is a bounded 64-entry ring shared by every event type (decodes, slot_state,
@@ -1267,11 +1272,40 @@ function sweepStaleQueue() {
       changed = true;
     }
   });
+  if (changed) {
+    queueOrder = queueOrder.filter(function (id) { return !!queue[id]; });
+  }
   return changed;
 }
 
+// Newest-first walk so the last complete host emit defines order; append any
+// live ids this poll did not mention (partial ring read).
+function rebuildQueueOrderFromEvents(events) {
+  var seen = {};
+  var order = [];
+  for (var i = events.length - 1; i >= 0; i--) {
+    var e = events[i];
+    if (e.d !== 2 || e.st === 6) continue;
+    var id = String(e.eid);
+    if (seen[id]) continue;
+    seen[id] = true;
+    order.unshift(id);
+  }
+  if (!order.length) {
+    queueOrder = queueOrder.filter(function (id) { return !!queue[id]; });
+    return;
+  }
+  Object.keys(queue).forEach(function (id) {
+    if (!seen[id]) order.push(id);
+  });
+  queueOrder = order.filter(function (id) { return !!queue[id]; });
+}
+
 function renderQueue() {
-  var ids = Object.keys(queue).sort(function (a, b) { return queue[b].state - queue[a].state; });
+  var ids = queueOrder.filter(function (id) { return !!queue[id]; });
+  Object.keys(queue).forEach(function (id) {
+    if (ids.indexOf(id) < 0) ids.push(id);
+  });
   var rows = document.getElementById('opQueueRows');
   document.getElementById('opQueueEmpty').hidden = ids.length > 0;
   rows.innerHTML = ids.map(function (id) {
@@ -1556,6 +1590,7 @@ async function pollEvents() {
     if (gotEvents) {
       pendingDecodes = [];
       j.events.forEach(applyEvent);
+      rebuildQueueOrderFromEvents(j.events);
       if (pendingDecodes.length) {
         pendingDecodes.sort(decodeSortCmp);
         pendingDecodes.ts = Date.now();
@@ -2304,7 +2339,7 @@ var STATE_CACHE_KEY = 'microft8_state_v1';
 function saveStateCache() {
   try {
     localStorage.setItem(STATE_CACHE_KEY, JSON.stringify({
-      lastCfg: lastCfg, queue: queue,
+      lastCfg: lastCfg, queue: queue, queueOrder: queueOrder,
       // Each decodeSlots entry is an array whose .ts/.band/.freqKhz are
       // properties *on the array object*, not indexed elements -- confirmed
       // separately, not assumed: JSON.stringify on an array serializes only
@@ -2326,6 +2361,11 @@ function loadStateCache() {
     var s = JSON.parse(raw);
     if (s.lastCfg) lastCfg = s.lastCfg;
     if (s.queue) queue = s.queue;
+    if (s.queueOrder && s.queueOrder.length) {
+      queueOrder = s.queueOrder.filter(function (id) { return !!queue[id]; });
+    } else if (s.queue) {
+      queueOrder = Object.keys(queue);
+    }
     if (s.decodeSlots) {
       decodeSlots = s.decodeSlots.map(function (w) {
         var slot = w.rows || [];
