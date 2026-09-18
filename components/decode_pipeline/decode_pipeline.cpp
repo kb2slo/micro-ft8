@@ -46,9 +46,10 @@ static const char* TAG = "DECODE";
 //     TX-arming trigger and its ignorelist filter. TX itself (RFC 0005 Phase 2
 //     "headless decode/TX core") is a separate milestone from RX decode; a
 //     board with no TX pipeline wired yet gets a no-op/pass-through.
-//   porta_emit_decode: the sidekick link (RFC 0005 Phase 3, not started on a
-//     headless board yet); safe to call unconditionally either way since it's
-//     a no-op until porta_start() has run.
+//   porta_emit_decode: the sidekick link (RFC 0005 Phase 3 / B67). Safe to
+//     call unconditionally — no-op until porta_start() has run; on P4 the
+//     decode task and porta_tick() share the same image so emits reach the
+//     phone once UAC is streaming.
 //   ui_mark_rx_list_stale/ui_set_rx_list_static: components/ui's real
 //     implementation REQUIRES the M5 display stack a headless board can't
 //     link; each board defines these two directly instead.

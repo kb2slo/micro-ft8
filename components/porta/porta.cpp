@@ -1,4 +1,5 @@
 #include "porta.h"
+#include "porta_board.h"
 
 #include <cinttypes>
 #include <cstring>
@@ -11,9 +12,9 @@
 #include "freertos/task.h"
 #include "debug_log.h"
 
-// Defined in main.cpp: the clock this stamps events with, and the control
-// actions the sidekick can request. Setters return nullptr on success or a
-// short reason for the operator's log / NAK.
+// Defined by each board's main (or porta_host stubs): the clock this stamps
+// events with, and the control actions the sidekick can request. Setters
+// return nullptr on success or a short reason for the operator's log / NAK.
 int64_t rtc_now_ms();
 uint32_t rtc_epoch_secs_or_zero();
 const char* porta_host_set_clock(uint32_t epoch_secs, uint16_t millis);
@@ -40,13 +41,10 @@ const char* porta_host_queue_reply(uint32_t decode_id);
 const char* porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take);
 const char* porta_host_file_read_begin(const char* filename, uint16_t skip, uint8_t take);
 #include "porta_proto.h"
-#include "sidekick_flasher.h"
 
 namespace {
 
 constexpr uart_port_t kPortaUart = UART_NUM_1;
-constexpr gpio_num_t kPortaRxPin = GPIO_NUM_1;
-constexpr gpio_num_t kPortaTxPin = GPIO_NUM_2;
 
 // Fixed. The sidekick only ever speaks 115200 (sidekick/main/main.c), and with
 // GPS off this port there is nothing else on the wire to probe for.
@@ -73,6 +71,10 @@ inline uint32_t now_ms() {
 }
 
 bool configure_uart() {
+  gpio_num_t tx_pin = GPIO_NUM_NC;
+  gpio_num_t rx_pin = GPIO_NUM_NC;
+  porta_board_uart_pins(&tx_pin, &rx_pin);
+
   uart_config_t cfg = {};
   cfg.baud_rate = kBaud;
   cfg.data_bits = UART_DATA_8_BITS;
@@ -85,7 +87,7 @@ bool configure_uart() {
   cfg.source_clk = UART_SCLK_DEFAULT;
 #endif
   if (uart_param_config(kPortaUart, &cfg) != ESP_OK) return false;
-  if (uart_set_pin(kPortaUart, kPortaTxPin, kPortaRxPin,
+  if (uart_set_pin(kPortaUart, tx_pin, rx_pin,
                    UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE) != ESP_OK) {
     return false;
   }
@@ -93,9 +95,12 @@ bool configure_uart() {
   return true;
 }
 
-// Outbound queue. Sized for a busy slot: roughly 30 decodes plus whatever the
-// log produces, at 259 bytes worst case. 24 entries is ~6 KB, which is cheap
-// against the alternative of dropping most of a slot's decodes.
+// Outbound queue. Sized for a busy slot (~30 decodes) without chewing ADV
+// internal DRAM — field-found 2026-09-18: bumping this to 64 (~10 KiB more
+// .bss) left CAT working but UAC/decode dead on the Cardputer after the
+// porta extract. CONFIG_GET-all bursts (~38 VALUE+ACK frames) are handled by
+// drain_out() inside handle_config_get(), which pushes into the 4 KiB UART
+// TX ring as it enqueues so a 24-deep software queue is enough.
 constexpr size_t kOutQueueLen = 24;
 
 struct OutFrame {
@@ -124,18 +129,28 @@ void enqueue(const uint8_t* bytes, size_t len) {
   s_out_count++;
 }
 
-// One frame per tick, which is the rate limit that keeps the TX ring from ever
-// filling. A full frame is 259 bytes and the line carries ~11 KB/s, so even at
-// a 50 Hz tick this emits under 13 KB/s of worst-case frames into a 4 KB ring
-// that drains continuously -- and real traffic is far below that, since a busy
-// slot's decodes arrive spread over fifteen seconds. Bursts are absorbed by the
-// queue, not by writing harder.
-constexpr int kMaxSendPerTick = 1;
-
+// Drain as many frames as the UART TX ring can take without blocking.
+// CONFIG_GET-all enqueues dozens of VALUE frames in one handle_frame(); a
+// hard "1 frame per tick" (the old rate limit) then took hundreds of ms to
+// clear and still overflowed a short queue. The ring is 4 KiB and the line
+// is ~11 KB/s — writing only what fits keeps the main loop non-blocking
+// while clearing a snapshot burst in a few 10 ms ticks.
 void drain_out() {
-  for (int i = 0; i < kMaxSendPerTick && s_out_count > 0; ++i) {
+  while (s_out_count > 0) {
+    size_t free_bytes = 0;
+    if (uart_get_tx_buffer_free_size(kPortaUart, &free_bytes) != ESP_OK) {
+      break;
+    }
     const OutFrame& f = s_out[s_out_head];
-    uart_write_bytes(kPortaUart, (const char*)f.bytes, f.len);
+    // Leave a little slack so a concurrent writer never sees a zero-free
+    // ring; uart_write_bytes with ticks=0 would otherwise return short.
+    if (free_bytes < f.len + 32) {
+      break;
+    }
+    const int wrote = uart_write_bytes(kPortaUart, (const char*)f.bytes, f.len);
+    if (wrote < 0 || (size_t)wrote < f.len) {
+      break;
+    }
     s_out_head = (s_out_head + 1) % kOutQueueLen;
     s_out_count--;
   }
@@ -165,7 +180,7 @@ void handle_hello(const porta_frame_t& f) {
 
   char local_version[PORTA_HELLO_VERSION_LEN + 1] = {};
   const bool matches =
-      sidekick_flasher_embedded_version(local_version, sizeof(local_version)) &&
+      porta_board_embedded_sidekick_version(local_version, sizeof(local_version)) &&
       strncmp(remote, local_version, PORTA_HELLO_VERSION_LEN) == 0;
 
   s_version_matches = matches;
@@ -311,7 +326,9 @@ void handle_config_get(const porta_frame_t& f) {
     return;
   }
 
-  char snap[2048];
+  // Static: ADV station snapshot can be ~1–2 KiB; keeping this on the
+  // caller's stack blew the P4's default 3584-byte main task (B67 bench).
+  static char snap[2048];
   const size_t n = porta_host_config_snapshot(snap, sizeof(snap));
   if (n == 0) {
     uint8_t buf[PORTA_PROTO_MAX_FRAME];
@@ -341,6 +358,9 @@ void handle_config_get(const porta_frame_t& f) {
             porta_proto_encode_config_value(k.c_str(), v.c_str(), buf, sizeof(buf));
         if (wn > 0) {
           enqueue(buf, wn);
+          // Kick the UART TX ring now so a full Station.txt snapshot does
+          // not need a 64-deep software queue (ADV DIRAM cannot spare that).
+          drain_out();
           found = true;
         }
         if (!want_all) {
@@ -354,9 +374,11 @@ void handle_config_get(const porta_frame_t& f) {
   uint8_t buf[PORTA_PROTO_MAX_FRAME];
   if (!want_all && !found) {
     enqueue(buf, porta_proto_encode_nak(PORTA_MSG_CONFIG_GET, "unknown key", buf, sizeof(buf)));
+    drain_out();
     return;
   }
   enqueue(buf, porta_proto_encode_ack(PORTA_MSG_CONFIG_GET, buf, sizeof(buf)));
+  drain_out();
 }
 
 void handle_config_set(const porta_frame_t& f) {
@@ -560,8 +582,12 @@ PortaCompanion porta_companion_state() {
 void porta_start() {
   if (s_running) return;
 
-  gpio_reset_pin(kPortaTxPin);
-  gpio_reset_pin(kPortaRxPin);
+  gpio_num_t tx_pin = GPIO_NUM_NC;
+  gpio_num_t rx_pin = GPIO_NUM_NC;
+  porta_board_uart_pins(&tx_pin, &rx_pin);
+
+  gpio_reset_pin(tx_pin);
+  gpio_reset_pin(rx_pin);
 
   // A TX ring buffer is not optional now that this port transmits. With a
   // tx_buffer_size of 0, uart_write_bytes() blocks until every byte has left
@@ -586,7 +612,7 @@ void porta_start() {
   s_running = true;
   debug_log_set_relay(porta_emit_log);
   ESP_LOGI(kTag, "Started on UART%d TX=G%d RX=G%d baud=%d",
-           (int)kPortaUart, (int)kPortaTxPin, (int)kPortaRxPin, kBaud);
+           (int)kPortaUart, (int)tx_pin, (int)rx_pin, kBaud);
 }
 
 void porta_stop() {

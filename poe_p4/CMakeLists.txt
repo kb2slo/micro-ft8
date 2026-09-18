@@ -16,6 +16,8 @@ set(IDF_TARGET esp32p4)
 # (which would also expose ADV-only ones like M5Unified/board_cardputer_adv
 # that this board can't build).
 set(EXTRA_COMPONENT_DIRS
+    "${CMAKE_CURRENT_LIST_DIR}/../components/porta_proto"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/porta"
     "${CMAKE_CURRENT_LIST_DIR}/../components/radio_control"
     "${CMAKE_CURRENT_LIST_DIR}/../components/decode_types"
     "${CMAKE_CURRENT_LIST_DIR}/../components/decode_tx_state"

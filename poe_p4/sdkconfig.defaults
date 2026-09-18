@@ -31,3 +31,10 @@ CONFIG_ESP32P4_REV_MIN_100=y
 # larger composite descriptor than a plain flash drive) rather than guessing
 # a smaller number blind.
 CONFIG_USB_HOST_CONTROL_TRANSFER_MAX_SIZE=2048
+
+# Bench-found 2026-09-18 (B67): IDF default main stack (3584) overflows on
+# CONFIG_GET — porta handle_config_get keeps a 2 KiB snapshot buffer plus a
+# frame, and snprintf hits the stack canary ("Stack protection fault" in
+# _svfprintf_r / main). ADV already runs 16384 for the same porta pump;
+# match that so phone Settings load does not reboot the P4.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384

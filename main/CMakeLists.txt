@@ -5,7 +5,7 @@ idf_component_register(
          "storage/station_save_worker.cpp"
          "audio/audio_source.cpp"
          "time/gps.cpp"
-         "porta.cpp"
+         "porta_board.cpp"
          "audio/stream_uac.cpp"
          "audio/dds_q15.cpp"
          "storage/station.cpp"
@@ -24,7 +24,7 @@ idf_component_register(
          "time/external_rtc.cpp"
          "storage/storage_service.cpp"
     INCLUDE_DIRS "." "radio" "audio" "storage" "time"
-    REQUIRES ui M5Unified M5GFX M5Cardputer board_cardputer_adv ft8_lib sidekick_flasher porta_proto radio_control decode_types
+    REQUIRES ui M5Unified M5GFX M5Cardputer board_cardputer_adv ft8_lib sidekick_flasher porta_proto porta radio_control decode_types
              decode_tx_state callsign_hashtable autoseq protocol debug_log ft8_audio_pipeline
              external_rtc storage_service board_power rtc_core adif decode_pipeline resample
              usb_host_uac usb_host_cdc_acm usb espressif__esp_tinyusb
@@ -32,5 +32,11 @@ idf_component_register(
              driver esp_driver_i2c fatfs sdmmc wear_levelling
 )
 target_compile_options(${COMPONENT_LIB} PRIVATE -Werror)
+# components/porta references porta_board_* (defined only here). Without an
+# explicit undefined, archive extraction can skip porta_board.cpp.obj when
+# nothing in main/ calls those symbols directly (only porta_start/tick).
+target_link_libraries(${COMPONENT_LIB} INTERFACE
+    "-u porta_board_uart_pins"
+    "-u porta_board_embedded_sidekick_version")
 add_dependencies(${COMPONENT_LIB} microft8_build_identity)
 target_include_directories(${COMPONENT_LIB} PRIVATE ${CMAKE_BINARY_DIR}/generated)
