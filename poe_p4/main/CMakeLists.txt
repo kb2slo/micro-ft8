@@ -6,6 +6,7 @@ idf_component_register(
          "decode_seams.cpp"
          "porta_board.cpp"
          "porta_host_stubs.cpp"
+         "tx_scheduler.cpp"
          # Shared Station.txt parse/serialize (same unit ADV + host_mock use).
          "../../main/storage/station.cpp"
     INCLUDE_DIRS "."

@@ -11,7 +11,6 @@ Ship on `origin/main`. Talk through changes before a local commit (see [README.m
 
 | ID  | Item | Why / constraint |
 | --- | ---- | ---------------- |
-| B68 | RFC 0005 Phase 2 remainder: PoE-P4 TX (tone/CAT path) | **Now 2026-09-18** after B67 porta/companion verified on P4 + ADV regression. Tone-scheduling state machine is still ADV `main.cpp`-only; QMX TX is CAT (`radio_control_begin_tx`), not UAC audio out. Station call/grid/beacon already come from the phone (B67). Done-when: with station+beacon set from the phone, P4 keys the QMX on schedule; serial shows TX arm/start/stop; optional PSKReporter spot — same class of proof as ADV unattended beacon (B37). |
 
 
 ## Backlog

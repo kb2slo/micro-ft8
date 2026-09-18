@@ -50,23 +50,35 @@ static constexpr uint32_t kUacBufferThreshold = 600;
 
 static cdc_acm_dev_hdl_t s_cdc_handle = nullptr;
 static int64_t s_last_open_attempt_ms = 0;
+// After CDC/UAC disconnect the composite device stays in usbh as is_gone for
+// a while; cdc_acm_host_open() then spam-logs usbh_devs_open INVALID_STATE
+// for its whole connection_timeout_ms. Hold off until the QMX is power-cycled
+// (expected QMX CAT behaviour) and re-enumerates cleanly.
+static constexpr int64_t kCdcReconnectBackoffMs = 3000;
+static int64_t s_cdc_reconnect_after_ms = 0;
 
 static uac_host_device_handle_t s_uac_handle = nullptr;
+// QMX can fire DISCONNECTED once per UAC logic iface; only queue one close.
+static uac_host_device_handle_t s_uac_close_queued = nullptr;
 
 // Same shape as ADV's stream_uac.cpp uac_event_t — driver events arrive on
-// the UAC driver's background task and must not do blocking open/start work
-// there either; the queue hands them to uac_lib_task.
+// the UAC driver's background task and must not do blocking open/start /
+// close work there either; the queue hands them to uac_lib_task.
 typedef enum {
     UAC_EVT_DRIVER,
+    UAC_EVT_CLOSE,
 } uac_event_type_t;
 
 typedef struct {
     uac_event_type_t type;
-    struct {
-        uint8_t addr;
-        uint8_t iface_num;
-        uac_host_driver_event_t event;
-    } driver;
+    union {
+        struct {
+            uint8_t addr;
+            uint8_t iface_num;
+            uac_host_driver_event_t event;
+        } driver;
+        uac_host_device_handle_t close_handle;
+    };
 } uac_event_t;
 
 static QueueHandle_t s_uac_event_queue = nullptr;
@@ -98,9 +110,14 @@ static void cdc_event_cb(const cdc_acm_host_dev_event_data_t *event, void * /*us
         // repeated retries against that leaked state eventually hang
         // usb_lib_task inside descriptor parsing (watchdog reboot loop).
         // Matches the ADV's own cdc_close() in main/audio/stream_uac.cpp,
-        // which already does this unconditionally.
-        cdc_acm_host_close(s_cdc_handle);
+        // which already does this unconditionally. Null first so
+        // cat_cdc_send() on another task cannot race into the same handle.
+        cdc_acm_dev_hdl_t h = s_cdc_handle;
         s_cdc_handle = nullptr;
+        s_cdc_reconnect_after_ms = now_ms() + kCdcReconnectBackoffMs;
+        if (h) {
+            cdc_acm_host_close(h);
+        }
     } else if (event->type == CDC_ACM_HOST_ERROR) {
         ESP_LOGW(TAG, "QMX CDC error: %d", event->data.error);
     }
@@ -116,6 +133,9 @@ static void try_open(void) {
         return;
     }
     int64_t t = now_ms();
+    if (t < s_cdc_reconnect_after_ms) {
+        return;
+    }
     if (s_last_open_attempt_ms != 0 && (t - s_last_open_attempt_ms) < 1000) {
         return;
     }
@@ -145,18 +165,42 @@ static void try_open(void) {
 // under it, rather than the loop calling start() again on a stale handle.
 static volatile uac_host_device_handle_t s_uac_starting_handle = nullptr;
 
-// Same shape as cdc_event_cb above, and for the same reason: close the
-// handle even on disconnect, or the next open leaks against stale state.
+// Field-found 2026-09-18: closing from this callback raced decode_audio
+// (core 1) still inside uac_host_device_read() and asserted in
+// spinlock_acquire after QMX power-off. Espressif's audio_player example
+// and the UAC README both require a user close on DISCONNECTED, but the
+// example queues it off the driver task: null the published handle first
+// so readers stop, then close on uac_lib_task.
 static void uac_device_event_cb(uac_host_device_handle_t handle,
                                 const uac_host_device_event_t event, void * /*arg*/) {
     if (event == UAC_HOST_DRIVER_EVENT_DISCONNECTED) {
+        // Composite QMX can deliver DISCONNECTED more than once (one per
+        // UAC logic iface). First wins; further closes would hit
+        // ESP_ERR_INVALID_ARG after the iface is gone.
+        if (handle == s_uac_close_queued) {
+            return;
+        }
         ESP_LOGI(TAG, "QMX UAC disconnected");
-        uac_host_device_close(handle);
         if (handle == s_uac_handle) {
             s_uac_handle = nullptr;
         }
         if (handle == s_uac_starting_handle) {
             s_uac_starting_handle = nullptr;
+        }
+        s_uac_close_queued = handle;
+        s_cdc_reconnect_after_ms = now_ms() + kCdcReconnectBackoffMs;
+        if (s_uac_event_queue) {
+            uac_event_t evt = {};
+            evt.type = UAC_EVT_CLOSE;
+            evt.close_handle = handle;
+            if (xQueueSend(s_uac_event_queue, &evt, pdMS_TO_TICKS(1000)) != pdTRUE) {
+                ESP_LOGE(TAG, "UAC close event dropped; closing inline");
+                uac_host_device_close(handle);
+                s_uac_close_queued = nullptr;
+            }
+        } else {
+            uac_host_device_close(handle);
+            s_uac_close_queued = nullptr;
         }
     } else if (event == UAC_HOST_DEVICE_EVENT_TRANSFER_ERROR) {
         ESP_LOGW(TAG, "QMX UAC transfer error");
@@ -234,13 +278,24 @@ static void try_open_uac(uint8_t addr, uint8_t iface_num) {
 
     if (start_err != ESP_OK) {
         ESP_LOGE(TAG, "QMX UAC giving up after %d attempts; replug to retry", kUacStartMaxAttempts);
-        uac_host_device_close(handle);
-        s_uac_starting_handle = nullptr;
+        // Disconnect may already have queued UAC_EVT_CLOSE and cleared
+        // s_uac_starting_handle — do not double-close.
+        if (s_uac_starting_handle == handle) {
+            s_uac_starting_handle = nullptr;
+            uac_host_device_close(handle);
+        }
         return;
     }
 
+    if (!s_uac_starting_handle) {
+        // Disconnected after a successful start() but before we published
+        // s_uac_handle; UAC_EVT_CLOSE owns the close.
+        ESP_LOGW(TAG, "QMX UAC disconnected after start; abandoning publish");
+        return;
+    }
     s_uac_handle = handle;
     s_uac_starting_handle = nullptr;
+    s_uac_close_queued = nullptr;
     resample_init(&s_resample_state);
     ESP_LOGI(TAG, "QMX UAC RX streaming (%luHz %u-bit %uch)",
              (unsigned long)kUacSampleRate, (unsigned)kUacBitResolution, (unsigned)kUacChannels);
@@ -250,6 +305,21 @@ static void uac_lib_task(void * /*arg*/) {
     uac_event_t evt;
     while (true) {
         if (!xQueueReceive(s_uac_event_queue, &evt, portMAX_DELAY)) {
+            continue;
+        }
+        if (evt.type == UAC_EVT_CLOSE) {
+            // Give decode_audio one read-timeout window to observe the
+            // nulled s_uac_handle / should_stop before ringbuf teardown.
+            vTaskDelay(pdMS_TO_TICKS(250));
+            esp_err_t cerr = uac_host_device_close(evt.close_handle);
+            // INVALID_ARG = iface already gone (duplicate DISCONNECTED or
+            // driver finished teardown); not actionable.
+            if (cerr != ESP_OK && cerr != ESP_ERR_INVALID_ARG) {
+                ESP_LOGW(TAG, "QMX UAC close after disconnect: %s", esp_err_to_name(cerr));
+            }
+            if (s_uac_close_queued == evt.close_handle) {
+                s_uac_close_queued = nullptr;
+            }
             continue;
         }
         if (evt.type != UAC_EVT_DRIVER) {
@@ -395,12 +465,17 @@ bool qmx_audio_ready(void) {
 }
 
 int qmx_audio_read_ft8_samples(void * /*ctx*/, float *out, int /*max_samples*/) {
-    if (!s_uac_handle || !out) {
+    // Snapshot: disconnect nulls s_uac_handle before queuing close; a
+    // concurrent close must not race a read that still holds the old
+    // pointer only if we re-load it after the null. Local copy is enough
+    // for the should_stop / ready handshake; close is deferred 250ms.
+    uac_host_device_handle_t handle = s_uac_handle;
+    if (!handle || !out) {
         return 0;
     }
 
     uint32_t bytes_read = 0;
-    esp_err_t err = uac_host_device_read(s_uac_handle, s_usb_buffer, UAC_READ_BUFFER_SIZE,
+    esp_err_t err = uac_host_device_read(handle, s_usb_buffer, UAC_READ_BUFFER_SIZE,
                                          &bytes_read, pdMS_TO_TICKS(200));
     if (err != ESP_OK || bytes_read == 0) {
         return 0;

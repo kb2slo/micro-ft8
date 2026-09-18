@@ -11,16 +11,16 @@
 #include "radio_control.h"
 #include "rtc_core.h"
 #include "station.h"
+#include "tx_scheduler.h"
 
-// B67: in-memory Station.txt surface so the phone Settings form matches ADV
-// (full key set + compile-time defaults). Persist/FS and TX arming stay later.
+// B67/B68: in-memory Station.txt + Connect/VFO; B68 adds CAT tone TX via
+// tx_scheduler (beacon/arm/slot). Persist/FS still later.
 
 static const char *TAG = "porta_host";
 
 extern std::string g_call;
 
 static StationSettings s_station;
-static uint8_t s_beacon_mode = 0;
 static bool s_seeded = false;
 
 // Same FT8 table as ADV main.cpp's g_bands initializer.
@@ -63,6 +63,14 @@ static void sync_autoseq_station(void) {
     autoseq_set_station(s_station.call, grid_ft8_4(s_station.grid));
     autoseq_set_skip_tx1(s_station.skip_tx1);
     autoseq_set_max_retry(s_station.autoseq_max_retry);
+    AutoseqCqType cq = AutoseqCqType::CQ;
+    if (s_station.cq_type >= 0 && s_station.cq_type <= 5) {
+        cq = (AutoseqCqType)s_station.cq_type;
+    }
+    const std::string &ft =
+        (cq == AutoseqCqType::FREETEXT || cq == AutoseqCqType::FD) ? s_station.free_text
+                                                                  : s_station.cq_freetext;
+    autoseq_set_cq_type(cq, ft);
 }
 
 static void station_seed_adv_defaults(void) {
@@ -138,6 +146,16 @@ int porta_p4_station_freq_hz(void) {
     return station_freq_hz();
 }
 
+int porta_p4_station_offset_hz(void) {
+    ensure_seeded();
+    return s_station.offset_hz;
+}
+
+int porta_p4_station_offset_src(void) {
+    ensure_seeded();
+    return s_station.offset_src;
+}
+
 // ADV's porta_queue_state_tick sibling: once a second, push SLOT_STATE and
 // active QUEUE_ENTRY rows so Operate stays current without a snapshot call.
 void porta_p4_companion_status_tick(void) {
@@ -159,7 +177,8 @@ void porta_p4_companion_status_tick(void) {
         // actually switches the decode pipeline (later).
         parity = (uint8_t)((rtc_current_epoch_seconds() / 15) & 1);
     }
-    porta_emit_slot_state(parity, s_beacon_mode, (uint16_t)s_station.offset_hz);
+    porta_emit_slot_state(parity, tx_scheduler_beacon_mode(),
+                          (uint16_t)s_station.offset_hz);
 
     uint16_t current_ids[AUTOSEQ_MAX_QUEUE];
     const int n = autoseq_active_count();
@@ -189,6 +208,41 @@ void porta_p4_companion_status_tick(void) {
     s_last_active_count = filled;
 }
 
+// ADV main.cpp porta_tx_hud_tick sibling — phone Operate panel. Power/SWR
+// stay -1 until P4 grows CAT meter parsing (qmx_transport stubs meters today).
+void porta_p4_tx_hud_tick(void) {
+    static uint32_t s_last_ms = 0;
+    static bool s_last_active = false;
+
+    const bool active = tx_scheduler_hud_active();
+    if (!active && !s_last_active) {
+        return;
+    }
+
+    const uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
+    if (active && (now_ms - s_last_ms < 500)) {
+        return;
+    }
+
+    if (!active) {
+        s_last_active = false;
+        porta_emit_tx_hud(false, false, false, "", -1.f, -1.f, -1, 0, "");
+        return;
+    }
+
+    s_last_ms = now_ms;
+    s_last_active = true;
+
+    const char *tx_text = "";
+    int offset_hz = 0;
+    (void)tx_scheduler_hud_snapshot(&tx_text, &offset_hz);
+
+    float power_w = -1.f, swr = -1.f;
+    (void)radio_control_get_tx_power_swr(&power_w, &swr);
+
+    porta_emit_tx_hud(true, false, false, tx_text, power_w, swr, -1, offset_hz, "");
+}
+
 const char *porta_host_set_clock(uint32_t epoch_secs, uint16_t millis) {
     if (epoch_secs < 1700000000u) {
         return "implausible time";
@@ -212,7 +266,9 @@ const char *porta_host_tx_free(const char * /*text*/) {
     return "TX not wired on P4 yet";
 }
 
-void porta_host_tx_cancel(void) {}
+void porta_host_tx_cancel(void) {
+    tx_scheduler_cancel();
+}
 
 size_t porta_host_config_snapshot(char *out, size_t out_cap) {
     ensure_seeded();
@@ -236,7 +292,7 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
              "audio_rx=%d\nclock_set=%d\nclock_source=%s\nbeacon=%u\n",
              qmx_audio_ready() ? 1 : 0, radio_control_ready() ? 1 : 0, 0, band_name, freq_khz,
              qmx_audio_ready() ? 1 : 0, rtc_valid ? 1 : 0, clock_source_name(),
-             (unsigned)s_beacon_mode);
+             (unsigned)tx_scheduler_beacon_mode());
     text += live;
 
     if (text.size() + 1 > out_cap) {
@@ -252,8 +308,8 @@ const char *porta_host_config_set(const char *key, const char *value) {
         return "malformed";
     }
     if (strcmp(key, "beacon") == 0) {
-        s_beacon_mode = (uint8_t)atoi(value);
-        ESP_LOGI(TAG, "config beacon=%u", (unsigned)s_beacon_mode);
+        tx_scheduler_set_beacon((uint8_t)atoi(value));
+        ESP_LOGI(TAG, "config beacon=%u", (unsigned)tx_scheduler_beacon_mode());
         return nullptr;
     }
     if (!station_key_known(key)) {
@@ -269,7 +325,8 @@ const char *porta_host_config_set(const char *key, const char *value) {
     g_call = s_station.call;
 
     if (strcmp(key, "call") == 0 || strcmp(key, "grid") == 0 || strcmp(key, "skiptx1") == 0 ||
-        strcmp(key, "autoseq_max_retry") == 0) {
+        strcmp(key, "autoseq_max_retry") == 0 || strcmp(key, "cq_type") == 0 ||
+        strcmp(key, "cq_ft") == 0 || strcmp(key, "free_text") == 0) {
         sync_autoseq_station();
     }
 
@@ -304,8 +361,7 @@ const char *porta_host_tune(bool /*on*/) {
 }
 
 const char *porta_host_beacon(uint8_t mode) {
-    s_beacon_mode = mode;
-    ESP_LOGI(TAG, "beacon mode=%u (arming not wired until B68)", (unsigned)mode);
+    tx_scheduler_set_beacon(mode);
     return nullptr;
 }
 

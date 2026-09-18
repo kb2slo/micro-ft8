@@ -179,9 +179,10 @@ void handle_hello(const porta_frame_t& f) {
   strncpy(s_version, remote, sizeof(s_version) - 1);
 
   char local_version[PORTA_HELLO_VERSION_LEN + 1] = {};
+  const bool have_local =
+      porta_board_embedded_sidekick_version(local_version, sizeof(local_version));
   const bool matches =
-      porta_board_embedded_sidekick_version(local_version, sizeof(local_version)) &&
-      strncmp(remote, local_version, PORTA_HELLO_VERSION_LEN) == 0;
+      have_local && strncmp(remote, local_version, PORTA_HELLO_VERSION_LEN) == 0;
 
   s_version_matches = matches;
   if (matches) {
@@ -190,6 +191,10 @@ void handle_hello(const porta_frame_t& f) {
     // line landed on, so two related lines can straddle a page boundary and
     // only the second is ever seen. Bench-confirmed 2026-09-04.
     debug_log_line_public(std::string("OK ") + remote);
+  } else if (!have_local) {
+    // PoE-P4 (and any board without an embedded sidekick image): nothing to
+    // compare; HELLO still runs. Do not shout MISMATCH with an empty local=.
+    ESP_LOGI(kTag, "Companion version %s (no embedded sidekick image on this board)", remote);
   } else {
     ESP_LOGW(kTag, "Companion version MISMATCH: remote=%s local=%s", remote, local_version);
     debug_log_line_public(std::string("X R:") + remote);

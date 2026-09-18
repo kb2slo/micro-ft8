@@ -12,6 +12,7 @@
 #include "protocol.h"
 #include "qmx_transport.h"
 #include "radio_control.h"
+#include "tx_scheduler.h"
 
 // RFC 0005 Phase 2/3: shared radio_control + decode; porta (B67) on Grove
 // G53/G54. TX tone scheduling (B68) is still next.
@@ -34,13 +35,16 @@ static void decode_audio_task(void * /*arg*/) {
         .should_stop = qmx_audio_should_stop,
         .on_block_processed = nullptr,
     };
-    while (!qmx_audio_ready()) {
-        vTaskDelay(pdMS_TO_TICKS(200));
+    // QMX CAT/UAC comes back only after a radio power cycle (QMX quirk);
+    // keep this task alive so a replug restarts decode without resetting P4.
+    while (true) {
+        while (!qmx_audio_ready()) {
+            vTaskDelay(pdMS_TO_TICKS(200));
+        }
+        ESP_LOGI(TAG, "QMX UAC streaming; starting decode pipeline");
+        ft8_audio_pipeline_run(&pipe_cfg);
+        ESP_LOGW(TAG, "decode_audio_task: pipeline exited (QMX audio disconnected); waiting for UAC");
     }
-    ESP_LOGI(TAG, "QMX UAC streaming; starting decode pipeline");
-    ft8_audio_pipeline_run(&pipe_cfg);
-    ESP_LOGW(TAG, "decode_audio_task: pipeline exited (QMX audio disconnected)");
-    vTaskDelete(NULL);
 }
 
 extern "C" void app_main(void) {
@@ -61,6 +65,8 @@ extern "C" void app_main(void) {
     while (true) {
         porta_tick();
         porta_p4_companion_status_tick();
+        porta_p4_tx_hud_tick();
+        tx_scheduler_tick();
         vTaskDelay(pdMS_TO_TICKS(10));
         if (!synced && radio_control_ready()) {
             const int freq_hz = porta_p4_station_freq_hz();
