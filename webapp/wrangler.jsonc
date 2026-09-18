@@ -13,6 +13,12 @@
     // fetch handler. This forces every request through worker.js first.
     "run_worker_first": true
   },
+  "r2_buckets": [
+    {
+      "binding": "DOWNLOADS",
+      "bucket_name": "micro-ft8-downloads"
+    }
+  ],
   "routes": [
     {
       "pattern": "micro-ft8.kalikstein.com",

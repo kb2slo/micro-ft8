@@ -453,13 +453,15 @@ jobs:
 
   release-main:
     name: GitHub Release (main)
-    needs: [host-tests, firmware, poe_p4-firmware]
+    needs: [host-tests, firmware, poe_p4-firmware, sidekick-firmware]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v5
+        with:
+          submodules: true
 
       # Move the rolling tag ourselves, and keep this step. GitHub's release API
       # honours target_commitish only when it *creates* a tag and ignores it
@@ -480,6 +482,14 @@ jobs:
           name: poe_p4-firmware
           path: dist-poe-p4
 
+      - uses: actions/download-artifact@v7
+        with:
+          name: sidekick-firmware
+          path: components/sidekick_flasher/target_firmware
+
+      - name: Install esptool (sidekick merge)
+        run: python3 -m pip install --upgrade 'esptool>=4'
+
       # Self-identifying on disk: several of these land in one Downloads folder
       # during a bench session, where a fixed name plus "(3)" says nothing.
       # Date is the *commit* date in UTC, not the build date, so rebuilding a
@@ -496,6 +506,7 @@ jobs:
           cp "dist/${bin}" "dist/${asset}"
           sha256sum "dist/${asset}" | tee "dist/${asset}.sha256"
           echo "SHORT_SHA=${short}" >> "$GITHUB_ENV"
+          echo "DAY=${day}" >> "$GITHUB_ENV"
           echo "HASH_BIN=${bin}" >> "$GITHUB_ENV"
           echo "ASSET=${asset}" >> "$GITHUB_ENV"
 
@@ -504,6 +515,26 @@ jobs:
           cp "dist-poe-p4/poe_p4_merged.bin" "dist/${asset_p4}"
           sha256sum "dist/${asset_p4}" | tee "dist/${asset_p4}.sha256"
           echo "ASSET_P4=${asset_p4}" >> "$GITHUB_ENV"
+
+      - name: Merge sidekick + source archive
+        run: |
+          short="${SHORT_SHA}"
+          day="${DAY}"
+          ./tools/merge_sidekick_bin.sh \
+            components/sidekick_flasher/target_firmware \
+            "dist/${day}-microft8-sidekick-${short}.bin"
+          asset_sk="${day}-microft8-sidekick-${short}.bin"
+          sha256sum "dist/${asset_sk}" | tee "dist/${asset_sk}.sha256"
+          echo "ASSET_SK=${asset_sk}" >> "$GITHUB_ENV"
+
+          ./tools/make_source_archive.sh dist "${short}"
+          asset_src="microft8-source-${short}.tar.gz"
+          test -f "dist/${asset_src}"
+          # Dated name for the GitHub release (stable name is the R2 mirror only).
+          dated_src="${day}-microft8-source-${short}.tar.gz"
+          mv "dist/${asset_src}" "dist/${dated_src}"
+          mv "dist/${asset_src}.sha256" "dist/${dated_src}.sha256"
+          echo "ASSET_SRC=${dated_src}" >> "$GITHUB_ENV"
 
       # The asset name changes every merge, so uploads would otherwise pile up
       # on this one rolling release forever. Clear the old ones; the release
@@ -530,22 +561,107 @@ jobs:
             dist/${{ env.ASSET }}.sha256
             dist/${{ env.ASSET_P4 }}
             dist/${{ env.ASSET_P4 }}.sha256
+            dist/${{ env.ASSET_SK }}
+            dist/${{ env.ASSET_SK }}.sha256
+            dist/${{ env.ASSET_SRC }}
+            dist/${{ env.ASSET_SRC }}.sha256
             dist/BUILD.txt
           body: |
             Rolling firmware from `main`, rebuilt on every merge that can change the binary. Not a versioned release — see `docs/RELEASE_PROCESS.md`.
 
+            Public anonymous downloads (stable names): https://micro-ft8.kalikstein.com/downloads.html
+
             - Commit: `${{ github.sha }}`
 
-            **Cardputer ADV** — build image: `${{ env.HASH_BIN }}`, download: `${{ env.ASSET }}`. Flash at `0x0` (full 8 MB image, custom FATFS partition table).
+            **Cardputer ADV** — build image: `${{ env.HASH_BIN }}`, download: `${{ env.ASSET }}`. Flash at `0x0` (full 8 MB image, custom LittleFS partition table).
 
             ```
             esptool.py --chip esp32s3 write_flash 0x0 ${{ env.ASSET }}
             ```
 
-            First boot may format the FATFS partition.
+            First boot may format the LittleFS partition.
 
-            **M5Stack Unit PoE-P4 (U213)** — download: `${{ env.ASSET_P4 }}`. RFC 0005 Phase 0 boot-only skeleton — no radio, no UI, no decode yet. Flash at `0x0` over the USB-C port next to the RJ45 (labeled `USB-C PROG & OTG`).
+            **M5Stack Unit PoE-P4 (U213)** — download: `${{ env.ASSET_P4 }}`. Flash at `0x0` over the USB-C port next to the RJ45 (labeled `USB-C PROG & OTG`).
 
             ```
             esptool.py --chip esp32p4 write_flash 0x0 ${{ env.ASSET_P4 }}
             ```
+
+            **AtomS3 Lite sidekick** — download: `${{ env.ASSET_SK }}` (merged 0x0 image). Standalone desk flash; ADV Port A flash embeds the same build.
+
+            ```
+            esptool.py --chip esp32s3 write_flash 0x0 ${{ env.ASSET_SK }}
+            ```
+
+            **Source** — `${{ env.ASSET_SRC }}`: history-free tree at this commit, including vendored `ft8_lib` (no `.git`).
+
+      - name: Mirror continuous assets to Cloudflare R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4 --version
+
+          sha256_of() { awk '{print $1}' "$1"; }
+
+          ADV_SHA="$(sha256_of "dist/${ASSET}.sha256")"
+          P4_SHA="$(sha256_of "dist/${ASSET_P4}.sha256")"
+          SK_SHA="$(sha256_of "dist/${ASSET_SK}.sha256")"
+          SRC_SHA="$(sha256_of "dist/${ASSET_SRC}.sha256")"
+
+          cp "dist/${ASSET}" dist/microft8-adv-continuous.bin
+          cp "dist/${ASSET_P4}" dist/microft8-poe-p4-continuous.bin
+          cp "dist/${ASSET_SK}" dist/microft8-sidekick-continuous.bin
+          cp "dist/${ASSET_SRC}" dist/microft8-source-continuous.tar.gz
+
+          cat > dist/manifest.json <<EOF
+          {
+            "commit": "${GITHUB_SHA}",
+            "short": "${SHORT_SHA}",
+            "date": "${DAY}",
+            "generated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "assets": {
+              "adv": {
+                "stable": "microft8-adv-continuous.bin",
+                "filename": "${ASSET}",
+                "sha256": "${ADV_SHA}",
+                "chip": "esp32s3",
+                "flash_offset": "0x0"
+              },
+              "poe_p4": {
+                "stable": "microft8-poe-p4-continuous.bin",
+                "filename": "${ASSET_P4}",
+                "sha256": "${P4_SHA}",
+                "chip": "esp32p4",
+                "flash_offset": "0x0"
+              },
+              "sidekick": {
+                "stable": "microft8-sidekick-continuous.bin",
+                "filename": "${ASSET_SK}",
+                "sha256": "${SK_SHA}",
+                "chip": "esp32s3",
+                "flash_offset": "0x0"
+              },
+              "source": {
+                "stable": "microft8-source-continuous.tar.gz",
+                "filename": "${ASSET_SRC}",
+                "sha256": "${SRC_SHA}"
+              }
+            }
+          }
+          EOF
+
+          put() {
+            local key="$1" file="$2" ctype="$3"
+            npx --yes wrangler@4 r2 object put "micro-ft8-downloads/${key}" \
+              --file="${file}" \
+              --content-type="${ctype}" \
+              --remote
+          }
+
+          put microft8-adv-continuous.bin dist/microft8-adv-continuous.bin application/octet-stream
+          put microft8-poe-p4-continuous.bin dist/microft8-poe-p4-continuous.bin application/octet-stream
+          put microft8-sidekick-continuous.bin dist/microft8-sidekick-continuous.bin application/octet-stream
+          put microft8-source-continuous.tar.gz dist/microft8-source-continuous.tar.gz application/gzip
+          put manifest.json dist/manifest.json 'application/json; charset=utf-8'

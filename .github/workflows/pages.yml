@@ -28,6 +28,17 @@ jobs:
       - uses: actions/checkout@v5
       - name: Verify manifest matches assets
         run: python3 webapp/tools/gen_manifest.py --check
+      # Worker binds DOWNLOADS to this bucket; create once if missing so a fresh
+      # account does not fail deploy before release-main has ever run.
+      - name: Ensure R2 downloads bucket exists
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: webapp
+          wranglerVersion: "4"
+          command: r2 bucket create micro-ft8-downloads
+        continue-on-error: true
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:

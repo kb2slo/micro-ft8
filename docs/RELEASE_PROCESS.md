@@ -5,15 +5,16 @@ file is the working agreement, this one is what CI publishes and what a human mu
 
 Two paths, both defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). Nothing else publishes.
 
-| Path | Trigger | Job | Tag | ADV asset | PoE-P4 asset |
-| --- | --- | --- | --- | --- | --- |
-| Rolling | push to `main` that can change the binary | `release-main` | `continuous`, force-moved every run | `YYYYMMDD-microft8-<commit>.bin` | `YYYYMMDD-microft8-poe-p4-<commit>.bin` |
-| Versioned | push of a tag matching `v*` | `release` | the tag you pushed, immovable | `MicroFT8-<tag>-Merged.bin` | `MicroFT8-PoE-P4-<tag>-Merged.bin` |
+| Path | Trigger | Job | Tag | ADV asset | PoE-P4 asset | Sidekick | Source |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Rolling | push to `main` that can change the binary | `release-main` | `continuous`, force-moved every run | `YYYYMMDD-microft8-<commit>.bin` | `YYYYMMDD-microft8-poe-p4-<commit>.bin` | `YYYYMMDD-microft8-sidekick-<commit>.bin` | `YYYYMMDD-microft8-source-<commit>.tar.gz` |
+| Versioned | push of a tag matching `v*` | `release` | the tag you pushed, immovable | `MicroFT8-<tag>-Merged.bin` | `MicroFT8-PoE-P4-<tag>-Merged.bin` | — | — |
 
-Both publish two merged images now — the ADV (esp32s3, 0x0, 8 MB, custom LittleFS
+Both rolling and versioned publish ADV + PoE-P4 merged images — the ADV (esp32s3, 0x0, 8 MB, custom LittleFS
 `storage` partition table) and the M5Stack Unit PoE-P4 (esp32p4, 0x0, custom LittleFS
-`storage` partition in `poe_p4/partitions.csv`) — under paired names. The firmware
-artifact is skipped entirely for docs-only commits (the `changes` path filter, D7), so a roadmap-only merge
+`storage` partition in `poe_p4/partitions.csv`) — under paired names. Rolling also publishes a
+**standalone merged sidekick** image and a **history-free source tarball** (vendored `ft8_lib`, no `.git`).
+The firmware artifact is skipped entirely for docs-only commits (the `changes` path filter, D7), so a roadmap-only merge
 neither rebuilds nor re-tags either binary.
 
 **The PoE-P4 asset carries no version identity of its own yet.** RFC 0005 Phase 0 (`poe_p4/`) is a boot-only
@@ -49,6 +50,37 @@ Corollaries an agent should not re-derive:
   rather than hardcode a filename.
 - Because the name changes, `release-main` **deletes the release's existing assets** before uploading. Without
   that they accumulate on one release forever. The release object itself is never deleted.
+
+## Public Cloudflare mirror (anonymous downloads)
+
+The GitHub `continuous` release is on a **private** repo, so visitors cannot download those assets. After
+each successful `release-main`, CI also mirrors the four rolling payloads to Cloudflare **R2** bucket
+`micro-ft8-downloads`, served under the site origin by [`webapp/worker.js`](../webapp/worker.js):
+
+| Stable URL | Contents |
+| --- | --- |
+| `https://micro-ft8.kalikstein.com/download/microft8-adv-continuous.bin` | ADV merged image |
+| `https://micro-ft8.kalikstein.com/download/microft8-poe-p4-continuous.bin` | PoE-P4 merged image |
+| `https://micro-ft8.kalikstein.com/download/microft8-sidekick-continuous.bin` | Sidekick merged image |
+| `https://micro-ft8.kalikstein.com/download/microft8-source-continuous.tar.gz` | Source tarball |
+| `https://micro-ft8.kalikstein.com/download/manifest.json` | Commit, dated filenames, SHA-256 |
+
+Human entry: [`https://micro-ft8.kalikstein.com/downloads.html`](https://micro-ft8.kalikstein.com/downloads.html).
+
+**This is a public copy of what `release-main` just published, not a second source of truth.** GitHub
+remains the operator/dev record; R2 exists so the sneak-peek audience can GET without a GitHub login.
+Stable keys are overwritten every run. Firmware merges do **not** redeploy the Worker (`pages.yml` stays
+path-filtered to `webapp/**`).
+
+### One-time setup
+
+1. Create the bucket (once), or let the next `pages.yml` deploy attempt
+   `wrangler r2 bucket create micro-ft8-downloads` (`continue-on-error` if it already
+   exists). Same Cloudflare account as the Worker.
+2. Ensure GitHub secret `CLOUDFLARE_API_TOKEN` includes **Account · R2 · Edit** in addition to the
+   Workers deploy permission already used by `pages.yml`. `CLOUDFLARE_ACCOUNT_ID` is unchanged.
+3. Deploy `webapp/` so the Worker picks up the `DOWNLOADS` R2 binding (`wrangler.jsonc`), then wait for
+   the next firmware merge (or re-run `release-main`) to fill the bucket.
 
 ## Cutting a versioned release
 
