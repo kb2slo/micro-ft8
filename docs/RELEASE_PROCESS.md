@@ -10,9 +10,9 @@ Two paths, both defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.
 | Rolling | push to `main` that can change the binary | `release-main` | `continuous`, force-moved every run | `YYYYMMDD-microft8-<commit>.bin` | `YYYYMMDD-microft8-poe-p4-<commit>.bin` |
 | Versioned | push of a tag matching `v*` | `release` | the tag you pushed, immovable | `MicroFT8-<tag>-Merged.bin` | `MicroFT8-PoE-P4-<tag>-Merged.bin` |
 
-Both publish two merged images now — the ADV (esp32s3, 0x0, 8 MB, custom FATFS partition table) and the
-M5Stack Unit PoE-P4 (esp32p4, 0x0, ESP-IDF's own default partition table — `poe_p4/` has no custom one yet) —
-under paired names. The firmware
+Both publish two merged images now — the ADV (esp32s3, 0x0, 8 MB, custom LittleFS
+`storage` partition table) and the M5Stack Unit PoE-P4 (esp32p4, 0x0, custom LittleFS
+`storage` partition in `poe_p4/partitions.csv`) — under paired names. The firmware
 artifact is skipped entirely for docs-only commits (the `changes` path filter, D7), so a roadmap-only merge
 neither rebuilds nor re-tags either binary.
 

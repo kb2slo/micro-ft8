@@ -12,6 +12,7 @@
 #include "protocol.h"
 #include "qmx_transport.h"
 #include "radio_control.h"
+#include "storage_service.h"
 #include "tx_scheduler.h"
 
 // RFC 0005 Phase 2/3: shared radio_control + decode; porta (B67) on Grove
@@ -49,6 +50,11 @@ static void decode_audio_task(void * /*arg*/) {
 
 extern "C" void app_main(void) {
     ESP_LOGI(TAG, "Micro-FT8 PoE-P4 (Phase 3: porta/companion) booted");
+
+    const esp_err_t storage_err = storage_service_init();
+    if (storage_err != ESP_OK) {
+        ESP_LOGE(TAG, "storage_service_init failed: %s", esp_err_to_name(storage_err));
+    }
 
     hashtable_init();
     autoseq_init();

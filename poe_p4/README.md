@@ -18,4 +18,4 @@ idf.py flash monitor
 
 Target is pinned to `esp32p4` in `CMakeLists.txt`; no `set-target` step needed. Flash size is pinned to 16 MB in `sdkconfig.defaults` (the U213's actual flash, per RFC 0005 §4) — without it the build takes ESP-IDF's default and writes a wrong flash-size field into the bootloader header, same reasoning `sidekick/sdkconfig.defaults` gives. `sdkconfig` is gitignored and regenerated, so delete it after changing the defaults or the old value sticks. PSRAM is not yet enabled — see the comment in `sdkconfig.defaults`.
 
-No custom partition table yet — this skeleton uses ESP-IDF's own default. A real one (OTA slots, storage) is a later-phase decision, not a Phase 0 one.
+**Partition table (I29):** `partitions.csv` — custom LittleFS `storage` (~3 MB) for `Station.txt` / `.adi`, plus a 4 MB factory app slot. Same rule as flash size: if `sdkconfig` still has `CONFIG_PARTITION_TABLE_SINGLE_APP`, delete `sdkconfig` and reconfigure or the default 1 MB single-app table stays and LittleFS fails with `partition "storage" could not be found`.

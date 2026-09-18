@@ -530,7 +530,8 @@ static void usb_lib_task(void* arg) {
 
     // Drain pending USB host events before uninstall. usb_host_uninstall()
     // refuses to release the PHY while client-detach/all-free events are
-    // still pending, which blocks the subsequent TinyUSB device-mode MSC path.
+    // still pending (historically blocked a TinyUSB device-mode MSC path;
+    // MSC is gone with I29 — still required for a clean host teardown).
     for (int i = 0; i < 50; ++i) {
         uint32_t event_flags = 0;
         usb_host_lib_handle_events(pdMS_TO_TICKS(20), &event_flags);
@@ -1119,7 +1120,7 @@ esp_err_t uac_ensure_host_uninstalled(void) {
         const esp_err_t uerr = usb_host_uninstall();
         if (uerr == ESP_OK) {
             s_host_installed = false;
-            ESP_LOGI(TAG, "USB host released for device-mode MSC");
+            ESP_LOGI(TAG, "USB host released");
             return ESP_OK;
         }
         ESP_LOGW(TAG, "USB host release attempt %d: %s", attempt + 1, esp_err_to_name(uerr));

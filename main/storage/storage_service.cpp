@@ -16,6 +16,7 @@
 #include "driver/gpio.h"
 #include "driver/sdspi_host.h"
 #include "driver/spi_master.h"
+#include "esp_littlefs.h"
 #include "esp_log.h"
 #include "esp_partition.h"
 #include "esp_vfs_fat.h"
@@ -23,23 +24,22 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "sdmmc_cmd.h"
-#include "tinyusb_msc.h"
-#include "wear_levelling.h"
-#include "esp_mac.h"
 
 namespace {
 
-constexpr char kPartitionLabel[] = "fatfs";
+constexpr char kPartitionLabel[] = "storage";
 constexpr char kBasePath[] = "/storage";
 constexpr char kStationFile[] = "Station.txt";
 constexpr char kStationTemp[] = "Station.tmp";
 constexpr char kSdBasePath[] = "/sdcard";
+#if !CONFIG_IDF_TARGET_ESP32P4
 constexpr gpio_num_t kSdMiso = GPIO_NUM_39;
 constexpr gpio_num_t kSdMosi = GPIO_NUM_14;
 constexpr gpio_num_t kSdClock = GPIO_NUM_40;
 constexpr gpio_num_t kSdChipSelect = GPIO_NUM_12;
 // LoRa-1262 module CS shares GPIO5 with the Cardputer debug UART RX path.
 constexpr gpio_num_t kLora1262ChipSelect = GPIO_NUM_5;
+#endif
 
 const char* TAG = "storage_service";
 const char* COPY_TAG = "STORAGE_COPY";
@@ -47,26 +47,18 @@ const char* COPY_TAG = "STORAGE_COPY";
 StaticSemaphore_t s_mutex_buffer;
 SemaphoreHandle_t s_mutex;
 StorageOwner s_owner = StorageOwner::UNAVAILABLE;
-wl_handle_t s_wl_handle = WL_INVALID_HANDLE;
-tinyusb_msc_storage_handle_t s_msc_storage;
+bool s_lfs_mounted = false;
 size_t s_open_streams;
 bool s_station_sync_attempted;
+#if !CONFIG_IDF_TARGET_ESP32P4
 sdmmc_card_t* s_sd_card;
+#endif
 bool s_sd_mounted;
+#if !CONFIG_IDF_TARGET_ESP32P4
 bool s_lora_cs_held_for_sd;
+#endif
 constexpr size_t kCopyChunkBytes = 4096;
 uint8_t s_copy_chunk[kCopyChunkBytes];
-
-enum class MountTransitionResult : uint8_t {
-    NONE,
-    STARTED,
-    COMPLETE,
-    FAILED,
-};
-
-volatile MountTransitionResult s_mount_transition_result = MountTransitionResult::NONE;
-volatile tinyusb_msc_mount_point_t s_mount_transition_point =
-    TINYUSB_MSC_STORAGE_MOUNT_APP;
 
 class StorageGuard {
 public:
@@ -83,61 +75,7 @@ private:
 };
 
 bool firmware_owns_storage_locked() {
-    return s_owner == StorageOwner::FIRMWARE && s_msc_storage != nullptr;
-}
-
-bool wl_mount_error_allows_repair(esp_err_t err) {
-    return err != ESP_ERR_NO_MEM && err != ESP_ERR_INVALID_ARG;
-}
-
-esp_err_t mount_wear_levelling_with_repair(const esp_partition_t* partition, bool* repaired) {
-    if (repaired) {
-        *repaired = false;
-    }
-
-    s_wl_handle = WL_INVALID_HANDLE;
-    esp_err_t err = wl_mount(partition, &s_wl_handle);
-    if (err == ESP_OK) {
-        return ESP_OK;
-    }
-
-    s_wl_handle = WL_INVALID_HANDLE;
-    ESP_LOGE(TAG,
-             "wear levelling mount failed for partition '%s' addr=0x%08lx size=0x%08lx: %s",
-             partition->label,
-             static_cast<unsigned long>(partition->address),
-             static_cast<unsigned long>(partition->size),
-             esp_err_to_name(err));
-
-    if (partition->readonly || !wl_mount_error_allows_repair(err)) {
-        ESP_LOGE(TAG, "not erasing internal FATFS partition after wl_mount failure");
-        return err;
-    }
-
-    ESP_LOGW(TAG,
-             "erasing internal FATFS partition '%s' addr=0x%08lx size=0x%08lx after wl_mount failure",
-             partition->label,
-             static_cast<unsigned long>(partition->address),
-             static_cast<unsigned long>(partition->size));
-    esp_err_t erase_err = esp_partition_erase_range(partition, 0, partition->size);
-    ESP_LOGI(TAG, "internal FATFS partition erase result: %s", esp_err_to_name(erase_err));
-    if (erase_err != ESP_OK) {
-        s_wl_handle = WL_INVALID_HANDLE;
-        return erase_err;
-    }
-
-    ESP_LOGI(TAG, "retrying wear levelling mount after internal FATFS erase");
-    err = wl_mount(partition, &s_wl_handle);
-    ESP_LOGI(TAG, "wear levelling retry result: %s", esp_err_to_name(err));
-    if (err != ESP_OK) {
-        s_wl_handle = WL_INVALID_HANDLE;
-        return err;
-    }
-
-    if (repaired) {
-        *repaired = true;
-    }
-    return ESP_OK;
+    return s_owner == StorageOwner::FIRMWARE && s_lfs_mounted;
 }
 
 const char* storage_owner_name(StorageOwner owner) {
@@ -195,7 +133,7 @@ bool sync_file(FILE* file) {
     return sync_fd(fileno(file));
 }
 
-// FAT is 8.3 with LFN disabled. "foo.adi.tmp" is invalid; "foo.tmp" is fine.
+// Temp names stay short (legacy FAT 8.3 habit); LittleFS allows longer.
 std::string make_temp_name(const std::string& name) {
     if (name == kStationFile) {
         return kStationTemp;
@@ -300,6 +238,7 @@ bool list_files_locked(std::vector<std::string>& files) {
     return true;
 }
 
+#if !CONFIG_IDF_TARGET_ESP32P4
 void hold_lora1262_cs_deselected() {
     // Explicitly deselect the LoRa-1262 cap's CS pin to prevent SPI bus
     // collisions with the SD card while the shared bus is active.
@@ -325,8 +264,13 @@ void release_lora1262_cs_hold() {
     ESP_LOGI(COPY_TAG, "LoRa-1262 CS (GPIO%d) released after SD access",
              static_cast<int>(kLora1262ChipSelect));
 }
+#endif  // !CONFIG_IDF_TARGET_ESP32P4
 
 esp_err_t mount_sd_locked() {
+#if CONFIG_IDF_TARGET_ESP32P4
+    // PoE-P4 has no SD slot; ADV Cardputer GPIOs must not be touched.
+    return ESP_ERR_NOT_SUPPORTED;
+#else
     if (s_sd_mounted && s_sd_card) {
         return ESP_OK;
     }
@@ -369,9 +313,13 @@ esp_err_t mount_sd_locked() {
 
     s_sd_mounted = true;
     return ESP_OK;
+#endif  // !CONFIG_IDF_TARGET_ESP32P4
 }
 
 void unmount_sd_locked() {
+#if CONFIG_IDF_TARGET_ESP32P4
+    (void)0;
+#else
     if (s_sd_mounted && s_sd_card) {
         esp_vfs_fat_sdcard_unmount(kSdBasePath, s_sd_card);
         s_sd_card = nullptr;
@@ -379,6 +327,7 @@ void unmount_sd_locked() {
     }
     spi_bus_free(SPI2_HOST);
     release_lora1262_cs_hold();
+#endif
 }
 
 struct CopyFileStatus {
@@ -771,31 +720,6 @@ bool cabrillo_truncate_end_marker(FILE* file) {
            fseek(file, 0, SEEK_END) == 0;
 }
 
-void storage_event_callback(tinyusb_msc_storage_handle_t,
-                            tinyusb_msc_event_t* event,
-                            void*) {
-    if (!event) {
-        return;
-    }
-
-    s_mount_transition_point = event->mount_point;
-    switch (event->id) {
-        case TINYUSB_MSC_EVENT_MOUNT_START:
-            s_mount_transition_result = MountTransitionResult::STARTED;
-            break;
-        case TINYUSB_MSC_EVENT_MOUNT_COMPLETE:
-            s_mount_transition_result = MountTransitionResult::COMPLETE;
-            break;
-        case TINYUSB_MSC_EVENT_MOUNT_FAILED:
-        case TINYUSB_MSC_EVENT_FORMAT_REQUIRED:
-        case TINYUSB_MSC_EVENT_FORMAT_FAILED:
-            s_mount_transition_result = MountTransitionResult::FAILED;
-            break;
-    }
-    ESP_LOGI(TAG, "MSC storage event=%d mount=%d", event->id, event->mount_point);
-}
-
-
 }  // namespace
 
 struct StorageStream {
@@ -818,54 +742,26 @@ esp_err_t storage_service_init() {
         return ESP_OK;
     }
 
-    const esp_partition_t* partition = esp_partition_find_first(
-        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_FAT, kPartitionLabel);
-    if (!partition) {
-        ESP_LOGE(TAG, "FATFS partition '%s' not found", kPartitionLabel);
-        return ESP_ERR_NOT_FOUND;
-    }
-
-    bool repaired_wl_mount = false;
-    esp_err_t err = mount_wear_levelling_with_repair(partition, &repaired_wl_mount);
+    // I29: LittleFS on partition label "storage" (was FAT + TinyUSB MSC on "fatfs").
+    esp_vfs_littlefs_conf_t conf = {};
+    conf.base_path = kBasePath;
+    conf.partition_label = kPartitionLabel;
+    conf.format_if_mount_failed = true;
+    conf.dont_mount = false;
+    esp_err_t err = esp_vfs_littlefs_register(&conf);
     if (err != ESP_OK) {
-        s_wl_handle = WL_INVALID_HANDLE;
-        ESP_LOGE(TAG, "wear levelling mount failed: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "LittleFS mount failed on '%s': %s", kPartitionLabel, esp_err_to_name(err));
         return err;
     }
 
-    tinyusb_msc_driver_config_t driver_config = {};
-    driver_config.user_flags.auto_mount_off = 1;
-    driver_config.callback = storage_event_callback;
-    err = tinyusb_msc_install_driver(&driver_config);
-    if (err != ESP_OK) {
-        wl_unmount(s_wl_handle);
-        s_wl_handle = WL_INVALID_HANDLE;
-        ESP_LOGE(TAG, "MSC driver install failed: %s", esp_err_to_name(err));
-        return err;
-    }
-
-    tinyusb_msc_storage_config_t storage_config = {};
-    storage_config.medium.wl_handle = s_wl_handle;
-    storage_config.fat_fs.base_path = const_cast<char*>(kBasePath);
-    storage_config.fat_fs.config.format_if_mount_failed = true;
-    storage_config.fat_fs.config.max_files = 8;
-    storage_config.fat_fs.config.allocation_unit_size = 4096;
-    storage_config.mount_point = TINYUSB_MSC_STORAGE_MOUNT_APP;
-    err = tinyusb_msc_new_storage_spiflash(&storage_config, &s_msc_storage);
-    if (err != ESP_OK) {
-        tinyusb_msc_uninstall_driver();
-        wl_unmount(s_wl_handle);
-        s_wl_handle = WL_INVALID_HANDLE;
-        s_msc_storage = nullptr;
-        ESP_LOGE(TAG, "FATFS storage creation failed: %s", esp_err_to_name(err));
-        return err;
-    }
-
+    s_lfs_mounted = true;
     s_owner = StorageOwner::FIRMWARE;
-    ESP_LOGI(TAG, "initialized owner: firmware owns %s on partition '%s'",
-             kBasePath, kPartitionLabel);
-    if (repaired_wl_mount) {
-        ESP_LOGW(TAG, "internal storage reformatted after wear levelling mount failure");
+    size_t total = 0, used = 0;
+    if (esp_littlefs_info(kPartitionLabel, &total, &used) == ESP_OK) {
+        ESP_LOGI(TAG, "initialized LittleFS %s on '%s' (%u / %u bytes used)", kBasePath,
+                 kPartitionLabel, (unsigned)used, (unsigned)total);
+    } else {
+        ESP_LOGI(TAG, "initialized LittleFS %s on '%s'", kBasePath, kPartitionLabel);
     }
     return ESP_OK;
 }
@@ -948,7 +844,7 @@ bool storage_file_append(const std::string& name,
                  name.c_str(), (int)guard.held(), (int)s_owner);
         return false;
     }
-    (void)sync_to_flash;  // always sync; MSC remount otherwise shows 0-byte ghosts
+    (void)sync_to_flash;  // always sync; durable across power loss
 
     struct stat before {};
     const bool existed = stat(path.c_str(), &before) == 0 && S_ISREG(before.st_mode);

@@ -11,10 +11,10 @@
 #include "radio_control.h"
 #include "rtc_core.h"
 #include "station.h"
+#include "storage_service.h"
 #include "tx_scheduler.h"
 
-// B67/B68: in-memory Station.txt + Connect/VFO; B68 adds CAT tone TX via
-// tx_scheduler (beacon/arm/slot). Persist/FS still later.
+// B67/B68: Station.txt + Connect/VFO + CAT tone TX. I29: LittleFS persist.
 
 static const char *TAG = "porta_host";
 
@@ -108,6 +108,38 @@ static void ensure_seeded(void) {
     }
 }
 
+static void persist_station(void) {
+    if (!storage_service_firmware_available()) {
+        ESP_LOGW(TAG, "Station persist skipped: storage not ready");
+        return;
+    }
+    const std::string blob = station_serialize(s_station);
+    if (!storage_file_write_atomic("Station.txt", blob)) {
+        ESP_LOGE(TAG, "Station.txt write failed");
+        return;
+    }
+    ESP_LOGI(TAG, "Station.txt saved (%u B)", (unsigned)blob.size());
+}
+
+static void load_station_from_storage(void) {
+    station_seed_adv_defaults();
+    if (!storage_service_firmware_available()) {
+        ESP_LOGW(TAG, "storage not ready; using Station defaults");
+        return;
+    }
+    std::string text;
+    if (!storage_file_read_text("Station.txt", text) || text.empty()) {
+        ESP_LOGI(TAG, "no Station.txt yet; using defaults");
+        return;
+    }
+    station_parse(text, &s_station);
+    s_station.serialize_ft4_band_keys = s_station.protocol_ft4;
+    g_call = s_station.call;
+    sync_autoseq_station();
+    ESP_LOGI(TAG, "loaded Station.txt call=%s grid=%s", s_station.call.c_str(),
+             s_station.grid.c_str());
+}
+
 static int station_freq_hz(void) {
     const int idx = s_station.band_sel;
     if (idx < 0 || idx >= kStationBandCount || !s_station.band_freq_set[idx]) {
@@ -138,7 +170,7 @@ static const char *sync_vfo(const char *reason) {
 }
 
 void porta_p4_station_boot(void) {
-    ensure_seeded();
+    load_station_from_storage();
 }
 
 int porta_p4_station_freq_hz(void) {
@@ -330,6 +362,8 @@ const char *porta_host_config_set(const char *key, const char *value) {
         sync_autoseq_station();
     }
 
+    persist_station();
+
     if (strcmp(key, "band_sel") == 0 || strcmp(key, "active_bands") == 0 ||
         strncmp(key, "band", 4) == 0 || strncmp(key, "ft4_band", 8) == 0) {
         const char *why = sync_vfo("porta config");
@@ -374,10 +408,10 @@ const char *porta_host_queue_reply(uint32_t /*decode_id*/) {
 }
 
 const char *porta_host_file_list_begin(uint8_t /*kind*/, uint16_t /*skip*/, uint8_t /*take*/) {
-    return "no storage on P4";
+    return "file list not wired on P4 yet";
 }
 
 const char *porta_host_file_read_begin(const char * /*filename*/, uint16_t /*skip*/,
                                        uint8_t /*take*/) {
-    return "no storage on P4";
+    return "file read not wired on P4 yet";
 }

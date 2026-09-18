@@ -27,9 +27,9 @@ idf_component_register(
     REQUIRES ui M5Unified M5GFX M5Cardputer board_cardputer_adv ft8_lib sidekick_flasher porta_proto porta radio_control decode_types
              decode_tx_state callsign_hashtable autoseq protocol debug_log ft8_audio_pipeline
              external_rtc storage_service board_power rtc_core adif decode_pipeline resample
-             usb_host_uac usb_host_cdc_acm usb espressif__esp_tinyusb
+             usb_host_uac usb_host_cdc_acm usb
              bt nvs_flash efuse esp_partition esp_hw_support
-             driver esp_driver_i2c fatfs sdmmc wear_levelling
+             driver esp_driver_i2c fatfs sdmmc joltwallet__littlefs
 )
 target_compile_options(${COMPONENT_LIB} PRIVATE -Werror)
 # components/porta references porta_board_* (defined only here). Without an

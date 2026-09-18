@@ -38,3 +38,7 @@ CONFIG_USB_HOST_CONTROL_TRANSFER_MAX_SIZE=2048
 # _svfprintf_r / main). ADV already runs 16384 for the same porta pump;
 # match that so phone Settings load does not reboot the P4.
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+
+# I29: custom table with LittleFS `storage` partition (Station.txt).
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"

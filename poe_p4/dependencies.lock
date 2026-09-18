@@ -79,11 +79,22 @@ dependencies:
     source:
       type: idf
     version: 5.5.5
+  joltwallet/littlefs:
+    component_hash: 3af20a3d75c49db9dc2286fd50862c34055c9f578419ad1f2bf7ed3ed01391fe
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.22.3
 direct_dependencies:
 - espressif/usb
 - espressif/usb_host_cdc_acm
 - espressif/usb_host_uac
 - idf
-manifest_hash: aed00b7737d0ec2d495330a2205fd92e1f40676a32f2bd2a1c1872980289641d
+- joltwallet/littlefs
+manifest_hash: 53cb58fb9383cf61ed13a021bb0fd483cd1d7fd0716d2f74e3b97b05fec3fb20
 target: esp32p4
 version: 2.0.0

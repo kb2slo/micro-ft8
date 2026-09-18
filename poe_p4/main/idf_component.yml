@@ -14,3 +14,5 @@ dependencies:
   # dependency on every component-manager resolve.
   espressif/usb_host_uac: 1.3.3
   espressif/usb: 1.1.0
+  # I29: same LittleFS component/version as ADV main/ and sidekick web root.
+  joltwallet/littlefs: "1.22.3"

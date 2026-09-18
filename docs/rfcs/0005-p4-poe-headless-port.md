@@ -21,11 +21,13 @@
   than working around gaps. This surfaced three ADV hardware dependencies with no P4 equivalent: the SD card
   (`storage_service.h`), the DS3231 external RTC chip (`external_rtc.h`), and battery monitoring
   (`board_power.h`). Design: P4 is not a second implementation of ADV's storage/RTC-chip/battery hardware —
-  it simply doesn't have any of the three, permanently, not as a TODO. Each gets its own P4-side
-  implementation of the existing header (same seam pattern `qmx_transport.cpp` already uses for
-  `radio_transport.h`): storage reports `StorageOwner::UNAVAILABLE` unconditionally (that state already
-  exists and every caller already degrades through it — this is the same code path ADV takes when its SD
-  card is absent at runtime, not a new one), the RTC chip and battery reads report "not present." The RTC
+  it simply doesn't have SD, DS3231, or a pack gauge, permanently. **Amended again 2026-09-18 (I29):**
+  "no storage" was overstated — ADV keeps `Station.txt` / `.adi` on **internal** flash, not on SD.
+  Internal store migrates globally from FAT+TinyUSB-MSC to **LittleFS** (same crash-safer FS the sidekick
+  web root already uses); P4 gets that LittleFS partition and Station persist. SD (ADV only) stays FAT.
+  **Field-proven 2026-09-18 (I29 closed):** ADV Station + `.adi` across reboot; P4 LittleFS mount + Station
+  Save survives reboot (after custom `poe_p4/partitions.csv` flash).
+  RTC chip and battery reads still report "not present" on P4. The RTC
   *soft clock* itself (`rtc_now_ms()` and friends) has no board coupling — it's arithmetic plus the ESP's own
   built-in RTC peripheral (`settimeofday`/`gettimeofday`, present on every ESP32) — so it's shared code, ported
   as-is. P4 has no GPS wired yet, so it degrades to monotonic time the same way ADV already does with no GPS

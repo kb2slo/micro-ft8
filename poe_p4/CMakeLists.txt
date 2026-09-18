@@ -33,6 +33,7 @@ set(EXTRA_COMPONENT_DIRS
     "${CMAKE_CURRENT_LIST_DIR}/../components/ft8_audio_pipeline"
     "${CMAKE_CURRENT_LIST_DIR}/../components/decode_pipeline"
     "${CMAKE_CURRENT_LIST_DIR}/../components/ft8_lib"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/storage_service"
 )
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)

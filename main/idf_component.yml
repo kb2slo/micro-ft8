@@ -33,16 +33,8 @@ dependencies:
   # Cardputer-Adv ES8311 mic capture. Pinned exact — drifted 1.5.9 -> 1.6.2 on
   # the same re-resolve; mic capture is a field-only path.
   espressif/esp_codec_dev: 1.5.9
-  # NOT the USB Drive gadget -- that was removed in B23. This is still
-  # required because storage_service mounts the *internal* FATFS through
-  # esp_tinyusb's MSC storage API (tinyusb_msc_install_driver +
-  # tinyusb_msc_new_storage_spiflash), which is how /storage is mounted for
-  # the firmware's own log writes. Do not delete this thinking it is dead:
-  # removing it means re-implementing that mount on plain esp_vfs_fat + wl_*,
-  # which B23 measured as worth ~3.4 KB flash and 16 B DIRAM -- not worth
-  # touching the path that holds the QSO logs. The USB *device* stack is
-  # already gone: with nothing calling tinyusb_driver_install(), the linker
-  # garbage-collects libespressif__tinyusb.a entirely.
-  # Pinned exact for the same reason as the entries above -- a manifest edit
-  # re-resolves every range here, and this drifted 2.1.1 -> 2.2.1 once already.
-  espressif/esp_tinyusb: 2.1.1
+  # I29 2026-09-18: internal Station.txt / .adi on LittleFS (same component
+  # version the sidekick web root already pins). Replaces the former
+  # esp_tinyusb MSC+FAT mount of partition `fatfs`. SD card copy path still
+  # uses IDF fatfs — not this dependency.
+  joltwallet/littlefs: "1.22.3"
