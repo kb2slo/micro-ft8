@@ -1,6 +1,6 @@
 #include "ft8_audio_pipeline.h"
 #include "decode_tx_state.h"
-#include "main_services.h"
+#include "debug_log.h"
 
 #include "protocol.h"
 
@@ -12,13 +12,19 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/portmacro.h"
-#include "ui.h"
 
 extern "C" {
 #include "common/monitor.h"
 #include "ft8/constants.h"
 #include "ft8/decode.h"
 }
+
+// Bare forward declarations, not #include "ui.h": that header's real
+// implementation (components/ui) REQUIRES M5Unified/M5GFX/M5Cardputer, which
+// a headless board can't link. Each board provides its own definition of
+// this one function -- real on ADV (ui.cpp), a no-op where there's no
+// display to push a waterfall row to.
+void ui_push_waterfall_row(const uint8_t* bins, int len);
 
 void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg);
 int64_t rtc_now_ms();

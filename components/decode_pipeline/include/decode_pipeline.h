@@ -1,0 +1,19 @@
+#pragma once
+
+#include <cstdint>
+
+#include "decode_types.h"
+
+extern "C" {
+#include "common/monitor.h"
+}
+
+// The decode/autoseq-arm/RTC-auto-sync pipeline (RFC 0005 Phase 2 -- extracted
+// out of main.cpp; this is what P4's "RX decode" milestone build-forces into
+// components/, per STYLE's module-placement rule). Called once per slot by
+// ft8_audio_pipeline_run() with a filled monitor_t.
+void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg);
+
+// Resolves a decode_id handed out by an earlier decode_monitor_results() call
+// (see porta_emit_decode) back to the UiRxLine a QUEUE_REPLY names.
+bool find_decode_for_reply(uint32_t decode_id, UiRxLine* out);

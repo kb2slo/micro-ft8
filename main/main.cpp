@@ -81,6 +81,9 @@ static const char* STATION_FILE = "Station.txt";
 #include "screen_model.h"
 #include "datetime_field.h"
 #include "decode_tx_state.h"
+#include "decode_pipeline.h"
+#include "debug_log.h"
+#include "rtc_core.h"
 #include "main_services.h"
 
 // Active protocol for this boot session — set once by load_station_data() from
@@ -91,15 +94,6 @@ const ProtocolConfig* g_protocol = &kProtocolFT8;
 #ifndef FT8_SAMPLE_RATE
 #define FT8_SAMPLE_RATE 6000
 #endif
-
-int64_t rtc_now_ms();
-uint32_t rtc_epoch_secs_or_zero();
-
-static void debug_log_line(const std::string& msg);
-//exported symbol (linkable from other .cpp)
-void debug_log_line_public(const std::string& msg) {
-  debug_log_line(msg);
-}
 
 static void build_rxtx_log_path(char* path, size_t path_sz) {
   time_t now = (time_t)(rtc_now_ms() / 1000);
@@ -155,50 +149,15 @@ static std::string normalize_call_token(std::string s) {
   return s;
 }
 
-static bool rewrite_dxpedition_for_mycall(const std::string& raw_text,
-                                          const std::string& mycall_up,
-                                          std::string& rewritten_text) {
-  std::istringstream iss(raw_text);
-  std::string call1, rr73_tok, call2, foxcall, rpt;
-  if (!(iss >> call1 >> rr73_tok >> call2 >> foxcall >> rpt)) return false;
-
-  std::string trailing;
-  if (iss >> trailing) return false;
-  if (rr73_tok != "RR73;") return false;
-
-  std::string call1_up = normalize_call_token(call1);
-  std::string call2_up = normalize_call_token(call2);
-  if (call1_up.empty() || call2_up.empty() || mycall_up.empty()) return false;
-
-  if (call1_up == mycall_up) {
-    rewritten_text = call1 + " " + foxcall + " RR73";
-    return true;
-  }
-  if (call2_up == mycall_up) {
-    rewritten_text = call2 + " " + foxcall + " " + rpt;
-    return true;
-  }
-  return false;
-}
-
 static const char* TAG = "FT8";
 // UIMode and the key->screen rules live in screen_model.h (host-tested).
-enum class RtcTimeSource : uint8_t {
-  SAVED = 0,
-  ESP_RTC,
-  DS3231,
-  GPS,
-  MANUAL,
-  PHONE,
-  BROWSER,   // set over the companion link from a phone or laptop browser
-};
 static UIMode ui_mode = UIMode::RX;
 static int tx_page = 0;
 // NOTE: previous `std::vector<UiRxLine> g_rx_lines` was removed to eliminate
 // the last heap allocation in the decode/display path. The RX list now lives
 // as a static RxDecodeEntry array inside ui.cpp, populated via
 // ui_set_rx_list_static() and read back via ui_get_rx_entry()/ui_get_rx_count().
-static volatile bool g_tx_view_dirty = false;  // Set when autoseq state changes
+volatile bool g_tx_view_dirty = false;  // Set when autoseq state changes
 
 // Deferred-save flag. main.cpp owns storage; callers only request
 // a deferred save.
@@ -237,15 +196,9 @@ static int g_offset_hz = 1500;
 static int g_band_sel = 1; // default 80m    
 static bool g_tune = false;
 static BeaconMode g_status_beacon_temp = BeaconMode::OFF;
-static std::string g_date = "2025-12-11";   
-static std::string g_time = "10:10:00";     
 static int status_edit_idx = -1;     // 0-5
 static std::string status_edit_buffer;
 static int status_cursor_pos = -1;
-static std::vector<std::string> g_debug_lines;
-static int debug_page = 0;
-static const size_t DEBUG_MAX_LINES = 18; // 3 pages
-static const size_t DEBUG_HUD_LINES = 2;  // slots 0-1 reserved for live HUD
 static constexpr uint32_t APP_CORE0_STACK_BYTES = 12288; // Tune to 16384/18432 if Amin < 1536B
 static TickType_t g_app_core0_stack_last_sample_tick = 0;
 static uint32_t g_app_core0_stack_cur_free_bytes = 0;
@@ -272,13 +225,9 @@ static void enter_charge_mode();
 static int normalize_gps_baud_value(int value);
 static gps_pins_t gps_pins_for_current_source();
 static void restore_debug_uart_pins_after_sd();
-static bool rtc_set_from_strings_source(RtcTimeSource source);
-static esp_err_t rtc_write_external_from_soft(const char* reason);
 static const char* rtc_time_source_suffix();
-bool rtc_set_from_strings();
 bool rtc_apply_manual_time_from_strings();
-void rtc_sync_to_esp_rtc();               
-static bool g_rx_dirty = false;
+bool g_rx_dirty = false;
 
 
 
@@ -362,24 +311,16 @@ static int d_page = 0;
 static std::string host_input;
 static QueueHandle_t s_key_inject_queue = nullptr;
 
-// Software RTC
-static time_t rtc_epoch_base = 0;
-static int64_t rtc_ms_start = 0;
-static int64_t rtc_last_update = 0;
-static bool rtc_valid = false;
-static RtcTimeSource g_rtc_time_source = RtcTimeSource::SAVED;
-
 // CqType, OffsetSrc, RadioType now defined in station_types.h
-static CqType g_cq_type = CqType::CQ;             
-static std::string g_cq_freetext = "FreeText";    
-static bool g_skip_tx1 = false;                   
+static CqType g_cq_type = CqType::CQ;
+static std::string g_cq_freetext = "FreeText";
+static bool g_skip_tx1 = false;
 static int g_autoseq_max_retry = AUTOSEQ_MAX_RETRY;
 static std::string g_free_text = "TNX 73";
-static std::string g_call = "YOURCALL";
-static std::string g_grid = "CM97";    
+std::string g_call = "YOURCALL";
+static std::string g_grid = "CM97";
 static std::string g_grid_saved_manual = "CM97";
 static bool g_grid_from_gps = false;
-static bool g_time_synced_from_gps = false;
 static std::string g_grid_gps_display8;
 static OffsetSrc g_offset_src = OffsetSrc::RANDOM;
 static RadioType g_radio = RadioType::QMX;       
@@ -439,7 +380,6 @@ static int64_t rx_flash_deadline = 0;
 static void draw_menu_view();
 static void draw_status_view();
 static void draw_status_line(int idx, const std::string& text, bool highlight);
-void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg);
 static void update_countdown();
 static void redraw_countdown_now();
 static void consume_cdc_initial_sync();
@@ -449,14 +389,14 @@ bool sync_radio_to_current_band(const char* reason);
 static void begin_usb_host_mode();
 static void menu_flash_tick();
 static void rx_flash_tick();
-static std::string g_last_reply_text;
+std::string g_last_reply_text;
 void rebuild_active_bands();
 static bool band_row_enabled(int index);
 static int s_menu_enter_page = -1;
 static bool s_band_config_menu = false;
 static int64_t s_last_tx_slot_idx = -1000;  // Track last TX slot for retry scheduling
 static void enqueue_beacon_cq();
-static void arm_from_autoseq_or_beacon();
+void arm_from_autoseq_or_beacon();
 static void qso_load_file_list();
 static void delete_load_file_list();
 static void qso_load_entries(const std::string& path);
@@ -467,7 +407,7 @@ static void porta_file_read_tick();
 static void porta_queue_state_tick();
 static void porta_tx_hud_tick();
 
-static void log_rxtx_line(char dir, int snr, int offset_hz, const std::string& text, int repeat_counter = -1);
+void log_rxtx_line(char dir, int snr, int offset_hz, const std::string& text, int repeat_counter = -1);
 static bool log_adif_entry(const std::string& dxcall, const std::string& dxgrid, int rst_sent, int rst_rcvd);
 static bool storage_writes_blocked();
 static bool storage_append_text_locked_path(const std::string& path,
@@ -477,12 +417,6 @@ static bool storage_append_text_locked_path(const std::string& path,
 static bool storage_write_cabrillo_fd_entry(const std::string& mycall,
                                              const std::string& location,
                                              const std::string& qso_line);
-void log_heap(const char* tag) {
-  size_t free_sz = heap_caps_get_free_size(MALLOC_CAP_8BIT);
-  size_t min_free = heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);
-  size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
-  ESP_LOGI(tag, "HEAP: free=%u min=%u largest=%u", (unsigned)free_sz, (unsigned)min_free, (unsigned)largest);
-}
 static void log_mem_caps(const char* tag) {
   size_t free_8bit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
   size_t largest_8bit = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
@@ -578,7 +512,7 @@ static bool storage_write_cabrillo_fd_entry(const std::string& mycall,
   return storage_file_append_cabrillo(mycall, location, qso_line);
 }
 
-static void log_rxtx_line(char dir, int snr, int offset_hz, const std::string& text, int repeat_counter) {
+void log_rxtx_line(char dir, int snr, int offset_hz, const std::string& text, int repeat_counter) {
   if (!g_rxtx_log) return;
   if (storage_writes_blocked()) return;
 
@@ -951,7 +885,9 @@ const char* porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take
   return nullptr;
 }
 
-static AdifLoggerDedupe s_adif_logger_dedupe;
+// Owned by decode_pipeline.cpp -- log_adif_entry() only needs to remember
+// into it, not decide "already worked" (that's decode_monitor_results' job).
+extern AdifLoggerDedupe s_adif_logger_dedupe;
 
 static bool log_adif_entry(const std::string& dxcall, const std::string& dxgrid, int rst_sent, int rst_rcvd) {
   if (storage_writes_blocked()) {
@@ -1718,7 +1654,7 @@ void rebuild_ignore_prefixes() {
   }
 }
 
-static bool ignorelist_matches_normalized_dxcall(const std::string& dxcall_norm) {
+bool ignorelist_matches_normalized_dxcall(const std::string& dxcall_norm) {
   if (dxcall_norm.empty()) return false;
   for (const auto& prefix : g_ignore_prefixes) {
     if (!prefix.empty() && dxcall_norm.rfind(prefix, 0) == 0) return true;
@@ -1999,54 +1935,6 @@ static bool rx_tap_reply(int rx_list_idx) {
   return true;
 }
 
-// Recent decodes, keyed by the id handed out with EVENT DECODE (RFC 0004 §11)
-// so Port A's QUEUE_REPLY can name one without re-parsing rendered text on
-// the phone. A ring, not a map: bounded and allocation-free like everything
-// else on this path. An id that has scrolled out of the ring resolves to
-// nothing, which porta_host_queue_reply reports plainly rather than guessing.
-constexpr int kDecodeIdRingLen = 64;
-struct DecodeIdEntry {
-  uint32_t id = 0;  // 0 = empty slot
-  UiRxLine rx;
-};
-static DecodeIdEntry s_decode_ring[kDecodeIdRingLen];
-static int s_decode_ring_next = 0;
-static uint32_t s_next_decode_id = 1;  // 0 is "not a real decode"
-
-// Assigns the next id, remembers enough of `e` to reconstruct a UiRxLine for
-// a later reply, and returns the id for porta_emit_decode() to carry.
-static uint32_t remember_decode_for_reply(const RxDecodeEntry& e) {
-  uint32_t id = s_next_decode_id++;
-  if (s_next_decode_id == 0) {
-    s_next_decode_id = 1;  // skip the sentinel on wrap
-  }
-  DecodeIdEntry& slot = s_decode_ring[s_decode_ring_next];
-  s_decode_ring_next = (s_decode_ring_next + 1) % kDecodeIdRingLen;
-  slot.id            = id;
-  slot.rx.text        = e.text;
-  slot.rx.field1      = e.field1;
-  slot.rx.field2      = e.field2;
-  slot.rx.field3      = e.field3;
-  slot.rx.snr         = e.snr;
-  slot.rx.offset_hz   = e.offset_hz;
-  slot.rx.slot_id     = e.slot_id;
-  slot.rx.is_cq       = e.is_cq;
-  slot.rx.is_to_me    = e.is_to_me;
-  slot.rx.is_recent_qso = e.is_recent_qso;
-  return id;
-}
-
-static bool find_decode_for_reply(uint32_t decode_id, UiRxLine* out) {
-  if (decode_id == 0) return false;
-  for (int i = 0; i < kDecodeIdRingLen; ++i) {
-    if (s_decode_ring[i].id == decode_id) {
-      *out = s_decode_ring[i].rx;
-      return true;
-    }
-  }
-  return false;
-}
-
 // Abort the in-flight TX. tx_tick() reads g_tx_cancel_requested on its next
 // iteration; radio_control_end_tx() PTTs down immediately. The asynchrony here
 // is the standing suspect in B21 -- behaviour is deliberately unchanged.
@@ -2241,22 +2129,6 @@ static const char* rtc_time_source_suffix() {
   }
 }
 
-static void rtc_update_strings_from_epoch(time_t now) {
-  struct tm t;
-  // UTC on purpose: FT8 slots and ADIF dates are UTC, and the browser sends a
-  // UTC epoch. localtime_r would shift the STATUS date/time by the device TZ
-  // (often unset, but not something to depend on).
-  gmtime_r(&now, &t);
-  char buf_date[32];
-  snprintf(buf_date, sizeof(buf_date), "%04d-%02d-%02d",
-           t.tm_year + 1900, t.tm_mon + 1, t.tm_mday);
-  g_date = buf_date;
-  char buf_time[16];
-  snprintf(buf_time, sizeof(buf_time), "%02d:%02d:%02d",
-           t.tm_hour, t.tm_min, t.tm_sec);
-  g_time = buf_time;
-}
-
 // STATUS only redraws Date when rtc_tick sees the string change across a one-
 // second boundary. A browser sync updates g_date in place, so without this the
 // Time line keeps ticking (it changes every second) while Date stays on the
@@ -2267,22 +2139,6 @@ static void rtc_refresh_status_clock_lines() {
   }
   draw_status_line(4, std::string("Date: ") + g_date, false);
   draw_status_line(5, std::string("Time: ") + g_time + rtc_time_source_suffix(), false);
-}
-
-static time_t rtc_current_epoch_seconds() {
-  if (!rtc_valid) {
-    return (time_t)(esp_timer_get_time() / 1000000);
-  }
-  return rtc_epoch_base + (esp_timer_get_time() / 1000 - rtc_ms_start) / 1000;
-}
-
-static void rtc_seed_epoch(time_t epoch, int64_t ms_start, RtcTimeSource source) {
-  rtc_epoch_base = epoch;
-  rtc_ms_start = ms_start;
-  rtc_last_update = ms_start;
-  rtc_valid = true;
-  g_rtc_time_source = source;
-  rtc_update_strings_from_epoch(epoch);
 }
 
 static bool rtc_set_external_datetime_strings(const external_rtc_datetime_t& datetime) {
@@ -2299,44 +2155,6 @@ static bool rtc_set_external_datetime_strings(const external_rtc_datetime_t& dat
   g_date = buf_date;
   g_time = buf_time;
   return true;
-}
-
-static external_rtc_datetime_t rtc_external_datetime_from_soft() {
-  time_t now = rtc_current_epoch_seconds();
-  struct tm t;
-  gmtime_r(&now, &t);
-
-  external_rtc_datetime_t datetime = {};
-  datetime.year = (uint16_t)(t.tm_year + 1900);
-  datetime.month = (uint8_t)(t.tm_mon + 1);
-  datetime.day = (uint8_t)t.tm_mday;
-  datetime.hour = (uint8_t)t.tm_hour;
-  datetime.minute = (uint8_t)t.tm_min;
-  datetime.second = (uint8_t)t.tm_sec;
-  return datetime;
-}
-
-static bool rtc_set_from_strings_source(RtcTimeSource source) {
-  int y, M, d, h, m, s;
-  if (sscanf(g_date.c_str(), "%d-%d-%d", &y, &M, &d) != 3) return false;
-  if (sscanf(g_time.c_str(), "%d:%d:%d", &h, &m, &s) != 3) return false;
-  struct tm t = {};
-  t.tm_year = y - 1900;
-  t.tm_mon = M - 1;
-  t.tm_mday = d;
-  t.tm_hour = h;
-  t.tm_min = m;
-  t.tm_sec = s;
-  // Device TZ is unset in normal bring-up, so mktime agrees with the UTC
-  // strings STATUS shows (gmtime_r above). Do not invent a TZ here.
-  time_t epoch = mktime(&t);
-  if (epoch == (time_t)-1) return false;
-  rtc_seed_epoch(epoch, esp_timer_get_time() / 1000, source);
-  return true;
-}
-
-bool rtc_set_from_strings() {
-  return rtc_set_from_strings_source(RtcTimeSource::SAVED);
 }
 
 // Clock set over the companion link, from a browser (I28a). Returns nullptr on
@@ -2365,7 +2183,7 @@ const char* porta_host_set_clock(uint32_t epoch_secs, uint16_t millis) {
   if (rtc_valid && drift > -2 && drift < 2) {
     // Soft RTC is already right, but STATUS Date may still show a stale
     // string from before this source existed -- refresh and repaint.
-    rtc_update_strings_from_epoch(rtc_current_epoch_seconds());
+    rtc_update_strings();
     g_rtc_time_source = RtcTimeSource::BROWSER;
     rtc_refresh_status_clock_lines();
     return nullptr;
@@ -2407,41 +2225,6 @@ const char* porta_host_tx_free(const char* text) {
 
 void porta_host_tx_cancel(void) {
   request_tx_cancel();
-}
-
-void rtc_sync_to_esp_rtc() {
-  if (!rtc_valid) return;
-
-  time_t now = rtc_current_epoch_seconds();
-  struct timeval tv = { .tv_sec = now, .tv_usec = 0 };
-  settimeofday(&tv, NULL);
-  ESP_LOGI(TAG, "ESP RTC synced from soft RTC");
-}
-
-static esp_err_t rtc_write_external_from_soft(const char* reason) {
-  if (!rtc_valid || !external_rtc_available()) {
-    return ESP_ERR_INVALID_STATE;
-  }
-
-  external_rtc_datetime_t datetime = rtc_external_datetime_from_soft();
-  esp_err_t err = external_rtc_write_datetime(&datetime);
-  if (err == ESP_OK) {
-    ESP_LOGI(TAG,
-             "DS3231 time updated from %s: %04u-%02u-%02u %02u:%02u:%02u",
-             reason ? reason : "soft RTC",
-             (unsigned)datetime.year,
-             (unsigned)datetime.month,
-             (unsigned)datetime.day,
-             (unsigned)datetime.hour,
-             (unsigned)datetime.minute,
-             (unsigned)datetime.second);
-  } else {
-    ESP_LOGW(TAG,
-             "DS3231 time update from %s failed: %s",
-             reason ? reason : "soft RTC",
-             esp_err_to_name(err));
-  }
-  return err;
 }
 
 bool rtc_apply_manual_time_from_strings() {
@@ -2509,28 +2292,6 @@ static bool rtc_init_from_esp_rtc() {
   g_time_synced_from_gps = false;
   ESP_LOGI(TAG, "ESP RTC initialized: %s %s", g_date.c_str(), g_time.c_str());
   return true;
-}
-
-static void rtc_update_strings() {
-  if (!rtc_valid) return;
-  rtc_update_strings_from_epoch(rtc_current_epoch_seconds());
-}
-
-int64_t rtc_now_ms() {
-  if (!rtc_valid) {
-    return esp_timer_get_time() / 1000;
-  }
-  return (int64_t)rtc_epoch_base * 1000 + (esp_timer_get_time() / 1000 - rtc_ms_start);
-}
-
-// For PORTA event stamps: 0 means "clock unset" so the viewer can show --:--:--
-// instead of a 1970-looking fake. Uses rtc_valid rather than an epoch floor so
-// a just-set browser clock always stamps, and a never-set device never does.
-uint32_t rtc_epoch_secs_or_zero() {
-  if (!rtc_valid) {
-    return 0;
-  }
-  return (uint32_t)(rtc_now_ms() / 1000);
 }
 
 static void rtc_tick() {
@@ -2673,7 +2434,7 @@ void arm_pending_tx(const AutoseqTxEntry& pending) {
 // Arm whatever autoseq wants next, or a beacon CQ if the queue is empty.
 // Used after RX decode (including empty slots) and after TX tick so a quiet
 // band cannot stall beacon.
-static void arm_from_autoseq_or_beacon() {
+void arm_from_autoseq_or_beacon() {
   if (board_power_halted() || decode_tx_state_get_tx_active()) return;
   AutoseqTxEntry pending;
   if (autoseq_fetch_pending_tx(pending)) {
@@ -2937,420 +2698,6 @@ static void fft_waterfall_tx_tone(float tone_hz) {
 }
 
 
-
-// ---- Static decode workspace (zero heap allocation) ----
-// Use the shared RxDecodeEntry type from ui.h so we can hand it directly
-// to ui_set_rx_list_static without any conversion.
-#define DEC_MAX       RX_MAX_DECODES       // 32
-#define DEC_TEXT_MAX  RX_TEXT_MAX          // 64
-#define DEC_FIELD_MAX RX_FIELD_MAX         // 20
-typedef RxDecodeEntry DecodeMsg;
-
-static DecodeMsg s_dec[DEC_MAX];
-static int       s_dec_count;
-
-// Plain-C field parser: tokenize text into field1/field2/field3.
-// Equivalent to the old fill_fields_from_text lambda but uses no heap.
-static void dec_fill_fields(DecodeMsg* d) {
-  d->field1[0] = d->field2[0] = d->field3[0] = '\0';
-  char tmp[DEC_TEXT_MAX];
-  strncpy(tmp, d->text, sizeof(tmp));
-  tmp[sizeof(tmp) - 1] = '\0';
-
-  char* saveptr = nullptr;
-  char* toks[8];
-  int ntoks = 0;
-  for (char* p = strtok_r(tmp, " ", &saveptr); p && ntoks < 8; p = strtok_r(nullptr, " ", &saveptr)) {
-    toks[ntoks++] = p;
-  }
-  if (ntoks == 0) return;
-
-  // Helpers
-  auto all_digits = [](const char* s, int len) {
-    for (int i = 0; i < len; ++i) if (s[i] < '0' || s[i] > '9') return false;
-    return true;
-  };
-  auto all_alpha = [](const char* s, int len) {
-    for (int i = 0; i < len; ++i) {
-      char c = s[i];
-      if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) return false;
-    }
-    return true;
-  };
-
-  // CQ <short_token> CALL GRID pattern
-  if (strcmp(toks[0], "CQ") == 0 && ntoks >= 2) {
-    int len1 = (int)strlen(toks[1]);
-    bool short_tok = (len1 <= 3 && all_digits(toks[1], len1)) ||
-                     (len1 <= 4 && all_alpha(toks[1], len1));
-    if (short_tok) {
-      strncpy(d->field1, toks[1], DEC_FIELD_MAX - 1); d->field1[DEC_FIELD_MAX - 1] = '\0';
-      if (ntoks > 2) { strncpy(d->field2, toks[2], DEC_FIELD_MAX - 1); d->field2[DEC_FIELD_MAX - 1] = '\0'; }
-      if (ntoks > 3) {
-        d->field3[0] = '\0';
-        for (int i = 3; i < ntoks; ++i) {
-          if (i > 3) strncat(d->field3, " ", DEC_FIELD_MAX - strlen(d->field3) - 1);
-          strncat(d->field3, toks[i], DEC_FIELD_MAX - strlen(d->field3) - 1);
-        }
-      }
-      return;
-    }
-  }
-
-  // Default: first 2 tokens + remainder
-  strncpy(d->field1, toks[0], DEC_FIELD_MAX - 1); d->field1[DEC_FIELD_MAX - 1] = '\0';
-  if (ntoks > 1) { strncpy(d->field2, toks[1], DEC_FIELD_MAX - 1); d->field2[DEC_FIELD_MAX - 1] = '\0'; }
-  if (ntoks > 2) {
-    d->field3[0] = '\0';
-    for (int i = 2; i < ntoks; ++i) {
-      if (i > 2) strncat(d->field3, " ", DEC_FIELD_MAX - strlen(d->field3) - 1);
-      strncat(d->field3, toks[i], DEC_FIELD_MAX - strlen(d->field3) - 1);
-    }
-  }
-}
-
-// Plain-C normalize: strip <>, uppercase, write into out[out_sz].
-static void dec_normalize_call(const char* src, char* out, int out_sz) {
-  const char* p = src;
-  if (*p == '<') ++p;
-  int len = (int)strlen(p);
-  if (len > 0 && p[len - 1] == '>') --len;
-  if (len >= out_sz) len = out_sz - 1;
-  for (int i = 0; i < len; ++i) out[i] = (char)toupper((unsigned char)p[i]);
-  out[len] = '\0';
-}
-
-static int dec_sort_cmp(const void* a, const void* b) {
-  const DecodeMsg* da = (const DecodeMsg*)a;
-  const DecodeMsg* db = (const DecodeMsg*)b;
-  const DecodeSortEntry ea = {da->is_to_me, da->is_recent_qso, da->is_cq, da->snr};
-  const DecodeSortEntry eb = {db->is_to_me, db->is_recent_qso, db->is_cq, db->snr};
-  return decode_sort_cmp(&ea, &eb);
-}
-
-// Marks the RX list stale in the UI component and flags core 0's dispatch
-// loop to redraw it. Decode logic never draws directly -- drawing is the
-// UI-consumer's job, triggered by the dirty flag it already polls.
-static void keep_rx_list_stale() {
-  ui_mark_rx_list_stale();
-  g_rx_dirty = true;
-}
-
-void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
-  // One operator-log line per slot (B53 shape, slim). ESP_LOGD above is compiled
-  // out at CONFIG_LOG_MAXIMUM_LEVEL=3; debug_log_line reaches P-then-. and the
-  // browser. Cheap: two timestamps and counts already in hand — no extra decode work.
-  const int64_t decode_t0_ms = rtc_now_ms();
-  const int max_cand = 50;
-
-  // ---- heap instrumentation ----
-  size_t heap_entry = heap_caps_get_free_size(MALLOC_CAP_8BIT);
-  size_t heap_entry_largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
-  UBaseType_t stack_hw_entry = uxTaskGetStackHighWaterMark(NULL);
-  ESP_LOGD(TAG, "DECODE_HEAP ENTER: free=%u largest=%u alltime_min=%u stack_hw=%u",
-           (unsigned)heap_entry, (unsigned)heap_entry_largest,
-           (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT),
-           (unsigned)stack_hw_entry);
-
-  s_dec_count = 0;
-
-  const int64_t now_ms = rtc_now_ms();
-  static ftx_candidate_t candidates[max_cand];
-  int num_candidates = ftx_find_candidates(&mon->wf, max_cand, candidates, 5);
-  ESP_LOGD(TAG, "Candidates found: %d", num_candidates);
-
-  // ---- slot index + once-per-slot hashtable maintenance ----
-  int64_t slot_idx = (decode_tx_state_get_decode_slot_idx() >= 0) ? decode_tx_state_get_decode_slot_idx() : rtc_now_ms() / g_protocol->slot_time_ms;
-  int slot_id = (int)(slot_idx & 1);
-
-  static int64_t s_last_aged_slot = -1;
-  if (slot_idx != s_last_aged_slot) {
-    s_last_aged_slot = slot_idx;
-    hashtable_age_all();
-  }
-
-  // ---- estimate noise floor ----
-  float noise_db = -120.0f;
-  if (mon->wf.mag && mon->wf.num_blocks > 0) {
-    const size_t total = (size_t)mon->wf.num_blocks * (size_t)mon->wf.block_stride;
-    static uint32_t hist[256];
-    memset(hist, 0, sizeof(hist));
-    for (size_t i = 0; i < total; ++i) hist[mon->wf.mag[i]]++;
-    uint64_t target = total * 25 / 100;
-    uint64_t accum = 0;
-    int noise_scaled = 0;
-    for (int v = 0; v < 256; ++v) {
-      accum += hist[v];
-      if (accum >= target) { noise_scaled = v; break; }
-    }
-    noise_db = 0.5f * ((float)noise_scaled - 240.0f);
-  }
-
-  // ---- mycall uppercase (stack, not heap) ----
-  char mycall_up[DEC_FIELD_MAX];
-  {
-    const char* src = g_call.c_str();
-    int len = (int)g_call.size();
-    if (len >= DEC_FIELD_MAX) len = DEC_FIELD_MAX - 1;
-    for (int i = 0; i < len; ++i) mycall_up[i] = (char)toupper((unsigned char)src[i]);
-    mycall_up[len] = '\0';
-  }
-
-  // ---- decode candidates into static s_dec[] ----
-  const int kMaxDecoded = 50;
-  static ftx_message_t decoded[kMaxDecoded];
-  static ftx_message_t* decoded_hashtable[kMaxDecoded];
-  for (int i = 0; i < kMaxDecoded; ++i) decoded_hashtable[i] = nullptr;
-  int num_decoded = 0;
-
-  if (num_candidates <= 0) {
-    ESP_LOGD(TAG, "No candidates found; keeping RX list");
-    keep_rx_list_stale();
-    // No candidates means we processed the slot's audio but found nothing —
-    // still counts as "applied" for the TX-trigger guard.
-    if (decode_tx_state_get_decode_slot_idx() > decode_tx_state_get_decode_applied_slot_idx()) {
-      decode_tx_state_set_decode_applied_slot_idx(decode_tx_state_get_decode_slot_idx());
-    }
-    decode_tx_state_set_decode_in_progress(false);
-    if (!decode_tx_state_get_was_txing()) {
-      arm_from_autoseq_or_beacon();
-      char buf[56];
-      snprintf(buf, sizeof(buf), "SLOT cand=0/%d msg=0 dec=%lldms",
-               max_cand, (long long)(rtc_now_ms() - decode_t0_ms));
-      debug_log_line(buf);
-    }
-    return;
-  }
-
-  for (int i = 0; i < num_candidates && s_dec_count < DEC_MAX; ++i) {
-    ftx_message_t message;
-    ftx_decode_status_t status;
-    memset(&message, 0, sizeof(message));
-    memset(&status, 0, sizeof(status));
-
-    if (!ftx_decode_candidate(&mon->wf, &candidates[i], 25, &message, &status))
-      continue;
-
-    // payload/hash dedupe (open addressing)
-    int idx_hash = (int)(message.hash % kMaxDecoded);
-    bool found_empty = false, found_dup = false;
-    for (int probe = 0; probe < kMaxDecoded; ++probe) {
-      ftx_message_t* p = decoded_hashtable[idx_hash];
-      if (!p) { found_empty = true; break; }
-      if (p->hash == message.hash &&
-          0 == memcmp(p->payload, message.payload, sizeof(message.payload))) {
-        found_dup = true; break;
-      }
-      idx_hash = (idx_hash + 1) % kMaxDecoded;
-    }
-    if (found_dup || !found_empty) continue;
-
-    memcpy(&decoded[idx_hash], &message, sizeof(message));
-    decoded_hashtable[idx_hash] = &decoded[idx_hash];
-    ++num_decoded;
-
-    // decode to human text
-    char text[FTX_MAX_MESSAGE_LENGTH] = {0};
-    ftx_message_offsets_t offsets;
-    ftx_message_rc_t urc = ftx_message_decode(&message, &hash_if, text, &offsets);
-    if (urc != FTX_MESSAGE_RC_OK || text[0] == '\0') continue;
-
-    // freq / time / SNR
-    float freq_hz = (mon->min_bin + candidates[i].freq_offset +
-                    candidates[i].freq_sub / (float)cfg->freq_osr) / mon->symbol_period;
-    float time_s = (candidates[i].time_offset +
-                   candidates[i].time_sub / (float)cfg->time_osr) * mon->symbol_period;
-
-    float cand_db = noise_db;
-    {
-      int t_index = candidates[i].time_offset * mon->wf.time_osr + candidates[i].time_sub;
-      const int t_count = mon->wf.num_blocks * mon->wf.time_osr;
-      if (t_count > 0) { if (t_index < 0) t_index = 0; if (t_index >= t_count) t_index = t_count - 1; }
-      else t_index = 0;
-
-      int f_index = candidates[i].freq_sub * mon->wf.num_bins + candidates[i].freq_offset;
-      const int f_count = mon->wf.freq_osr * mon->wf.num_bins;
-      if (f_count > 0) { if (f_index < 0) f_index = 0; if (f_index >= f_count) f_index = f_count - 1; }
-      else f_index = 0;
-
-      size_t offset2 = (size_t)t_index * (size_t)f_count + (size_t)f_index;
-      size_t total2 = (size_t)mon->wf.num_blocks * (size_t)mon->wf.block_stride;
-      if (mon->wf.mag && offset2 < total2) cand_db = 0.5f * ((float)mon->wf.mag[offset2] - 240.0f);
-    }
-
-    int snr_q = (int)lrintf(cand_db - noise_db);
-    if (snr_q < -30) snr_q = -30;
-    if (snr_q >  99) snr_q = 99;
-
-    // DXpedition rewrite (uses heap briefly via std::string — bounded, rare path)
-    char final_text[DEC_TEXT_MAX];
-    {
-      std::string raw(text);
-      std::string rewritten(text);
-      if (rewrite_dxpedition_for_mycall(raw, mycall_up, rewritten)) {
-        ESP_LOGI(TAG, "DXpedition raw match: %s", text);
-      }
-      strncpy(final_text, rewritten.c_str(), DEC_TEXT_MAX - 1);
-      final_text[DEC_TEXT_MAX - 1] = '\0';
-    }
-
-    // UI text dedup (linear scan — 32 entries max, no hash map needed)
-    int dup_idx = -1;
-    for (int j = 0; j < s_dec_count; ++j) {
-      if (strcmp(s_dec[j].text, final_text) == 0) { dup_idx = j; break; }
-    }
-    if (dup_idx >= 0) {
-      if (snr_q > s_dec[dup_idx].snr) {
-        s_dec[dup_idx].snr = snr_q;
-        s_dec[dup_idx].offset_hz = (int)lrintf(freq_hz);
-        s_dec[dup_idx].slot_id = slot_id;
-      }
-      continue;
-    }
-
-    ESP_LOGD(TAG, "Decoded[%d] t=%.2fs f=%.1fHz snr=%d : %s",
-             s_dec_count, time_s, freq_hz, snr_q, final_text);
-
-    // Fill static entry
-    DecodeMsg* d = &s_dec[s_dec_count];
-    strncpy(d->text, final_text, DEC_TEXT_MAX - 1); d->text[DEC_TEXT_MAX - 1] = '\0';
-    d->snr = snr_q;
-    d->offset_hz = (int)lrintf(freq_hz);
-    d->slot_id = slot_id;
-    d->time_s = time_s;
-
-    dec_fill_fields(d);
-
-    d->is_cq = (strncmp(d->text, "CQ ", 3) == 0 || strcmp(d->text, "CQ") == 0);
-
-    char f1_norm[DEC_FIELD_MAX];
-    dec_normalize_call(d->field1, f1_norm, DEC_FIELD_MAX);
-    d->is_to_me = (mycall_up[0] != '\0' && strcmp(f1_norm, mycall_up) == 0);
-
-    char dxnorm[DEC_FIELD_MAX];
-    dec_normalize_call(d->field2, dxnorm, DEC_FIELD_MAX);
-    d->is_recent_qso = (dxnorm[0] != '\0') &&
-                       adif_logger_dedupe_is_duplicate(&s_adif_logger_dedupe, std::string(dxnorm), now_ms);
-
-    log_rxtx_line('R', snr_q, (int)lrintf(freq_hz), std::string(final_text), -1);
-
-    s_dec_count++;
-  }
-
-  ESP_LOGD(TAG, "Decoded %d unique messages", s_dec_count);
-
-  // ---- Auto sync soft RTC from decode timing ----
-  if (s_dec_count > 3) {
-    // Simple insertion sort to find median of time_s values
-    float sorted_t[DEC_MAX];
-    int nt = 0;
-    for (int i = 0; i < s_dec_count; ++i) sorted_t[nt++] = s_dec[i].time_s;
-    for (int i = 1; i < nt; ++i) {
-      float key = sorted_t[i];
-      int j = i - 1;
-      while (j >= 0 && sorted_t[j] > key) { sorted_t[j + 1] = sorted_t[j]; --j; }
-      sorted_t[j + 1] = key;
-    }
-    float median = sorted_t[nt / 2];
-    if (fabsf(median) > 0.3f) {
-      int delta_ms = (int)lrintf(-median * 1000.0f);
-      if (delta_ms > 320) delta_ms = 320;
-      if (delta_ms < -320) delta_ms = -320;
-      rtc_ms_start -= delta_ms;
-      rtc_last_update -= delta_ms;
-      rtc_update_strings();
-      rtc_sync_to_esp_rtc();
-      (void)rtc_write_external_from_soft("decode auto-sync");
-      ESP_LOGI("SYNC", "Applied RTC sync: median=%.2fs delta=%dms", median, delta_ms);
-    }
-  }
-
-  // ---- Sort in-place: to_me, fresh CQ, other fresh, recent QSOs ----
-  qsort(s_dec, s_dec_count, sizeof(DecodeMsg), dec_sort_cmp);
-
-  // ---- Autoseq: build small to_me vector at boundary (only to_me entries) ----
-  if (!decode_tx_state_get_was_txing() && !board_power_halted()) {
-    std::vector<UiRxLine> to_me_auto;
-    for (int i = 0; i < s_dec_count; ++i) {
-      if (!s_dec[i].is_to_me) break;  // sorted, so once we pass to_me we're done
-      char dxnorm[DEC_FIELD_MAX];
-      dec_normalize_call(s_dec[i].field2, dxnorm, DEC_FIELD_MAX);
-      if (ignorelist_matches_normalized_dxcall(std::string(dxnorm))) {
-        ESP_LOGI(TAG, "IgnoreList: skip auto reply to %s", dxnorm);
-        continue;
-      }
-      if (s_dec[i].is_recent_qso) {
-        ESP_LOGI(TAG, "Recent QSO: skip auto reply to %s", dxnorm);
-        continue;
-      }
-      UiRxLine rx;
-      rx.text = s_dec[i].text;
-      rx.field1 = s_dec[i].field1;
-      rx.field2 = s_dec[i].field2;
-      rx.field3 = s_dec[i].field3;
-      rx.snr = s_dec[i].snr;
-      rx.offset_hz = s_dec[i].offset_hz;
-      rx.slot_id = s_dec[i].slot_id;
-      rx.is_cq = s_dec[i].is_cq;
-      rx.is_to_me = true;
-      to_me_auto.push_back(std::move(rx));
-    }
-
-    if (!to_me_auto.empty()) {
-      autoseq_on_decodes(to_me_auto);
-      g_tx_view_dirty = true;
-      g_last_reply_text = to_me_auto.front().text;
-    }
-
-    arm_from_autoseq_or_beacon();
-  }
-
-  // ---- Zero-heap handoff: static s_dec[] → ui.cpp's static rx_lines[] ----
-  if (s_dec_count > 0) {
-    ui_set_rx_list_static(s_dec, s_dec_count);
-    // Same list, same moment, same order as the screen gets -- which is what
-    // makes the on-screen log a free oracle for the link: if the browser and
-    // the R screen disagree, the fault is between here and the browser.
-    for (int i = 0; i < s_dec_count; ++i) {
-      const RxDecodeEntry& e = s_dec[i];
-      uint32_t decode_id = remember_decode_for_reply(e);
-      porta_emit_decode(decode_id, e.text, e.snr, e.offset_hz, e.time_s,
-                        e.is_cq, e.is_to_me, e.is_recent_qso);
-    }
-    g_rx_dirty = true;
-  } else {
-    ESP_LOGD(TAG, "No messages decoded; keeping RX list");
-    keep_rx_list_stale();
-  }
-
-  // ---- heap instrumentation (exit) ----
-  {
-    size_t heap_exit = heap_caps_get_free_size(MALLOC_CAP_8BIT);
-    size_t heap_exit_largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
-    UBaseType_t stack_hw_exit = uxTaskGetStackHighWaterMark(NULL);
-    ESP_LOGD(TAG, "DECODE_HEAP EXIT: free=%u largest=%u alltime_min=%u stack_hw=%u (delta_free=%d)",
-             (unsigned)heap_exit, (unsigned)heap_exit_largest,
-             (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT),
-             (unsigned)stack_hw_exit,
-             (int)heap_exit - (int)heap_entry);
-  }
-
-  if (!decode_tx_state_get_was_txing()) {
-    char buf[56];
-    snprintf(buf, sizeof(buf), "SLOT cand=%d/%d msg=%d dec=%lldms",
-             num_candidates, max_cand, s_dec_count,
-             (long long)(rtc_now_ms() - decode_t0_ms));
-    debug_log_line(buf);
-  }
-
-  // Mark this slot's decode as fully applied BEFORE clearing the in-progress
-  // flag. Readers (TX trigger on core 0) must see the applied marker as soon
-  // as in_progress drops, not later.
-  if (decode_tx_state_get_decode_slot_idx() > decode_tx_state_get_decode_applied_slot_idx()) {
-    decode_tx_state_set_decode_applied_slot_idx(decode_tx_state_get_decode_slot_idx());
-  }
-  decode_tx_state_set_decode_in_progress(false);
-}
 
 static void draw_menu_long_edit() {
   std::vector<std::string> lines(6, "");
@@ -4419,12 +3766,6 @@ static void draw_perf_view(bool force_redraw) {
   M5.Display.endWrite();
 }
 
-static void debug_ensure_hud_lines() {
-  while (g_debug_lines.size() < DEBUG_HUD_LINES) {
-    g_debug_lines.emplace_back();
-  }
-}
-
 static void debug_update_app_core0_stack_hud(bool redraw_now) {
   debug_ensure_hud_lines();
   char cur_line[20];
@@ -4437,28 +3778,6 @@ static void debug_update_app_core0_stack_hud(bool redraw_now) {
   g_debug_lines[1] = min_line;
   (void)redraw_now;
 }
-
-static void debug_log_line(const std::string& msg) {
-  // Mirror to the sidekick. Hooked here rather than at each call site because
-  // this is the one funnel every on-screen line already passes through, so the
-  // browser's view and the P-then-'.' screen cannot drift apart. A no-op until
-  // PORTA is up, and droppable if the link falls behind.
-  porta_emit_log(msg.c_str());
-
-  debug_ensure_hud_lines();
-  if (g_debug_lines.size() >= DEBUG_MAX_LINES) {
-    if (g_debug_lines.size() > DEBUG_HUD_LINES) {
-      g_debug_lines.erase(g_debug_lines.begin() + DEBUG_HUD_LINES);
-    } else {
-      return;
-    }
-  }
-  g_debug_lines.push_back(msg);
-  debug_page = (int)((g_debug_lines.size() - 1) / 6);
-}
-
-
-
 
 
 

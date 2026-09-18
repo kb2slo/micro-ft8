@@ -172,10 +172,10 @@ jobs:
         with:
           submodules: true
 
-      - name: Build sidekick with ESP-IDF 5.5.1
+      - name: Build sidekick with ESP-IDF 5.5.5
         uses: espressif/esp-idf-ci-action@v1
         with:
-          esp_idf_version: v5.5.1
+          esp_idf_version: v5.5.5
           # Sidekick retargeted C6 -> S3 with the AtomS3 Lite pivot (I3a).
           # sidekick/CMakeLists.txt pins IDF_TARGET too; keep the two agreeing.
           target: esp32s3
@@ -215,10 +215,10 @@ jobs:
       # idf.py project from both main/ and sidekick/ (poe_p4/CMakeLists.txt
       # pins esp32p4), so it needs no MICROFT8_GIT_SHA/build-identity plumbing
       # of its own yet. No radio, no UI: boot-only skeleton for now.
-      - name: Build poe_p4 with ESP-IDF 5.5.1
+      - name: Build poe_p4 with ESP-IDF 5.5.5
         uses: espressif/esp-idf-ci-action@v1
         with:
-          esp_idf_version: v5.5.1
+          esp_idf_version: v5.5.5
           target: esp32p4
           path: poe_p4
           command: idf.py build
@@ -294,10 +294,10 @@ jobs:
 
       # CI=true is passed explicitly: the build refuses a `rel` build without
       # it, and the container does not inherit the runner's environment.
-      - name: Build with ESP-IDF 5.5.1
+      - name: Build with ESP-IDF 5.5.5
         uses: espressif/esp-idf-ci-action@v1
         with:
-          esp_idf_version: v5.5.1
+          esp_idf_version: v5.5.5
           target: esp32s3
           extra_docker_args: >-
             -e MICROFT8_GIT_SHA=${{ env.MICROFT8_GIT_SHA }}
@@ -318,7 +318,7 @@ jobs:
             echo "ref=${GITHUB_REF}"
             echo "sha=${GITHUB_SHA}"
             echo "head=${MICROFT8_GIT_SHA:0:7}"
-            echo "idf=v5.5.1"
+            echo "idf=v5.5.5"
             echo "target=esp32s3"
             echo "bin=${name}"
             echo "sidekick_fw=embedded"

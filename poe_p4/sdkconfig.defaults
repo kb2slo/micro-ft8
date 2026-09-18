@@ -10,6 +10,18 @@ CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 # exactly the kind of unverified config this project's docs warn against.
 # Revisit when Phase 2 (decode/TX port) actually needs it.
 
+# Field-found 2026-09-17, ESP-IDF v5.5.5: <v3.0 and >=v3.0 ESP32-P4 silicon are
+# a hard Kconfig branch (esp_hw_support/port/esp32p4/Kconfig.hw_support --
+# "huge hardware difference... not compatible"), and the default is the >=v3.0
+# branch (CONFIG_ESP32P4_REV_MIN_301). The real U213 board is v1.3 silicon
+# (confirmed via esptool's own "Chip is ESP32-P4 (revision v1.3)" on connect),
+# so the default flashed a bootloader that refused to boot on it
+# ("requires chip revision in range [v3.1 - v3.99]"). REV_MIN_100 (v1.0) is
+# the least-restrictive choice that still excludes v0.x pre-production
+# revisions this board has never been confirmed on.
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+CONFIG_ESP32P4_REV_MIN_100=y
+
 # Bench-found 2026-09-17 (B59): the IDF default (256 B) is too small for the
 # config descriptor of an ordinary USB device (flash drive), which fails
 # enumeration with "Configuration descriptor larger than control transfer

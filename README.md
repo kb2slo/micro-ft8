@@ -22,7 +22,7 @@ git clone --recurse-submodules git@github.com:kb2slo/micro-ft8.git
 
 Existing trees: `git submodule update --init`.
 
-Pushes and pull requests run GitHub Actions (ESP-IDF **v5.5.1**, target **esp32s3**). When firmware sources change, the job uploads a flashable merged image as artifact **MicroFT8-Cardputer-ADV** (hash-first `.bin` inside the zip). Docs-only commits (roadmap, README, and similar) skip the IDF build and do not refresh the rolling image.
+Pushes and pull requests run GitHub Actions (ESP-IDF **v5.5.5**, target **esp32s3**). When firmware sources change, the job uploads a flashable merged image as artifact **MicroFT8-Cardputer-ADV** (hash-first `.bin` inside the zip). Docs-only commits (roadmap, README, and similar) skip the IDF build and do not refresh the rolling image.
 
 - Each merge to `main` that changes the firmware updates a prerelease at tag [`continuous`](https://github.com/kb2slo/micro-ft8/releases/tag/continuous), holding one image named `YYYYMMDD-microft8-<commit>.bin` so it still says what it is after it lands in your Downloads folder. The tag always points at the tip of `main`. Flash at `0x0`.
 - Tags matching `v*` also create a versioned GitHub Release (`MicroFT8-<tag>-Merged.bin`).

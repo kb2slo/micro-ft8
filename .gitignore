@@ -6,6 +6,11 @@
 *.map
 idf_py_*
 main/*.o
+# host_mock compiles some components/ sources in place too (autoseq, adif) --
+# same stray-.o pattern main/*.o above already covers, now in two more spots
+# since RFC 0005 Phase 2 moved those files out of main/.
+components/autoseq/*.o
+components/adif/*.o
 
 # ESP-IDF managed components (auto-fetched by idf.py build)
 /managed_components/

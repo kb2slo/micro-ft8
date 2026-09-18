@@ -8,3 +8,9 @@ dependencies:
   # field-only path this row exists specifically to prove, not to re-verify
   # against a moving dependency.
   espressif/usb_host_cdc_acm: 2.2.0
+  # USB Host UAC for QMX RX decode audio (RFC 0005 Phase 2). Pinned to the
+  # same version as the ADV's main/idf_component.yml, for the same reason:
+  # this is a field-only path, not something to re-verify against a moving
+  # dependency on every component-manager resolve.
+  espressif/usb_host_uac: 1.3.3
+  espressif/usb: 1.1.0

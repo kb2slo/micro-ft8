@@ -10,6 +10,36 @@
   Phase 0); code sharing between the two builds is an explicit goal (§5), not an incidental outcome; and
   `qmx-panadapter` is to be read and cited as an implementation reference, not just treated as closed
   feasibility evidence (§3, §7 Phase 0).
+  **Amended 2026-09-17:** while shrinking `main.cpp` during Phase 2, found that the porta/sidekick pump
+  (`porta_tick()`, `porta_file_read_tick()`, `porta_queue_state_tick()`, `porta_tx_hud_tick()`, plus the
+  `porta_start()` call in `apply_radio_profile_binding()`) is currently called only from `gps_runtime_tick()`/
+  `app_task_core0()`, both of which are otherwise entirely `M5Cardputer`-coupled. §5 already names the
+  sidekick protocol client as a shared-code candidate; this pump is where that candidate actually lives in
+  the source tree today, and it has no path to a headless board as currently wired — see §7 Phase 3.
+  **Amended 2026-09-17:** operator direction — Phase 2 is the forcing function to port `decode_monitor_results`
+  and its dependencies for real (not a parallel minimal decoder), adjusting the porting plan as needed rather
+  than working around gaps. This surfaced three ADV hardware dependencies with no P4 equivalent: the SD card
+  (`storage_service.h`), the DS3231 external RTC chip (`external_rtc.h`), and battery monitoring
+  (`board_power.h`). Design: P4 is not a second implementation of ADV's storage/RTC-chip/battery hardware —
+  it simply doesn't have any of the three, permanently, not as a TODO. Each gets its own P4-side
+  implementation of the existing header (same seam pattern `qmx_transport.cpp` already uses for
+  `radio_transport.h`): storage reports `StorageOwner::UNAVAILABLE` unconditionally (that state already
+  exists and every caller already degrades through it — this is the same code path ADV takes when its SD
+  card is absent at runtime, not a new one), the RTC chip and battery reads report "not present." The RTC
+  *soft clock* itself (`rtc_now_ms()` and friends) has no board coupling — it's arithmetic plus the ESP's own
+  built-in RTC peripheral (`settimeofday`/`gettimeofday`, present on every ESP32) — so it's shared code, ported
+  as-is. P4 has no GPS wired yet, so it degrades to monotonic time the same way ADV already does with no GPS
+  fix: a known, already-scoped gap (NTP over Ethernet is the natural fix, given no WiFi/GPS on this board),
+  not something this pass solves. `decode_tx_state`, `callsign_hashtable`, `autoseq`, and `ft8_audio_pipeline`
+  move from `main/` to `components/` per STYLE's module-placement rule, now that P4 genuinely build-forces
+  them; `decode_monitor_results` and its helpers become a new shared component for the same reason.
+  **Amended 2026-09-17 (same day):** this design built and link-verified clean on both targets (`idf.py
+  build` for ADV and P4, `host_mock` 24/24, `tx_e2e` 7/7) — see `ROADMAP.md` B63. P4 gained real UAC RX audio
+  capture (`qmx_transport.cpp`, a second USB host client alongside the existing CDC-ACM one, same FIFO
+  tuning `stream_uac.cpp` already proved for this exact composite-device case) wired into
+  `ft8_audio_pipeline_run()`. Not yet bench-confirmed against a live signal — see `TEST_PLAN.md`'s Pending
+  table. TX (the tone-scheduling state machine) is unchanged, still `main.cpp`-only, and is the next
+  milestone this phase's own scope explicitly excludes.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** porting Micro-FT8's radio-control/decode/TX core to run on this specific board — USB host
   bring-up for the QMX, the headless (no display, no keyboard) operating model, and the board-specific facts
@@ -207,7 +237,10 @@ off or doesn't.
 than assumes, the shared-binary requirement (§6): the same sidekick image already running against the ADV
 must pair against the P4 board with zero rebuild.** If that fails, the failure is in the protocol or in
 something the sidekick assumed about its main-board partner, not in a missing per-board sidekick variant —
-there isn't going to be one.
+there isn't going to be one. **Known blocker, found 2026-09-17 (see Status amendment):** before this can
+land, the porta pump (`porta_tick()` + 3 sibling tick functions + `porta_start()`) needs to come out of
+`gps_runtime_tick()`/`app_task_core0()` into something a headless board's own main loop can call too — it's
+currently reachable only from ADV's `M5Cardputer`-driven loop, not because the pump itself needs a display.
 
 **Phase 4 — field power validation.** Plan A per §4: one 5V/USB-C source into the Download/OTG port powers
 the P4 board itself; the Host port sources QMX's 5V the way the ADV's USB host port already does; the

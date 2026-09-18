@@ -11,9 +11,27 @@ set(IDF_TARGET esp32p4)
 
 # Shared with the ADV rather than duplicated (RFC 0005 §5, RFC 0002 §5.1's
 # named exception for components/ across more than one idf.py project --
-# the same pattern sidekick already uses for porta_proto). Only the one
-# component this project actually needs, not the whole components/ tree.
-set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/../components/radio_control")
+# the same pattern sidekick already uses for porta_proto). Only the specific
+# components this project actually needs, not the whole components/ tree
+# (which would also expose ADV-only ones like M5Unified/board_cardputer_adv
+# that this board can't build).
+set(EXTRA_COMPONENT_DIRS
+    "${CMAKE_CURRENT_LIST_DIR}/../components/radio_control"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/decode_types"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/decode_tx_state"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/callsign_hashtable"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/autoseq"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/protocol"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/debug_log"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/rtc_core"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/external_rtc"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/board_power"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/adif"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/resample"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/ft8_audio_pipeline"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/decode_pipeline"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/ft8_lib"
+)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(poe_p4)

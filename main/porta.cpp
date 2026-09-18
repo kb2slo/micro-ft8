@@ -9,7 +9,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "main_services.h"
+#include "debug_log.h"
 
 // Defined in main.cpp: the clock this stamps events with, and the control
 // actions the sidekick can request. Setters return nullptr on success or a
@@ -584,6 +584,7 @@ void porta_start() {
   porta_decoder_init(&s_dec);
   s_version[0] = '\0';
   s_running = true;
+  debug_log_set_relay(porta_emit_log);
   ESP_LOGI(kTag, "Started on UART%d TX=G%d RX=G%d baud=%d",
            (int)kPortaUart, (int)kPortaTxPin, (int)kPortaRxPin, kBaud);
 }
@@ -593,6 +594,7 @@ void porta_stop() {
   uart_driver_delete(kPortaUart);
   porta_decoder_init(&s_dec);
   s_running = false;
+  debug_log_set_relay(nullptr);
   ESP_LOGI(kTag, "Stopped");
 }
 
