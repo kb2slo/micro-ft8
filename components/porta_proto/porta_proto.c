@@ -579,6 +579,47 @@ bool porta_proto_parse_queue_reply(const porta_frame_t *f, uint32_t *decode_id_o
     return true;
 }
 
+size_t porta_proto_encode_file_delete(const char *filename, uint8_t *out, size_t out_cap)
+{
+    uint8_t payload[1 + PORTA_FILENAME_MAX];
+    payload[0] = PORTA_ACT_FILE_DELETE;
+    size_t n = 0;
+    if (filename && filename[0] != '\0') {
+        n = strnlen(filename, PORTA_FILENAME_MAX + 1);
+        if (n == 0 || n > PORTA_FILENAME_MAX) {
+            return 0;
+        }
+        for (size_t i = 0; i < n; ++i) {
+            if (filename[i] == '/' || filename[i] == '\\') {
+                return 0;
+            }
+        }
+        memcpy(&payload[1], filename, n);
+    }
+    return porta_proto_encode(PORTA_MSG_ACTION, payload, (uint8_t)(1 + n), out, out_cap);
+}
+
+bool porta_proto_parse_file_delete(const porta_frame_t *f, char *filename_out)
+{
+    if (!f || !filename_out || f->type != PORTA_MSG_ACTION || f->len < 1 ||
+        f->payload[0] != PORTA_ACT_FILE_DELETE ||
+        f->len > (uint8_t)(1 + PORTA_FILENAME_MAX)) {
+        return false;
+    }
+    const size_t n = (size_t)f->len - 1u;
+    if (n > 0) {
+        memcpy(filename_out, &f->payload[1], n);
+    }
+    filename_out[n] = '\0';
+    for (size_t i = 0; i < n; ++i) {
+        if (filename_out[i] == '\0' || filename_out[i] == '/' ||
+            filename_out[i] == '\\') {
+            return false;
+        }
+    }
+    return true;
+}
+
 size_t porta_proto_encode_ack(uint8_t verb, uint8_t *out, size_t out_cap)
 {
     return porta_proto_encode(PORTA_MSG_ACK, &verb, 1, out, out_cap);

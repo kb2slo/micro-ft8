@@ -100,6 +100,8 @@ static int64_t now_ms(void) {
     return esp_timer_get_time() / 1000;
 }
 
+void cat_cdc_reset_parsed_meters(void);  // defined with radio_transport CAT group below
+
 static void cdc_event_cb(const cdc_acm_host_dev_event_data_t *event, void * /*user_ctx*/) {
     if (event->type == CDC_ACM_HOST_DEVICE_DISCONNECTED) {
         ESP_LOGI(TAG, "QMX CDC disconnected");
@@ -115,6 +117,7 @@ static void cdc_event_cb(const cdc_acm_host_dev_event_data_t *event, void * /*us
         cdc_acm_dev_hdl_t h = s_cdc_handle;
         s_cdc_handle = nullptr;
         s_cdc_reconnect_after_ms = now_ms() + kCdcReconnectBackoffMs;
+        cat_cdc_reset_parsed_meters();
         if (h) {
             cdc_acm_host_close(h);
         }
@@ -123,8 +126,53 @@ static void cdc_event_cb(const cdc_acm_host_dev_event_data_t *event, void * /*us
     }
 }
 
+static volatile int s_pc_tenths = -1;
+static volatile int s_sw_hundredths = -1;
+static char s_cat_acc[48];
+static size_t s_cat_acc_len = 0;
+
+static void cat_parse_frame(const char *frame) {
+    if (!frame || frame[0] == 0) {
+        return;
+    }
+    if (frame[0] == 'P' && frame[1] == 'C' && frame[2] >= '0' && frame[2] <= '9') {
+        int v = 0;
+        for (const char *p = frame + 2; *p >= '0' && *p <= '9'; ++p) {
+            v = v * 10 + (*p - '0');
+        }
+        s_pc_tenths = v;
+        return;
+    }
+    if (frame[0] == 'S' && frame[1] == 'W' && frame[2] >= '0' && frame[2] <= '9') {
+        int v = 0;
+        for (const char *p = frame + 2; *p >= '0' && *p <= '9'; ++p) {
+            v = v * 10 + (*p - '0');
+        }
+        s_sw_hundredths = v;
+    }
+}
+
 static bool cdc_data_cb(const uint8_t *data, size_t data_len, void * /*user_arg*/) {
-    ESP_LOGI(TAG, "QMX CAT rx (%u bytes): %.*s", (unsigned)data_len, (int)data_len, data);
+    if (!data || data_len == 0) {
+        return true;
+    }
+    for (size_t i = 0; i < data_len; ++i) {
+        const char c = static_cast<char>(data[i]);
+        if (c == ';') {
+            s_cat_acc[s_cat_acc_len] = 0;
+            cat_parse_frame(s_cat_acc);
+            s_cat_acc_len = 0;
+            continue;
+        }
+        if (c < 32 || c > 126) {
+            continue;
+        }
+        if (s_cat_acc_len + 1 < sizeof(s_cat_acc)) {
+            s_cat_acc[s_cat_acc_len++] = c;
+        } else {
+            s_cat_acc_len = 0;
+        }
+    }
     return true;
 }
 
@@ -433,13 +481,24 @@ esp_err_t cat_cdc_send(const uint8_t *data, size_t len, uint32_t timeout_ms) {
 }
 
 void cat_cdc_reset_parsed_meters(void) {
-    // QMX power/SWR meter parsing (PC;SW; replies) isn't built on this board
-    // yet -- Phase 2 only needs frequency-set to work. Safe no-op, not a
-    // silent lie: get_parsed_meters() below always reports "no reading".
+    s_pc_tenths = -1;
+    s_sw_hundredths = -1;
+    s_cat_acc_len = 0;
 }
 
-bool cat_cdc_get_parsed_meters(int * /*pc_tenths*/, int * /*sw_hundredths*/) {
-    return false;
+bool cat_cdc_get_parsed_meters(int *pc_tenths, int *sw_hundredths) {
+    const int pc = s_pc_tenths;
+    const int sw = s_sw_hundredths;
+    if (pc < 0 && sw < 0) {
+        return false;
+    }
+    if (pc_tenths) {
+        *pc_tenths = pc;
+    }
+    if (sw_hundredths) {
+        *sw_hundredths = sw;
+    }
+    return true;
 }
 
 // radio_transport.h -- UAC TX group, QDX-only. components/radio_control

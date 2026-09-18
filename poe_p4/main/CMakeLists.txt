@@ -13,6 +13,8 @@ idf_component_register(
          "../../main/storage/storage_service.cpp"
          # B71: shared ADIF QSO archive writer (same unit ADV uses).
          "../../main/storage/adif_logger.cpp"
+         # B73: Port A / phone Clear-all ADI delete (shared with ADV).
+         "../../main/storage/adif_delete.cpp"
          # B71: Log tab FILE_LIST/READ (same parse/list units as ADV).
          "../../main/storage/qso_browse.cpp"
          "../../main/storage/file_list.cpp"

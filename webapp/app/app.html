@@ -2108,15 +2108,45 @@ async function downloadAllAdif(linkEl) {
   }
 }
 
-// No ADV/sidekick mechanism exists to delete a log file today -- FILE_LIST/
-// FILE_READ (RFC 0004 §11) are read-only by design (porta_proto.h's own
-// comment on the FILE_DATA messages), and nothing exposes storage_service.h's
-// storage_file_remove() over Port A. Adding that is a real, separate
-// protocol change (new ACTION verb, ADV dispatch, sidekick relay route) --
-// not something to wire silently under an operator-requested UI stub, and
-// genuinely destructive besides. Stub only, per instruction.
-function clearAllAdif() {
-  setMsg('Clear all ADI files: not implemented yet.');
+// Clears every daily QSO log the host will delete (same set as FILE_LIST).
+// Confirms first — destructive. Reloads the Log list on success. Active-day
+// LOCK during TX/decode leaves today's file; the host NAKs only when nothing
+// could be removed.
+async function clearAllAdif() {
+  if (!MicroFT8Pairing.getToken()) {
+    setMsg('Press the sidekick button to pair');
+    return;
+  }
+  if (!window.confirm('Delete all ADI log files on the radio?')) return;
+  setMsg('Clearing ADI files…');
+  try {
+    var r = await MicroFT8Pairing.authFetch('/api/log/files', { method: 'DELETE' });
+    if (r.status === 401) {
+      MicroFT8Pairing.needsReauth();
+      setMsg('Press the sidekick button to pair');
+      return;
+    }
+    var j = await r.json().catch(function () { return {}; });
+    if (!r.ok || j.ok === false) {
+      setMsg('Clear failed: ' + (j.why || r.status));
+      return;
+    }
+    logFiles = [];
+    logFileIdx = 0;
+    logFilesSkip = 0;
+    logFilesExhausted = false;
+    logFileLoadedCount = {};
+    logGroupEls = {};
+    logRenderedAny = false;
+    logDone = false;
+    document.getElementById('logList').innerHTML =
+      '<p style="padding:0 1rem;color:GrayText">Loading…</p>';
+    document.getElementById('logMore').hidden = false;
+    setMsg('ADI files cleared.');
+    await loadMoreLog();
+  } catch (e) {
+    setMsg(String(e && e.message ? e.message : e));
+  }
 }
 
 // Fetches the next page of day filenames the first time (or another page

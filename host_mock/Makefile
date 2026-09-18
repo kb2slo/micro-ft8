@@ -14,6 +14,7 @@ INCLUDES = -I. -I../main -I../main/radio -I../main/audio -I../main/storage -I../
            -I../components/protocol/include \
            -I../components/debug_log/include \
            -I../components/adif/include \
+           -I../components/storage_service/include \
            -I../components/rtc_core/include \
            -I../components/board_power/include \
            -I../components/decode_pipeline/include \
@@ -42,6 +43,7 @@ STATION_TARGET = host_test_station
 DECODE_SORT_TARGET = host_test_decode_sort
 POWER_TARGET = host_test_power_hysteresis
 QSO_BROWSE_TARGET = host_test_qso_browse
+ADIF_DELETE_TARGET = host_test_adif_delete
 COPY_BLOCK_TARGET = host_test_copy_block
 STATION_SAVE_TARGET = host_test_station_save_queue
 FILE_LIST_TARGET = host_test_file_list
@@ -61,7 +63,7 @@ WEB_MANIFEST_TARGET = host_test_web_manifest
 BUNDLE_HOST_TARGET = host_test_bundle_host
 
 all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
-     $(DECODE_SORT_TARGET) $(POWER_TARGET) $(QSO_BROWSE_TARGET) $(COPY_BLOCK_TARGET) \
+     $(DECODE_SORT_TARGET) $(POWER_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) $(COPY_BLOCK_TARGET) \
      $(STATION_SAVE_TARGET) $(FILE_LIST_TARGET) $(RADIO_PROFILE_TARGET) $(TX_HUD_BANNER_TARGET) \
      $(RX_LIST_STALE_TARGET) $(CTS_TIME_TARGET) $(BAND_CONFIG_TARGET) \
      $(USB_C_PRESENCE_TARGET) $(MENU_MODEL_TARGET) $(SCREEN_MODEL_TARGET) \
@@ -195,6 +197,12 @@ qso_browse.o: ../main/storage/qso_browse.cpp
 $(QSO_BROWSE_TARGET): $(QSO_BROWSE_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
+ADIF_DELETE_OBJ = qso_browse.o adif_delete.o test_adif_delete.o
+adif_delete.o: ../main/storage/adif_delete.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -I../components/storage_service/include -c $< -o $@
+$(ADIF_DELETE_TARGET): $(ADIF_DELETE_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
 COPY_BLOCK_OBJ = test_copy_block.o
 $(COPY_BLOCK_TARGET): $(COPY_BLOCK_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
@@ -221,12 +229,12 @@ $(FILE_LIST_TARGET): $(FILE_LIST_OBJ)
 
 clean:
 	rm -f $(OBJ) $(UNIQUE_OBJ) $(CANCEL_OBJ) $(ADIF_OBJ) $(STATION_OBJ) \
-	      $(DECODE_SORT_OBJ) $(POWER_OBJ) $(QSO_BROWSE_OBJ) $(COPY_BLOCK_OBJ) \
+	      $(DECODE_SORT_OBJ) $(POWER_OBJ) $(QSO_BROWSE_OBJ) $(ADIF_DELETE_OBJ) $(COPY_BLOCK_OBJ) \
 	      $(STATION_SAVE_OBJ) $(FILE_LIST_OBJ) $(RADIO_PROFILE_OBJ) $(TX_HUD_BANNER_OBJ) \
 	      $(RX_LIST_STALE_OBJ) $(CTS_TIME_OBJ) $(BAND_CONFIG_OBJ) \
 	      $(USB_C_PRESENCE_OBJ) \
 	      $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
-	      $(DECODE_SORT_TARGET) $(POWER_TARGET) $(QSO_BROWSE_TARGET) $(COPY_BLOCK_TARGET) \
+	      $(DECODE_SORT_TARGET) $(POWER_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) $(COPY_BLOCK_TARGET) \
 	      $(STATION_SAVE_TARGET) $(FILE_LIST_TARGET) $(RADIO_PROFILE_TARGET) $(TX_HUD_BANNER_TARGET) \
 	      $(RX_LIST_STALE_TARGET) $(CTS_TIME_TARGET) $(BAND_CONFIG_TARGET) \
 	      $(USB_C_PRESENCE_TARGET) $(MENU_MODEL_OBJ) $(MENU_MODEL_TARGET) \

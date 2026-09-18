@@ -321,6 +321,7 @@ typedef enum {
     PORTA_ACT_BEACON       = 0x06,  // payload: u8 mode (STATUS key 1's 3-way cycle)
     PORTA_ACT_QUEUE_CANCEL = 0x07,  // payload: u16 entry_id (not a list index)
     PORTA_ACT_QUEUE_REPLY  = 0x08,  // payload: u32 decode_id
+    PORTA_ACT_FILE_DELETE  = 0x09,  // payload: filename (empty = clear all daily logs)
 } porta_action_verb_t;
 
 // The browser is the clock source in a headless build: it is the only device
@@ -365,6 +366,12 @@ bool porta_proto_parse_queue_cancel(const porta_frame_t *f, uint16_t *entry_id_o
 // rather than re-sending its text.
 size_t porta_proto_encode_queue_reply(uint32_t decode_id, uint8_t *out, size_t out_cap);
 bool porta_proto_parse_queue_reply(const porta_frame_t *f, uint32_t *decode_id_out);
+
+// File delete: verb + basename (0..PORTA_FILENAME_MAX). Empty = clear all
+// daily QSO logs (FILE_LIST set / phone "Clear all ADI files"). Active-day
+// LOCK is host policy. `filename_out` needs PORTA_FILENAME_MAX + 1 bytes.
+size_t porta_proto_encode_file_delete(const char *filename, uint8_t *out, size_t out_cap);
+bool porta_proto_parse_file_delete(const porta_frame_t *f, char *filename_out);
 
 size_t porta_proto_encode_ack(uint8_t verb, uint8_t *out, size_t out_cap);
 

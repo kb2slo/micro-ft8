@@ -796,6 +796,32 @@ static esp_err_t get_log_entries(httpd_req_t *req)
     return wait_action_reply(req, PORTA_MSG_FILE_READ);
 }
 
+// DELETE /api/log/files[?file=] — clear all daily QSO logs, or one basename.
+// Token required: destructive, same category as TX/config writes. Empty
+// query matches the phone "Clear all ADI files" button (host LOCK still
+// protects the active day file during TX/decode).
+static esp_err_t delete_log_files(httpd_req_t *req)
+{
+    char filename[PORTA_FILENAME_MAX + 1] = {0};
+    char query[96];
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        httpd_query_key_value(query, "file", filename, sizeof(filename));
+    }
+
+    s_last_reply_verb = 0;
+    uint8_t frame[PORTA_PROTO_MAX_FRAME];
+    const size_t n = porta_proto_encode_file_delete(filename, frame, sizeof(frame));
+    if (n == 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad filename");
+        return ESP_FAIL;
+    }
+    if (!porta_send(frame, n)) {
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
+    }
+    return wait_action_reply(req, PORTA_ACT_FILE_DELETE);
+}
+
 // GET /api/config — Station.txt surface as JSON. Open read: call/grid are on
 // the air; WiFi secrets are not in this object.
 static esp_err_t get_config(httpd_req_t *req)
@@ -1065,6 +1091,9 @@ void host_link_register_uris(httpd_handle_t server)
     static const httpd_uri_t log_files = {
         .uri = "/api/log/files", .method = HTTP_GET, .handler = get_log_files,
     };
+    static const httpd_uri_t log_files_delete = {
+        .uri = "/api/log/files", .method = HTTP_DELETE, .handler = delete_log_files,
+    };
     static const httpd_uri_t log_entries = {
         .uri = "/api/log/entries", .method = HTTP_GET, .handler = get_log_entries,
     };
@@ -1076,6 +1105,7 @@ void host_link_register_uris(httpd_handle_t server)
     // Beacon / queue cancel / queue reply all change device state (RFC 0004
     // §11) -- guarded like connect/tune. Log files/entries are QSO-log reads,
     // the same category §7 already opened up for the viewer and event feed.
+    // Log delete is destructive — PAIRING_REQUIRED.
     const struct {
         const httpd_uri_t *uri;
         pairing_policy_t policy;
@@ -1093,6 +1123,7 @@ void host_link_register_uris(httpd_handle_t server)
         { &queue_cancel, PAIRING_REQUIRED },
         { &queue_reply, PAIRING_REQUIRED },
         { &log_files, PAIRING_OPEN },
+        { &log_files_delete, PAIRING_REQUIRED },
         { &log_entries, PAIRING_OPEN },
     };
     _Static_assert(sizeof(routes) / sizeof(routes[0]) == PAIRING_ROUTES_HOST_LINK,

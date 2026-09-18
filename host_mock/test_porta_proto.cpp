@@ -696,6 +696,47 @@ static void test_action_queue_cancel_and_reply()
     }
 }
 
+static void test_action_file_delete()
+{
+    porta_decoder_t d;
+    porta_decoder_init(&d);
+    uint8_t buf[PORTA_PROTO_MAX_FRAME];
+
+    size_t n = porta_proto_encode_file_delete("", buf, sizeof(buf));
+    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1 && got[0].len == 1, "file_delete clear-all is verb only");
+    if (got.size() == 1) {
+        char name[PORTA_FILENAME_MAX + 1] = {'x'};
+        check(porta_proto_parse_file_delete(&got[0], name) && name[0] == '\0',
+              "file_delete clear-all round-trips empty name");
+    }
+
+    porta_decoder_init(&d);
+    n = porta_proto_encode_file_delete("20260918.adi", buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1 && got[0].len == 1 + 12, "file_delete carries basename");
+    if (got.size() == 1) {
+        char name[PORTA_FILENAME_MAX + 1] = {};
+        check(porta_proto_parse_file_delete(&got[0], name) &&
+              std::string(name) == "20260918.adi",
+              "file_delete basename round-trips");
+        check(!porta_proto_parse_queue_reply(&got[0], nullptr), "file_delete is not queue_reply");
+    }
+
+    check(porta_proto_encode_file_delete("no/slash.adi", buf, sizeof(buf)) == 0,
+          "encode refuses a path slash");
+    {
+        porta_frame_t fake = {};
+        fake.type = PORTA_MSG_ACTION;
+        fake.len = 3;
+        fake.payload[0] = PORTA_ACT_FILE_DELETE;
+        fake.payload[1] = 'a';
+        fake.payload[2] = '/';
+        char name[PORTA_FILENAME_MAX + 1];
+        check(!porta_proto_parse_file_delete(&fake, name), "parse rejects path slash");
+    }
+}
+
 static void test_ack_and_nak()
 {
     porta_decoder_t d;
@@ -938,6 +979,7 @@ int main()
     test_action_connect_and_tune();
     test_action_beacon();
     test_action_queue_cancel_and_reply();
+    test_action_file_delete();
     test_ack_and_nak();
     test_config_kv();
     test_file_list_and_read_requests();

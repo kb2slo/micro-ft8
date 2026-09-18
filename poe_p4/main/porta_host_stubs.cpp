@@ -3,6 +3,7 @@
 #include <cstring>
 #include <string>
 
+#include "adif_delete.h"
 #include "adif_logger.h"
 #include "autoseq.h"
 #include "decode_pipeline.h"
@@ -20,6 +21,8 @@
 #include "station.h"
 #include "storage_service.h"
 #include "tx_scheduler.h"
+
+#include <ctime>
 
 // B67–B70: Station.txt + Connect/VFO + CAT TX + Operate reply/cancel/FT/tune.
 
@@ -277,13 +280,14 @@ void porta_p4_companion_status_tick(void) {
     s_last_active_count = filled;
 }
 
-// ADV main.cpp porta_tx_hud_tick sibling — phone Operate panel. Power/SWR
-// stay -1 until P4 grows CAT meter parsing (qmx_transport stubs meters today).
+// ADV main.cpp porta_tx_hud_tick sibling — phone Operate panel.
+// B72: poll PC;/SW; so power/SWR are real (ADV draw_tx_hud polls; this board
+// has no on-device banner, so the Port A tick owns the poll).
 void porta_p4_tx_hud_tick(void) {
     static uint32_t s_last_ms = 0;
     static bool s_last_active = false;
 
-    const bool active = tx_scheduler_hud_active();
+    const bool active = tx_scheduler_hud_active() || s_tune;
     if (!active && !s_last_active) {
         return;
     }
@@ -304,8 +308,12 @@ void porta_p4_tx_hud_tick(void) {
 
     const char *tx_text = "";
     int offset_hz = 0;
-    (void)tx_scheduler_hud_snapshot(&tx_text, &offset_hz);
+    if (!tx_scheduler_hud_snapshot(&tx_text, &offset_hz) && s_tune) {
+        tx_text = "TUNE";
+        offset_hz = (s_station.offset_src == 1) ? s_station.offset_hz : 1500;
+    }
 
+    radio_control_poll_tx_power_swr();
     float power_w = -1.f, swr = -1.f;
     (void)radio_control_get_tx_power_swr(&power_w, &swr);
 
@@ -454,6 +462,9 @@ const char *porta_host_tune(bool on) {
         const int freq_hz = station_freq_hz();
         const int tune_hz =
             (s_station.offset_src == 1) ? s_station.offset_hz : 1500;  // 1=CURSOR
+        if (on) {
+            radio_control_reset_tx_power_swr();
+        }
         if (radio_control_set_tune(s_tune, freq_hz, tune_hz) != ESP_OK) {
             return "CAT tune failed";
         }
@@ -545,6 +556,34 @@ const char *porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take
     ESP_LOGI(TAG, "FILE_LIST qso daily names=%u skip=%u take=%u", (unsigned)files.size(),
              (unsigned)skip, (unsigned)take);
     return nullptr;
+}
+
+namespace {
+
+std::string today_qso_file_name() {
+    time_t now = static_cast<time_t>(rtc_now_ms() / 1000);
+    struct tm t {};
+    localtime_r(&now, &t);
+    char name[20];
+    std::snprintf(name, sizeof(name), "%04d%02d%02d.adi", (t.tm_year + 1900) % 10000,
+                  (t.tm_mon + 1) % 100, t.tm_mday % 100);
+    return name;
+}
+
+bool p4_reject_active_log_mutation(const char *basename) {
+    if (!basename || basename[0] == '\0') {
+        return false;
+    }
+    if (!decode_tx_state_get_tx_active() && !decode_tx_state_get_decode_in_progress()) {
+        return false;
+    }
+    return today_qso_file_name() == basename;
+}
+
+}  // namespace
+
+const char *porta_host_file_delete(const char *filename) {
+    return adif_delete_daily(filename, p4_reject_active_log_mutation);
 }
 
 namespace {

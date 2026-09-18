@@ -40,6 +40,7 @@ const char* porta_host_queue_reply(uint32_t decode_id);
 // (bad request, open failed) with no async reply to follow.
 const char* porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take);
 const char* porta_host_file_read_begin(const char* filename, uint16_t skip, uint8_t take);
+const char* porta_host_file_delete(const char* filename);
 #include "porta_proto.h"
 
 namespace {
@@ -310,6 +311,20 @@ void handle_action(const porta_frame_t& f) {
       return;
     }
     const char* why = porta_host_queue_reply(decode_id);
+    if (why) {
+      enqueue(buf, porta_proto_encode_nak(verb, why, buf, sizeof(buf)));
+    } else {
+      enqueue(buf, porta_proto_encode_ack(verb, buf, sizeof(buf)));
+    }
+    return;
+  }
+  case PORTA_ACT_FILE_DELETE: {
+    char filename[PORTA_FILENAME_MAX + 1];
+    if (!porta_proto_parse_file_delete(&f, filename)) {
+      enqueue(buf, porta_proto_encode_nak(verb, "malformed", buf, sizeof(buf)));
+      return;
+    }
+    const char* why = porta_host_file_delete(filename);
     if (why) {
       enqueue(buf, porta_proto_encode_nak(verb, why, buf, sizeof(buf)));
     } else {

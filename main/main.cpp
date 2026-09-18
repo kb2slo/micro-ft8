@@ -71,6 +71,7 @@ extern "C" {
 #include "storage_service.h"
 #include "adif.h"
 #include "adif_logger.h"
+#include "adif_delete.h"
 #include "cts_ble.h"
 #include "band_config.h"
 #include "sidekick_flasher.h"
@@ -884,6 +885,12 @@ const char* porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take
   s_porta_list_take = take;
   s_porta_list_gen  = file_list_worker_submit(FileListKind::QsoDaily);
   return nullptr;
+}
+
+const char* porta_host_file_delete(const char* filename) {
+  return adif_delete_daily(filename, [](const char* basename) {
+    return storage_reject_active_log_user_mutation(basename);
+  });
 }
 
 // Owned by decode_pipeline.cpp -- log_adif_entry() only needs to remember

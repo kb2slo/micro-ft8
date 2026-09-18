@@ -11,6 +11,7 @@ idf_component_register(
          "storage/station.cpp"
          "storage/station_save_queue.cpp"
          "storage/adif_logger.cpp"
+         "storage/adif_delete.cpp"
          "band_config.cpp"
          "menu_model.cpp"
          "screen_model.cpp"
