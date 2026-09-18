@@ -38,8 +38,10 @@
   capture (`qmx_transport.cpp`, a second USB host client alongside the existing CDC-ACM one, same FIFO
   tuning `stream_uac.cpp` already proved for this exact composite-device case) wired into
   `ft8_audio_pipeline_run()`. Not yet bench-confirmed against a live signal — see `TEST_PLAN.md`'s Pending
-  table. TX (the tone-scheduling state machine) is unchanged, still `main.cpp`-only, and is the next
-  milestone this phase's own scope explicitly excludes.
+  table. TX (the tone-scheduling state machine) is unchanged, still `main.cpp`-only.
+  **Sequencing amended 2026-09-18:** Phase 3 companion/porta (ROADMAP B67) is Now before P4 TX
+  (B68), so station config and beacon arming use the real sidekick path rather than throwaway
+  hardcodes.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** porting Micro-FT8's radio-control/decode/TX core to run on this specific board — USB host
   bring-up for the QMX, the headless (no display, no keyboard) operating model, and the board-specific facts
