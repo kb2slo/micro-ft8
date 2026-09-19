@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Downloads — Micro-FT8</title>
-<meta name="description" content="Continuous prerelease firmware and source for Micro-FT8 (ADV, PoE-P4, sidekick).">
+<meta name="description" content="Continuous prerelease firmware and source for Micro-FT8 (ADV, PoE-P4, AtomS3 Lite).">
 <style>
   :root {
     --ink: #1a1f1c;
@@ -73,6 +73,17 @@
   p, li { line-height: 1.55; }
   p { margin: 0 0 0.9rem; }
   p:last-child { margin-bottom: 0; }
+  ol.setup {
+    padding-left: 1.2rem;
+    margin: 0.35rem 0 0;
+  }
+  ol.setup li { margin-bottom: 0.65rem; }
+  ol.setup li:last-child { margin-bottom: 0; }
+  ol.setup ul {
+    padding-left: 1.2rem;
+    margin: 0.4rem 0 0;
+  }
+  ol.setup ul li { margin-bottom: 0.35rem; }
   a { color: var(--band); }
   code, pre {
     font-family: "IBM Plex Mono", ui-monospace, monospace;
@@ -122,7 +133,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.75rem 1.25rem;
-    align-items: baseline;
+    align-items: center;
     font-size: 0.9rem;
   }
   .assets .sha {
@@ -138,6 +149,37 @@
     color: var(--muted);
     font-size: 0.95rem;
   }
+  button.flash {
+    font: inherit;
+    font-size: 0.9rem;
+    color: #fff;
+    background: var(--band);
+    border: none;
+    border-radius: 2px;
+    padding: 0.35rem 0.75rem;
+    cursor: pointer;
+  }
+  button.flash:hover { filter: brightness(1.08); }
+  button.flash:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: none;
+  }
+  #flash-log {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    background: rgba(26, 31, 28, 0.06);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 0.75rem 0.9rem;
+    max-height: 12rem;
+    overflow: auto;
+    white-space: pre-wrap;
+    margin: 0.75rem 0 0;
+    display: none;
+  }
+  #flash-log.active { display: block; }
   footer {
     margin-top: 2.75rem;
     padding-top: 1.25rem;
@@ -150,158 +192,336 @@
 </style>
 <main>
   <p class="eyebrow"><a href="/">Micro-FT8</a> · Downloads</p>
-  <h1>Continuous builds</h1>
+  <h1>Downloads</h1>
   <p class="lead">
-    Rolling prerelease images from <code>main</code> — not a versioned release.
-    Flash at your own risk while the sneak peek settles.
+    Early pre-release firmware — looking for feedback. Flash at your own risk while
+    things settle.
   </p>
-  <p class="warn" id="status">Loading manifest…</p>
+  <p class="warn" id="status">Loading…</p>
 
   <section>
-    <h2>Assets</h2>
-    <ul class="assets" id="assets"></ul>
+    <h2>How to set up</h2>
+    <ol class="setup">
+      <li>
+        <strong>Flash one radio host</strong> — either the
+        <strong>Cardputer ADV</strong> <em>or</em> the <strong>PoE-P4</strong>
+        (not both for one station). Use <strong>Flash in browser</strong> below
+        (Chrome/Edge) or the CLI commands.
+      </li>
+      <li>
+        <strong>Flash the Atom separately</strong> — the
+        <strong>AtomS3&nbsp;Lite</strong> is its own USB-C flash. Do this before
+        you hang it off Grove; the host does not program it over the cable for
+        first install.
+      </li>
+      <li>
+        <strong>Connect with a Grove cable</strong> — Port&nbsp;A on the ADV, or
+        the Grove port on the PoE-P4 (a cable ships with the P4). The Atom takes
+        5&nbsp;V from Grove once the host is powered.
+      </li>
+      <li>
+        <strong>PoE-P4 USB-C ports</strong> — the board has two, and they are not
+        interchangeable:
+        <ul>
+          <li>
+            <strong>Next to the RJ45 / Ethernet</strong> —
+            power in (5&nbsp;V USB-C supply) and flashing / serial. Labelled
+            something like <code>USB-C PROG &amp; OTG</code>.
+          </li>
+          <li>
+            <strong>On the side of the unit</strong> —
+            the radio only. Plug the QMX/QDX here (USB host).
+          </li>
+        </ul>
+        Do not put the radio on the Ethernet-side port, and do not expect that
+        side port to power the board.
+      </li>
+      <li>
+        <strong>Cardputer ADV USB-C</strong> — one port does flash and radio
+        hosting: flash first, then plug the QMX/QDX into the same USB-C when you
+        operate (or use a powered hub if you need both at once on the desk).
+      </li>
+      <li>
+        <strong>Set up Wi‑Fi on the Atom</strong> — on first boot (or after
+        “forget network”), the Atom opens its own access point named
+        <code>MicroFT8-SK-…</code> (open, no password). From your phone or
+        computer:
+        <ul>
+          <li>Join that Wi‑Fi network.</li>
+          <li>
+            Open a browser to <code>http://192.168.4.1/</code> (many phones
+            also pop a sign-in / captive-portal sheet that lands on the same
+            page).
+          </li>
+          <li>
+            Pick your home/camp network, enter the password, and submit. The
+            Atom restarts and joins that network.
+          </li>
+        </ul>
+      </li>
+      <li>
+        <strong>Open the UI</strong> — on the same Wi‑Fi as the Atom, browse
+        <code>http://micro-ft8.local/</code>. Pair with the Atom’s user button
+        when asked (needed for clock sync and other writes).
+      </li>
+    </ol>
   </section>
 
   <section>
-    <h2>Flash</h2>
+    <h2>Assets</h2>
+    <p class="note" id="serial-note">
+      <strong>Flash in browser</strong> uses the Web Serial API (Chrome or Edge on
+      desktop). Safari and Firefox: use the <code>esptool.py</code> commands below.
+      Hold the device’s reset/boot as needed if the port does not appear.
+    </p>
+    <ul class="assets" id="assets"></ul>
+    <pre id="flash-log" aria-live="polite"></pre>
+  </section>
+
+  <section>
+    <h2>Flash (CLI)</h2>
     <p class="note">Merged images at <code>0x0</code>. Use a data-capable USB-C cable.</p>
     <p><strong>Cardputer ADV</strong></p>
     <pre id="cmd-adv">esptool.py --chip esp32s3 write_flash 0x0 microft8-adv-continuous.bin</pre>
-    <p><strong>PoE-P4 (U213)</strong> — USB-C next to RJ45 (<code>USB-C PROG &amp; OTG</code>)</p>
+    <p><strong>PoE-P4 (U213)</strong> — flash/power on the USB-C next to RJ45</p>
     <pre id="cmd-p4">esptool.py --chip esp32p4 write_flash 0x0 microft8-poe-p4-continuous.bin</pre>
-    <p><strong>AtomS3 Lite sidekick</strong> (standalone desk flash)</p>
+    <p><strong>AtomS3 Lite</strong></p>
     <pre id="cmd-sk">esptool.py --chip esp32s3 write_flash 0x0 microft8-sidekick-continuous.bin</pre>
   </section>
 
   <section>
     <h2>Source</h2>
     <p class="note">
-      The tarball is a history-free snapshot (no <code>.git</code>) with vendored
-      <code>ft8_lib</code> included so the tree is buildable without a private
-      submodule checkout.
+      A snapshot of the firmware tree with supporting libraries included, ready to build.
     </p>
   </section>
 
   <footer>
-    <a href="/">← Announcing Micro-FT8</a><br>
-    Stable URLs under <code>/download/</code>; dated names in the manifest for your Downloads folder.
+    <a href="/">← Announcing Micro-FT8</a>
   </footer>
 </main>
-<script>
-(function () {
-  var statusEl = document.getElementById("status");
-  var listEl = document.getElementById("assets");
+<script type="module">
+import { ESPLoader, Transport } from "https://cdn.jsdelivr.net/npm/esptool-js@0.6.1/bundle.js";
 
-  var LABELS = {
-    adv: {
-      title: "Cardputer ADV",
-      desc: "Host firmware (esp32s3), merged 8 MB image.",
-    },
-    poe_p4: {
-      title: "PoE-P4 (U213)",
-      desc: "Headless radio host (esp32p4), merged image.",
-    },
-    sidekick: {
-      title: "AtomS3 Lite sidekick",
-      desc: "Wi‑Fi companion (esp32s3), merged 0x0 image.",
-    },
-    source: {
-      title: "Source tree",
-      desc: "History-free tarball with ft8_lib vendored in.",
-    },
-  };
+const statusEl = document.getElementById("status");
+const listEl = document.getElementById("assets");
+const logEl = document.getElementById("flash-log");
+const serialNote = document.getElementById("serial-note");
 
-  function setCmds(m) {
-    var a = m.assets || {};
-    if (a.adv) {
-      document.getElementById("cmd-adv").textContent =
-        "esptool.py --chip esp32s3 write_flash 0x0 " + (a.adv.filename || a.adv.stable);
-    }
-    if (a.poe_p4) {
-      document.getElementById("cmd-p4").textContent =
-        "esptool.py --chip esp32p4 write_flash 0x0 " + (a.poe_p4.filename || a.poe_p4.stable);
-    }
-    if (a.sidekick) {
-      document.getElementById("cmd-sk").textContent =
-        "esptool.py --chip esp32s3 write_flash 0x0 " + (a.sidekick.filename || a.sidekick.stable);
-    }
+const serialOk = typeof navigator !== "undefined" && !!navigator.serial;
+if (!serialOk) {
+  serialNote.innerHTML =
+    "<strong>Flash in browser</strong> needs Chrome or Edge (Web Serial). " +
+    "This browser does not support it — use the <code>esptool.py</code> commands below.";
+}
+
+const LABELS = {
+  adv: {
+    title: "Cardputer ADV",
+    desc: "Host firmware (esp32s3), merged 8 MB image.",
+    chip: "ESP32-S3",
+    flashSize: "8MB",
+  },
+  poe_p4: {
+    title: "PoE-P4 (U213)",
+    desc: "Headless radio host (esp32p4), merged 16 MB image.",
+    chip: "ESP32-P4",
+    flashSize: "16MB",
+  },
+  sidekick: {
+    title: "AtomS3 Lite",
+    desc: "Wi‑Fi companion (esp32s3), merged 0x0 image. Flash over USB-C separately from the host.",
+    chip: "ESP32-S3",
+    flashSize: "8MB",
+  },
+  source: {
+    title: "Source tree",
+    desc: "History-free tarball with ft8_lib vendored in.",
+  },
+};
+
+let busy = false;
+const flashButtons = [];
+
+function log(line) {
+  logEl.classList.add("active");
+  logEl.textContent += line + "\n";
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setBusy(on) {
+  busy = on;
+  flashButtons.forEach((b) => {
+    b.disabled = on || !serialOk || b.dataset.ready !== "1";
+  });
+}
+
+function setCmds(m) {
+  const a = m.assets || {};
+  if (a.adv) {
+    document.getElementById("cmd-adv").textContent =
+      "esptool.py --chip esp32s3 write_flash 0x0 " + a.adv.stable;
   }
+  if (a.poe_p4) {
+    document.getElementById("cmd-p4").textContent =
+      "esptool.py --chip esp32p4 write_flash 0x0 " + a.poe_p4.stable;
+  }
+  if (a.sidekick) {
+    document.getElementById("cmd-sk").textContent =
+      "esptool.py --chip esp32s3 write_flash 0x0 " + a.sidekick.stable;
+  }
+}
 
-  function render(m) {
-    var short = m.short || (m.commit && m.commit.slice(0, 7)) || "?";
-    statusEl.className = "meta";
-    statusEl.innerHTML =
-      "Commit <code>" +
-      short +
-      "</code>" +
-      (m.date ? " · " + m.date : "") +
-      (m.generated_at ? " · mirrored " + m.generated_at : "") +
-      ". Same bits as the private GitHub <code>continuous</code> release.";
+async function flashTarget(key, asset, label) {
+  if (busy || !serialOk) return;
+  setBusy(true);
+  logEl.textContent = "";
+  logEl.classList.add("active");
 
-    listEl.innerHTML = "";
-    ["adv", "poe_p4", "sidekick", "source"].forEach(function (key) {
-      var asset = m.assets && m.assets[key];
-      var label = LABELS[key];
-      if (!label) return;
-      var li = document.createElement("li");
-      var href = asset ? "/download/" + asset.stable : null;
-      var title = document.createElement("p");
-      title.className = "title";
-      title.textContent = label.title;
-      var desc = document.createElement("p");
-      desc.className = "desc";
-      desc.textContent = label.desc;
-      li.appendChild(title);
-      li.appendChild(desc);
-      var row = document.createElement("div");
-      row.className = "row";
-      if (href) {
-        var link = document.createElement("a");
-        link.href = href;
-        link.textContent = "Download " + asset.stable;
-        row.appendChild(link);
-        if (asset.filename && asset.filename !== asset.stable) {
-          var dated = document.createElement("span");
-          dated.className = "note";
-          dated.textContent = "as " + asset.filename;
-          row.appendChild(dated);
-        }
-      } else {
-        row.textContent = "Not published yet";
-      }
-      li.appendChild(row);
-      if (asset && asset.sha256) {
-        var sha = document.createElement("p");
-        sha.className = "sha";
-        sha.textContent = "SHA-256 " + asset.sha256;
-        li.appendChild(sha);
-      }
-      listEl.appendChild(li);
+  let transport = null;
+  try {
+    log("Fetching " + asset.stable + "…");
+    const resp = await fetch("/download/" + asset.stable, { cache: "no-store" });
+    if (!resp.ok) throw new Error("Download failed: HTTP " + resp.status);
+    const data = new Uint8Array(await resp.arrayBuffer());
+    if (data.byteLength < 1024) throw new Error("Image too small (" + data.byteLength + " bytes)");
+    log("Loaded " + data.byteLength + " bytes. Pick a serial port…");
+
+    const port = await navigator.serial.requestPort();
+    transport = new Transport(port, true);
+    const terminal = {
+      clean() {},
+      writeLine(d) {
+        log(String(d).replace(/\r/g, ""));
+      },
+      write(d) {
+        const s = String(d).replace(/\r/g, "");
+        if (s.trim()) log(s);
+      },
+    };
+    const esploader = new ESPLoader({
+      transport,
+      baudrate: 460800,
+      terminal,
     });
-    setCmds(m);
-  }
 
-  function fallback() {
-    statusEl.className = "warn status-err";
-    statusEl.textContent =
-      "Manifest not available yet (bucket empty or first mirror still pending). " +
-      "Stable URLs will appear here after the next firmware merge to main publishes to R2.";
-    render({
-      assets: {
-        adv: { stable: "microft8-adv-continuous.bin" },
-        poe_p4: { stable: "microft8-poe-p4-continuous.bin" },
-        sidekick: { stable: "microft8-sidekick-continuous.bin" },
-        source: { stable: "microft8-source-continuous.tar.gz" },
+    log("Connecting…");
+    const chipName = await esploader.main();
+    log("Connected: " + chipName);
+    if (label.chip && !String(chipName).toUpperCase().includes(label.chip.replace("-", ""))) {
+      // Soft check only — chip strings vary ("ESP32-S3", "ESP32S3", stubs).
+      log("Note: expected family " + label.chip + "; continuing.");
+    }
+
+    log("Writing at 0x0…");
+    let lastPct = -1;
+    await esploader.writeFlash({
+      fileArray: [{ data, address: 0x0 }],
+      flashMode: "dio",
+      flashFreq: "80m",
+      flashSize: label.flashSize,
+      eraseAll: false,
+      compress: true,
+      reportProgress(_i, written, total) {
+        if (!total) return;
+        const pct = Math.floor((100 * written) / total);
+        if (pct >= lastPct + 10 || written === total) {
+          lastPct = pct;
+          log("  " + pct + "%");
+        }
       },
     });
+    log("Resetting…");
+    await esploader.after("hard_reset");
+    log("Done. You can unplug or leave the USB cable connected.");
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    log("Error: " + msg);
+    console.error(e);
+  } finally {
+    if (transport) {
+      try {
+        await transport.disconnect();
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    setBusy(false);
+  }
+}
+
+function render(m) {
+  statusEl.className = "meta";
+  if (m.date) {
+    statusEl.textContent = "Build date " + m.date + ".";
+  } else {
+    statusEl.textContent = "Current early pre-release builds.";
   }
 
-  fetch("/download/manifest.json", { cache: "no-store" })
-    .then(function (r) {
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return r.json();
-    })
-    .then(render)
-    .catch(fallback);
-})();
+  listEl.innerHTML = "";
+  flashButtons.length = 0;
+
+  ["adv", "poe_p4", "sidekick", "source"].forEach((key) => {
+    const asset = m.assets && m.assets[key];
+    const label = LABELS[key];
+    if (!label) return;
+    const li = document.createElement("li");
+    const href = asset ? "/download/" + asset.stable : null;
+    const title = document.createElement("p");
+    title.className = "title";
+    title.textContent = label.title;
+    const desc = document.createElement("p");
+    desc.className = "desc";
+    desc.textContent = label.desc;
+    li.appendChild(title);
+    li.appendChild(desc);
+
+    const row = document.createElement("div");
+    row.className = "row";
+    if (href) {
+      const link = document.createElement("a");
+      link.href = href;
+      link.textContent = "Download";
+      row.appendChild(link);
+      if (label.chip) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "flash";
+        btn.textContent = "Flash in browser";
+        btn.dataset.ready = asset ? "1" : "0";
+        btn.disabled = !serialOk || !asset;
+        btn.addEventListener("click", () => flashTarget(key, asset, label));
+        flashButtons.push(btn);
+        row.appendChild(btn);
+      }
+    } else {
+      row.textContent = "Not published yet";
+    }
+    li.appendChild(row);
+    listEl.appendChild(li);
+  });
+  setCmds(m);
+}
+
+function fallback() {
+  statusEl.className = "warn status-err";
+  statusEl.textContent =
+    "Downloads are not available right now. Try again later, or check back after the next update.";
+  render({
+    assets: {
+      adv: { stable: "microft8-adv-continuous.bin" },
+      poe_p4: { stable: "microft8-poe-p4-continuous.bin" },
+      sidekick: { stable: "microft8-sidekick-continuous.bin" },
+      source: { stable: "microft8-source-continuous.tar.gz" },
+    },
+  });
+}
+
+fetch("/download/manifest.json", { cache: "no-store" })
+  .then((r) => {
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  })
+  .then(render)
+  .catch(fallback);
 </script>

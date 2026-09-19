@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Announcing Micro-FT8 — KB2SLO</title>
-<meta name="description" content="Sneak peek: Micro-FT8 — browser UI for Mini-FT8 on Cardputer ADV or full headless PoE-P4 + AtomS3 Lite.">
+<meta name="description" content="Early pre-release: Micro-FT8 — browser UI for Mini-FT8 on Cardputer ADV or full headless PoE-P4 + AtomS3 Lite.">
 <style>
   :root {
     --ink: #1a1f1c;
@@ -166,18 +166,17 @@
   }
 </style>
 <main>
-  <p class="eyebrow">Sneak peek</p>
+  <p class="eyebrow">Early pre-release</p>
   <h1>Announcing Micro-FT8</h1>
   <p class="lead">
-    A continuation of Wei&nbsp;AG6AQ’s
-    <a href="https://github.com/wcheng95/Mini-FT8">Mini-FT8</a>
-    — the same QRP FT8/FT4 portable station for QMX and QDX —
+    A continuation of Wei&nbsp;AG6AQ’s Mini-FT8
+    — the same QRP FT8 portable station for QMX and QDX —
     with a new operating model: <strong>any browser on the same Wi‑Fi is the UI</strong>
     — phone, tablet, or laptop.
   </p>
   <p class="byline">Jeff Kalikstein, KB2SLO · September 2026</p>
   <p class="byline">
-    <a href="downloads.html">Downloads</a> — continuous ADV, PoE-P4, sidekick, and source.
+    <a href="downloads.html">Downloads</a> — ADV, PoE-P4, Atom firmware, and source.
   </p>
 
   <div class="gallery hardware">
@@ -211,17 +210,17 @@
       </li>
     </ol>
     <p class="note">
-      <strong>GPS is optional.</strong> Clock comes from the browser over the sidekick link —
+      <strong>GPS is optional.</strong> Clock comes from the browser over the Atom link —
       open the page, sync once, operate. No GNSS module required for time.
     </p>
     <p>
-      P4 USB-host FT8 wasn’t a leap of faith:
-      <a href="https://github.com/SteffenLav/qmx-panadapter">SteffenLav/qmx-panadapter</a>
-      already ships FT8/FT4 on ESP32-P4 (M5Stack Tab5) with a live QMX. That work proved the
-      silicon; Micro-FT8’s PoE-P4 build is the headless, browser-UI shape of the same idea.
+      P4 USB-host FT8 wasn’t a leap of faith: SteffenLav’s qmx-panadapter already ships
+      FT8 on ESP32-P4 (M5Stack Tab5) with a live QMX. That work proved the silicon;
+      Micro-FT8’s PoE-P4 build is the headless, browser-UI shape of the same idea.
     </p>
     <p>
-      This is a <strong>sneak peek</strong>, not a public release. The Cardputer ADV remains a
+      This is an <strong>early pre-release</strong> — looking for feedback, not a finished
+      public release. The Cardputer ADV remains a
       first-class daily driver. Firmware and field packaging are still settling.
     </p>
   </section>
@@ -272,7 +271,7 @@
   <section>
     <h2>In the browser</h2>
     <p>
-      Same LAN Wi‑Fi as the sidekick is the only requirement. No app-store install —
+      Same LAN Wi‑Fi as the Atom is the only requirement. No app-store install —
       Safari or Chrome on a phone, tablet, or laptop.
     </p>
     <div class="gallery screens">
@@ -316,7 +315,7 @@
     <ol>
       <li>
         <strong>Browser-based UI</strong> — Operate, queue, tune, and pull logs from
-        Safari or Chrome on a phone, tablet, or laptop. Same-network Wi‑Fi as the sidekick
+        Safari or Chrome on a phone, tablet, or laptop. Same-network Wi‑Fi as the Atom
         is the only requirement — no app-store install. Callsign links open
         <a href="https://www.qrz.com/">QRZ.com</a>; grid squares show bearing and distance;
         ADI download (and clear-all when you need it) is a tap away.
@@ -346,7 +345,7 @@
     <h2>Coming soon</h2>
     <ul>
       <li>
-        <strong>Point-to-point Wi‑Fi (AP mode)</strong> — run the whole UI off the sidekick’s
+        <strong>Point-to-point Wi‑Fi (AP mode)</strong> — run the whole UI off the Atom’s
         own access point for SOTA, POTA, and other places with no camp router or cell service.
       </li>
       <li>
@@ -365,39 +364,22 @@
   </section>
 
   <section>
-    <h2>Already on the air with a sidekick?</h2>
-    <p>
-      On the same network as the AtomS3&nbsp;Lite, open
-      <code>http://micro-ft8.local/</code>, pair with the sidekick’s user button, then install
-      or refresh the browser app from <code>/update</code> on the device. That page pulls the
-      bundle from <a href="app/manifest.json"><code>/app/</code></a> on this site.
-    </p>
-  </section>
-
-  <section>
     <h2>Downloads</h2>
     <p>
-      Continuous (unversioned) firmware and a buildable source tarball:
+      Firmware images and a buildable source tree:
       <a href="downloads.html">Downloads</a>.
-      Same bits as the private GitHub <code>continuous</code> release, mirrored for anonymous GET.
     </p>
   </section>
 
   <section>
     <h2>Credits &amp; community</h2>
     <p>
-      Built on Wei&nbsp;AG6AQ’s Mini-FT8 and Karlis Goba’s
-      <a href="https://github.com/kgoba/ft8_lib">ft8_lib</a>.
+      Built on Wei&nbsp;AG6AQ’s Mini-FT8 and Karlis Goba’s ft8_lib.
       P4 feasibility credit to SteffenLav’s qmx-panadapter.
-      Portable QRP discussion:
-      <a href="https://freelists.org/list/qrp-portable">qrp-portable</a>.
-      Earlier technical notes:
-      <a href="https://github.com/wcheng95/Mini-FT8/discussions/45">Mini-FT8 Discussion&nbsp;#45</a>.
     </p>
   </section>
 
   <footer>
-    73, Jeff&nbsp;KB2SLO<br>
-    Bundle base for devices: <code>…/app</code> (no trailing slash).
+    73, Jeff&nbsp;KB2SLO
   </footer>
 </main>
