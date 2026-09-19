@@ -89,6 +89,107 @@
     object-fit: cover;
     object-position: top;
     box-shadow: 0 1px 0 rgba(26, 31, 28, 0.06);
+    cursor: zoom-in;
+  }
+  .gallery.screens button.shot {
+    display: block;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: transparent;
+    cursor: zoom-in;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+  }
+  .gallery.screens button.shot:focus-visible {
+    outline: 2px solid var(--band);
+    outline-offset: 2px;
+  }
+  .lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem;
+    background: rgba(26, 31, 28, 0.82);
+  }
+  .lightbox.open { display: flex; }
+  .lightbox-inner {
+    position: relative;
+    max-width: min(28rem, 100%);
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .lightbox-inner img {
+    display: block;
+    max-width: 100%;
+    max-height: calc(100vh - 7rem);
+    width: auto;
+    height: auto;
+    border-radius: 2px;
+    background: #1a1f1c;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  }
+  .lightbox-cap {
+    margin: 0;
+    color: #ebe4d6;
+    font-size: 0.9rem;
+    text-align: center;
+    line-height: 1.35;
+  }
+  .lightbox-nav {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .lightbox-nav button {
+    font: inherit;
+    font-size: 0.9rem;
+    color: #ebe4d6;
+    background: transparent;
+    border: 1px solid rgba(235, 228, 214, 0.35);
+    border-radius: 2px;
+    padding: 0.35rem 0.75rem;
+    cursor: pointer;
+  }
+  .lightbox-nav button:hover {
+    border-color: #ebe4d6;
+  }
+  .lightbox-count {
+    color: rgba(235, 228, 214, 0.7);
+    font-size: 0.82rem;
+    min-width: 3.5rem;
+    text-align: center;
+  }
+  .lightbox-close {
+    position: absolute;
+    top: -0.25rem;
+    right: -0.25rem;
+    transform: translate(40%, -40%);
+    font: inherit;
+    font-size: 1.25rem;
+    line-height: 1;
+    color: #ebe4d6;
+    background: rgba(26, 31, 28, 0.9);
+    border: 1px solid rgba(235, 228, 214, 0.35);
+    border-radius: 2px;
+    width: 2rem;
+    height: 2rem;
+    cursor: pointer;
+  }
+  @media (max-width: 480px) {
+    .lightbox-close {
+      position: static;
+      transform: none;
+      align-self: flex-end;
+    }
   }
   .gallery figcaption {
     font-size: 0.82rem;
@@ -276,37 +377,45 @@
       Same LAN Wi‑Fi as the Atom is the only requirement. No app-store install —
       Safari or Chrome on a phone, tablet, or laptop.
     </p>
-    <div class="gallery screens">
+    <div class="gallery screens" id="screen-gallery">
       <figure>
-        <img
-          src="img/ui-operate.jpeg"
-          alt="Micro-FT8 Operate tab showing Connect, Tune, queue, and transmitting status"
-          width="295"
-          height="640">
+        <button type="button" class="shot" data-index="0" aria-label="Enlarge Operate screenshot">
+          <img
+            src="img/ui-operate.jpeg"
+            alt="Micro-FT8 Operate tab showing Connect, Tune, queue, and transmitting status"
+            width="295"
+            height="640">
+        </button>
         <figcaption>Operate — connect, tune, queue, TX.</figcaption>
       </figure>
       <figure>
-        <img
-          src="img/ui-decodes.jpeg"
-          alt="Decode list with power and SWR during TX, grid bearing and distance"
-          width="295"
-          height="640">
+        <button type="button" class="shot" data-index="1" aria-label="Enlarge Decodes screenshot">
+          <img
+            src="img/ui-decodes.jpeg"
+            alt="Decode list with power and SWR during TX, grid bearing and distance"
+            width="295"
+            height="640">
+        </button>
         <figcaption>Decodes — power/SWR, bearing &amp; distance.</figcaption>
       </figure>
       <figure>
-        <img
-          src="img/ui-qsos.jpeg"
-          alt="QSOs tab with ADI download and logged contacts"
-          width="295"
-          height="640">
+        <button type="button" class="shot" data-index="2" aria-label="Enlarge QSOs screenshot">
+          <img
+            src="img/ui-qsos.jpeg"
+            alt="QSOs tab with ADI download and logged contacts"
+            width="295"
+            height="640">
+        </button>
         <figcaption>QSOs — ADI download, logged contacts.</figcaption>
       </figure>
       <figure>
-        <img
-          src="img/ui-callsign.jpeg"
-          alt="Callsign info sheet with grid distance and View on QRZ.com"
-          width="295"
-          height="640">
+        <button type="button" class="shot" data-index="3" aria-label="Enlarge Callsign screenshot">
+          <img
+            src="img/ui-callsign.jpeg"
+            alt="Callsign info sheet with grid distance and View on QRZ.com"
+            width="295"
+            height="640">
+        </button>
         <figcaption>Callsign tap — grid info + QRZ.com.</figcaption>
       </figure>
     </div>
@@ -378,7 +487,8 @@
     <p>
       Built on Wei&nbsp;AG6AQ’s
       <a href="https://github.com/wcheng95/Mini-FT8">Mini-FT8</a>
-      and Karlis Goba’s ft8_lib.
+      and Karlis Goba’s
+      <a href="https://github.com/kgoba/ft8_lib">ft8_lib</a>.
       P4 feasibility credit to
       <a href="https://github.com/SteffenLav/qmx-panadapter">SteffenLav’s qmx-panadapter</a>.
     </p>
@@ -388,3 +498,89 @@
     73, Jeff&nbsp;KB2SLO
   </footer>
 </main>
+
+<div class="lightbox" id="lightbox" role="presentation">
+  <div class="lightbox-inner" role="dialog" aria-modal="true" aria-labelledby="lightbox-cap">
+    <button type="button" class="lightbox-close" id="lightbox-close" aria-label="Close">&times;</button>
+    <img id="lightbox-img" src="" alt="">
+    <p class="lightbox-cap" id="lightbox-cap"></p>
+    <div class="lightbox-nav">
+      <button type="button" id="lightbox-prev" aria-label="Previous screenshot">Prev</button>
+      <span class="lightbox-count" id="lightbox-count"></span>
+      <button type="button" id="lightbox-next" aria-label="Next screenshot">Next</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var gallery = document.getElementById("screen-gallery");
+  if (!gallery) return;
+
+  var figures = Array.prototype.slice.call(gallery.querySelectorAll("figure"));
+  var slides = figures.map(function (fig) {
+    var img = fig.querySelector("img");
+    var cap = fig.querySelector("figcaption");
+    return {
+      src: img.getAttribute("src"),
+      alt: img.getAttribute("alt") || "",
+      caption: cap ? cap.textContent.trim() : "",
+    };
+  });
+
+  var box = document.getElementById("lightbox");
+  var imgEl = document.getElementById("lightbox-img");
+  var capEl = document.getElementById("lightbox-cap");
+  var countEl = document.getElementById("lightbox-count");
+  var idx = 0;
+
+  function show(i) {
+    idx = (i + slides.length) % slides.length;
+    var s = slides[idx];
+    imgEl.src = s.src;
+    imgEl.alt = s.alt;
+    capEl.textContent = s.caption;
+    countEl.textContent = idx + 1 + " / " + slides.length;
+  }
+
+  function openAt(i) {
+    show(i);
+    box.classList.add("open");
+    document.body.style.overflow = "hidden";
+    document.getElementById("lightbox-close").focus();
+  }
+
+  function close() {
+    box.classList.remove("open");
+    imgEl.removeAttribute("src");
+    document.body.style.overflow = "";
+  }
+
+  gallery.addEventListener("click", function (e) {
+    var btn = e.target.closest("button.shot");
+    if (!btn || !gallery.contains(btn)) return;
+    openAt(parseInt(btn.getAttribute("data-index"), 10) || 0);
+  });
+
+  document.getElementById("lightbox-prev").addEventListener("click", function (e) {
+    e.stopPropagation();
+    show(idx - 1);
+  });
+  document.getElementById("lightbox-next").addEventListener("click", function (e) {
+    e.stopPropagation();
+    show(idx + 1);
+  });
+  document.getElementById("lightbox-close").addEventListener("click", function (e) {
+    e.stopPropagation();
+    close();
+  });
+  box.addEventListener("click", function (e) {
+    if (e.target === box) close();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (!box.classList.contains("open")) return;
+    if (e.key === "Escape") close();
+    else if (e.key === "ArrowLeft") show(idx - 1);
+    else if (e.key === "ArrowRight") show(idx + 1);
+  });
+})();
+</script>
