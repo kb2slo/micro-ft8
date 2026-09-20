@@ -17,6 +17,25 @@ if(NOT GIT_DIR)
   message(FATAL_ERROR "git_version.cmake needs GIT_DIR")
 endif()
 
+# Field-found 2026-09-20: SHA/DIRTY below only run at CMake *configure* time
+# (that is the one hook ESP-IDF's build system gives PROJECT_VER before it
+# falls back to `git describe` -- see sidekick/CMakeLists.txt's own comment).
+# `ninja` correctly recompiles changed *source* files on every incremental
+# `idf.py build` regardless, but without this, the version banner itself
+# stays frozen at whatever commit/dirty-state existed the last time this
+# build directory happened to reconfigure -- which cost real debugging time
+# today when a sidekick's reported version sat two commits behind HEAD
+# through several rebuilds, and looked exactly like a stale flash. Watching
+# .git/HEAD and .git/index makes CMake automatically reconfigure (and thus
+# recompute SHA/DIRTY) the next time `idf.py build` runs after any commit,
+# checkout, or `git add` -- covering the case that actually bit us. Honest
+# limit: editing an already-tracked file without staging it touches neither
+# watched file, so DIRTY could still lag by one edit in that narrower case;
+# SHA itself (which commit the build claims to be) does not have that gap,
+# since HEAD only moves on a real commit or checkout.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${GIT_DIR}/.git/HEAD" "${GIT_DIR}/.git/index")
+
 set(SHA "unknown")
 set(_sha_in "")
 if(MICROFT8_GIT_SHA)
