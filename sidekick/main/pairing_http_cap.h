@@ -13,16 +13,22 @@ enum {
     PAIRING_ROUTES_DISCLOSURE = 1,  // /api/pairing-token
 
     PAIRING_ROUTES_WIFI_PROV_AP_CORE = 3,       // /  /rescan  /provision
-    PAIRING_ROUTES_WIFI_PROV_STATION_CORE = 3,  // /  /update  /forget
+    PAIRING_ROUTES_WIFI_PROV_STATION_CORE = 4,  // /  /update  /forget  /ap-mode
 
     PAIRING_ROUTES_HOST_LINK = 14,
     PAIRING_ROUTES_WEB_BUNDLE = 3,
     PAIRING_ROUTES_BUNDLE_HOST = 2,
-    PAIRING_ROUTES_WEB_FS_AP = 1,       // GET /*
+    // B55 (RFC 0004 §1): AP mode now serves the full application, the same as
+    // station mode, so it registers the same host_link/web_bundle/bundle_host/
+    // web_fs_rehydrate routes rather than a "static files only" subset. There
+    // is no separate AP-only web_fs count any more -- both modes share
+    // PAIRING_ROUTES_WEB_FS_STATION.
     PAIRING_ROUTES_WEB_FS_STATION = 2,  // rehydrate + GET /*
 
     PAIRING_HTTP_MAX_ROUTES_AP = PAIRING_ROUTES_WIFI_PROV_AP_CORE +
-                                 PAIRING_ROUTES_DISCLOSURE + PAIRING_ROUTES_WEB_FS_AP,
+        PAIRING_ROUTES_DISCLOSURE + PAIRING_ROUTES_HOST_LINK +
+        PAIRING_ROUTES_WEB_BUNDLE + PAIRING_ROUTES_BUNDLE_HOST +
+        PAIRING_ROUTES_WEB_FS_STATION,
 
     PAIRING_HTTP_MAX_ROUTES_STATION =
         PAIRING_ROUTES_WIFI_PROV_STATION_CORE + PAIRING_ROUTES_DISCLOSURE +

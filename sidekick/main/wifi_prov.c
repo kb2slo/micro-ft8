@@ -31,6 +31,12 @@ static const char *TAG = "wifi_prov";
 #define NVS_NAMESPACE "sidekick"
 #define NVS_KEY_SSID  "wifi_ssid"
 #define NVS_KEY_PASS  "wifi_pass"
+// B55: set by the station status page's "Enter AP mode" button (post_ap_mode,
+// below), read and cleared once at the top of wifi_prov_start(). One-shot by
+// construction -- consumed before anything else runs, so it can never leave
+// the device stuck re-forcing AP mode after an operator has since rejoined a
+// network through the portal's own WiFi form.
+#define NVS_KEY_FORCE_AP "force_ap"
 
 // WPA2 maxima, plus a NUL. Sized from the spec rather than guessed: an SSID is
 // up to 32 bytes and a PSK up to 63 characters.
@@ -132,6 +138,25 @@ static bool creds_erase(void)
     const bool ok = nvs_commit(h) == ESP_OK;
     nvs_close(h);
     return ok;
+}
+
+// B55: true exactly once per set -- clears the flag itself before returning,
+// so a crash-loop or a second boot for any other reason cannot re-force AP
+// mode from a stale flag left behind by this call's own failure to run.
+static bool force_ap_flag_get_and_clear(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) {
+        return false;
+    }
+    uint8_t flag = 0;
+    const bool set = nvs_get_u8(h, NVS_KEY_FORCE_AP, &flag) == ESP_OK && flag != 0;
+    if (set) {
+        (void)nvs_erase_key(h, NVS_KEY_FORCE_AP);
+        (void)nvs_commit(h);
+    }
+    nvs_close(h);
+    return set;
 }
 
 // ---------------------------------------------------------------------------
@@ -511,7 +536,26 @@ static esp_err_t log_not_found(httpd_req_t *req, httpd_err_code_t err)
 // from the lease and skip probing entirely, which makes the sheet appear
 // faster and more reliably than DNS hijacking alone. Both are wired up because
 // older clients only honour one or the other.
-static void advertise_captive_portal_uri(void)
+//
+// B55/I19: AP mode is now a real operating mode (RFC 0004 §1), not just
+// provisioning, so a phone joined to it may want to keep its cellular route
+// for internet (QRZ, mail) while also reaching the sidekick locally.
+//
+// First field test 2026-09-20 withheld DHCP's router (option 3) and DNS
+// (option 6) options on top of option 114, and the captive portal's popup
+// appeared to break -- reverted at the time, blamed on this omission. That
+// diagnosis turned out to be wrong: that same test run predates a real,
+// separate bug (fixed the same session, see web_fs.c's get_static() and its
+// s_redirect_missing_to_root/s_captive_satisfied) where a missing file under
+// the AP sent a bare 404 instead of the portal redirect, which alone was
+// enough to break the popup regardless of DHCP options. The router/DNS
+// omission was never actually re-tested against the real fix before being
+// reverted. Re-applying it now that the actual bug is fixed, to test the
+// combination that was never tried: does the popup work *and* does cellular
+// stay available. If this regresses the popup again, that would be real
+// evidence the omission itself matters after all -- but that has not been
+// shown yet.
+static void configure_ap_dhcp(void)
 {
     if (!s_netif_ap) {
         return;
@@ -522,7 +566,8 @@ static void advertise_captive_portal_uri(void)
     }
     char uri[32];
     snprintf(uri, sizeof(uri), "http://" IPSTR, IP2STR(&ip.ip));
-    // The DHCP server has to be stopped to change options, then restarted.
+    // The DHCP server has to be stopped to change options, then restarted --
+    // one stop/restart cycle for all three options, not three.
     esp_netif_dhcps_stop(s_netif_ap);
     const esp_err_t err = esp_netif_dhcps_option(s_netif_ap, ESP_NETIF_OP_SET,
                                                  ESP_NETIF_CAPTIVEPORTAL_URI,
@@ -530,8 +575,24 @@ static void advertise_captive_portal_uri(void)
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Captive-portal DHCP option not set: %s", esp_err_to_name(err));
     }
+    // dhcps_offer_t bitmask, lwip's components/lwip/include/apps/dhcpserver/
+    // dhcpserver.h -- 0 clears OFFER_ROUTER/OFFER_DNS so neither option is
+    // included in the lease at all (the default is 0xFF, everything on).
+    const uint8_t no_offer = 0;
+    esp_err_t rerr = esp_netif_dhcps_option(s_netif_ap, ESP_NETIF_OP_SET,
+                                            ESP_NETIF_ROUTER_SOLICITATION_ADDRESS,
+                                            (void *)&no_offer, sizeof(no_offer));
+    if (rerr != ESP_OK) {
+        ESP_LOGW(TAG, "DHCP router option not cleared: %s", esp_err_to_name(rerr));
+    }
+    esp_err_t derr = esp_netif_dhcps_option(s_netif_ap, ESP_NETIF_OP_SET,
+                                            ESP_NETIF_DOMAIN_NAME_SERVER,
+                                            (void *)&no_offer, sizeof(no_offer));
+    if (derr != ESP_OK) {
+        ESP_LOGW(TAG, "DHCP DNS option not cleared: %s", esp_err_to_name(derr));
+    }
     esp_netif_dhcps_start(s_netif_ap);
-    ESP_LOGI(TAG, "Captive portal advertised at %s", uri);
+    ESP_LOGI(TAG, "Captive portal advertised at %s (router/DNS options withheld)", uri);
 }
 
 static void httpd_start_provisioning(void)
@@ -547,6 +608,13 @@ static void httpd_start_provisioning(void)
     cfg.max_open_sockets = 10;
     // Match the compile-time pairing slot table (pairing_http_cap.h).
     cfg.max_uri_handlers = PAIRING_HTTP_MAX_ROUTES_AP;
+    // Crashed with a stack overflow in the field 2026-09-20 without this:
+    // this httpd now runs the same host_link/web_bundle/bundle_host routes
+    // httpd_start_status() always has, and that function's own comment
+    // already explains why they need it (manifest + mbedtls + VFS blew the
+    // IDF default 4 KB stack on begin/commit) -- this config just never got
+    // the same bump when those routes were added here for B55.
+    cfg.stack_size = 8192;
     cfg.uri_match_fn = httpd_uri_match_wildcard;
     if (httpd_start(&s_httpd, &cfg) != ESP_OK) {
         ESP_LOGE(TAG, "httpd_start failed");
@@ -580,8 +648,27 @@ static void httpd_start_provisioning(void)
         pairing_http_register(s_httpd, core[i].uri, core[i].policy);
     }
     pairing_http_register_disclosure(s_httpd);
+    // B55 (RFC 0004 §1): AP mode is a real operating mode now, not only a
+    // bootstrap-to-provisioning state, so it registers the same application
+    // routes station mode does -- each module applies its own per-route
+    // policy (pairing_http.h), same as it does when called from
+    // httpd_start_status() below. Unmatched paths still redirect to the
+    // portal, so the OS's captive-portal detection is unaffected; only
+    // routes that actually exist stop 404ing.
+    host_link_register_uris(s_httpd);
+    web_bundle_register(s_httpd);
+    bundle_host_register(s_httpd);
+    web_fs_register_rehydrate(s_httpd);
+    // Covers a non-GET request to an unmatched path (the only case that
+    // genuinely reaches "no handler matched" -- see web_fs_register_static_
+    // captive()'s own comment for why a GET miss has to be handled there
+    // instead; this line alone was not enough, field-found 2026-09-20).
     httpd_register_err_handler(s_httpd, HTTPD_404_NOT_FOUND, redirect_to_form);
-    web_fs_register_static(s_httpd);
+    // Static GET /* last so exact /api/... routes win (matches
+    // httpd_start_status()'s own ordering, same reason) -- captive variant:
+    // a missing file redirects to the portal instead of 404ing, which is
+    // what actually makes the captive-portal sign-in sheet appear.
+    web_fs_register_static_captive(s_httpd);
 }
 
 // Advertised in both modes. On the provisioning AP it is a convenience next to
@@ -680,6 +767,18 @@ static esp_err_t post_forget(httpd_req_t *req)
     return ESP_OK;  // not reached
 }
 
+// B55: deliberate operator entry into AP mode from the station status page.
+// Same "answer before the restart" reasoning as post_forget() -- the network
+// this request arrived on is about to go away for the sidekick either way.
+static esp_err_t post_ap_mode(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"ok\":true}");
+    vTaskDelay(pdMS_TO_TICKS(500));
+    wifi_prov_enter_ap_and_restart();
+    return ESP_OK;  // not reached
+}
+
 static void httpd_start_status(void)
 {
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
@@ -707,9 +806,12 @@ static void httpd_start_status(void)
     static const httpd_uri_t forget = {
         .uri = "/forget", .method = HTTP_POST, .handler = post_forget,
     };
-    // The status page is a read of radio state, open on principle. Forget
-    // erases the credentials and strands the device, so it is the clearest
-    // case of a write the licensee should have to authorize.
+    static const httpd_uri_t ap_mode = {
+        .uri = "/ap-mode", .method = HTTP_POST, .handler = post_ap_mode,
+    };
+    // The status page is a read of radio state, open on principle. Forget and
+    // ap-mode both tear down the working network the licensee is reachable
+    // on, so both are the clearest case of a write that needs authorizing.
     const struct {
         const httpd_uri_t *uri;
         pairing_policy_t policy;
@@ -717,6 +819,7 @@ static void httpd_start_status(void)
         { &status, PAIRING_OPEN },
         { &update, PAIRING_OPEN },
         { &forget, PAIRING_REQUIRED },
+        { &ap_mode, PAIRING_REQUIRED },
     };
     _Static_assert(sizeof(core) / sizeof(core[0]) == PAIRING_ROUTES_WIFI_PROV_STATION_CORE,
                    "station core route count");
@@ -724,8 +827,11 @@ static void httpd_start_status(void)
         pairing_http_register(s_httpd, core[i].uri, core[i].policy);
     }
     pairing_http_register_disclosure(s_httpd);
-    // Only in station mode: the viewer is for watching a working radio, and the
-    // provisioning AP exists precisely because there is not one yet.
+    // Same application routes httpd_start_provisioning() now registers for AP
+    // mode (B55, RFC 0004 §1) -- kept as a separate, near-duplicate block
+    // rather than factored out, because the two modes' *core* three routes
+    // and open/guarded policy genuinely differ and a shared helper would just
+    // hide that at a call site instead of removing it.
     host_link_register_uris(s_httpd);
     web_bundle_register(s_httpd);
     bundle_host_register(s_httpd);
@@ -781,7 +887,7 @@ static void start_ap(void)
 
     s_join_active = false;
     s_ap_active = true;
-    advertise_captive_portal_uri();
+    configure_ap_dhcp();
     mdns_bring_up();
 
     // Answer every A query with our own address: the phone's connectivity
@@ -883,6 +989,18 @@ void wifi_prov_start(void)
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
                                                         &on_wifi_event, NULL, NULL));
 
+    // B55: a deliberate operator request (the station status page's "Enter AP
+    // mode" button, POST /ap-mode) goes straight to the AP, skipping
+    // try_join() entirely -- this is not the join-failed fallback below, and
+    // must not be confused with it. Credentials are kept, not erased: the
+    // portal's own WiFi-join form is already a complete way back to station
+    // mode with no separate "undo" path needed.
+    if (force_ap_flag_get_and_clear()) {
+        ESP_LOGW(TAG, "AP mode requested by operator — skipping station join");
+        start_ap();
+        return;
+    }
+
     char ssid[SSID_MAX + 1] = {0};
     char pass[PASS_MAX + 1] = {0};
     if (creds_load(ssid, sizeof(ssid), pass, sizeof(pass))) {
@@ -916,6 +1034,23 @@ void wifi_prov_forget_and_restart(void)
         ESP_LOGW(TAG, "Credentials forgotten — restarting into provisioning");
     } else {
         ESP_LOGE(TAG, "Could not clear credentials");
+    }
+    vTaskDelay(pdMS_TO_TICKS(200));
+    esp_restart();
+}
+
+void wifi_prov_enter_ap_and_restart(void)
+{
+    nvs_handle_t h;
+    bool ok = false;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+        ok = nvs_set_u8(h, NVS_KEY_FORCE_AP, 1) == ESP_OK && nvs_commit(h) == ESP_OK;
+        nvs_close(h);
+    }
+    if (ok) {
+        ESP_LOGW(TAG, "AP mode requested — restarting");
+    } else {
+        ESP_LOGE(TAG, "Could not set AP-mode flag — restarting anyway, will retry station join");
     }
     vTaskDelay(pdMS_TO_TICKS(200));
     esp_restart();

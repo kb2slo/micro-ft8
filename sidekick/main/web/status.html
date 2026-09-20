@@ -35,6 +35,7 @@ button{width:100%;padding:.7rem;font-size:1rem;margin-top:1.5rem}
 <p><a href="/update">Install / update app &rarr;</a></p>
 
 <button id=f>Forget WiFi</button>
+<button id=ap type=button>Enter AP mode</button>
 <button id=rh type=button>Restore seed pages</button>
 <p id=m></p>
 
@@ -61,6 +62,28 @@ document.getElementById('f').onclick = async function () {
   } else {
     document.body.innerHTML = '<h2>Forgotten</h2>'
       + '<p>Restarting into setup. Look for the <b>MicroFT8-SK-…</b> network.</p>'
+  }
+}
+
+// B55 (RFC 0004 §1): deliberate entry into AP mode, ahead of a trip, while
+// still on a working network. Same shape as #f above -- token check, POST,
+// 401 handling -- since both tear down the network this page is reachable
+// on. Credentials are kept (wifi_prov_enter_ap_and_restart() does not erase
+// them), so the portal's own WiFi-join form is already the way back.
+document.getElementById('ap').onclick = async function () {
+  if (!confirm('Switch to AP mode? Your phone will need to join the sidekick\'s own network afterward.')) return;
+  if (!MicroFT8Pairing.getToken()) {
+    m.textContent = 'Press the sidekick button to pair first.';
+    MicroFT8Pairing.needsReauth();
+    return
+  }
+  var r = await MicroFT8Pairing.authFetch('/ap-mode', { method: 'POST' });
+  if (r.status == 401) {
+    MicroFT8Pairing.needsReauth();
+    m.textContent = 'Press the sidekick button to pair';
+  } else {
+    document.body.innerHTML = '<h2>Switching to AP mode</h2>'
+      + '<p>Look for the <b>MicroFT8-SK-…</b> network.</p>'
   }
 }
 

@@ -11,10 +11,21 @@
 // anyway.
 //
 // Boot sequence:
-//   1. credentials in NVS -> try to join, retry a few times
-//   2. no credentials, or the join fails -> raise an open SoftAP and serve a
-//      one-page form on http://192.168.4.1/
-//   3. form submitted -> store to NVS, try to join, report the result
+//   1. an operator-forced AP-mode flag is set (see wifi_prov_enter_ap_and_
+//      restart(), below) -> clear the flag and raise the AP directly,
+//      skipping station join entirely
+//   2. credentials in NVS -> try to join, retry a few times
+//   3. no credentials, or the join fails -> raise an open SoftAP
+//   4. form submitted -> store to NVS, try to join, report the result
+//
+// B55 (RFC 0004 §1): the AP raised by steps 1 or 3 is a real operating mode,
+// not only a bootstrap state -- it serves the full application (app.html,
+// /api/...) alongside the captive-portal credential form at
+// http://192.168.4.1/, which now links to both rather than only the form.
+// "AP mode always shows the captive portal" is deliberate in every case; what
+// changed is that the portal's landing page offers "operate now" as well as
+// "join a network instead", and the AP is reachable on purpose, not only by
+// accident of no credentials being set.
 //
 // The PORTA beacon is independent of all of this and keeps running throughout
 // (different peripheral, different task) — a sidekick with no WiFi is still a
@@ -52,3 +63,13 @@ bool wifi_prov_ap_active(void);
 // keys would leave the device reconnecting to the network it was told to
 // forget.
 void wifi_prov_forget_and_restart(void);
+
+// Deliberately switch into AP mode and restart. Does not return.
+//
+// Unlike wifi_prov_forget_and_restart(), this does not erase the stored
+// credentials -- an operator using this from the station status page still
+// wants to be able to rejoin the same network later, which the portal's
+// existing WiFi-join form already does with no extra code needed. One-shot
+// NVS flag (see wifi_prov.c's NVS_KEY_FORCE_AP), consumed at the top of the
+// next wifi_prov_start().
+void wifi_prov_enter_ap_and_restart(void);

@@ -141,6 +141,17 @@ esp_err_t web_page_send(httpd_req_t *req, const char *page, const web_sub_t *sub
     // HTML omits the charset and gets guessed as Latin-1 -- which is what
     // mangled the em dashes in these pages once already.
     httpd_resp_set_type(req, "text/html; charset=utf-8");
+    // Field-found 2026-09-20: this is the one choke point every templated
+    // page (provision.html, status.html, update.html) sends through, and it
+    // had no Cache-Control at all -- unlike web_fs.c's get_static(), which
+    // already carries the same no-store fix for the same reason (see its
+    // comment for the full explanation: no-store over no-cache because there
+    // is no ETag/Last-Modified to revalidate against, and it is also one of
+    // the signals browsers check before bfcache eligibility). Without it, a
+    // phone's browser served a stale cached provision.html/status.html
+    // straight through a reflash with no indication anything was wrong --
+    // new server-side code, old client-side JS silently still running.
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
     if (!web_page_expand(page, subs, n_subs, emit_to_response, req)) {
         return ESP_FAIL;
     }
