@@ -195,6 +195,27 @@ static bool cdc_data_cb(const uint8_t *data, size_t data_len, void * /*user_arg*
     return true;
 }
 
+// B67: fires the instant the CDC-ACM client sees USB_HOST_CLIENT_EVENT_NEW_DEV
+// -- i.e. when the USB host core itself notices *any* device, before VID/PID
+// matching or try_open()'s 1Hz polling ever runs. cdc_acm_find_and_open_usb_
+// device() (vendored, cdc_acm_host.c) only ever polls usb_host_device_addr_
+// list_fill(), a list the host core populates on its own; if try_open()'s
+// ~11s delay is upstream of this file entirely, this line will land close to
+// USB Host installed and try_open()'s attempt-1 will still be the slow one --
+// if it lands ~11s in instead, that's the host core's own enumeration being
+// slow, not anything in try_open()'s retry loop.
+static void cdc_new_dev_cb(usb_device_handle_t usb_dev) {
+    const usb_device_desc_t *desc = nullptr;
+    esp_err_t err = usb_host_get_device_descriptor(usb_dev, &desc);
+    if (err == ESP_OK && desc) {
+        ESP_LOGI(TAG, "B67: CDC client saw new USB dev at %lld ms (VID:0x%04x PID:0x%04x)",
+                 (long long)now_ms(), desc->idVendor, desc->idProduct);
+    } else {
+        ESP_LOGI(TAG, "B67: CDC client saw new USB dev at %lld ms (descriptor read failed: %s)",
+                 (long long)now_ms(), esp_err_to_name(err));
+    }
+}
+
 static void try_open(void) {
     if (s_cdc_handle) {
         return;
@@ -451,7 +472,7 @@ static void usb_lib_task(void * /*arg*/) {
         .driver_task_stack_size = 4096,
         .driver_task_priority = 5,
         .xCoreID = 0,
-        .new_dev_cb = nullptr,
+        .new_dev_cb = cdc_new_dev_cb,
     };
     err = cdc_acm_host_install(&cdc_cfg);
     if (err != ESP_OK) {
@@ -477,12 +498,32 @@ static void usb_lib_task(void * /*arg*/) {
     }
     ESP_LOGI(TAG, "UAC driver installed");
 
+    // B67: new_dev_cb (above) never fired in a bench capture where try_open()
+    // still took ~11s/12 attempts to succeed -- so probe the same primitive
+    // cdc_acm_find_and_open_usb_device() itself polls (usb_host_device_addr_
+    // list_fill(), vendored cdc_acm_host.c) directly, right here, bypassing
+    // the CDC driver layer and its possibly-unreliable client-event path
+    // entirely. Logs once, the instant the raw device address list stops
+    // being empty -- the earliest any client-side code could possibly see
+    // this device, full stop.
+    bool logged_first_addr = false;
+
     // Never block in this loop — UAC open/settle/start lives on uac_lib_task.
     while (true) {
         uint32_t event_flags = 0;
         usb_host_lib_handle_events(pdMS_TO_TICKS(100), &event_flags);
         if (event_flags & USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS) {
             usb_host_device_free_all();
+        }
+        if (!logged_first_addr) {
+            uint8_t dev_addr_list[10];
+            int num_of_devices = 0;
+            if (usb_host_device_addr_list_fill(sizeof(dev_addr_list), dev_addr_list, &num_of_devices) == ESP_OK &&
+                num_of_devices > 0) {
+                ESP_LOGI(TAG, "B67: usb_host device addr list non-empty at %lld ms (%d device(s), first addr=%u)",
+                         (long long)now_ms(), num_of_devices, (unsigned)dev_addr_list[0]);
+                logged_first_addr = true;
+            }
         }
         try_open();
     }
