@@ -186,6 +186,7 @@ typedef enum {
     PORTA_EVT_QUEUE_ENTRY = 0x03,  // one autoseq queue row: added, changed, or removed
     PORTA_EVT_SLOT_STATE  = 0x04,  // small scalars: slot parity, beacon mode, resolved TX offset
     PORTA_EVT_TX_HUD      = 0x05,  // TX HUD banner mirror: message, power/SWR, battery
+    PORTA_EVT_USB_STATUS  = 0x06,  // host's own USB-C host port: a device attached or detached
 } porta_event_subtype_t;
 
 #define PORTA_EVENT_TEXT_MAX 64  // matches RX_TEXT_MAX on the host
@@ -267,6 +268,30 @@ size_t porta_proto_encode_slot_state(const porta_slot_state_event_t *s,
                                      uint8_t *out, size_t out_cap);
 bool porta_proto_parse_slot_state(const porta_frame_t *f, porta_slot_state_event_t *out);
 
+// USB_STATUS: the host's own USB-C host port (radio normally, briefly the
+// sidekick during its own USB-C flash workflow) attached or detached a
+// device. Pushed the instant usb_c_presence_host.cpp's event fires -- not
+// polled, not inferred from cat_ready/audio_rx going stale -- so the browser
+// can react immediately and say specifically what happened, rather than a
+// fragile string match on the on-screen toast's text (that text is for a
+// human reading /log; this is the typed signal the UI decides on).
+// `kind` is UsbCKind's own wire value (0=QmxQdx, 1=EspressifRom, 2=Other) --
+// the same classification usb_c_presence.h already computes for the
+// on-device toast, just carried onto the wire instead of staying local.
+// vid/pid are always included, even for a recognized kind, so a future
+// unrecognized device is never silently unidentifiable.
+typedef struct {
+    uint32_t epoch_secs;
+    bool     present;  // true = attach, false = detach
+    uint8_t  kind;      // UsbCKind wire value
+    uint16_t vid;
+    uint16_t pid;
+} porta_usb_status_event_t;
+
+size_t porta_proto_encode_usb_status(const porta_usb_status_event_t *u,
+                                     uint8_t *out, size_t out_cap);
+bool porta_proto_parse_usb_status(const porta_frame_t *f, porta_usb_status_event_t *out);
+
 // TX_HUD mirrors components/ui/include/tx_hud_banner.h's TxHudBannerInput --
 // same raw fields the on-device banner already computes each ~500 ms while
 // visible, not a re-derivation. power_w/swr travel as fixed-point (x10/x100)
@@ -314,7 +339,8 @@ bool porta_proto_parse_tx_hud(const porta_frame_t *f, porta_tx_hud_event_t *out)
 
 typedef enum {
     PORTA_ACT_SET_CLOCK = 0x01,  // epoch seconds + milliseconds
-    PORTA_ACT_TX_FREE   = 0x02,  // free-text one-shot for the next matching slot
+    // 0x02 was TX_FREE (one-shot free-text); removed I33 — do not reuse without
+    // a flag day (old sidekicks still encode it).
     PORTA_ACT_TX_CANCEL = 0x03,  // abort in-flight / clear armed TX
     PORTA_ACT_CONNECT   = 0x04,  // start UAC + CAT sync (STATUS key 2)
     PORTA_ACT_TUNE      = 0x05,  // payload: u8 on (STATUS key 4)
@@ -332,12 +358,6 @@ size_t porta_proto_encode_set_clock(uint32_t epoch_secs, uint16_t millis,
                                     uint8_t *out, size_t out_cap);
 bool porta_proto_parse_set_clock(const porta_frame_t *f, uint32_t *epoch_secs_out,
                                  uint16_t *millis_out);
-
-// Queue a free-text transmission the same way MENU "Send FreeText" does: one
-// shot, inherits slot parity from the autoseq head (or the next slot). Text
-// runs to the end of the frame; empty is refused at encode.
-size_t porta_proto_encode_tx_free(const char *text, uint8_t *out, size_t out_cap);
-bool porta_proto_parse_tx_free(const porta_frame_t *f, char *text_out);
 
 // Cancel: verb only.
 size_t porta_proto_encode_tx_cancel(uint8_t *out, size_t out_cap);

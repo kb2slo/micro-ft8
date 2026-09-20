@@ -372,6 +372,26 @@ function setCmds(m) {
   }
 }
 
+// esptool-js 0.6.1 still autodetects via CHIP_DETECT_MAGIC_REG. On this PoE-P4
+// silicon that read returns garbage (field: 0xce061101) and throws. Python
+// esptool already prefers GET_SECURITY_INFO for P4 (USES_MAGIC_VALUE=false);
+// unreleased esptool-js does too. Until that ships, force ESP32-P4 when the
+// operator picked the P4 image — same idea as `esptool.py --chip esp32p4`.
+async function mainForcedP4(esploader) {
+  const origConnect = esploader.connect.bind(esploader);
+  esploader.connect = async (mode = "default_reset", attempts = 7) => {
+    await origConnect(mode, attempts, false);
+    const { ESP32P4ROM } = await import(
+      "https://cdn.jsdelivr.net/npm/esptool-js@0.6.1/lib/targets/esp32p4.js"
+    );
+    esploader.chip = new ESP32P4ROM();
+    if (esploader.chip.SPI_ADDR_REG_MSB !== undefined) {
+      esploader.SPI_ADDR_REG_MSB = esploader.chip.SPI_ADDR_REG_MSB;
+    }
+  };
+  return esploader.main();
+}
+
 async function flashTarget(key, asset, label) {
   if (busy || !serialOk) return;
   setBusy(true);
@@ -405,8 +425,13 @@ async function flashTarget(key, asset, label) {
       terminal,
     });
 
-    log("Connecting…");
-    const chipName = await esploader.main();
+    const forceP4 = key === "poe_p4" || label.chip === "ESP32-P4";
+    if (forceP4) {
+      log("Connecting (ESP32-P4 — chip forced; browser esptool cannot autodetect this silicon)…");
+    } else {
+      log("Connecting…");
+    }
+    const chipName = forceP4 ? await mainForcedP4(esploader) : await esploader.main();
     log("Connected: " + chipName);
     if (label.chip && !String(chipName).toUpperCase().includes(label.chip.replace("-", ""))) {
       // Soft check only — chip strings vary ("ESP32-S3", "ESP32S3", stubs).
@@ -437,6 +462,9 @@ async function flashTarget(key, asset, label) {
   } catch (e) {
     const msg = e && e.message ? e.message : String(e);
     log("Error: " + msg);
+    if (/CHIP magic|autodetect chip/i.test(msg)) {
+      log("Hint: use the USB-C next to RJ45 (PROG), not the Host port. CLI: esptool.py --chip esp32p4 …");
+    }
     console.error(e);
   } finally {
     if (transport) {

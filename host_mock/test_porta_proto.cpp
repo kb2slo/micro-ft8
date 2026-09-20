@@ -464,6 +464,56 @@ static void test_slot_state_event()
     }
 }
 
+static void test_usb_status_event()
+{
+    porta_decoder_t d;
+    porta_decoder_init(&d);
+    uint8_t buf[PORTA_PROTO_MAX_FRAME];
+
+    porta_usb_status_event_t in = {};
+    in.epoch_secs = 1789012345u;
+    in.present = true;
+    in.kind = 0;  // UsbCKind::QmxQdx
+    in.vid = 0x0483;
+    in.pid = 0xA34C;
+
+    size_t n = porta_proto_encode_usb_status(&in, buf, sizeof(buf));
+    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1, "usb_status event decodes");
+    if (got.size() == 1) {
+        porta_usb_status_event_t out;
+        check(porta_proto_parse_usb_status(&got[0], &out), "usb_status event parses");
+        check(out.present, "present round-trips true (attach)");
+        check(out.kind == 0, "kind round-trips");
+        check(out.vid == 0x0483, "vid round-trips");
+        check(out.pid == 0xA34C, "pid round-trips");
+
+        porta_slot_state_event_t ss;
+        check(!porta_proto_parse_slot_state(&got[0], &ss),
+              "a usb_status event is not a slot_state event");
+    }
+
+    // Detach of an unrecognized device -- the case the UI falls back to
+    // showing raw vid/pid for, since there's no name to show.
+    porta_usb_status_event_t unknown = {};
+    unknown.epoch_secs = 1789012400u;
+    unknown.present = false;
+    unknown.kind = 2;  // UsbCKind::Other
+    unknown.vid = 0x1234;
+    unknown.pid = 0x5678;
+
+    n = porta_proto_encode_usb_status(&unknown, buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1, "usb_status detach event decodes");
+    if (got.size() == 1) {
+        porta_usb_status_event_t out;
+        check(porta_proto_parse_usb_status(&got[0], &out), "usb_status detach event parses");
+        check(!out.present, "present round-trips false (detach)");
+        check(out.kind == 2, "unrecognized kind round-trips");
+        check(out.vid == 0x1234 && out.pid == 0x5678, "unrecognized vid/pid round-trip");
+    }
+}
+
 static void test_tx_hud_event()
 {
     porta_decoder_t d;
@@ -557,48 +607,19 @@ static void test_action_set_clock()
     check(!porta_proto_parse_set_clock(&stub, &secs, nullptr), "a short set_clock is refused");
 }
 
-static void test_action_tx_free_and_cancel()
+static void test_action_tx_cancel()
 {
     porta_decoder_t d;
     porta_decoder_init(&d);
     uint8_t buf[PORTA_PROTO_MAX_FRAME];
 
-    size_t n = porta_proto_encode_tx_free("CQ KB2SLO FN30", buf, sizeof(buf));
-    check(n > 0, "tx_free encodes");
+    // 0x02 was TX_FREE (I33); cancel remains verb-only at 0x03.
+    size_t n = porta_proto_encode_tx_cancel(buf, sizeof(buf));
     auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
-    check(got.size() == 1, "tx_free decodes");
-    if (got.size() == 1) {
-        char text[PORTA_EVENT_TEXT_MAX + 1] = {};
-        check(porta_proto_parse_tx_free(&got[0], text), "tx_free parses");
-        check(std::string(text) == "CQ KB2SLO FN30", "tx_free text round-trips");
-        check(!porta_proto_parse_tx_cancel(&got[0]), "tx_free is not cancel");
-        check(!porta_proto_parse_set_clock(&got[0], nullptr, nullptr), "tx_free is not set_clock");
-    }
-
-    check(porta_proto_encode_tx_free("", buf, sizeof(buf)) == 0, "empty tx_free is refused at encode");
-    check(porta_proto_encode_tx_free(nullptr, buf, sizeof(buf)) == 0, "null tx_free is refused");
-
-    // Longer than the field is truncated rather than rejected: the frame length
-    // is the source of truth, and FT8 will NAK at the host if encode fails.
-    std::string long_text(PORTA_EVENT_TEXT_MAX + 8, 'A');
-    porta_decoder_init(&d);
-    n = porta_proto_encode_tx_free(long_text.c_str(), buf, sizeof(buf));
-    got = run(&d, std::vector<uint8_t>(buf, buf + n));
-    check(got.size() == 1, "an overlong tx_free still frames");
-    if (got.size() == 1) {
-        char text[PORTA_EVENT_TEXT_MAX + 1] = {};
-        check(porta_proto_parse_tx_free(&got[0], text), "overlong tx_free parses");
-        check(std::strlen(text) == PORTA_EVENT_TEXT_MAX, "overlong text is capped to the field");
-    }
-
-    porta_decoder_init(&d);
-    n = porta_proto_encode_tx_cancel(buf, sizeof(buf));
-    got = run(&d, std::vector<uint8_t>(buf, buf + n));
     check(got.size() == 1 && got[0].len == 1, "tx_cancel is verb-only");
     if (got.size() == 1) {
         check(porta_proto_parse_tx_cancel(&got[0]), "tx_cancel parses");
-        char text[PORTA_EVENT_TEXT_MAX + 1] = {};
-        check(!porta_proto_parse_tx_free(&got[0], text), "tx_cancel is not tx_free");
+        check(!porta_proto_parse_set_clock(&got[0], nullptr, nullptr), "tx_cancel is not set_clock");
     }
 }
 
@@ -973,9 +994,10 @@ int main()
     test_decode_event();
     test_queue_entry_event();
     test_slot_state_event();
+    test_usb_status_event();
     test_tx_hud_event();
     test_action_set_clock();
-    test_action_tx_free_and_cancel();
+    test_action_tx_cancel();
     test_action_connect_and_tune();
     test_action_beacon();
     test_action_queue_cancel_and_reply();

@@ -18,7 +18,6 @@
 int64_t rtc_now_ms();
 uint32_t rtc_epoch_secs_or_zero();
 const char* porta_host_set_clock(uint32_t epoch_secs, uint16_t millis);
-const char* porta_host_tx_free(const char* text);
 void porta_host_tx_cancel(void);
 // Snapshot Station.txt-shaped lines into out (NUL-terminated). Returns bytes
 // written excluding NUL, or 0 on failure. Used for CONFIG_GET all / one.
@@ -219,20 +218,6 @@ void handle_action(const porta_frame_t& f) {
       return;
     }
     const char* why = porta_host_set_clock(secs, ms);
-    if (why) {
-      enqueue(buf, porta_proto_encode_nak(verb, why, buf, sizeof(buf)));
-    } else {
-      enqueue(buf, porta_proto_encode_ack(verb, buf, sizeof(buf)));
-    }
-    return;
-  }
-  case PORTA_ACT_TX_FREE: {
-    char text[PORTA_EVENT_TEXT_MAX + 1];
-    if (!porta_proto_parse_tx_free(&f, text)) {
-      enqueue(buf, porta_proto_encode_nak(verb, "malformed", buf, sizeof(buf)));
-      return;
-    }
-    const char* why = porta_host_tx_free(text);
     if (why) {
       enqueue(buf, porta_proto_encode_nak(verb, why, buf, sizeof(buf)));
     } else {
@@ -535,6 +520,19 @@ void porta_emit_slot_state(uint8_t slot_parity, uint8_t beacon_mode,
   enqueue(buf, n);
 }
 
+void porta_emit_usb_status(bool present, uint8_t kind, uint16_t vid, uint16_t pid) {
+  if (!s_running) return;
+  porta_usb_status_event_t u = {};
+  u.epoch_secs = host_epoch_secs();
+  u.present = present;
+  u.kind = kind;
+  u.vid = vid;
+  u.pid = pid;
+  uint8_t buf[PORTA_PROTO_MAX_FRAME];
+  const size_t n = porta_proto_encode_usb_status(&u, buf, sizeof(buf));
+  enqueue(buf, n);
+}
+
 void porta_emit_tx_hud(bool active, bool aborted, bool writes_blocked,
                        const char* text, float power_w, float swr, int battery_pct,
                        int offset_hz, const char* reason) {
@@ -586,6 +584,8 @@ void porta_emit_nak(uint8_t verb, const char* reason) {
 }
 
 uint32_t porta_dropped_events() { return s_dropped; }
+uint32_t porta_crc_errors() { return s_dec.crc_errors; }
+uint32_t porta_frames_ok() { return s_dec.frames_ok; }
 
 PortaCompanion porta_companion_state() {
   if (!s_running || s_last_byte_ms == 0) return PortaCompanion::kAbsent;

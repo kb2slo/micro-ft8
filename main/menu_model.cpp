@@ -6,13 +6,13 @@
 // On-screen order. Page and key fall out of the index: row i is on page
 // i / kMenuRowsPerPage and answers key '1' + (i % kMenuRowsPerPage).
 const MenuRow kMenuRows[] = {
-    // page 0
+    // page 0 — five live rows; pad keeps N/O pages from sliding (I33 removed send_ft)
     { "cq_type",     MenuEdit::None     },
-    { "send_ft",     MenuEdit::None     },
     { "freetext",    MenuEdit::None     },
     { "call",        MenuEdit::Callsign },
     { "grid",        MenuEdit::Callsign },
     { "sleep_batt",  MenuEdit::None     },
+    { "pad",         MenuEdit::None     },
     // page 1
     { "offset_src",  MenuEdit::None     },
     { "offset_hz",   MenuEdit::Numeric  },

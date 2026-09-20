@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "porta.h"
 #include "qmx_transport.h"
 #include "radio_transport.h"
 #include "resample.h"
@@ -50,6 +51,14 @@ static constexpr uint32_t kUacBufferThreshold = 600;
 
 static cdc_acm_dev_hdl_t s_cdc_handle = nullptr;
 static int64_t s_last_open_attempt_ms = 0;
+// Field-found 2026-09-19: try_open()'s failure path was completely silent,
+// so "the initial USB connection takes several seconds" had no evidence
+// behind it -- not how many 1s-spaced attempts it took, not why they failed,
+// not how long after the cable went in the first attempt even happened.
+// These two plus the ESP_LOGD/ESP_LOGI below turn the next bench capture
+// into a number instead of another guess.
+static uint32_t s_cdc_open_attempts = 0;
+static int64_t s_cdc_first_attempt_ms = 0;
 // After CDC/UAC disconnect the composite device stays in usbh as is_gone for
 // a while; cdc_acm_host_open() then spam-logs usbh_devs_open INVALID_STATE
 // for its whole connection_timeout_ms. Hold off until the QMX is power-cycled
@@ -105,6 +114,14 @@ void cat_cdc_reset_parsed_meters(void);  // defined with radio_transport CAT gro
 static void cdc_event_cb(const cdc_acm_host_dev_event_data_t *event, void * /*user_ctx*/) {
     if (event->type == CDC_ACM_HOST_DEVICE_DISCONNECTED) {
         ESP_LOGI(TAG, "QMX CDC disconnected");
+        // CDC only, not UAC too: they drop within the same real unplug event
+        // (a few hundred ms apart, per bench log), and firing on both would
+        // just double the banner for one physical event. kind is always 0
+        // (QmxQdx) -- unlike the ADV, this board's USB-C port has exactly
+        // one occupant, ever (porta_board.cpp: "P4 does not embed a sidekick
+        // image (no USB-C flasher path like the ADV)"), so there is nothing
+        // to classify.
+        porta_emit_usb_status(false, 0, kQmxVid, kQmxPid);
         // Field-found 2026-09-17: cdc_acm_host_close() must be called even
         // though the device is already gone, or the driver's interface/
         // endpoint claim for this handle leaks. The next cdc_acm_host_open()
@@ -117,6 +134,8 @@ static void cdc_event_cb(const cdc_acm_host_dev_event_data_t *event, void * /*us
         cdc_acm_dev_hdl_t h = s_cdc_handle;
         s_cdc_handle = nullptr;
         s_cdc_reconnect_after_ms = now_ms() + kCdcReconnectBackoffMs;
+        s_cdc_open_attempts = 0;
+        s_cdc_first_attempt_ms = 0;
         cat_cdc_reset_parsed_meters();
         if (h) {
             cdc_acm_host_close(h);
@@ -188,6 +207,10 @@ static void try_open(void) {
         return;
     }
     s_last_open_attempt_ms = t;
+    if (s_cdc_open_attempts == 0) {
+        s_cdc_first_attempt_ms = t;
+    }
+    s_cdc_open_attempts++;
 
     const cdc_acm_host_device_config_t dev_cfg = {
         .connection_timeout_ms = 1000,
@@ -200,10 +223,28 @@ static void try_open(void) {
     cdc_acm_dev_hdl_t handle = nullptr;
     esp_err_t err = cdc_acm_host_open(kQmxVid, kQmxPid, 0, &dev_cfg, &handle);
     if (err != ESP_OK) {
+        // ESP_LOGD is compiled out at this build's CONFIG_LOG_MAXIMUM_LEVEL=3,
+        // so this has to be LOGI to actually survive into a capture -- but
+        // try_open() runs this path roughly once a second any time the QMX
+        // is not connected at all, which is the common idle case (nothing
+        // plugged in yet, or not for the rest of the session). Logging every
+        // attempt would spam the log for as long as that lasts. First
+        // attempt of a fresh streak always logs; after that, only every
+        // 10th -- enough to show progress through a genuinely slow
+        // connection without flooding an ordinary "not plugged in" wait.
+        if (s_cdc_open_attempts == 1 || s_cdc_open_attempts % 10 == 0) {
+            ESP_LOGI(TAG, "QMX CDC open attempt %lu failed: %s",
+                     (unsigned long)s_cdc_open_attempts, esp_err_to_name(err));
+        }
         return;  // not attached yet -- keep polling
     }
     s_cdc_handle = handle;
-    ESP_LOGI(TAG, "QMX CDC-ACM opened (VID:0x%04x PID:0x%04x iface 0)", kQmxVid, kQmxPid);
+    ESP_LOGI(TAG, "QMX CDC-ACM opened (VID:0x%04x PID:0x%04x iface 0) -- %lu attempt(s), %lld ms since first",
+             kQmxVid, kQmxPid, (unsigned long)s_cdc_open_attempts,
+             (long long)(t - s_cdc_first_attempt_ms));
+    s_cdc_open_attempts = 0;
+    s_cdc_first_attempt_ms = 0;
+    porta_emit_usb_status(true, 0, kQmxVid, kQmxPid);
 }
 
 // Set for the duration of try_open_uac()'s blocking settle-and-retry loop

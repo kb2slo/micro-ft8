@@ -339,27 +339,6 @@ const char *porta_host_set_clock(uint32_t epoch_secs, uint16_t millis) {
     return nullptr;
 }
 
-const char *porta_host_tx_free(const char *text) {
-    if (!text || text[0] == '\0') {
-        return "empty";
-    }
-    if (!g_protocol) {
-        return "no protocol";
-    }
-    const int64_t now_slot = rtc_now_ms() / g_protocol->slot_time_ms;
-    const int fallback_parity = (int)((now_slot + 1) & 1);
-    if (!autoseq_schedule_freetext(text, fallback_parity)) {
-        return "FT already queued";
-    }
-    AutoseqTxEntry pending;
-    if (autoseq_fetch_pending_tx(pending)) {
-        arm_pending_tx(pending);
-    }
-    g_tx_view_dirty = true;
-    ESP_LOGI(TAG, "Queued: %s", text);
-    return nullptr;
-}
-
 void porta_host_tx_cancel(void) {
     tx_scheduler_cancel();
 }

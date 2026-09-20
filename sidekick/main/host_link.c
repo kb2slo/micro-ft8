@@ -68,6 +68,7 @@ typedef enum {
     ENTRY_QUEUE_ENTRY = 2,  // I28d, RFC 0004 §11
     ENTRY_SLOT_STATE = 3,
     ENTRY_TX_HUD = 4,       // I28d, RFC 0004 §11
+    ENTRY_USB_STATUS = 5,   // host's own USB-C host port: device attached/detached
 } entry_kind_t;
 
 typedef struct {
@@ -97,11 +98,22 @@ typedef struct {
     int16_t  tx_swr_c;                        // TX_HUD, SWR * 100
     int8_t   tx_battery_pct;                  // TX_HUD
     char     tx_reason[PORTA_TX_HUD_REASON_MAX + 1];  // TX_HUD, why tx_aborted
+    bool     usb_present;                     // USB_STATUS: true = attach, false = detach
+    uint8_t  usb_kind;                        // USB_STATUS: UsbCKind wire value
+    uint16_t usb_vid;                         // USB_STATUS
+    uint16_t usb_pid;                         // USB_STATUS
 } entry_t;
 
 static entry_t s_ring[RING_LEN];
 static uint32_t s_next_seq = 1;     // 0 is "before anything", so a new client gets all
 static SemaphoreHandle_t s_lock;
+
+// Ring-buffer gaps (get_events() below): the browser's `since` cursor landed
+// behind the oldest event the ring still has, so at least one event -- worst
+// case, a TX_HUD falling edge -- was silently skipped. Counted, not just
+// logged, for the same reason: a number the operator can watch move is worth
+// more than "check the serial log."
+static volatile uint32_t s_ring_gap_events;
 
 // The receive task writes and an httpd handler reads, on different tasks. The
 // critical sections are a memcpy each, so a plain mutex is the right weight.
@@ -166,7 +178,15 @@ static esp_err_t get_events(httpd_req_t *req)
     // Oldest still in the ring. A client that has been away longer than the
     // ring simply resumes from here -- gaps are visible as a jump in seq rather
     // than silently filled with stale rows.
-    uint32_t from = (head > RING_LEN) ? (head - RING_LEN) : 0;
+    uint32_t ring_oldest = (head > RING_LEN) ? (head - RING_LEN) : 0;
+    // since==0 is a fresh client asking for everything, not a gap -- only
+    // count it when a *returning* client's cursor has fallen behind what the
+    // ring still has. A busy slot plus a backgrounded phone tab is enough to
+    // do this in well under a minute; see this counter's own comment.
+    if (since > 0 && since < ring_oldest) {
+        s_ring_gap_events++;
+    }
+    uint32_t from = ring_oldest;
     if (since > from) {
         from = since;
     }
@@ -216,6 +236,13 @@ static esp_err_t get_events(httpd_req_t *req)
                          e.tx_power_dw, e.tx_swr_c, e.tx_battery_pct, e.offset_hz, esc_reason, esc);
             break;
         }
+        case ENTRY_USB_STATUS:
+            n = snprintf(row, sizeof(row),
+                         "%s{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":5,"
+                         "\"present\":%d,\"kind\":%u,\"vid\":%u,\"pid\":%u}",
+                         first ? "" : ",", e.seq, e.epoch_secs,
+                         e.usb_present ? 1 : 0, e.usb_kind, e.usb_vid, e.usb_pid);
+            break;
         case ENTRY_LOG:
         default:
             n = snprintf(row, sizeof(row),
@@ -245,6 +272,13 @@ static esp_err_t get_events(httpd_req_t *req)
 static volatile uint8_t s_last_reply_verb;
 static volatile bool s_last_reply_ok;
 static char s_last_reply_reason[PORTA_EVENT_TEXT_MAX + 1];
+
+// How many times wait_action_reply() has had to resend a CONFIG_GET because
+// nothing answered halfway through the wait -- see that function. Relayed to
+// the browser alongside the CRC/frame counters (config_json_end() call site
+// in porta_rx_task()) so a flaky link shows up as a number, not a vague
+// slowness the operator can't attribute to anything.
+static volatile uint32_t s_config_get_retries;
 
 // CONFIG_GET all: VALUE frames arrive before the ACK; gather into JSON here.
 #define CONFIG_JSON_MAX 3072
@@ -451,7 +485,27 @@ static esp_err_t wait_action_reply(httpd_req_t *req, uint8_t verb)
     default:
         break;
     }
+
+    // CONFIG_GET is a pure read -- resending it duplicates nothing, unlike an
+    // ACTION verb (TUNE, QUEUE_REPLY, ...) where a duplicate could double up
+    // a real side effect on the radio, so only this verb gets an automatic
+    // retry. FILE_LIST/FILE_READ are excluded even though they share this
+    // verb's longer budget: they are genuinely async on the host (a paced
+    // background listing/read), so resending would restart that from
+    // scratch rather than just re-ask for a lost ACK. Halfway through the
+    // wait, not at the end: a lost request or a lost ACK/VALUE frame (CRC
+    // failure, or the ADV's outbound queue dropping it under load -- exactly
+    // what the link-health counters below exist to measure) then costs one
+    // extra round-trip instead of the whole timeout.
+    const int retry_at = tries / 2;
     for (int i = 0; i < tries && s_last_reply_verb != verb; ++i) {
+        if (i == retry_at && verb == PORTA_MSG_CONFIG_GET) {
+            s_config_get_retries++;
+            config_json_begin();  // discard whatever the first attempt gathered
+            uint8_t frame[PORTA_PROTO_MAX_FRAME];
+            const size_t n = porta_proto_encode_config_get("", frame, sizeof(frame));
+            porta_send(frame, n);
+        }
         vTaskDelay(pdMS_TO_TICKS(25));
     }
 
@@ -511,41 +565,6 @@ static esp_err_t post_time(httpd_req_t *req)
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
     }
     return wait_action_reply(req, PORTA_ACT_SET_CLOCK);
-}
-
-// POST /api/tx  body: plain free-text (I28a Done-when). Same one-shot path as
-// MENU "Send FreeText". Token required: this keys the transmitter.
-static esp_err_t post_tx(httpd_req_t *req)
-{
-    char body[PORTA_EVENT_TEXT_MAX + 1] = {0};
-    int received = httpd_req_recv(req, body, sizeof(body) - 1);
-    if (received <= 0) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "no body");
-        return ESP_FAIL;
-    }
-    while (received > 0) {
-        const char c = body[received - 1];
-        if (c != '\n' && c != '\r' && c != ' ' && c != '\t') {
-            break;
-        }
-        body[--received] = '\0';
-    }
-    if (body[0] == '\0') {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "empty");
-        return ESP_FAIL;
-    }
-
-    uint8_t frame[PORTA_PROTO_MAX_FRAME];
-    const size_t n = porta_proto_encode_tx_free(body, frame, sizeof(frame));
-    if (n == 0) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "empty");
-        return ESP_FAIL;
-    }
-    s_last_reply_verb = 0;
-    if (!porta_send(frame, n)) {
-        return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
-    }
-    return wait_action_reply(req, PORTA_ACT_TX_FREE);
 }
 
 // POST /api/tx/cancel — abort in-flight TX / clear an armed pending TX.
@@ -930,6 +949,7 @@ static void porta_rx_task(void *arg)
     porta_queue_entry_event_t qe;
     porta_slot_state_event_t ss;
     porta_tx_hud_event_t hud;
+    porta_usb_status_event_t usb;
     char file_name[PORTA_FILENAME_MAX + 1];
     porta_qso_entry_row_t qrow;
     uint32_t reported_crc = 0;
@@ -992,6 +1012,16 @@ static void porta_rx_task(void *arg)
                 strncpy(e.tx_reason, hud.reason, sizeof(e.tx_reason) - 1);
                 strncpy(e.text, hud.text, sizeof(e.text) - 1);
                 ring_push(&e);
+            } else if (porta_proto_parse_usb_status(&frame, &usb)) {
+                e.kind = ENTRY_USB_STATUS;
+                e.epoch_secs = usb.epoch_secs;
+                e.usb_present = usb.present;
+                e.usb_kind = usb.kind;
+                e.usb_vid = usb.vid;
+                e.usb_pid = usb.pid;
+                ESP_LOGI("adv", "USB %s: kind=%u vid=%04x pid=%04x",
+                         usb.present ? "attach" : "detach", usb.kind, usb.vid, usb.pid);
+                ring_push(&e);
             } else if (porta_proto_parse_file_name_row(&frame, file_name)) {
                 file_list_json_add(file_name);
             } else if (porta_proto_parse_file_entry_row(&frame, &qrow)) {
@@ -1003,9 +1033,27 @@ static void porta_rx_task(void *arg)
                     config_json_add(cfg_key, cfg_val);
                 } else if (porta_proto_parse_ack(&frame, (uint8_t *)&s_last_reply_verb)) {
                     switch (s_last_reply_verb) {
-                    case PORTA_MSG_CONFIG_GET:
+                    case PORTA_MSG_CONFIG_GET: {
+                        // Sidekick-local link-health counters, added directly
+                        // rather than relayed from the ADV -- these describe
+                        // the ADV->sidekick direction and the browser-facing
+                        // event ring, neither of which the ADV can see. See
+                        // this file's own s_config_get_retries/
+                        // s_ring_gap_events comments, and porta_crc_errors()/
+                        // porta_frames_ok() in main.cpp for the ADV's own
+                        // (sidekick->ADV direction) counterparts.
+                        char buf[16];
+                        snprintf(buf, sizeof(buf), "%lu", (unsigned long)dec.crc_errors);
+                        config_json_add("sk_crc_errors", buf);
+                        snprintf(buf, sizeof(buf), "%lu", (unsigned long)dec.frames_ok);
+                        config_json_add("sk_frames_ok", buf);
+                        snprintf(buf, sizeof(buf), "%lu", (unsigned long)s_ring_gap_events);
+                        config_json_add("sk_ring_gaps", buf);
+                        snprintf(buf, sizeof(buf), "%lu", (unsigned long)s_config_get_retries);
+                        config_json_add("sk_config_retries", buf);
                         config_json_end();
                         break;
+                    }
                     case PORTA_MSG_FILE_LIST:
                         file_list_json_end();
                         break;
@@ -1061,9 +1109,6 @@ void host_link_register_uris(httpd_handle_t server)
     static const httpd_uri_t settime = {
         .uri = "/api/time", .method = HTTP_POST, .handler = post_time,
     };
-    static const httpd_uri_t tx = {
-        .uri = "/api/tx", .method = HTTP_POST, .handler = post_tx,
-    };
     static const httpd_uri_t tx_cancel = {
         .uri = "/api/tx/cancel", .method = HTTP_POST, .handler = post_tx_cancel,
     };
@@ -1113,7 +1158,6 @@ void host_link_register_uris(httpd_handle_t server)
         { &viewer, PAIRING_OPEN },
         { &events, PAIRING_OPEN },
         { &settime, PAIRING_REQUIRED },
-        { &tx, PAIRING_REQUIRED },
         { &tx_cancel, PAIRING_REQUIRED },
         { &config_get, PAIRING_OPEN },
         { &config_put, PAIRING_REQUIRED },

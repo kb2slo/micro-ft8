@@ -86,6 +86,13 @@ void porta_emit_tx_hud(bool active, bool aborted, bool writes_blocked,
                        const char* text, float power_w, float swr, int battery_pct,
                        int offset_hz, const char* reason);
 
+// The host's own USB-C host port attached or detached a device (radio
+// normally; briefly the sidekick during its own flash workflow). Pushed the
+// instant usb_c_presence_host.cpp's event fires -- see porta_proto.h's
+// PORTA_EVT_USB_STATUS for why this is a typed field, not a log line the
+// browser pattern-matches. `kind` is UsbCKind's own wire value.
+void porta_emit_usb_status(bool present, uint8_t kind, uint16_t vid, uint16_t pid);
+
 // What the companion looks like from here. Three failure states rather than
 // one, because they need different words: a sidekick that is merely behind can
 // be updated, one speaking an older protocol *also* needs updating but cannot
@@ -103,6 +110,13 @@ PortaCompanion porta_companion_state();
 // Frames dropped because the queue was full — the number that matters when the
 // browser's view looks thinner than the screen's.
 uint32_t porta_dropped_events();
+
+// Link health, decoding bytes *from* the sidekick: a CRC failure here means a
+// corrupt frame arrived and was silently dropped (porta_proto.h's decoder
+// never rescans a bad frame's bytes). Counts, not events -- see
+// porta_host_config_snapshot() in main.cpp for how these reach the browser.
+uint32_t porta_crc_errors();
+uint32_t porta_frames_ok();
 
 // ---------------------------------------------------------------------------
 // FILE_LIST / FILE_READ row emitters (I28d, RFC 0004 §11). The request/reply

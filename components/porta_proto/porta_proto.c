@@ -361,6 +361,39 @@ bool porta_proto_parse_slot_state(const porta_frame_t *f, porta_slot_state_event
     return true;
 }
 
+// subtype | epoch(4) | present(1) | kind(1) | vid(2) | pid(2)
+#define USB_STATUS_LEN (EVENT_HEADER_LEN + 1u + 1u + 2u + 2u)
+
+size_t porta_proto_encode_usb_status(const porta_usb_status_event_t *u,
+                                     uint8_t *out, size_t out_cap)
+{
+    if (!u) {
+        return 0;
+    }
+    uint8_t payload[USB_STATUS_LEN];
+    payload[0] = PORTA_EVT_USB_STATUS;
+    put_u32(&payload[1], u->epoch_secs);
+    payload[5] = u->present ? 1u : 0u;
+    payload[6] = u->kind;
+    put_u16(&payload[7], u->vid);
+    put_u16(&payload[9], u->pid);
+    return porta_proto_encode(PORTA_MSG_EVENT, payload, sizeof(payload), out, out_cap);
+}
+
+bool porta_proto_parse_usb_status(const porta_frame_t *f, porta_usb_status_event_t *out)
+{
+    if (!f || !out || f->type != PORTA_MSG_EVENT || f->len != USB_STATUS_LEN ||
+        f->payload[0] != PORTA_EVT_USB_STATUS) {
+        return false;
+    }
+    out->epoch_secs = get_u32(&f->payload[1]);
+    out->present    = f->payload[5] != 0;
+    out->kind       = f->payload[6];
+    out->vid        = get_u16(&f->payload[7]);
+    out->pid        = get_u16(&f->payload[9]);
+    return true;
+}
+
 // subtype | epoch(4) | flags | power_dw(2) | swr_c(2) | battery_pct(1) |
 // offset_hz(2) | reason_len(1) | reason... | text...
 // reason is length-prefixed (short, and text still needs to be the trailing
@@ -455,28 +488,6 @@ bool porta_proto_parse_set_clock(const porta_frame_t *f, uint32_t *epoch_secs_ou
         *millis_out = (uint16_t)(f->payload[5] | ((uint16_t)f->payload[6] << 8));
     }
     return true;
-}
-
-size_t porta_proto_encode_tx_free(const char *text, uint8_t *out, size_t out_cap)
-{
-    if (!text || text[0] == '\0') {
-        return 0;
-    }
-    uint8_t payload[1 + PORTA_EVENT_TEXT_MAX];
-    payload[0] = PORTA_ACT_TX_FREE;
-    size_t n = strnlen(text, PORTA_EVENT_TEXT_MAX);
-    memcpy(&payload[1], text, n);
-    return porta_proto_encode(PORTA_MSG_ACTION, payload, (uint8_t)(1 + n), out, out_cap);
-}
-
-bool porta_proto_parse_tx_free(const porta_frame_t *f, char *text_out)
-{
-    if (!f || !text_out || f->type != PORTA_MSG_ACTION || f->len < 2 ||
-        f->payload[0] != PORTA_ACT_TX_FREE) {
-        return false;
-    }
-    event_text_out(f, 1, text_out, PORTA_EVENT_TEXT_MAX + 1);
-    return text_out[0] != '\0';
 }
 
 size_t porta_proto_encode_tx_cancel(uint8_t *out, size_t out_cap)

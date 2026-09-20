@@ -48,8 +48,9 @@ static void test_shape(void)
 
 static void test_page_and_key(void)
 {
-    // Row 0 is page 0 key '1'. The last row is 16 since gnss_lora went, so
-    // page 2 holds five rows and key '6' on that page is unmapped.
+    // Row 0 is page 0 key '1'. The last live row is 16 (max_retry); page 2
+    // holds five rows and key '6' on that page is unmapped. Page 0 key '6' is
+    // the I33 pad (former Send FreeText) — present so N/O pages stay put.
     check_eq_int(menu_page_of(0), 0, "row 0 page");
     check(menu_key_of(0) == '1', "row 0 key");
     check_eq_int(menu_page_of(5), 0, "row 5 page");
@@ -102,7 +103,7 @@ static void test_ids(void)
     // parallel label/action table would move an action under a new label; this
     // makes the order itself an assertion.
     static const char* kExpected[] = {
-        "cq_type", "send_ft", "freetext", "call", "grid", "sleep_batt",
+        "cq_type", "freetext", "call", "grid", "sleep_batt", "pad",
         "offset_src", "offset_hz", "radio", "ignore_list", "comment", "protocol",
         "rxtx_log", "skip_tx1", "band_config", "copy_to_sd", "max_retry",
     };
@@ -127,8 +128,8 @@ static void test_ids(void)
 static void test_edit_classes(void)
 {
     // Exactly four rows have an inline editor.
-    check(menu_edit_class(3) == MenuEdit::Callsign, "call is Callsign");
-    check(menu_edit_class(4) == MenuEdit::Callsign, "grid is Callsign");
+    check(menu_edit_class(2) == MenuEdit::Callsign, "call is Callsign");
+    check(menu_edit_class(3) == MenuEdit::Callsign, "grid is Callsign");
     check(menu_edit_class(7) == MenuEdit::Numeric, "offset_hz is Numeric");
     check(menu_edit_class(16) == MenuEdit::Numeric, "max_retry is Numeric");
 

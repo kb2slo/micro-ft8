@@ -611,6 +611,30 @@ static void mdns_bring_up(void)
 // Station-mode status page
 // ---------------------------------------------------------------------------
 
+// Two largest non-zero units (days/hours, hours/minutes, minutes/seconds, or
+// bare seconds) -- same coarse "how long" shape as the app's own fmtAgo/
+// fmtDuration (webapp/app/app.html), so uptime here and "ago" there read the
+// same way to an operator.
+static void format_uptime(int64_t total_seconds, char *buf, size_t buf_len)
+{
+    if (total_seconds < 0) {
+        total_seconds = 0;
+    }
+    int64_t days = total_seconds / 86400;
+    int64_t hours = (total_seconds / 3600) % 24;
+    int64_t mins = (total_seconds / 60) % 60;
+    int64_t secs = total_seconds % 60;
+    if (days > 0) {
+        snprintf(buf, buf_len, "%lldd %lldh", (long long)days, (long long)hours);
+    } else if (hours > 0) {
+        snprintf(buf, buf_len, "%lldh %lldm", (long long)hours, (long long)mins);
+    } else if (mins > 0) {
+        snprintf(buf, buf_len, "%lldm %llds", (long long)mins, (long long)secs);
+    } else {
+        snprintf(buf, buf_len, "%llds", (long long)secs);
+    }
+}
+
 static esp_err_t get_status(httpd_req_t *req)
 {
     esp_netif_ip_info_t ip = {0};
@@ -622,7 +646,7 @@ static esp_err_t get_status(httpd_req_t *req)
     char ip_text[16];
     snprintf(ip_text, sizeof(ip_text), IPSTR, IP2STR(&ip.ip));
     char uptime[24];
-    snprintf(uptime, sizeof(uptime), "%lld", (long long)(esp_timer_get_time() / 1000000));
+    format_uptime(esp_timer_get_time() / 1000000, uptime, sizeof(uptime));
 
     // The SSID escapes, and that is the point rather than a formality: it is
     // whatever a nearby access point broadcast, picked from the scan list, and

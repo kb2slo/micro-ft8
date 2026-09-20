@@ -37,21 +37,19 @@
    otherwise ignore an explicit Light/Dark pick that disagrees with the
    real system preference. :root[data-theme=light|dark] pins color-scheme
    so those native colors follow the explicit choice too.
-   The waterfall canvas and slot bar are deliberately exempt: a waterfall
-   reads as itself only against a near-black background regardless of the
-   surrounding page's theme, matching every other waterfall display (SDRs,
-   WSJT-X) -- those colors stay hardcoded dark in both themes on purpose. */
+   The slot bar is deliberately exempt: it mirrors the ADV's own on-screen
+   countdown bar, which is drawn against a fixed dark background regardless
+   of the surrounding page's theme, so its colors stay hardcoded dark in
+   both themes on purpose. */
 :root{
   color-scheme:light dark;
-  --accent:#1d4ed8;        /* links, badges: .dlink, .drow .me, .frow .grid, #callInfoQrz */
+  --accent:#1d4ed8;        /* links, badges: .dlink, .drow .me, .frow .grid, #callInfoQrz; .dot.up's glyph */
   --accent-border:#93c5fd; /* border paired with --accent on badges */
   --danger:#b91c1c;        /* .dlink-danger, #opTxHud .hd */
-  --danger-strong:#ff0000; /* .c-me -- a hotter red, decode text addressed to me */
-  --bad:#ef4444;           /* .dot.bad, #opTxHud's tinted background source */
-  --warn:#b45309;          /* #opTxHud.aborted .hd */
+  --danger-strong:#ff0000; /* .c-me -- decode text addressed to me; .dot.bad's glyph */
+  --warn:#b45309;          /* #opTxHud.aborted .hd; .dot.stale's glyph */
   --warn-bg:#fef3c7;       /* .qs-1/2/3, #staleBanner */
   --warn-fg:#78350f;       /* .qs-1/2/3, #staleBanner */
-  --good:#22c55e;          /* .dot.up */
   --good-hot:#00c800;      /* .c-cq -- brighter green, decode text for a fresh CQ */
   --good-bg:#dcfce7;       /* .pill-beacon-on, .qs-4/5 */
   --good-fg:#14532d;       /* .pill-beacon-on, .qs-4/5 */
@@ -65,11 +63,9 @@
     --accent-border:#3b5998;
     --danger:#f87171;
     --danger-strong:#ff6b6b;
-    --bad:#f87171;
     --warn:#fbbf24;
     --warn-bg:#3a2a0a;
     --warn-fg:#fcd34d;
-    --good:#4ade80;
     --good-hot:#4ade80;
     --info-bg:#1e2a4a;
     --info-fg:#93c5fd;
@@ -87,11 +83,9 @@
   --accent-border:#3b5998;
   --danger:#f87171;
   --danger-strong:#ff6b6b;
-  --bad:#f87171;
   --warn:#fbbf24;
   --warn-bg:#3a2a0a;
   --warn-fg:#fcd34d;
-  --good:#4ade80;
   --good-hot:#4ade80;
   --info-bg:#1e2a4a;
   --info-fg:#93c5fd;
@@ -131,13 +125,6 @@ button:disabled{opacity:.45}
 #opHeader{padding:.75rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
 #opHeader .top{display:flex;justify-content:space-between;align-items:flex-end}
 
-/* ---- operate: quasi-waterfall ---- */
-/* Visible window is a fixed 4 rows (WF_ROW_H below must match); the canvas
-   itself grows taller as history accumulates (up to WF_ROWS_MAX), and this
-   wrapper's own scroll -- not the canvas resizing -- is what reveals it. */
-#opWaterfallWrap{height:7rem;overflow-y:auto;border-radius:.3rem;margin:.4rem 0 0;background:#04060c;-webkit-overflow-scrolling:touch}
-#opWaterfall{display:block;width:100%}
-
 /* ---- operate: slot bar (mirrors the ADV's own ui_draw_countdown: fills
    left-to-right over the slot period, green=even/red=odd/amber=TX halted,
    small cursor dot at the TX offset frequency) ---- */
@@ -151,11 +138,20 @@ button:disabled{opacity:.45}
 .pill-beacon-off{background:color-mix(in srgb, GrayText 20%, transparent);color:GrayText}
 #opLive{display:flex;justify-content:space-between;align-items:center;font-family:ui-monospace,monospace;font-size:.75rem;color:GrayText;margin-top:.6rem}
 #opBandSel{width:auto;margin-top:0;padding:.25rem .4rem;font-size:.75rem;font-family:ui-monospace,monospace;background:Field;color:FieldText}
-#opDots{display:flex;gap:.9rem;margin-top:.6rem;font-size:.7rem;color:GrayText}
-.dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:.3rem;background:GrayText}
-.dot.up{background:var(--good)}
-.dot.bad{background:var(--bad)}
-#clockDotWrap{cursor:pointer}
+#opDots{display:flex;flex-wrap:wrap;row-gap:.3rem;gap:.9rem;margin-top:.6rem;font-size:.7rem;color:GrayText}
+/* Glyph, not just a color, on purpose (operator feedback: colorblind-hostile
+   to signal state with a plain colored dot). Shape carries the meaning --
+   check/ellipsis/cross read the same regardless of color vision; color is a
+   reinforcing cue only. Default (no class) is "unknown" -- never confirmed
+   good or bad, e.g. before the first successful poll. */
+.dot{display:inline-block;width:1em;text-align:center;margin-right:.3rem;font-weight:700;font-size:.85em;line-height:1;color:GrayText}
+.dot::before{content:"\2013"}
+.dot.up{color:var(--accent)}
+.dot.up::before{content:"\2713"}
+.dot.stale{color:var(--warn)}
+.dot.stale::before{content:"\2026"}
+.dot.bad{color:var(--danger-strong)}
+.dot.bad::before{content:"\2715"}
 #opConnRow button{font-size:.85rem}
 #opBeaconRow{display:flex;justify-content:space-between;align-items:center;margin-top:.6rem;font-size:.85rem}
 #beaconSel{width:auto;margin-top:0;padding:.25rem .4rem;font-size:.8rem;font-family:inherit}
@@ -211,12 +207,14 @@ button:disabled{opacity:.45}
 /* ---- log ---- */
 #logList{padding-bottom:.5rem}
 .day{padding:.6rem 1rem .2rem;font-size:.75rem;font-weight:700;color:GrayText;display:flex;justify-content:space-between;align-items:baseline;gap:.5rem}
+.day .daytime{display:flex;flex-direction:column;align-items:flex-end;gap:.1rem}
+.day .ago{font-weight:400;font-size:.68rem}
 .dlink{font-weight:400;color:var(--accent);text-decoration:none}
 .dlink:active{opacity:.6}
 #logToolbar{display:flex;justify-content:space-between;align-items:center;padding:.6rem 1rem;font-size:.85rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
 .dlink-danger{color:var(--danger)}
 .frow{padding:.5rem 1rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
-.frow-main>div:first-child{display:flex;align-items:center}
+.frow-main>div:first-child{display:flex;align-items:center;justify-content:space-between}
 .frow .call{font-family:ui-monospace,monospace;font-weight:700}
 .frow .grid{font-size:.65rem;font-weight:700;color:var(--accent);border:1px solid var(--accent-border);border-radius:.3rem;padding:0 .3rem;margin-left:.3rem}
 /* Time and band+freq are fixed-width, left-justified columns; RST is the
@@ -225,6 +223,7 @@ button:disabled{opacity:.45}
    Column 2 is wide enough that "40m · 7.074 MHz" never wraps. */
 .frow .sub{display:grid;grid-template-columns:5.5em 11em 1fr;gap:.6em;font-family:ui-monospace,monospace;font-size:.7rem;color:GrayText;margin-top:.3rem;white-space:nowrap}
 .frow .sub span:last-child{text-align:right}
+.frow .ago{font-family:ui-monospace,monospace;font-size:.7rem;color:GrayText}
 .frow-extra{margin-top:.25rem;font-size:.7rem;color:GrayText;display:flex;flex-wrap:wrap;gap:.6rem}
 /* Same "last field right-justified, full width used" rule as the two grid
    fixes above, applied to this flex row: the last badge (whichever one it
@@ -243,6 +242,9 @@ button:disabled{opacity:.45}
 .hd.sep{border-top:1px solid color-mix(in srgb, GrayText 30%, transparent);margin-top:.5rem}
 .setrow{padding:.5rem 1rem .55rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
 .setrow label{margin-top:0}
+.diagrow{display:flex;justify-content:space-between;gap:.5rem;font-size:.8rem}
+.diagrow span:first-child{color:GrayText}
+.diagrow span:last-child{font-family:ui-monospace,monospace}
 #view-settings input,#view-settings select{
   border:0;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent);
   border-radius:0;padding:.3rem 0;font-size:.9rem;background:transparent;color:CanvasText}
@@ -253,8 +255,8 @@ button:disabled{opacity:.45}
 .bandfreqwrap{display:flex;align-items:center;gap:.3rem;font-size:.8rem;color:GrayText;white-space:nowrap}
 .bandfreq{width:5.5rem;margin:0;padding:.3rem .4rem;font-size:.85rem}
 .bandfreq:disabled{opacity:.5}
-#staleBanner{background:var(--warn-bg);color:var(--warn-fg);padding:.5rem 1rem;font-size:.85rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem}
-#staleBanner button{padding:.3rem .6rem;font-size:.8rem}
+#staleBanner,#linkBanner{background:var(--warn-bg);color:var(--warn-fg);padding:.5rem 1rem;font-size:.85rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem}
+#staleBanner button,#linkBanner button{padding:.3rem .6rem;font-size:.8rem}
 .callink{text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
 .qrow .call,.frow .call{cursor:pointer;text-decoration:underline;text-decoration-style:dotted}
 #callInfoModal{position:fixed;inset:0;z-index:20;display:flex;align-items:flex-end;justify-content:center}
@@ -272,6 +274,10 @@ button:disabled{opacity:.45}
 <div id=staleBanner hidden>
   <span>A newer version is available.</span>
   <button id=staleBannerReload type=button>Reload</button>
+</div>
+<div id=linkBanner hidden>
+  <span id=linkBannerText></span>
+  <button id=linkBannerDismiss type=button>Dismiss</button>
 </div>
 <div id=callInfoModal hidden>
   <div id=callInfoBackdrop></div>
@@ -293,7 +299,6 @@ button:disabled{opacity:.45}
   <!-- ================= OPERATE ================= -->
   <section id=view-operate>
     <div id=opHeader>
-      <div id=opWaterfallWrap><canvas id=opWaterfall></canvas></div>
       <div id=opSlotBar>
         <div id=opSlotBarFill></div>
         <div id=opSlotBarCursor hidden></div>
@@ -301,7 +306,8 @@ button:disabled{opacity:.45}
       <div id=opDots>
         <span><span id=dotCat class=dot></span>CAT</span>
         <span><span id=dotAudio class=dot></span>Audio</span>
-        <span id=clockDotWrap title="Tap to sync now"><span id=dotClock class=dot></span><span id=clockLabel>Clock</span></span>
+        <span title="PORTA link quality (CRC errors / dropped frames) -- see Settings for the raw counts"><span id=dotLink class=dot></span>Link</span>
+        <span title="Decodes in the last 5 minutes -- is the band actually alive right now">Decodes <span id=decodeRateCount>—</span></span>
       </div>
       <div id=opConnRow class=row>
         <button id=opConnect type=button disabled>Connect</button>
@@ -447,6 +453,17 @@ button:disabled{opacity:.45}
       <button id=save type=button disabled style="width:100%">Save station</button>
     </div>
 
+    <!-- Cumulative link-health counters (reset only on reboot), not a status
+         readout -- the Link dot on Operate already answers "is it fine right
+         now". This answers "how flaky has this session actually been",
+         which needs the raw numbers, not a glyph. See setDiagCounters(). -->
+    <div class=hd>Link diagnostics</div>
+    <div class=setrow><div class=diagrow><span>ADV: CRC errors / frames OK</span><span id=diagPorta>—</span></div></div>
+    <div class=setrow><div class=diagrow><span>ADV: outbound frames dropped</span><span id=diagPortaDropped>—</span></div></div>
+    <div class=setrow><div class=diagrow><span>Sidekick: CRC errors / frames OK</span><span id=diagSk>—</span></div></div>
+    <div class=setrow><div class=diagrow><span>Sidekick: browser-missed events</span><span id=diagSkRingGaps>—</span></div></div>
+    <div class=setrow><div class=diagrow><span>Sidekick: config re-requests</span><span id=diagSkRetries>—</span></div></div>
+
     <nav style="font-size:.85rem;padding:0 1rem 1rem">
       <a href=/log>Raw ADV log</a> ·
       <a href=/update>Install / update</a> ·
@@ -567,11 +584,11 @@ window.addEventListener('pageshow', function (ev) {
   if (ev.persisted) location.reload();
 });
 
-// Checks when the tab regains focus, not on a timer -- this only matters
-// after the operator has stepped away and a desk_push may have landed
-// meanwhile. Offers a reload rather than forcing one, unlike the bfcache
-// case above: the operator may be mid-QSO, and reloading unprompted would
-// be worse than a stale-version banner.
+// Checks when the tab regains focus -- this is the common case, an operator
+// stepping away and a desk_push landing meanwhile, and it's free (no network
+// traffic while backgrounded). Offers a reload rather than forcing one,
+// unlike the bfcache case above: the operator may be mid-QSO, and reloading
+// unprompted would be worse than a stale-version banner.
 async function checkAppStale() {
   if (document.visibilityState !== 'visible' || !loadedAppHash) return;
   try {
@@ -584,6 +601,83 @@ async function checkAppStale() {
 }
 document.addEventListener('visibilitychange', checkAppStale);
 document.getElementById('staleBannerReload').onclick = function () { location.reload(); };
+// Also on a slow timer (operator-requested 2026-09-19): a tab left open and
+// visible through an entire desk_push never fires visibilitychange at all,
+// so that path alone can miss it indefinitely. The guard above already
+// no-ops this while backgrounded, so the timer itself costs nothing then.
+// 60s of a ~112 KB fetch averages under 2 KB/s -- nothing like the 2 Hz
+// *request-rate* pattern that caused the CCMP-replay regression this app
+// already carries a fix for (TEST_PLAN.md, "app.html WiFi poll rate"); this
+// is a much bigger request far less often, not the same shape of load.
+setInterval(checkAppStale, 60000);
+
+// ===================== Operate: lost-link / device-reset banner =====================
+// Operator-requested (2026-09-19): the header dots are deliberately quiet (a
+// glance, not an alarm) and self-heal from a brief blip on their own -- see
+// lastConfigOkMs's comment. This banner is the louder signal for when that
+// blip turns out not to be brief, or for an event worth knowing about even
+// though it's already over by the time anyone could look.
+var linkBannerReason = null; // null | 'lost' | 'reset'
+var linkLostDismissed = false; // operator dismissed *this* lost-contact episode
+var LINK_LOST_BANNER_MS = 30000; // well past the dots' own 12s STALE_AFTER_MS --
+                                  // this is "sustained", not "a blip", on purpose
+
+function showLinkBanner(reason, text) {
+  linkBannerReason = reason;
+  document.getElementById('linkBannerText').textContent = text;
+  document.getElementById('linkBanner').hidden = false;
+}
+function hideLinkBanner() {
+  linkBannerReason = null;
+  document.getElementById('linkBanner').hidden = true;
+}
+document.getElementById('linkBannerDismiss').onclick = function () {
+  if (linkBannerReason === 'lost') linkLostDismissed = true;
+  hideLinkBanner();
+};
+
+// Sustained loss: covers both "sidekick can't reach the ADV" and "browser
+// can't reach the sidekick at all" -- lastConfigOkMs stops advancing either
+// way, and from here there's no way to tell which, so the message doesn't
+// guess. Auto-clears the moment a poll succeeds again; a reset banner (see
+// below) is left alone since it describes something already over, not an
+// ongoing condition to auto-resolve.
+function updateLinkLostBanner() {
+  var lost = lastConfigOkMs > 0 && (Date.now() - lastConfigOkMs) > LINK_LOST_BANNER_MS;
+  if (lost) {
+    if (!linkLostDismissed) {
+      showLinkBanner('lost', 'Lost contact with the sidekick or ADV. Check the connection.');
+    }
+  } else {
+    linkLostDismissed = false; // condition cleared -- re-arm for a future episode
+    if (linkBannerReason === 'lost') hideLinkBanner();
+  }
+}
+
+// Device reset: any link-health counter reading *lower* than it did last
+// poll is unambiguous -- these only ever count up while a device keeps
+// running, so a drop means that side rebooted (found on the bench: a Grove
+// power cut reset the sidekick's frames_ok to 0 with nothing telling the
+// operator it had happened). Which family dropped says which side.
+var lastLinkCounters = null; // null until the first successful poll
+var LINK_COUNTER_KEYS_ADV = ['porta_crc_errors', 'porta_frames_ok', 'porta_dropped'];
+var LINK_COUNTER_KEYS_SK = ['sk_crc_errors', 'sk_frames_ok', 'sk_ring_gaps', 'sk_config_retries'];
+
+function checkLinkCounterReset(cfg) {
+  if (lastLinkCounters) {
+    var advReset = LINK_COUNTER_KEYS_ADV.some(function (k) { return cfgNum(cfg, k) < lastLinkCounters[k]; });
+    var skReset = LINK_COUNTER_KEYS_SK.some(function (k) { return cfgNum(cfg, k) < lastLinkCounters[k]; });
+    if (advReset) {
+      showLinkBanner('reset', 'The ADV restarted. Link counters reset to 0.');
+    } else if (skReset) {
+      showLinkBanner('reset', 'The sidekick restarted. Link counters reset to 0.');
+    }
+  }
+  lastLinkCounters = {};
+  LINK_COUNTER_KEYS_ADV.concat(LINK_COUNTER_KEYS_SK).forEach(function (k) {
+    lastLinkCounters[k] = cfgNum(cfg, k);
+  });
+}
 
 // ===================== tabs (swipeable track) =====================
 // Three panels laid out side by side in #viewTrack (300% wide, each panel
@@ -839,23 +933,88 @@ function formBody() {
 // show up here without a reload. One gap this doesn't close: if the device
 // also changed active_bands so the new band isn't among the options already
 // built, the value silently fails to apply until the next full setForm().
+// Shared by the header dots: "up" (confirmed good), "bad" (confirmed
+// not-good) or neither (unknown -- never confirmed either way, e.g. before
+// the first successful poll). Clearing 'stale' here means a fresh answer
+// always wins immediately rather than waiting for updateLinkFreshness()'s
+// next tick to notice.
+function setDotState(id, ok, bad) {
+  var el = document.getElementById(id);
+  el.classList.remove('stale');
+  el.classList.toggle('up', ok);
+  el.classList.toggle('bad', bad);
+}
+
+// Missing/unparseable reads as 0 rather than NaN -- a config snapshot that
+// predates these keys (or a board, like poe_p4, that doesn't send them) must
+// not make every arithmetic comparison against this value permanently false.
+function cfgNum(cfg, key) {
+  var v = parseInt(cfg[key], 10);
+  return isNaN(v) ? 0 : v;
+}
+
+// ===================== Operate: Link dot (comms-error rate) =====================
+// CAT/Audio answer "is the ADV responding right now"; Link answers a
+// different question -- "is the wire between the ADV and the sidekick
+// noisy" -- which can be true even while CAT/Audio read perfectly healthy
+// (a marginal Grove cable drops occasional frames but the polls themselves
+// keep succeeding). Counters are cumulative and never reset except on
+// reboot, so "count > 0" is meaningless on a long session -- only a fresh
+// increase since the last poll means anything. One fault holds the dot bad
+// for LINK_BAD_HOLD_MS rather than clearing on the very next clean poll,
+// same reasoning as the ADV's own kCompanionQuietMs: a single blip nobody
+// would call the link's the important thing, a sustained one already went
+// bad. Deliberately excludes sk_ring_gaps and sk_config_retries from the
+// dot -- those are about the *browser* falling behind (a backgrounded tab),
+// not the physical link, so they stay diagnostics-only (Settings).
+var lastLinkFaultTotal = null; // null until the first successful poll
+var linkBadUntilMs = 0;
+var LINK_BAD_HOLD_MS = 15000;
+
+function updateLinkFaultState(cfg) {
+  var faultTotal = cfgNum(cfg, 'porta_crc_errors') + cfgNum(cfg, 'porta_dropped') +
+                    cfgNum(cfg, 'sk_crc_errors');
+  if (lastLinkFaultTotal !== null && faultTotal > lastLinkFaultTotal) {
+    linkBadUntilMs = Date.now() + LINK_BAD_HOLD_MS;
+  }
+  lastLinkFaultTotal = faultTotal;
+}
+
+// Raw counters for Settings -- see this section's own comment for why these
+// don't drive the Link dot themselves. Session-cumulative; a reboot (either
+// end) resets them to 0, which is expected, not a bug to chase.
+function updateDiagCounters(cfg) {
+  document.getElementById('diagPorta').textContent =
+    cfgNum(cfg, 'porta_crc_errors') + ' / ' + cfgNum(cfg, 'porta_frames_ok');
+  document.getElementById('diagPortaDropped').textContent = cfgNum(cfg, 'porta_dropped');
+  document.getElementById('diagSk').textContent =
+    cfgNum(cfg, 'sk_crc_errors') + ' / ' + cfgNum(cfg, 'sk_frames_ok');
+  document.getElementById('diagSkRingGaps').textContent = cfgNum(cfg, 'sk_ring_gaps');
+  document.getElementById('diagSkRetries').textContent = cfgNum(cfg, 'sk_config_retries');
+}
+
 function applyOperateLive(cfg) {
   if (cfg.band_sel !== undefined && cfg.band_sel !== null) {
     document.getElementById('opBandSel').value = String(cfg.band_sel);
   }
-  document.getElementById('dotCat').classList.toggle('up', yn(cfg.cat_ready) === 'yes');
+  // "bad" (not just "unknown") only once we've had at least one real answer
+  // from the ADV this session -- otherwise a cold boot reading the localStorage
+  // cache before the first live poll would flash every dot red for no reason.
+  var haveLiveConfig = lastConfigOkMs > 0;
+  var catOk = yn(cfg.cat_ready) === 'yes';
+  setDotState('dotCat', catOk, haveLiveConfig && !catOk);
   // audio_rx is deliberately stricter than "streaming is engaged" -- the ADV
   // only sends it true when a real USB audio frame arrived in the last
   // couple of seconds, not merely that the pipe is open (see
   // porta_host_config_snapshot() in main.cpp).
-  document.getElementById('dotAudio').classList.toggle('up', yn(cfg.audio_rx) === 'yes');
+  var audioOk = yn(cfg.audio_rx) === 'yes';
+  setDotState('dotAudio', audioOk, haveLiveConfig && !audioOk);
 
-  var clockSet = yn(cfg.clock_set) === 'yes';
-  var dotClock = document.getElementById('dotClock');
-  dotClock.classList.toggle('up', clockSet);
-  dotClock.classList.toggle('bad', !clockSet && !!MicroFT8Pairing.getToken());
-  var srcName = cfg.clock_source ? (CLOCK_SOURCE_NAMES[cfg.clock_source] || cfg.clock_source) : 'Internal';
-  document.getElementById('clockLabel').textContent = clockSet ? ('Clock: ' + srcName) : 'Clock';
+  updateLinkFaultState(cfg);
+  var linkFaultRecent = Date.now() < linkBadUntilMs;
+  setDotState('dotLink', haveLiveConfig && !linkFaultRecent, linkFaultRecent);
+  updateDiagCounters(cfg);
+  checkLinkCounterReset(cfg);
 
   document.getElementById('opTune').textContent = 'Tune: ' + (yn(cfg.tune) === 'yes' ? 'On' : 'Off');
 
@@ -946,6 +1105,7 @@ async function loadConfig() {
       throw new Error(cfg.why || 'config failed');
     }
     lastCfg = cfg;
+    lastConfigOkMs = Date.now();
     saveStateCache();
     setForm(cfg);
     applyOperateLive(cfg);
@@ -976,13 +1136,14 @@ async function pollLiveStatus() {
     var cfg = await r.json();
     if (cfg.ok === false) return;
     lastCfg = cfg;
+    lastConfigOkMs = Date.now();
     saveStateCache();
     applyOperateLive(cfg);
   } catch (e) { /* next tick */ }
   // Gated internally (paired + backoff timer), so this is a no-op almost
   // every tick -- an actual sync attempt only every CLOCK_AUTO_SYNC_MS, or
   // every few seconds right after one that failed.
-  autoSyncClock(false);
+  autoSyncClock();
 }
 
 async function saveConfig() {
@@ -1011,31 +1172,24 @@ async function saveConfig() {
   await loadConfig();
 }
 
-// Clock sync is automatic (RFC 0004 §11: display it, don't make the
-// operator hunt for a button). porta_host_set_clock() on the ADV already
-// only acts when the clock is actually off by more than ~2s, so calling
-// this on a cheap timer costs nothing when the clock is already right --
-// same "always sync, only act when wrong" reasoning viewer.html's own
-// sync() uses. Piggybacks on pollLiveStatus()'s existing 5s tick rather
-// than a separate interval, so this adds no new steady-state WiFi traffic
-// (see that function's own note on why extra polling matters here).
+// Clock sync is fully automatic and silent -- no dot, no tap-to-sync
+// (operator-requested removal: decode-ago already gives a version of "is
+// this stale" without a dedicated clock readout). porta_host_set_clock() on
+// the ADV already only acts when the clock is actually off by more than
+// ~2s, so calling this on a cheap timer costs nothing when the clock is
+// already right -- same "always sync, only act when wrong" reasoning
+// viewer.html's own sync() uses. Piggybacks on pollLiveStatus()'s existing
+// 5s tick rather than a separate interval, so this adds no new steady-state
+// WiFi traffic (see that function's own note on why extra polling matters
+// here).
 var clockSyncInFlight = false;
 var clockNextSyncAfter = 0;
 var CLOCK_AUTO_SYNC_MS = 180000; // re-check every 3 min: crystal drift, not urgency
-var CLOCK_SOURCE_NAMES = { R: 'DS3231', G: 'GPS', P: 'Phone', W: 'Browser' };
 
-async function autoSyncClock(manual) {
-  if (!MicroFT8Pairing.getToken()) {
-    if (manual) {
-      setMsg('Press the sidekick button to pair first.');
-      MicroFT8Pairing.needsReauth();
-    }
-    return;
-  }
-  if (clockSyncInFlight) return;
-  if (!manual && Date.now() < clockNextSyncAfter) return;
+async function autoSyncClock() {
+  if (!MicroFT8Pairing.getToken()) return;
+  if (clockSyncInFlight || Date.now() < clockNextSyncAfter) return;
   clockSyncInFlight = true;
-  if (manual) setMsg('Syncing clock…');
   // Round-trip halving, the same reasoning NTP uses: set the host to the
   // time at the midpoint of the exchange, not when we started asking.
   var t0 = Date.now();
@@ -1046,22 +1200,14 @@ async function autoSyncClock(manual) {
     });
     if (r.status == 401) {
       MicroFT8Pairing.needsReauth();
-      if (manual) setMsg('Press the sidekick button to pair');
       return;
     }
     var j = await r.json().catch(function () { return {}; });
-    if (j.ok) {
-      clockNextSyncAfter = Date.now() + CLOCK_AUTO_SYNC_MS;
-      if (manual) setMsg('Clock synced.');
-    } else {
-      // Host still coming up, or PORTA not ready -- short backoff rather
-      // than waiting a full CLOCK_AUTO_SYNC_MS to try again.
-      clockNextSyncAfter = Date.now() + 3000;
-      if (manual) setMsg('Clock: ' + (j.why || 'failed'));
-    }
+    // Host still coming up, or PORTA not ready -- short backoff rather than
+    // waiting a full CLOCK_AUTO_SYNC_MS to try again.
+    clockNextSyncAfter = Date.now() + (j.ok ? CLOCK_AUTO_SYNC_MS : 3000);
   } catch (e) {
     clockNextSyncAfter = Date.now() + 3000;
-    if (manual) setMsg(String(e && e.message ? e.message : e));
   } finally {
     clockSyncInFlight = false;
   }
@@ -1126,22 +1272,35 @@ document.getElementById('opTune').onclick = function () {
   radioPost('/api/radio/tune', next, 'Tune…')
     .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 };
-document.getElementById('clockDotWrap').onclick = function () {
-  autoSyncClock(true).catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
-};
-
 // ===================== Operate: countdown + parity (client clock, no wire dependency) =====================
 
 var PROTO_PERIOD_MS = { FT8: 15000, FT4: 7500 };
+var PASSBAND_HZ_MIN = 200, PASSBAND_HZ_MAX = 3000; // ADV's own passband, components/ui/ui.cpp hz_to_x()
 
 function periodMs() {
   return PROTO_PERIOD_MS[(lastCfg.protocol_mode === 'FT4') ? 'FT4' : 'FT8'];
 }
 
+// Last time /api/config actually answered with real values (not a cache
+// replay, not a "no reply from host" NAK -- see host_link.c's
+// wait_action_reply(), which is what a dead ADV looks like from here: the
+// sidekick itself is fine and answers within ~5s, just saying no. Both a
+// dead ADV and a dead sidekick end up the same way -- lastConfigOkMs simply
+// stops advancing -- so one timer covers both without needing to tell them
+// apart. Read by radioLive(), applyOperateLive() (to gate the "bad" glyph
+// on having ever heard a real answer) and updateLinkFreshness() below.
+var lastConfigOkMs = 0;
+var STALE_AFTER_MS = 12000; // >2x pollLiveStatus's 5s cadence before giving up on the last answer
+
 // The countdown only means something once slots are actually being decoded
 // -- CAT ready and real audio flowing (see applyOperateLive()'s audio_rx
-// note). Otherwise it just ticks off the phone's own clock against nothing.
+// note) -- and only while that reading is still fresh; a stale reading is
+// exactly the case (radio/ADV went away mid-session) that used to leave the
+// countdown confidently running against nothing.
 function radioLive() {
+  if (lastConfigOkMs > 0 && (Date.now() - lastConfigOkMs) > STALE_AFTER_MS) {
+    return false;
+  }
   return yn(lastCfg.cat_ready) === 'yes' && yn(lastCfg.audio_rx) === 'yes';
 }
 
@@ -1168,9 +1327,9 @@ function renderCountdown() {
   fill.style.width = (frac * 100).toFixed(1) + '%';
   fill.className = (txHud && txHud.active && txHud.aborted) ? 'halt' : (parity ? 'odd' : '');
   var hz = slotState && slotState.hz;
-  if (typeof hz === 'number' && hz >= WF_HZ_MIN && hz <= WF_HZ_MAX) {
+  if (typeof hz === 'number' && hz >= PASSBAND_HZ_MIN && hz <= PASSBAND_HZ_MAX) {
     cursor.hidden = false;
-    cursor.style.left = (((hz - WF_HZ_MIN) / (WF_HZ_MAX - WF_HZ_MIN)) * 100).toFixed(2) + '%';
+    cursor.style.left = (((hz - PASSBAND_HZ_MIN) / (PASSBAND_HZ_MAX - PASSBAND_HZ_MIN)) * 100).toFixed(2) + '%';
   } else {
     cursor.hidden = true;
   }
@@ -1212,6 +1371,28 @@ document.getElementById('beaconSel').onchange = function () {
 // no timeout to guess at on this side.
 
 var txHud = null; // last TX_HUD event: {active, aborted, wrblk, pw, swr, batt, reason, x}
+
+// TX_HUD's falling edge (active:false) is sent exactly once by the ADV, not
+// repeated -- see porta_tx_hud_tick()'s comment in main.cpp. That one frame
+// can be lost same as any other: the sidekick's 64-entry event ring drops
+// the oldest entry once a poll falls far enough behind (a backgrounded phone
+// tab is enough), or the PORTA frame itself fails its CRC. Either way there
+// is no retry, so a lost falling edge used to leave "Transmitting" showing
+// forever. While genuinely active the ADV re-affirms every ~500ms, so
+// silence for a few seconds is itself the tell -- track the last TX_HUD
+// event of *any* kind and expire the banner if none arrives in time, rather
+// than trusting an "active" flag that can never un-set itself. This also
+// covers a stale active:true replayed from loadStateCache() on page load,
+// since lastTxHudEventMs starts at 0.
+var lastTxHudEventMs = 0;
+var TX_HUD_STALE_MS = 3000;
+
+function expireStaleTxHud() {
+  if (txHud && txHud.active && (Date.now() - lastTxHudEventMs) > TX_HUD_STALE_MS) {
+    txHud.active = false;
+    renderTxHud();
+  }
+}
 
 function renderTxHud() {
   var el = document.getElementById('opTxHud');
@@ -1347,6 +1528,28 @@ function renderQueue() {
 var decodeSlots = [];
 var DECODE_SLOTS_MAX = 3;
 
+// ===================== Operate: decode rate (header) =====================
+// A different question from CAT/Audio/Link: those ask "is the hardware/wire
+// healthy", this asks "is the band actually alive right now" -- a healthy
+// link on a dead band still shows zero here, which is exactly the point.
+// Rolling window, not a session total: a total only grows, so a live-dead
+// band would still read as a big reassuring number hours later. One entry
+// per decode *batch* (matches decodeSlots -- one poll tick's worth), pruned
+// to the window each second rather than storing a timestamp per decode.
+var DECODE_RATE_WINDOW_MS = 5 * 60 * 1000;
+var decodeRateLog = []; // [{ts, n}, ...] newest last
+
+function recordDecodeBatch(n) {
+  if (n > 0) decodeRateLog.push({ ts: Date.now(), n: n });
+}
+
+function updateDecodeRate() {
+  var cutoff = Date.now() - DECODE_RATE_WINDOW_MS;
+  while (decodeRateLog.length && decodeRateLog[0].ts < cutoff) decodeRateLog.shift();
+  var total = decodeRateLog.reduce(function (sum, e) { return sum + e.n; }, 0);
+  document.getElementById('decodeRateCount').textContent = total + '/5m';
+}
+
 function fmtDt(dt) {
   return (dt > 0 ? '+' : '') + dt.toFixed(1);
 }
@@ -1360,6 +1563,29 @@ function fmtSlotDateTime(ts) {
   var pad = function (n) { return String(n).padStart(2, '0'); };
   return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) + ' ' +
         pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds()) + 'z';
+}
+
+// Coarse human duration -- the two largest non-zero units (days/hours,
+// hours/minutes, minutes/seconds, or bare seconds). Shared shape for any
+// "how long" readout; fmtAgo below is the only caller today.
+function fmtDuration(totalSeconds) {
+  var s = Math.max(0, Math.floor(totalSeconds));
+  var d = Math.floor(s / 86400); s -= d * 86400;
+  var h = Math.floor(s / 3600); s -= h * 3600;
+  var m = Math.floor(s / 60); s -= m * 60;
+  if (d > 0) return d + 'd ' + h + 'h';
+  if (h > 0) return h + 'h ' + m + 'm';
+  if (m > 0) return m + 'm ' + s + 's';
+  return s + 's';
+}
+
+// Relative "how long ago" for a slot's receipt time. Recomputed at render
+// time and again every second by refreshDecodeAges() (tick() below) so it
+// keeps counting up between decode batches instead of freezing at whatever
+// it read when the slot last rendered.
+function fmtAgo(ts) {
+  var secs = (Date.now() - ts) / 1000;
+  return secs < 1 ? 'just now' : fmtDuration(secs) + ' ago';
 }
 
 // freq_khz is a whole-kHz integer on the wire (main.cpp's CONFIG snapshot);
@@ -1410,98 +1636,6 @@ function isReplyableDecode(d) {
   return last === '73' || last === 'RR73';
 }
 
-// ===================== Operate: quasi-waterfall =====================
-// Not a real spectral waterfall -- there is no raw audio/FFT data on this
-// side of the link, only what each decode already carries: offset (hz) and
-// SNR (snr), the same fields shown in the text list below. One row per
-// decode batch (one FT8 slot), oldest at the top, newest at the bottom --
-// same convention as the Log tab and the ADV's own on-screen RX list, and
-// it lets "new row arrives" read as "append and auto-scroll" rather than
-// having to shove existing rows down under the reader's thumb. Deliberately
-// a separate, deeper buffer from decodeSlots -- that one caps at
-// DECODE_SLOTS_MAX (3) for the text list's own reasons.
-//
-// #opWaterfallWrap is a fixed 4-row window (WF_ROW_H * 4, in CSS -- must
-// stay in sync with the constant below); the canvas grows taller than that
-// as rows accumulate, and the wrapper's own scroll -- not canvas resizing
-// -- reveals history. WF_ROWS_MAX bounds how tall it can ever get: at
-// WF_ROW_H=28 CSS px and a ~430px-wide phone, 150 rows is ~4200 CSS px, and
-// capping the backing-store scale at 2x devicePixelRatio (real phones can
-// report 3) keeps the canvas backing store under ~30 MB even at that
-// height -- "large history" without the tall-canvas memory blowup a naive
-// full-devicePixelRatio scale would risk.
-var WF_HZ_MIN = 200, WF_HZ_MAX = 3000; // ADV's own passband, components/ui/ui.cpp hz_to_x()
-var WF_ROW_H = 28; // CSS px; #opWaterfallWrap's height above must be exactly 4x this
-var WF_ROWS_MAX = 150; // ~37 min of history at one row per FT8 slot
-var WF_MAX_DPR = 2;
-var wfRows = []; // each entry: [{hz, snr}, ...] for one slot's decodes, oldest first
-
-// Conventional waterfall ramp (weak->strong): blue -> green -> yellow -> red.
-// -24..+20 dB covers the practical FT8 SNR range; clamped outside it.
-function wfColorForSnr(snr) {
-  var t = Math.max(0, Math.min(1, ((typeof snr === 'number' ? snr : 0) + 24) / 44));
-  var hue = 240 - t * 240;
-  var light = 35 + t * 30;
-  return 'hsl(' + hue.toFixed(0) + ',85%,' + light.toFixed(0) + '%)';
-}
-
-function pushWaterfallRow(decodes) {
-  wfRows.push((decodes || []).map(function (d) {
-    return d.tx ? { hz: d.hz, tx: true } : { hz: d.hz, snr: d.snr };
-  }));
-  if (wfRows.length > WF_ROWS_MAX) wfRows.shift();
-  renderWaterfall();
-}
-
-function renderWaterfall() {
-  var canvas = document.getElementById('opWaterfall');
-  var wrap = document.getElementById('opWaterfallWrap');
-  if (!canvas || !wrap) return;
-  var dpr = Math.min(window.devicePixelRatio || 1, WF_MAX_DPR);
-  var cssW = wrap.clientWidth || 300;
-  var cssH = Math.max(wfRows.length * WF_ROW_H, 1);
-  // Read scroll state before resizing -- resizing can itself change
-  // scrollHeight/scrollTop. "Near bottom" (not just exactly at it) so a
-  // sub-pixel rounding difference doesn't stop the auto-follow.
-  var wasNearBottom = (wrap.scrollTop + wrap.clientHeight) >= (wrap.scrollHeight - WF_ROW_H / 2);
-  var pxW = Math.round(cssW * dpr), pxH = Math.round(cssH * dpr);
-  if (canvas.width !== pxW || canvas.height !== pxH) {
-    canvas.width = pxW;
-    canvas.height = pxH;
-  }
-  canvas.style.height = cssH + 'px'; // canvas grows with content; wrap clips+scrolls
-  var ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = '#04060c';
-  ctx.fillRect(0, 0, cssW, cssH);
-  wfRows.forEach(function (row, i) {
-    var y = i * WF_ROW_H;
-    row.forEach(function (d) {
-      if (typeof d.hz !== 'number') return;
-      var frac = (d.hz - WF_HZ_MIN) / (WF_HZ_MAX - WF_HZ_MIN);
-      var x = Math.max(0, Math.min(1, frac)) * cssW;
-      if (d.tx) {
-        // Our own TX, not a received decode -- distinct from the SNR-ramp
-        // dots on purpose: bright white, full row height, wider, with a
-        // thin dark outline so it reads clearly against a strong (yellow)
-        // decode sharing the same offset.
-        ctx.fillStyle = '#000';
-        ctx.fillRect(x - 4, y, 8, WF_ROW_H);
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(x - 3, y + 1, 6, WF_ROW_H - 2);
-        return;
-      }
-      ctx.fillStyle = wfColorForSnr(d.snr);
-      ctx.fillRect(x - 2, y + 2, 4, WF_ROW_H - 4);
-    });
-  });
-  // Only auto-follow if the reader was already at (or near) the bottom --
-  // otherwise a deliberate scroll-up to review history gets yanked away by
-  // the next incoming slot.
-  if (wasNearBottom) wrap.scrollTop = wrap.scrollHeight;
-}
-window.addEventListener('resize', renderWaterfall);
-
 function renderDecodes() {
   var rows = document.getElementById('opDecodeRows');
   rows.innerHTML = decodeSlots.map(function (slot, i) {
@@ -1511,7 +1645,8 @@ function renderDecodes() {
     var freqMHz = fmtSlotFreqMHz(slot.freqKhz);
     var header = '<div class=day><span>' +
       esc(slot.band || '') + (freqMHz ? ' · ' + freqMHz + ' MHz' : '') +
-      '</span><span>' + fmtSlotDateTime(slot.ts) + '</span></div>';
+      '</span><span class=daytime><span>' + fmtSlotDateTime(slot.ts) + '</span>' +
+      '<span class=ago data-ts="' + slot.ts + '">' + fmtAgo(slot.ts) + '</span></span></div>';
     return divider + header + slot.map(function (d) {
       // Looked up from the opportunistic callsign->grid cache, not this
       // row's own message -- most decodes (signal reports, RRR/73) never
@@ -1555,6 +1690,19 @@ function renderDecodes() {
 var evSeq = 0;
 var pendingDecodes = []; // scratch: this poll's new decodes, sorted then merged in
 
+// USB_STATUS's `kind` is UsbCKind's own wire value (usb_c_presence.h):
+// 0=QmxQdx, 1=EspressifRom (the sidekick, mid its own flash workflow),
+// anything else is a device this app has no name for -- shown as vid/pid
+// (hex, matching how a USB descriptor is normally written) rather than
+// pretending "Other" means something to the operator.
+var USB_KIND_NAMES = { 0: 'QMX/QDX radio', 1: 'Sidekick (flash mode)' };
+function hex4(n) {
+  return ('0000' + ((n | 0) & 0xFFFF).toString(16)).slice(-4).toUpperCase();
+}
+function fmtUsbDevice(kind, vid, pid) {
+  return USB_KIND_NAMES[kind] || ('VID ' + hex4(vid) + ' PID ' + hex4(pid));
+}
+
 function applyEvent(e) {
   if (e.d === 1) {
     pendingDecodes.push({ id: e.id, dt: e.dt, hz: e.hz, snr: e.snr, x: e.x,
@@ -1570,15 +1718,19 @@ function applyEvent(e) {
   } else if (e.d === 3) {
     slotState = { sp: e.sp, bm: e.bm, hz: e.hz };
   } else if (e.d === 4) {
-    var wasTxActive = !!(txHud && txHud.active);
     txHud = { active: !!e.active, aborted: !!e.aborted, wrblk: !!e.wrblk,
              pw: e.pw, swr: e.swr, batt: e.batt, hz: e.hz, reason: e.reason || '', x: e.x };
-    // Rising edge only -- TX_HUD repeats every ~500ms while active, but a TX
-    // slot gets exactly one waterfall row, same as an RX slot gets one per
-    // decode batch, not one per poll tick.
-    if (txHud.active && !wasTxActive && typeof txHud.hz === 'number' && txHud.hz > 0) {
-      pushWaterfallRow([{ hz: txHud.hz, tx: true }]);
-    }
+    lastTxHudEventMs = Date.now();
+  } else if (e.d === 5) {
+    // Pushed the instant the ADV's own USB host sees it -- not inferred from
+    // cat_ready/audio_rx going stale on the next poll, and not a string match
+    // on the on-screen toast's text (see PORTA_EVT_USB_STATUS's own comment
+    // in porta_proto.h for why that would have been the wrong call). Shown
+    // for any device, not just the radio: an unrecognized device attaching
+    // is exactly the case worth a name-or-vid/pid banner for, same as the
+    // radio disconnecting is.
+    showLinkBanner('usb', (e.present ? 'USB attached: ' : 'USB detached: ') +
+      fmtUsbDevice(e.kind, e.vid, e.pid));
   }
 }
 
@@ -1602,7 +1754,7 @@ async function pollEvents() {
         pendingDecodes.freqKhz = lastCfg.freq_khz || '';
         decodeSlots.unshift(pendingDecodes);
         if (decodeSlots.length > DECODE_SLOTS_MAX) decodeSlots.length = DECODE_SLOTS_MAX;
-        pushWaterfallRow(pendingDecodes);
+        recordDecodeBatch(pendingDecodes.length);
       }
       renderDecodes();
       renderBeacon();
@@ -1668,6 +1820,18 @@ function dayLabel(name) {
                 String(today.getUTCDate()).padStart(2, '0');
   var date = y + '-' + mo + '-' + d;
   return (name.slice(0, 8) === todayStr) ? (date + ' (Today)') : date;
+}
+
+// Reconstructs a QSO row's UTC epoch from its day file's own date ("YYYYMMDD.adi",
+// same parse as dayLabel() above) plus its own "HH:MM" time_on -- ADIF's
+// TIME_ON is minute precision, which is exactly what fmtAgo()/fmtDuration()
+// already render at past the first minute. Null when time_on is qso_browse.cpp's
+// own "unknown" placeholder ("??:??") rather than a real time.
+function qsoEpochMs(file, timeStr) {
+  var m = /^(\d{2}):(\d{2})$/.exec(timeStr || '');
+  if (!m) return null;
+  var y = parseInt(file.slice(0, 4), 10), mo = parseInt(file.slice(4, 6), 10), d = parseInt(file.slice(6, 8), 10);
+  return Date.UTC(y, mo - 1, d, parseInt(m[1], 10), parseInt(m[2], 10));
 }
 
 function fmtRst(v) {
@@ -1978,10 +2142,16 @@ function appendLogRows(file, rows, prependGroup) {
   rows.forEach(function (q) {
     var row = document.createElement('div');
     row.className = 'frow';
+    // Static at render, not ticking like Operate's decode-ago -- these are
+    // completed QSOs, potentially hundreds loaded across a session, and
+    // fmtDuration()'s own granularity (minutes once past a minute) makes a
+    // live per-second update pointless here anyway.
+    var qts = qsoEpochMs(file, q.time);
     row.innerHTML =
       '<div class=frow-main>' +
-        '<div><span class="call callink" data-call="' + esc(q.call) + '">' + esc(q.call) + '</span>' +
-        (q.grid ? '<span class=grid>' + esc(q.grid) + '</span>' : '') + '</div>' +
+        '<div><span><span class="call callink" data-call="' + esc(q.call) + '">' + esc(q.call) + '</span>' +
+        (q.grid ? '<span class=grid>' + esc(q.grid) + '</span>' : '') + '</span>' +
+        (qts !== null ? '<span class=ago>' + fmtAgo(qts) + '</span>' : '') + '</div>' +
         '<span class=sub><span>' + esc(q.time) + '</span><span>' + esc(q.band) +
         (q.freq ? ' · ' + esc(q.freq) + ' MHz' : '') + '</span><span>' +
         fmtRst(q.rst_sent) + '/' + fmtRst(q.rst_rcvd) + '</span></span>' +
@@ -2317,12 +2487,12 @@ MicroFT8Pairing.boot({
   onPaired: function () {
     enableWrites(true);
     setMsg('Paired — edit and save');
-    autoSyncClock(false);
+    autoSyncClock();
   }
 });
 if (MicroFT8Pairing.getToken()) {
   enableWrites(true);
-  autoSyncClock(false);
+  autoSyncClock();
 }
 
 // Seeds every live-state variable from localStorage before the first real
@@ -2349,7 +2519,6 @@ function saveStateCache() {
       decodeSlots: decodeSlots.map(function (slot) {
         return { ts: slot.ts, band: slot.band, freqKhz: slot.freqKhz, rows: slot };
       }),
-      wfRows: wfRows,
       slotState: slotState, txHud: txHud
     }));
   } catch (e) { /* private browsing, quota, or unavailable -- no seed next time */ }
@@ -2375,7 +2544,6 @@ function loadStateCache() {
         return slot;
       });
     }
-    if (s.wfRows) wfRows = s.wfRows;
     if (s.slotState) slotState = s.slotState;
     if (s.txHud) txHud = s.txHud;
   } catch (e) { /* corrupt or unavailable -- boot normally, no seed */ }
@@ -2397,11 +2565,36 @@ renderCountdown();
 renderBeacon();
 renderQueue();
 renderDecodes();
-renderWaterfall();
 renderTxHud();
+
+// Cheap per-second text update -- avoids rebuilding #opDecodeRows just to
+// keep "X ago" counting between decode batches.
+function refreshDecodeAges() {
+  document.querySelectorAll('#opDecodeRows .ago').forEach(function (el) {
+    el.textContent = fmtAgo(parseInt(el.getAttribute('data-ts'), 10));
+  });
+}
+
+// Flips CAT/Audio/Link to the "stale" glyph once we've gone too long since
+// the last real answer -- see lastConfigOkMs's comment above radioLive().
+// Runs independently of whether this tick's own poll succeeded, since the
+// point is exactly to notice a *run* of silent polls, not one.
+function updateLinkFreshness() {
+  var stale = lastConfigOkMs > 0 && (Date.now() - lastConfigOkMs) > STALE_AFTER_MS;
+  ['dotCat', 'dotAudio', 'dotLink'].forEach(function (id) {
+    var el = document.getElementById(id);
+    el.classList.toggle('stale', stale);
+    if (stale) el.classList.remove('up', 'bad');
+  });
+}
 
 function tick() {
   pollEvents();
+  refreshDecodeAges();
+  updateLinkFreshness();
+  expireStaleTxHud();
+  updateLinkLostBanner();
+  updateDecodeRate();
   setTimeout(tick, 1000);
 }
 tick();

@@ -2173,27 +2173,6 @@ const char* porta_host_set_clock(uint32_t epoch_secs, uint16_t millis) {
   return nullptr;
 }
 
-// Queue a free-text one-shot over the companion link (I28a Done-when). Same
-// path as MENU "Send FreeText", without rewriting the MENU FreeText field —
-// the browser supplies the text for this shot only.
-const char* porta_host_tx_free(const char* text) {
-  if (!text || text[0] == '\0') {
-    return "empty";
-  }
-  const int64_t now_slot = rtc_now_ms() / g_protocol->slot_time_ms;
-  const int fallback_parity = (int)((now_slot + 1) & 1);
-  if (!autoseq_schedule_freetext(text, fallback_parity)) {
-    // Empty was refused above; the other failure is "FT already pending".
-    return "FT already queued";
-  }
-  AutoseqTxEntry pending;
-  if (autoseq_fetch_pending_tx(pending)) {
-    arm_pending_tx(pending);
-  }
-  debug_log_line(std::string("Queued: ") + text);
-  return nullptr;
-}
-
 void porta_host_tx_cancel(void) {
   request_tx_cancel();
 }
@@ -2951,11 +2930,10 @@ struct MenuItem {
 
 // Absolute indices referenced by name. These are the numbers the old code
 // spelled as bare literals in several places each.
-static constexpr int kMenuIdxSendFreeText = 1;
-static constexpr int kMenuIdxCall         = 3;
-static constexpr int kMenuIdxGrid         = 4;
+static constexpr int kMenuIdxCall         = 2;
+static constexpr int kMenuIdxGrid         = 3;
 static constexpr int kMenuIdxOffsetHz     = 7;
-static constexpr int kMenuIdxMaxRetry     = 17;
+static constexpr int kMenuIdxMaxRetry     = 16;
 
 // --- labels ---------------------------------------------------------------
 static std::string ml_cq_type() {
@@ -2964,8 +2942,8 @@ static std::string ml_cq_type() {
   else s += cq_type_name(g_cq_type);
   return s;
 }
-static std::string ml_send_freetext() { return "Send FreeText"; }
 static std::string ml_freetext()      { return std::string("F:") + head_trim(g_free_text, 16); }
+static std::string ml_pad()           { return std::string(); }  // blank row; M key 6 is inert (I33)
 static std::string ml_call() {
   return std::string("Call:") + elide_right(menu_edit_idx == kMenuIdxCall ? menu_edit_buf : g_call);
 }
@@ -3011,22 +2989,6 @@ static void ma_cq_type() {
   update_autoseq_cq_type();
   draw_menu_view();
 }
-static void ma_send_freetext() {
-  // FT is a one-shot entry that sorts to the FRONT of the active queue, so the
-  // next TX is the FT, preempting any active QSO. The QSO ctx is preserved and
-  // resumes on the slot after FT fires. Parity inherits from queue[0] when
-  // non-empty; otherwise the next-slot fallback below.
-  const int64_t now_slot = rtc_now_ms() / g_protocol->slot_time_ms;
-  const int fallback_parity = (int)((now_slot + 1) & 1);
-  if (!autoseq_schedule_freetext(g_free_text, fallback_parity)) return;
-  // Re-arm so the FT replaces any QSO TX armed by a prior decode cycle.
-  AutoseqTxEntry pending;
-  if (autoseq_fetch_pending_tx(pending)) arm_pending_tx(pending);
-  menu_flash_idx = kMenuIdxSendFreeText;
-  menu_flash_deadline = rtc_now_ms() + 500;
-  draw_menu_view();
-  debug_log_line(std::string("Queued: ") + g_free_text);
-}
 static void ma_long_edit(MenuLongEdit kind, const std::string& cur) {
   // No backup is kept: the live value is only written on Enter, so cancelling
   // is just dropping the scratch buffer. The old menu_long_backup was assigned
@@ -3037,6 +2999,7 @@ static void ma_long_edit(MenuLongEdit kind, const std::string& cur) {
   draw_menu_view();
 }
 static void ma_freetext()  { ma_long_edit(MenuLongEdit::FreeText, g_free_text); }
+static void ma_pad()       { /* I33: former Send FreeText slot; key does nothing */ }
 static void ma_ignore()    { ma_long_edit(MenuLongEdit::IgnoreList, g_ignore_prefix_text); }
 static void ma_comment()   { ma_long_edit(MenuLongEdit::Comment, g_comment1); }
 static void ma_inline_edit(int abs_idx, const std::string& cur) {
@@ -3117,11 +3080,11 @@ static void ma_copy_to_sd() {
 static const MenuItem kMenuItems[] = {
   // page 0
   { "cq_type",     ml_cq_type,      ma_cq_type },
-  { "send_ft",     ml_send_freetext,ma_send_freetext },
   { "freetext",    ml_freetext,     ma_freetext },
   { "call",        ml_call,         ma_call },
   { "grid",        ml_grid,         ma_grid },
   { "sleep_batt",  ml_sleep_batt,   ma_sleep_batt },
+  { "pad",         ml_pad,          ma_pad },
   // page 1
   { "offset_src",  ml_offset_src,   ma_offset_src },
   { "offset_hz",   ml_offset_hz,    ma_offset_hz },
@@ -3935,14 +3898,24 @@ size_t porta_host_config_snapshot(char* out, size_t out_cap) {
       (rtc_now_ms() - audio_source_last_rx_ms()) < kAudioRxFreshMs;
   const char* clock_src = rtc_time_source_suffix();
   if (*clock_src == ' ') ++clock_src;  // trim the on-screen suffix's leading space
-  char live[176];
+  char live[256];
   const int freq_khz = (int)(g_bands[g_band_sel].freq + 0.5f);
+  // Link-health counters, GET-only same as the rest of this block: how many
+  // PORTA frames from the sidekick failed CRC (porta.cpp's own decoder) and
+  // how many outbound frames toward the sidekick were dropped for a full
+  // queue (porta_dropped_events()) -- both already tracked and logged to the
+  // ADV's own serial log, just not previously reachable from the phone. The
+  // sidekick adds its own matching counters (sk_crc_errors etc.) directly
+  // when it relays this snapshot -- see host_link.c's config_json_end() call.
   snprintf(live, sizeof(live),
            "streaming=%d\ncat_ready=%d\ntune=%d\nband_name=%s\nfreq_khz=%d\n"
-           "audio_rx=%d\nclock_set=%d\nclock_source=%s\n",
+           "audio_rx=%d\nclock_set=%d\nclock_source=%s\n"
+           "porta_crc_errors=%lu\nporta_frames_ok=%lu\nporta_dropped=%lu\n",
            audio_source_is_streaming() ? 1 : 0, radio_control_ready() ? 1 : 0,
            g_tune ? 1 : 0, g_bands[g_band_sel].name, freq_khz,
-           audio_rx ? 1 : 0, rtc_valid ? 1 : 0, clock_src);
+           audio_rx ? 1 : 0, rtc_valid ? 1 : 0, clock_src,
+           (unsigned long)porta_crc_errors(), (unsigned long)porta_frames_ok(),
+           (unsigned long)porta_dropped_events());
   text += live;
   if (text.size() + 1 > out_cap) {
     return 0;
@@ -4306,6 +4279,12 @@ static void usb_c_toast_tick() {
     }
     ui_draw_message_dialog(title, body);
     debug_log_line(title);
+    // Typed wire event for the phone UI (PORTA_EVT_USB_STATUS) -- separate
+    // from the debug_log_line() above, which is for a human reading /log.
+    // The browser decides what to show from present/kind/vid/pid, not by
+    // matching this dialog's text.
+    porta_emit_usb_status(ev.action == UsbCPresenceAction::Attach,
+                          (uint8_t)ev.device.kind, ev.device.vid, ev.device.pid);
     showed = true;
   }
   sidekick_probe_attached_device();
