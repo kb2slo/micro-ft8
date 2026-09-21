@@ -30,12 +30,14 @@ a{color:#1d4ed8}
   <div class=sub id=origin></div>
   <div class=toolbar>
     <button id=refresh type=button>Refresh</button>
+    <button id=clearToken type=button>Clear token</button>
     <button id=clearAll type=button>Clear all</button>
   </div>
   <div id=list></div>
   <p><a href=/app.html>&larr; Back to app</a></p>
 </div>
 
+<script src=/pairing.js></script>
 <script>
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -77,6 +79,17 @@ function render() {
 }
 
 document.getElementById('refresh').onclick = render;
+// Goes through MicroFT8Pairing rather than removeItem('microft8_token')
+// directly -- single source of truth for the key name, same object every
+// other page uses to read/clear it. Narrower than Clear all: forces
+// re-pairing (the "unpaired" test case) without losing the rest of the
+// cache (decode-slot timestamps, callsign grid cache, theme/unit prefs).
+document.getElementById('clearToken').onclick = function () {
+  if (confirm('Clear the pairing token for this browser? The sidekick button will need to be pressed again to re-pair.')) {
+    MicroFT8Pairing.clearToken();
+    render();
+  }
+};
 document.getElementById('clearAll').onclick = function () {
   if (confirm('Clear all localStorage for ' + location.origin + '? This cannot be undone.')) {
     localStorage.clear();
