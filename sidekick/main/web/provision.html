@@ -5,11 +5,13 @@
 <!--
   AP-mode landing page, served at / while the AP is up (both the
   no-credentials/join-failed automatic case and an operator-forced entry via
-  the station status page's "Enter AP mode" button -- see wifi_prov.h). B55
-  (RFC 0004 §1): AP mode is the primary operating mode, not only a bootstrap
-  step, so this page leads with "Operate in AP mode" and treats joining a
-  network as the secondary, optional path -- reversed from this page's
-  original form-only layout.
+  app.html's Settings > Network "Switch to AP mode" button -- see
+  wifi_prov.h). B55 (RFC 0004 §1): AP mode is the primary operating mode, not
+  only a bootstrap step, so this page leads with "Operate in AP mode" and
+  treats joining a network as the secondary, optional path -- reversed from
+  this page's original form-only layout. No OS captive-portal sign-in sheet
+  auto-pops any more (B74, 2026-09-21) -- reached by an operator manually
+  navigating to micro-ft8.local in a normal browser tab.
 
   Styled to match webapp/app/app.html's design system (color tokens, base
   element rules) rather than a bespoke stylesheet, so operate and join both
@@ -30,8 +32,8 @@
 /* Color tokens copied from webapp/app/app.html:44-76 -- kept in sync by hand
    if that file's palette changes; duplicated rather than shared because
    every page here is deliberately self-contained (no shared CSS file), same
-   as app.html/viewer.html already are. Only the tokens this page actually
-   uses are copied, not the full set. */
+   as app.html already is. Only the tokens this page actually uses are
+   copied, not the full set. */
 :root{
   color-scheme:light dark;
   --accent:#1d4ed8;
@@ -91,19 +93,19 @@ button{width:100%;padding:.7rem;font-size:1rem;background:var(--btn-bg);color:va
 <h2>Micro-FT8 sidekick</h2>
 
 <!--
-  target=_blank (plus the window.open() below, belt-and-suspenders): this
-  page is often reached from iOS's Captive Network Assistant, a restricted
-  WebKit view (no bookmarks, no tabs, sometimes flaky with JS-heavy pages,
-  can get dismissed by the OS mid-session) that is a bad place to run the
-  whole app. Neither mechanism is a documented API for escaping CNA -- both
-  are "known to sometimes work" folklore, not guaranteed, and CNA behavior
-  has changed across iOS versions before. id=opBtn is JS's hook; href/target
-  stay as the plain-HTML fallback if the click handler below never attaches.
+  Plain same-tab navigation. Used to be target=_blank plus a window.open()
+  escape hatch, on the assumption this page is usually reached from iOS's
+  restricted Captive Network Assistant webview -- removed 2026-09-21 along
+  with the rest of the captive-portal machinery (DHCP option 114, DNS
+  hijack): with no auto-popping OS sign-in sheet any more, this page is
+  always reached by an operator navigating a normal browser tab (the AP's
+  own SSID, micro-ft8.local, tells them where), so there is no restricted
+  webview to escape from, and the "new tab" trick was actively misbehaving
+  in a normal tab (field-found 2026-09-21) rather than helping.
 -->
-<a class=cta href=/app.html target=_blank id=opBtn>Operate in AP mode &rarr;</a>
+<a class=cta href=/app.html id=opBtn>Operate in AP mode &rarr;</a>
 <p class=hint>Use this sidekick on its own — no home network needed. This is
-the normal way to run it in the field. Opens in your browser, not this
-sign-in screen.</p>
+the normal way to run it in the field.</p>
 
 <div class=divider>or</div>
 
@@ -150,18 +152,8 @@ Compatibility</i> switched on before it will appear.</p>
 
 <script src=/pairing.js></script>
 <script>
-// Same re-auth path as status/log: a button press while on this page
-// stores the token so the first STA page does not need a second gesture.
+// Same re-auth path every page shares (pairing.js): a button press while on
+// this page stores the token so the first app.html load does not need a
+// second gesture.
 MicroFT8Pairing.boot();
-
-// Explicit window.open(), synchronous inside the click's own call stack (a
-// real user gesture, required for any popup-blocker to allow it at all) --
-// some WebKit versions handle an explicit open() call differently than the
-// plain target=_blank attribute on the link. preventDefault() stops the
-// href from also navigating the current (possibly CNA-restricted) view, so
-// this either escapes to a real tab or does nothing rather than doing both.
-document.getElementById('opBtn').addEventListener('click', function (e) {
-  e.preventDefault();
-  window.open('/app.html', '_blank');
-});
 </script>

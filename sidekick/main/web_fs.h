@@ -41,25 +41,18 @@ esp_err_t web_fs_rehydrate(void);
 esp_err_t web_fs_register_rehydrate(httpd_handle_t server);
 
 // Load a file under WEB_FS_ROOT into a malloc'd buffer. `relpath` is relative
-// (e.g. "status.html"). If size_out is non-NULL it receives the byte length
+// (e.g. "app.html"). If size_out is non-NULL it receives the byte length
 // (no trailing NUL counted). The buffer is always NUL-terminated for text
 // convenience; caller frees. NULL on error.
 char *web_fs_load(const char *relpath, size_t *size_out);
 
 // Register GET /* to serve files from the web FS. Call after every specific
 // route. Requires httpd_config.uri_match_fn = httpd_uri_match_wildcard. A
-// missing file 404s -- station mode's behavior.
+// missing file 404s -- the same in both AP and station mode. (B74 follow-up,
+// 2026-09-21: the AP mode previously had its own captive-portal variant here
+// that redirected a miss to the portal instead -- removed with the rest of
+// the captive-portal logic, which never reliably resolved to "Done" on iOS.)
 esp_err_t web_fs_register_static(httpd_handle_t server);
-
-// Same as web_fs_register_static(), except a missing file redirects to the
-// AP's captive portal (http://192.168.4.1/) instead of 404ing. B55, field-
-// found 2026-09-20: this GET /* route is what actually receives an OS's
-// captive-portal probe (e.g. GET /hotspot-detect.html) once DNS/DHCP have
-// pointed it here -- httpd's own HTTPD_404_NOT_FOUND error handler never
-// runs for a GET to an unmatched path, because this route matches first and
-// used to 404 directly. Use this variant, not web_fs_register_static(), when
-// registering under the provisioning/AP httpd.
-esp_err_t web_fs_register_static_captive(httpd_handle_t server);
 
 #ifdef __cplusplus
 }

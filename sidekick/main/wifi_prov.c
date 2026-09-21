@@ -16,7 +16,6 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 
-#include "dns_server.h"
 #include "host_link.h"
 #include "mdns.h"
 #include "pairing_http.h"
@@ -72,7 +71,6 @@ static httpd_handle_t s_httpd;
 // failed, and start_ap() created it again for APSTA scanning.
 static esp_netif_t *s_netif_sta;
 static esp_netif_t *s_netif_ap;
-static dns_server_handle_t s_dns;
 static volatile int s_ap_clients;
 
 static void ensure_sta_netif(void)
@@ -509,24 +507,7 @@ static esp_err_t post_provision(httpd_req_t *req)
     return ESP_OK;  // not reached
 }
 
-// Redirect anything we do not serve back to the form. A phone's connectivity
-// probe asks for a specific vendor URL (captive.apple.com/hotspot-detect.html
-// and friends) and expects a known body; a 302 to our page is what tells the OS
-// this network is captive and pops the sign-in sheet.
-static esp_err_t redirect_to_form(httpd_req_t *req, httpd_err_code_t err)
-{
-    (void)err;
-    ESP_LOGI(TAG, "%s %s -> 302 captive",
-             req->method == HTTP_GET ? "GET" :
-             req->method == HTTP_POST ? "POST" : "?",
-             req->uri ? req->uri : "");
-    httpd_resp_set_status(req, "302 Found");
-    httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/");
-    httpd_resp_send(req, NULL, 0);
-    return ESP_OK;
-}
-
-// Station mode: log misses. Without this, a wrong path is silent on USB.
+// Log misses in both modes. Without this, a wrong path is silent on USB.
 static esp_err_t log_not_found(httpd_req_t *req, httpd_err_code_t err)
 {
     (void)err;
@@ -537,69 +518,6 @@ static esp_err_t log_not_found(httpd_req_t *req, httpd_err_code_t err)
              req->uri ? req->uri : "");
     httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Not found");
     return ESP_FAIL;
-}
-
-// RFC 8910 DHCP option 114. Modern iOS and Android read the portal URI straight
-// from the lease and skip probing entirely, which makes the sheet appear
-// faster and more reliably than DNS hijacking alone. Both are wired up because
-// older clients only honour one or the other.
-//
-// B55/I19: AP mode is now a real operating mode (RFC 0004 §1), not just
-// provisioning, so a phone joined to it may want to keep its cellular route
-// for internet (QRZ, mail) while also reaching the sidekick locally.
-//
-// First field test 2026-09-20 withheld DHCP's router (option 3) and DNS
-// (option 6) options on top of option 114, and the captive portal's popup
-// appeared to break -- reverted at the time, blamed on this omission. That
-// diagnosis turned out to be wrong: that same test run predates a real,
-// separate bug (fixed the same session, see web_fs.c's get_static() and its
-// s_redirect_missing_to_root/s_captive_satisfied) where a missing file under
-// the AP sent a bare 404 instead of the portal redirect, which alone was
-// enough to break the popup regardless of DHCP options. The router/DNS
-// omission was never actually re-tested against the real fix before being
-// reverted. Re-applying it now that the actual bug is fixed, to test the
-// combination that was never tried: does the popup work *and* does cellular
-// stay available. If this regresses the popup again, that would be real
-// evidence the omission itself matters after all -- but that has not been
-// shown yet.
-static void configure_ap_dhcp(void)
-{
-    if (!s_netif_ap) {
-        return;
-    }
-    esp_netif_ip_info_t ip = {0};
-    if (esp_netif_get_ip_info(s_netif_ap, &ip) != ESP_OK) {
-        return;
-    }
-    char uri[32];
-    snprintf(uri, sizeof(uri), "http://" IPSTR, IP2STR(&ip.ip));
-    // The DHCP server has to be stopped to change options, then restarted --
-    // one stop/restart cycle for all three options, not three.
-    esp_netif_dhcps_stop(s_netif_ap);
-    const esp_err_t err = esp_netif_dhcps_option(s_netif_ap, ESP_NETIF_OP_SET,
-                                                 ESP_NETIF_CAPTIVEPORTAL_URI,
-                                                 uri, strlen(uri));
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "Captive-portal DHCP option not set: %s", esp_err_to_name(err));
-    }
-    // dhcps_offer_t bitmask, lwip's components/lwip/include/apps/dhcpserver/
-    // dhcpserver.h -- 0 clears OFFER_ROUTER/OFFER_DNS so neither option is
-    // included in the lease at all (the default is 0xFF, everything on).
-    const uint8_t no_offer = 0;
-    esp_err_t rerr = esp_netif_dhcps_option(s_netif_ap, ESP_NETIF_OP_SET,
-                                            ESP_NETIF_ROUTER_SOLICITATION_ADDRESS,
-                                            (void *)&no_offer, sizeof(no_offer));
-    if (rerr != ESP_OK) {
-        ESP_LOGW(TAG, "DHCP router option not cleared: %s", esp_err_to_name(rerr));
-    }
-    esp_err_t derr = esp_netif_dhcps_option(s_netif_ap, ESP_NETIF_OP_SET,
-                                            ESP_NETIF_DOMAIN_NAME_SERVER,
-                                            (void *)&no_offer, sizeof(no_offer));
-    if (derr != ESP_OK) {
-        ESP_LOGW(TAG, "DHCP DNS option not cleared: %s", esp_err_to_name(derr));
-    }
-    esp_netif_dhcps_start(s_netif_ap);
-    ESP_LOGI(TAG, "Captive portal advertised at %s (router/DNS options withheld)", uri);
 }
 
 static void httpd_start_provisioning(void)
@@ -658,24 +576,22 @@ static void httpd_start_provisioning(void)
     // B55 (RFC 0004 §1): AP mode is a real operating mode now, not only a
     // bootstrap-to-provisioning state, so it registers the same application
     // routes station mode does -- each module applies its own per-route
-    // policy (pairing_http.h), same as it does when called from
-    // httpd_start_status() below. Unmatched paths still redirect to the
-    // portal, so the OS's captive-portal detection is unaffected; only
-    // routes that actually exist stop 404ing.
+    // policy (pairing_http.h).
     host_link_register_uris(s_httpd);
     web_bundle_register(s_httpd);
     bundle_host_register(s_httpd);
     web_fs_register_rehydrate(s_httpd);
-    // Covers a non-GET request to an unmatched path (the only case that
-    // genuinely reaches "no handler matched" -- see web_fs_register_static_
-    // captive()'s own comment for why a GET miss has to be handled there
-    // instead; this line alone was not enough, field-found 2026-09-20).
-    httpd_register_err_handler(s_httpd, HTTPD_404_NOT_FOUND, redirect_to_form);
-    // Static GET /* last so exact /api/... routes win (matches
-    // httpd_start_status()'s own ordering, same reason) -- captive variant:
-    // a missing file redirects to the portal instead of 404ing, which is
-    // what actually makes the captive-portal sign-in sheet appear.
-    web_fs_register_static_captive(s_httpd);
+    // Same error handler and static route station mode uses -- a missing
+    // file 404s plainly, same in both modes now. B74 follow-up, 2026-09-21:
+    // no more captive-portal redirect-on-miss here (removed with the rest of
+    // the captive-portal logic, see the removed configure_ap_dhcp() and
+    // web_fs.c's removed s_captive_satisfied machinery) -- it never reliably
+    // resolved to "Done" on iOS regardless of the DHCP option 114 experiment,
+    // and the AP's own SSID (micro-ft8.local) already tells the operator
+    // exactly where to navigate manually.
+    httpd_register_err_handler(s_httpd, HTTPD_404_NOT_FOUND, log_not_found);
+    // Static GET /* last so exact /api/... routes win.
+    web_fs_register_static(s_httpd);
 }
 
 // Advertised in both modes. On the provisioning AP it is a convenience next to
@@ -729,30 +645,20 @@ static void format_uptime(int64_t total_seconds, char *buf, size_t buf_len)
     }
 }
 
-static esp_err_t get_status(httpd_req_t *req)
+// status.html is retired: the network info and actions it held (SSID, IP,
+// firmware, uptime, Forget WiFi, Enter AP mode, Restore seed pages) now live
+// in app.html's Settings > Network section -- same design system, same
+// pairing gate, one app instead of a second bespoke unstyled page. "/" in
+// station mode just hands off to the app -- Operate (the default view), not
+// straight into Settings; landing on the app's main screen is the more
+// useful default for a bare "/" visit than jumping into a settings page
+// (operator call, 2026-09-21). app.html's own #network hash deep-link still
+// works for anything that wants to link straight to Settings > Network.
+static esp_err_t get_root_redirect(httpd_req_t *req)
 {
-    esp_netif_ip_info_t ip = {0};
-    if (s_netif_sta) {
-        esp_netif_get_ip_info(s_netif_sta, &ip);
-    }
-    const esp_app_desc_t *desc = esp_app_get_description();
-
-    char ip_text[16];
-    snprintf(ip_text, sizeof(ip_text), IPSTR, IP2STR(&ip.ip));
-    char uptime[24];
-    format_uptime(esp_timer_get_time() / 1000000, uptime, sizeof(uptime));
-
-    // The SSID escapes, and that is the point rather than a formality: it is
-    // whatever a nearby access point broadcast, picked from the scan list, and
-    // this origin holds the pairing token in localStorage. A network named
-    // with a <script> tag used to execute here.
-    const web_sub_t subs[] = {
-        {.key = "ssid",    .value = s_ssid[0] ? s_ssid : "(unknown)"},
-        {.key = "ip",      .value = ip_text},
-        {.key = "version", .value = desc ? desc->version : "?"},
-        {.key = "uptime",  .value = uptime},
-    };
-    return web_page_send_file(req, "status.html", subs, 4);
+    httpd_resp_set_status(req, "303 See Other");
+    httpd_resp_set_hdr(req, "Location", "/app.html");
+    return httpd_resp_send(req, NULL, 0);
 }
 
 static esp_err_t get_update(httpd_req_t *req)
@@ -804,8 +710,8 @@ static void httpd_start_status(void)
         ESP_LOGE(TAG, "httpd_start failed");
         return;
     }
-    static const httpd_uri_t status = {
-        .uri = "/", .method = HTTP_GET, .handler = get_status,
+    static const httpd_uri_t root = {
+        .uri = "/", .method = HTTP_GET, .handler = get_root_redirect,
     };
     static const httpd_uri_t update = {
         .uri = "/update", .method = HTTP_GET, .handler = get_update,
@@ -816,14 +722,15 @@ static void httpd_start_status(void)
     static const httpd_uri_t ap_mode = {
         .uri = "/ap-mode", .method = HTTP_POST, .handler = post_ap_mode,
     };
-    // The status page is a read of radio state, open on principle. Forget and
-    // ap-mode both tear down the working network the licensee is reachable
-    // on, so both are the clearest case of a write that needs authorizing.
+    // The redirect is a plain GET, open on principle (it hands off to app.html's
+    // own reads, which are open the same way). Forget and ap-mode both tear
+    // down the working network the operator is reachable on, so both are the
+    // clearest case of a write that needs authorizing.
     const struct {
         const httpd_uri_t *uri;
         pairing_policy_t policy;
     } core[] = {
-        { &status, PAIRING_OPEN },
+        { &root, PAIRING_OPEN },
         { &update, PAIRING_OPEN },
         { &forget, PAIRING_REQUIRED },
         { &ap_mode, PAIRING_REQUIRED },
@@ -897,14 +804,14 @@ static void start_ap(void)
 
     s_join_active = false;
     s_ap_active = true;
-    configure_ap_dhcp();
+    // B74 follow-up, 2026-09-21: no more captive-portal DHCP option 114 or
+    // DNS-hijack server here -- standard DHCP (router + DNS both offered,
+    // esp_netif's own default). The captive-portal dance never reliably
+    // resolved to "Done" on iOS and was the actual source of the cellular-
+    // retention trade-off B55/B69 were fighting; dropping it removes both
+    // problems at once. An operator navigates to micro-ft8.local manually --
+    // the AP's own SSID already says exactly that.
     mdns_bring_up();
-
-    // Answer every A query with our own address: the phone's connectivity
-    // probe then resolves here, gets the form instead of the expected
-    // success response, and the OS opens its sign-in sheet.
-    static dns_server_config_t dns_cfg = DNS_SERVER_CONFIG_SINGLE("*", "WIFI_AP_DEF");
-    s_dns = start_dns_server(&dns_cfg);
     // Scan now, while nothing is connected: the off-channel time cannot drop
     // a client that has not arrived yet.
     scan_refresh();
@@ -1037,6 +944,41 @@ void wifi_prov_start(void)
 bool wifi_prov_is_online(void) { return s_online; }
 const char *wifi_prov_ssid(void) { return s_ssid; }
 bool wifi_prov_ap_active(void) { return s_ap_active; }
+
+const char *wifi_prov_network_name(void)
+{
+    static char buf[SSID_MAX + 1];
+    if (s_ap_active) {
+        ap_name(buf, sizeof(buf));
+        return buf;
+    }
+    return s_ssid[0] ? s_ssid : "(unknown)";
+}
+
+const char *wifi_prov_ip_str(void)
+{
+    static char buf[16];
+    esp_netif_ip_info_t ip = {0};
+    esp_netif_t *netif = s_ap_active ? s_netif_ap : s_netif_sta;
+    if (netif) {
+        esp_netif_get_ip_info(netif, &ip);
+    }
+    snprintf(buf, sizeof(buf), IPSTR, IP2STR(&ip.ip));
+    return buf;
+}
+
+const char *wifi_prov_uptime_str(void)
+{
+    static char buf[24];
+    format_uptime(esp_timer_get_time() / 1000000, buf, sizeof(buf));
+    return buf;
+}
+
+const char *wifi_prov_fw_version(void)
+{
+    const esp_app_desc_t *desc = esp_app_get_description();
+    return desc ? desc->version : "?";
+}
 
 void wifi_prov_forget_and_restart(void)
 {

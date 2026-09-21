@@ -101,19 +101,45 @@ button{padding:.6rem;font-size:.95rem;background:ButtonFace;color:ButtonText;bor
 button:disabled{opacity:.45}
 .wrap{max-width:26rem;margin:0 auto;padding:0 1rem;box-sizing:border-box;display:flex;flex-direction:column;min-height:calc(100dvh - 3.75rem)}
 
+/* ---- header: title, pairing badge, settings gear ---- */
+/* Sticky (not the tab bar's fixed) so it scrolls out only as far as .wrap's
+   own top padding, then sticks -- mirrors #tabbar's always-reachable
+   convention at the other end without a second layer of fixed-position
+   layout math. */
+#appHeader{position:sticky;top:0;z-index:6;background:Canvas;display:flex;align-items:center;gap:.5rem;padding:.6rem 0 .4rem}
+#appHeader h1{flex:1}
+.badge{font-size:.7rem;font-weight:700;padding:.25rem .6rem;border-radius:999px;border:1px solid var(--accent-border);background:transparent;color:var(--accent)}
+.badge.paired{border-color:transparent;background:var(--good-bg);color:var(--good-fg)}
+#navSettings{border:0;background:transparent;padding:.3rem;margin:0;color:GrayText;display:flex;line-height:0}
+#navSettings svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#pairHint{font-size:.8rem;color:GrayText;margin:0 0 .4rem}
+#m{color:GrayText;font-size:.85rem;min-height:1.2em;margin:0 0 .5rem}
+
 /* ---- swipeable tab track ---- */
 /* min-height:0 is load-bearing: without it a flex child won't shrink below
    its content size, so #viewport would grow to fit the tallest panel
    (Log's infinite-scroll list, unbounded) instead of scrolling within a
-   fixed strip. */
+   fixed strip. Two panels now (Operate/Log) -- Settings moved to its own
+   overlay (#settingsOverlay below), reached from the header gear rather
+   than swiped to, since it isn't a screen you flip to mid-QSO the way
+   Operate/Log are. */
 #viewport{flex:1 1 auto;min-height:0;overflow:hidden;position:relative}
-#viewTrack{display:flex;height:100%;width:300%}
-#viewTrack>section{flex:0 0 33.3333%;width:33.3333%;height:100%;overflow-y:auto;box-sizing:border-box;-webkit-overflow-scrolling:touch}
-#m{color:GrayText;font-size:.85rem;min-height:1.2em;margin:.5rem 0}
+#viewTrack{display:flex;height:100%;width:200%}
+#viewTrack>section{flex:0 0 50%;width:50%;height:100%;overflow-y:auto;box-sizing:border-box;-webkit-overflow-scrolling:touch}
 .row{display:flex;gap:.5rem}
 .row>*{flex:1}
 .row button{margin-top:.5rem}
 [hidden]{display:none!important}
+
+/* ---- settings overlay ---- */
+/* Bottom-sheet motion language, same as #callInfoModal, but full-screen: a
+   destination you navigate to and back from, not a transient popover. */
+#settingsOverlay{position:fixed;inset:0;z-index:12;background:Canvas;color:CanvasText;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .25s ease}
+#settingsOverlay.open{transform:translateY(0)}
+#settingsOverlayHead{flex:none;display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+#settingsOverlayHead h2{flex:1;font-size:1.05rem;margin:0}
+#settingsOverlayBack{border:0;background:transparent;color:var(--accent);font-size:.95rem;padding:.3rem .2rem .3rem 0}
+#settingsOverlayBody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
 
 /* ---- tab bar ---- */
 #tabbar{position:fixed;left:0;right:0;bottom:0;display:flex;border-top:1px solid GrayText;background:Canvas}
@@ -163,6 +189,7 @@ button:disabled{opacity:.45}
 #opTxHud.aborted .hd{color:var(--warn)}
 #opTxHudText{font-family:ui-monospace,monospace;font-weight:700;font-size:1rem;margin-top:.2rem;min-height:1.2em}
 #opTxHudMeta{font-family:ui-monospace,monospace;font-size:.8rem;color:GrayText;margin-top:.15rem}
+#opTxCancel{margin-top:.5rem;font-size:.8rem;padding:.35rem .7rem}
 
 /* ---- operate: queue ---- */
 #opQueue{border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent);max-height:11rem;overflow-y:auto}
@@ -245,6 +272,8 @@ button:disabled{opacity:.45}
 .diagrow{display:flex;justify-content:space-between;gap:.5rem;font-size:.8rem}
 .diagrow span:first-child{color:GrayText}
 .diagrow span:last-child{font-family:ui-monospace,monospace}
+#netModeSwitch{margin-left:.5rem;padding:.1rem .5rem;font-size:.7rem;font-family:inherit}
+#netModeLink{margin-left:.5rem;font-family:inherit}
 #view-settings input,#view-settings select{
   border:0;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent);
   border-radius:0;padding:.3rem 0;font-size:.9rem;background:transparent;color:CanvasText}
@@ -271,6 +300,12 @@ button:disabled{opacity:.45}
 #callInfoQrz{display:block;text-align:center;margin-top:.8rem;padding:.6rem;background:ButtonFace;color:var(--accent);border:1px solid GrayText;border-radius:.4rem;text-decoration:none;font-weight:700}
 </style>
 
+<!-- One slot, one at a time: linkBanner (something's actually wrong right
+     now) takes priority over staleBanner (informational, not urgent) --
+     see renderBanners(). Never both -- two independently-toggled banners
+     stacking is exactly the "which message am I even looking at" problem
+     this app's header/status redesign set out to fix. -->
+<div id=bannerArea>
 <div id=staleBanner hidden>
   <span>A newer version is available.</span>
   <button id=staleBannerReload type=button>Reload</button>
@@ -278,6 +313,7 @@ button:disabled{opacity:.45}
 <div id=linkBanner hidden>
   <span id=linkBannerText></span>
   <button id=linkBannerDismiss type=button>Dismiss</button>
+</div>
 </div>
 <div id=callInfoModal hidden>
   <div id=callInfoBackdrop></div>
@@ -291,8 +327,15 @@ button:disabled{opacity:.45}
   </div>
 </div>
 <div class=wrap>
-  <h1>Micro-FT8</h1>
-  <p id=m>Loading…</p>
+  <header id=appHeader>
+    <h1>Micro-FT8</h1>
+    <button id=pairBadge type=button class=badge>—</button>
+    <button id=navSettings type=button aria-label=Settings>
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 01-4 0v-.09A1.7 1.7 0 009 19.4a1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.7 1.7 0 004.6 15a1.7 1.7 0 00-1.55-1H3a2 2 0 010-4h.09A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06A1.7 1.7 0 009 4.6a1.7 1.7 0 001-1.55V3a2 2 0 014 0v.09A1.7 1.7 0 0015 4.6a1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06A1.7 1.7 0 0019.4 9a1.7 1.7 0 001.55 1H21a2 2 0 010 4h-.09a1.7 1.7 0 00-1.55 1z"/></svg>
+    </button>
+  </header>
+  <p id=pairHint hidden></p>
+  <p id=m></p>
 
 <div id=viewport>
 <div id=viewTrack>
@@ -328,6 +371,12 @@ button:disabled{opacity:.45}
       <div class=hd>Transmitting</div>
       <div id=opTxHudText></div>
       <div id=opTxHudMeta></div>
+      <!-- Retired from /log's viewer.html (the one control there that wasn't
+           otherwise replicated here) -- a manual abort for a stuck or
+           errant TX, not just the automatic band-change cancel changeBand()
+           already fires. Same /api/tx/cancel, gated the same way every
+           other write is (enableWrites()). -->
+      <button id=opTxCancel type=button disabled>Cancel TX</button>
     </div>
 
     <div id=opQueue>
@@ -356,11 +405,56 @@ button:disabled{opacity:.45}
     <div id=logMore hidden><button id=logMoreBtn type=button>Load older QSOs</button></div>
   </section>
 
-  <!-- ================= SETTINGS ================= -->
-  <!-- Same flat hairline-row list language as Operate/Log (.hd + .setrow),
-       not the boxed <section>/<h2> form look this page used to have. -->
+</div>
+</div>
+</div>
+
+<!-- ================= SETTINGS ================= -->
+<!-- Full-screen overlay, not a third swipe panel -- reached from the header
+     gear (#navSettings), not flipped to mid-QSO the way Operate/Log are.
+     Same flat hairline-row list language throughout (.hd + .setrow). -->
+<div id=settingsOverlay>
+  <div id=settingsOverlayHead>
+    <button id=settingsOverlayBack type=button aria-label=Back>&larr;</button>
+    <h2>Settings</h2>
+  </div>
+  <div id=settingsOverlayBody>
   <section id=view-settings>
-    <div class=hd>Station</div>
+    <!-- Retired from status.html (RFC 0004 §7): the one place this app
+         previously split into a second, unstyled page. sk_* keys are
+         sidekick-local (host_link.c's config_json_add(), PORTA_MSG_CONFIG_GET
+         case) -- the ADV has no way to know its own companion's WiFi state,
+         same reasoning as the Link diagnostics counters below. -->
+    <div class=hd id=netSection>Network</div>
+    <!-- Mode carries its own switch action inline rather than a separate
+         button further down -- operator-requested, "where we show the mode,
+         let me change it there". The two directions aren't symmetric: station
+         -> AP is a one-shot POST (netModeSwitch, same /ap-mode this used to
+         be a standalone button for); AP -> station needs an SSID and a
+         password, which only the scan-and-join form at / (provision.html)
+         has -- duplicating that form's scan list into app.html is real scope,
+         so AP mode instead gets a plain link there (netModeLink). -->
+    <div class=setrow>
+      <div class=diagrow>
+        <span>Mode</span>
+        <span>
+          <span id=netMode>—</span>
+          <a id=netModeLink class=dlink href=/ hidden>Join a network &rarr;</a>
+          <button id=netModeSwitch type=button disabled hidden>Switch to AP &rarr;</button>
+        </span>
+      </div>
+    </div>
+    <div class=setrow><div class=diagrow><span>Network</span><span id=netName>—</span></div></div>
+    <div class=setrow><div class=diagrow><span>Address</span><span id=netIp>—</span></div></div>
+    <div class=setrow><div class=diagrow><span>Firmware</span><span id=netVersion>—</span></div></div>
+    <div class=setrow><div class=diagrow><span>Uptime</span><span id=netUptime>—</span></div></div>
+    <div class=setrow style="display:flex;flex-direction:column;gap:.5rem">
+      <button id=netForget type=button disabled>Forget WiFi</button>
+      <button id=netRehydrate type=button disabled>Restore seed pages</button>
+    </div>
+    <p id=netMsg class=setnote></p>
+
+    <div class="hd sep">Station</div>
     <div class=setrow><label>Call <input id=call autocomplete=off spellcheck=false></label></div>
     <div class=setrow><label>Grid <input id=grid autocomplete=off spellcheck=false></label></div>
     <div class=setrow>
@@ -465,15 +559,12 @@ button:disabled{opacity:.45}
     <div class=setrow><div class=diagrow><span>Sidekick: config re-requests</span><span id=diagSkRetries>—</span></div></div>
 
     <nav style="font-size:.85rem;padding:0 1rem 1rem">
-      <a href=/log>Raw ADV log</a> ·
       <a href=/update>Install / update</a> ·
-      <a href=/>Status</a> ·
       <a href=/storage.html>Storage (debug)</a>
     </nav>
     <div style="padding:0 1rem 1rem;font-size:.75rem;color:GrayText">App: <span id=appVersion>—</span></div>
   </section>
-</div>
-</div>
+  </div>
 </div>
 
 <nav id=tabbar>
@@ -484,10 +575,6 @@ button:disabled{opacity:.45}
   <button type=button data-view=log>
     <svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
     QSOs
-  </button>
-  <button type=button data-view=settings>
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 01-4 0v-.09A1.7 1.7 0 009 19.4a1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.7 1.7 0 004.6 15a1.7 1.7 0 00-1.55-1H3a2 2 0 010-4h.09A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06A1.7 1.7 0 009 4.6a1.7 1.7 0 001-1.55V3a2 2 0 014 0v.09A1.7 1.7 0 0015 4.6a1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06A1.7 1.7 0 0019.4 9a1.7 1.7 0 001.55 1H21a2 2 0 010 4h-.09a1.7 1.7 0 00-1.55 1z"/></svg>
-    Settings
   </button>
 </nav>
 
@@ -589,14 +676,45 @@ window.addEventListener('pageshow', function (ev) {
 // traffic while backgrounded). Offers a reload rather than forcing one,
 // unlike the bfcache case above: the operator may be mid-QSO, and reloading
 // unprompted would be worse than a stale-version banner.
+// One slot, one priority order: linkBanner (something's actually wrong right
+// now) beats staleBanner (informational, not urgent) -- see #bannerArea's own
+// comment. Tracking appIsStale as state rather than toggling staleBanner's
+// hidden attribute directly means a link banner appearing mid-staleness
+// doesn't lose track of it -- it reappears the moment the link recovers,
+// next time renderBanners() runs.
+var appIsStale = false;
+function renderBanners() {
+  var stale = document.getElementById('staleBanner');
+  var link = document.getElementById('linkBanner');
+  if (linkBannerReason) {
+    link.hidden = false;
+    stale.hidden = true;
+  } else {
+    link.hidden = true;
+    stale.hidden = !appIsStale;
+  }
+}
+
+// Field-found 2026-09-21: the banner could pin itself on permanently after a
+// single transient glitch (a dropped/retried fetch on a weak AP-mode link, or
+// this landing mid-desk_push while the file was only half-written) and never
+// let go, even though a Reload's own fresh fetch would have matched fine --
+// appIsStale was write-only, set true on a mismatch but never cleared on a
+// later match, and r.ok was never checked at all, so a transient error
+// response (its body hashes nothing like app.html) read as "new content"
+// just as readily as a real change would have. Fixed on both counts: a
+// non-2xx response is treated the same as the existing catch-all (not a
+// staleness signal, try again next tick), and a real match now clears
+// appIsStale explicitly -- self-healing, same pattern updateLinkLostBanner()
+// already uses for the same class of "was this a blip or real" question.
 async function checkAppStale() {
   if (document.visibilityState !== 'visible' || !loadedAppHash) return;
   try {
     var r = await fetch(location.pathname, { cache: 'no-store' });
+    if (!r.ok) return;
     var bytes = new TextEncoder().encode(await r.text());
-    if (fnv1a(bytes) !== loadedAppHash) {
-      document.getElementById('staleBanner').hidden = false;
-    }
+    appIsStale = fnv1a(bytes) !== loadedAppHash;
+    renderBanners();
   } catch (e) { /* offline or similar -- not a staleness signal */ }
 }
 document.addEventListener('visibilitychange', checkAppStale);
@@ -625,11 +743,11 @@ var LINK_LOST_BANNER_MS = 30000; // well past the dots' own 12s STALE_AFTER_MS -
 function showLinkBanner(reason, text) {
   linkBannerReason = reason;
   document.getElementById('linkBannerText').textContent = text;
-  document.getElementById('linkBanner').hidden = false;
+  renderBanners();
 }
 function hideLinkBanner() {
   linkBannerReason = null;
-  document.getElementById('linkBanner').hidden = true;
+  renderBanners();
 }
 document.getElementById('linkBannerDismiss').onclick = function () {
   if (linkBannerReason === 'lost') linkLostDismissed = true;
@@ -680,13 +798,16 @@ function checkLinkCounterReset(cfg) {
 }
 
 // ===================== tabs (swipeable track) =====================
-// Three panels laid out side by side in #viewTrack (300% wide, each panel
-// 33.3333% = one viewport-width); #viewport clips to one panel at a time.
-// A percent transform is relative to the transformed element's own box, so
-// -idx*(100/3)% always lands on panel idx regardless of actual pixel width
-// -- no resize listener needed to keep it correct.
+// Two panels laid out side by side in #viewTrack (200% wide, each panel 50%
+// = one viewport-width); #viewport clips to one panel at a time. A percent
+// transform is relative to the transformed element's own box, so
+// -idx*(100/2)% always lands on panel idx regardless of actual pixel width
+// -- no resize listener needed to keep it correct. Settings is not a third
+// panel here -- it's a full-screen overlay (#settingsOverlay), reached from
+// the header gear, not swiped to: it isn't a screen you flip to mid-QSO the
+// way Operate/Log are, so it doesn't belong in the same gesture as those two.
 
-var VIEWS = ['operate', 'log', 'settings'];
+var VIEWS = ['operate', 'log'];
 var currentView = 'operate';
 var viewIndex = 0;
 var viewTrack = document.getElementById('viewTrack');
@@ -714,6 +835,14 @@ function showView(name, animate) {
 document.querySelectorAll('#tabbar button').forEach(function (b) {
   b.onclick = function () { showView(b.getAttribute('data-view')); };
 });
+
+// ===================== settings (full-screen overlay, not a swipe panel) ====
+
+var settingsOverlay = document.getElementById('settingsOverlay');
+function openSettings() { settingsOverlay.classList.add('open'); }
+function closeSettings() { settingsOverlay.classList.remove('open'); }
+document.getElementById('navSettings').onclick = openSettings;
+document.getElementById('settingsOverlayBack').onclick = closeSettings;
 
 // Live drag: the track follows the finger 1:1 (no transition -- it would
 // fight the live position), then snaps on release to whichever panel is
@@ -993,6 +1122,26 @@ function updateDiagCounters(cfg) {
   document.getElementById('diagSkRetries').textContent = cfgNum(cfg, 'sk_config_retries');
 }
 
+// Settings > Network -- retired from status.html, same sk_* keys host_link.c
+// now injects alongside the link-diagnostics counters above. Forget WiFi /
+// Switch to AP only exist as backend routes in station mode (there is
+// nothing to "forget" or "switch to" while the AP is already the thing
+// that's up), so they're hidden rather than shown-and-erroring in AP mode --
+// same reasoning covers netModeSwitch/netModeLink, one shown per mode.
+function updateNetInfo(cfg) {
+  var mode = cfg.sk_wifi_mode;
+  document.getElementById('netMode').textContent =
+    mode === 'ap' ? 'AP (offline)' : (mode === 'station' ? 'Station (joined)' : '—');
+  document.getElementById('netName').textContent = cfg.sk_network_name || '—';
+  document.getElementById('netIp').textContent = cfg.sk_ip || '—';
+  document.getElementById('netVersion').textContent = cfg.sk_fw_version || '—';
+  document.getElementById('netUptime').textContent = cfg.sk_uptime || '—';
+  var isStation = mode === 'station';
+  document.getElementById('netForget').hidden = !isStation;
+  document.getElementById('netModeSwitch').hidden = !isStation;
+  document.getElementById('netModeLink').hidden = isStation || !mode;
+}
+
 function applyOperateLive(cfg) {
   if (cfg.band_sel !== undefined && cfg.band_sel !== null) {
     document.getElementById('opBandSel').value = String(cfg.band_sel);
@@ -1014,6 +1163,7 @@ function applyOperateLive(cfg) {
   var linkFaultRecent = Date.now() < linkBadUntilMs;
   setDotState('dotLink', haveLiveConfig && !linkFaultRecent, linkFaultRecent);
   updateDiagCounters(cfg);
+  updateNetInfo(cfg);
   checkLinkCounterReset(cfg);
 
   document.getElementById('opTune').textContent = 'Tune: ' + (yn(cfg.tune) === 'yes' ? 'On' : 'Off');
@@ -1021,6 +1171,82 @@ function applyOperateLive(cfg) {
   renderTxHud();
   renderBeacon();
 }
+
+// ===================== Settings > Network actions =====================
+// Ported from status.html (now retired): same endpoints, same confirm/token/
+// 401 handling, same "answer before the restart" backend behavior -- just
+// reporting through netMsg instead of a whole second page's own #m.
+
+async function netAction(path, busyMsg, onOk) {
+  if (!MicroFT8Pairing.getToken()) {
+    document.getElementById('netMsg').textContent = 'Press the sidekick button to pair first.';
+    MicroFT8Pairing.needsReauth();
+    return;
+  }
+  document.getElementById('netMsg').textContent = busyMsg;
+  try {
+    var r = await MicroFT8Pairing.authFetch(path, { method: 'POST' });
+    if (r.status == 401) {
+      MicroFT8Pairing.needsReauth();
+      document.getElementById('netMsg').textContent = 'Press the sidekick button to pair';
+      return;
+    }
+    onOk();
+  } catch (e) {
+    document.getElementById('netMsg').textContent = String(e && e.message ? e.message : e);
+  }
+}
+
+document.getElementById('netForget').onclick = function () {
+  if (!confirm('Forget this network and restart into setup?')) return;
+  netAction('/forget', 'Forgetting…', function () {
+    document.getElementById('netMsg').textContent =
+      'Forgotten. Restarting into setup — look for the micro-ft8.local-… network.';
+  });
+};
+document.getElementById('netModeSwitch').onclick = function () {
+  if (!confirm("Switch to AP mode? Your phone will need to join the sidekick's own network afterward.")) return;
+  netAction('/ap-mode', 'Switching…', function () {
+    document.getElementById('netMsg').textContent =
+      'Switching to AP mode — look for the micro-ft8.local-… network.';
+  });
+};
+
+// In-page arm/confirm (not window.confirm), same reasoning status.html's own
+// version had: phones often dismiss the native dialog with no status text
+// and no POST, which reads as a dead button.
+var netRehydrateArmed = false;
+document.getElementById('netRehydrate').onclick = async function () {
+  var msg = document.getElementById('netMsg');
+  if (!MicroFT8Pairing.getToken()) {
+    netRehydrateArmed = false;
+    msg.textContent = 'Press the sidekick button to pair first.';
+    MicroFT8Pairing.needsReauth();
+    return;
+  }
+  if (!netRehydrateArmed) {
+    netRehydrateArmed = true;
+    msg.textContent = 'Tap Restore again to rewrite seed pages (app files kept).';
+    return;
+  }
+  netRehydrateArmed = false;
+  msg.textContent = 'Restoring…';
+  try {
+    var r = await MicroFT8Pairing.authFetch('/api/web/rehydrate', { method: 'POST' });
+    if (r.status == 401) {
+      MicroFT8Pairing.needsReauth();
+      msg.textContent = 'Press the sidekick button to pair';
+      return;
+    }
+    if (!r.ok) {
+      msg.textContent = 'Restore failed: ' + (await r.text());
+      return;
+    }
+    msg.textContent = 'Seed pages restored from firmware.';
+  } catch (e) {
+    msg.textContent = 'Restore error: ' + (e && e.message ? e.message : e);
+  }
+};
 
 // Shared by both band dropdowns (Operate + Settings) -- one PUT, one code
 // path, one fix. A single-field PUT rather than the full Settings form, so
@@ -1241,8 +1467,12 @@ function enableWrites(on) {
   document.getElementById('save').disabled = !on;
   document.getElementById('opConnect').disabled = !on;
   document.getElementById('opTune').disabled = !on;
+  document.getElementById('opTxCancel').disabled = !on;
   document.getElementById('beaconSel').disabled = !on;
   document.getElementById('opBandSel').disabled = !on;
+  document.getElementById('netForget').disabled = !on;
+  document.getElementById('netModeSwitch').disabled = !on;
+  document.getElementById('netRehydrate').disabled = !on;
 }
 
 document.getElementById('opBandSel').onchange = function () {
@@ -1270,6 +1500,10 @@ document.getElementById('opConnect').onclick = function () {
 document.getElementById('opTune').onclick = function () {
   var next = (yn(lastCfg.tune) === 'yes') ? '0' : '1';
   radioPost('/api/radio/tune', next, 'Tune…')
+    .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+};
+document.getElementById('opTxCancel').onclick = function () {
+  radioPost('/api/tx/cancel', undefined, 'Cancelling TX…')
     .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 };
 // ===================== Operate: countdown + parity (client clock, no wire dependency) =====================
@@ -2482,17 +2716,48 @@ setInterval(refreshLogHead, LOG_REFRESH_MS);
 
 // ===================== boot =====================
 
+// Pairing state now lives in its own persistent header badge, not the shared
+// #m action-feedback line -- the two were conflated before (field-found
+// 2026-09-21: a script-halting error elsewhere left #m stuck on its
+// placeholder forever with no way to tell pairing state from "still
+// loading"). pairHint carries pairing.js's own live "press the button"
+// polling text, tap-to-reveal only while unpaired.
+var pairBadge = document.getElementById('pairBadge');
+var pairHint = document.getElementById('pairHint');
+pairBadge.onclick = function () {
+  if (pairBadge.classList.contains('paired')) return;
+  pairHint.hidden = !pairHint.hidden;
+};
+function setPaired(yes) {
+  pairBadge.textContent = yes ? 'Paired' : 'Unpaired';
+  pairBadge.classList.toggle('paired', yes);
+  if (yes) pairHint.hidden = true;
+}
+
 MicroFT8Pairing.boot({
-  status: m,
+  status: pairHint,
   onPaired: function () {
+    setPaired(true);
     enableWrites(true);
     setMsg('Paired — edit and save');
     autoSyncClock();
   }
 });
 if (MicroFT8Pairing.getToken()) {
-  enableWrites(true);
+  setPaired(true);
   autoSyncClock();
+} else {
+  setPaired(false);
+}
+
+// Deep link from status.html's old / -> now a 303 to here, and from any
+// other "take me to network settings" link: open Settings straight to the
+// Network section rather than landing on Operate and making the operator
+// hunt for it.
+if (location.hash === '#network') {
+  openSettings();
+  var netSection = document.getElementById('netSection');
+  if (netSection) netSection.scrollIntoView();
 }
 
 // Seeds every live-state variable from localStorage before the first real

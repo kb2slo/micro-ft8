@@ -72,7 +72,7 @@ idf_component_register(
     SRCS ${WEB_SEED_SRCS}
     INCLUDE_DIRS "."
     REQUIRES nvs_flash esp_wifi esp_netif esp_event esp_http_server esp_app_format app_update porta_proto
-             esp_driver_gpio esp_driver_uart esp_timer dns_server espressif__mdns joltwallet__littlefs mbedtls
+             esp_driver_gpio esp_driver_uart esp_timer espressif__mdns joltwallet__littlefs mbedtls
 
     # Real files under web/, NUL-terminated by EMBED_TXTFILES. Placeholders are
     # {{name}}, not printf — CSS can say width:100%. The file list is the glob

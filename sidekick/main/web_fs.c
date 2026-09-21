@@ -274,78 +274,8 @@ static const char *mime_for(const char *relpath)
     return "application/octet-stream";
 }
 
-// B55: set once at registration time (web_fs_register_static_captive() vs.
-// web_fs_register_static()) -- true under the AP's captive portal, where a
-// missing file should bounce the client back to the portal rather than 404.
-//
-// Field-found 2026-09-20: httpd_register_err_handler(HTTPD_404_NOT_FOUND, ...)
-// (wifi_prov.c's redirect_to_form) only fires when esp_http_server finds NO
-// URI handler matching the request at all. Registering this file's "/*" GET
-// route means there is *always* a match for any GET -- this handler itself --
-// so a missing file calling httpd_resp_send_err() directly (as it always did)
-// sends a bare 404 and redirect_to_form never runs. That is exactly what a
-// live capture caught: iOS's captive-portal probe (GET /hotspot-detect.html)
-// got a plain 404 instead of the expected redirect, so the sign-in sheet
-// never popped -- matching docs/TEST_PLAN.md's long-standing "never once seen
-// working" note for this exact row. redirect_to_form is not now dead code --
-// a non-GET request to an unmatched path still has no handler at all (this
-// route is GET-only) and still reaches it -- but the case that actually
-// matters, a GET probe, has to be handled right here instead.
-static bool s_redirect_missing_to_root = false;
-
-// Field-found 2026-09-20, same session: an operator who reaches app.html and
-// taps around still only ever sees the OS's "X" (disconnect) in the captive
-// sheet, never "Done" (dismiss, stay joined). That is not a bug in our
-// redirect -- it is the redirect working exactly as designed, forever, which
-// is also exactly what stops the OS's own captive-portal probe from ever
-// succeeding. Every real captive portal marks a session authenticated and
-// then *stops* intercepting that specific probe, so the platform's next
-// periodic recheck gets the exact response it is polling for and offers
-// "Done" instead. Trigger: the first successful GET of app.html under this
-// AP (the operator chose "Operate in AP mode") flips this, and the well-
-// known probe paths below start answering for real instead of redirecting.
-// Global, not per-client -- this device's AP allows at most two connections
-// and is not a public hotspot, so a second client joining after the first
-// already satisfied this will not see its own fresh captive-portal popup.
-// A real limitation, accepted rather than solved with per-client tracking.
-static bool s_captive_satisfied = false;
-
-// Each OS polls a specific URL for a specific, exact response while its
-// captive-portal sheet is open; anything else (including a 404) reads as
-// "still captive". Text/bytes are copied from each vendor's own published
-// captive-portal-detection behavior, not guessed.
-static bool send_probe_success(httpd_req_t *req, const char *rel)
-{
-    if (strcmp(rel, "hotspot-detect.html") == 0 || strcmp(rel, "library/test/success.html") == 0) {
-        httpd_resp_set_type(req, "text/html");
-        httpd_resp_sendstr(req, "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
-        return true;
-    }
-    if (strcmp(rel, "generate_204") == 0 || strcmp(rel, "gen_204") == 0) {
-        httpd_resp_set_status(req, "204 No Content");
-        httpd_resp_send(req, NULL, 0);
-        return true;
-    }
-    if (strcmp(rel, "ncsi.txt") == 0) {
-        httpd_resp_set_type(req, "text/plain");
-        httpd_resp_sendstr(req, "Microsoft NCSI");
-        return true;
-    }
-    if (strcmp(rel, "connecttest.txt") == 0) {
-        httpd_resp_set_type(req, "text/plain");
-        httpd_resp_sendstr(req, "Microsoft Connect Test");
-        return true;
-    }
-    if (strcmp(rel, "success.txt") == 0) {
-        httpd_resp_set_type(req, "text/plain");
-        httpd_resp_sendstr(req, "success\n");
-        return true;
-    }
-    return false;
-}
-
 // Serves GET /<path> from the web FS when a more specific route did not match.
-// Register last. Exact handlers (/api/..., /, /log) must be registered first
+// Register last. Exact handlers (/api/..., /, ...) must be registered first
 // and win because uri_match_wildcard does strcmp for patterns without '*'.
 static esp_err_t get_static(httpd_req_t *req)
 {
@@ -366,18 +296,7 @@ static esp_err_t get_static(httpd_req_t *req)
     size_t body_len = 0;
     char *body = web_fs_load(rel, &body_len);
     if (!body) {
-        if (s_redirect_missing_to_root) {
-            if (s_captive_satisfied && send_probe_success(req, rel)) {
-                return ESP_OK;
-            }
-            httpd_resp_set_status(req, "302 Found");
-            httpd_resp_set_hdr(req, "Location", "http://192.168.4.1/");
-            return httpd_resp_send(req, NULL, 0);
-        }
         return httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Not found");
-    }
-    if (s_redirect_missing_to_root && strcmp(rel, "app.html") == 0) {
-        s_captive_satisfied = true;
     }
     httpd_resp_set_type(req, mime_for(rel));
     // Seed updates on reflash/hydrate, or a desk_push bundle push; do not
@@ -395,7 +314,7 @@ static esp_err_t get_static(httpd_req_t *req)
     return err;
 }
 
-static esp_err_t register_static_common(httpd_handle_t server)
+esp_err_t web_fs_register_static(httpd_handle_t server)
 {
     static const httpd_uri_t route = {
         .uri = "/*",
@@ -404,15 +323,4 @@ static esp_err_t register_static_common(httpd_handle_t server)
     };
     // Open: same as reading any other page on the device (RFC 0004 §7).
     return pairing_http_register(server, &route, PAIRING_OPEN);
-}
-
-esp_err_t web_fs_register_static(httpd_handle_t server)
-{
-    return register_static_common(server);
-}
-
-esp_err_t web_fs_register_static_captive(httpd_handle_t server)
-{
-    s_redirect_missing_to_root = true;
-    return register_static_common(server);
 }

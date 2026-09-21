@@ -20,12 +20,16 @@
 //
 // B55 (RFC 0004 §1): the AP raised by steps 1 or 3 is a real operating mode,
 // not only a bootstrap state -- it serves the full application (app.html,
-// /api/...) alongside the captive-portal credential form at
-// http://192.168.4.1/, which now links to both rather than only the form.
-// "AP mode always shows the captive portal" is deliberate in every case; what
-// changed is that the portal's landing page offers "operate now" as well as
-// "join a network instead", and the AP is reachable on purpose, not only by
-// accident of no credentials being set.
+// /api/...) alongside the credential form at http://192.168.4.1/
+// (provision.html), which now links to both rather than only the form. The
+// AP is reachable on purpose, not only by accident of no credentials being
+// set. B74 follow-up (2026-09-21): there is no auto-popping OS captive-
+// portal sign-in sheet any more -- that mechanism (DHCP option 114, a DNS-
+// hijack server, and a "resolve to Done" probe-response dance in web_fs.c)
+// never reliably resolved to "Done" on iOS regardless of tuning, and was the
+// actual source of the cellular-retention trade-off this file used to fight
+// over DHCP options. An operator navigates to http://micro-ft8.local/
+// manually -- the AP's own SSID already says exactly that.
 //
 // The PORTA beacon is independent of all of this and keeps running throughout
 // (different peripheral, different task) — a sidekick with no WiFi is still a
@@ -48,6 +52,15 @@ const char* wifi_prov_ssid(void);
 
 // True while the provisioning AP is up.
 bool wifi_prov_ap_active(void);
+
+// Whichever-mode-is-actually-active network facts, surfaced through
+// /api/config (host_link.c) for app.html's Settings > Network section --
+// retired from the old status.html, which read this same state directly.
+// Each points at static storage, recomputed on every call.
+const char *wifi_prov_network_name(void);  // joined SSID, or the AP's own SSID
+const char *wifi_prov_ip_str(void);        // station IP, or the AP gateway IP
+const char *wifi_prov_uptime_str(void);    // "3h 12m", same shape as app.html's fmtAgo
+const char *wifi_prov_fw_version(void);    // exact git SHA + dirty flag (PROJECT_VER)
 
 // Hostname the sidekick answers to over mDNS, in both AP and station mode:
 // http://micro-ft8.local/ . Without it the operator has to read an IP off a

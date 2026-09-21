@@ -14,6 +14,7 @@
 #include "pairing_http_cap.h"
 #include "porta_proto.h"
 #include "web_page.h"
+#include "wifi_prov.h"
 
 #define PORTA_UART UART_NUM_1
 
@@ -925,14 +926,6 @@ static esp_err_t put_config(httpd_req_t *req)
     return httpd_resp_sendstr(req, "{\"ok\":true}");
 }
 
-static esp_err_t get_viewer(httpd_req_t *req)
-{
-    // No substitutions -- the viewer fetches everything it shows from
-    // /api/events. Sent through web_page_send_file() so a placeholder added
-    // to the file later is expanded rather than rendered as literal braces.
-    return web_page_send_file(req, "viewer.html", NULL, 0);
-}
-
 // Its own task rather than a poll in the beacon loop: events arrive
 // continuously, and a second of latency would make a live viewer useless quite
 // apart from overrunning the RX buffer.
@@ -1051,6 +1044,14 @@ static void porta_rx_task(void *arg)
                         config_json_add("sk_ring_gaps", buf);
                         snprintf(buf, sizeof(buf), "%lu", (unsigned long)s_config_get_retries);
                         config_json_add("sk_config_retries", buf);
+                        // Network status, retired from status.html (now app.html's
+                        // Settings > Network section) -- same reasoning as the
+                        // counters above: sidekick-local facts the ADV cannot see.
+                        config_json_add("sk_wifi_mode", wifi_prov_ap_active() ? "ap" : "station");
+                        config_json_add("sk_network_name", wifi_prov_network_name());
+                        config_json_add("sk_ip", wifi_prov_ip_str());
+                        config_json_add("sk_uptime", wifi_prov_uptime_str());
+                        config_json_add("sk_fw_version", wifi_prov_fw_version());
                         config_json_end();
                         break;
                     }
@@ -1100,9 +1101,6 @@ void host_link_register_uris(httpd_handle_t server)
     if (!server) {
         return;
     }
-    static const httpd_uri_t viewer = {
-        .uri = "/log", .method = HTTP_GET, .handler = get_viewer,
-    };
     static const httpd_uri_t events = {
         .uri = "/api/events", .method = HTTP_GET, .handler = get_events,
     };
@@ -1142,20 +1140,20 @@ void host_link_register_uris(httpd_handle_t server)
     static const httpd_uri_t log_entries = {
         .uri = "/api/log/entries", .method = HTTP_GET, .handler = get_log_entries,
     };
-    // The viewer and the event feed are reads of radio data: open on
-    // principle, since anyone may listen to what is on the air. Setting the
-    // host clock or keying the transmitter changes the device, so those need
-    // the token. Station config read is open (call/grid are on the air);
-    // writes are guarded. Connect / tune are writes (UAC + CAT / TX tone).
-    // Beacon / queue cancel / queue reply all change device state (RFC 0004
-    // §11) -- guarded like connect/tune. Log files/entries are QSO-log reads,
-    // the same category §7 already opened up for the viewer and event feed.
-    // Log delete is destructive — PAIRING_REQUIRED.
+    // The event feed is a read of radio data: open on principle, since anyone
+    // may listen to what is on the air. Setting the host clock or keying the
+    // transmitter changes the device, so those need the token. Station config
+    // read is open (call/grid are on the air); writes are guarded. Connect /
+    // tune are writes (UAC + CAT / TX tone). Beacon / queue cancel / queue
+    // reply all change device state (RFC 0004 §11) -- guarded like
+    // connect/tune. Log files/entries are QSO-log reads, the same category
+    // §7 already opened up for the event feed. Log delete is destructive —
+    // PAIRING_REQUIRED. (/log's own raw viewer.html is retired -- app.html's
+    // Operate view is the same event feed, same design system.)
     const struct {
         const httpd_uri_t *uri;
         pairing_policy_t policy;
     } routes[] = {
-        { &viewer, PAIRING_OPEN },
         { &events, PAIRING_OPEN },
         { &settime, PAIRING_REQUIRED },
         { &tx_cancel, PAIRING_REQUIRED },
