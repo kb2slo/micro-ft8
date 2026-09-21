@@ -89,8 +89,21 @@ static esp_err_t hydrate_seeds(bool force)
     int wrote = 0;
     for (size_t i = 0; i < web_seed_files_count; ++i) {
         const web_seed_file_t *s = &web_seed_files[i];
-        // embed_end - embed, not a stored size -- see web_seed_table.h.
-        const size_t len = (size_t)(s->embed_end - s->embed);
+        // embed_end - embed, not a stored size -- see web_seed_table.h. Minus
+        // one for EMBED_TXTFILES' own appended NUL terminator (CMakeLists.txt's
+        // EMBED_TXTFILES comment): that byte is real, placed by the linker
+        // right after the file's actual bytes, so embed_end includes it --
+        // but it is not part of the file's content and must not be written to
+        // LittleFS or served over HTTP. Field-found 2026-09-21: pairing.js
+        // parses fine as a file (curl showed intact content) but the served
+        // copy carried this trailing '\0', which is invalid inside a JS
+        // string/token and threw "SyntaxError: Invalid character: '\0'" in
+        // every browser, breaking pairing (and the whole app.html script,
+        // since a top-level parse error stops the entire file) under AP mode
+        // exactly the same as it would have under station mode -- this was
+        // never mode-specific, just never hit on a seed file parsed strictly
+        // enough to notice before.
+        const size_t len = (size_t)(s->embed_end - s->embed) - 1;
         char path[96];
         abs_path(path, sizeof(path), s->name);
         if (!force && file_matches_embed(path, s->embed, len)) {

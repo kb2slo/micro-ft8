@@ -12,7 +12,10 @@ extern "C" {
 typedef struct {
     const char *name;      // path under the web FS root, e.g. "pairing.js"
     const char *embed;     // NUL-terminated EMBED_TXTFILES blob, start
-    const char *embed_end; // one past the last embedded byte
+    const char *embed_end; // one past EMBED_TXTFILES' own appended NUL --
+                            // i.e. one past (last real byte + 1). Content
+                            // length is embed_end - embed - 1; consumers
+                            // must not serve/write the extra byte itself.
     // Size is embed_end - embed, computed where needed rather than stored.
     // Field-found 2026-09-20: a separately computed/cached size (this field
     // used to be `size_t size`, filled in by CMake's file(SIZE ...) at
