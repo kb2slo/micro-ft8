@@ -44,8 +44,20 @@ static const char *TAG = "wifi_prov";
 
 // Join attempts before giving up and raising the AP. Each retry costs a couple
 // of seconds; the point is to fall back promptly rather than leave an operator
-// staring at a device that looks dead but is quietly retrying forever.
+// staring at a device that looks dead but is quietly retrying forever. This is
+// the *initial* boot-time join only -- an operator is typically present for
+// that one, so fast feedback matters more than patience. See
+// RECONNECT_MAX_RETRY for the very different case of losing an
+// already-established connection.
 #define JOIN_MAX_RETRY 5
+
+// Retries before falling back to the AP after losing a connection that was
+// already up and running -- deliberately much more patient than
+// JOIN_MAX_RETRY, since the operator is very unlikely to be standing there
+// watching a mid-session router reboot (which can easily take a minute or two)
+// the way they are for an initial join. Not measured against a real router
+// reboot's timing -- a reasonable guess, not a tuned number.
+#define RECONNECT_MAX_RETRY 20
 
 // Upper bound on the whole join attempt, retries included. This is a backstop,
 // not the normal exit: every ordinary outcome sets one of the event bits. It
@@ -60,6 +72,16 @@ static EventGroupHandle_t s_events;
 
 static int  s_retries;
 static bool s_online;
+// Field-found 2026-09-21: once joined, a sustained loss of the network (router
+// reboot, moved out of range) retried JOIN_MAX_RETRY times and then just
+// stopped -- BIT_JOIN_FAIL was set, but nothing was still waiting on it (that
+// wait belongs to try_join()'s one call at boot, long since returned), so the
+// device went permanently offline with no AP fallback until a manual power
+// cycle. s_was_online, once true, is never reset -- it distinguishes "still
+// trying the initial join" (existing behavior: give up, let wifi_prov_start()
+// fall back to the AP) from "was connected, lost it" (new: fall back to the
+// AP directly, since nothing is still waiting on BIT_JOIN_FAIL for this case).
+static bool s_was_online;
 static bool s_ap_active;
 static char s_ssid[SSID_MAX + 1];
 static httpd_handle_t s_httpd;
@@ -212,14 +234,27 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
         // The reason code is the difference between "wrong password" and
         // "that network is not reachable from here", which look identical
         // from the operator's side and have completely different fixes.
-        if (s_retries < JOIN_MAX_RETRY) {
+        const int max_retry = s_was_online ? RECONNECT_MAX_RETRY : JOIN_MAX_RETRY;
+        if (s_retries < max_retry) {
             s_retries++;
             ESP_LOGW(TAG, "Join failed (%s), retry %d/%d",
                      disconnect_reason_text(s_last_disconnect_reason),
-                     s_retries, JOIN_MAX_RETRY);
+                     s_retries, max_retry);
             esp_wifi_connect();
+        } else if (s_was_online) {
+            // Was up and running, not still doing the initial join -- nothing
+            // is waiting on BIT_JOIN_FAIL for this case (try_join()'s own wait
+            // returned long ago), so falling back has to be driven from here
+            // directly rather than through wifi_prov_start()'s existing
+            // fall-through. Same restart-with-force_ap path Forget/Switch-to-
+            // AP already use, not a live in-place mode switch -- the network
+            // is already unusable at this point, so the brief interruption
+            // costs nothing real.
+            ESP_LOGE(TAG, "Lost '%s' and could not rejoin after %d tries: %s -- falling back to the AP",
+                     s_ssid, max_retry, disconnect_reason_text(s_last_disconnect_reason));
+            wifi_prov_enter_ap_and_restart();
         } else {
-            ESP_LOGE(TAG, "Join failed after %d tries: %s", JOIN_MAX_RETRY,
+            ESP_LOGE(TAG, "Join failed after %d tries: %s", max_retry,
                      disconnect_reason_text(s_last_disconnect_reason));
             xEventGroupSetBits(s_events, BIT_JOIN_FAIL);
         }
@@ -240,6 +275,7 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
         ESP_LOGI(TAG, "Online as " IPSTR " on '%s'", IP2STR(&e->ip_info.ip), s_ssid);
         s_retries = 0;
         s_online = true;
+        s_was_online = true;
         xEventGroupSetBits(s_events, BIT_GOT_IP);
     }
 }
