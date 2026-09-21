@@ -1,6 +1,6 @@
 # RFC 0004: Headless Micro-FT8 — the phone is the UI, the sidekick is a peripheral
 
-* **Status:** Draft. Design agreed in chat 2026-09-10; I28a protocol and I28b pairing are in tree (field proof still owed). **Storage model amended 2026-09-13** (§3/§4): the web root is a LittleFS partition, hydrated from firmware embed, not an empty blob filled only by POST. Supersedes nothing; extends [RFC 0001](0001-ble-companion.md) §5.0/§5.2d, which established WiFi-plus-browser as the phone path and moved sidekick updates from a PORTA push to an HTTPS pull. **§11 extended 2026-09-14** (Log's day-file model and third-party sync, a shared offline/online info-expand pattern, and the phone-grid map handoff) — a wireframe design pass ahead of the next I28d slice, same day as the screen-model lock.
+* **Status:** Draft. Design agreed in chat 2026-09-10; I28a protocol and I28b pairing are in tree (field proof still owed). **Storage model amended 2026-09-13** (§3/§4): the web root is a LittleFS partition, hydrated from firmware embed, not an empty blob filled only by POST. Supersedes nothing; extends [RFC 0001](0001-ble-companion.md) §5.0/§5.2d, which established WiFi-plus-browser as the phone path and moved sidekick updates from a PORTA push to an HTTPS pull. **§11 extended 2026-09-14** (Log's day-file model and third-party sync, a shared offline/online info-expand pattern, and the phone-grid map handoff) — a wireframe design pass ahead of the next I28d slice, same day as the screen-model lock. **§12 added 2026-09-21** (the Tools destination and the test that keeps it one, the per-card offline/online tier rule, and a vector basemap as an amendment to §11's tile ban rather than a reopening of it) — gates [I34–I37](../ROADMAP.md) and the rescoped [I30](../ROADMAP.md).
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** where the web application lives, how it is delivered and trusted, how the browser reaches the radio, and what crosses the sidekick-to-main link.
 * **Does not cover:** the ESP32-P4 port itself ([I27](../ROADMAP.md), gated on B26), the decode pipeline, or anything about the ADV's existing screen and keyboard — which this design must not depend on and does not remove.
@@ -747,3 +747,195 @@ This section describes how the feature would work if and when it is built, not t
 * Cross-day log search — first ship scoped to loaded days only (see the Log subsection above); whether
   full-history search needs on-device grep or an app-side index is a protocol decision, not yet made.
 * Map tile provider for the grid-from-map handoff — leaning OpenStreetMap/Leaflet, not decided.
+
+## 12. Tools, and the rule that keeps it from becoming a junk drawer
+
+**Decided 2026-09-21, after an operator request for a third main-screen view.** §11 settled how the
+*radio* screens divide. This section settles what happens to everything that is **about** operating
+rather than **doing** it: band conditions, POTA/SOTA spotting, PSKReporter. §11 left a placeholder for
+exactly this — its Screens table's `(later) PSKReporter` row — and this section is that row generalised
+rather than a new direction.
+
+Appended rather than inserted, for the same reason §11 was: §3, §4, §6 and §7 are cited from code
+comments, `partitions.csv`, host tests and the roadmap, and renumbering would churn all of them.
+
+### 12.1 Tools is a destination, not a feature drawer
+
+§11 rejects "a view per feature" and permits growth "by destination, never by feature". Tools has to
+clear that bar rather than be excused from it, and the argument is specific: **Operate and QSOs are both
+"drive this transmitter"; Tools is the half of the application that is not the transmitter at all.** That
+is a boundary in the same sense QRZ was ruled *not* to be one — QRZ is per-callsign data that expands on
+a row, so it belongs to whatever row it expands; band conditions belong to no row.
+
+The test to apply to any future candidate, stated so it can be used rather than admired: **if it expands
+an existing row, it is not a Tools card.** A worked-before flag, a DXCC name, a QRZ bio and a distance
+badge all fail that test and stay where §11 put them. A thing the operator consults *instead of* looking
+at the radio passes it.
+
+### 12.2 Every card declares its tier, and degrades visibly
+
+This is the rule the section exists for. Tools is where every amateur-radio application accretes scope,
+and a tier declaration per card is the only discipline that has any chance of holding:
+
+* **Offline-derived** — computed from data the application already has. No network at any point. Must
+  work identically on a summit in AP mode with the phone's cellular off.
+* **Online-optional** — an offline-derived card that is *enriched* when reachable. Renders complete
+  without the enrichment.
+* **Online-required** — meaningless without the internet. Must say so when it cannot reach its source.
+
+**"Degrades visibly" is the load-bearing half, not the tier label.** §8 already requires this of QRZ
+("fail legibly when a lookup is refused... treat it as a missing optional service, never as a fatal
+error"); §12 generalises it and adds the stricter clause: **a card may never render a stale value as a
+current one.** A K-index from four hours ago displayed as though it were now is worse than an empty card,
+because the operator makes a band decision on it. Stale data is shown with its age or not at all.
+
+**The reason this is a requirement and not a preference:** §1's first constraint. Every online card
+depends on the phone retaining cellular *while joined to the sidekick's AP*. [B75](../ROADMAP.md) argues
+that now holds, because removing the captive-portal mechanism leaves iOS classifying the network as plain
+"no internet on WiFi" rather than "captive, unauthenticated" — but that sits in B75's Done-when, **owed
+and unproven on hardware**. If it turns out not to hold, every online-required card is dead exactly where
+§1 says the radio must work, and the offline-derived tier is the entire field story. Design as though
+that is the likely case.
+
+### 12.3 What is reachable from the browser, measured
+
+Measured 2026-09-21 with `curl -H "Origin: http://micro-ft8.local"`, the same method §8 used on
+2026-09-10 — and, as in §8, the result reorders the work rather than confirming the assumption:
+
+| Source | `Access-Control-Allow-Origin` | Consequence |
+| --- | --- | --- |
+| `services.swpc.noaa.gov` (NOAA SWPC) | `*` | direct; no infrastructure |
+| `api.pota.app` | `*` | direct; no infrastructure |
+| `api2.sota.org.uk` | `*` | direct; no infrastructure |
+| `hamqsl.com/solarxml.php` | **absent** | not the source — see below |
+| `retrieve.pskreporter.info`, `pskquery5.pl` | **absent** | needs §8's Worker |
+
+**Two of the three things asked for need no infrastructure at all, and PSKReporter is the only one that
+does.** That inverts the intuitive build order, in which PSKReporter is the headline feature and therefore
+first. It is last.
+
+`hamqsl.com` is deliberately **not** the solar-data source despite being the obvious choice in amateur
+radio: `solarxml.php` carries no CORS header and `solarjson.php` returns 404, so using it would require a
+Worker route that NOAA makes unnecessary. Prefer the source that needs no shim, exactly as §8 preferred
+calling QRZ directly over proxying it.
+
+§8's **"filter, not relay"** rule binds here too, and payload sizes were measured for the same reason:
+`noaa-planetary-k-index.json` is 4,864 B and `f107_cm_flux.json` 23,218 B — fine to fetch directly — but
+`ovation_aurora_latest.json` is **922,577 B** and must never be fetched by a phone on cellular. POTA's
+activator-only endpoint is 31,560 B against 260,268 B for the full spot feed. A card that needs a large
+source either drops it or gets a Worker route that downsamples; it does not pass the cost to the operator's
+data plan.
+
+### 12.4 The offline floor is the device, not the browser cache
+
+**Measured 2026-09-21 on a real non-secure `http` origin, because §12.2's offline tier rests on it and
+§11's geolocation finding suggested it:** `http://micro-ft8.local` is not a secure context, and the
+consequence is broader than geolocation.
+
+| API | On a non-secure origin | Usable here |
+| --- | --- | --- |
+| `window.isSecureContext` | `false` | — |
+| Cache API (`caches`) | `undefined` | **no** |
+| Service Worker (`navigator.serviceWorker`) | absent | **no** |
+| `localStorage` | works | yes |
+| IndexedDB | present | yes |
+| `navigator.geolocation` | **property present**, call refused | no |
+
+**So "cache it in the browser for offline" is not a mechanism that exists on this origin at all.** It is
+not a trade-off, a performance question, or something a later iteration can add — the two APIs that would
+implement it are absent. Anything that must be available offline is therefore **served by the device**,
+from the `web` LittleFS partition, or it is not available offline. That single fact decides §12.5.
+
+Two traps worth recording so they are not rediscovered expensively:
+
+* **`'geolocation' in navigator` returns `true`** on this origin. Feature-detecting it succeeds and tells
+  you nothing; the refusal happens at call time. §11's handoff-page design remains the only route to a
+  position fix, and no amount of feature detection shortens it.
+* This was measured in a **Chromium-family engine**, not iOS Safari. Safari gates both APIs on secure
+  contexts the same way and has since Service Workers shipped, so the conclusion is expected to hold —
+  but it is one engine, and if a future decision rests on Safari specifically, measure Safari.
+
+### 12.5 The map is a vector basemap, which is not what §11 banned
+
+§11 bans **bundled map tiles**. That ban stands and is not being reopened. A **vector basemap** is a
+different artefact and is permitted, for three reasons that are worth separating because only the first
+is about cost:
+
+1. **It fits.** `ne_110m_land.geojson` (Natural Earth 110m land, public domain) is **138,160 B** raw,
+   ~80 KB gzipped, against the `web` partition's **1,966,080 B** currently holding 17,879 B of seeds.
+   Roughly 7% of the partition, once, for a world outline that never needs the network. §3's "no bundled
+   map tiles" sat next to "a disciplined app is 100–300 KB gzipped"; this does not threaten that.
+2. **§12.4 makes it the only offline option.** Tiles cannot be cached for offline use on this origin, so
+   a tile map is an online-only map. §1 says the radio must work on a summit. A map that is blank exactly
+   there is not a degraded map, it is an absent one.
+3. **It is the better map, not the cheap one, and this is the part that matters.** What this map has to
+   communicate is grid squares coloured by worked status, station pins, and great-circle paths. Roads,
+   labels and satellite imagery contribute nothing to any of those. Tiles would be a heavier, online-only
+   way to draw a *worse* version of the thing. This is the same shape of argument §11 made about the
+   waterfall: the reference applications' answer is not the better answer here, and we are not settling.
+
+§3's **"no heavyweight framework"** points the same way on the renderer: for coastlines and pins on an
+equirectangular projection, most of Leaflet is tile machinery that would never be called. Hand-rolled
+canvas is the leaning. **Not decided** — if a real attempt shows pan/zoom/hit-testing is more work than it
+looks, revisit; that is an implementation finding, not a reopening of the tile question.
+
+Assets ship as **separate bundle files**, never inlined into `app.html`: `web_fs_load()` enforces a 512 KB
+per-file ceiling (`sidekick/main/web_fs.c`) and `app.html` is already 133,913 B.
+
+**This does not close §11's open item on the tile provider**, and conflating the two would be a mistake.
+That item is about the **grid-from-map handoff page**, which lives on the bundle host over HTTPS — a
+genuine secure context, reached by a top-level navigation, online by definition because the operator just
+navigated to the internet to get there. Tiles are available and appropriate *there* and unavailable *here*,
+for reasons that have nothing to do with each other.
+
+### 12.6 Navigation
+
+A third swipe tab — Operate / QSOs / Tools — not a Settings-style full-screen overlay.
+
+This **reverses part of [B74](../ROADMAP.md)**, which shrank the swipe track from three panels to two, and
+the reversal should be recorded as such rather than quietly absorbed. B74's own test was whether a panel is
+something the operator flips to *mid-QSO*: Settings is not, so it became an overlay. "Should I change
+band?" is, so Tools is a tab. The same test, applied honestly, gives opposite answers for the two, and the
+cost is the swipe-track CSS returning to `300%` / `33.3333%`.
+
+### 12.7 What this requires of §6: nothing
+
+Stated explicitly, because §9 sequences everything behind the protocol and this is the exception that
+proves it rather than an oversight. The first slice needs **no new protocol verbs and no new HTTP routes**:
+every byte comes either from the public internet or from state `app.html` already holds. `app.html` ships
+over §4's bundle path rather than a reflash, so the whole slice is a `webapp/app/` change. Concretely, that
+means `PAIRING_ROUTES_HOST_LINK`'s `_Static_assert` (`sidekick/main/pairing_http_cap.h`) is untouched, and
+nothing in the slice is field-only under `TEST_PLAN.md`'s rules.
+
+This is a property of the first slice, not a promise about Tools forever. A card that needs the ADV to
+compute something — §11 already requires worked-before colouring of live decode rows to be computed there —
+re-enters §6's sequencing like anything else.
+
+### 12.8 Rejected
+
+| Idea | Why not |
+| --- | --- |
+| Tiles with offline caching | §12.4: the Cache API and Service Workers do not exist on this origin. Not a trade-off — the mechanism is absent. |
+| `hamqsl.com` as the solar source | No CORS header, no JSON endpoint. NOAA needs no shim; §8 prefers the source that needs none. |
+| PSKReporter in the first slice | The only card with infrastructure attached. §12.3's measurement says conditions and spots are free, so they go first. |
+| Self-spotting to POTA/SOTA alongside spot *reading* | An outward write to a third-party service with an authentication story. Different risk class; must not ride along on a read-only card. |
+| A Tools card per service | The junk-drawer failure mode §12.1's test exists to prevent. Cards are questions the operator asks, not vendors we integrate. |
+
+### 12.9 Open
+
+* **Retention for the offline band-conditions card.** Decode events are currently kept as three slots plus
+  the `microft8_state_v1` `localStorage` mirror, so an hour-scale per-band statistic needs a rolling
+  accumulator that survives a reload. Window and eviction policy undecided. `localStorage` is the honest
+  limit, same shape as §7's token. **This is the only part of the first slice that is not already-solved
+  code**, which makes it the part most likely to be underestimated.
+* Whether the map's worked/new colouring may be computed in the browser. §11 requires it on the ADV for
+  live decode rows inside a 15-second clock; a map of one's own log has no such deadline, so browser-side
+  is argued to be fine — but the two should not silently diverge on what "worked" means.
+* **Remote log QSOs on the map** (operator northstar, 2026-09-21, explicitly not the first slice): plotting
+  a whole operating history from an external logbook rather than only what is on the device. A data-source
+  question, not a rendering one — so the map is built against *a QSO collection*, not against "the device
+  log", and the later work is a second source rather than a rewrite. Which logbook, and whether its
+  credentials can live in a browser the way §8 established QRZ's can, is undecided.
+* Whether the PSKReporter *upload* direction is ever in scope. Distinct from reading: the ingest is UDP,
+  which a browser cannot speak at all, so the Worker would relay rather than shim — and publishing an
+  operator's receive log by default is a consent question, not just a transport one.
