@@ -412,7 +412,14 @@ static esp_err_t get_form(httpd_req_t *req)
 
     if (s_scan_count > 0) {
         // The Other… entry is last in the list because it is the exception:
-        // an escape hatch for hidden or out-of-range networks.
+        // an escape hatch for hidden or out-of-range networks. onchange
+        // restored 2026-09-20: the "password field/submit button invisible
+        // in Safari" bug that briefly cost this its onchange handler turned
+        // out to be unrelated -- a stale CMake-computed embed size (see
+        // web_seed_table.h) silently truncating the served page for every
+        // client, not this JS. Always-showing the manual field instead had
+        // its own real cost: picking a real network left an empty "Network
+        // name" field sitting there with no indication whether it mattered.
         snprintf(networks, sizeof(networks),
                  "<label>Network</label><select name=ssid required autofocus "
                  "onchange=\"var b=document.getElementById('oth');"
@@ -847,10 +854,13 @@ static void httpd_start_status(void)
 
 static void ap_name(char *out, size_t out_len)
 {
-    uint8_t mac[6] = {0};
-    esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
-    // MAC suffix so two sidekicks on one bench are distinguishable.
-    snprintf(out, out_len, "MicroFT8-SK-%02X%02X", mac[4], mac[5]);
+    // Operator-requested 2026-09-20: the SSID itself hints at the URL to
+    // visit (WIFI_PROV_MDNS_HOST, the same hostname mDNS already answers to)
+    // rather than a name with no connection to what to do next. No MAC
+    // suffix -- operator call 2026-09-20, overriding this file's own earlier
+    // multi-device-disambiguation concern; two sidekicks in range of each
+    // other would show identical SSIDs with this change.
+    snprintf(out, out_len, WIFI_PROV_MDNS_HOST ".local");
 }
 
 static void start_ap(void)

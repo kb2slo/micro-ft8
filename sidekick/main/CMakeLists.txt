@@ -28,12 +28,20 @@ foreach(name IN LISTS WEB_SEED_NAMES)
     else()
         list(APPEND WEB_EMBED_TXTFILES "web/${name}")
         string(MAKE_C_IDENTIFIER "${name}" sym)
-        file(SIZE "${WEB_DIR}/${name}" fsize)
-
+        # No file(SIZE ...) here on purpose -- field-found 2026-09-20, that
+        # was a configure-time-only read (same class of bug as git_version.
+        # cmake's SHA/DIRTY) that went stale across edits and silently
+        # truncated every seed file hydrate_seeds() wrote, identically for
+        # every client, no error anywhere. Using EMBED_TXTFILES' own
+        # _binary_X_end symbol instead means the size is embed_end - embed,
+        # taken from the linker's actual placement of the data -- it cannot
+        # be stale relative to the embed itself, because both come from the
+        # same link, every time. See web_seed_table.h's own comment.
         string(APPEND WEB_SEED_EXTERNS
-            "extern const char _binary_${sym}_start[] asm(\"_binary_${sym}_start\");\n")
+            "extern const char _binary_${sym}_start[] asm(\"_binary_${sym}_start\");\n"
+            "extern const char _binary_${sym}_end[] asm(\"_binary_${sym}_end\");\n")
         string(APPEND WEB_SEED_ENTRIES
-            "    {\"${name}\", _binary_${sym}_start, ${fsize}u},\n")
+            "    {\"${name}\", _binary_${sym}_start, _binary_${sym}_end},\n")
         math(EXPR WEB_SEED_COUNT "${WEB_SEED_COUNT} + 1")
     endif()
 endforeach()

@@ -17,7 +17,7 @@
   scan list as JSON: this is the bootstrap-of-the-bootstrap, the only way
   into a factory device, so making the network list depend on JavaScript
   plus a fetch would add a failure mode in the one place there is no way to
-  recover from one. The <noscript> block below is there for the same reason.
+  recover from one.
 
   {{failure}} is empty unless the last join attempt failed. {{networks}} is
   the scan result: either a <select> of what was found, or a plain text
@@ -38,6 +38,11 @@
   --accent-border:#93c5fd;
   --warn-bg:#fef3c7;
   --warn-fg:#78350f;
+  --field-bg:#fff;
+  --field-fg:#000;
+  --btn-bg:#efeff0;
+  --btn-fg:#000;
+  --muted:#666;
 }
 @media (prefers-color-scheme: dark) {
   :root{
@@ -45,20 +50,40 @@
     --accent-border:#3b5998;
     --warn-bg:#3a2a0a;
     --warn-fg:#fcd34d;
+    --field-bg:#1c1c1e;
+    --field-fg:#fff;
+    --btn-bg:#2c2c2e;
+    --btn-fg:#fff;
+    --muted:#9a9a9e;
   }
 }
 body{font-family:system-ui;margin:0;padding:2rem 1rem;background:Canvas;color:CanvasText}
 .wrap{max-width:22rem;margin:0 auto}
 h2{font-size:1.15rem;margin:0 0 .3rem}
-label{display:block;font-size:.7rem;color:GrayText;text-transform:uppercase;letter-spacing:.04em;margin-top:0}
-input,select{width:100%;box-sizing:border-box;padding:.6rem;margin:.3rem 0 1rem;font-size:1rem;background:Field;color:FieldText}
-button{width:100%;padding:.7rem;font-size:1rem;background:ButtonFace;color:ButtonText;border:1px solid GrayText;border-radius:.4rem}
+label{display:block;font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:0}
+/* Field-found 2026-09-20: Safari (desktop and iOS both, so this is a real
+   WebKit issue, not a captive-portal-webview quirk) applies its own native
+   dark-mode styling to <input>/<select>/<button> underneath a custom
+   background/color set via CSS system-color keywords (Field/FieldText/
+   ButtonFace/ButtonText/GrayText) -- the two can end up low- or zero-contrast
+   against each other, rendering the control effectively invisible (present
+   in the DOM, no JS error, just unreadable) while Chrome renders the exact
+   same markup fine. No border at all was set here either, which made it
+   worse. Fixed with explicit, hand-picked light/dark colors (not system
+   keywords) for exactly the elements Safari was doing this to, plus
+   appearance:none so Safari can't layer its own native chrome underneath
+   them. The .cta link below is unaffected by any of this -- it is a plain
+   <a>, not a native form control, which is exactly why it never had the
+   problem despite using ButtonFace too. */
+input,select,button{-webkit-appearance:none;appearance:none}
+input,select{width:100%;box-sizing:border-box;padding:.6rem;margin:.3rem 0 1rem;font-size:1rem;background:var(--field-bg);color:var(--field-fg);border:1px solid var(--accent-border);border-radius:.4rem}
+button{width:100%;padding:.7rem;font-size:1rem;background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--accent-border);border-radius:.4rem}
 /* Same "link styled as a button" pattern app.html's own #callInfoQrz uses --
    reusing it rather than inventing a second button language for one CTA. */
-.cta{display:block;text-align:center;padding:.8rem;margin:.8rem 0 .3rem;background:ButtonFace;color:var(--accent);border:1px solid var(--accent-border);border-radius:.4rem;text-decoration:none;font-weight:700;font-size:1.05rem}
-.hint{font-size:.85rem;color:GrayText;margin:0 0 1.4rem}
-.divider{display:flex;align-items:center;gap:.6rem;margin:1.4rem 0 1rem;color:GrayText;font-size:.75rem;text-transform:uppercase;letter-spacing:.04em}
-.divider::before,.divider::after{content:'';flex:1;height:1px;background:GrayText;opacity:.3}
+.cta{display:block;text-align:center;padding:.8rem;margin:.8rem 0 .3rem;background:var(--btn-bg);color:var(--accent);border:1px solid var(--accent-border);border-radius:.4rem;text-decoration:none;font-weight:700;font-size:1.05rem}
+.hint{font-size:.85rem;color:var(--muted);margin:0 0 1.4rem}
+.divider{display:flex;align-items:center;gap:.6rem;margin:1.4rem 0 1rem;color:var(--muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.04em}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--muted);opacity:.3}
 .failure{background:var(--warn-bg);color:var(--warn-fg);padding:.6rem;border-radius:.3rem}
 </style>
 
@@ -73,9 +98,7 @@ button{width:100%;padding:.7rem;font-size:1rem;background:ButtonFace;color:Butto
   whole app. Neither mechanism is a documented API for escaping CNA -- both
   are "known to sometimes work" folklore, not guaranteed, and CNA behavior
   has changed across iOS versions before. id=opBtn is JS's hook; href/target
-  stay as the plain-HTML fallback if the click handler below never attaches
-  (matches this page's existing <noscript> philosophy -- see the file-level
-  comment).
+  stay as the plain-HTML fallback if the click handler below never attaches.
 -->
 <a class=cta href=/app.html target=_blank id=opBtn>Operate in AP mode &rarr;</a>
 <p class=hint>Use this sidekick on its own — no home network needed. This is
@@ -95,28 +118,31 @@ Compatibility</i> switched on before it will appear.</p>
   {{networks}}
 
   <!--
-    The manual field stays even when the scan found networks: a hidden SSID
-    will not appear in a scan, and a network can be out of range at
-    provisioning time but present later.
+    Hidden until "Other…" is picked from the dropdown above (its onchange,
+    wifi_prov.c's get_form()) -- restored 2026-09-20. Briefly made always-
+    visible while chasing a "password field/submit button invisible in
+    Safari" bug that turned out to be unrelated: a stale CMake-computed
+    embed size (web_seed_table.h) silently truncating the served page for
+    every client, not this JS. Always-showing it had its own real cost --
+    picking a real network left this sitting there empty with no indication
+    whether it mattered -- so back to hide/show now that the actual bug is
+    fixed. Deliberately not using <noscript> to cover a scripting-disabled
+    browser this time: that exact pattern (a <style> nested inside
+    <noscript>, right here) was a separate, confirmed real WebKit bug this
+    same session that made Safari lose the rest of the document, and "no JS"
+    was never an actually-supported path anyway (app.html requires it too).
   -->
   <div id=oth hidden>
     <label style='font-size:.85rem'>Network name</label>
     <input id=othname name=ssid_manual maxlength=32>
   </div>
-  <!--
-    Revealed by the dropdown's onchange, which toggles the `hidden` attribute.
-    The override needs !important because it has to beat that attribute: a
-    browser with scripting off would otherwise never be able to reach a hidden
-    network's name field.
-  -->
-  <noscript><style>#oth{display:block!important}</style></noscript>
 
   <label>Password</label>
   <input name=pass type=password maxlength=63>
   <button>Save and join</button>
 </form>
 
-<p style='font-size:.85rem;color:GrayText'>
+<p style='font-size:.85rem;color:var(--muted)'>
   <a href='/rescan'>Scan again</a> if your network is missing. This may briefly
   drop your phone's connection to the sidekick.
 </p>

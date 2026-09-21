@@ -89,18 +89,20 @@ static esp_err_t hydrate_seeds(bool force)
     int wrote = 0;
     for (size_t i = 0; i < web_seed_files_count; ++i) {
         const web_seed_file_t *s = &web_seed_files[i];
+        // embed_end - embed, not a stored size -- see web_seed_table.h.
+        const size_t len = (size_t)(s->embed_end - s->embed);
         char path[96];
         abs_path(path, sizeof(path), s->name);
-        if (!force && file_matches_embed(path, s->embed, s->size)) {
+        if (!force && file_matches_embed(path, s->embed, len)) {
             continue;
         }
-        const esp_err_t err = write_seed_file(path, s->embed, s->size);
+        const esp_err_t err = write_seed_file(path, s->embed, len);
         if (err != ESP_OK) {
             return err;
         }
         ++wrote;
         ESP_LOGI(TAG, "%s %s (%u bytes)", force ? "rehydrated" : "hydrated", s->name,
-                 (unsigned)s->size);
+                 (unsigned)len);
     }
     if (wrote == 0) {
         ESP_LOGI(TAG, "seed up to date (%u files)", (unsigned)web_seed_files_count);
