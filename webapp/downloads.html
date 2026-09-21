@@ -165,7 +165,7 @@
     cursor: not-allowed;
     filter: none;
   }
-  #flash-log {
+  .assets .log {
     font-family: "IBM Plex Mono", ui-monospace, monospace;
     font-size: 0.78rem;
     line-height: 1.4;
@@ -173,13 +173,13 @@
     border: 1px solid var(--line);
     border-radius: 2px;
     padding: 0.75rem 0.9rem;
-    max-height: 12rem;
+    max-height: 10rem;
     overflow: auto;
     white-space: pre-wrap;
     margin: 0.75rem 0 0;
     display: none;
   }
-  #flash-log.active { display: block; }
+  .assets .log.active { display: block; }
   footer {
     margin-top: 2.75rem;
     padding-top: 1.25rem;
@@ -242,26 +242,32 @@
         operate (or use a powered hub if you need both at once on the desk).
       </li>
       <li>
-        <strong>Set up Wi‑Fi on the Atom</strong> — on first boot (or after
+        <strong>Connect to the Atom</strong> — on first boot (or after
         “forget network”), the Atom opens its own access point named
-        <code>MicroFT8-SK-…</code> (open, no password). From your phone or
-        computer:
+        <code>micro-ft8.local</code> (open, no password) — the name is the
+        hint: join it from your phone or computer, then open a browser to
+        <code>http://micro-ft8.local/</code> yourself. No sign-in sheet pops
+        up automatically; navigating there is the whole step. From here you
+        can either:
         <ul>
-          <li>Join that Wi‑Fi network.</li>
           <li>
-            Open a browser to <code>http://192.168.4.1/</code> (many phones
-            also pop a sign-in / captive-portal sheet that lands on the same
-            page).
+            <strong>Operate right there</strong> — tap “Operate in AP mode”
+            and you’re running, no router needed. This is a first-class way
+            to run the station, not just a setup step — good for SOTA, POTA,
+            or anywhere with no camp router or cell service.
           </li>
           <li>
-            Pick your home/camp network, enter the password, and submit. The
-            Atom restarts and joins that network.
+            <strong>Or join a home/camp network instead</strong> — pick it
+            from the list, enter the password, and submit. The Atom restarts
+            and joins that network; if it ever can’t reach it, it falls back
+            to its own access point automatically rather than going dark.
           </li>
         </ul>
       </li>
       <li>
-        <strong>Open the UI</strong> — on the same Wi‑Fi as the Atom, browse
-        <code>http://micro-ft8.local/</code>. Pair with the Atom’s user button
+        <strong>Open the UI</strong> — if you joined a home/camp network, browse
+        <code>http://micro-ft8.local/</code> from any device on that same
+        network. Pair with the Atom’s user button
         when asked (needed for clock sync and other writes).
       </li>
     </ol>
@@ -275,7 +281,6 @@
       Hold the device’s reset/boot as needed if the port does not appear.
     </p>
     <ul class="assets" id="assets"></ul>
-    <pre id="flash-log" aria-live="polite"></pre>
   </section>
 
   <section>
@@ -305,7 +310,6 @@ import { ESPLoader, Transport } from "https://cdn.jsdelivr.net/npm/esptool-js@0.
 
 const statusEl = document.getElementById("status");
 const listEl = document.getElementById("assets");
-const logEl = document.getElementById("flash-log");
 const serialNote = document.getElementById("serial-note");
 
 const serialOk = typeof navigator !== "undefined" && !!navigator.serial;
@@ -342,11 +346,17 @@ const LABELS = {
 
 let busy = false;
 const flashButtons = [];
+// Each asset card owns its own log <pre> -- one shared terminal for three
+// unrelated targets (ADV/P4/Atom) read as "which one is this even about"
+// once you'd flashed more than one, operator-reported. Keyed by asset key.
+const logEls = {};
 
-function log(line) {
-  logEl.classList.add("active");
-  logEl.textContent += line + "\n";
-  logEl.scrollTop = logEl.scrollHeight;
+function logAt(key, line) {
+  const el = logEls[key];
+  if (!el) return;
+  el.classList.add("active");
+  el.textContent += line + "\n";
+  el.scrollTop = el.scrollHeight;
 }
 
 function setBusy(on) {
@@ -395,8 +405,12 @@ async function mainForcedP4(esploader) {
 async function flashTarget(key, asset, label) {
   if (busy || !serialOk) return;
   setBusy(true);
-  logEl.textContent = "";
-  logEl.classList.add("active");
+  const logEl = logEls[key];
+  if (logEl) {
+    logEl.textContent = "";
+    logEl.classList.add("active");
+  }
+  const log = (line) => logAt(key, line);
 
   let transport = null;
   try {
@@ -488,6 +502,7 @@ function render(m) {
 
   listEl.innerHTML = "";
   flashButtons.length = 0;
+  for (const k in logEls) delete logEls[k];
 
   ["adv", "poe_p4", "sidekick", "source"].forEach((key) => {
     const asset = m.assets && m.assets[key];
@@ -526,15 +541,41 @@ function render(m) {
       row.textContent = "Not published yet";
     }
     li.appendChild(row);
+
+    // Every asset in one CI run comes from the same commit, so "updated"
+    // is the same date for all four -- shown per card anyway rather than
+    // only once at the top, so it travels with the hash an operator would
+    // actually be checking it against.
+    if (asset && asset.sha256) {
+      const sha = document.createElement("p");
+      sha.className = "sha";
+      sha.textContent =
+        "Updated " + (m.date || "unknown date") + " · SHA-256 " + asset.sha256;
+      li.appendChild(sha);
+    }
+
+    // Own log per card -- one shared terminal for three unrelated targets
+    // read as "which one is this even about" once you'd flashed more than
+    // one (operator-reported), especially since flashing the ADV then the
+    // Atom left the ADV's old log sitting there looking current.
+    if (label.chip) {
+      const log = document.createElement("pre");
+      log.className = "log";
+      log.setAttribute("aria-live", "polite");
+      li.appendChild(log);
+      logEls[key] = log;
+    }
+
     listEl.appendChild(li);
   });
   setCmds(m);
 }
 
 function fallback() {
-  statusEl.className = "warn status-err";
-  statusEl.textContent =
-    "Downloads are not available right now. Try again later, or check back after the next update.";
+  // render() below always sets statusEl itself (build date, or the generic
+  // fallback line) -- field-found while touching this file for other reasons:
+  // that made this function's own error message flash and immediately get
+  // overwritten. Set it after render(), not before.
   render({
     assets: {
       adv: { stable: "microft8-adv-continuous.bin" },
@@ -543,6 +584,9 @@ function fallback() {
       source: { stable: "microft8-source-continuous.tar.gz" },
     },
   });
+  statusEl.className = "warn status-err";
+  statusEl.textContent =
+    "Downloads are not available right now. Try again later, or check back after the next update.";
 }
 
 fetch("/download/manifest.json", { cache: "no-store" })
