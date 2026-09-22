@@ -119,13 +119,13 @@ button:disabled{opacity:.45}
 /* min-height:0 is load-bearing: without it a flex child won't shrink below
    its content size, so #viewport would grow to fit the tallest panel
    (Log's infinite-scroll list, unbounded) instead of scrolling within a
-   fixed strip. Two panels now (Operate/Log) -- Settings moved to its own
-   overlay (#settingsOverlay below), reached from the header gear rather
-   than swiped to, since it isn't a screen you flip to mid-QSO the way
-   Operate/Log are. */
+   fixed strip. Three panels now (Operate/Log/Tools, RFC 0004 §12.6) --
+   Settings is still its own overlay (#settingsOverlay below), reached from
+   the header gear rather than swiped to, since it isn't a screen you flip
+   to mid-QSO the way Operate/Log/Tools are. */
 #viewport{flex:1 1 auto;min-height:0;overflow:hidden;position:relative}
-#viewTrack{display:flex;height:100%;width:200%}
-#viewTrack>section{flex:0 0 50%;width:50%;height:100%;overflow-y:auto;box-sizing:border-box;-webkit-overflow-scrolling:touch}
+#viewTrack{display:flex;height:100%;width:300%}
+#viewTrack>section{flex:0 0 33.3333%;width:33.3333%;height:100%;overflow-y:auto;box-sizing:border-box;-webkit-overflow-scrolling:touch}
 .row{display:flex;gap:.5rem}
 .row>*{flex:1}
 .row button{margin-top:.5rem}
@@ -261,6 +261,25 @@ button:disabled{opacity:.45}
 .frow-extra .distbearing{font-family:ui-monospace,monospace}
 .frow-extra .comment{font-style:italic;overflow-wrap:anywhere}
 #logMore{padding:.7rem 1rem;text-align:center;color:GrayText;font-size:.8rem}
+
+/* ---- tools ---- */
+/* One card per §12.2 tier (RFC 0004 §12): band conditions is offline-
+   derived with no live/stale state to report; space weather and spots are
+   online, so each gets its own #...Note element for "loading…"/
+   "unreachable"/"cannot reach spot source" -- never a blank card and never
+   a stale value with nothing marking it stale. */
+.toolsnote{font-weight:400;text-transform:none;letter-spacing:normal;font-size:.7rem;color:GrayText}
+.toolscaveat{padding:0 1rem .3rem;font-size:.7rem;color:GrayText}
+#toolsEmptyNote{padding:.5rem 1rem;font-size:.8rem;color:GrayText}
+.swrow{padding:.5rem 1rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent);display:flex;justify-content:space-between;font-size:.85rem}
+.swrow .v{font-family:ui-monospace,monospace;font-weight:700}
+.spotrow{padding:.5rem 1rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
+.spotrow-main{display:flex;justify-content:space-between;align-items:center;gap:.5rem}
+.spotrow .call{font-family:ui-monospace,monospace;font-weight:700}
+.spotrow .sub{font-size:.7rem;color:GrayText;font-family:ui-monospace,monospace;margin-top:.15rem;display:flex;justify-content:space-between;gap:.5rem}
+.wflag{font-size:.65rem;font-weight:700;padding:.1rem .4rem;border-radius:.3rem;flex:none}
+.wflag-new{background:var(--good-bg);color:var(--good-fg)}
+.wflag-worked{background:color-mix(in srgb, GrayText 20%, transparent);color:GrayText}
 
 /* ---- settings ---- */
 /* Same flat, hairline-divided list language as Operate's #opQueue/#opDecodes
@@ -403,6 +422,21 @@ button:disabled{opacity:.45}
     </div>
     <div id=logList></div>
     <div id=logMore hidden><button id=logMoreBtn type=button>Load older QSOs</button></div>
+  </section>
+
+  <!-- ================= TOOLS ================= -->
+  <!-- What the operator consults *instead of* the radio (RFC 0004 §12.1):
+       band conditions (offline-derived half + online-optional space
+       weather) and POTA/SOTA spot chasing (online-required). Every card
+       names its own tier per §12.2 and degrades visibly -- never a stale
+       value rendered as a current one. -->
+  <section id=view-tools>
+    <div class=hd>Space weather &middot; online <span id=spaceWxNote class=toolsnote></span></div>
+    <div id=spaceWxRow></div>
+
+    <div class="hd sep">POTA / SOTA spots (FT8) &middot; online <span id=spotsNote class=toolsnote></span></div>
+    <div class=toolscaveat>Worked/new reflects only log days loaded this session.</div>
+    <div id=spotsRows></div>
   </section>
 
 </div>
@@ -575,6 +609,10 @@ button:disabled{opacity:.45}
   <button type=button data-view=log>
     <svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
     QSOs
+  </button>
+  <button type=button data-view=tools>
+    <svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
+    Tools
   </button>
 </nav>
 
@@ -798,16 +836,17 @@ function checkLinkCounterReset(cfg) {
 }
 
 // ===================== tabs (swipeable track) =====================
-// Two panels laid out side by side in #viewTrack (200% wide, each panel 50%
-// = one viewport-width); #viewport clips to one panel at a time. A percent
-// transform is relative to the transformed element's own box, so
-// -idx*(100/2)% always lands on panel idx regardless of actual pixel width
-// -- no resize listener needed to keep it correct. Settings is not a third
-// panel here -- it's a full-screen overlay (#settingsOverlay), reached from
-// the header gear, not swiped to: it isn't a screen you flip to mid-QSO the
-// way Operate/Log are, so it doesn't belong in the same gesture as those two.
+// Three panels laid out side by side in #viewTrack (300% wide, each panel
+// 33.3333% = one viewport-width); #viewport clips to one panel at a time. A
+// percent transform is relative to the transformed element's own box, so
+// -idx*(100/VIEWS.length)% always lands on panel idx regardless of actual
+// pixel width -- no resize listener needed to keep it correct. Settings is
+// not a panel here -- it's a full-screen overlay (#settingsOverlay), reached
+// from the header gear, not swiped to: it isn't a screen you flip to mid-QSO
+// the way Operate/Log/Tools are, so it doesn't belong in the same gesture
+// (RFC 0004 §12.6).
 
-var VIEWS = ['operate', 'log'];
+var VIEWS = ['operate', 'log', 'tools'];
 var currentView = 'operate';
 var viewIndex = 0;
 var viewTrack = document.getElementById('viewTrack');
@@ -830,6 +869,13 @@ function showView(name, animate) {
     logLoadedOnce = true;
     document.getElementById('logList').innerHTML = '<p style="padding:0 1rem;color:GrayText">Loading…</p>';
     loadMoreLog();
+  }
+  if (name === 'tools' && !toolsLoadedOnce) {
+    toolsLoadedOnce = true;
+    fetchSpaceWx();
+    fetchSpots();
+    setInterval(fetchSpaceWx, SPACE_WX_REFRESH_MS);
+    setInterval(fetchSpots, SPOTS_REFRESH_MS);
   }
 }
 document.querySelectorAll('#tabbar button').forEach(function (b) {
@@ -2125,7 +2171,16 @@ function setDistUnit(v) {
   if (v !== 'km' && v !== 'mi') return;
   distUnit = v;
   try { localStorage.setItem(DIST_UNIT_KEY, v); } catch (e) { /* applies live even if not persisted */ }
-  renderDecodes(); // cheap, already-in-memory data; Log rows already on screen don't retroactively update
+  // Cheap, already-in-memory data; Log rows already on screen don't
+  // retroactively update. Tools' spots card is included (operator-found
+  // 2026-09-22, same class of bug), gated on toolsLoadedOnce:
+  // spotsState.rows === null means "cannot reach spot source" to that
+  // renderer, which is true after a failed fetch but *not* true before the
+  // first fetch has ever run -- calling it unconditionally here would show
+  // that false claim the moment the operator changes units on Operate,
+  // before ever opening Tools.
+  renderDecodes();
+  if (toolsLoadedOnce) renderSpots();
 }
 
 // 'system' (default) tracks the phone's own prefers-color-scheme via CSS
@@ -2158,14 +2213,24 @@ function applyTheme() {
 }
 
 // "1,234 km 047°" or "723 mi 047°", per the operator's chosen distUnit --
-// or '' if either grid is missing/malformed, never a half-computed badge.
+// shared by fmtDistBearing (two grids) below and Tools' spot rows (RFC 0004
+// §12), which have a raw lat/lon from SOTA rather than a grid string on one
+// side and would otherwise have to fake one just to reuse the grid-to-grid
+// path.
+function fmtKm(km) {
+  var value = distUnit === 'mi' ? km * 0.621371 : km;
+  return Math.round(value).toLocaleString() + ' ' + distUnit;
+}
+function fmtKmBearing(km, bearingDeg) {
+  var bearing = String(Math.round(bearingDeg)).padStart(3, '0') + '°';
+  return fmtKm(km) + ' ' + bearing;
+}
+// '' if either grid is missing/malformed, never a half-computed badge.
 function fmtDistBearing(myGrid, theirGrid) {
   var a = gridToLatLon(myGrid), b = gridToLatLon(theirGrid);
   if (!a || !b) return '';
   var gc = greatCircle(a, b);
-  var bearing = String(Math.round(gc.bearing)).padStart(3, '0') + '°';
-  var value = distUnit === 'mi' ? gc.km * 0.621371 : gc.km;
-  return Math.round(value).toLocaleString() + ' ' + distUnit + ' ' + bearing;
+  return fmtKmBearing(gc.km, gc.bearing);
 }
 
 // ---- Opportunistic callsign -> grid cache (Operate decode rows) ----
@@ -2257,6 +2322,289 @@ function learnCallsignGrid(text) {
   if (!call || callsignGridCache[call] === last) return;
   callsignGridCache[call] = last;
   saveCallsignGridCache();
+}
+
+// ===================== Tools =====================
+// RFC 0004 §12: what the operator consults *instead of* the radio. Three
+// cards, each declaring its own tier per §12.2. No new protocol verbs, no
+// new HTTP routes (§12.7) -- everything below is either already-held state
+// or a direct fetch to the public internet.
+
+// Both NOAA's time_tag and SOTA's timeStamp are UTC with no offset, but only
+// SOTA's already carries a trailing Z (NOAA's and POTA's spotTime don't) --
+// Date.parse() treats an offset-less string as *local* time, which would be
+// wrong here, so every timestamp from these three sources goes through this
+// rather than a bare Date.parse().
+function parseUtcIso(s) {
+  if (!s) return NaN;
+  return Date.parse(/Z$/.test(s) ? s : s + 'Z');
+}
+
+var toolsLoadedOnce = false;
+
+// ---- online-optional: space weather (§12.2, §12.3) ----
+// NOAA SWPC only -- hamqsl.com deliberately not used (no CORS header, no
+// JSON endpoint; §12.3/§12.8). Operator-requested 2026-09-22: a richer set
+// closer to what hamqsl.com/solar.html shows, sourced from NOAA's own small
+// "summary" endpoints rather than the multi-hundred-KB history files the
+// same data also lives in (measured 2026-09-22, all open CORS):
+//   SFI          products/summary/10cm-flux.json          (47 B; replaces
+//                the 23,218 B json/f107_cm_flux.json this card used before
+//                -- same number, 500x smaller, still with its own time_tag)
+//   A-index      free -- riding along on the k-index fetch below as
+//                `a_running`, NOAA's own running estimate for the current
+//                UTC day, not a second request
+//   K-index      products/noaa-planetary-k-index.json      (4,864 B, as before)
+//   X-ray class  json/goes/primary/xray-flares-latest.json (452 B) --
+//                NOAA's own pre-formatted class string ("B3.8"), not a
+//                flux-to-class conversion done here
+//   Solar wind   products/summary/solar-wind-speed.json     (59 B) and
+//                products/summary/solar-wind-mag-field.json (61 B)
+//   NOAA scale   products/noaa-scales.json (1,100 B) -- the official R
+//                (radio blackout) / S (solar radiation storm) / G
+//                (geomagnetic storm) 0-5 scale, current conditions (key
+//                "0"). Deliberately NOT attempting hamqsl's own per-band
+//                Good/Fair/Poor <calculatedconditions> table: that is
+//                N0NBH's own undocumented formula, and guessing at an
+//                equivalent risks shipping a wrong verdict the operator
+//                would make a real band decision on (§12.2) -- the NOAA
+//                scale above is the closest *authoritative* substitute.
+// Sunspot number has no comparably small current-value endpoint (the
+// smallest NOAA source for it is a multi-hundred-KB history file) and is
+// left out rather than paying that cost for one number.
+// ovation_aurora_latest.json is 922,577 B and must never be fetched here
+// (§12.3). Every value renders with its own age from the API's own
+// time_tag, not fetch time -- so a value from an earlier successful fetch,
+// still on screen after a later fetch fails, is never mistaken for current
+// (§12.2's "never render a stale value as a current one").
+var NOAA_KINDEX_URL = 'https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json';
+var NOAA_SFI_URL = 'https://services.swpc.noaa.gov/products/summary/10cm-flux.json';
+var NOAA_XRAY_URL = 'https://services.swpc.noaa.gov/json/goes/primary/xray-flares-latest.json';
+var NOAA_WIND_SPEED_URL = 'https://services.swpc.noaa.gov/products/summary/solar-wind-speed.json';
+var NOAA_WIND_MAG_URL = 'https://services.swpc.noaa.gov/products/summary/solar-wind-mag-field.json';
+var NOAA_SCALES_URL = 'https://services.swpc.noaa.gov/products/noaa-scales.json';
+var SPACE_WX_REFRESH_MS = 15 * 60 * 1000;
+var spaceWx = {
+  kp: null, kpTime: null, aIndex: null, sfi: null, sfiTime: null,
+  xrayClass: null, xrayTime: null, windSpeed: null, windSpeedTime: null,
+  windBz: null, windBt: null, windMagTime: null, scaleR: null, scaleS: null,
+  scaleG: null, scaleTime: null
+};
+
+async function fetchSpaceWx() {
+  try {
+    var kr = await fetch(NOAA_KINDEX_URL, { cache: 'no-store' });
+    var kj = await kr.json();
+    var last = kj[kj.length - 1]; // oldest-first; newest is the last element
+    if (last) {
+      spaceWx.kp = last.Kp;
+      spaceWx.kpTime = last.time_tag;
+      spaceWx.aIndex = last.a_running;
+    }
+  } catch (e) { /* leave last-known value, if any, in place */ }
+  try {
+    var fr = await fetch(NOAA_SFI_URL, { cache: 'no-store' });
+    var fj = await fr.json();
+    var first = fj[0];
+    if (first) { spaceWx.sfi = first.flux; spaceWx.sfiTime = first.time_tag; }
+  } catch (e) { /* leave last-known value, if any, in place */ }
+  try {
+    var xr = await fetch(NOAA_XRAY_URL, { cache: 'no-store' });
+    var xj = await xr.json();
+    var xf = xj[0];
+    if (xf) { spaceWx.xrayClass = xf.current_class; spaceWx.xrayTime = xf.time_tag; }
+  } catch (e) { /* leave last-known value, if any, in place */ }
+  try {
+    var wr = await fetch(NOAA_WIND_SPEED_URL, { cache: 'no-store' });
+    var wj = await wr.json();
+    var wf = wj[0];
+    if (wf) { spaceWx.windSpeed = wf.proton_speed; spaceWx.windSpeedTime = wf.time_tag; }
+  } catch (e) { /* leave last-known value, if any, in place */ }
+  try {
+    var mr = await fetch(NOAA_WIND_MAG_URL, { cache: 'no-store' });
+    var mj = await mr.json();
+    var mf = mj[0];
+    if (mf) { spaceWx.windBz = mf.bz_gsm; spaceWx.windBt = mf.bt; spaceWx.windMagTime = mf.time_tag; }
+  } catch (e) { /* leave last-known value, if any, in place */ }
+  try {
+    var sr = await fetch(NOAA_SCALES_URL, { cache: 'no-store' });
+    var sj = await sr.json();
+    var cur = sj['0'];
+    if (cur) {
+      spaceWx.scaleR = cur.R && cur.R.Scale;
+      spaceWx.scaleS = cur.S && cur.S.Scale;
+      spaceWx.scaleG = cur.G && cur.G.Scale;
+      spaceWx.scaleTime = cur.DateStamp + 'T' + cur.TimeStamp;
+    }
+  } catch (e) { /* leave last-known value, if any, in place */ }
+  renderSpaceWx();
+}
+function swRow(label, value, ts) {
+  return '<div class=swrow><span>' + esc(label) + '</span><span class=v>' + esc(value) +
+    ' <span class=toolsnote>' + fmtAgo(parseUtcIso(ts)) + '</span></span></div>';
+}
+function renderSpaceWx() {
+  var row = document.getElementById('spaceWxRow');
+  var note = document.getElementById('spaceWxNote');
+  var haveAny = spaceWx.kp != null || spaceWx.sfi != null || spaceWx.xrayClass != null ||
+    spaceWx.windSpeed != null || spaceWx.scaleR != null;
+  if (!haveAny) {
+    row.innerHTML = '';
+    note.textContent = 'unreachable';
+    return;
+  }
+  note.textContent = '';
+  var parts = [];
+  if (spaceWx.sfi != null) {
+    parts.push(swRow('SFI (10.7cm flux)', Math.round(spaceWx.sfi), spaceWx.sfiTime));
+  }
+  if (spaceWx.aIndex != null) {
+    parts.push(swRow('A-index (running)', spaceWx.aIndex, spaceWx.kpTime));
+  }
+  if (spaceWx.kp != null) {
+    parts.push(swRow('Planetary K-index', spaceWx.kp.toFixed(1), spaceWx.kpTime));
+  }
+  if (spaceWx.xrayClass != null) {
+    parts.push(swRow('X-ray flux', spaceWx.xrayClass, spaceWx.xrayTime));
+  }
+  if (spaceWx.windSpeed != null) {
+    parts.push(swRow('Solar wind speed', Math.round(spaceWx.windSpeed) + ' km/s', spaceWx.windSpeedTime));
+  }
+  if (spaceWx.windBz != null) {
+    parts.push(swRow('Solar wind Bz', spaceWx.windBz + ' nT', spaceWx.windMagTime));
+  }
+  if (spaceWx.scaleR != null) {
+    parts.push(swRow('NOAA scale (R/S/G)',
+      'R' + spaceWx.scaleR + ' S' + spaceWx.scaleS + ' G' + spaceWx.scaleG, spaceWx.scaleTime));
+  }
+  row.innerHTML = parts.join('');
+}
+
+// ---- online-required: POTA/SOTA spots (§12.2, §12.3) ----
+// POTA's activator-only endpoint (31,560 B), not /spot (260,268 B) -- §12.3/
+// §12.8. SOTA's api2.sota.org.uk/api/spots/{count}/all, named in RFC 0004
+// §12.3, was found dead (a "DEPRECATED" stub) while building this slice;
+// api-db2.sota.org.uk/api/spots/{count}/all/all is what SOTAwatch3 itself
+// calls today and returns real spots with the same open CORS. 50, matching
+// SOTAwatch3's own default page size.
+var POTA_ACTIVATOR_URL = 'https://api.pota.app/spot/activator';
+var SOTA_SPOTS_URL = 'https://api-db2.sota.org.uk/api/spots/50/all/all';
+var SPOTS_REFRESH_MS = 5 * 60 * 1000;
+var spotsState = { rows: null, fetchedAt: 0 };
+
+// Approximate amateur band edges (kHz) for classifying an arbitrary spot
+// frequency to one of BANDS -- POTA/SOTA spots land anywhere in a band
+// (CW/SSB/data), not just at BANDS' own FT8 calling frequency, so matching
+// against the nearest FT8 frequency would misclassify. Common-allocation
+// widths, good enough for filtering; not a regulatory table.
+var BAND_EDGES_KHZ = [
+  { name: '160m', lo: 1800, hi: 2000 },
+  { name: '80m', lo: 3500, hi: 4000 },
+  { name: '60m', lo: 5250, hi: 5450 },
+  { name: '40m', lo: 7000, hi: 7300 },
+  { name: '30m', lo: 10100, hi: 10150 },
+  { name: '20m', lo: 14000, hi: 14350 },
+  { name: '17m', lo: 18068, hi: 18168 },
+  { name: '15m', lo: 21000, hi: 21450 },
+  { name: '12m', lo: 24890, hi: 24990 },
+  { name: '10m', lo: 28000, hi: 29700 },
+  { name: '6m', lo: 50000, hi: 54000 },
+  { name: '2m', lo: 144000, hi: 148000 }
+];
+function khzToBandName(khz) {
+  for (var i = 0; i < BAND_EDGES_KHZ.length; i++) {
+    var e = BAND_EDGES_KHZ[i];
+    if (khz >= e.lo && khz <= e.hi) return e.name;
+  }
+  return '';
+}
+// Reuses parseActiveBands() (Settings' own band-filter parser, above) --
+// same lenient parse, same "empty/unrecognized means every band" fallback.
+function activeBandFilter() {
+  var parsed = parseActiveBands(lastCfg.active_bands);
+  var wantByName = {};
+  BANDS.forEach(function (b) { if (parsed.want[b.n]) wantByName[b.name] = true; });
+  return function (bandName) { return !parsed.any || !!wantByName[bandName]; };
+}
+function isWorkedCall(call) {
+  return !!(logEntriesByCall[call] && logEntriesByCall[call].length);
+}
+
+async function fetchSpots() {
+  var potaRows = [], sotaRows = [], anyOk = false;
+  try {
+    var pr = await fetch(POTA_ACTIVATOR_URL, { cache: 'no-store' });
+    var pj = await pr.json();
+    potaRows = pj.map(function (s) {
+      var khz = parseFloat(s.frequency);
+      return { program: 'POTA', call: s.activator, ref: s.reference, name: s.parkName || s.name,
+               band: khzToBandName(khz), mode: s.mode, grid: s.grid6 || s.grid4,
+               lat: null, lon: null, ts: s.spotTime };
+    });
+    anyOk = true;
+  } catch (e) { /* POTA down this tick -- SOTA half may still be good */ }
+  try {
+    var sr = await fetch(SOTA_SPOTS_URL, { cache: 'no-store' });
+    var sj = await sr.json();
+    sotaRows = sj.filter(function (s) { return s.summitCode && s.summitCode !== 'DEPRECATED'; })
+      .map(function (s) {
+        var khz = s.frequency * 1000;
+        return { program: 'SOTA', call: s.activatorCallsign, ref: s.summitCode, name: s.summitName,
+                 band: khzToBandName(khz), mode: s.mode, grid: null,
+                 lat: s.latitude, lon: s.longitude, ts: s.timeStamp };
+      });
+    anyOk = true;
+  } catch (e) { /* SOTA down this tick -- POTA half may still be good */ }
+  if (anyOk) {
+    var inBand = activeBandFilter();
+    // Operator-requested 2026-09-21: this app only operates FT8/FT4, so a
+    // CW/SSB/FM activation isn't actionable here the way an FT8 one is.
+    spotsState.rows = potaRows.concat(sotaRows).filter(function (r) {
+      return r.band && inBand(r.band) && r.mode && r.mode.toUpperCase() === 'FT8';
+    });
+    spotsState.rows.sort(function (a, b) { return parseUtcIso(b.ts) - parseUtcIso(a.ts); });
+    spotsState.fetchedAt = Date.now();
+  }
+  renderSpots();
+}
+function renderSpots() {
+  var rows = document.getElementById('spotsRows');
+  var note = document.getElementById('spotsNote');
+  if (spotsState.rows == null) {
+    rows.innerHTML = '';
+    note.textContent = 'cannot reach spot source';
+    return;
+  }
+  note.textContent = 'updated ' + fmtAgo(spotsState.fetchedAt);
+  if (!spotsState.rows.length) {
+    rows.innerHTML = '<div id=toolsEmptyNote>No activator spots on your active bands right now.</div>';
+    return;
+  }
+  rows.innerHTML = spotsState.rows.map(function (r) {
+    var distBearing = '';
+    if (lastCfg.grid) {
+      if (r.grid) {
+        distBearing = fmtDistBearing(lastCfg.grid, r.grid);
+      } else if (r.lat != null && r.lon != null) {
+        var a = gridToLatLon(lastCfg.grid);
+        if (a) {
+          var gc = greatCircle(a, { lat: r.lat, lon: r.lon });
+          distBearing = fmtKmBearing(gc.km, gc.bearing);
+        }
+      }
+    }
+    var worked = isWorkedCall(r.call);
+    return '<div class=spotrow><div class=spotrow-main>' +
+      '<span class="callink call" data-call="' + esc(r.call) + '">' + esc(r.call) + '</span>' +
+      '<span class="wflag ' + (worked ? 'wflag-worked' : 'wflag-new') + '">' + (worked ? 'worked' : 'new') +
+      '</span></div><div class=sub><span>' + esc(r.program) + ' ' + esc(r.ref) +
+      (r.name ? ' &middot; ' + esc(r.name) : '') + '</span><span>' + esc(r.band || '') +
+      (r.mode ? ' ' + esc(r.mode) : '') + '</span></div><div class=sub><span>' + esc(distBearing) +
+      '</span><span>' + fmtAgo(parseUtcIso(r.ts)) + '</span></div></div>';
+  }).join('');
+  rows.querySelectorAll('.callink').forEach(function (el) {
+    el.onclick = function () { showCallInfo(el.getAttribute('data-call')); };
+  });
 }
 
 // ---- Callsign info modal (Operate + QSOs) ----
@@ -2750,15 +3098,22 @@ if (MicroFT8Pairing.getToken()) {
   setPaired(false);
 }
 
-// Deep link from status.html's old / -> now a 303 to here, and from any
-// other "take me to network settings" link: open Settings straight to the
-// Network section rather than landing on Operate and making the operator
-// hunt for it.
-if (location.hash === '#network') {
-  openSettings();
-  var netSection = document.getElementById('netSection');
-  if (netSection) netSection.scrollIntoView();
+// Deep links: #network (from status.html's old / -> now a 303 to here, and
+// any other "take me to network settings" link) opens Settings straight to
+// the Network section; #tools (RFC 0004 §12) swipes straight to the Tools
+// tab. Both run once at boot and again on hashchange, so a link clicked
+// while the app is already open (not just a fresh load) still routes.
+function applyHashRoute() {
+  if (location.hash === '#network') {
+    openSettings();
+    var netSection = document.getElementById('netSection');
+    if (netSection) netSection.scrollIntoView();
+  } else if (location.hash === '#tools') {
+    showView('tools');
+  }
 }
+applyHashRoute();
+window.addEventListener('hashchange', applyHashRoute);
 
 // Seeds every live-state variable from localStorage before the first real
 // fetch/poll lands, so a reload or a fresh desk_push doesn't flash blank/

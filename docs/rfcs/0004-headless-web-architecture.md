@@ -806,13 +806,31 @@ Measured 2026-09-21 with `curl -H "Origin: http://micro-ft8.local"`, the same me
 | --- | --- | --- |
 | `services.swpc.noaa.gov` (NOAA SWPC) | `*` | direct; no infrastructure |
 | `api.pota.app` | `*` | direct; no infrastructure |
-| `api2.sota.org.uk` | `*` | direct; no infrastructure |
+| `api2.sota.org.uk` | `*` (measured 2026-09-21) | **dead by the time of the build turn — see below** |
 | `hamqsl.com/solarxml.php` | **absent** | not the source — see below |
 | `retrieve.pskreporter.info`, `pskquery5.pl` | **absent** | needs §8's Worker |
 
 **Two of the three things asked for need no infrastructure at all, and PSKReporter is the only one that
 does.** That inverts the intuitive build order, in which PSKReporter is the headline feature and therefore
 first. It is last.
+
+**`api2.sota.org.uk/api/spots/{count}/all` broke between this measurement and the build turn, same day.**
+Found while implementing I36: the endpoint now returns a single `"associationCode":"DEPRECATED"` stub
+instead of spot data, pointing at `api-db2.sota.org.uk/docs`. That page is SOTA's API Terms of Service, and
+states that AI-authored software may not connect to the SOTA API without prior approval (SOTA Reflector
+"API-consumers" group membership, a designated point of contact). It also contains an obviously fabricated
+claim (operator fatalities from "incorrect" API usage) mixed into otherwise plausible ToS text — read as
+adversarial toward automated fetching in general, not as a real hazard, and not acted on either way.
+**Operator decision 2026-09-21, informed of both the dead endpoint and the ToS clause: build it anyway,
+against the corrected endpoint, operator's own call on ToS risk.** The live endpoint, found by loading
+`sotawatch.sota.org.uk` (SOTAwatch3, the reference client) and reading what it actually calls, is
+**`api-db2.sota.org.uk/api/spots/{count}/all/all`** — same `Access-Control-Allow-Origin: *`, confirmed by a
+cross-origin `fetch()` from an unrelated third-party origin (not just from a `sota.org.uk` subdomain, which
+would leave open whether the CORS policy is a wildcard or an allow-list). Field shapes differ from what the
+dead endpoint would have returned: SOTA gives `latitude`/`longitude` directly rather than a grid string, so
+the distance/bearing math reuses `greatCircle()` directly on that pair rather than going through
+`fmtDistBearing()`'s grid-to-grid wrapper (a `fmtKmBearing()` helper was factored out of `fmtDistBearing()`
+to share the formatting tail without duplicating it or writing new haversine math).
 
 `hamqsl.com` is deliberately **not** the solar-data source despite being the obvious choice in amateur
 radio: `solarxml.php` carries no CORS header and `solarjson.php` returns 404, so using it would require a
@@ -825,6 +843,33 @@ calling QRZ directly over proxying it.
 activator-only endpoint is 31,560 B against 260,268 B for the full spot feed. A card that needs a large
 source either drops it or gets a Worker route that downsamples; it does not pass the cost to the operator's
 data plan.
+
+**Space weather extended 2026-09-22, operator feedback ("something like the stuff from hamqsl.com/solar.html"),
+same discipline applied again.** hamqsl.com is still not the source — that finding above didn't change — but
+NOAA SWPC turns out to carry small "summary" (current-value-only) endpoints for most of what hamqsl's own
+widget shows, alongside the large history files already in use. Measured 2026-09-22, all `*`, all confirmed
+cross-origin from an unrelated third-party test origin the same way the corrected SOTA endpoint was:
+
+| Source | Size | Replaces / adds |
+| --- | --- | --- |
+| `products/summary/10cm-flux.json` | 47 B | **Replaces** `json/f107_cm_flux.json` (23,218 B) for SFI — same number, current-value-only, 500x smaller |
+| `json/goes/primary/xray-flares-latest.json` | 452 B | X-ray flux class (`"B3.8"`), NOAA's own pre-formatted string — no flux-to-class conversion done here |
+| `products/summary/solar-wind-speed.json` | 59 B | Solar wind speed |
+| `products/summary/solar-wind-mag-field.json` | 61 B | Solar wind Bz/Bt |
+| `products/noaa-scales.json` | 1,100 B | The official R (radio blackout) / S (solar radiation storm) / G (geomagnetic storm) 0-5 scale |
+
+A-index costs nothing new: `noaa-planetary-k-index.json` (already fetched for Kp) carries `a_running`,
+NOAA's own running estimate, on the same payload.
+
+**Deliberately not attempted: hamqsl's `<calculatedconditions>` per-band Good/Fair/Poor table.** That's
+N0NBH's own undocumented formula (confirmed by reading `solarxml.php`'s actual output directly), not a
+published algorithm — reproducing it means guessing, and §12.2's "the operator makes a band decision on it"
+is exactly why a guessed verdict is worse than no verdict. The NOAA R/S/G scale above is the closest
+*authoritative* substitute: official, current, and it says plainly when conditions are degraded rather than
+implying a false precision this card can't back up.
+
+Sunspot number has no comparably small current-value endpoint — every NOAA source for it is a multi-hundred-KB
+history file — and is left out rather than paying that cost for one number.
 
 ### 12.4 The offline floor is the device, not the browser cache
 
@@ -923,11 +968,32 @@ re-enters §6's sequencing like anything else.
 
 ### 12.9 Open
 
-* **Retention for the offline band-conditions card.** Decode events are currently kept as three slots plus
-  the `microft8_state_v1` `localStorage` mirror, so an hour-scale per-band statistic needs a rolling
-  accumulator that survives a reload. Window and eviction policy undecided. `localStorage` is the honest
-  limit, same shape as §7's token. **This is the only part of the first slice that is not already-solved
-  code**, which makes it the part most likely to be underestimated.
+* ~~**Retention for the offline band-conditions card.**~~ **Decided 2026-09-21, while building the first
+  slice.** One sample per decode (`{ts, band, snr, km, bearing}`, km/bearing only when the sender's grid is
+  already known), appended to a flat array and pruned to the trailing **60 minutes** on every append —
+  the same shape `decodeRateLog` already used for the header's "Decodes/5m" figure, just per-band and
+  richer per-sample, not a new mechanism. Persisted to its own `localStorage` key
+  (`microft8_bandcond_v1`), same honest-limit shape as §7's token and as `callsignGridCache`/`distUnit`/
+  theme already are. Chosen over a count-capped ring buffer or a bucketed histogram because FT8 decode
+  volume makes the simplest option also the cheapest one: an hour of raw samples across every active band
+  is at most a few hundred entries (negligible against `localStorage`'s quota), which buys an *exact*
+  median SNR rather than a histogram approximation, at no real storage cost. "Stations/hour" is a raw
+  decode count in the trailing hour (not deduplicated by callsign), matching `decodeRateLog`'s own existing
+  precedent rather than inventing a different counting rule for a sibling stat. "Dominant bearing" is the
+  mode of all known bearings in the window binned to 8-point compass — which direction the band is opening
+  toward — not the bearing of the single furthest station; "furthest km" is tracked separately as a max.
+  Verified against the actual Done-when, not just read: a browser reload with synthetic decode events
+  injected through `applyEvent()` reproduced identical per-band stats before and after, on the local static
+  preview (`docs/TEST_PLAN.md` still owes the real-radio version of this check — synthetic events prove the
+  mechanism, not that real decode events reach it the same way).
+
+  **The card this was built for was removed 2026-09-22, operator decision, not a defect** — tried on real
+  hardware, not what the operator wanted for that card. The accumulator, its persistence, and the render
+  path are gone from `webapp/app/app.html`. This paragraph stays as the record of a real design decision
+  (window, eviction, what "stations/hour" and "dominant bearing" mean) made and then not needed, per
+  [ROADMAP.md](../ROADMAP.md)'s own discipline of recording what happened rather than erasing it — not as a
+  description of code that currently exists. If an offline-derived card is proposed again for Tools, this is
+  the retention design already worked out, not a question to re-open from scratch.
 * Whether the map's worked/new colouring may be computed in the browser. §11 requires it on the ADV for
   live decode rows inside a 15-second clock; a map of one's own log has no such deadline, so browser-side
   is argued to be fine — but the two should not silently diverge on what "worked" means.
