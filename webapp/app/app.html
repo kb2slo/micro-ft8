@@ -2734,7 +2734,7 @@ function appendLogRows(file, rows, prependGroup) {
     var day = document.createElement('div');
     day.className = 'day';
     var dayText = document.createElement('span');
-    dayText.textContent = dayLabel(file);
+    dayText.className = 'daydate'; // stable lookup for the count update below
     day.appendChild(dayText);
     var dlink = document.createElement('a');
     dlink.className = 'dlink';
@@ -2809,6 +2809,18 @@ function appendLogRows(file, rows, prependGroup) {
       logQsoLocations.push({ call: q.call, grid: qGrid, myGrid: qMyGrid });
     }
   });
+  // Operator-requested 2026-09-22: how many QSOs that day. Recomputed from
+  // the rendered rows rather than kept as a running counter, because
+  // there's no API-provided per-file total to check it against
+  // (/api/log/files returns bare filenames, no record count) and a busy
+  // day can span more than one loadMoreLog() batch -- counting what's
+  // actually in the DOM is correct by construction whether this is a
+  // brand-new group, a pagination continuation, or a live QSO
+  // refreshLogHead() just prepended, instead of a separate count that
+  // could drift out of sync with what's on screen.
+  var dayTextEl = group.querySelector('.daydate');
+  var dayCount = group.querySelectorAll('.frow').length;
+  dayTextEl.textContent = dayLabel(file) + ' · ' + dayCount + ' QSO' + (dayCount === 1 ? '' : 's');
   if (logViewMode === 'map' && logMapGeo) renderLogMap();
 }
 
