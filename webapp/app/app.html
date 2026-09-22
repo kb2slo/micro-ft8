@@ -275,32 +275,13 @@ button:disabled{opacity:.45}
 .frow-extra .distbearing{font-family:ui-monospace,monospace}
 .frow-extra .comment{font-style:italic;overflow-wrap:anywhere}
 #logMore{padding:.7rem 1rem;text-align:center;color:GrayText;font-size:.8rem}
-/* Plain two-button segmented toggle, same flat/hairline language as the
-   rest of the app -- not #tabbar (that's fixed-position, page-level nav;
-   this is a within-screen view switch). */
-#logViewToggle{display:flex;padding:.6rem 1rem 0;gap:0}
-#logViewToggle button{flex:1;padding:.4rem 0;font-size:.8rem;border:1px solid GrayText;background:transparent;color:GrayText}
-#logViewToggle button:first-child{border-radius:.4rem 0 0 .4rem}
-#logViewToggle button:last-child{border-radius:0 .4rem .4rem 0;border-left:0}
-#logViewToggle button.on{background:var(--accent);border-color:var(--accent);color:Canvas;font-weight:700}
-/* Fixed ocean/land colors regardless of app theme -- same reasoning as
-   #opSlotBar's own comment: this is a map, not themed chrome, and land/
-   ocean contrast reads better fixed than flipping with light/dark. */
-#logMapWrap{padding:.75rem 1rem}
-/* touch-action:none is load-bearing, not cosmetic -- without it the browser's
-   own native pinch-zoom/pan on the canvas element fights the custom gesture
-   handling below (both trying to interpret the same touches). */
-#logMapCanvas{width:100%;height:60vh;display:block;border-radius:.5rem;background:#0a1428;touch-action:none;cursor:grab}
-#logMapNote{padding:.4rem 0 0;text-align:center}
 
 /* ---- tools ---- */
 /* One card per §12.2 tier (RFC 0004 §12): band conditions is offline-
-   derived with no live/stale state to report; space weather and spots are
-   online, so each gets its own #...Note element for "loading…"/
-   "unreachable"/"cannot reach spot source" -- never a blank card and never
-   a stale value with nothing marking it stale. */
+   derived with no live/stale state to report; space weather is online, so
+   it gets its own #...Note element for "loading…"/"unreachable" -- never a
+   blank card and never a stale value with nothing marking it stale. */
 .toolsnote{font-weight:400;text-transform:none;letter-spacing:normal;font-size:.7rem;color:GrayText}
-.toolscaveat{padding:0 1rem .3rem;font-size:.7rem;color:GrayText}
 #toolsEmptyNote{padding:.5rem 1rem;font-size:.8rem;color:GrayText}
 .swrow{padding:.5rem 1rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent);display:flex;justify-content:space-between;font-size:.85rem}
 .swrow .v{font-family:ui-monospace,monospace;font-weight:700}
@@ -447,39 +428,27 @@ button:disabled{opacity:.45}
        walks logFiles transparently: file boundaries are an implementation
        detail, not something the operator navigates. -->
   <section id=view-log>
-    <!-- List/Map toggle (I30): a vector basemap, not tiles -- RFC 0004 §12.5.
-         Map data is a QSO collection built alongside logEntriesByCall as the
-         log loads, not "the device log" itself, so a later remote-logbook
-         source is a second contributor rather than a rewrite. -->
-    <div id=logViewToggle>
-      <button id=logViewListBtn type=button class=on>List</button>
-      <button id=logViewMapBtn type=button>Map</button>
-    </div>
     <div id=logToolbar>
       <a id=logDownloadAll class=dlink href=#>Download full ADI</a>
       <a id=logClearAll class="dlink dlink-danger" href=#>Clear all ADI files</a>
     </div>
     <div id=logList></div>
     <div id=logMore hidden><button id=logMoreBtn type=button>Load older QSOs</button></div>
-    <div id=logMapWrap hidden>
-      <canvas id=logMapCanvas></canvas>
-      <div id=logMapNote class=toolsnote></div>
-    </div>
   </section>
 
   <!-- ================= TOOLS ================= -->
   <!-- What the operator consults *instead of* the radio (RFC 0004 §12.1):
        band conditions (offline-derived half + online-optional space
-       weather) and POTA/SOTA spot chasing (online-required). Every card
-       names its own tier per §12.2 and degrades visibly -- never a stale
-       value rendered as a current one. -->
+       weather) and the full-screen map (I30, its own page per RFC 0004
+       §12.5 addendum -- QSOs/Decodes/Spots as independent data layers).
+       Every card names its own tier per §12.2 and degrades visibly --
+       never a stale value rendered as a current one. -->
   <section id=view-tools>
     <div class=hd>Space weather &middot; online <span id=spaceWxNote class=toolsnote></span></div>
     <div id=spaceWxRow></div>
 
-    <div class="hd sep">POTA / SOTA spots (FT8) &middot; online <span id=spotsNote class=toolsnote></span></div>
-    <div class=toolscaveat>Worked/new reflects only log days loaded this session.</div>
-    <div id=spotsRows></div>
+    <div class="hd sep">Map</div>
+    <a id=toolsMapLink class=dlink href=map.html>Open map &rarr;</a>
   </section>
 
 </div>
@@ -916,9 +885,7 @@ function showView(name, animate) {
   if (name === 'tools' && !toolsLoadedOnce) {
     toolsLoadedOnce = true;
     fetchSpaceWx();
-    fetchSpots();
     setInterval(fetchSpaceWx, SPACE_WX_REFRESH_MS);
-    setInterval(fetchSpots, SPOTS_REFRESH_MS);
   }
 }
 document.querySelectorAll('#tabbar button').forEach(function (b) {
@@ -1977,7 +1944,7 @@ function renderDecodes() {
       // never seen sending a grid.
       var senderCall = extractSenderCall(d.x);
       var allCalls = extractAllCallsigns(d.x);
-      var theirGrid = senderCall && callsignGridCache[senderCall];
+      var theirGrid = senderCall && cacheGridOf(callsignGridCache[senderCall]);
       var distBearing = theirGrid ? fmtDistBearing(lastCfg.grid, theirGrid) : '';
       return '<div class=drow data-id="' + d.id + '">' +
         '<div class=meta><span>DT ' + fmtDt(d.dt) + '</span><span>' + d.hz + ' Hz</span><span>' +
@@ -2119,12 +2086,6 @@ var logEntriesByCall = {};  // callsign -> [{file,time,band,freq,rst_sent,rst_rc
                              // up in appendLogRows() as the Log tab pages through day
                              // files -- only covers what's been loaded so far this
                              // session, not necessarily the whole log (see showCallInfo)
-var logQsoLocations = [];   // [{call,grid,myGrid}] -- one per QSO with a plottable grid on
-                             // both ends, built alongside logEntriesByCall in the same
-                             // loop (I30). A collection built as the log loads, not "the
-                             // device log" itself, per the roadmap's own northstar note:
-                             // a later remote-logbook source becomes a second contributor
-                             // to this array rather than a rewrite of the map.
 var logDone = false;         // every file drained, nothing left anywhere
 var logLoading = false;
 var logRefreshing = false;
@@ -2221,15 +2182,8 @@ function setDistUnit(v) {
   distUnit = v;
   try { localStorage.setItem(DIST_UNIT_KEY, v); } catch (e) { /* applies live even if not persisted */ }
   // Cheap, already-in-memory data; Log rows already on screen don't
-  // retroactively update. Tools' spots card is included (operator-found
-  // 2026-09-22, same class of bug), gated on toolsLoadedOnce:
-  // spotsState.rows === null means "cannot reach spot source" to that
-  // renderer, which is true after a failed fetch but *not* true before the
-  // first fetch has ever run -- calling it unconditionally here would show
-  // that false claim the moment the operator changes units on Operate,
-  // before ever opening Tools.
+  // retroactively update.
   renderDecodes();
-  if (toolsLoadedOnce) renderSpots();
 }
 
 // 'system' (default) tracks the phone's own prefers-color-scheme via CSS
@@ -2252,7 +2206,6 @@ function setTheme(v) {
   themePref = v;
   try { localStorage.setItem(THEME_KEY, v); } catch (e) { /* applies live even if not persisted */ }
   applyTheme();
-  if (logViewMode === 'map') renderLogMap(); // map colors follow theme too (2026-09-22)
 }
 function applyTheme() {
   if (themePref === 'system') {
@@ -2291,13 +2244,30 @@ function fmtDistBearing(myGrid, theirGrid) {
 // callsign->grid map (localStorage, survives reload), and every row -- with
 // or without its own grid -- looks its sender up in that map. A later
 // decode for the same callsign with a *different* grid simply overwrites
-// the entry (portable/mobile operators, or an earlier bad read).
+// the entry (portable/mobile operators, or an earlier bad read). `ts` is
+// re-stamped on *every* such decode, not only one that actually changes the
+// grid -- it means "last heard sending a resolvable grid", which is what
+// map.html's "over the last..." filter needs; stamping it only on a changed
+// grid (the first cut of this, 2026-09-22) silently froze it at first-heard
+// for every station whose grid never moves, which is nearly all of them --
+// found from a real phone's decode cache, accumulated over real operating
+// sessions, showing under "All time" only and nothing shorter, days after
+// those stations were last actually heard.
 //
 // Message parsing here is deliberately conservative, not a full FT8 grammar
 // parser: false negatives (missing a real mapping) are harmless, it just
 // tries again next decode; false positives (caching a WRONG grid) are what
 // actually misleads the operator, so anything ambiguous is skipped rather
 // than guessed at.
+//
+// Value shape is {grid, ts} (ts = phone-clock ms when last updated), not a
+// bare grid string -- added 2026-09-22 so map.html's Decodes layer can offer
+// an "over the last..." recency filter the same way QSOs and spots already
+// can. cacheGridOf()/cacheTsOf() read either shape so entries written by an
+// older build (a bare string, still sitting in an existing operator's
+// localStorage after this update) keep working rather than breaking on
+// upgrade -- they just have no known ts until next heard, same as this
+// callsign never having been cached at all.
 var CALLSIGN_GRID_CACHE_KEY = 'microft8_callsign_grids_v1';
 var callsignGridCache = {};
 function loadCallsignGridCache() {
@@ -2309,6 +2279,9 @@ function loadCallsignGridCache() {
 function saveCallsignGridCache() {
   try { localStorage.setItem(CALLSIGN_GRID_CACHE_KEY, JSON.stringify(callsignGridCache)); }
   catch (e) { /* quota/private browsing -- just doesn't persist this tick */ }
+}
+function cacheGridOf(entry) {
+  return entry ? (typeof entry === 'string' ? entry : (entry.grid || '')) : '';
 }
 
 var GRID_TOKEN_RE = /^[A-R]{2}[0-9]{2}([A-X]{2})?$/;
@@ -2369,8 +2342,8 @@ function learnCallsignGrid(text) {
   if (!GRID_TOKEN_RE.test(last) || NON_CALL_WORDS[last]) return;
   if (!gridToLatLon(last)) return; // second validation pass, cheap and already exists
   var call = extractSenderCall(text);
-  if (!call || callsignGridCache[call] === last) return;
-  callsignGridCache[call] = last;
+  if (!call) return;
+  callsignGridCache[call] = { grid: last, ts: Date.now() };
   saveCallsignGridCache();
 }
 
@@ -2530,133 +2503,6 @@ function renderSpaceWx() {
   row.innerHTML = parts.join('');
 }
 
-// ---- online-required: POTA/SOTA spots (§12.2, §12.3) ----
-// POTA's activator-only endpoint (31,560 B), not /spot (260,268 B) -- §12.3/
-// §12.8. SOTA's api2.sota.org.uk/api/spots/{count}/all, named in RFC 0004
-// §12.3, was found dead (a "DEPRECATED" stub) while building this slice;
-// api-db2.sota.org.uk/api/spots/{count}/all/all is what SOTAwatch3 itself
-// calls today and returns real spots with the same open CORS. 50, matching
-// SOTAwatch3's own default page size.
-var POTA_ACTIVATOR_URL = 'https://api.pota.app/spot/activator';
-var SOTA_SPOTS_URL = 'https://api-db2.sota.org.uk/api/spots/50/all/all';
-var SPOTS_REFRESH_MS = 5 * 60 * 1000;
-var spotsState = { rows: null, fetchedAt: 0 };
-
-// Approximate amateur band edges (kHz) for classifying an arbitrary spot
-// frequency to one of BANDS -- POTA/SOTA spots land anywhere in a band
-// (CW/SSB/data), not just at BANDS' own FT8 calling frequency, so matching
-// against the nearest FT8 frequency would misclassify. Common-allocation
-// widths, good enough for filtering; not a regulatory table.
-var BAND_EDGES_KHZ = [
-  { name: '160m', lo: 1800, hi: 2000 },
-  { name: '80m', lo: 3500, hi: 4000 },
-  { name: '60m', lo: 5250, hi: 5450 },
-  { name: '40m', lo: 7000, hi: 7300 },
-  { name: '30m', lo: 10100, hi: 10150 },
-  { name: '20m', lo: 14000, hi: 14350 },
-  { name: '17m', lo: 18068, hi: 18168 },
-  { name: '15m', lo: 21000, hi: 21450 },
-  { name: '12m', lo: 24890, hi: 24990 },
-  { name: '10m', lo: 28000, hi: 29700 },
-  { name: '6m', lo: 50000, hi: 54000 },
-  { name: '2m', lo: 144000, hi: 148000 }
-];
-function khzToBandName(khz) {
-  for (var i = 0; i < BAND_EDGES_KHZ.length; i++) {
-    var e = BAND_EDGES_KHZ[i];
-    if (khz >= e.lo && khz <= e.hi) return e.name;
-  }
-  return '';
-}
-// Reuses parseActiveBands() (Settings' own band-filter parser, above) --
-// same lenient parse, same "empty/unrecognized means every band" fallback.
-function activeBandFilter() {
-  var parsed = parseActiveBands(lastCfg.active_bands);
-  var wantByName = {};
-  BANDS.forEach(function (b) { if (parsed.want[b.n]) wantByName[b.name] = true; });
-  return function (bandName) { return !parsed.any || !!wantByName[bandName]; };
-}
-function isWorkedCall(call) {
-  return !!(logEntriesByCall[call] && logEntriesByCall[call].length);
-}
-
-async function fetchSpots() {
-  var potaRows = [], sotaRows = [], anyOk = false;
-  try {
-    var pr = await fetch(POTA_ACTIVATOR_URL, { cache: 'no-store' });
-    var pj = await pr.json();
-    potaRows = pj.map(function (s) {
-      var khz = parseFloat(s.frequency);
-      return { program: 'POTA', call: s.activator, ref: s.reference, name: s.parkName || s.name,
-               band: khzToBandName(khz), mode: s.mode, grid: s.grid6 || s.grid4,
-               lat: null, lon: null, ts: s.spotTime };
-    });
-    anyOk = true;
-  } catch (e) { /* POTA down this tick -- SOTA half may still be good */ }
-  try {
-    var sr = await fetch(SOTA_SPOTS_URL, { cache: 'no-store' });
-    var sj = await sr.json();
-    sotaRows = sj.filter(function (s) { return s.summitCode && s.summitCode !== 'DEPRECATED'; })
-      .map(function (s) {
-        var khz = s.frequency * 1000;
-        return { program: 'SOTA', call: s.activatorCallsign, ref: s.summitCode, name: s.summitName,
-                 band: khzToBandName(khz), mode: s.mode, grid: null,
-                 lat: s.latitude, lon: s.longitude, ts: s.timeStamp };
-      });
-    anyOk = true;
-  } catch (e) { /* SOTA down this tick -- POTA half may still be good */ }
-  if (anyOk) {
-    var inBand = activeBandFilter();
-    // Operator-requested 2026-09-21: this app only operates FT8/FT4, so a
-    // CW/SSB/FM activation isn't actionable here the way an FT8 one is.
-    spotsState.rows = potaRows.concat(sotaRows).filter(function (r) {
-      return r.band && inBand(r.band) && r.mode && r.mode.toUpperCase() === 'FT8';
-    });
-    spotsState.rows.sort(function (a, b) { return parseUtcIso(b.ts) - parseUtcIso(a.ts); });
-    spotsState.fetchedAt = Date.now();
-  }
-  renderSpots();
-}
-function renderSpots() {
-  var rows = document.getElementById('spotsRows');
-  var note = document.getElementById('spotsNote');
-  if (spotsState.rows == null) {
-    rows.innerHTML = '';
-    note.textContent = 'cannot reach spot source';
-    return;
-  }
-  note.textContent = 'updated ' + fmtAgo(spotsState.fetchedAt);
-  if (!spotsState.rows.length) {
-    rows.innerHTML = '<div id=toolsEmptyNote>No activator spots on your active bands right now.</div>';
-    return;
-  }
-  rows.innerHTML = spotsState.rows.map(function (r) {
-    var distBearing = '';
-    if (lastCfg.grid) {
-      if (r.grid) {
-        distBearing = fmtDistBearing(lastCfg.grid, r.grid);
-      } else if (r.lat != null && r.lon != null) {
-        var a = gridToLatLon(lastCfg.grid);
-        if (a) {
-          var gc = greatCircle(a, { lat: r.lat, lon: r.lon });
-          distBearing = fmtKmBearing(gc.km, gc.bearing);
-        }
-      }
-    }
-    var worked = isWorkedCall(r.call);
-    return '<div class=spotrow><div class=spotrow-main>' +
-      '<span class="callink call" data-call="' + esc(r.call) + '">' + esc(r.call) + '</span>' +
-      '<span class="wflag ' + (worked ? 'wflag-worked' : 'wflag-new') + '">' + (worked ? 'worked' : 'new') +
-      '</span></div><div class=sub><span>' + esc(r.program) + ' ' + esc(r.ref) +
-      (r.name ? ' &middot; ' + esc(r.name) : '') + '</span><span>' + esc(r.band || '') +
-      (r.mode ? ' ' + esc(r.mode) : '') + '</span></div><div class=sub><span>' + esc(distBearing) +
-      '</span><span>' + fmtAgo(parseUtcIso(r.ts)) + '</span></div></div>';
-  }).join('');
-  rows.querySelectorAll('.callink').forEach(function (el) {
-    el.onclick = function () { showCallInfo(el.getAttribute('data-call')); };
-  });
-}
-
 // ---- Callsign info modal (Operate + QSOs) ----
 // Wraps every callsign token (from extractAllCallsigns -- sender and, when
 // present, addressee) within a decode's own text in its own clickable span.
@@ -2686,7 +2532,7 @@ function highlightCallInText(text, calls) {
 function showCallInfo(call) {
   if (!call) return;
   call = call.toUpperCase();
-  var grid = callsignGridCache[call];
+  var grid = cacheGridOf(callsignGridCache[call]);
   var distBearing = (grid && lastCfg.grid) ? fmtDistBearing(lastCfg.grid, grid) : '';
   var qsoHist = logEntriesByCall[call] || [];
   var heard = [];
@@ -2843,10 +2689,6 @@ function appendLogRows(file, rows, prependGroup) {
       logEntriesByCall[callKey].push({ file: file, time: q.time, band: q.band, freq: q.freq,
                                        rst_sent: q.rst_sent, rst_rcvd: q.rst_rcvd });
     }
-    var qGrid = (q.grid || '').toUpperCase(), qMyGrid = (q.my_grid || '').toUpperCase();
-    if (qGrid && qMyGrid && gridToLatLon(qGrid) && gridToLatLon(qMyGrid)) {
-      logQsoLocations.push({ call: q.call, grid: qGrid, myGrid: qMyGrid });
-    }
   });
   // Operator-requested 2026-09-22: how many QSOs that day. Recomputed from
   // the rendered rows rather than kept as a running counter, because
@@ -2860,7 +2702,6 @@ function appendLogRows(file, rows, prependGroup) {
   var dayTextEl = group.querySelector('.daydate');
   var dayCount = group.querySelectorAll('.frow').length;
   dayTextEl.textContent = dayLabel(file) + ' · ' + dayCount + ' QSO' + (dayCount === 1 ? '' : 's');
-  if (logViewMode === 'map' && logMapGeo) renderLogMap();
 }
 
 // Mirrors adif.cpp's adif_format_log_record() field-for-field: same tag
@@ -2987,655 +2828,6 @@ async function downloadAllAdif(linkEl) {
   }
 }
 
-// ===================== Log: map (I30, RFC 0004 §12.4/§12.5) =====================
-// A vector basemap, not bundled tiles (§12.5 -- §11's tile ban stands, this
-// is a different artefact): `ne_110m_land.json` (Natural Earth 110m land,
-// public domain, stripped of unused properties/bbox/crs and rounded to 2
-// decimal places -- 84,718 B, down from the raw file's 138,160 B). Ships as
-// its own bundle file, never inlined -- `web_fs_load()`'s 512 KB per-file
-// cap and `app.html`'s own size (RFC 0004 §4). No tile caching is possible
-// on this origin at all (§12.4: Cache API and Service Workers are both
-// absent on non-secure `http://micro-ft8.local`), so this is the only
-// offline map option, not a cost-saving choice over one.
-// Three separate bundle files, not one merged blob -- each is independently
-// useful (land alone is a working map; borders are an overlay on it), and
-// keeping them separate means adding a fourth layer later never means
-// re-shipping the other three. All at 110m resolution, matching the land
-// layer already here: measured 2026-09-22, country borders (stripped the
-// same way as land -- name/iso_a2 only, coords rounded to 2 decimals) is
-// 174,200 B; US states at 110m is US-only (the *50m* states/provinces layer
-// covers 9 countries -- US, Canada, Russia, India, China, Indonesia,
-// Brazil, Australia, South Africa -- but stripped is ~1 MB, over the 512 KB
-// per-file cap; US-only at 110m is 41,452 B and fits easily). Both carry
-// MultiPolygon geometries (29 of 177 countries, 3 of 51 states -- island
-// nations, Hawaii, etc.), which the land layer's own drawing code never
-// needed to handle (checked: land is Polygon-only) -- see forEachRing().
-var LOG_MAP_LAND_URL = 'ne_110m_land.json';
-var LOG_MAP_COUNTRIES_URL = 'ne_110m_countries.json';
-var LOG_MAP_US_STATES_URL = 'ne_110m_us_states.json';
-var logMapGeo = null;            // land -- required; its absence is "basemap unavailable"
-var logMapCountriesGeo = null;   // border overlay -- optional, absence just means no layer
-var logMapUsStatesGeo = null;    // border overlay -- optional, also zoom-gated (LOG_MAP_STATE_BORDER_ZOOM_MIN)
-var logMapLoadedOnce = false;
-var logViewMode = 'list';    // 'list' | 'map'
-// Reopened 2026-09-22, operator feedback: was fixed regardless of app theme
-// (same reasoning as #opSlotBar's countdown bar) -- now follows light/dark
-// like the rest of the app. Three candidates ('outline', a filled hybrid,
-// and the original fixed night-map look) were built side by side and
-// screenshotted for comparison; operator picked 'outline' -- white/black,
-// inverted in dark, coastlines as strokes with no land fill. The other two
-// are gone rather than kept as unused options, per this repo's own
-// pre-alpha discipline (delete what a decision replaces).
-// countryBorder/stateBorder sit between the coastline (full opacity) and
-// the grid lines (.15) -- three visible tiers of "how significant is this
-// line" without adding new hues. terminator is deliberately not grayscale
-// (gold/amber) since it's the one overlay that isn't a boundary at all --
-// distinguished by color *and* shape (dashed line) from the solid-orange
-// own-grid marker, not just a slightly different orange.
-var LOG_MAP_PALETTE = {
-  light: { ocean: '#ffffff', land: '#ffffff', coast: '#000000', countryBorder: 'rgba(0,0,0,.55)', stateBorder: 'rgba(0,0,0,.3)', grid: 'rgba(0,0,0,.15)', gridLabel: 'rgba(0,0,0,.4)', path: 'rgba(0,0,0,.35)', own: '#ea580c', qso: '#1d4ed8', terminator: '#ca8a04' },
-  dark: { ocean: '#000000', land: '#000000', coast: '#ffffff', countryBorder: 'rgba(255,255,255,.55)', stateBorder: 'rgba(255,255,255,.3)', grid: 'rgba(255,255,255,.15)', gridLabel: 'rgba(255,255,255,.4)', path: 'rgba(255,255,255,.35)', own: '#fb923c', qso: '#7aa2f7', terminator: '#fbbf24' }
-};
-function logMapDarkMode() {
-  if (themePref === 'dark') return true;
-  if (themePref === 'light') return false;
-  return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-}
-function logMapPalette() {
-  return logMapDarkMode() ? LOG_MAP_PALETTE.dark : LOG_MAP_PALETTE.light;
-}
-// Re-renders on a live system-theme flip (matchMedia change) the same way
-// setTheme() below re-renders on an explicit Settings choice -- both are
-// "the operator's theme just changed," this just has two trigger paths.
-if (window.matchMedia) {
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
-    if (logViewMode === 'map') renderLogMap();
-  });
-}
-
-function setLogView(mode) {
-  logViewMode = mode;
-  document.getElementById('logViewListBtn').classList.toggle('on', mode === 'list');
-  document.getElementById('logViewMapBtn').classList.toggle('on', mode === 'map');
-  document.getElementById('logList').hidden = mode !== 'list';
-  // logDone (loadMoreLog()'s own state) decides whether "Load older QSOs"
-  // belongs on screen at all -- restoring List must respect that, not just
-  // unhide unconditionally, or a fully-loaded log would show a dead button.
-  document.getElementById('logMore').hidden = mode !== 'list' || logDone;
-  document.getElementById('logMapWrap').hidden = mode !== 'map';
-  if (mode !== 'map') return;
-  if (!logMapLoadedOnce) {
-    logMapLoadedOnce = true;
-    loadLogMapBasemap();
-  } else {
-    renderLogMap();
-  }
-}
-document.getElementById('logViewListBtn').onclick = function () { setLogView('list'); };
-document.getElementById('logViewMapBtn').onclick = function () { setLogView('map'); };
-
-async function fetchLogMapLayer(url) {
-  try {
-    var r = await fetch(url, { cache: 'no-store' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return await r.json();
-  } catch (e) {
-    return null;
-  }
-}
-async function loadLogMapBasemap() {
-  var note = document.getElementById('logMapNote');
-  note.textContent = 'loading basemap…';
-  var results = await Promise.all([
-    fetchLogMapLayer(LOG_MAP_LAND_URL),
-    fetchLogMapLayer(LOG_MAP_COUNTRIES_URL),
-    fetchLogMapLayer(LOG_MAP_US_STATES_URL)
-  ]);
-  logMapGeo = results[0];
-  logMapCountriesGeo = results[1];
-  logMapUsStatesGeo = results[2];
-  if (!logMapGeo) {
-    note.textContent = 'basemap unavailable';
-    return;
-  }
-  // Country/state borders are an overlay on a basemap that's already
-  // working -- their fetch failing on its own (a corrupt push of just that
-  // file, say) shouldn't take land/ocean/grid/pins down with it, so there's
-  // no "unavailable" message for those two specifically; they just don't
-  // draw, same as a card degrading in Tools rather than the whole app.
-  renderLogMap();
-}
-
-// ---- pan/zoom (operator-requested 2026-09-22) ----
-// centerLon/centerLat is the geographic point at the canvas center; scale is
-// px/degree, the *same* value for both axes always -- an equirectangular
-// projection distorts the instant x and y get different scales, and the
-// operator was explicit that cropping is preferable to that. logMapBaseScale
-// is the "cover" scale (max, not min, of the two per-axis fit scales): it
-// fills the canvas with no blank letterbox bars and no distortion, cropping
-// whichever axis has room to spare -- same idea as CSS `background-size:
-// cover`. zoom=1 is that baseline; panning/zooming never goes coarser than
-// it, so the map is never showing blank space by default or after zooming
-// out as far as it goes.
-var logMapCenterLon = 0, logMapCenterLat = 0, logMapCenterSet = false;
-var logMapZoom = 1, logMapBaseScale = 1;
-var LOG_MAP_MAX_ZOOM = 16;
-// "When close enough" (operator's own phrase) for tap-to-inspect: below this
-// zoom, pins are too close together on screen for a tap to reliably mean one
-// station rather than its neighbours, so taps are ignored rather than
-// guessing which pin was meant.
-var LOG_MAP_TAP_ZOOM_MIN = 4;
-var logMapPins = []; // rebuilt every render; hit-tested on tap
-
-function computeLogMapBaseScale(w, h) {
-  return Math.max(w / 360, h / 180);
-}
-function logMapScale() { return logMapBaseScale * logMapZoom; }
-// lonOffset (…, -360, 0, 360, …) picks which antimeridian-wrapped copy of a
-// point to project -- see LOG_MAP_WRAP_OFFSETS below for why every drawn
-// point tries all three rather than assuming its stored (unshifted) copy is
-// the one on screen.
-function projectPoint(lon, lat, lonOffset, w, h) {
-  var s = logMapScale();
-  return { x: w / 2 + (lon + lonOffset - logMapCenterLon) * s, y: h / 2 - (lat - logMapCenterLat) * s };
-}
-function projectLonLat(lon, lat, w, h) { return projectPoint(lon, lat, 0, w, h); }
-function unprojectXY(x, y, w, h) {
-  var s = logMapScale();
-  return { lon: logMapCenterLon + (x - w / 2) / s, lat: logMapCenterLat - (y - h / 2) / s };
-}
-// Clamps zoom to [1, MAX]; clamps latitude so panning never scrolls past the
-// poles into blank canvas (no content to show there, ever -- cropping, not
-// distortion, applies here too); wraps longitude into a canonical range so
-// it does not grow without bound over a long pan session. Longitude itself
-// is never clamped -- LOG_MAP_WRAP_OFFSETS makes wraparound panning correct
-// at any center.
-function clampLogMapView(w, h) {
-  logMapZoom = Math.max(1, Math.min(LOG_MAP_MAX_ZOOM, logMapZoom));
-  var s = logMapScale();
-  var halfLatDeg = (h / 2) / s;
-  logMapCenterLat = halfLatDeg >= 90 ? 0 : Math.max(-90 + halfLatDeg, Math.min(90 - halfLatDeg, logMapCenterLat));
-  logMapCenterLon = ((logMapCenterLon + 180) % 360 + 360) % 360 - 180;
-}
-// Zooms so the geographic point under (clientX,clientY) stays under it,
-// standard "zoom to point" -- otherwise a pinch or wheel zoom would
-// re-center on the map's own center every time instead of where the
-// operator is actually looking.
-function logMapZoomAt(clientX, clientY, newZoom) {
-  var canvas = document.getElementById('logMapCanvas');
-  var rect = canvas.getBoundingClientRect();
-  var x = clientX - rect.left, y = clientY - rect.top;
-  var w = canvas.clientWidth, h = canvas.clientHeight;
-  var before = unprojectXY(x, y, w, h);
-  logMapZoom = newZoom;
-  clampLogMapView(w, h);
-  var after = projectLonLat(before.lon, before.lat, w, h);
-  var s = logMapScale();
-  logMapCenterLon += (after.x - x) / s;
-  logMapCenterLat -= (after.y - y) / s;
-  clampLogMapView(w, h);
-}
-
-// At most one of these three ever actually lands on screen -- the visible
-// span is never more than 360° wide at zoom>=1 (computeLogMapBaseScale's
-// "cover" fit guarantees that) -- but which one depends on how far the
-// operator has panned, and centerLon is intentionally never clamped, so
-// every drawn point (basemap vertex, pin, path point) has to try all three
-// rather than assume its stored coordinate is the visible copy.
-var LOG_MAP_WRAP_OFFSETS = [-360, 0, 360];
-
-function drawLogMapBasemap(ctx, w, h) {
-  var pal = logMapPalette();
-  ctx.fillStyle = pal.ocean;
-  ctx.fillRect(0, 0, w, h);
-  ctx.fillStyle = pal.land;
-  ctx.strokeStyle = pal.coast;
-  ctx.lineWidth = 1;
-  LOG_MAP_WRAP_OFFSETS.forEach(function (lonOffset) {
-    ctx.beginPath();
-    logMapGeo.features.forEach(function (f) {
-      f.geometry.coordinates.forEach(function (ring) { // Polygon: [ring, ...]; every ring here (checked) is a plain [lon,lat] loop, no nested MultiPolygon
-        ring.forEach(function (pt, i) {
-          var p = projectPoint(pt[0], pt[1], lonOffset, w, h);
-          if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
-        });
-        ctx.closePath();
-      });
-    });
-    ctx.fill();
-    if (pal.coast) ctx.stroke(); // 'night' palette has no separate coastline stroke, matches its original look
-  });
-}
-
-// GeoJSON Polygon coordinates are [ring, ring, ...]; MultiPolygon adds one
-// more nesting level, [[ring, ring, ...], [ring, ring, ...], ...] -- one
-// entry per disjoint piece (an island nation, Hawaii, Michigan's two
-// peninsulas). The land layer is Polygon-only (checked, see
-// drawLogMapBasemap()'s own comment) so it never needed this; country
-// borders (29 of 177 features) and US state borders (3 of 51) do.
-function forEachRing(geometry, cb) {
-  if (geometry.type === 'Polygon') {
-    geometry.coordinates.forEach(cb);
-  } else if (geometry.type === 'MultiPolygon') {
-    geometry.coordinates.forEach(function (poly) { poly.forEach(cb); });
-  }
-}
-
-// Stroke-only -- no fill, since the land layer already colors everything;
-// these just draw the political lines on top of it. Shared by both country
-// and US-state borders (only the geometry, color and gating differ), since
-// beyond that they're the same operation.
-function drawLogMapBorders(ctx, w, h, geo, color) {
-  if (!geo) return; // optional overlay -- absence is normal (§ loadLogMapBasemap), not an error to show
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1;
-  LOG_MAP_WRAP_OFFSETS.forEach(function (lonOffset) {
-    ctx.beginPath();
-    geo.features.forEach(function (f) {
-      forEachRing(f.geometry, function (ring) {
-        ring.forEach(function (pt, i) {
-          var p = projectPoint(pt[0], pt[1], lonOffset, w, h);
-          if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
-        });
-        ctx.closePath();
-      });
-    });
-    ctx.stroke();
-  });
-}
-// Country borders read at any zoom -- even a world view benefits from
-// seeing where nations are, same as a paper atlas. US states are gated:
-// at world/continent scale they're just noise until North America itself
-// is the thing being looked at.
-var LOG_MAP_STATE_BORDER_ZOOM_MIN = 2;
-
-// Grayline, in ham radio terms -- the day/night boundary, valuable for DX
-// because propagation is often best along it. Standard, public subsolar-
-// point geometry (the Cooper declination approximation and the usual
-// equation-of-time correction -- the same formulas any sunrise/grayline
-// tool uses), not a guessed heuristic: accurate to a fraction of a degree,
-// which is what a propagation-planning overlay needs, not survey precision.
-function subsolarPoint(date) {
-  var start = Date.UTC(date.getUTCFullYear(), 0, 1);
-  var dayOfYear = Math.floor((date.getTime() - start) / 86400000) + 1;
-  var utcHours = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
-  var decl = 23.45 * Math.sin(toRad(360 / 365 * (284 + dayOfYear)));
-  var B = toRad(360 / 365 * (dayOfYear - 81));
-  var eqOfTimeMin = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
-  var lon = -(utcHours - 12) * 15 - eqOfTimeMin / 4;
-  lon = ((lon + 180) % 360 + 360) % 360 - 180;
-  return { lat: decl, lon: lon };
-}
-// The terminator is every point 90° from the subsolar point -- where the
-// sun is exactly on the horizon. Derived from the standard zenith-angle
-// equation (sin(lat)sin(decl) + cos(lat)cos(decl)cos(H) = 0, solved for
-// lat) rather than looked up, same as greatCirclePoints() derives its own
-// interpolation rather than citing a black-box result. Sampled directly
-// across the full -180..180 range (cheap, 144 points) rather than only the
-// visible span, so panning never needs to recompute it mid-drag.
-function terminatorPoints(sub, n) {
-  var latS = toRad(sub.lat);
-  var pts = [];
-  for (var i = 0; i <= n; i++) {
-    var lon = -180 + (360 * i / n);
-    var H = toRad(lon - sub.lon);
-    var lat = Math.atan(-Math.cos(H) / Math.tan(latS)) * 180 / Math.PI;
-    pts.push({ lon: lon, lat: lat });
-  }
-  return pts;
-}
-function drawLogMapTerminator(ctx, w, h) {
-  var sub = subsolarPoint(new Date());
-  var pts = terminatorPoints(sub, 144);
-  ctx.strokeStyle = logMapPalette().terminator;
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([5, 4]); // dashed, deliberately -- distinct by shape, not just color, from the solid own-grid marker
-  LOG_MAP_WRAP_OFFSETS.forEach(function (lonOffset) {
-    ctx.beginPath();
-    var started = false, prevX = null;
-    pts.forEach(function (pt) {
-      var p = projectPoint(pt.lon, pt.lat, lonOffset, w, h);
-      if (prevX !== null && Math.abs(p.x - prevX) > w / 2) started = false; // antimeridian wrap, not a real chord
-      if (!started) { ctx.moveTo(p.x, p.y); started = true; } else { ctx.lineTo(p.x, p.y); }
-      prevX = p.x;
-    });
-    ctx.stroke();
-  });
-  ctx.setLineDash([]); // reset -- everything drawn after this expects a solid line
-}
-
-// Maidenhead squares are a deterministic partition of the globe (fields
-// 20°x10°, squares -- what this draws -- 2°x1°, subsquares 5'x2.5'): the
-// same math gridToLatLon() already uses to turn a grid string into a point,
-// just run as a set of fixed lines instead of one lookup. No data file, no
-// real computation cost -- only ever iterates the visible span, not the
-// globe. Gated below LOG_MAP_GRID_ZOOM_MIN because at the default "cover"
-// zoom the visible span is well over a hundred degrees wide -- a 2°x1° grid
-// at that scale is visual noise, not information (operator's own framing:
-// "only on zoom levels where it would be valuable").
-var LOG_MAP_SQUARE_LON = 2, LOG_MAP_SQUARE_LAT = 1;
-var LOG_MAP_GRID_ZOOM_MIN = 4;
-function drawLogMapGridSquares(ctx, w, h) {
-  if (logMapZoom < LOG_MAP_GRID_ZOOM_MIN) return;
-  var s = logMapScale();
-  var halfWDeg = (w / 2) / s, halfHDeg = (h / 2) / s;
-  var lonMin = logMapCenterLon - halfWDeg, lonMax = logMapCenterLon + halfWDeg;
-  var latMin = Math.max(-90, logMapCenterLat - halfHDeg), latMax = Math.min(90, logMapCenterLat + halfHDeg);
-
-  ctx.strokeStyle = logMapPalette().grid;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  var lonStart = Math.floor(lonMin / LOG_MAP_SQUARE_LON) * LOG_MAP_SQUARE_LON;
-  for (var lon = lonStart; lon <= lonMax; lon += LOG_MAP_SQUARE_LON) {
-    var p1 = projectLonLat(lon, latMin, w, h), p2 = projectLonLat(lon, latMax, w, h);
-    ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
-  }
-  var latStart = Math.floor(latMin / LOG_MAP_SQUARE_LAT) * LOG_MAP_SQUARE_LAT;
-  for (var lat = latStart; lat <= latMax; lat += LOG_MAP_SQUARE_LAT) {
-    var p1 = projectLonLat(lonMin, lat, w, h), p2 = projectLonLat(lonMax, lat, w, h);
-    ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
-  }
-  ctx.stroke();
-}
-
-// Inverse of the Maidenhead math gridToLatLon() already does: given a
-// square's SW corner (exact multiples of 2°/1° -- always true for lon/lat
-// as produced by drawLogMapGridSquares()'s own iteration), name the square.
-// Normalizes lon first since the caller's visible-range math can legitimately
-// hand this something past ±180 (centerLon is never clamped -- see
-// LOG_MAP_WRAP_OFFSETS' own comment).
-function gridSquareLabel(lon, lat) {
-  lon = ((lon + 180) % 360 + 360) % 360 - 180;
-  var loShift = lon + 180, laShift = lat + 90;
-  var fieldLon = Math.floor(loShift / 20), fieldLat = Math.floor(laShift / 10);
-  var squareLon = Math.floor((loShift - fieldLon * 20) / LOG_MAP_SQUARE_LON);
-  var squareLat = Math.floor((laShift - fieldLat * 10) / LOG_MAP_SQUARE_LAT);
-  return String.fromCharCode(65 + fieldLon) + String.fromCharCode(65 + fieldLat) + squareLon + squareLat;
-}
-
-// Operator-specified algorithm, 2026-09-22: same font/size as the "small"
-// decode-row text (.drow .meta -- ui-monospace, .7rem/11.2px), shown only
-// once it fits comfortably (< 60% of the square's on-screen area -- below
-// that, a label would be more clutter than information), top-left of the
-// square, in a translucent tint of the coastline color so a coastline
-// passing behind the text still shows through rather than being masked by
-// it. "Consider sparsely" is implemented as a second, tighter threshold:
-// once text area is under 25% of the square (roomy, not just "fits"), every
-// visible square is labeled; between 25% and 60%, only a checkerboard half
-// of them are, to avoid a wall of text at the threshold where labels first
-// turn on.
-var LOG_MAP_LABEL_FONT_PX = 11.2;
-var LOG_MAP_LABEL_FONT = LOG_MAP_LABEL_FONT_PX + 'px ui-monospace, monospace';
-var LOG_MAP_LABEL_MAX_AREA_FRAC = 0.6;
-var LOG_MAP_LABEL_DENSE_AREA_FRAC = 0.25;
-function drawLogMapGridLabels(ctx, w, h) {
-  if (logMapZoom < LOG_MAP_GRID_ZOOM_MIN) return; // no point labeling a grid that isn't drawn
-  var s = logMapScale();
-  var halfWDeg = (w / 2) / s, halfHDeg = (h / 2) / s;
-  var lonMin = logMapCenterLon - halfWDeg, lonMax = logMapCenterLon + halfWDeg;
-  var latMin = Math.max(-90, logMapCenterLat - halfHDeg), latMax = Math.min(90, logMapCenterLat + halfHDeg);
-
-  var squareAreaPx = (LOG_MAP_SQUARE_LON * s) * (LOG_MAP_SQUARE_LAT * s);
-  ctx.font = LOG_MAP_LABEL_FONT;
-  // Monospace, and every label is exactly 4 characters -- one measurement
-  // (any 4-char string) is exact for all of them, not an approximation.
-  var textArea = ctx.measureText('AA00').width * LOG_MAP_LABEL_FONT_PX;
-  if (textArea >= LOG_MAP_LABEL_MAX_AREA_FRAC * squareAreaPx) return;
-  var sparse = textArea >= LOG_MAP_LABEL_DENSE_AREA_FRAC * squareAreaPx;
-
-  ctx.fillStyle = logMapPalette().gridLabel;
-  ctx.textBaseline = 'top';
-  var lonStart = Math.floor(lonMin / LOG_MAP_SQUARE_LON) * LOG_MAP_SQUARE_LON;
-  var latStart = Math.floor(latMin / LOG_MAP_SQUARE_LAT) * LOG_MAP_SQUARE_LAT;
-  var li = 0;
-  for (var lon = lonStart; lon <= lonMax; lon += LOG_MAP_SQUARE_LON, li++) {
-    var lj = 0;
-    for (var lat = latStart; lat <= latMax; lat += LOG_MAP_SQUARE_LAT, lj++) {
-      if (sparse && (li + lj) % 2 !== 0) continue;
-      // Top-left of the square on screen = its NW corner geographically --
-      // higher latitude (y decreases upward), same (west) longitude.
-      var p = projectLonLat(lon, lat + LOG_MAP_SQUARE_LAT, w, h);
-      ctx.fillText(gridSquareLabel(lon, lat), p.x + 2, p.y + 2);
-    }
-  }
-}
-
-// Standard spherical slerp along a great circle (Ed Williams' aviation
-// formulary -- exact trigonometry for a known angular distance, not an
-// invented heuristic; same rigor class as gridToLatLon()/greatCircle()
-// already in this file, just interpolating intermediate points instead of
-// only the endpoint distance/bearing). Returns n+1 {lat,lon} points, a..b
-// inclusive.
-function greatCirclePoints(a, b, n) {
-  var la1 = toRad(a.lat), lo1 = toRad(a.lon), la2 = toRad(b.lat), lo2 = toRad(b.lon);
-  var dLat = la2 - la1, dLon = lo2 - lo1;
-  var h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
-  var d = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h)); // angular distance, radians
-  if (d < 1e-9) return [a, b];
-  var pts = [];
-  for (var i = 0; i <= n; i++) {
-    var f = i / n;
-    var A = Math.sin((1 - f) * d) / Math.sin(d), B = Math.sin(f * d) / Math.sin(d);
-    var x = A * Math.cos(la1) * Math.cos(lo1) + B * Math.cos(la2) * Math.cos(lo2);
-    var y = A * Math.cos(la1) * Math.sin(lo1) + B * Math.cos(la2) * Math.sin(lo2);
-    var z = A * Math.sin(la1) + B * Math.sin(la2);
-    pts.push({ lat: Math.atan2(z, Math.sqrt(x * x + y * y)) * 180 / Math.PI,
-               lon: Math.atan2(y, x) * 180 / Math.PI });
-  }
-  return pts;
-}
-function drawGreatCirclePath(ctx, w, h, a, b, lonOffset) {
-  var pts = greatCirclePoints(a, b, 32).map(function (p) { return projectPoint(p.lon, p.lat, lonOffset, w, h); });
-  ctx.beginPath();
-  var started = false;
-  pts.forEach(function (p, i) {
-    // A huge x-jump between consecutive points is the antimeridian wrap,
-    // not a real line across the whole map -- break the path there instead
-    // of drawing a spurious chord.
-    if (i > 0 && Math.abs(p.x - pts[i - 1].x) > w / 2) started = false;
-    if (!started) { ctx.moveTo(p.x, p.y); started = true; } else { ctx.lineTo(p.x, p.y); }
-  });
-  ctx.stroke();
-}
-
-function renderLogMap() {
-  var canvas = document.getElementById('logMapCanvas');
-  var note = document.getElementById('logMapNote');
-  if (!logMapGeo) { note.textContent = 'basemap unavailable'; return; }
-  var cssW = canvas.clientWidth, cssH = canvas.clientHeight;
-  if (!cssW || !cssH) return; // not laid out yet (e.g. called while hidden)
-  var dpr = window.devicePixelRatio || 1;
-  canvas.width = cssW * dpr;
-  canvas.height = cssH * dpr;
-  var ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-  logMapBaseScale = computeLogMapBaseScale(cssW, cssH);
-  if (!logMapCenterSet) {
-    // First-ever render: center on the operator's own grid, not Greenwich --
-    // a blank mid-Atlantic default would show nothing relevant to them.
-    var own = lastCfg.grid ? gridToLatLon(lastCfg.grid) : null;
-    logMapCenterLon = own ? own.lon : 0;
-    logMapCenterLat = own ? own.lat : 0;
-    logMapCenterSet = true;
-  }
-  clampLogMapView(cssW, cssH);
-
-  var pal = logMapPalette();
-  drawLogMapBasemap(ctx, cssW, cssH);
-  drawLogMapBorders(ctx, cssW, cssH, logMapCountriesGeo, pal.countryBorder);
-  if (logMapZoom >= LOG_MAP_STATE_BORDER_ZOOM_MIN) {
-    drawLogMapBorders(ctx, cssW, cssH, logMapUsStatesGeo, pal.stateBorder);
-  }
-  drawLogMapGridSquares(ctx, cssW, cssH);
-  drawLogMapGridLabels(ctx, cssW, cssH);
-  drawLogMapTerminator(ctx, cssW, cssH);
-
-  // Dedupe by grid -- one pin/path per unique grid square, not per QSO
-  // (repeat contacts with the same station shouldn't multiply the ink).
-  // Tracks every distinct call seen at that grid too, for the tap-to-info
-  // popup -- almost always one, but never assumed to be.
-  var byGrid = {};
-  logQsoLocations.forEach(function (loc) {
-    if (!byGrid[loc.grid]) byGrid[loc.grid] = { grid: loc.grid, myGrid: loc.myGrid, calls: {}, lastCall: loc.call };
-    byGrid[loc.grid].calls[loc.call] = true;
-    byGrid[loc.grid].lastCall = loc.call;
-  });
-  var uniqueGrids = Object.keys(byGrid).map(function (g) { return byGrid[g]; });
-
-  ctx.strokeStyle = pal.path;
-  ctx.lineWidth = 1;
-  uniqueGrids.forEach(function (g) {
-    var a = gridToLatLon(g.myGrid), b = gridToLatLon(g.grid);
-    if (!a || !b) return;
-    LOG_MAP_WRAP_OFFSETS.forEach(function (lonOffset) { drawGreatCirclePath(ctx, cssW, cssH, a, b, lonOffset); });
-  });
-
-  logMapPins = [];
-  ctx.fillStyle = pal.qso;
-  uniqueGrids.forEach(function (g) {
-    var b = gridToLatLon(g.grid);
-    if (!b) return;
-    LOG_MAP_WRAP_OFFSETS.forEach(function (lonOffset) {
-      var p = projectPoint(b.lon, b.lat, lonOffset, cssW, cssH);
-      if (p.x < -20 || p.x > cssW + 20 || p.y < -20 || p.y > cssH + 20) return; // cheap off-screen cull
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-      ctx.fill();
-      logMapPins.push({ x: p.x, y: p.y, grid: g.grid, calls: Object.keys(g.calls), lastCall: g.lastCall });
-    });
-  });
-
-  var ownPt = lastCfg.grid ? gridToLatLon(lastCfg.grid) : null;
-  if (ownPt) {
-    LOG_MAP_WRAP_OFFSETS.forEach(function (lonOffset) {
-      var p = projectPoint(ownPt.lon, ownPt.lat, lonOffset, cssW, cssH);
-      if (p.x < -20 || p.x > cssW + 20 || p.y < -20 || p.y > cssH + 20) return;
-      ctx.fillStyle = pal.own;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
-      ctx.fill();
-    });
-  }
-
-  note.textContent = uniqueGrids.length + ' grid' + (uniqueGrids.length === 1 ? '' : 's') + ' logged' +
-    (logMapZoom >= LOG_MAP_TAP_ZOOM_MIN ? ' · tap a station for info' : '');
-}
-window.addEventListener('resize', function () { if (logViewMode === 'map') renderLogMap(); });
-// The terminator moves continuously (~0.25°/minute); a minute's drift is
-// invisible at any zoom this map renders at, so this is plenty rather than
-// a tighter interval that would just burn cycles for no visible gain.
-setInterval(function () { if (logViewMode === 'map') renderLogMap(); }, 60000);
-
-// Reuses the existing callsign-info bottom sheet (Operate/QSOs already tap a
-// call into this) rather than building a second info UI -- it already shows
-// QSO history, distance/bearing and a QRZ link, which is exactly "more
-// info". A grid pin almost always means one callsign; on the rare grid
-// shared by more than one, the most recently logged call there opens rather
-// than building a picker for an edge case.
-function handleLogMapTap(clientX, clientY) {
-  if (logMapZoom < LOG_MAP_TAP_ZOOM_MIN) return;
-  var rect = document.getElementById('logMapCanvas').getBoundingClientRect();
-  var x = clientX - rect.left, y = clientY - rect.top;
-  var best = null, bestD = 14; // px tap radius
-  logMapPins.forEach(function (p) {
-    var d = Math.hypot(p.x - x, p.y - y);
-    if (d < bestD) { bestD = d; best = p; }
-  });
-  if (best) showCallInfo(best.lastCall);
-}
-
-// Gesture handling: single-finger drag pans, two-finger pinch zooms (anchored
-// at the pinch midpoint), a tap under DRAG_CLAIM_PX of movement inspects a
-// station. stopPropagation() on every handler is load-bearing -- the map
-// canvas sits inside #viewport, which the swipe-tab IIFE listens on for the
-// Operate/QSOs/Tools gesture, and without it every pan here would *also* be
-// read as an attempt to swipe tabs. That means dragging the map can't also
-// swipe away from QSOs while on the Map view -- the bottom tab bar still
-// switches tabs, so this isn't a dead end, and it's the same trade-off every
-// map view makes (Leaflet and Google Maps both consume all touch gestures
-// within their own bounds for the same reason).
-(function () {
-  var canvas = document.getElementById('logMapCanvas');
-  var DRAG_CLAIM_PX = 10;
-  var dragging = false, dragMoved = 0, lastX = 0, lastY = 0;
-  var pinchStartDist = 0, pinchStartZoom = 1;
-
-  function touchDist(t1, t2) { return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY); }
-  function panBy(dx, dy, w, h) {
-    var s = logMapScale();
-    logMapCenterLon -= dx / s;
-    logMapCenterLat += dy / s;
-    clampLogMapView(w, h);
-  }
-
-  canvas.addEventListener('touchstart', function (e) {
-    e.stopPropagation();
-    if (e.touches.length === 1) {
-      dragging = true; dragMoved = 0;
-      lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
-    } else if (e.touches.length === 2) {
-      dragging = false;
-      pinchStartDist = touchDist(e.touches[0], e.touches[1]);
-      pinchStartZoom = logMapZoom;
-    }
-  }, { passive: true });
-
-  canvas.addEventListener('touchmove', function (e) {
-    e.stopPropagation();
-    e.preventDefault();
-    var w = canvas.clientWidth, h = canvas.clientHeight;
-    if (e.touches.length === 1 && dragging) {
-      var dx = e.touches[0].clientX - lastX, dy = e.touches[0].clientY - lastY;
-      dragMoved += Math.abs(dx) + Math.abs(dy);
-      lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
-      panBy(dx, dy, w, h);
-      renderLogMap();
-    } else if (e.touches.length === 2 && pinchStartDist > 0) {
-      var d = touchDist(e.touches[0], e.touches[1]);
-      var midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-      var midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-      logMapZoomAt(midX, midY, pinchStartZoom * (d / pinchStartDist));
-      renderLogMap();
-    }
-  }, { passive: false });
-
-  canvas.addEventListener('touchend', function (e) {
-    e.stopPropagation();
-    if (dragging && dragMoved < DRAG_CLAIM_PX && e.changedTouches.length === 1) {
-      handleLogMapTap(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
-    }
-    dragging = false;
-    pinchStartDist = 0;
-  }, { passive: true });
-
-  // Desktop/static-preview testing: drag to pan, wheel to zoom, a click
-  // under DRAG_CLAIM_PX to inspect -- same interaction, mouse events, since
-  // a real browser session (this repo's own verification method) has no
-  // touch input at all.
-  var mouseDown = false, mouseMoved = 0;
-  canvas.addEventListener('mousedown', function (e) {
-    mouseDown = true; mouseMoved = 0; lastX = e.clientX; lastY = e.clientY;
-  });
-  window.addEventListener('mousemove', function (e) {
-    if (!mouseDown) return;
-    var dx = e.clientX - lastX, dy = e.clientY - lastY;
-    mouseMoved += Math.abs(dx) + Math.abs(dy);
-    lastX = e.clientX; lastY = e.clientY;
-    panBy(dx, dy, canvas.clientWidth, canvas.clientHeight);
-    renderLogMap();
-  });
-  window.addEventListener('mouseup', function (e) {
-    if (mouseDown && mouseMoved < DRAG_CLAIM_PX) handleLogMapTap(e.clientX, e.clientY);
-    mouseDown = false;
-  });
-  canvas.addEventListener('wheel', function (e) {
-    e.preventDefault();
-    logMapZoomAt(e.clientX, e.clientY, logMapZoom * (e.deltaY < 0 ? 1.2 : 1 / 1.2));
-    renderLogMap();
-  }, { passive: false });
-})();
-
 // Clears every daily QSO log the host will delete (same set as FILE_LIST).
 // Confirms first — destructive. Reloads the Log list on success. Active-day
 // LOCK during TX/decode leaves today's file; the host NAKs only when nothing
@@ -3667,17 +2859,13 @@ async function clearAllAdif() {
     logGroupEls = {};
     logRenderedAny = false;
     logDone = false;
-    // Field-found 2026-09-22, while adding I30's map: logEntriesByCall was
-    // never reset here, so a worked/new flag (Tools spots) or the callsign
-    // info modal's QSO history could keep showing pre-clear data as if the
-    // clear never happened. logQsoLocations (the map's own data, new) needs
-    // the same reset for the same reason.
+    // Field-found 2026-09-22: logEntriesByCall was never reset here, so a
+    // worked/new flag or the callsign info modal's QSO history could keep
+    // showing pre-clear data as if the clear never happened.
     logEntriesByCall = {};
-    logQsoLocations = [];
     document.getElementById('logList').innerHTML =
       '<p style="padding:0 1rem;color:GrayText">Loading…</p>';
-    document.getElementById('logMore').hidden = logViewMode !== 'list';
-    if (logViewMode === 'map') renderLogMap();
+    document.getElementById('logMore').hidden = false;
     setMsg('ADI files cleared.');
     await loadMoreLog();
   } catch (e) {
@@ -3736,11 +2924,7 @@ async function loadMoreLog() {
       document.getElementById('logList').innerHTML =
         '<p style="padding:0 1rem;color:GrayText">No QSOs</p>';
     }
-    // Race, field-found 2026-09-22: a first-ever Log visit triggers this via
-    // showView()'s lazy load, which can still be in flight when the operator
-    // taps Map right away -- this completion must not stomp setLogView()'s
-    // own hidden=true back to visible underneath the now-showing map.
-    document.getElementById('logMore').hidden = logViewMode !== 'list' || logDone;
+    document.getElementById('logMore').hidden = logDone;
     document.getElementById('logMoreBtn').disabled = false;
   }
 }

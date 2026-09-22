@@ -1,0 +1,1342 @@
+<!doctype html>
+<meta name=viewport content='width=device-width,initial-scale=1,viewport-fit=cover'>
+<title>Micro-FT8 Map</title>
+<!--
+  Full-screen map tool (RFC 0004 §12.5 addendum, 2026-09-22): split out of
+  the Log tab's former List/Map toggle into its own page, reached from
+  Tools. The Log tab only ever had room for one data layer (QSOs); this page
+  fills the whole viewport and adds independent show/hide layers (QSOs,
+  Decodes, POTA/SOTA spots -- PSKReporter later) over the same vector
+  basemap. Not a rewrite of the renderer itself: projection, pan/zoom,
+  basemap/border/grid/terminator drawing are the same math this app already
+  proved out in the Log tab, just no longer coupled to one fixed dataset.
+
+  Shares localStorage state with app.html (same origin): theme, distance
+  unit, and the opportunistic callsign->grid cache -- so a choice made in
+  Settings or a grid learned from a decode shows up here without this page
+  re-deriving any of it.
+-->
+<style>
+:root{
+  color-scheme:light dark;
+  --accent:#1d4ed8;
+  --accent-border:#93c5fd;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]){
+    --accent:#7aa2f7;
+    --accent-border:#3b5998;
+  }
+}
+:root[data-theme="light"]{ color-scheme:light; }
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --accent:#7aa2f7;
+  --accent-border:#3b5998;
+}
+html,body{height:100%;margin:0;overflow:hidden}
+body{font-family:system-ui;background:Canvas;color:CanvasText}
+
+/* flex-wrap, not overflow-x:auto -- a horizontally-scrolling toolbar hides
+   controls off-screen with no visual hint they exist; wrapping to a second
+   row keeps every control visible and reachable regardless of window width,
+   at the cost of the toolbar's own height varying (fine: it's a floating
+   overlay over the full-viewport canvas below, not part of document flow
+   the canvas has to make room for -- see #mapCanvasWrap's own comment). */
+#mapToolbar{position:fixed;left:0;right:0;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:.4rem;padding:.5rem .6rem;padding-top:calc(.5rem + env(safe-area-inset-top));background:Canvas;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+#mapBack{flex:none;border:0;background:transparent;color:var(--accent);font-size:.9rem;padding:.3rem .3rem .3rem 0;white-space:nowrap}
+.layerbtn{flex:none;padding:.35rem .7rem;font-size:.78rem;border:1px solid GrayText;border-radius:999px;background:transparent;color:GrayText;white-space:nowrap}
+.layerbtn.on{background:var(--accent);border-color:var(--accent);color:Canvas;font-weight:700}
+.layerbtn:disabled{opacity:.4}
+#mapTimeWrap{flex:none;display:flex;align-items:center;gap:.3rem;font-size:.75rem;color:GrayText;white-space:nowrap;margin-left:.2rem;padding-left:.5rem;border-left:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+#mapTimeSelect{font-size:.78rem;padding:.25rem .35rem;border:1px solid GrayText;border-radius:.4rem;background:Field;color:FieldText}
+/* Full-viewport regardless of the toolbar's own (now variable) height --
+   the toolbar floats on top (z-index:5) rather than sharing document flow
+   with the canvas, so a wrapped second row just covers a little more of the
+   map underneath it instead of requiring the canvas to resize around it. */
+#mapCanvasWrap{position:fixed;inset:0;top:0}
+#mapCanvas{width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#mapNote{position:fixed;left:0;right:0;bottom:0;padding:.4rem 0 calc(.4rem + env(safe-area-inset-bottom));text-align:center;font-size:.75rem;color:GrayText;background:color-mix(in srgb, Canvas 75%, transparent);pointer-events:none}
+
+/* ---- tap-info popup: a lighter sheet than app.html's callInfoModal, since
+   this page has none of that modal's session decode/QSO-history context to
+   show -- just what the map itself knows about the tapped point. ---- */
+#mapPopup{position:fixed;left:.6rem;right:.6rem;bottom:calc(.6rem + env(safe-area-inset-bottom));z-index:6;background:Canvas;color:CanvasText;border:1px solid color-mix(in srgb, GrayText 35%, transparent);border-radius:.6rem;padding:.7rem .8rem;box-shadow:0 2px 12px rgba(0,0,0,.25)}
+#mapPopup[hidden]{display:none}
+#mapPopupHead{display:flex;justify-content:space-between;align-items:baseline;gap:.5rem}
+#mapPopupCall{font-size:1.05rem;font-weight:700}
+#mapPopupClose{border:0;background:transparent;color:GrayText;font-size:1rem;padding:.1rem .3rem}
+#mapPopupBody{margin-top:.3rem;font-size:.82rem;color:GrayText}
+#mapPopupBody div{margin-top:.15rem}
+#mapPopupQrz{display:inline-block;margin-top:.4rem;color:var(--accent);font-size:.82rem}
+</style>
+
+<div id=mapToolbar>
+  <a id=mapBack href=app.html>&larr; Tools</a>
+  <button id=layerQsos class="layerbtn" type=button>QSOs</button>
+  <button id=layerDecodes class="layerbtn" type=button>Decodes</button>
+  <button id=layerSpots class="layerbtn" type=button>POTA/SOTA</button>
+  <button id=layerPlaces class="layerbtn" type=button>Places</button>
+  <button id=layerGrid class="layerbtn" type=button>Grid squares</button>
+  <button id=layerPsk class="layerbtn" type=button disabled title="Not built yet">PSKReporter</button>
+  <label id=mapTimeWrap>Over the last
+    <select id=mapTimeSelect>
+      <option value="900000">15 minutes</option>
+      <option value="1800000">30 minutes</option>
+      <option value="3600000">1 hour</option>
+      <option value="21600000">6 hours</option>
+      <option value="86400000">24 hours</option>
+      <option value="604800000">7 days</option>
+      <option value="2592000000">30 days</option>
+      <option value="">All time</option>
+    </select>
+  </label>
+</div>
+<div id=mapCanvasWrap>
+  <canvas id=mapCanvas></canvas>
+</div>
+<div id=mapNote></div>
+
+<div id=mapPopup hidden>
+  <div id=mapPopupHead>
+    <span id=mapPopupCall></span>
+    <button id=mapPopupClose type=button aria-label=Close>&times;</button>
+  </div>
+  <div id=mapPopupBody></div>
+  <a id=mapPopupQrz target=_blank rel=noopener>QRZ lookup &rarr;</a>
+</div>
+
+<script>
+'use strict';
+
+// ---- shared helpers (mirrors app.html field-for-field -- see that file's
+// own comments for why each formula/parse is the way it is; not repeated
+// here to avoid the two drifting out of sync in the comments alone). ----
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+function toRad(d) { return d * Math.PI / 180; }
+function gridToLatLon(grid) {
+  if (!grid || grid.length < 4) return null;
+  var g = grid.toUpperCase();
+  var A = 'A'.charCodeAt(0), Z0 = '0'.charCodeAt(0);
+  var fl = g.charCodeAt(0) - A, fu = g.charCodeAt(1) - A;
+  var sl = g.charCodeAt(2) - Z0, su = g.charCodeAt(3) - Z0;
+  if (fl < 0 || fl > 17 || fu < 0 || fu > 17 || sl < 0 || sl > 9 || su < 0 || su > 9) return null;
+  var lon = fl * 20 - 180 + sl * 2;
+  var lat = fu * 10 - 90 + su * 1;
+  if (g.length >= 6) {
+    var tl = g.charCodeAt(4) - A, tu = g.charCodeAt(5) - A;
+    if (tl >= 0 && tl <= 23 && tu >= 0 && tu <= 23) {
+      lon += tl * (2 / 24) + (2 / 24) / 2;
+      lat += tu * (1 / 24) + (1 / 24) / 2;
+      return { lat: lat, lon: lon };
+    }
+  }
+  lon += 1;
+  lat += 0.5;
+  return { lat: lat, lon: lon };
+}
+function greatCircle(a, b) {
+  var R = 6371;
+  var dLat = toRad(b.lat - a.lat), dLon = toRad(b.lon - a.lon);
+  var la1 = toRad(a.lat), la2 = toRad(b.lat);
+  var h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
+  var km = R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+  var y = Math.sin(dLon) * Math.cos(la2);
+  var x = Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dLon);
+  var bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  return { km: km, bearing: bearing };
+}
+var DIST_UNIT_KEY = 'microft8_dist_unit_v1';
+var distUnit = 'km';
+function loadDistUnit() {
+  try {
+    var v = localStorage.getItem(DIST_UNIT_KEY);
+    if (v === 'km' || v === 'mi') distUnit = v;
+  } catch (e) { /* default stands */ }
+}
+function fmtKm(km) {
+  var value = distUnit === 'mi' ? km * 0.621371 : km;
+  return Math.round(value).toLocaleString() + ' ' + distUnit;
+}
+function fmtKmBearing(km, bearingDeg) {
+  var bearing = String(Math.round(bearingDeg)).padStart(3, '0') + '°';
+  return fmtKm(km) + ' ' + bearing;
+}
+function fmtDuration(totalSeconds) {
+  var s = Math.max(0, Math.floor(totalSeconds));
+  var d = Math.floor(s / 86400); s -= d * 86400;
+  var h = Math.floor(s / 3600); s -= h * 3600;
+  var m = Math.floor(s / 60); s -= m * 60;
+  if (d > 0) return d + 'd ' + h + 'h';
+  if (h > 0) return h + 'h ' + m + 'm';
+  if (m > 0) return m + 'm ' + s + 's';
+  return s + 's';
+}
+function fmtAgo(ts) {
+  if (!ts) return '';
+  var secs = (Date.now() - ts) / 1000;
+  return secs < 1 ? 'just now' : fmtDuration(secs) + ' ago';
+}
+function parseUtcIso(s) {
+  if (!s) return NaN;
+  return Date.parse(/Z$/.test(s) ? s : s + 'Z');
+}
+// file is a day filename ("20260922.ADI"), timeStr is ADIF's "HH:MM" as
+// /api/log/entries already returns it -- same derivation as app.html's own
+// qsoEpochMs() (used there for the Log list's "ago" badge), needed here so
+// the QSOs layer can be filtered by the "over the last..." control below.
+function qsoEpochMs(file, timeStr) {
+  var m = /^(\d{2}):(\d{2})$/.exec(timeStr || '');
+  if (!m) return null;
+  var y = parseInt(file.slice(0, 4), 10), mo = parseInt(file.slice(4, 6), 10), d = parseInt(file.slice(6, 8), 10);
+  return Date.UTC(y, mo - 1, d, parseInt(m[1], 10), parseInt(m[2], 10));
+}
+
+var THEME_KEY = 'microft8_theme_v1';
+var themePref = 'system';
+(function loadTheme() {
+  try {
+    var v = localStorage.getItem(THEME_KEY);
+    if (v === 'light' || v === 'dark') themePref = v;
+  } catch (e) { /* default stands */ }
+  if (themePref !== 'system') document.documentElement.setAttribute('data-theme', themePref);
+})();
+loadDistUnit();
+
+var CALLSIGN_GRID_CACHE_KEY = 'microft8_callsign_grids_v1';
+function loadCallsignGridCache() {
+  try {
+    var raw = localStorage.getItem(CALLSIGN_GRID_CACHE_KEY);
+    return raw ? (JSON.parse(raw) || {}) : {};
+  } catch (e) { return {}; }
+}
+// Value shape is {grid, ts} (app.html's own learnCallsignGrid()) -- these
+// read either that or a bare grid string, since an entry written before
+// this page's "over the last..." filter existed has no ts at all yet.
+function cacheGridOf(entry) {
+  return entry ? (typeof entry === 'string' ? entry : (entry.grid || '')) : '';
+}
+function cacheTsOf(entry) {
+  return (entry && typeof entry === 'object' && entry.ts) ? entry.ts : null;
+}
+
+// BANDS/parseActiveBands: only needed here to classify a spot's raw
+// frequency against the operator's active_bands filter, same as Tools' own
+// spot card did -- copied rather than shared since there's no module system
+// on this page (plain <script>, same as app.html).
+var BAND_EDGES_KHZ = [
+  { name: '160m', lo: 1800, hi: 2000 },
+  { name: '80m', lo: 3500, hi: 4000 },
+  { name: '60m', lo: 5250, hi: 5450 },
+  { name: '40m', lo: 7000, hi: 7300 },
+  { name: '30m', lo: 10100, hi: 10150 },
+  { name: '20m', lo: 14000, hi: 14350 },
+  { name: '17m', lo: 18068, hi: 18168 },
+  { name: '15m', lo: 21000, hi: 21450 },
+  { name: '12m', lo: 24890, hi: 24990 },
+  { name: '10m', lo: 28000, hi: 29700 },
+  { name: '6m', lo: 50000, hi: 54000 },
+  { name: '2m', lo: 144000, hi: 148000 }
+];
+function khzToBandName(khz) {
+  for (var i = 0; i < BAND_EDGES_KHZ.length; i++) {
+    var e = BAND_EDGES_KHZ[i];
+    if (khz >= e.lo && khz <= e.hi) return e.name;
+  }
+  return '';
+}
+function parseActiveBands(text) {
+  var want = {};
+  var any = false;
+  String(text || '').split(/[\s,;\/]+/).forEach(function (t) {
+    var n = parseInt(t, 10);
+    if (n > 0) { want[n] = true; any = true; }
+  });
+  return { want: want, any: any };
+}
+var BAND_NUM_BY_NAME = { '160m':160,'80m':80,'60m':60,'40m':40,'30m':30,'20m':20,'17m':17,'15m':15,'12m':12,'10m':10,'6m':6,'2m':2 };
+function activeBandFilter() {
+  var parsed = parseActiveBands(lastCfg.active_bands);
+  return function (bandName) { return !parsed.any || !!parsed.want[BAND_NUM_BY_NAME[bandName]]; };
+}
+
+var lastCfg = {};
+async function loadCfg() {
+  try {
+    var r = await fetch('/api/config', { cache: 'no-store' });
+    if (!r.ok) return;
+    var cfg = await r.json();
+    if (cfg.ok === false) return;
+    lastCfg = cfg;
+  } catch (e) { /* own-grid marker and spot band-filter just stay unavailable */ }
+}
+
+// ===================== basemap (unchanged from the Log tab's own map --
+// see app.html's git history for this code's original comments) =====================
+var LOG_MAP_LAND_URL = 'ne_110m_land.json';
+var LOG_MAP_COUNTRIES_URL = 'ne_110m_countries.json';
+var LOG_MAP_US_STATES_URL = 'ne_110m_us_states.json';
+// World's ~243 largest cities/capitals (Natural Earth ne_110m_populated_places,
+// same public-domain source and 110m tier as the other three bundle files),
+// stripped to name/rank/coordinates -- raw file is 654,324 B carrying ~130
+// columns per city (population back to 1950, Wikidata IDs, name in a dozen
+// languages...); stripped, this is 28,524 B. Bundled rather than fetched at
+// runtime (operator-decided 2026-09-22, unlike the finer town-level tier
+// discussed but not built this round) -- cheap enough that there was no
+// real reason to make it depend on connectivity.
+var LOG_MAP_PLACES_URL = 'ne_110m_places.json';
+var logMapGeo = null, logMapCountriesGeo = null, logMapUsStatesGeo = null;
+var logMapPlaces = [];         // [{name, rank, lat, lon}], flattened from the raw GeoJSON at load time
+var logMapCountryLabels = [];  // [{name, lat, lon}], computed once when logMapCountriesGeo loads
+var logMapStateLabels = [];    // same, for logMapUsStatesGeo
+
+var LOG_MAP_PALETTE = {
+  light: { ocean: '#ffffff', land: '#ffffff', coast: '#000000', countryBorder: 'rgba(0,0,0,.55)', stateBorder: 'rgba(0,0,0,.3)', grid: 'rgba(0,0,0,.15)', gridLabel: 'rgba(0,0,0,.4)', path: 'rgba(0,0,0,.35)', own: '#ea580c', qso: '#1d4ed8', decode: '#7c3aed', spot: '#059669', place: 'rgba(0,0,0,.55)', terminator: '#ca8a04' },
+  dark: { ocean: '#000000', land: '#000000', coast: '#ffffff', countryBorder: 'rgba(255,255,255,.55)', stateBorder: 'rgba(255,255,255,.3)', grid: 'rgba(255,255,255,.15)', gridLabel: 'rgba(255,255,255,.4)', path: 'rgba(255,255,255,.35)', own: '#fb923c', qso: '#7aa2f7', decode: '#c4b5fd', spot: '#34d399', place: 'rgba(255,255,255,.55)', terminator: '#fbbf24' }
+};
+function logMapDarkMode() {
+  if (themePref === 'dark') return true;
+  if (themePref === 'light') return false;
+  return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+}
+function logMapPalette() {
+  return logMapDarkMode() ? LOG_MAP_PALETTE.dark : LOG_MAP_PALETTE.light;
+}
+if (window.matchMedia) {
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { renderLogMap(); });
+}
+
+async function fetchLogMapLayer(url) {
+  try {
+    var r = await fetch(url, { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+  } catch (e) { return null; }
+}
+// Shoelace formula (signed area + centroid) over a single ring, treating
+// lon/lat as flat x/y -- exactly what this map's equirectangular projection
+// already does for everything else, so this is no more an approximation
+// than the rest of the renderer, and plenty accurate for placing a text
+// label (not used for anything geometric). Degenerate rings (near-zero
+// area -- a sliver or a single repeated point) fall back to a plain vertex
+// average rather than dividing by ~zero.
+function ringCentroid(ring) {
+  var a = 0, cx = 0, cy = 0;
+  for (var i = 0; i < ring.length - 1; i++) {
+    var x0 = ring[i][0], y0 = ring[i][1], x1 = ring[i + 1][0], y1 = ring[i + 1][1];
+    var cross = x0 * y1 - x1 * y0;
+    a += cross;
+    cx += (x0 + x1) * cross;
+    cy += (y0 + y1) * cross;
+  }
+  a *= 0.5;
+  if (Math.abs(a) < 1e-9) {
+    var sx = 0, sy = 0;
+    ring.forEach(function (p) { sx += p[0]; sy += p[1]; });
+    return { lon: sx / ring.length, lat: sy / ring.length, area: 0 };
+  }
+  return { lon: cx / (6 * a), lat: cy / (6 * a), area: Math.abs(a) };
+}
+// A feature's label point: the centroid of its single *largest* piece by
+// area (exterior ring only -- a lake-sized hole is too small to matter for
+// label placement, same "exterior ring only" simplification the land layer
+// itself relies on). Largest, not first, matters for a MultiPolygon country
+// or state (Hawaii, an island nation) -- otherwise whichever piece happens
+// to be listed first in the data could put the label somewhere the
+// mainland isn't.
+function featureLabelPoint(feature) {
+  var best = null;
+  var polys = feature.geometry.type === 'Polygon' ? [feature.geometry.coordinates] : feature.geometry.coordinates;
+  polys.forEach(function (poly) {
+    var c = ringCentroid(poly[0]);
+    if (!best || c.area > best.area) best = c;
+  });
+  return best;
+}
+function computeLabelPoints(geo) {
+  if (!geo) return [];
+  return geo.features.map(function (f) {
+    var c = featureLabelPoint(f);
+    // area carried through for drawLogMapPlaces()'s own collision-priority
+    // ordering below -- a bigger region's name outranks a smaller one it
+    // happens to overlap, same reasoning cities use their own rank for.
+    return c ? { name: f.properties.name, lat: c.lat, lon: c.lon, area: c.area } : null;
+  }).filter(Boolean);
+}
+
+async function loadLogMapBasemap() {
+  var note = document.getElementById('mapNote');
+  note.textContent = 'loading basemap…';
+  var results = await Promise.all([
+    fetchLogMapLayer(LOG_MAP_LAND_URL),
+    fetchLogMapLayer(LOG_MAP_COUNTRIES_URL),
+    fetchLogMapLayer(LOG_MAP_US_STATES_URL),
+    fetchLogMapLayer(LOG_MAP_PLACES_URL)
+  ]);
+  logMapGeo = results[0];
+  logMapCountriesGeo = results[1];
+  logMapUsStatesGeo = results[2];
+  var placesGeo = results[3];
+  logMapPlaces = placesGeo ? placesGeo.features.map(function (f) {
+    return { name: f.properties.name, rank: f.properties.rank, lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] };
+  }) : [];
+  logMapCountryLabels = computeLabelPoints(logMapCountriesGeo);
+  logMapStateLabels = computeLabelPoints(logMapUsStatesGeo);
+  if (!logMapGeo) {
+    note.textContent = 'basemap unavailable';
+    return;
+  }
+  renderLogMap();
+}
+
+var logMapCenterLon = 0, logMapCenterLat = 0, logMapCenterSet = false;
+var logMapZoom = 1, logMapBaseScale = 1;
+var LOG_MAP_MAX_ZOOM = 16;
+var LOG_MAP_TAP_ZOOM_MIN = 4;
+var logMapPins = []; // rebuilt every render; hit-tested on tap -- {x,y,call,grid,lat,lon,source,...}
+
+function computeLogMapBaseScale(w, h) { return Math.max(w / 360, h / 180); }
+function logMapScale() { return logMapBaseScale * logMapZoom; }
+function projectPoint(lon, lat, lonOffset, w, h) {
+  var s = logMapScale();
+  return { x: w / 2 + (lon + lonOffset - logMapCenterLon) * s, y: h / 2 - (lat - logMapCenterLat) * s };
+}
+function projectLonLat(lon, lat, w, h) { return projectPoint(lon, lat, 0, w, h); }
+function unprojectXY(x, y, w, h) {
+  var s = logMapScale();
+  return { lon: logMapCenterLon + (x - w / 2) / s, lat: logMapCenterLat - (y - h / 2) / s };
+}
+// logMapCenterLat is no longer clamped at the poles (operator-requested
+// 2026-09-22: "spin it around north and south the same way as east and
+// west") -- it's wrapped into a bounded range purely to avoid unbounded
+// float drift over a long session, the same reasoning LOG_MAP_WRAP_OFFSETS
+// already applies to longitude, and by an exact multiple of 360 so the
+// wrap can never change which vertical band a given pan position means
+// (see computeVerticalBands()'s own comment for what "band" means here).
+function clampLogMapView(w, h) {
+  logMapZoom = Math.max(1, Math.min(LOG_MAP_MAX_ZOOM, logMapZoom));
+  logMapCenterLat = ((logMapCenterLat + 360) % 720 + 720) % 720 - 360;
+  logMapCenterLon = ((logMapCenterLon + 180) % 360 + 360) % 360 - 180;
+}
+function logMapZoomAt(clientX, clientY, newZoom) {
+  var canvas = document.getElementById('mapCanvas');
+  var rect = canvas.getBoundingClientRect();
+  var x = clientX - rect.left, y = clientY - rect.top;
+  var w = canvas.clientWidth, h = canvas.clientHeight;
+  var before = unprojectXY(x, y, w, h);
+  logMapZoom = newZoom;
+  clampLogMapView(w, h);
+  var after = projectLonLat(before.lon, before.lat, w, h);
+  var s = logMapScale();
+  logMapCenterLon += (after.x - x) / s;
+  logMapCenterLat -= (after.y - y) / s;
+  clampLogMapView(w, h);
+}
+
+var LOG_MAP_WRAP_OFFSETS = [-360, 0, 360];
+
+// ---- vertical (pole-crossing) wraparound, operator-requested 2026-09-22 ----
+// Longitude is a true cylinder: sliding the whole map sideways by exactly
+// 360 degrees reproduces it identically, which is all LOG_MAP_WRAP_OFFSETS
+// above has ever needed to do. Latitude is not a cylinder -- the poles are
+// singular points, not a seam -- so continuing to pan past +-90 doesn't
+// wrap back to the opposite pole, it goes *over* the pole and comes down
+// the far side of the globe, 180 degrees around in longitude. That's a
+// reflection, not a translation: true latitude, as a function of the pan
+// position, is a triangle wave (up from -90 to 90, back down to -90, back
+// up, ...), not a straight line past +-90.
+//
+// A "vertical band" is one on-screen copy of the world. `mirror: false` is
+// the ordinary, never-crossed-a-pole orientation (`shift` is which 360-wide
+// cycle of logMapCenterLat's own now-unbounded scale this copy sits in --
+// see clampLogMapView's own comment); `mirror: true` is the pole-crossed
+// orientation, where a feature's true latitude has to be *subtracted* from
+// `shift` rather than added (going further "up" on screen now means going
+// further *down* in true latitude, away from the pole just crossed), always
+// paired with a 180 degree longitude flip. bandLat()/bandLon() apply
+// whichever transform a given band calls for; every draw function below
+// takes the current `bands` array (computed once per render by
+// computeVerticalBands(), not per point -- true latitudes from this app's
+// own data are always already in [-90,90], far smaller than the 360-degree
+// period, so which band a point belongs to is a property of the *view*, not
+// of the individual point) and loops it the same way it already loops
+// LOG_MAP_WRAP_OFFSETS.
+function bandLat(band, trueLat) {
+  return band.mirror ? (band.shift - trueLat) : (trueLat + band.shift);
+}
+function bandLon(band, trueLon) {
+  return trueLon + band.lonShift;
+}
+function bandProject(band, lat, lon, lonOffset, w, h) {
+  return projectPoint(bandLon(band, lon), bandLat(band, lat), lonOffset, w, h);
+}
+// Every point this map ever draws or hit-tests funnels through here for the
+// (band, lonOffset) pairs to try -- usually just 3 (the primary band alone,
+// same as before pole-crossing existed at all); only when the current
+// pan/zoom actually reaches a pole does a second band's worth of passes get
+// added, so ordinary mid-latitude viewing costs exactly what it always did.
+function forEachBandOffset(bands, cb) {
+  bands.forEach(function (band) {
+    LOG_MAP_WRAP_OFFSETS.forEach(function (lonOffset) { cb(band, lonOffset); });
+  });
+}
+// The primary band (`mirror:false`) is always included. FamilyB(k) -- the
+// mirrored band reached by crossing the north pole at the *top* of the
+// primary band's own cycle, or the south pole at its *bottom* -- spans
+// unrolled t in [90+360k, 270+360k] (derived from bandLat: t = shift -
+// trueLat with shift = 180+360k, trueLat in [-90,90]). It's only worth a
+// whole extra set of draw passes when that span actually overlaps the
+// visible window; a 0.5 degree margin keeps the two bands from both being
+// included over an infinitesimal, invisible sliver exactly at a pole
+// (which is otherwise the common case at the default zoomed-all-the-way-out
+// view, where the visible span reaches from pole to pole exactly).
+function computeVerticalBands(halfHDeg) {
+  var k0 = Math.round(logMapCenterLat / 360);
+  var bands = [{ shift: 360 * k0, mirror: false, lonShift: 0 }];
+  var loT = logMapCenterLat - halfHDeg, hiT = logMapCenterLat + halfHDeg;
+  [k0 - 1, k0].forEach(function (k) {
+    var bandLo = 90 + 360 * k, bandHi = 270 + 360 * k;
+    if (bandLo < hiT - 0.5 && bandHi > loT + 0.5) {
+      bands.push({ shift: 180 + 360 * k, mirror: true, lonShift: 180 });
+    }
+  });
+  return bands;
+}
+
+function drawLogMapBasemap(ctx, w, h, bands) {
+  var pal = logMapPalette();
+  ctx.fillStyle = pal.ocean;
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = pal.land;
+  ctx.strokeStyle = pal.coast;
+  ctx.lineWidth = 1;
+  forEachBandOffset(bands, function (band, lonOffset) {
+    ctx.beginPath();
+    logMapGeo.features.forEach(function (f) {
+      f.geometry.coordinates.forEach(function (ring) {
+        ring.forEach(function (pt, i) {
+          var p = bandProject(band, pt[1], pt[0], lonOffset, w, h);
+          if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+        });
+        ctx.closePath();
+      });
+    });
+    ctx.fill();
+    if (pal.coast) ctx.stroke();
+  });
+}
+function forEachRing(geometry, cb) {
+  if (geometry.type === 'Polygon') {
+    geometry.coordinates.forEach(cb);
+  } else if (geometry.type === 'MultiPolygon') {
+    geometry.coordinates.forEach(function (poly) { poly.forEach(cb); });
+  }
+}
+function drawLogMapBorders(ctx, w, h, geo, color, bands) {
+  if (!geo) return;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  forEachBandOffset(bands, function (band, lonOffset) {
+    ctx.beginPath();
+    geo.features.forEach(function (f) {
+      forEachRing(f.geometry, function (ring) {
+        ring.forEach(function (pt, i) {
+          var p = bandProject(band, pt[1], pt[0], lonOffset, w, h);
+          if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+        });
+        ctx.closePath();
+      });
+    });
+    ctx.stroke();
+  });
+}
+var LOG_MAP_STATE_BORDER_ZOOM_MIN = 2;
+
+// ---- Places: country/US-state/city name labels, operator-requested
+// 2026-09-22 ("if you're online [or, as scoped, bundled] I'd like to see
+// city, state, etc. metadata on the map as I zoom in"). Country and state
+// names cost nothing new to fetch -- ne_110m_countries.json/
+// ne_110m_us_states.json already carry `name` (checked before proposing
+// this at all: neither file needed a byte of new data, only a rendering
+// addition -- featureLabelPoint() above). Only city names are genuinely new
+// bundled data (LOG_MAP_PLACES_URL). ----
+var LOG_MAP_PLACE_FONT_PX = 11;
+var LOG_MAP_PLACE_FONT = LOG_MAP_PLACE_FONT_PX + 'px system-ui';
+// Collision avoidance, operator-requested 2026-09-22 ("only show the names
+// when there is enough whitespace around the names to be clean visually").
+// A label's own box is its measured text width plus this padding on every
+// side -- the padding *is* "enough whitespace": two labels are allowed to
+// sit close, just not close enough that their padded boxes touch. Canvas
+// text has no built-in hit-testing, so this is a small manual greedy
+// placer: sort candidates by priority, place each one only if its box
+// doesn't overlap any *already-placed* box, skip it silently otherwise (not
+// gone -- panning or zooming to free up its space draws it again next
+// render). Every skipped city's dot still draws regardless -- "no room for
+// the name" isn't a reason to hide that a station is there at all.
+var LOG_MAP_PLACE_LABEL_PAD_PX = 4;
+// Cities are left-anchored (text starts just right of the dot it's naming);
+// countries/states are centered on their own label point instead
+// (operator-requested 2026-09-22: "center the text within its boundary") --
+// a centroid is a boundary's own visual middle, so anchoring text there by
+// its left edge instead of its center would run it off-center, and for a
+// narrow country risk overflowing the boundary it's supposedly labeling.
+function labelBox(x, y, textWidth, centered) {
+  var halfH = LOG_MAP_PLACE_FONT_PX / 2 + LOG_MAP_PLACE_LABEL_PAD_PX;
+  if (centered) {
+    var halfW = textWidth / 2 + LOG_MAP_PLACE_LABEL_PAD_PX;
+    return { x0: x - halfW, x1: x + halfW, y0: y - halfH, y1: y + halfH };
+  }
+  return { x0: x - LOG_MAP_PLACE_LABEL_PAD_PX, x1: x + textWidth + LOG_MAP_PLACE_LABEL_PAD_PX, y0: y - halfH, y1: y + halfH };
+}
+function boxesOverlap(a, b) {
+  return a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+}
+function drawLogMapPlaces(ctx, w, h, bands, pal) {
+  ctx.font = LOG_MAP_PLACE_FONT;
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = pal.place;
+
+  // One shared placement pass across all three tiers, not three independent
+  // ones -- otherwise a country's name could sit directly on top of a
+  // city's with neither aware of the other. Priority order (drawn/placed
+  // first, so it wins any collision): cities by their own importance rank
+  // (the world's biggest cities are the most useful reference points, so
+  // they should win over a country/state name they happen to overlap), then
+  // countries and states by polygon area (a bigger region's name is more
+  // load-bearing than a small one next to it).
+  var placed = [];
+  function tryPlace(text, x, y, centered) {
+    var width = ctx.measureText(text).width;
+    var box = labelBox(x, y, width, centered);
+    for (var i = 0; i < placed.length; i++) {
+      if (boxesOverlap(box, placed[i])) return false;
+    }
+    placed.push(box);
+    ctx.textAlign = centered ? 'center' : 'left';
+    ctx.fillText(text, x, y);
+    return true;
+  }
+
+  // Cities: rank-gated by zoom, not just an on/off -- SCALERANK 0 is the
+  // ~27 largest world cities/capitals (visible from the default zoomed-all-
+  // the-way-out view already), rising to every bundled city (rank 8) once
+  // zoomed in far enough that showing all 243 at once wouldn't just be a
+  // wall of overlapping text even before collision avoidance gets involved.
+  var maxRank = Math.min(8, Math.floor(logMapZoom) - 1);
+  var cityCandidates = [];
+  logMapPlaces.forEach(function (city) {
+    if (city.rank > maxRank) return;
+    forEachBandOffset(bands, function (band, lonOffset) {
+      var p = bandProject(band, city.lat, city.lon, lonOffset, w, h);
+      if (p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) return;
+      cityCandidates.push({ name: city.name, x: p.x, y: p.y, rank: city.rank });
+    });
+  });
+  cityCandidates.sort(function (a, b) { return a.rank - b.rank; });
+  cityCandidates.forEach(function (c) {
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, 2, 0, Math.PI * 2);
+    ctx.fill();
+    tryPlace(c.name, c.x + 4, c.y);
+  });
+
+  // Countries: unconditional while the layer is on, at any zoom -- a
+  // country the operator has panned away from simply never lands in any
+  // (band, lonOffset) combo tried below, so this doesn't need its own gate.
+  var countryCandidates = [];
+  logMapCountryLabels.forEach(function (c) {
+    forEachBandOffset(bands, function (band, lonOffset) {
+      var p = bandProject(band, c.lat, c.lon, lonOffset, w, h);
+      if (p.x < 0 || p.x > w || p.y < 0 || p.y > h) return;
+      countryCandidates.push({ name: c.name, x: p.x, y: p.y, area: c.area });
+    });
+  });
+  countryCandidates.sort(function (a, b) { return b.area - a.area; });
+  countryCandidates.forEach(function (c) { tryPlace(c.name, c.x, c.y, true); });
+
+  // US states: gated to the same zoom threshold their own borders already
+  // use (LOG_MAP_STATE_BORDER_ZOOM_MIN) -- labeling a border that isn't
+  // drawn yet would be confusing, not helpful, chrome.
+  if (logMapZoom >= LOG_MAP_STATE_BORDER_ZOOM_MIN) {
+    var stateCandidates = [];
+    logMapStateLabels.forEach(function (s) {
+      forEachBandOffset(bands, function (band, lonOffset) {
+        var p = bandProject(band, s.lat, s.lon, lonOffset, w, h);
+        if (p.x < 0 || p.x > w || p.y < 0 || p.y > h) return;
+        stateCandidates.push({ name: s.name, x: p.x, y: p.y, area: s.area });
+      });
+    });
+    stateCandidates.sort(function (a, b) { return b.area - a.area; });
+    stateCandidates.forEach(function (s) { tryPlace(s.name, s.x, s.y, true); });
+  }
+}
+
+function subsolarPoint(date) {
+  var start = Date.UTC(date.getUTCFullYear(), 0, 1);
+  var dayOfYear = Math.floor((date.getTime() - start) / 86400000) + 1;
+  var utcHours = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
+  var decl = 23.45 * Math.sin(toRad(360 / 365 * (284 + dayOfYear)));
+  var B = toRad(360 / 365 * (dayOfYear - 81));
+  var eqOfTimeMin = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+  var lon = -(utcHours - 12) * 15 - eqOfTimeMin / 4;
+  lon = ((lon + 180) % 360 + 360) % 360 - 180;
+  return { lat: decl, lon: lon };
+}
+function terminatorPoints(sub, n) {
+  var latS = toRad(sub.lat);
+  var pts = [];
+  for (var i = 0; i <= n; i++) {
+    var lon = -180 + (360 * i / n);
+    var H = toRad(lon - sub.lon);
+    var lat = Math.atan(-Math.cos(H) / Math.tan(latS)) * 180 / Math.PI;
+    pts.push({ lon: lon, lat: lat });
+  }
+  return pts;
+}
+function drawLogMapTerminator(ctx, w, h, bands) {
+  var sub = subsolarPoint(new Date());
+  var pts = terminatorPoints(sub, 144);
+  ctx.strokeStyle = logMapPalette().terminator;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  forEachBandOffset(bands, function (band, lonOffset) {
+    ctx.beginPath();
+    var started = false, prevX = null;
+    pts.forEach(function (pt) {
+      var p = bandProject(band, pt.lat, pt.lon, lonOffset, w, h);
+      if (prevX !== null && Math.abs(p.x - prevX) > w / 2) started = false;
+      if (!started) { ctx.moveTo(p.x, p.y); started = true; } else { ctx.lineTo(p.x, p.y); }
+      prevX = p.x;
+    });
+    ctx.stroke();
+  });
+  ctx.setLineDash([]);
+}
+
+// Grid squares/labels deliberately stay primary-band only (no
+// computeVerticalBands() involvement) -- both are already gated to
+// zoom>=4, where the visible span is at most 45 degrees, so a view that's
+// both zoomed in that far *and* reaching a pole is a vanishingly rare
+// combination not worth the extra complexity here. The existing
+// Math.max(-90,...)/Math.min(90,...) clamps already give the right
+// (if incomplete, past a pole) behaviour unchanged.
+var LOG_MAP_SQUARE_LON = 2, LOG_MAP_SQUARE_LAT = 1;
+var LOG_MAP_GRID_ZOOM_MIN = 4;
+function drawLogMapGridSquares(ctx, w, h) {
+  if (logMapZoom < LOG_MAP_GRID_ZOOM_MIN) return;
+  var s = logMapScale();
+  var halfWDeg = (w / 2) / s, halfHDeg = (h / 2) / s;
+  var lonMin = logMapCenterLon - halfWDeg, lonMax = logMapCenterLon + halfWDeg;
+  var latMin = Math.max(-90, logMapCenterLat - halfHDeg), latMax = Math.min(90, logMapCenterLat + halfHDeg);
+
+  ctx.strokeStyle = logMapPalette().grid;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  var lonStart = Math.floor(lonMin / LOG_MAP_SQUARE_LON) * LOG_MAP_SQUARE_LON;
+  for (var lon = lonStart; lon <= lonMax; lon += LOG_MAP_SQUARE_LON) {
+    var p1 = projectLonLat(lon, latMin, w, h), p2 = projectLonLat(lon, latMax, w, h);
+    ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+  }
+  var latStart = Math.floor(latMin / LOG_MAP_SQUARE_LAT) * LOG_MAP_SQUARE_LAT;
+  for (var lat = latStart; lat <= latMax; lat += LOG_MAP_SQUARE_LAT) {
+    var p1 = projectLonLat(lonMin, lat, w, h), p2 = projectLonLat(lonMax, lat, w, h);
+    ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+  }
+  ctx.stroke();
+}
+function gridSquareLabel(lon, lat) {
+  lon = ((lon + 180) % 360 + 360) % 360 - 180;
+  var loShift = lon + 180, laShift = lat + 90;
+  var fieldLon = Math.floor(loShift / 20), fieldLat = Math.floor(laShift / 10);
+  var squareLon = Math.floor((loShift - fieldLon * 20) / LOG_MAP_SQUARE_LON);
+  var squareLat = Math.floor((laShift - fieldLat * 10) / LOG_MAP_SQUARE_LAT);
+  return String.fromCharCode(65 + fieldLon) + String.fromCharCode(65 + fieldLat) + squareLon + squareLat;
+}
+var LOG_MAP_LABEL_FONT_PX = 11.2;
+var LOG_MAP_LABEL_FONT = LOG_MAP_LABEL_FONT_PX + 'px ui-monospace, monospace';
+var LOG_MAP_LABEL_MAX_AREA_FRAC = 0.6;
+var LOG_MAP_LABEL_DENSE_AREA_FRAC = 0.25;
+function drawLogMapGridLabels(ctx, w, h) {
+  if (logMapZoom < LOG_MAP_GRID_ZOOM_MIN) return;
+  var s = logMapScale();
+  var halfWDeg = (w / 2) / s, halfHDeg = (h / 2) / s;
+  var lonMin = logMapCenterLon - halfWDeg, lonMax = logMapCenterLon + halfWDeg;
+  var latMin = Math.max(-90, logMapCenterLat - halfHDeg), latMax = Math.min(90, logMapCenterLat + halfHDeg);
+
+  var squareAreaPx = (LOG_MAP_SQUARE_LON * s) * (LOG_MAP_SQUARE_LAT * s);
+  ctx.font = LOG_MAP_LABEL_FONT;
+  var textArea = ctx.measureText('AA00').width * LOG_MAP_LABEL_FONT_PX;
+  if (textArea >= LOG_MAP_LABEL_MAX_AREA_FRAC * squareAreaPx) return;
+  var sparse = textArea >= LOG_MAP_LABEL_DENSE_AREA_FRAC * squareAreaPx;
+
+  ctx.fillStyle = logMapPalette().gridLabel;
+  ctx.textBaseline = 'top';
+  var lonStart = Math.floor(lonMin / LOG_MAP_SQUARE_LON) * LOG_MAP_SQUARE_LON;
+  var latStart = Math.floor(latMin / LOG_MAP_SQUARE_LAT) * LOG_MAP_SQUARE_LAT;
+  var li = 0;
+  for (var lon = lonStart; lon <= lonMax; lon += LOG_MAP_SQUARE_LON, li++) {
+    var lj = 0;
+    for (var lat = latStart; lat <= latMax; lat += LOG_MAP_SQUARE_LAT, lj++) {
+      if (sparse && (li + lj) % 2 !== 0) continue;
+      var p = projectLonLat(lon, lat + LOG_MAP_SQUARE_LAT, w, h);
+      ctx.fillText(gridSquareLabel(lon, lat), p.x + 2, p.y + 2);
+    }
+  }
+}
+
+function greatCirclePoints(a, b, n) {
+  var la1 = toRad(a.lat), lo1 = toRad(a.lon), la2 = toRad(b.lat), lo2 = toRad(b.lon);
+  var dLat = la2 - la1, dLon = lo2 - lo1;
+  var h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
+  var d = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+  if (d < 1e-9) return [a, b];
+  var pts = [];
+  for (var i = 0; i <= n; i++) {
+    var f = i / n;
+    var A = Math.sin((1 - f) * d) / Math.sin(d), B = Math.sin(f * d) / Math.sin(d);
+    var x = A * Math.cos(la1) * Math.cos(lo1) + B * Math.cos(la2) * Math.cos(lo2);
+    var y = A * Math.cos(la1) * Math.sin(lo1) + B * Math.cos(la2) * Math.sin(lo2);
+    var z = A * Math.sin(la1) + B * Math.sin(la2);
+    pts.push({ lat: Math.atan2(z, Math.sqrt(x * x + y * y)) * 180 / Math.PI,
+               lon: Math.atan2(y, x) * 180 / Math.PI });
+  }
+  return pts;
+}
+function drawGreatCirclePath(ctx, w, h, a, b, band, lonOffset) {
+  var pts = greatCirclePoints(a, b, 32).map(function (p) { return bandProject(band, p.lat, p.lon, lonOffset, w, h); });
+  ctx.beginPath();
+  var started = false;
+  pts.forEach(function (p, i) {
+    if (i > 0 && Math.abs(p.x - pts[i - 1].x) > w / 2) started = false;
+    if (!started) { ctx.moveTo(p.x, p.y); started = true; } else { ctx.lineTo(p.x, p.y); }
+  });
+  ctx.stroke();
+}
+
+// ===================== data layers (new: independent of the basemap
+// above, one fetch/build function per toolbar toggle) =====================
+
+// ---- QSOs: same ADIF-relay walk as app.html's downloadAllAdif(), just
+// building map points instead of an ADIF blob. Independent of the Log tab's
+// own lazy pagination -- this page has no Log list to stay in sync with. ----
+var qsoLocations = [];      // [{call, grid, myGrid, ts}], deduped by grid at render
+var qsoLoadState = 'idle';  // 'idle' | 'loading' | 'done' | 'error'
+async function fetchAllLogEntries(file) {
+  var rows = [];
+  var skip = 0;
+  while (true) {
+    var r = await fetch('/api/log/entries?file=' + encodeURIComponent(file) +
+                        '&skip=' + skip + '&take=50', { cache: 'no-store' });
+    var j = await r.json();
+    if (!j.ok) throw new Error(j.why || 'entries failed');
+    var page = j.entries || [];
+    rows = rows.concat(page);
+    skip += page.length;
+    if (page.length < 50) break;
+  }
+  return rows;
+}
+async function loadQsoLocations() {
+  if (qsoLoadState === 'loading' || qsoLoadState === 'done') return;
+  qsoLoadState = 'loading';
+  updateMapNote();
+  try {
+    var files = [];
+    var skip = 0;
+    while (true) {
+      var r = await fetch('/api/log/files?skip=' + skip + '&take=30', { cache: 'no-store' });
+      var j = await r.json();
+      if (!j.ok) throw new Error(j.why || 'file list failed');
+      var page = j.files || [];
+      files = files.concat(page);
+      skip += page.length;
+      if (page.length < 30) break;
+    }
+    var locs = [];
+    for (var i = 0; i < files.length; i++) {
+      var file = files[i];
+      var rows = await fetchAllLogEntries(file);
+      rows.forEach(function (q) {
+        var qGrid = (q.grid || '').toUpperCase(), qMyGrid = (q.my_grid || '').toUpperCase();
+        if (qGrid && qMyGrid && gridToLatLon(qGrid) && gridToLatLon(qMyGrid)) {
+          locs.push({ call: q.call, grid: qGrid, myGrid: qMyGrid, ts: qsoEpochMs(file, q.time) });
+        }
+      });
+      qsoLoadState = 'loading:' + (i + 1) + '/' + files.length;
+      updateMapNote();
+      qsoLocations = locs;
+      if (layerState.qsos) renderLogMap();
+    }
+    qsoLoadState = 'done';
+  } catch (e) {
+    qsoLoadState = 'error';
+  }
+  updateMapNote();
+  if (layerState.qsos) renderLogMap();
+}
+
+// ---- Decodes: the same opportunistic callsign->grid cache Operate builds
+// (app.html, localStorage) -- read-only here, since only Operate is ever
+// actually listening for decodes. No path drawn (unlike QSOs): a decode
+// isn't a completed contact, just "heard from roughly here". ----
+var decodeLocations = []; // [{call, grid, ts}]
+function loadDecodeLocations() {
+  var cache = loadCallsignGridCache();
+  decodeLocations = Object.keys(cache)
+    .map(function (call) {
+      var entry = cache[call];
+      return { call: call, grid: cacheGridOf(entry).toUpperCase(), ts: cacheTsOf(entry) };
+    })
+    .filter(function (d) { return d.grid && gridToLatLon(d.grid); });
+}
+
+// ---- POTA/SOTA spots: same sourcing/filtering Tools' own spot card used
+// (§12.2/§12.3 online-required; SOTA's api-db2 endpoint, found live while
+// building that card -- see app.html git history) -- here as map pins
+// instead of a list, per the operator's request to fold this into the map
+// as a data layer rather than keep it a separate Tools card. ----
+var POTA_ACTIVATOR_URL = 'https://api.pota.app/spot/activator';
+var SOTA_SPOTS_URL = 'https://api-db2.sota.org.uk/api/spots/50/all/all';
+var spotLocations = []; // [{call, grid, lat, lon, program, ref, name, band, ts}]
+var spotLoadState = 'idle'; // 'idle' | 'loading' | 'done' | 'error'
+async function loadSpotLocations() {
+  spotLoadState = 'loading';
+  updateMapNote();
+  var potaRows = [], sotaRows = [], anyOk = false;
+  try {
+    var pr = await fetch(POTA_ACTIVATOR_URL, { cache: 'no-store' });
+    var pj = await pr.json();
+    potaRows = pj.map(function (s) {
+      var khz = parseFloat(s.frequency);
+      return { program: 'POTA', call: s.activator, ref: s.reference, name: s.parkName || s.name,
+               band: khzToBandName(khz), mode: s.mode, grid: (s.grid6 || s.grid4 || '').toUpperCase(),
+               lat: null, lon: null, ts: s.spotTime };
+    });
+    anyOk = true;
+  } catch (e) { /* POTA down this tick -- SOTA half may still be good */ }
+  try {
+    var sr = await fetch(SOTA_SPOTS_URL, { cache: 'no-store' });
+    var sj = await sr.json();
+    sotaRows = sj.filter(function (s) { return s.summitCode && s.summitCode !== 'DEPRECATED'; })
+      .map(function (s) {
+        var khz = s.frequency * 1000;
+        return { program: 'SOTA', call: s.activatorCallsign, ref: s.summitCode, name: s.summitName,
+                 band: khzToBandName(khz), mode: s.mode, grid: null,
+                 lat: s.latitude, lon: s.longitude, ts: s.timeStamp };
+      });
+    anyOk = true;
+  } catch (e) { /* SOTA down this tick -- POTA half may still be good */ }
+  if (anyOk) {
+    var inBand = activeBandFilter();
+    spotLocations = potaRows.concat(sotaRows).filter(function (r) {
+      return r.band && inBand(r.band) && r.mode && r.mode.toUpperCase() === 'FT8' &&
+             ((r.grid && gridToLatLon(r.grid)) || (r.lat != null && r.lon != null));
+    });
+    spotLoadState = 'done';
+  } else {
+    spotLoadState = 'error';
+  }
+  updateMapNote();
+  if (layerState.spots) renderLogMap();
+}
+
+// ===================== toolbar / layer state =====================
+
+// "Over the last..." recency filter, shared across every layer rather than
+// one per layer -- operator-requested 2026-09-22, to cut down a map that's
+// otherwise every QSO ever worked, every callsign ever decoded, and every
+// currently-active spot all shown at once. null means "All time" (no
+// filter, the previous unfiltered behaviour, and the default -- unfiltered
+// is the least surprising first view). Persisted the same way distUnit/
+// themePref are (localStorage, applies live even if it fails to persist).
+// A location with no known timestamp (a QSO whose ADIF time field failed to
+// parse, or a Decodes entry cached by a build before ts existed) is treated
+// as "outside every bounded window" rather than "always visible" -- the
+// filter's whole point is recency, and an unknown age can't honestly claim
+// to be recent; it still shows under "All time", which has no age claim to
+// make.
+var MAP_TIME_WINDOW_KEY = 'microft8_map_time_window_v1';
+var mapTimeWindowMs = null;
+function loadMapTimeWindow() {
+  try {
+    var v = localStorage.getItem(MAP_TIME_WINDOW_KEY);
+    if (v) { var n = parseInt(v, 10); mapTimeWindowMs = (n > 0) ? n : null; }
+  } catch (e) { /* default (All time) stands */ }
+}
+function saveMapTimeWindow() {
+  try { localStorage.setItem(MAP_TIME_WINDOW_KEY, mapTimeWindowMs == null ? '' : String(mapTimeWindowMs)); }
+  catch (e) { /* applies live even if not persisted */ }
+}
+function withinMapTimeWindow(ts) {
+  if (mapTimeWindowMs == null) return true;
+  if (ts == null || isNaN(ts)) return false;
+  return ts >= Date.now() - mapTimeWindowMs;
+}
+function visibleQsoLocations() { return qsoLocations.filter(function (l) { return withinMapTimeWindow(l.ts); }); }
+function visibleDecodeLocations() { return decodeLocations.filter(function (d) { return withinMapTimeWindow(d.ts); }); }
+function visibleSpotLocations() { return spotLocations.filter(function (r) { return withinMapTimeWindow(parseUtcIso(r.ts)); }); }
+
+loadMapTimeWindow();
+var mapTimeSelectEl = document.getElementById('mapTimeSelect');
+mapTimeSelectEl.value = mapTimeWindowMs == null ? '' : String(mapTimeWindowMs);
+mapTimeSelectEl.onchange = function () {
+  mapTimeWindowMs = mapTimeSelectEl.value ? parseInt(mapTimeSelectEl.value, 10) : null;
+  saveMapTimeWindow();
+  renderLogMap();
+};
+
+// grid defaults off, unlike the other four -- operator-requested 2026-09-22:
+// the Maidenhead overlay is dense detail useful for a specific purpose
+// (reading a station's exact square), not something every visit needs to
+// see immediately, where QSOs/Decodes/spots/Places are all "here's what's
+// on the map" by default.
+var layerState = { qsos: true, decodes: true, spots: true, places: true, grid: false };
+function setLayerBtn(id, on) {
+  document.getElementById(id).classList.toggle('on', on);
+}
+function refreshLayerBtns() {
+  setLayerBtn('layerQsos', layerState.qsos);
+  setLayerBtn('layerDecodes', layerState.decodes);
+  setLayerBtn('layerSpots', layerState.spots);
+  setLayerBtn('layerPlaces', layerState.places);
+  setLayerBtn('layerGrid', layerState.grid);
+}
+document.getElementById('layerQsos').onclick = function () {
+  layerState.qsos = !layerState.qsos;
+  refreshLayerBtns();
+  if (layerState.qsos && qsoLoadState === 'idle') loadQsoLocations();
+  renderLogMap();
+};
+document.getElementById('layerDecodes').onclick = function () {
+  layerState.decodes = !layerState.decodes;
+  refreshLayerBtns();
+  if (layerState.decodes) loadDecodeLocations(); // cheap, re-read every toggle-on so a fresh Operate session shows up
+  renderLogMap();
+};
+document.getElementById('layerSpots').onclick = function () {
+  layerState.spots = !layerState.spots;
+  refreshLayerBtns();
+  if (layerState.spots && spotLoadState === 'idle') loadSpotLocations();
+  renderLogMap();
+};
+// No load-on-toggle needed -- unlike the three above, Places' data is
+// bundled (operator-chosen 2026-09-22: cheap enough at ~28 KB for the
+// world's major cities, plus country/US-state names already sitting in
+// data this page loads anyway) and fetched once at boot alongside the rest
+// of the basemap, never lazily. Toggling is pure rendering on/off.
+document.getElementById('layerPlaces').onclick = function () {
+  layerState.places = !layerState.places;
+  refreshLayerBtns();
+  renderLogMap();
+};
+// Also no load-on-toggle -- the grid overlay is pure math (Maidenhead
+// arithmetic on whatever's currently in view), no data to fetch at all.
+document.getElementById('layerGrid').onclick = function () {
+  layerState.grid = !layerState.grid;
+  refreshLayerBtns();
+  renderLogMap();
+};
+refreshLayerBtns();
+
+function updateMapNote() {
+  var note = document.getElementById('mapNote');
+  var parts = [];
+  if (layerState.qsos) {
+    if (qsoLoadState === 'done') {
+      var n = uniqueGridCount(visibleQsoLocations());
+      parts.push(n + ' QSO grid' + (n === 1 ? '' : 's'));
+    } else if (qsoLoadState.indexOf('loading') === 0) parts.push('QSOs: ' + qsoLoadState.replace('loading:', 'loading '));
+    else if (qsoLoadState === 'error') parts.push('QSOs unavailable');
+  }
+  if (layerState.spots) {
+    if (spotLoadState === 'done') {
+      var sn = visibleSpotLocations().length;
+      parts.push(sn + ' spot' + (sn === 1 ? '' : 's'));
+    } else if (spotLoadState === 'loading') parts.push('spots: loading…');
+    else if (spotLoadState === 'error') parts.push('spots unavailable');
+  }
+  if (logMapZoom >= LOG_MAP_TAP_ZOOM_MIN) parts.push('tap a station for info');
+  note.textContent = parts.join(' · ');
+}
+function uniqueGridCount(locs) {
+  var seen = {};
+  locs.forEach(function (l) { seen[l.grid] = true; });
+  return Object.keys(seen).length;
+}
+
+// ===================== render =====================
+function renderLogMap() {
+  var canvas = document.getElementById('mapCanvas');
+  if (!logMapGeo) return;
+  var cssW = canvas.clientWidth, cssH = canvas.clientHeight;
+  if (!cssW || !cssH) return;
+  var dpr = window.devicePixelRatio || 1;
+  canvas.width = cssW * dpr;
+  canvas.height = cssH * dpr;
+  var ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  logMapBaseScale = computeLogMapBaseScale(cssW, cssH);
+  if (!logMapCenterSet) {
+    var own = lastCfg.grid ? gridToLatLon(lastCfg.grid) : null;
+    logMapCenterLon = own ? own.lon : 0;
+    logMapCenterLat = own ? own.lat : 0;
+    logMapCenterSet = true;
+  }
+  clampLogMapView(cssW, cssH);
+  var bands = computeVerticalBands((cssH / 2) / logMapScale());
+
+  var pal = logMapPalette();
+  drawLogMapBasemap(ctx, cssW, cssH, bands);
+  drawLogMapBorders(ctx, cssW, cssH, logMapCountriesGeo, pal.countryBorder, bands);
+  if (logMapZoom >= LOG_MAP_STATE_BORDER_ZOOM_MIN) {
+    drawLogMapBorders(ctx, cssW, cssH, logMapUsStatesGeo, pal.stateBorder, bands);
+  }
+  if (layerState.grid) {
+    drawLogMapGridSquares(ctx, cssW, cssH);
+    drawLogMapGridLabels(ctx, cssW, cssH);
+  }
+  drawLogMapTerminator(ctx, cssW, cssH, bands);
+  if (layerState.places) drawLogMapPlaces(ctx, cssW, cssH, bands, pal);
+
+  logMapPins = [];
+
+  // QSOs: dedupe by grid (one pin/path per unique grid, not per QSO -- a
+  // repeat contact with the same station shouldn't multiply the ink), path
+  // drawn from the QSO's own my_grid since that can differ QSO to QSO
+  // (portable/mobile operation) even though it's usually the operator's
+  // current grid.
+  var visibleQsos = layerState.qsos ? visibleQsoLocations() : [];
+  if (visibleQsos.length) {
+    var byGrid = {};
+    visibleQsos.forEach(function (loc) {
+      if (!byGrid[loc.grid]) byGrid[loc.grid] = { grid: loc.grid, myGrid: loc.myGrid, calls: {}, lastCall: loc.call };
+      byGrid[loc.grid].calls[loc.call] = true;
+      byGrid[loc.grid].lastCall = loc.call;
+    });
+    var uniqueGrids = Object.keys(byGrid).map(function (g) { return byGrid[g]; });
+
+    ctx.strokeStyle = pal.path;
+    ctx.lineWidth = 1;
+    // The path and the pin below share the same resolved point (b computed
+    // once here) so a QSO's line and its dot always end at the same place.
+    uniqueGrids.forEach(function (g) {
+      var a = gridToLatLon(g.myGrid), b = gridToLatLon(g.grid);
+      if (!a || !b) return;
+      g._pt = b;
+      forEachBandOffset(bands, function (band, lonOffset) { drawGreatCirclePath(ctx, cssW, cssH, a, b, band, lonOffset); });
+    });
+
+    ctx.fillStyle = pal.qso;
+    uniqueGrids.forEach(function (g) {
+      var b = g._pt;
+      if (!b) return;
+      forEachBandOffset(bands, function (band, lonOffset) {
+        var p = bandProject(band, b.lat, b.lon, lonOffset, cssW, cssH);
+        if (p.x < -20 || p.x > cssW + 20 || p.y < -20 || p.y > cssH + 20) return;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+        logMapPins.push({ x: p.x, y: p.y, call: g.lastCall, grid: g.grid, lat: b.lat, lon: b.lon, source: 'QSO' });
+      });
+    });
+  }
+
+  // Decodes: pins only, no path -- "heard roughly here", not a worked
+  // contact. Slightly smaller than a QSO pin so the two are visually
+  // distinct even at a glance, not just by (also different) color.
+  var visibleDecodes = layerState.decodes ? visibleDecodeLocations() : [];
+  if (visibleDecodes.length) {
+    ctx.fillStyle = pal.decode;
+    var seenGrid = {};
+    visibleDecodes.forEach(function (d) { seenGrid[d.grid] = d; }); // last call wins per grid, same dedupe reasoning as QSOs
+    Object.keys(seenGrid).forEach(function (grid) {
+      var d = seenGrid[grid];
+      var b = gridToLatLon(grid);
+      if (!b) return;
+      forEachBandOffset(bands, function (band, lonOffset) {
+        var p = bandProject(band, b.lat, b.lon, lonOffset, cssW, cssH);
+        if (p.x < -20 || p.x > cssW + 20 || p.y < -20 || p.y > cssH + 20) return;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        logMapPins.push({ x: p.x, y: p.y, call: d.call, grid: grid, lat: b.lat, lon: b.lon, source: 'Decode' });
+      });
+    });
+  }
+
+  // Spots: POTA carries a grid; SOTA carries raw lat/lon -- project whichever
+  // this spot actually has (loadSpotLocations() already filtered out rows
+  // with neither).
+  var visibleSpots = layerState.spots ? visibleSpotLocations() : [];
+  if (visibleSpots.length) {
+    ctx.fillStyle = pal.spot;
+    visibleSpots.forEach(function (r) {
+      // POTA carries a grid; SOTA carries real lat/lon directly.
+      var pt = r.grid ? gridToLatLon(r.grid) : (r.lat != null ? { lat: r.lat, lon: r.lon } : null);
+      if (!pt) return;
+      forEachBandOffset(bands, function (band, lonOffset) {
+        var p = bandProject(band, pt.lat, pt.lon, lonOffset, cssW, cssH);
+        if (p.x < -20 || p.x > cssW + 20 || p.y < -20 || p.y > cssH + 20) return;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y - 4); ctx.lineTo(p.x + 4, p.y + 3); ctx.lineTo(p.x - 4, p.y + 3);
+        ctx.closePath();
+        ctx.fill();
+        logMapPins.push({ x: p.x, y: p.y, call: r.call, grid: r.grid, lat: pt.lat, lon: pt.lon,
+                           source: r.program, ref: r.ref, name: r.name, band: r.band, ts: r.ts });
+      });
+    });
+  }
+
+  var ownPt = lastCfg.grid ? gridToLatLon(lastCfg.grid) : null;
+  if (ownPt) {
+    forEachBandOffset(bands, function (band, lonOffset) {
+      var p = bandProject(band, ownPt.lat, ownPt.lon, lonOffset, cssW, cssH);
+      if (p.x < -20 || p.x > cssW + 20 || p.y < -20 || p.y > cssH + 20) return;
+      ctx.fillStyle = pal.own;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  updateMapNote();
+}
+window.addEventListener('resize', function () { renderLogMap(); });
+setInterval(function () { renderLogMap(); }, 60000); // terminator drift, same interval/reasoning as the original Log map
+
+// ---- tap-to-inspect: a lighter popup than app.html's callInfoModal (no
+// session decode history or full QSO log to show on this page) -- just what
+// the tapped pin itself carries, plus distance/bearing from the operator's
+// own grid when both ends are known. ----
+function showMapPopup(pin) {
+  document.getElementById('mapPopupCall').textContent = pin.call || '(unknown)';
+  var body = '<div>' + esc(pin.source) + (pin.ref ? ' · ' + esc(pin.ref) : '') +
+    (pin.name ? ' · ' + esc(pin.name) : '') + '</div>';
+  if (pin.grid) body += '<div>Grid ' + esc(pin.grid) + '</div>';
+  // Every pin carries the exact lat/lon it was drawn at -- using that
+  // directly, rather than re-deriving from pin.grid, keeps this reading
+  // consistent with the dot actually on screen.
+  var distBearing = '';
+  if (lastCfg.grid && pin.lat != null && pin.lon != null) {
+    var a = gridToLatLon(lastCfg.grid);
+    if (a) { var gc = greatCircle(a, { lat: pin.lat, lon: pin.lon }); distBearing = fmtKmBearing(gc.km, gc.bearing); }
+  }
+  if (distBearing) body += '<div>' + esc(distBearing) + '</div>';
+  if (pin.band) body += '<div>' + esc(pin.band) + '</div>';
+  if (pin.ts) body += '<div>' + esc(fmtAgo(parseUtcIso(pin.ts))) + '</div>';
+  document.getElementById('mapPopupBody').innerHTML = body;
+  document.getElementById('mapPopupQrz').href = 'https://www.qrz.com/db/' + encodeURIComponent(pin.call || '');
+  document.getElementById('mapPopup').hidden = false;
+}
+document.getElementById('mapPopupClose').onclick = function () {
+  document.getElementById('mapPopup').hidden = true;
+};
+function handleLogMapTap(clientX, clientY) {
+  if (logMapZoom < LOG_MAP_TAP_ZOOM_MIN) return;
+  var rect = document.getElementById('mapCanvas').getBoundingClientRect();
+  var x = clientX - rect.left, y = clientY - rect.top;
+  var best = null, bestD = 14;
+  logMapPins.forEach(function (p) {
+    var d = Math.hypot(p.x - x, p.y - y);
+    if (d < bestD) { bestD = d; best = p; }
+  });
+  if (best) showMapPopup(best);
+}
+
+// ---- gesture handling: identical to the original Log-tab map (single-
+// finger drag pans, two-finger pinch zooms anchored at the pinch midpoint,
+// a tap under DRAG_CLAIM_PX inspects a pin) -- this page has no swipe-tab
+// track to fight over touches with, so the stopPropagation() calls the
+// original needed for that reason are no longer load-bearing, but are kept
+// anyway since they're harmless and this is otherwise a verbatim port. ----
+(function () {
+  var canvas = document.getElementById('mapCanvas');
+  var DRAG_CLAIM_PX = 10;
+  var dragging = false, dragMoved = 0, lastX = 0, lastY = 0;
+  var pinchStartDist = 0, pinchStartZoom = 1;
+
+  function touchDist(t1, t2) { return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY); }
+  function panBy(dx, dy, w, h) {
+    var s = logMapScale();
+    logMapCenterLon -= dx / s;
+    logMapCenterLat += dy / s;
+    clampLogMapView(w, h);
+  }
+
+  canvas.addEventListener('touchstart', function (e) {
+    e.stopPropagation();
+    if (e.touches.length === 1) {
+      dragging = true; dragMoved = 0;
+      lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+    } else if (e.touches.length === 2) {
+      dragging = false;
+      pinchStartDist = touchDist(e.touches[0], e.touches[1]);
+      pinchStartZoom = logMapZoom;
+    }
+  }, { passive: true });
+
+  canvas.addEventListener('touchmove', function (e) {
+    e.stopPropagation();
+    e.preventDefault();
+    var w = canvas.clientWidth, h = canvas.clientHeight;
+    if (e.touches.length === 1 && dragging) {
+      var dx = e.touches[0].clientX - lastX, dy = e.touches[0].clientY - lastY;
+      dragMoved += Math.abs(dx) + Math.abs(dy);
+      lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+      panBy(dx, dy, w, h);
+      renderLogMap();
+    } else if (e.touches.length === 2 && pinchStartDist > 0) {
+      var d = touchDist(e.touches[0], e.touches[1]);
+      var midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      var midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      logMapZoomAt(midX, midY, pinchStartZoom * (d / pinchStartDist));
+      renderLogMap();
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', function (e) {
+    e.stopPropagation();
+    if (dragging && dragMoved < DRAG_CLAIM_PX && e.changedTouches.length === 1) {
+      handleLogMapTap(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+    }
+    dragging = false;
+    pinchStartDist = 0;
+  }, { passive: true });
+
+  var mouseDown = false, mouseMoved = 0;
+  canvas.addEventListener('mousedown', function (e) {
+    mouseDown = true; mouseMoved = 0; lastX = e.clientX; lastY = e.clientY;
+  });
+  window.addEventListener('mousemove', function (e) {
+    if (!mouseDown) return;
+    var dx = e.clientX - lastX, dy = e.clientY - lastY;
+    mouseMoved += Math.abs(dx) + Math.abs(dy);
+    lastX = e.clientX; lastY = e.clientY;
+    panBy(dx, dy, canvas.clientWidth, canvas.clientHeight);
+    renderLogMap();
+  });
+  window.addEventListener('mouseup', function (e) {
+    if (mouseDown && mouseMoved < DRAG_CLAIM_PX) handleLogMapTap(e.clientX, e.clientY);
+    mouseDown = false;
+  });
+  canvas.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    logMapZoomAt(e.clientX, e.clientY, logMapZoom * (e.deltaY < 0 ? 1.2 : 1 / 1.2));
+    renderLogMap();
+  }, { passive: false });
+})();
+
+// ===================== boot =====================
+(async function boot() {
+  await loadCfg(); // own-grid marker + spots' band filter want this before first render, but basemap load below doesn't depend on it
+  loadDecodeLocations();
+  loadLogMapBasemap(); // renders as soon as the basemap itself is in, doesn't wait on data layers
+  loadQsoLocations();
+  loadSpotLocations();
+})();
+</script>

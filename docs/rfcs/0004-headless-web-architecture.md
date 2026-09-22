@@ -1034,6 +1034,295 @@ min — imperceptible faster than that, so no tighter interval bought anything).
 in both palette entries: distinct from the solid-orange own-grid marker by shape as well as color, since the
 two hues sit close enough on the wheel that color alone wouldn't reliably separate them.
 
+**Moved out to its own full-screen page, `webapp/app/map.html`, 2026-09-22, operator-requested.** The Log
+tab's List/Map toggle is gone; Map is reached from a "Map" card in Tools instead. Two reasons, not one:
+first, a screen sharing `#viewport` with List meant the map could only ever be one third of the swipe track's
+width-worth of vertical space and had to fight the swipe-tab IIFE for gesture ownership (§12.5's own earlier
+"stopPropagation() trade-off" paragraph) — a full-screen page has neither problem, since there is no sibling
+panel to size against or to swipe away to. Second, and the more direct trigger: the operator wants the map to
+carry more than one dataset at once (QSOs plus, now, Decodes and POTA/SOTA spots, PSKReporter later) with
+independent show/hide per layer, which is a page-level concern (a toolbar) rather than something that fits
+the Log tab's own chrome.
+
+The renderer itself — projection, pan/zoom, basemap/border/grid/terminator drawing, great-circle paths — is
+an unmodified port, not a rewrite: every function above this paragraph in §12.5 describes code that still
+exists verbatim in `map.html`, just no longer reachable from `app.html`. What's new is data-layer
+independence: `layerState.{qsos,decodes,spots}` gate both fetching and drawing per layer, so a layer that's
+off never even makes its network call. **QSOs** walks `/api/log/files` + `/api/log/entries` directly (the
+same relay `downloadAllAdif()` already used to export the whole log, adapted to build map points instead of
+an ADIF blob) rather than depending on the Log tab's own lazy-loaded `logEntriesByCall`/pagination state,
+which this page no longer has at all. **Decodes** is new: a read of `microft8_callsign_grids_v1`, the
+opportunistic callsign→grid cache Operate already builds and persists to `localStorage` (documented in
+`app.html`'s own comments above `CALLSIGN_GRID_CACHE_KEY`; this is its first consumer outside Operate) — pins only, no
+great-circle path, since a decode is "heard roughly here," not a completed contact. **POTA/SOTA spots**
+moved here wholesale from the Tools card §12.3 built (same two endpoints, same FT8-only/active-bands filter,
+same SOTA `api-db2` endpoint found live during that build) — Tools now links to the map instead of carrying
+its own spot list, since a spot's location is exactly what a map communicates that a list can't.
+**PSKReporter is a fourth toolbar button, disabled** — a placeholder for §12.8's still-rejected-for-the-first-
+slice card, not a claim it's built.
+
+**Tap-to-inspect no longer reuses `showCallInfo()`.** That bottom sheet depends on session state (decode
+history, in-memory QSO history) this standalone page never populates, so reusing it would either silently
+show nothing in those sections or require duplicating Operate's whole event-poll machinery just to feed a
+popup — disproportionate to what a map tap actually needs. A new, lighter popup shows only what the tapped
+pin itself carries (callsign, source layer, grid, distance/bearing from the operator's own grid when both
+ends are known, and for a spot: program/reference/name/band/age) plus a QRZ link. Same zoom-gated "when close
+enough" threshold as before.
+
+Verified on the static preview, real POTA/SOTA network calls (not mocked — both APIs have open CORS,
+confirmed live): basemap, borders, grid squares/labels, and the terminator all render identically to the
+Log-tab version; each toolbar button independently toggles its layer's pins on/off and triggers its fetch
+lazily (only on first enable, not on page load, except Decodes which is cheap enough to just read every
+toggle-on); tapping a live POTA spot pin opened the popup with that spot's real callsign, reference, park
+name, band, and age; dark/light theme (read from the same `microft8_theme_v1` key Settings writes) renders
+the toolbar and basemap correctly in both; the Tools → Map link navigates correctly. QSOs showed "unavailable"
+against the static file server used for this preview, correctly — that server has no `/api/log/*` endpoints
+at all, so this is the degrade-visibly path working, not a defect. **Not provable by an agent:** the actual
+device path (`/api/log/*` against a real sidekick with a populated log) and real touch gestures on a phone —
+both already open items from the pan/zoom/tap-to-inspect round above, unchanged by this move.
+
+**"Over the last..." recency filter added 2026-09-22, same day, operator-requested.** One control, shared
+across all three data layers rather than one per layer — the operator asked for "a way to select which data
+is displayed," and a station worked ten years ago, a callsign decoded last week, and a spot from five minutes
+ago all being drawn at once was the actual problem this closes. Options are 1/6/24 hours, 7/30 days, or "All
+time" (`null`, no filter) — the default, matching every prior round's unfiltered behaviour, since an
+unexpectedly-empty map on first visit would be a worse surprise than starting broad.
+
+**This needed a schema change, not just a render-time filter, because Decodes had no timestamp to filter
+by at all.** The opportunistic callsign→grid cache (`microft8_callsign_grids_v1`, `localStorage`) stored a
+bare grid string per callsign — `learnCallsignGrid()` (`app.html`) only ever needed "what grid," never
+"when." Changed to `{grid, ts}` (`ts` = phone-clock ms at the moment that entry was last written), in both
+`app.html` (the writer) and `map.html` (the reader). A value written by a build before this change — a bare
+string, already sitting in an existing operator's `localStorage` the moment they load the updated app — is
+not a migration problem: `cacheGridOf()`/`cacheTsOf()` (duplicated in both files, same reasoning as every
+other shared helper on this page — no module system, see this section's own earlier "BANDS/parseActiveBands"
+comment) read either shape, so an old entry keeps working exactly as before and simply has no known age until
+the callsign is heard again and rewritten in the new shape. QSOs needed no schema change, only a derivation
+already sitting in `app.html`: `qsoEpochMs(file, time)` (the Log list's own "ago" badge) ported verbatim to
+turn each entry's day-filename + `HH:MM` into an epoch ms at load time. Spots needed nothing at all — POTA's
+`spotTime` and SOTA's `timeStamp` were already being parsed (`parseUtcIso()`) for the tap-to-inspect popup's
+own "ago" line.
+
+**An entry with no resolvable timestamp is treated as outside every bounded window, not as always-visible.**
+The alternative — show anything of unknown age regardless of the selected window — would make "1 hour" a lie
+for however many legacy cache entries happen to still be bare strings; excluding them (they still show under
+"All time", which makes no age claim) is the reading consistent with what the control says it does.
+
+Verified on the static preview with synthetic `localStorage` data spanning known ages (5 minutes, 2 hours,
+10 days, plus one legacy bare-string entry with no `ts` at all): each window boundary included and excluded
+exactly the entries it should have, confirmed by reading `visibleDecodeLocations()`'s own output directly
+rather than only eyeballing pins; live POTA/SOTA spots (real network data, not mocked) were unaffected by a
+1-hour window, correctly — the API itself only ever returns activity that recent, so this is the filter
+correctly having nothing to do, not a filter that silently isn't working; the selection persists across a
+page reload via its own `localStorage` key, same pattern as `distUnit`/`themePref`.
+
+**Two real defects found and fixed the same day, both surfaced by the operator looking at a real phone's
+accumulated decode history rather than the static preview's synthetic data.** Neither is a design change to
+anything already decided above — both are corrections to what was actually built.
+
+**`ts` was only re-stamped on a *changed* grid, not on every decode.** `learnCallsignGrid()`'s original cut
+carried an early return — `if (!call || cacheGridOf(callsignGridCache[call]) === last) return;` — kept from
+before the `{grid, ts}` schema change existed, back when the only reason to touch the cache at all was a
+genuinely new mapping. Once `ts` existed and needed to mean "recent enough to pass a filter," that same guard
+silently froze `ts` at first-heard for every callsign whose grid isn't actively changing — which is nearly
+all of them; a portable/mobile station is the exception, not the rule. The practical effect: a station heard
+fresh, this session, could still read as unknown-age to the filter and disappear under every bounded window,
+because its cache entry hadn't changed grid since it was first learned, however long ago that was. This is
+exactly what a real phone's decode history showed — dense, genuine stations, visible only under "All time."
+Fixed by removing the guard entirely: `ts` now re-stamps on every decode that carries a resolvable grid,
+whether or not the grid value changed, so it actually means "last heard," matching what the filter's own
+design (and this section's own earlier "no known age until next heard" claim) already assumed it meant. A
+side effect worth naming rather than treating as incidental: a legacy bare-string entry (predating this
+session's schema change entirely) now self-heals into the new `{grid, ts}` shape the moment that station is
+heard again, since the fixed function always writes the full shape — closing the gap between what the
+compat-reader comment promised and what the code actually did.
+
+**Grid-square pins collapse onto a visually artificial lattice, and the operator caught it by asking whether
+the pattern looked too regular to be real — a well-founded question, not a false alarm.** FT8's grid exchange
+is always exactly 4 characters, never 6 (the mode's message format has no room for a subsquare), and
+`gridToLatLon()` plots a bare 4-character grid at its square's exact center. Every distinct station sharing
+that square — a real occurrence at continent zoom, where a square covers roughly 140×110 km at mid-latitudes
+— lands on the identical point. Dedupe-by-grid (already necessary so a repeat contact doesn't multiply the
+ink, §12.5's own earlier text) then draws exactly one pin per square regardless of how many distinct stations
+were heard there, so what's on screen is really "which squares had any activity," rendered as a perfectly
+regular 2°×1° lattice of dots rather than organic scatter — real data, but visually indistinguishable from
+synthetic, which is precisely the resemblance the operator flagged.
+
+Added `gridToLatLonJittered()`: a deterministic offset within the square, seeded only by the grid string
+itself (a small string hash, same technique as `app.html`'s own `fnv1a()`) so the *same* square always
+jitters to the *same* point across renders — stable, not random noise that would relocate a station on every
+redraw — while *different* squares land at visibly different points instead of one shared corner. Inset
+10–90% of each axis so a jittered point never sits on a border shared with a neighboring square. A
+6-character grid (an actual GPS-entered subsquare on a logged QSO, ~9 km — already far finer than anything
+visibly gridded at this map's zoom range) is returned unjittered; only the common 4-character case, which is
+the one that produces the lattice, is touched. Applied everywhere a bare grid — not a real lat/lon — becomes
+a plotted point: QSOs (pin and its great-circle path endpoint, drawn from the same resolved point so the line
+and the dot never visibly disagree) and Decodes both plot exclusively from grids, so both apply it always;
+POTA-sourced spots apply it when a spot carries a grid, matching how they're plotted regardless. SOTA spots
+carry real lat/lon from the source and are left untouched — they were never grid-quantized, so there's
+nothing to correct.
+
+**The tap-to-inspect popup's distance/bearing reading was tightened in the same pass, for a reason the jitter
+itself created.** Before, a grid-bearing pin's popup re-derived distance/bearing from `pin.grid`'s own
+(un-jittered) center via `fmtDistBearing()`, which would have quietly disagreed with the now-jittered dot the
+operator actually tapped — reporting the distance to a different point than the one on screen. Every pin now
+carries the exact `{lat, lon}` it was resolved to at plot time (jittered when it came from a grid, real
+coordinates when it didn't), and the popup reads that directly rather than re-deriving anything — one code
+path instead of two, and it can no longer drift out of sync with what's drawn. `fmtDistBearing()` itself is
+now unused on this page and was deleted rather than kept, this repo's usual pre-alpha discipline.
+
+Verified: `gridToLatLonJittered()` confirmed deterministic (repeated calls for the same grid return the
+identical point) and confirmed to spread distinctly (four synthetic grids produced four visibly different
+offsets, none coincident, none on a border); a synthetic 20-callsign cache concentrated into 5 shared squares
+rendered as 5 visually distinct points on the static preview, not one lattice; the popup's reported distance
+to a jittered pin was cross-checked against a manual haversine computed directly from that pin's own carried
+coordinates (2,490 km) against the un-jittered grid-center distance to the same square (2,446 km) — confirming
+the popup now reads the same point that's actually drawn, not the square's center underneath it.
+
+**Toolbar auto-wrap, vertical (pole-crossing) pan, and a new Places layer, all 2026-09-22, same day,
+operator-requested.**
+
+**Toolbar:** `#mapToolbar` switched from `overflow-x:auto` to `flex-wrap:wrap`. A horizontally-scrolling
+toolbar hides controls off the edge of the screen with no visual hint they exist at all — wrapping to a
+second row keeps every control reachable at any window width instead. The toolbar's own height now varies
+(one row versus two), which costs nothing: it's a floating overlay (`z-index:5`, `position:fixed`) over the
+full-viewport canvas below it (`#mapCanvasWrap{inset:0}`), not a document-flow element the canvas has to
+size around, so a taller toolbar just covers a little more of the map underneath it.
+
+**Vertical wraparound is not symmetric with the existing horizontal wrap, and that asymmetry is why this
+needed a real design pass rather than a one-line clamp removal.** Longitude is a true cylinder: shifting
+every point by exactly +-360 degrees reproduces the map identically, which is all `LOG_MAP_WRAP_OFFSETS` has
+ever needed to do. Latitude is not a cylinder — the poles are singular points, not a seam. Continuing to pan
+past +-90 doesn't wrap back to the opposite pole; it goes *over* the pole and comes down the far side of the
+globe, 180 degrees around in longitude. True latitude, as a function of the pan position, is therefore a
+triangle wave past +-90, not a straight line — a reflection, not a translation.
+
+`logMapCenterLat` is no longer clamped (`clampLogMapView()` now only wraps it, by an exact multiple of 360,
+purely against float drift over a long session — same reasoning `LOG_MAP_WRAP_OFFSETS` already applies to
+longitude). A **vertical band** describes one on-screen copy of the world: `mirror:false` is the ordinary
+orientation (`shift` selects which 360-wide cycle of the now-unbounded pan coordinate this copy sits in);
+`mirror:true` is the pole-crossed orientation, where a feature's true latitude is *subtracted from* `shift`
+rather than added (going further "up" on screen now means going further *down* in true latitude, away from
+the pole just crossed), always paired with a 180-degree longitude flip. `computeVerticalBands()` derives,
+once per render (not per point — every true latitude in this app's own data is already in [-90,90], far
+smaller than the 360-degree period, so which band a point belongs to is a property of the *view*, not of the
+individual point), which band(s) the current pan/zoom actually reaches: always the primary band, plus a
+mirrored neighbor only when the visible vertical span genuinely overlaps it. Confirmed live: exactly 1 band
+(identical draw cost to every prior round) at the default view and at zoom 2 and zoom 10; only panning
+deliberately toward a pole adds a second.
+
+Applied everywhere that matters for "spin the globe and see it correctly": land, country/US-state borders,
+the terminator, great-circle paths, every pin type (QSO/Decode/spot), the own-grid marker, and the new
+Places labels below — each draw function now takes the current `bands` array and loops it via
+`forEachBandOffset()`, the same shape `LOG_MAP_WRAP_OFFSETS.forEach()` already had, just one level higher.
+**Deliberately not extended to the Maidenhead grid-square overlay or its labels** — both are already gated to
+`LOG_MAP_GRID_ZOOM_MIN` (zoom>=4, a <=45-degree visible span), making "zoomed in that far *and* at a pole" a
+combination rare enough that the added complexity wasn't worth it this round; a documented scope decision,
+not an oversight, and the existing `Math.max(-90,...)/Math.min(90,...)` clamps there already give correct
+(if pole-incomplete) behaviour unchanged.
+
+Verified on the static preview via direct state manipulation (not just gesture simulation, though the
+gesture handlers were also confirmed to still reach `clampLogMapView()` with no clamp reintroduced):
+`logMapCenterLat=95` (5 degrees past the north pole) correctly revealed Alaska and the Siberian coast,
+connected with no visible seam to the Scandinavia/Iceland content below it; `logMapCenterLat=150` and
+`logMapCenterLat=150+360` rendered pixel-identical screenshots, confirming the periodicity the triangle-wave
+math predicts; text labels in a reflected band read left-to-right normally, not mirrored (only position
+reflects — the projection change never touches glyph orientation); a synthetic QSO at grid `JP88vc` (~88N)
+rendered its pin and the own-grid marker correctly near the pole, and tapping that pin returned the correct
+"0 km" reading (`myGrid === grid`), confirming pin data (always stored as true, unreflected lat/lon) and
+hit-testing both survive a pole-crossing render unchanged.
+
+**Places: country and US-state name labels needed zero new data.** `ne_110m_countries.json` and
+`ne_110m_us_states.json` already carry `name` — checked directly before proposing any of this, the same
+"measure before assuming" discipline §12.3's spot-sourcing and this file's own CORS checks already established
+— so labeling them is a pure rendering addition, not a fetch. `featureLabelPoint()` computes each feature's
+label point as the centroid (shoelace formula, treating lon/lat as flat x/y — no more an approximation than
+the rest of this equirectangular renderer already makes everywhere else) of its single *largest* ring by
+area, not its first — correct for a `MultiPolygon` country or state (confirmed live: Fiji's computed centroid
+lands on its main islands, not on a small outlying one or empty ocean between them). Country labels are
+unconditional while the layer is on; US-state labels are gated to `LOG_MAP_STATE_BORDER_ZOOM_MIN`, the same
+threshold their own borders already use — labeling a border that isn't drawn yet would be confusing chrome,
+not helpful.
+
+City names are the one genuinely new bundle file, `ne_110m_places.json`: the world's ~243 largest
+cities/capitals, from Natural Earth's `ne_110m_populated_places` (same public-domain source and 110m tier as
+every other bundle file here). Measured before stripping: 654,324 B raw, carrying roughly 130 columns per
+city (name in a dozen languages, population back to 1950, timezone, Wikidata IDs...); stripped to
+`name`/`rank`/coordinates only, the same discipline `ne_110m_land.json` already established, it's **28,524 B**
+for the whole world. Rank-gated by zoom (`SCALERANK` 0, the ~27 largest world cities, visible from the
+default zoomed-all-the-way-out view; every bundled city by zoom 9) rather than an all-or-nothing toggle, so
+zooming in progressively reveals more rather than dumping all 243 names on screen at once.
+
+**Bundled, not runtime-fetched — the operator's explicit call, made after a sourcing conversation that
+preceded any code.** That conversation covered what "more detail" could mean (finer coastlines, roads, place
+names, imagery) and corrected an overstated claim from earlier in it: that nothing fetched at runtime on this
+origin could ever be reused across sessions. That's only true of the **Cache API and Service Worker**
+specifically (§12.4's own finding: blocked by `map.html`'s own non-secure origin, `http://micro-ft8.local`,
+regardless of what server is actually fetched from — the restriction is gated on the *page's* security
+context, not the target's). **Ordinary HTTP browser caching is not secure-context-gated at all** — a
+response's own `Cache-Control` header controls it regardless of the fetching page's origin. Since
+`mini-ft8.kalikstein.com` is a domain the operator controls outright, files served there with a long-lived
+`Cache-Control` header would cache normally in the browser's own disk cache after a first fetch, no Service
+Worker required — not a hard "works with zero network ever" guarantee the way a Service Worker fetch-intercept
+would be, but exactly the right shape for "fetch once per region when online, free after that." This finding
+doesn't get exercised this round (the operator chose to bundle the city tier rather than fetch it), but is
+recorded here rather than left to be re-derived the next time a genuinely-online-only map tier — the
+discussed-but-not-built finer, ~7,000-place `ne_10m_populated_places` tier, or anything else — actually gets
+built.
+
+Toggleable in the toolbar like QSOs/Decodes/spots, default on. Unlike those three, toggling Places costs
+nothing extra — its data loads once at boot alongside the rest of the basemap (`loadLogMapBasemap()`'s own
+`Promise.all`), never lazily per-toggle, so the click handler is pure render on/off.
+
+**Label collision avoidance added same day, same round, operator-requested** ("only show the names when
+there is enough whitespace around the names to be clean visually"). Canvas text has no built-in hit-testing
+or layout engine, so this is a small hand-rolled greedy placer, the same shape as every other from-scratch
+algorithm on this page (grid labels' own area-threshold gating, the terminator's zenith-angle equation): every
+label candidate across all three Places tiers is collected into one shared list (not three independent
+per-tier passes — a country name and a city name need to know about each other to avoid overlapping), sorted
+by priority, and placed greedily — a candidate draws only if its own box (measured text width, plus
+`LOG_MAP_PLACE_LABEL_PAD_PX` on every side; that padding *is* "enough whitespace," not a separate concept)
+doesn't intersect any higher-priority box already placed this render. Priority order: cities first, by their
+own `SCALERANK` (the world's biggest cities are the most useful reference points, so they win a collision);
+then countries and states by polygon area (`computeLabelPoints()` now carries `area` through from
+`featureLabelPoint()`'s own centroid computation for exactly this) — a bigger region's name outranks a
+smaller one it happens to sit next to. A label that loses isn't deleted, just skipped for that render; a
+city's dot draws unconditionally regardless of whether its name found room, since "no space for the label"
+isn't a reason to hide that a station exists there at all. Verified live: Europe, previously an unreadable
+wall of overlapping country names (the exact problem that prompted this), now renders a legible subset with
+visible space around each label.
+
+**Two smaller changes in the same round, both operator-requested, both simple enough to not need their own
+verification narrative beyond what's stated here.** The "over the last..." control (§ this file's own
+addendum above) gained 15-minute and 30-minute options — no code beyond two new `<option>` values, since
+`mapTimeWindowMs`/`withinMapTimeWindow()` were already generic over any millisecond value, never hardcoded to
+the six that existed before. And the grid-square dot jitter added earlier this same round (`gridToLatLonJittered()`,
+its `hashStringToUnit()` helper) was removed entirely — the operator's call that the plain lattice look (every
+station at its exact grid-square center) is acceptable now that its cause is understood, not a reversal of
+the earlier finding that FT8's 4-character grid exchange genuinely does quantize real stations onto that
+lattice. QSO/Decode/POTA-spot pins plot via plain `gridToLatLon()` again, matching every distance/bearing
+calculation elsewhere on this page.
+
+**Grid squares became their own toggleable layer, defaulted off, same round, operator-requested.** Every
+other layer added this round (QSOs/Decodes/spots/Places) defaults on; the Maidenhead overlay is dense
+reference detail serving one specific purpose (reading a station's exact grid square) rather than something
+every map visit needs to see immediately, so it defaults off and is opted into like the disabled-by-default
+state borders/grid squares always were behind their own zoom gates — the zoom gates (`LOG_MAP_GRID_ZOOM_MIN`)
+are unchanged and still apply on top of the new toggle, not replaced by it. Purely a render on/off, same as
+Places — no data to fetch, so `layerState.grid`'s click handler costs nothing to flip either direction.
+
+**Country/US-state labels are now centered on their own label point, not left-anchored there, same round,
+operator-requested** ("center the text within its boundary"). `featureLabelPoint()`'s centroid is a
+boundary's own visual middle; drawing text starting there (canvas's default `textAlign`, what cities still
+use, anchored next to their dot) instead of centered on it ran every label off-center, and risked a narrow
+country or state overflowing its own border with its own name. `labelBox()` and `tryPlace()` (the
+collision-avoidance placer added earlier this round) both gained a `centered` parameter: a centered label's
+box extends `textWidth/2` in *both* directions from its point rather than only rightward, and `ctx.textAlign`
+is set to `'center'` only for the two calls that pass it (countries, states) — cities stay left-anchored,
+unaffected. Verified live: "Texas," "Oklahoma," "Wyoming" and neighboring US states all render visibly
+centered within their own borders at a zoom where state labels are enabled; toggling the new Grid squares
+button on/off correctly shows/hides the Maidenhead overlay, defaulting to hidden on a fresh page load.
+
 ### 12.6 Navigation
 
 A third swipe tab — Operate / QSOs / Tools — not a Settings-style full-screen overlay.
