@@ -274,6 +274,53 @@ static const char *mime_for(const char *relpath)
     return "application/octet-stream";
 }
 
+// Field-found 2026-09-21 (I34/I35/I36 build): web_fs_load()'s single
+// malloc(file_size) is fine for web_page.c's small in-memory seed pages
+// (tens of KB, need the whole buffer anyway for {{...}} substitution), but
+// get_static() serves arbitrary bundle-pushed assets -- app.html can be
+// hundreds of KB -- and a single large contiguous allocation is exactly the
+// kind of request that fails to heap fragmentation even when plenty of free
+// heap exists in smaller pieces. app.html grew past whatever threshold the
+// previous build sat under, and every GET for it silently 404'd: malloc
+// failure and "file not found" both produced NULL from web_fs_load() with
+// no distinguishing log line, despite the file genuinely existing on disk
+// (confirmed on hardware: the two other, smaller pushed assets kept serving
+// fine the whole time). Streaming in fixed-size chunks bounds peak
+// allocation to STREAM_CHUNK_BYTES regardless of how large a served file
+// ever grows, so this class of failure cannot recur here.
+#define STREAM_CHUNK_BYTES (16u * 1024u)
+
+static esp_err_t stream_file(httpd_req_t *req, FILE *f)
+{
+    char *buf = (char *)malloc(STREAM_CHUNK_BYTES);
+    if (!buf) {
+        ESP_LOGE(TAG, "oom allocating %u-byte stream buffer", (unsigned)STREAM_CHUNK_BYTES);
+        return ESP_ERR_NO_MEM;
+    }
+    esp_err_t result = ESP_OK;
+    for (;;) {
+        const size_t n = fread(buf, 1, STREAM_CHUNK_BYTES, f);
+        if (n > 0 && httpd_resp_send_chunk(req, buf, n) != ESP_OK) {
+            result = ESP_FAIL;
+            break;
+        }
+        if (n < STREAM_CHUNK_BYTES) {
+            if (ferror(f)) {
+                result = ESP_FAIL;
+            }
+            break;
+        }
+    }
+    free(buf);
+    // Terminates the chunked response (a zero-length chunk); only reachable
+    // once nothing has failed, so headers and every prior chunk already went
+    // out cleanly -- an error past this point has nothing left to recover.
+    if (result == ESP_OK) {
+        result = httpd_resp_send_chunk(req, NULL, 0);
+    }
+    return result;
+}
+
 // Serves GET /<path> from the web FS when a more specific route did not match.
 // Register last. Exact handlers (/api/..., /, ...) must be registered first
 // and win because uri_match_wildcard does strcmp for patterns without '*'.
@@ -293,11 +340,16 @@ static esp_err_t get_static(httpd_req_t *req)
     memcpy(rel, uri + 1, len - 1);
     rel[len - 1] = '\0';
 
-    size_t body_len = 0;
-    char *body = web_fs_load(rel, &body_len);
-    if (!body) {
+    if (!s_ready || !relpath_ok(rel)) {
         return httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Not found");
     }
+    char path[96];
+    abs_path(path, sizeof(path), rel);
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        return httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Not found");
+    }
+
     httpd_resp_set_type(req, mime_for(rel));
     // Seed updates on reflash/hydrate, or a desk_push bundle push; do not
     // keep a stale browser copy. no-cache (was here before) still permits a
@@ -309,8 +361,15 @@ static esp_err_t get_static(httpd_req_t *req)
     // half of that: a bfcache restore skips a network request altogether,
     // so no Cache-Control header sees it at all).
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-    const esp_err_t err = httpd_resp_send(req, body, body_len);
-    free(body);
+    const esp_err_t err = stream_file(req, f);
+    fclose(f);
+    if (err == ESP_ERR_NO_MEM) {
+        // Headers were staged but nothing sent yet (the failure is in
+        // stream_file()'s own first malloc, before any chunk goes out), so a
+        // real error response is still possible here -- distinct from a
+        // mid-stream failure, which has nothing left to send.
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "out of memory");
+    }
     return err;
 }
 
