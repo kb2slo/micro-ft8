@@ -261,6 +261,23 @@ button:disabled{opacity:.45}
 .frow-extra .distbearing{font-family:ui-monospace,monospace}
 .frow-extra .comment{font-style:italic;overflow-wrap:anywhere}
 #logMore{padding:.7rem 1rem;text-align:center;color:GrayText;font-size:.8rem}
+/* Plain two-button segmented toggle, same flat/hairline language as the
+   rest of the app -- not #tabbar (that's fixed-position, page-level nav;
+   this is a within-screen view switch). */
+#logViewToggle{display:flex;padding:.6rem 1rem 0;gap:0}
+#logViewToggle button{flex:1;padding:.4rem 0;font-size:.8rem;border:1px solid GrayText;background:transparent;color:GrayText}
+#logViewToggle button:first-child{border-radius:.4rem 0 0 .4rem}
+#logViewToggle button:last-child{border-radius:0 .4rem .4rem 0;border-left:0}
+#logViewToggle button.on{background:var(--accent);border-color:var(--accent);color:Canvas;font-weight:700}
+/* Fixed ocean/land colors regardless of app theme -- same reasoning as
+   #opSlotBar's own comment: this is a map, not themed chrome, and land/
+   ocean contrast reads better fixed than flipping with light/dark. */
+#logMapWrap{padding:.75rem 1rem}
+/* touch-action:none is load-bearing, not cosmetic -- without it the browser's
+   own native pinch-zoom/pan on the canvas element fights the custom gesture
+   handling below (both trying to interpret the same touches). */
+#logMapCanvas{width:100%;height:60vh;display:block;border-radius:.5rem;background:#0a1428;touch-action:none;cursor:grab}
+#logMapNote{padding:.4rem 0 0;text-align:center}
 
 /* ---- tools ---- */
 /* One card per §12.2 tier (RFC 0004 §12): band conditions is offline-
@@ -416,12 +433,24 @@ button:disabled{opacity:.45}
        walks logFiles transparently: file boundaries are an implementation
        detail, not something the operator navigates. -->
   <section id=view-log>
+    <!-- List/Map toggle (I30): a vector basemap, not tiles -- RFC 0004 §12.5.
+         Map data is a QSO collection built alongside logEntriesByCall as the
+         log loads, not "the device log" itself, so a later remote-logbook
+         source is a second contributor rather than a rewrite. -->
+    <div id=logViewToggle>
+      <button id=logViewListBtn type=button class=on>List</button>
+      <button id=logViewMapBtn type=button>Map</button>
+    </div>
     <div id=logToolbar>
       <a id=logDownloadAll class=dlink href=#>Download full ADI</a>
       <a id=logClearAll class="dlink dlink-danger" href=#>Clear all ADI files</a>
     </div>
     <div id=logList></div>
     <div id=logMore hidden><button id=logMoreBtn type=button>Load older QSOs</button></div>
+    <div id=logMapWrap hidden>
+      <canvas id=logMapCanvas></canvas>
+      <div id=logMapNote class=toolsnote></div>
+    </div>
   </section>
 
   <!-- ================= TOOLS ================= -->
@@ -2076,6 +2105,12 @@ var logEntriesByCall = {};  // callsign -> [{file,time,band,freq,rst_sent,rst_rc
                              // up in appendLogRows() as the Log tab pages through day
                              // files -- only covers what's been loaded so far this
                              // session, not necessarily the whole log (see showCallInfo)
+var logQsoLocations = [];   // [{call,grid,myGrid}] -- one per QSO with a plottable grid on
+                             // both ends, built alongside logEntriesByCall in the same
+                             // loop (I30). A collection built as the log loads, not "the
+                             // device log" itself, per the roadmap's own northstar note:
+                             // a later remote-logbook source becomes a second contributor
+                             // to this array rather than a rewrite of the map.
 var logDone = false;         // every file drained, nothing left anywhere
 var logLoading = false;
 var logRefreshing = false;
@@ -2203,6 +2238,7 @@ function setTheme(v) {
   themePref = v;
   try { localStorage.setItem(THEME_KEY, v); } catch (e) { /* applies live even if not persisted */ }
   applyTheme();
+  if (logViewMode === 'map') renderLogMap(); // map colors follow theme too (2026-09-22)
 }
 function applyTheme() {
   if (themePref === 'system') {
@@ -2768,7 +2804,12 @@ function appendLogRows(file, rows, prependGroup) {
       logEntriesByCall[callKey].push({ file: file, time: q.time, band: q.band, freq: q.freq,
                                        rst_sent: q.rst_sent, rst_rcvd: q.rst_rcvd });
     }
+    var qGrid = (q.grid || '').toUpperCase(), qMyGrid = (q.my_grid || '').toUpperCase();
+    if (qGrid && qMyGrid && gridToLatLon(qGrid) && gridToLatLon(qMyGrid)) {
+      logQsoLocations.push({ call: q.call, grid: qGrid, myGrid: qMyGrid });
+    }
   });
+  if (logViewMode === 'map' && logMapGeo) renderLogMap();
 }
 
 // Mirrors adif.cpp's adif_format_log_record() field-for-field: same tag
@@ -2895,6 +2936,508 @@ async function downloadAllAdif(linkEl) {
   }
 }
 
+// ===================== Log: map (I30, RFC 0004 §12.4/§12.5) =====================
+// A vector basemap, not bundled tiles (§12.5 -- §11's tile ban stands, this
+// is a different artefact): `ne_110m_land.json` (Natural Earth 110m land,
+// public domain, stripped of unused properties/bbox/crs and rounded to 2
+// decimal places -- 84,718 B, down from the raw file's 138,160 B). Ships as
+// its own bundle file, never inlined -- `web_fs_load()`'s 512 KB per-file
+// cap and `app.html`'s own size (RFC 0004 §4). No tile caching is possible
+// on this origin at all (§12.4: Cache API and Service Workers are both
+// absent on non-secure `http://micro-ft8.local`), so this is the only
+// offline map option, not a cost-saving choice over one.
+var LOG_MAP_URL = 'ne_110m_land.json';
+var logMapGeo = null;        // parsed FeatureCollection, fetched once
+var logMapLoadedOnce = false;
+var logViewMode = 'list';    // 'list' | 'map'
+// Reopened 2026-09-22, operator feedback: was fixed regardless of app theme
+// (same reasoning as #opSlotBar's countdown bar) -- now follows light/dark
+// like the rest of the app. Three candidates ('outline', a filled hybrid,
+// and the original fixed night-map look) were built side by side and
+// screenshotted for comparison; operator picked 'outline' -- white/black,
+// inverted in dark, coastlines as strokes with no land fill. The other two
+// are gone rather than kept as unused options, per this repo's own
+// pre-alpha discipline (delete what a decision replaces).
+var LOG_MAP_PALETTE = {
+  light: { ocean: '#ffffff', land: '#ffffff', coast: '#000000', grid: 'rgba(0,0,0,.15)', gridLabel: 'rgba(0,0,0,.4)', path: 'rgba(0,0,0,.35)', own: '#ea580c', qso: '#1d4ed8' },
+  dark: { ocean: '#000000', land: '#000000', coast: '#ffffff', grid: 'rgba(255,255,255,.15)', gridLabel: 'rgba(255,255,255,.4)', path: 'rgba(255,255,255,.35)', own: '#fb923c', qso: '#7aa2f7' }
+};
+function logMapDarkMode() {
+  if (themePref === 'dark') return true;
+  if (themePref === 'light') return false;
+  return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+}
+function logMapPalette() {
+  return logMapDarkMode() ? LOG_MAP_PALETTE.dark : LOG_MAP_PALETTE.light;
+}
+// Re-renders on a live system-theme flip (matchMedia change) the same way
+// setTheme() below re-renders on an explicit Settings choice -- both are
+// "the operator's theme just changed," this just has two trigger paths.
+if (window.matchMedia) {
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+    if (logViewMode === 'map') renderLogMap();
+  });
+}
+
+function setLogView(mode) {
+  logViewMode = mode;
+  document.getElementById('logViewListBtn').classList.toggle('on', mode === 'list');
+  document.getElementById('logViewMapBtn').classList.toggle('on', mode === 'map');
+  document.getElementById('logList').hidden = mode !== 'list';
+  // logDone (loadMoreLog()'s own state) decides whether "Load older QSOs"
+  // belongs on screen at all -- restoring List must respect that, not just
+  // unhide unconditionally, or a fully-loaded log would show a dead button.
+  document.getElementById('logMore').hidden = mode !== 'list' || logDone;
+  document.getElementById('logMapWrap').hidden = mode !== 'map';
+  if (mode !== 'map') return;
+  if (!logMapLoadedOnce) {
+    logMapLoadedOnce = true;
+    loadLogMapBasemap();
+  } else {
+    renderLogMap();
+  }
+}
+document.getElementById('logViewListBtn').onclick = function () { setLogView('list'); };
+document.getElementById('logViewMapBtn').onclick = function () { setLogView('map'); };
+
+async function loadLogMapBasemap() {
+  var note = document.getElementById('logMapNote');
+  note.textContent = 'loading basemap…';
+  try {
+    var r = await fetch(LOG_MAP_URL, { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    logMapGeo = await r.json();
+  } catch (e) {
+    note.textContent = 'basemap unavailable';
+    return;
+  }
+  renderLogMap();
+}
+
+// ---- pan/zoom (operator-requested 2026-09-22) ----
+// centerLon/centerLat is the geographic point at the canvas center; scale is
+// px/degree, the *same* value for both axes always -- an equirectangular
+// projection distorts the instant x and y get different scales, and the
+// operator was explicit that cropping is preferable to that. logMapBaseScale
+// is the "cover" scale (max, not min, of the two per-axis fit scales): it
+// fills the canvas with no blank letterbox bars and no distortion, cropping
+// whichever axis has room to spare -- same idea as CSS `background-size:
+// cover`. zoom=1 is that baseline; panning/zooming never goes coarser than
+// it, so the map is never showing blank space by default or after zooming
+// out as far as it goes.
+var logMapCenterLon = 0, logMapCenterLat = 0, logMapCenterSet = false;
+var logMapZoom = 1, logMapBaseScale = 1;
+var LOG_MAP_MAX_ZOOM = 16;
+// "When close enough" (operator's own phrase) for tap-to-inspect: below this
+// zoom, pins are too close together on screen for a tap to reliably mean one
+// station rather than its neighbours, so taps are ignored rather than
+// guessing which pin was meant.
+var LOG_MAP_TAP_ZOOM_MIN = 4;
+var logMapPins = []; // rebuilt every render; hit-tested on tap
+
+function computeLogMapBaseScale(w, h) {
+  return Math.max(w / 360, h / 180);
+}
+function logMapScale() { return logMapBaseScale * logMapZoom; }
+// lonOffset (…, -360, 0, 360, …) picks which antimeridian-wrapped copy of a
+// point to project -- see LOG_MAP_WRAP_OFFSETS below for why every drawn
+// point tries all three rather than assuming its stored (unshifted) copy is
+// the one on screen.
+function projectPoint(lon, lat, lonOffset, w, h) {
+  var s = logMapScale();
+  return { x: w / 2 + (lon + lonOffset - logMapCenterLon) * s, y: h / 2 - (lat - logMapCenterLat) * s };
+}
+function projectLonLat(lon, lat, w, h) { return projectPoint(lon, lat, 0, w, h); }
+function unprojectXY(x, y, w, h) {
+  var s = logMapScale();
+  return { lon: logMapCenterLon + (x - w / 2) / s, lat: logMapCenterLat - (y - h / 2) / s };
+}
+// Clamps zoom to [1, MAX]; clamps latitude so panning never scrolls past the
+// poles into blank canvas (no content to show there, ever -- cropping, not
+// distortion, applies here too); wraps longitude into a canonical range so
+// it does not grow without bound over a long pan session. Longitude itself
+// is never clamped -- LOG_MAP_WRAP_OFFSETS makes wraparound panning correct
+// at any center.
+function clampLogMapView(w, h) {
+  logMapZoom = Math.max(1, Math.min(LOG_MAP_MAX_ZOOM, logMapZoom));
+  var s = logMapScale();
+  var halfLatDeg = (h / 2) / s;
+  logMapCenterLat = halfLatDeg >= 90 ? 0 : Math.max(-90 + halfLatDeg, Math.min(90 - halfLatDeg, logMapCenterLat));
+  logMapCenterLon = ((logMapCenterLon + 180) % 360 + 360) % 360 - 180;
+}
+// Zooms so the geographic point under (clientX,clientY) stays under it,
+// standard "zoom to point" -- otherwise a pinch or wheel zoom would
+// re-center on the map's own center every time instead of where the
+// operator is actually looking.
+function logMapZoomAt(clientX, clientY, newZoom) {
+  var canvas = document.getElementById('logMapCanvas');
+  var rect = canvas.getBoundingClientRect();
+  var x = clientX - rect.left, y = clientY - rect.top;
+  var w = canvas.clientWidth, h = canvas.clientHeight;
+  var before = unprojectXY(x, y, w, h);
+  logMapZoom = newZoom;
+  clampLogMapView(w, h);
+  var after = projectLonLat(before.lon, before.lat, w, h);
+  var s = logMapScale();
+  logMapCenterLon += (after.x - x) / s;
+  logMapCenterLat -= (after.y - y) / s;
+  clampLogMapView(w, h);
+}
+
+// At most one of these three ever actually lands on screen -- the visible
+// span is never more than 360° wide at zoom>=1 (computeLogMapBaseScale's
+// "cover" fit guarantees that) -- but which one depends on how far the
+// operator has panned, and centerLon is intentionally never clamped, so
+// every drawn point (basemap vertex, pin, path point) has to try all three
+// rather than assume its stored coordinate is the visible copy.
+var LOG_MAP_WRAP_OFFSETS = [-360, 0, 360];
+
+function drawLogMapBasemap(ctx, w, h) {
+  var pal = logMapPalette();
+  ctx.fillStyle = pal.ocean;
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = pal.land;
+  ctx.strokeStyle = pal.coast;
+  ctx.lineWidth = 1;
+  LOG_MAP_WRAP_OFFSETS.forEach(function (lonOffset) {
+    ctx.beginPath();
+    logMapGeo.features.forEach(function (f) {
+      f.geometry.coordinates.forEach(function (ring) { // Polygon: [ring, ...]; every ring here (checked) is a plain [lon,lat] loop, no nested MultiPolygon
+        ring.forEach(function (pt, i) {
+          var p = projectPoint(pt[0], pt[1], lonOffset, w, h);
+          if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+        });
+        ctx.closePath();
+      });
+    });
+    ctx.fill();
+    if (pal.coast) ctx.stroke(); // 'night' palette has no separate coastline stroke, matches its original look
+  });
+}
+
+// Maidenhead squares are a deterministic partition of the globe (fields
+// 20°x10°, squares -- what this draws -- 2°x1°, subsquares 5'x2.5'): the
+// same math gridToLatLon() already uses to turn a grid string into a point,
+// just run as a set of fixed lines instead of one lookup. No data file, no
+// real computation cost -- only ever iterates the visible span, not the
+// globe. Gated below LOG_MAP_GRID_ZOOM_MIN because at the default "cover"
+// zoom the visible span is well over a hundred degrees wide -- a 2°x1° grid
+// at that scale is visual noise, not information (operator's own framing:
+// "only on zoom levels where it would be valuable").
+var LOG_MAP_SQUARE_LON = 2, LOG_MAP_SQUARE_LAT = 1;
+var LOG_MAP_GRID_ZOOM_MIN = 4;
+function drawLogMapGridSquares(ctx, w, h) {
+  if (logMapZoom < LOG_MAP_GRID_ZOOM_MIN) return;
+  var s = logMapScale();
+  var halfWDeg = (w / 2) / s, halfHDeg = (h / 2) / s;
+  var lonMin = logMapCenterLon - halfWDeg, lonMax = logMapCenterLon + halfWDeg;
+  var latMin = Math.max(-90, logMapCenterLat - halfHDeg), latMax = Math.min(90, logMapCenterLat + halfHDeg);
+
+  ctx.strokeStyle = logMapPalette().grid;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  var lonStart = Math.floor(lonMin / LOG_MAP_SQUARE_LON) * LOG_MAP_SQUARE_LON;
+  for (var lon = lonStart; lon <= lonMax; lon += LOG_MAP_SQUARE_LON) {
+    var p1 = projectLonLat(lon, latMin, w, h), p2 = projectLonLat(lon, latMax, w, h);
+    ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+  }
+  var latStart = Math.floor(latMin / LOG_MAP_SQUARE_LAT) * LOG_MAP_SQUARE_LAT;
+  for (var lat = latStart; lat <= latMax; lat += LOG_MAP_SQUARE_LAT) {
+    var p1 = projectLonLat(lonMin, lat, w, h), p2 = projectLonLat(lonMax, lat, w, h);
+    ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+  }
+  ctx.stroke();
+}
+
+// Inverse of the Maidenhead math gridToLatLon() already does: given a
+// square's SW corner (exact multiples of 2°/1° -- always true for lon/lat
+// as produced by drawLogMapGridSquares()'s own iteration), name the square.
+// Normalizes lon first since the caller's visible-range math can legitimately
+// hand this something past ±180 (centerLon is never clamped -- see
+// LOG_MAP_WRAP_OFFSETS' own comment).
+function gridSquareLabel(lon, lat) {
+  lon = ((lon + 180) % 360 + 360) % 360 - 180;
+  var loShift = lon + 180, laShift = lat + 90;
+  var fieldLon = Math.floor(loShift / 20), fieldLat = Math.floor(laShift / 10);
+  var squareLon = Math.floor((loShift - fieldLon * 20) / LOG_MAP_SQUARE_LON);
+  var squareLat = Math.floor((laShift - fieldLat * 10) / LOG_MAP_SQUARE_LAT);
+  return String.fromCharCode(65 + fieldLon) + String.fromCharCode(65 + fieldLat) + squareLon + squareLat;
+}
+
+// Operator-specified algorithm, 2026-09-22: same font/size as the "small"
+// decode-row text (.drow .meta -- ui-monospace, .7rem/11.2px), shown only
+// once it fits comfortably (< 60% of the square's on-screen area -- below
+// that, a label would be more clutter than information), top-left of the
+// square, in a translucent tint of the coastline color so a coastline
+// passing behind the text still shows through rather than being masked by
+// it. "Consider sparsely" is implemented as a second, tighter threshold:
+// once text area is under 25% of the square (roomy, not just "fits"), every
+// visible square is labeled; between 25% and 60%, only a checkerboard half
+// of them are, to avoid a wall of text at the threshold where labels first
+// turn on.
+var LOG_MAP_LABEL_FONT_PX = 11.2;
+var LOG_MAP_LABEL_FONT = LOG_MAP_LABEL_FONT_PX + 'px ui-monospace, monospace';
+var LOG_MAP_LABEL_MAX_AREA_FRAC = 0.6;
+var LOG_MAP_LABEL_DENSE_AREA_FRAC = 0.25;
+function drawLogMapGridLabels(ctx, w, h) {
+  if (logMapZoom < LOG_MAP_GRID_ZOOM_MIN) return; // no point labeling a grid that isn't drawn
+  var s = logMapScale();
+  var halfWDeg = (w / 2) / s, halfHDeg = (h / 2) / s;
+  var lonMin = logMapCenterLon - halfWDeg, lonMax = logMapCenterLon + halfWDeg;
+  var latMin = Math.max(-90, logMapCenterLat - halfHDeg), latMax = Math.min(90, logMapCenterLat + halfHDeg);
+
+  var squareAreaPx = (LOG_MAP_SQUARE_LON * s) * (LOG_MAP_SQUARE_LAT * s);
+  ctx.font = LOG_MAP_LABEL_FONT;
+  // Monospace, and every label is exactly 4 characters -- one measurement
+  // (any 4-char string) is exact for all of them, not an approximation.
+  var textArea = ctx.measureText('AA00').width * LOG_MAP_LABEL_FONT_PX;
+  if (textArea >= LOG_MAP_LABEL_MAX_AREA_FRAC * squareAreaPx) return;
+  var sparse = textArea >= LOG_MAP_LABEL_DENSE_AREA_FRAC * squareAreaPx;
+
+  ctx.fillStyle = logMapPalette().gridLabel;
+  ctx.textBaseline = 'top';
+  var lonStart = Math.floor(lonMin / LOG_MAP_SQUARE_LON) * LOG_MAP_SQUARE_LON;
+  var latStart = Math.floor(latMin / LOG_MAP_SQUARE_LAT) * LOG_MAP_SQUARE_LAT;
+  var li = 0;
+  for (var lon = lonStart; lon <= lonMax; lon += LOG_MAP_SQUARE_LON, li++) {
+    var lj = 0;
+    for (var lat = latStart; lat <= latMax; lat += LOG_MAP_SQUARE_LAT, lj++) {
+      if (sparse && (li + lj) % 2 !== 0) continue;
+      // Top-left of the square on screen = its NW corner geographically --
+      // higher latitude (y decreases upward), same (west) longitude.
+      var p = projectLonLat(lon, lat + LOG_MAP_SQUARE_LAT, w, h);
+      ctx.fillText(gridSquareLabel(lon, lat), p.x + 2, p.y + 2);
+    }
+  }
+}
+
+// Standard spherical slerp along a great circle (Ed Williams' aviation
+// formulary -- exact trigonometry for a known angular distance, not an
+// invented heuristic; same rigor class as gridToLatLon()/greatCircle()
+// already in this file, just interpolating intermediate points instead of
+// only the endpoint distance/bearing). Returns n+1 {lat,lon} points, a..b
+// inclusive.
+function greatCirclePoints(a, b, n) {
+  var la1 = toRad(a.lat), lo1 = toRad(a.lon), la2 = toRad(b.lat), lo2 = toRad(b.lon);
+  var dLat = la2 - la1, dLon = lo2 - lo1;
+  var h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
+  var d = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h)); // angular distance, radians
+  if (d < 1e-9) return [a, b];
+  var pts = [];
+  for (var i = 0; i <= n; i++) {
+    var f = i / n;
+    var A = Math.sin((1 - f) * d) / Math.sin(d), B = Math.sin(f * d) / Math.sin(d);
+    var x = A * Math.cos(la1) * Math.cos(lo1) + B * Math.cos(la2) * Math.cos(lo2);
+    var y = A * Math.cos(la1) * Math.sin(lo1) + B * Math.cos(la2) * Math.sin(lo2);
+    var z = A * Math.sin(la1) + B * Math.sin(la2);
+    pts.push({ lat: Math.atan2(z, Math.sqrt(x * x + y * y)) * 180 / Math.PI,
+               lon: Math.atan2(y, x) * 180 / Math.PI });
+  }
+  return pts;
+}
+function drawGreatCirclePath(ctx, w, h, a, b, lonOffset) {
+  var pts = greatCirclePoints(a, b, 32).map(function (p) { return projectPoint(p.lon, p.lat, lonOffset, w, h); });
+  ctx.beginPath();
+  var started = false;
+  pts.forEach(function (p, i) {
+    // A huge x-jump between consecutive points is the antimeridian wrap,
+    // not a real line across the whole map -- break the path there instead
+    // of drawing a spurious chord.
+    if (i > 0 && Math.abs(p.x - pts[i - 1].x) > w / 2) started = false;
+    if (!started) { ctx.moveTo(p.x, p.y); started = true; } else { ctx.lineTo(p.x, p.y); }
+  });
+  ctx.stroke();
+}
+
+function renderLogMap() {
+  var canvas = document.getElementById('logMapCanvas');
+  var note = document.getElementById('logMapNote');
+  if (!logMapGeo) { note.textContent = 'basemap unavailable'; return; }
+  var cssW = canvas.clientWidth, cssH = canvas.clientHeight;
+  if (!cssW || !cssH) return; // not laid out yet (e.g. called while hidden)
+  var dpr = window.devicePixelRatio || 1;
+  canvas.width = cssW * dpr;
+  canvas.height = cssH * dpr;
+  var ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  logMapBaseScale = computeLogMapBaseScale(cssW, cssH);
+  if (!logMapCenterSet) {
+    // First-ever render: center on the operator's own grid, not Greenwich --
+    // a blank mid-Atlantic default would show nothing relevant to them.
+    var own = lastCfg.grid ? gridToLatLon(lastCfg.grid) : null;
+    logMapCenterLon = own ? own.lon : 0;
+    logMapCenterLat = own ? own.lat : 0;
+    logMapCenterSet = true;
+  }
+  clampLogMapView(cssW, cssH);
+
+  drawLogMapBasemap(ctx, cssW, cssH);
+  drawLogMapGridSquares(ctx, cssW, cssH);
+  drawLogMapGridLabels(ctx, cssW, cssH);
+
+  // Dedupe by grid -- one pin/path per unique grid square, not per QSO
+  // (repeat contacts with the same station shouldn't multiply the ink).
+  // Tracks every distinct call seen at that grid too, for the tap-to-info
+  // popup -- almost always one, but never assumed to be.
+  var byGrid = {};
+  logQsoLocations.forEach(function (loc) {
+    if (!byGrid[loc.grid]) byGrid[loc.grid] = { grid: loc.grid, myGrid: loc.myGrid, calls: {}, lastCall: loc.call };
+    byGrid[loc.grid].calls[loc.call] = true;
+    byGrid[loc.grid].lastCall = loc.call;
+  });
+  var uniqueGrids = Object.keys(byGrid).map(function (g) { return byGrid[g]; });
+
+  var pal = logMapPalette();
+  ctx.strokeStyle = pal.path;
+  ctx.lineWidth = 1;
+  uniqueGrids.forEach(function (g) {
+    var a = gridToLatLon(g.myGrid), b = gridToLatLon(g.grid);
+    if (!a || !b) return;
+    LOG_MAP_WRAP_OFFSETS.forEach(function (lonOffset) { drawGreatCirclePath(ctx, cssW, cssH, a, b, lonOffset); });
+  });
+
+  logMapPins = [];
+  ctx.fillStyle = pal.qso;
+  uniqueGrids.forEach(function (g) {
+    var b = gridToLatLon(g.grid);
+    if (!b) return;
+    LOG_MAP_WRAP_OFFSETS.forEach(function (lonOffset) {
+      var p = projectPoint(b.lon, b.lat, lonOffset, cssW, cssH);
+      if (p.x < -20 || p.x > cssW + 20 || p.y < -20 || p.y > cssH + 20) return; // cheap off-screen cull
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+      logMapPins.push({ x: p.x, y: p.y, grid: g.grid, calls: Object.keys(g.calls), lastCall: g.lastCall });
+    });
+  });
+
+  var ownPt = lastCfg.grid ? gridToLatLon(lastCfg.grid) : null;
+  if (ownPt) {
+    LOG_MAP_WRAP_OFFSETS.forEach(function (lonOffset) {
+      var p = projectPoint(ownPt.lon, ownPt.lat, lonOffset, cssW, cssH);
+      if (p.x < -20 || p.x > cssW + 20 || p.y < -20 || p.y > cssH + 20) return;
+      ctx.fillStyle = pal.own;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  note.textContent = uniqueGrids.length + ' grid' + (uniqueGrids.length === 1 ? '' : 's') + ' logged' +
+    (logMapZoom >= LOG_MAP_TAP_ZOOM_MIN ? ' · tap a station for info' : '');
+}
+window.addEventListener('resize', function () { if (logViewMode === 'map') renderLogMap(); });
+
+// Reuses the existing callsign-info bottom sheet (Operate/QSOs already tap a
+// call into this) rather than building a second info UI -- it already shows
+// QSO history, distance/bearing and a QRZ link, which is exactly "more
+// info". A grid pin almost always means one callsign; on the rare grid
+// shared by more than one, the most recently logged call there opens rather
+// than building a picker for an edge case.
+function handleLogMapTap(clientX, clientY) {
+  if (logMapZoom < LOG_MAP_TAP_ZOOM_MIN) return;
+  var rect = document.getElementById('logMapCanvas').getBoundingClientRect();
+  var x = clientX - rect.left, y = clientY - rect.top;
+  var best = null, bestD = 14; // px tap radius
+  logMapPins.forEach(function (p) {
+    var d = Math.hypot(p.x - x, p.y - y);
+    if (d < bestD) { bestD = d; best = p; }
+  });
+  if (best) showCallInfo(best.lastCall);
+}
+
+// Gesture handling: single-finger drag pans, two-finger pinch zooms (anchored
+// at the pinch midpoint), a tap under DRAG_CLAIM_PX of movement inspects a
+// station. stopPropagation() on every handler is load-bearing -- the map
+// canvas sits inside #viewport, which the swipe-tab IIFE listens on for the
+// Operate/QSOs/Tools gesture, and without it every pan here would *also* be
+// read as an attempt to swipe tabs. That means dragging the map can't also
+// swipe away from QSOs while on the Map view -- the bottom tab bar still
+// switches tabs, so this isn't a dead end, and it's the same trade-off every
+// map view makes (Leaflet and Google Maps both consume all touch gestures
+// within their own bounds for the same reason).
+(function () {
+  var canvas = document.getElementById('logMapCanvas');
+  var DRAG_CLAIM_PX = 10;
+  var dragging = false, dragMoved = 0, lastX = 0, lastY = 0;
+  var pinchStartDist = 0, pinchStartZoom = 1;
+
+  function touchDist(t1, t2) { return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY); }
+  function panBy(dx, dy, w, h) {
+    var s = logMapScale();
+    logMapCenterLon -= dx / s;
+    logMapCenterLat += dy / s;
+    clampLogMapView(w, h);
+  }
+
+  canvas.addEventListener('touchstart', function (e) {
+    e.stopPropagation();
+    if (e.touches.length === 1) {
+      dragging = true; dragMoved = 0;
+      lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+    } else if (e.touches.length === 2) {
+      dragging = false;
+      pinchStartDist = touchDist(e.touches[0], e.touches[1]);
+      pinchStartZoom = logMapZoom;
+    }
+  }, { passive: true });
+
+  canvas.addEventListener('touchmove', function (e) {
+    e.stopPropagation();
+    e.preventDefault();
+    var w = canvas.clientWidth, h = canvas.clientHeight;
+    if (e.touches.length === 1 && dragging) {
+      var dx = e.touches[0].clientX - lastX, dy = e.touches[0].clientY - lastY;
+      dragMoved += Math.abs(dx) + Math.abs(dy);
+      lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+      panBy(dx, dy, w, h);
+      renderLogMap();
+    } else if (e.touches.length === 2 && pinchStartDist > 0) {
+      var d = touchDist(e.touches[0], e.touches[1]);
+      var midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      var midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      logMapZoomAt(midX, midY, pinchStartZoom * (d / pinchStartDist));
+      renderLogMap();
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', function (e) {
+    e.stopPropagation();
+    if (dragging && dragMoved < DRAG_CLAIM_PX && e.changedTouches.length === 1) {
+      handleLogMapTap(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+    }
+    dragging = false;
+    pinchStartDist = 0;
+  }, { passive: true });
+
+  // Desktop/static-preview testing: drag to pan, wheel to zoom, a click
+  // under DRAG_CLAIM_PX to inspect -- same interaction, mouse events, since
+  // a real browser session (this repo's own verification method) has no
+  // touch input at all.
+  var mouseDown = false, mouseMoved = 0;
+  canvas.addEventListener('mousedown', function (e) {
+    mouseDown = true; mouseMoved = 0; lastX = e.clientX; lastY = e.clientY;
+  });
+  window.addEventListener('mousemove', function (e) {
+    if (!mouseDown) return;
+    var dx = e.clientX - lastX, dy = e.clientY - lastY;
+    mouseMoved += Math.abs(dx) + Math.abs(dy);
+    lastX = e.clientX; lastY = e.clientY;
+    panBy(dx, dy, canvas.clientWidth, canvas.clientHeight);
+    renderLogMap();
+  });
+  window.addEventListener('mouseup', function (e) {
+    if (mouseDown && mouseMoved < DRAG_CLAIM_PX) handleLogMapTap(e.clientX, e.clientY);
+    mouseDown = false;
+  });
+  canvas.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    logMapZoomAt(e.clientX, e.clientY, logMapZoom * (e.deltaY < 0 ? 1.2 : 1 / 1.2));
+    renderLogMap();
+  }, { passive: false });
+})();
+
 // Clears every daily QSO log the host will delete (same set as FILE_LIST).
 // Confirms first — destructive. Reloads the Log list on success. Active-day
 // LOCK during TX/decode leaves today's file; the host NAKs only when nothing
@@ -2926,9 +3469,17 @@ async function clearAllAdif() {
     logGroupEls = {};
     logRenderedAny = false;
     logDone = false;
+    // Field-found 2026-09-22, while adding I30's map: logEntriesByCall was
+    // never reset here, so a worked/new flag (Tools spots) or the callsign
+    // info modal's QSO history could keep showing pre-clear data as if the
+    // clear never happened. logQsoLocations (the map's own data, new) needs
+    // the same reset for the same reason.
+    logEntriesByCall = {};
+    logQsoLocations = [];
     document.getElementById('logList').innerHTML =
       '<p style="padding:0 1rem;color:GrayText">Loading…</p>';
-    document.getElementById('logMore').hidden = false;
+    document.getElementById('logMore').hidden = logViewMode !== 'list';
+    if (logViewMode === 'map') renderLogMap();
     setMsg('ADI files cleared.');
     await loadMoreLog();
   } catch (e) {
@@ -2987,7 +3538,11 @@ async function loadMoreLog() {
       document.getElementById('logList').innerHTML =
         '<p style="padding:0 1rem;color:GrayText">No QSOs</p>';
     }
-    document.getElementById('logMore').hidden = logDone;
+    // Race, field-found 2026-09-22: a first-ever Log visit triggers this via
+    // showView()'s lazy load, which can still be in flight when the operator
+    // taps Map right away -- this completion must not stomp setLogView()'s
+    // own hidden=true back to visible underneath the now-showing map.
+    document.getElementById('logMore').hidden = logViewMode !== 'list' || logDone;
     document.getElementById('logMoreBtn').disabled = false;
   }
 }

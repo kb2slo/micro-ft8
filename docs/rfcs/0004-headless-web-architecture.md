@@ -924,6 +924,23 @@ equirectangular projection, most of Leaflet is tile machinery that would never b
 canvas is the leaning. **Not decided** — if a real attempt shows pan/zoom/hit-testing is more work than it
 looks, revisit; that is an implementation finding, not a reopening of the tile question.
 
+**Decided 2026-09-22, on a real attempt: hand-rolled canvas.** Built for I30's actual scope (static render —
+own grid, logged-QSO grids, great-circle paths; no pan/zoom, no hit-testing) and it was straightforward:
+equirectangular projection (`x=(lon+180)/360*w`, `y=(90-lat)/180*h`), Natural Earth polygons drawn as canvas
+paths, great-circle paths interpolated with standard spherical slerp (Ed Williams' aviation formulary — exact
+trigonometry for a known angular distance, the same rigor class as `greatCircle()`'s own haversine math, not
+an invented heuristic) and split on antimeridian-crossing x-jumps rather than drawing a spurious chord across
+the map. No framework needed, confirming §3's leaning for this scope. **Still open:** whether pan/zoom would
+still be this cheap by hand once it's actually attempted — this decision covers the static case I30 asked
+for, not a claim about interactive map work nobody has built yet.
+
+The actual bundled file: `ne_110m_land.geojson`'s raw 138,160 B was stripped of unused `properties`/`bbox`/
+`crs` metadata and its coordinates rounded to 2 decimal places (~1.1 km at the equator — more precision than
+a world outline needs at phone-screen scale) before bundling, landing at **84,718 B** — smaller than even
+the RFC's own "~80 KB gzipped" estimate, achieved without gzip at all. Shipped as `ne_110m_land.json` (not
+`.geojson`): `web_fs.c`'s `mime_for()` already has a `.json` case, so this needed no firmware change to serve
+correctly — an unlisted extension would have fallen through to `application/octet-stream`.
+
 Assets ship as **separate bundle files**, never inlined into `app.html`: `web_fs_load()` enforces a 512 KB
 per-file ceiling (`sidekick/main/web_fs.c`) and `app.html` is already 133,913 B.
 
@@ -932,6 +949,57 @@ That item is about the **grid-from-map handoff page**, which lives on the bundle
 genuine secure context, reached by a top-level navigation, online by definition because the operator just
 navigated to the internet to get there. Tiles are available and appropriate *there* and unavailable *here*,
 for reasons that have nothing to do with each other.
+
+**Pan/zoom and tap-to-inspect added 2026-09-22, operator-requested, with one correctness bug found and
+fixed in the same pass.** The first render (§12.5's own earlier text, "own grid and logged QSO grids
+pinned") mapped longitude and latitude independently onto whatever box shape the canvas happened to be —
+`x=(lon+180)/360*w`, `y=(90-lat)/180*h` — which distorts the instant `w/360 != h/180`, i.e. almost always on
+a phone. **Fixed the way the operator specified it: cropping over distortion, always.** A single scale
+(px/degree, identical for both axes) now drives the projection; the base ("zoom out as far as it goes")
+scale is `max(w/360, h/180)` — the larger of the two per-axis fit scales, same idea as CSS
+`background-size: cover` — so the canvas is always fully covered with no blank letterbox bars and no
+axis ever stretched relative to the other, cropping whichever axis has room to spare. Panning/zooming
+never goes coarser than that baseline, so "zoomed out too far, showing wasted ocean" isn't a state the map
+can reach.
+
+Pan is single-finger drag; zoom is two-finger pinch (anchored at the pinch midpoint, standard "zoom to
+point" — otherwise the view re-centers on the map's own center instead of where the operator is actually
+looking) or mouse wheel for desktop testing. Both wrap at the antimeridian by trying three longitude-shifted
+copies of every drawn point (basemap vertex, pin, path point) and letting whichever one is actually on
+screen render — cheap at this data size (127 land polygons), and correct at any pan position since
+`centerLon` is deliberately never clamped, only wrapped into a canonical range to avoid unbounded float
+drift over a long session.
+
+**Tap-to-inspect reuses the existing callsign-info bottom sheet** (`showCallInfo()`, already built for
+Operate/QSOs) rather than a second info UI — it already shows QSO history, distance/bearing and a QRZ
+link, exactly "more info" in the operator's own words. Gated behind a zoom threshold ("when close enough,"
+the operator's own framing) because below it, pins are too close together on screen for a tap to reliably
+mean one station rather than a neighbour — an ungated tap would have to guess.
+
+**One trade-off named rather than discovered by surprise:** the map canvas sits inside `#viewport`, which
+the swipe-tab IIFE (§12.6) listens on for the Operate/QSOs/Tools gesture. Every pan/pinch handler on the
+canvas calls `stopPropagation()`, so dragging the map can no longer *also* swipe away from QSOs while the
+Map view is showing — the bottom tab bar still switches tabs, so this isn't a dead end, and it's the same
+trade-off every map view makes (Leaflet and Google Maps both consume touch gestures within their own
+bounds for the same reason). Verified on the static preview (real `mousedown`/`mousemove`/`mouseup` and
+`wheel` events, not just calling the underlying functions directly): panning, wheel-zoom, the zoom-gated
+tap threshold, and tap-to-inspect opening the correct callsign all confirmed against the actual event
+listeners. **Not provable by an agent:** real touch gestures (pinch specifically) on an actual phone.
+
+**Palette decided, grid-square labels added, both 2026-09-22, same round.** Three color candidates were
+built and screenshotted for comparison (`'outline'`, a filled hybrid, and the original fixed night-map
+look); operator picked `'outline'` — plain white/black inverted in dark, coastlines as a stroke with no
+land fill — and the other two were deleted rather than kept as unused options, this repo's usual pre-alpha
+discipline. Grid-square lines (already built, gated on `LOG_MAP_GRID_ZOOM_MIN`) gained labels, to an
+operator-specified algorithm rather than a guessed one: the label uses the same font/size as the decode
+stream's own "small" text (`.drow .meta` — `ui-monospace`, 0.7rem/11.2px), shown only once it fits under
+60% of the square's on-screen area (top-left corner, matching the square's NW geographic corner), in a
+translucent tint of the coastline color so a coastline passing behind a label still shows through rather
+than being masked. A second, tighter threshold (25%) implements "consider sparsely" — a checkerboard half
+of squares label between 25–60% fitted area, every square once it's roomier than that. The label text
+itself is the Maidenhead inverse of `gridToLatLon()` — same math, run backward — verified by round-tripping
+`gridToLatLon()` output back through it for both ordinary grids and the two extreme corners of the whole
+system (`AA00`, `RR99`), not just eyeballed against a screenshot.
 
 ### 12.6 Navigation
 

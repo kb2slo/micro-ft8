@@ -3,13 +3,18 @@
   "assets": [
     {
       "path": "app.html",
-      "sha256": "36274952c656faec2a059d392d3e6263900863b72294bf7845a36f76bcdeac1c",
-      "size": 151239
+      "sha256": "e771eef0a0b1a10e45a7ca42884f8d27a8e6e30c2920feee98f939a347a0a710",
+      "size": 178945
     },
     {
       "path": "installed.html",
       "sha256": "e1929930e8aca0562e45b9de6808e311cedab626ca717b90a04137eafdb5aa18",
       "size": 197
+    },
+    {
+      "path": "ne_110m_land.json",
+      "sha256": "85f1d9cf456acde7123129d45f9a42694e9f6296c19f6e10e35ff96e1d200b41",
+      "size": 84718
     },
     {
       "path": "storage.html",
