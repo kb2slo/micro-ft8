@@ -2946,8 +2946,25 @@ async function downloadAllAdif(linkEl) {
 // on this origin at all (§12.4: Cache API and Service Workers are both
 // absent on non-secure `http://micro-ft8.local`), so this is the only
 // offline map option, not a cost-saving choice over one.
-var LOG_MAP_URL = 'ne_110m_land.json';
-var logMapGeo = null;        // parsed FeatureCollection, fetched once
+// Three separate bundle files, not one merged blob -- each is independently
+// useful (land alone is a working map; borders are an overlay on it), and
+// keeping them separate means adding a fourth layer later never means
+// re-shipping the other three. All at 110m resolution, matching the land
+// layer already here: measured 2026-09-22, country borders (stripped the
+// same way as land -- name/iso_a2 only, coords rounded to 2 decimals) is
+// 174,200 B; US states at 110m is US-only (the *50m* states/provinces layer
+// covers 9 countries -- US, Canada, Russia, India, China, Indonesia,
+// Brazil, Australia, South Africa -- but stripped is ~1 MB, over the 512 KB
+// per-file cap; US-only at 110m is 41,452 B and fits easily). Both carry
+// MultiPolygon geometries (29 of 177 countries, 3 of 51 states -- island
+// nations, Hawaii, etc.), which the land layer's own drawing code never
+// needed to handle (checked: land is Polygon-only) -- see forEachRing().
+var LOG_MAP_LAND_URL = 'ne_110m_land.json';
+var LOG_MAP_COUNTRIES_URL = 'ne_110m_countries.json';
+var LOG_MAP_US_STATES_URL = 'ne_110m_us_states.json';
+var logMapGeo = null;            // land -- required; its absence is "basemap unavailable"
+var logMapCountriesGeo = null;   // border overlay -- optional, absence just means no layer
+var logMapUsStatesGeo = null;    // border overlay -- optional, also zoom-gated (LOG_MAP_STATE_BORDER_ZOOM_MIN)
 var logMapLoadedOnce = false;
 var logViewMode = 'list';    // 'list' | 'map'
 // Reopened 2026-09-22, operator feedback: was fixed regardless of app theme
@@ -2958,9 +2975,15 @@ var logViewMode = 'list';    // 'list' | 'map'
 // inverted in dark, coastlines as strokes with no land fill. The other two
 // are gone rather than kept as unused options, per this repo's own
 // pre-alpha discipline (delete what a decision replaces).
+// countryBorder/stateBorder sit between the coastline (full opacity) and
+// the grid lines (.15) -- three visible tiers of "how significant is this
+// line" without adding new hues. terminator is deliberately not grayscale
+// (gold/amber) since it's the one overlay that isn't a boundary at all --
+// distinguished by color *and* shape (dashed line) from the solid-orange
+// own-grid marker, not just a slightly different orange.
 var LOG_MAP_PALETTE = {
-  light: { ocean: '#ffffff', land: '#ffffff', coast: '#000000', grid: 'rgba(0,0,0,.15)', gridLabel: 'rgba(0,0,0,.4)', path: 'rgba(0,0,0,.35)', own: '#ea580c', qso: '#1d4ed8' },
-  dark: { ocean: '#000000', land: '#000000', coast: '#ffffff', grid: 'rgba(255,255,255,.15)', gridLabel: 'rgba(255,255,255,.4)', path: 'rgba(255,255,255,.35)', own: '#fb923c', qso: '#7aa2f7' }
+  light: { ocean: '#ffffff', land: '#ffffff', coast: '#000000', countryBorder: 'rgba(0,0,0,.55)', stateBorder: 'rgba(0,0,0,.3)', grid: 'rgba(0,0,0,.15)', gridLabel: 'rgba(0,0,0,.4)', path: 'rgba(0,0,0,.35)', own: '#ea580c', qso: '#1d4ed8', terminator: '#ca8a04' },
+  dark: { ocean: '#000000', land: '#000000', coast: '#ffffff', countryBorder: 'rgba(255,255,255,.55)', stateBorder: 'rgba(255,255,255,.3)', grid: 'rgba(255,255,255,.15)', gridLabel: 'rgba(255,255,255,.4)', path: 'rgba(255,255,255,.35)', own: '#fb923c', qso: '#7aa2f7', terminator: '#fbbf24' }
 };
 function logMapDarkMode() {
   if (themePref === 'dark') return true;
@@ -3000,17 +3023,35 @@ function setLogView(mode) {
 document.getElementById('logViewListBtn').onclick = function () { setLogView('list'); };
 document.getElementById('logViewMapBtn').onclick = function () { setLogView('map'); };
 
+async function fetchLogMapLayer(url) {
+  try {
+    var r = await fetch(url, { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+  } catch (e) {
+    return null;
+  }
+}
 async function loadLogMapBasemap() {
   var note = document.getElementById('logMapNote');
   note.textContent = 'loading basemap…';
-  try {
-    var r = await fetch(LOG_MAP_URL, { cache: 'no-store' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    logMapGeo = await r.json();
-  } catch (e) {
+  var results = await Promise.all([
+    fetchLogMapLayer(LOG_MAP_LAND_URL),
+    fetchLogMapLayer(LOG_MAP_COUNTRIES_URL),
+    fetchLogMapLayer(LOG_MAP_US_STATES_URL)
+  ]);
+  logMapGeo = results[0];
+  logMapCountriesGeo = results[1];
+  logMapUsStatesGeo = results[2];
+  if (!logMapGeo) {
     note.textContent = 'basemap unavailable';
     return;
   }
+  // Country/state borders are an overlay on a basemap that's already
+  // working -- their fetch failing on its own (a corrupt push of just that
+  // file, say) shouldn't take land/ocean/grid/pins down with it, so there's
+  // no "unavailable" message for those two specifically; they just don't
+  // draw, same as a card degrading in Tools rather than the whole app.
   renderLogMap();
 }
 
@@ -3113,6 +3154,103 @@ function drawLogMapBasemap(ctx, w, h) {
     ctx.fill();
     if (pal.coast) ctx.stroke(); // 'night' palette has no separate coastline stroke, matches its original look
   });
+}
+
+// GeoJSON Polygon coordinates are [ring, ring, ...]; MultiPolygon adds one
+// more nesting level, [[ring, ring, ...], [ring, ring, ...], ...] -- one
+// entry per disjoint piece (an island nation, Hawaii, Michigan's two
+// peninsulas). The land layer is Polygon-only (checked, see
+// drawLogMapBasemap()'s own comment) so it never needed this; country
+// borders (29 of 177 features) and US state borders (3 of 51) do.
+function forEachRing(geometry, cb) {
+  if (geometry.type === 'Polygon') {
+    geometry.coordinates.forEach(cb);
+  } else if (geometry.type === 'MultiPolygon') {
+    geometry.coordinates.forEach(function (poly) { poly.forEach(cb); });
+  }
+}
+
+// Stroke-only -- no fill, since the land layer already colors everything;
+// these just draw the political lines on top of it. Shared by both country
+// and US-state borders (only the geometry, color and gating differ), since
+// beyond that they're the same operation.
+function drawLogMapBorders(ctx, w, h, geo, color) {
+  if (!geo) return; // optional overlay -- absence is normal (§ loadLogMapBasemap), not an error to show
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  LOG_MAP_WRAP_OFFSETS.forEach(function (lonOffset) {
+    ctx.beginPath();
+    geo.features.forEach(function (f) {
+      forEachRing(f.geometry, function (ring) {
+        ring.forEach(function (pt, i) {
+          var p = projectPoint(pt[0], pt[1], lonOffset, w, h);
+          if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+        });
+        ctx.closePath();
+      });
+    });
+    ctx.stroke();
+  });
+}
+// Country borders read at any zoom -- even a world view benefits from
+// seeing where nations are, same as a paper atlas. US states are gated:
+// at world/continent scale they're just noise until North America itself
+// is the thing being looked at.
+var LOG_MAP_STATE_BORDER_ZOOM_MIN = 2;
+
+// Grayline, in ham radio terms -- the day/night boundary, valuable for DX
+// because propagation is often best along it. Standard, public subsolar-
+// point geometry (the Cooper declination approximation and the usual
+// equation-of-time correction -- the same formulas any sunrise/grayline
+// tool uses), not a guessed heuristic: accurate to a fraction of a degree,
+// which is what a propagation-planning overlay needs, not survey precision.
+function subsolarPoint(date) {
+  var start = Date.UTC(date.getUTCFullYear(), 0, 1);
+  var dayOfYear = Math.floor((date.getTime() - start) / 86400000) + 1;
+  var utcHours = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
+  var decl = 23.45 * Math.sin(toRad(360 / 365 * (284 + dayOfYear)));
+  var B = toRad(360 / 365 * (dayOfYear - 81));
+  var eqOfTimeMin = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
+  var lon = -(utcHours - 12) * 15 - eqOfTimeMin / 4;
+  lon = ((lon + 180) % 360 + 360) % 360 - 180;
+  return { lat: decl, lon: lon };
+}
+// The terminator is every point 90° from the subsolar point -- where the
+// sun is exactly on the horizon. Derived from the standard zenith-angle
+// equation (sin(lat)sin(decl) + cos(lat)cos(decl)cos(H) = 0, solved for
+// lat) rather than looked up, same as greatCirclePoints() derives its own
+// interpolation rather than citing a black-box result. Sampled directly
+// across the full -180..180 range (cheap, 144 points) rather than only the
+// visible span, so panning never needs to recompute it mid-drag.
+function terminatorPoints(sub, n) {
+  var latS = toRad(sub.lat);
+  var pts = [];
+  for (var i = 0; i <= n; i++) {
+    var lon = -180 + (360 * i / n);
+    var H = toRad(lon - sub.lon);
+    var lat = Math.atan(-Math.cos(H) / Math.tan(latS)) * 180 / Math.PI;
+    pts.push({ lon: lon, lat: lat });
+  }
+  return pts;
+}
+function drawLogMapTerminator(ctx, w, h) {
+  var sub = subsolarPoint(new Date());
+  var pts = terminatorPoints(sub, 144);
+  ctx.strokeStyle = logMapPalette().terminator;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]); // dashed, deliberately -- distinct by shape, not just color, from the solid own-grid marker
+  LOG_MAP_WRAP_OFFSETS.forEach(function (lonOffset) {
+    ctx.beginPath();
+    var started = false, prevX = null;
+    pts.forEach(function (pt) {
+      var p = projectPoint(pt.lon, pt.lat, lonOffset, w, h);
+      if (prevX !== null && Math.abs(p.x - prevX) > w / 2) started = false; // antimeridian wrap, not a real chord
+      if (!started) { ctx.moveTo(p.x, p.y); started = true; } else { ctx.lineTo(p.x, p.y); }
+      prevX = p.x;
+    });
+    ctx.stroke();
+  });
+  ctx.setLineDash([]); // reset -- everything drawn after this expects a solid line
 }
 
 // Maidenhead squares are a deterministic partition of the globe (fields
@@ -3272,9 +3410,15 @@ function renderLogMap() {
   }
   clampLogMapView(cssW, cssH);
 
+  var pal = logMapPalette();
   drawLogMapBasemap(ctx, cssW, cssH);
+  drawLogMapBorders(ctx, cssW, cssH, logMapCountriesGeo, pal.countryBorder);
+  if (logMapZoom >= LOG_MAP_STATE_BORDER_ZOOM_MIN) {
+    drawLogMapBorders(ctx, cssW, cssH, logMapUsStatesGeo, pal.stateBorder);
+  }
   drawLogMapGridSquares(ctx, cssW, cssH);
   drawLogMapGridLabels(ctx, cssW, cssH);
+  drawLogMapTerminator(ctx, cssW, cssH);
 
   // Dedupe by grid -- one pin/path per unique grid square, not per QSO
   // (repeat contacts with the same station shouldn't multiply the ink).
@@ -3288,7 +3432,6 @@ function renderLogMap() {
   });
   var uniqueGrids = Object.keys(byGrid).map(function (g) { return byGrid[g]; });
 
-  var pal = logMapPalette();
   ctx.strokeStyle = pal.path;
   ctx.lineWidth = 1;
   uniqueGrids.forEach(function (g) {
@@ -3328,6 +3471,10 @@ function renderLogMap() {
     (logMapZoom >= LOG_MAP_TAP_ZOOM_MIN ? ' · tap a station for info' : '');
 }
 window.addEventListener('resize', function () { if (logViewMode === 'map') renderLogMap(); });
+// The terminator moves continuously (~0.25°/minute); a minute's drift is
+// invisible at any zoom this map renders at, so this is plenty rather than
+// a tighter interval that would just burn cycles for no visible gain.
+setInterval(function () { if (logViewMode === 'map') renderLogMap(); }, 60000);
 
 // Reuses the existing callsign-info bottom sheet (Operate/QSOs already tap a
 // call into this) rather than building a second info UI -- it already shows

@@ -1001,6 +1001,39 @@ itself is the Maidenhead inverse of `gridToLatLon()` — same math, run backward
 `gridToLatLon()` output back through it for both ordinary grids and the two extreme corners of the whole
 system (`AA00`, `RR99`), not just eyeballed against a screenshot.
 
+**Country borders, US state borders, and the grayline added 2026-09-22, same round, operator-requested.**
+Two more bundle files, both 110m resolution matching the land layer (stripped/rounded the same way):
+`ne_110m_countries.json` (174,200 B, 177 features) and `ne_110m_us_states.json` (41,452 B, 51 features).
+Both carry `MultiPolygon` geometries the land layer never needed (`forEachRing()` handles both `Polygon`
+and `MultiPolygon` uniformly; the land layer stays on its own simpler Polygon-only path since it's confirmed
+never to need the other case). Country borders render at every zoom; US state borders are gated
+(`LOG_MAP_STATE_BORDER_ZOOM_MIN = 2`) since at world/continent scale they're noise, not information — same
+reasoning as the grid-square gate, a lower bar since states are far bigger than 2°×1° squares. Each fetch
+independently — a country/state-border failure degrades that layer only (land, grid, pins, paths all keep
+working), unlike the land fetch itself failing, which is still "basemap unavailable."
+
+**One real finding worth recording:** the *50m*-resolution states/provinces layer (needed for anything past
+the US — Canada, or any of the other 8 countries Natural Earth ships this layer for at all: Russia, India,
+China, Indonesia, Brazil, Australia, South Africa) is **~1 MB stripped — over double the 512 KB per-file
+cap**, and coordinate-precision rounding barely helps (tested 2/1/0 decimal places: 1,048,484 → 926,837 →
+927,247 B — the size is dominated by point count on genuinely complex coastlines, not precision). US+Canada
+alone fits in one file (392,973 B); the full 9-country set does not, and real polyline simplification
+(Douglas-Peucker or similar), not just rounding, would be needed to fit more of it. **Operator scoped this
+round to US-only** (110m, 41,452 B) — Canada and the rest stay an open door, not a decision, if wanted later.
+
+**The grayline** (ham radio's own name for it; formally the solar terminator) needed no new bundle file at
+all — pure subsolar-point geometry from the current UTC time (`subsolarPoint()`, the Cooper declination
+approximation plus the standard equation-of-time correction — the same public formulas any sunrise/grayline
+tool uses) and the terminator itself derived from the standard zenith-angle equation
+(`tan(lat) = -cos(H)/tan(decl)`, solved directly rather than cited as a black box, same rigor as
+`greatCirclePoints()`'s own derivation). Verified against three known reference points, not just rendered
+and eyeballed: near-equinox declination ≈ 0° (checked against the actual date this was built, 2026-09-22,
+which is itself near the autumnal equinox), both solstices ≈ ±23.45° (Earth's actual axial tilt), and noon
+UTC ≈ 0° subsolar longitude. Re-rendered every 60 s while Map is open to track the sun's movement (~0.25°/
+min — imperceptible faster than that, so no tighter interval bought anything). Dashed, gold/amber, styled
+in both palette entries: distinct from the solid-orange own-grid marker by shape as well as color, since the
+two hues sit close enough on the wheel that color alone wouldn't reliably separate them.
+
 ### 12.6 Navigation
 
 A third swipe tab — Operate / QSOs / Tools — not a Settings-style full-screen overlay.

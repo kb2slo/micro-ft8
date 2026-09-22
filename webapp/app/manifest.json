@@ -3,8 +3,8 @@
   "assets": [
     {
       "path": "app.html",
-      "sha256": "e771eef0a0b1a10e45a7ca42884f8d27a8e6e30c2920feee98f939a347a0a710",
-      "size": 178945
+      "sha256": "0564ce5a82ffa2dbda4b7a3bf9950bdc97dd361be1c02d890cb29c48d83db8b2",
+      "size": 186691
     },
     {
       "path": "installed.html",
@@ -12,9 +12,19 @@
       "size": 197
     },
     {
+      "path": "ne_110m_countries.json",
+      "sha256": "31616027ff6d5e60d5ec15f196878bce30c84fa7ba4d9a55ddd2e6c3c2ff75ea",
+      "size": 174200
+    },
+    {
       "path": "ne_110m_land.json",
       "sha256": "85f1d9cf456acde7123129d45f9a42694e9f6296c19f6e10e35ff96e1d200b41",
       "size": 84718
+    },
+    {
+      "path": "ne_110m_us_states.json",
+      "sha256": "21173d948f099e7ea5f80e7c6b2b72f6a73889d31c53fa51d7df9e96fcb08c79",
+      "size": 41452
     },
     {
       "path": "storage.html",
