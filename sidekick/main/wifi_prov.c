@@ -99,6 +99,11 @@ static void ensure_sta_netif(void)
 {
     if (!s_netif_sta) {
         s_netif_sta = esp_netif_create_default_wifi_sta();
+        // ESP-IDF's own LWIP default (CONFIG_LWIP_LOCAL_HOSTNAME) is the
+        // literal string "espressif" -- that's what a router's client list
+        // shows unless this is set explicitly. Reuses the same name mDNS
+        // already answers to rather than inventing a second one.
+        esp_netif_set_hostname(s_netif_sta, WIFI_PROV_MDNS_HOST);
     }
 }
 
