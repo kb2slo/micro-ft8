@@ -236,6 +236,20 @@ button:disabled{opacity:.45}
 .day{padding:.6rem 1rem .2rem;font-size:.75rem;font-weight:700;color:GrayText;display:flex;justify-content:space-between;align-items:baseline;gap:.5rem}
 .day .daytime{display:flex;flex-direction:column;align-items:flex-end;gap:.1rem}
 .day .ago{font-weight:400;font-size:.68rem}
+/* Log's day header is collapsible; Operate's decode-slot header reuses the
+   bare .day class for its own layout only (RFC/comment precedent: "Log's
+   day dividers use the same class") and must stay non-interactive -- scoped
+   to #logList so this never leaks onto it. */
+#logList .day{cursor:pointer}
+.daytoggle{display:flex;align-items:center;gap:.35rem;min-width:0}
+.daychevron{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;flex:none;transition:transform .2s ease}
+.daygroup.collapsed .daychevron{transform:rotate(-90deg)}
+/* grid-template-rows 1fr<->0fr is the standard CSS-only accordion trick --
+   animates to/from the content's real height with no JS measurement, unlike
+   a max-height guess that has to overshoot or undershoot actual content. */
+.daybody{display:grid;grid-template-rows:1fr;transition:grid-template-rows .25s ease}
+.daygroup.collapsed .daybody{grid-template-rows:0fr}
+.daybody-inner{overflow:hidden;min-height:0}
 .dlink{font-weight:400;color:var(--accent);text-decoration:none}
 .dlink:active{opacity:.6}
 #logToolbar{display:flex;justify-content:space-between;align-items:center;padding:.6rem 1rem;font-size:.85rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
@@ -2731,21 +2745,45 @@ function appendLogRows(file, rows, prependGroup) {
   if (!group) {
     group = document.createElement('div');
     group.className = 'daygroup';
+    // Operator-requested 2026-09-22: today open, every older day collapsed
+    // by default. Reuses dayLabel()'s own "(Today)" determination rather
+    // than re-deriving the date match a second way.
+    if (dayLabel(file).indexOf('(Today)') === -1) {
+      group.classList.add('collapsed');
+    }
     var day = document.createElement('div');
     day.className = 'day';
+    // Tapping the header toggles collapse; Download ADI is a different
+    // action and stops the click from also reaching this handler below.
+    day.onclick = function () { group.classList.toggle('collapsed'); };
+    var toggle = document.createElement('span');
+    toggle.className = 'daytoggle';
+    toggle.innerHTML = '<svg class=daychevron viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>';
     var dayText = document.createElement('span');
     dayText.className = 'daydate'; // stable lookup for the count update below
-    day.appendChild(dayText);
+    toggle.appendChild(dayText);
+    day.appendChild(toggle);
     var dlink = document.createElement('a');
     dlink.className = 'dlink';
     dlink.href = '#';
     dlink.textContent = 'Download ADI';
     dlink.onclick = function (ev) {
       ev.preventDefault();
+      ev.stopPropagation();
       downloadDayAdif(file, dlink);
     };
     day.appendChild(dlink);
     group.appendChild(day);
+    // Rows live in their own grid/overflow wrapper, not directly under
+    // .daygroup -- that's what lets the collapse animate to/from the
+    // content's real height (grid-template-rows 1fr<->0fr) instead of a
+    // guessed max-height.
+    var daybody = document.createElement('div');
+    daybody.className = 'daybody';
+    var daybodyInner = document.createElement('div');
+    daybodyInner.className = 'daybody-inner';
+    daybody.appendChild(daybodyInner);
+    group.appendChild(daybody);
     // loadMoreLog() walks files oldest-of-what's-known-so-far last, so a
     // plain append keeps newest-first order there. checkForNewDayFiles()
     // below discovers a file *newer* than anything rendered yet, which has
@@ -2757,6 +2795,7 @@ function appendLogRows(file, rows, prependGroup) {
     }
     logGroupEls[file] = group;
   }
+  var daybodyInnerEl = group.querySelector('.daybody-inner');
   rows.forEach(function (q) {
     var row = document.createElement('div');
     row.className = 'frow';
@@ -2792,7 +2831,7 @@ function appendLogRows(file, rows, prependGroup) {
     // each later (newer) row gets inserted above the one before it. Same
     // logic makes a QSO refreshLogHead() catches live land at the very
     // top of Today, which is the point -- it just happened.
-    group.insertBefore(row, group.children[1] || null);
+    daybodyInnerEl.insertBefore(row, daybodyInnerEl.firstChild || null);
     logRenderedAny = true;
     var callEl = row.querySelector('.callink');
     if (callEl) {
