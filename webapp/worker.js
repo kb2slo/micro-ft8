@@ -13,6 +13,9 @@ export default {
     if (url.pathname.startsWith("/download/")) {
       return serveDownload(request, env, url);
     }
+    if (url.pathname === "/pskreporter") {
+      return servePskReporter(request, url);
+    }
 
     const response = await env.ASSETS.fetch(request);
     const headers = new Headers(response.headers);
@@ -105,4 +108,110 @@ function guessContentType(key) {
   if (key.endsWith(".tar.gz")) return "application/gzip";
   if (key.endsWith(".sha256")) return "text/plain; charset=utf-8";
   return "application/octet-stream";
+}
+
+// I37 (Tools: PSKReporter -- who is hearing me), RFC 0004 SS8. PSKReporter
+// sends no Access-Control-Allow-Origin (measured 2026-09-10, re-confirmed
+// 2026-09-21 against both retrieve.pskreporter.info/query and
+// cgi-bin/pskquery5.pl), so the browser can't call it directly -- and even
+// fetched here, where CORS doesn't apply, one query for a single callsign
+// over the last hour measured 1.25 MB of XML, almost all of it an unrelated
+// <activeReceiver> dump (every currently-active receiving station
+// network-wide, not specific to the requested callsign) rather than the
+// handful of <receptionReport> elements -- the actual "who heard this
+// callsign" spots -- the card needs. This fetches server-side and re-serves
+// only those, as small JSON: filter, not relay, per SS8's own rule for this
+// route. No secrets either way -- PSKReporter needs no credentials.
+const PSKREPORTER_QUERY_URL = "https://retrieve.pskreporter.info/query";
+async function servePskReporter(request, url) {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return jsonResponse({ error: "method_not_allowed" }, 405);
+  }
+  const call = (url.searchParams.get("call") || "").trim().toUpperCase();
+  // Loose callsign shape, not real validation -- PSKReporter itself is the
+  // actual validator; this only keeps obviously-wrong input (empty, a
+  // sentence, path-traversal-shaped junk) from reaching it as a query param.
+  if (!/^[A-Z0-9/]{3,15}$/.test(call)) {
+    return jsonResponse({ error: "invalid_call" }, 400);
+  }
+
+  const upstream = new URL(PSKREPORTER_QUERY_URL);
+  upstream.searchParams.set("senderCallsign", call);
+  upstream.searchParams.set("flowStartSeconds", "-3600");
+  upstream.searchParams.set("mode", "FT8");
+
+  let xml;
+  try {
+    const r = await fetch(upstream);
+    if (!r.ok) return jsonResponse({ error: "pskreporter_unreachable" }, 502);
+    xml = await r.text();
+  } catch (e) {
+    return jsonResponse({ error: "pskreporter_unreachable" }, 502);
+  }
+
+  if (request.method === "HEAD") {
+    return jsonResponse(null, 200);
+  }
+  return jsonResponse({ call, reports: parseReceptionReports(xml, call) }, 200);
+}
+
+// PSKReporter's query XML is flat, single-level, self-closing elements --
+// no nesting, no CDATA -- exactly the shape a small regex extractor handles
+// safely without a full XML parser. That matters here specifically: this
+// Worker ships as one plain file with no bundler/npm dependency step to add
+// one through, and the Workers runtime has no DOMParser. Only
+// <receptionReport> is ever matched -- the <activeReceiver> dump that makes
+// up nearly all of the real payload is never even looked at.
+function parseReceptionReports(xml, expectedCall) {
+  const reports = [];
+  const tagRe = /<receptionReport\b([^>]*)\/>/g;
+  let m;
+  while ((m = tagRe.exec(xml)) !== null) {
+    const attrs = {};
+    const attrRe = /([a-zA-Z]+)="([^"]*)"/g;
+    let am;
+    while ((am = attrRe.exec(m[1])) !== null) {
+      attrs[am[1]] = decodeXmlEntities(am[2]);
+    }
+    // Defense in depth, not the real filter -- senderCallsign is already
+    // scoped by the upstream query param above.
+    if ((attrs.senderCallsign || "").toUpperCase() !== expectedCall) continue;
+    const freqHz = Number(attrs.frequency);
+    const ts = Number(attrs.flowStartSeconds);
+    if (!attrs.receiverCallsign || !Number.isFinite(freqHz) || !Number.isFinite(ts)) continue;
+    reports.push({
+      call: attrs.receiverCallsign,
+      grid: attrs.receiverLocator || "",
+      dxcc: attrs.receiverDXCC || "",
+      freqHz,
+      mode: attrs.mode || "",
+      ts,
+      snr: attrs.sNR !== undefined ? Number(attrs.sNR) : null,
+    });
+  }
+  // Most recent first, same convention the app's own decode/QSO rows use.
+  reports.sort((a, b) => b.ts - a.ts);
+  return reports;
+}
+
+function decodeXmlEntities(s) {
+  return s
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+function jsonResponse(obj, status) {
+  return new Response(obj === null ? null : JSON.stringify(obj), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "access-control-allow-origin": "*",
+      "cache-control": "no-store",
+    },
+  });
 }
