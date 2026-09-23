@@ -2,8 +2,8 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Announcing Micro-FT8 — KB2SLO</title>
-<meta name="description" content="Early pre-release: Micro-FT8 — browser UI for Mini-FT8 on Cardputer ADV or full headless PoE-P4 + AtomS3 Lite.">
+<title>Micro-FT8 — KB2SLO</title>
+<meta name="description" content="Micro-FT8: a 35-gram FT8/FT4 station for the QMX and QDX that keeps calling CQ and working callers while your phone is in your pocket. Early pre-release.">
 <style>
   :root {
     --ink: #1a1f1c;
@@ -257,6 +257,123 @@
     padding-top: 0.65rem;
     font-weight: 600;
   }
+  .cta {
+    display: inline-block;
+    background: var(--band);
+    color: #f3efe6;
+    text-decoration: none;
+    font-weight: 600;
+    padding: 0.6rem 1.1rem;
+    border-radius: 2px;
+    margin: 0 0.75rem 0.5rem 0;
+  }
+  .cta:hover { background: #244a40; }
+  .cta-note { display: inline-block; }
+  .cta-row {
+    margin: 0 0 1.75rem;
+    font-size: 0.95rem;
+    color: var(--muted);
+  }
+  .cards {
+    display: grid;
+    gap: 0.85rem;
+    margin: 0 0 2.25rem;
+  }
+  @media (min-width: 640px) {
+    .cards { grid-template-columns: 1fr 1fr; }
+  }
+  .card {
+    background: rgba(255, 255, 255, 0.45);
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--band);
+    border-radius: 2px;
+    padding: 0.95rem 1rem 1rem;
+  }
+  .card h3 {
+    font-family: "IBM Plex Serif", Georgia, serif;
+    font-size: 1.1rem;
+    line-height: 1.25;
+    margin: 0 0 0.45rem;
+  }
+  .card p {
+    font-size: 0.95rem;
+    margin: 0 0 0.6rem;
+  }
+  .card .proof {
+    font-size: 0.85rem;
+    color: var(--band);
+    margin: 0;
+  }
+  table.compare {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+    margin: 0.5rem 0 0.75rem;
+  }
+  table.compare th,
+  table.compare td {
+    text-align: left;
+    padding: 0.5rem 0.4rem;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    line-height: 1.4;
+  }
+  table.compare thead th {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  table.compare tbody th {
+    font-weight: 600;
+    width: 24%;
+  }
+  table.compare .us {
+    background: rgba(47, 93, 80, 0.08);
+  }
+  @media (max-width: 559px) {
+    table.compare thead { display: none; }
+    table.compare,
+    table.compare tbody,
+    table.compare tr,
+    table.compare th,
+    table.compare td { display: block; width: auto; }
+    table.compare tr {
+      border-bottom: 1px solid var(--line);
+      padding: 0.6rem 0;
+    }
+    table.compare th,
+    table.compare td {
+      border: none;
+      padding: 0.15rem 0.4rem;
+    }
+    table.compare tbody th { width: auto; padding-bottom: 0.3rem; }
+    table.compare td::before {
+      content: attr(data-label) ": ";
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+  }
+  ul.checks {
+    list-style: none;
+    padding-left: 0;
+  }
+  ul.checks li {
+    padding-left: 1.5rem;
+    position: relative;
+  }
+  ul.checks li::before {
+    position: absolute;
+    left: 0;
+    font-weight: 700;
+  }
+  ul.checks.yes li::before { content: "✓"; color: var(--band); }
+  ul.checks.no li::before { content: "–"; color: var(--muted); }
+  h3.sub {
+    font-size: 0.95rem;
+    margin: 1.1rem 0 0.35rem;
+  }
   footer {
     margin-top: 2.75rem;
     padding-top: 1.25rem;
@@ -267,20 +384,17 @@
   }
 </style>
 <main>
-  <p class="eyebrow">Early pre-release</p>
-  <h1>Announcing Micro-FT8</h1>
+  <p class="eyebrow">Micro-FT8 · FT8/FT4 for QMX and QDX · Early pre-release</p>
+  <h1>An FT8 station that keeps working when you put your phone away.</h1>
   <p class="lead">
-    A continuation of Wei&nbsp;AG6AQ’s
-    <a href="https://github.com/wcheng95/Mini-FT8">Mini-FT8</a>
-    — the same QRP FT8 portable station for QMX and QDX —
-    with a new operating model: <strong>your phone is a wireless remote, not the
-    station</strong>. Any browser on the station’s Wi‑Fi — phone, tablet, or laptop —
-    sets it up and watches it work. Close the page, use other apps, or step away from
-    the table: CQs and the auto-sequencer keep running on the station.
+    Micro-FT8 is a 35&nbsp;gram station that sits next to your QMX or QDX and runs FT8
+    on its own: it decodes, calls CQ, works callers, and logs. Your phone is only
+    a <strong>wireless remote</strong>. Use it to set up and check in, then pocket
+    it. The station keeps going.
   </p>
-  <p class="byline">Jeff Kalikstein, KB2SLO · September 2026</p>
-  <p class="byline">
-    <a href="downloads.html">Downloads</a> — ADV, PoE-P4, Atom firmware, and source.
+  <p class="cta-row">
+    <a class="cta" href="downloads.html">Downloads</a>
+    <span class="cta-note">Firmware for ADV, PoE-P4, and Atom, plus source.</span>
   </p>
 
   <div class="gallery hardware">
@@ -296,6 +410,108 @@
       </figcaption>
     </figure>
   </div>
+
+  <section>
+    <h2>Why Micro-FT8</h2>
+    <div class="cards">
+      <div class="card">
+        <h3>The station runs itself</h3>
+        <p>
+          Decoding, the CQ beacon, and the auto-sequencer all run on the station, not
+          on the phone. Close the page, lock the screen, or switch apps, and it keeps
+          calling CQ and working the stations that answer.
+        </p>
+        <p class="proof">
+          On the air: 3.6&nbsp;hours unattended, 544 transmit slots, spotted by 1,195
+          receivers, never silent for more than five minutes.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Nothing on the summit needs a network</h3>
+        <p>
+          The Atom runs its own Wi‑Fi, so you don’t need a router, cell signal, or
+          app store. The map is served by the station, so it works offline. The clock
+          syncs from your browser, so the GPS can stay home.
+        </p>
+        <p class="proof">
+          Join its network, open <code>micro-ft8.local</code> or <code>192.168.4.1</code>.
+        </p>
+      </div>
+      <div class="card">
+        <h3>35 grams, about $29</h3>
+        <p>
+          The headless build is two stock M5Stack parts with no screen and no keyboard.
+          Already have a Cardputer ADV? Add a $7.50 AtomS3&nbsp;Lite and keep the
+          keyboard for when you want it.
+        </p>
+        <p class="proof">34.9&nbsp;g on the scale. Real FT8 QSOs completed.</p>
+      </div>
+      <div class="card">
+        <h3>Your phone stays yours</h3>
+        <p>
+          The phone isn’t the station, so its battery, screen, and apps stay free for
+          navigation, spotting, or a call home. If the phone dies, the station keeps
+          operating.
+        </p>
+        <p class="proof">Any browser works: phone, tablet, or laptop.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>How it’s different</h2>
+    <p>
+      There are three common ways to run FT8 without a laptop. Each one makes a
+      different trade-off.
+    </p>
+    <table class="compare">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Phone app + radio</th>
+          <th>Radio with built-in FT8</th>
+          <th class="us">Micro-FT8 + radio</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th>Where FT8 runs</th>
+          <td data-label="Phone app">On the phone</td>
+          <td data-label="Built-in">Inside the radio</td>
+          <td data-label="Micro-FT8" class="us">On a small station beside the radio</td>
+        </tr>
+        <tr>
+          <th>When the phone sleeps</th>
+          <td data-label="Phone app">Depends on the phone letting the app run in the background</td>
+          <td data-label="Built-in">No phone involved</td>
+          <td data-label="Micro-FT8" class="us">Keeps operating; the phone is only a remote</td>
+        </tr>
+        <tr>
+          <th>Screen you operate on</th>
+          <td data-label="Phone app">The phone</td>
+          <td data-label="Built-in">The radio’s own screen</td>
+          <td data-label="Micro-FT8" class="us">Any browser, or none once it’s running</td>
+        </tr>
+        <tr>
+          <th>Radios</th>
+          <td data-label="Phone app">Usually many</td>
+          <td data-label="Built-in">That radio only</td>
+          <td data-label="Micro-FT8" class="us">QMX and QDX</td>
+        </tr>
+        <tr>
+          <th>What you add</th>
+          <td data-label="Phone app">A USB cable</td>
+          <td data-label="Built-in">A new radio</td>
+          <td data-label="Micro-FT8" class="us">35&nbsp;g, about $29 (or $7.50 on a Cardputer ADV)</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="note">
+      If you want the most radio choices, use a phone app. If you want nothing extra
+      to carry, use a radio with built-in FT8. Micro-FT8 is for when you want your QMX
+      or QDX to keep working while you do something else.
+    </p>
+  </section>
 
   <section>
     <h2>Two ways to run it</h2>
@@ -325,9 +541,7 @@
       Micro-FT8’s PoE-P4 build is the headless, browser-UI shape of the same idea.
     </p>
     <p>
-      This is an <strong>early pre-release</strong> — looking for feedback, not a finished
-      public release. The Cardputer ADV remains a
-      first-class daily driver. Firmware and field packaging are still settling.
+      The Cardputer ADV remains a first-class daily driver.
     </p>
   </section>
 
@@ -385,11 +599,8 @@
       about operating that isn’t transmitting.
     </p>
     <p class="note">
-      <strong>The phone is optional once you’re set up.</strong> The station talks to the
-      phone over Wi‑Fi, but the decoding, CQ beacon, and QSO sequencing all run on the
-      station itself. Pocket the phone, switch apps, or step away from the table, and the
-      station keeps calling CQ, working callers, and logging. Open the page again to
-      catch up.
+      <strong>The phone is optional once you’re set up.</strong> Open the page again
+      at any time to see what the station worked while you were away.
     </p>
     <div class="gallery screens" id="screen-gallery">
       <figure>
@@ -456,54 +667,74 @@
   </section>
 
   <section>
-    <h2>Top improvements over Mini-FT8</h2>
-    <ol>
+    <h2>Also new since Mini-FT8</h2>
+    <ul>
       <li>
-        <strong>The phone is a remote, not the station</strong> — Your phone talks to the
-        station over Wi‑Fi, but it doesn’t need to stay connected. Decoding, the CQ beacon,
-        and the auto-sequencer all run on the station, so the page can close, the phone
-        can sleep, and you can use other apps while it keeps working.
+        <strong>A full browser UI.</strong> Operate, queue, tune, and download logs from
+        Safari or Chrome. Tap any callsign to see its grid, bearing and distance, your
+        past QSOs with it, and a link to <a href="https://www.qrz.com/">QRZ.com</a>.
       </li>
       <li>
-        <strong>Browser-based UI</strong> — Operate, queue, tune, and pull logs from
-        Safari or Chrome on a phone, tablet, or laptop. No app-store install. Tap any
-        callsign for its grid, bearing and distance, what’s already in your log, and a
-        link to <a href="https://www.qrz.com/">QRZ.com</a>. The log groups by day with a
-        count and its own ADI download.
+        <strong>An offline map.</strong> It shows great-circle paths to every grid you’ve
+        worked, plus the grayline. With internet, it adds live POTA/SOTA spots and NOAA
+        space weather.
       </li>
       <li>
-        <strong>A map that doesn’t need the internet</strong> — Great-circle paths to every
-        grid you’ve worked, with coastlines, country and state borders, and the grayline.
-        The Atom serves the world outline itself, so it works on a summit with no signal.
-        When you do have a connection, live POTA and SOTA activator spots and NOAA space
-        weather come along too.
+        <strong>You can still operate while transmitting.</strong> The decode list stays
+        live, so you can queue the next QSO. Power and SWR are shown on screen.
       </li>
       <li>
-        <strong>Point-to-point Wi‑Fi (AP mode)</strong> — run the whole UI off the Atom’s
-        own access point, no router or cell service needed — a summit has neither. Join
-        its network, browse to <code>micro-ft8.local</code> (or <code>192.168.4.1</code> if
-        your phone doesn’t resolve the name), and you're operating; putting
-        it on a home or camp network instead is still there when you have one.
+        <strong>The beacon keeps beaconing.</strong> A quiet band no longer stops the CQ,
+        and replies still take priority over it.
       </li>
       <li>
-        <strong>Headless hardware path</strong> — PoE-P4 + AtomS3&nbsp;Lite + QMX;
-        <strong>35&nbsp;grams</strong> of compute, no screen or keyboard, confirmed with real
-        QSOs.
+        <strong>Logs are safer, and easier to get off the station.</strong> Download a
+        day’s <code>.adi</code> file straight to your phone and upload it to whatever
+        logging software you use. Direct QRZ.com logging is coming soon. Copying to SD
+        now merges instead of overwriting, and very low battery stops TX before the
+        filesystem can be damaged.
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>What’s verified, and what isn’t yet</h2>
+    <p>
+      Here is what has been checked on the air, on real hardware, and what hasn’t.
+    </p>
+    <h3 class="sub">Verified on the air</h3>
+    <ul class="checks yes">
+      <li>
+        Unattended beacon: 3.6&nbsp;hours, 544 transmit slots, 1,195 receivers.
+      </li>
+      <li>A 22-QSO log on 20&nbsp;m from the Cardputer ADV.</li>
+      <li>Real FT8 QSOs on the headless PoE-P4 build.</li>
+      <li>
+        A released build shows a version number only if CI built it from a clean,
+        tagged tree. Any other build shows its commit instead.
+      </li>
+    </ul>
+    <h3 class="sub">Not yet, or not claimed</h3>
+    <ul class="checks no">
+      <li>
+        <strong>Decode sensitivity hasn’t been measured</strong> against WSJT-X or any
+        phone app. Micro-FT8 decodes with Karlis Goba’s
+        <a href="https://github.com/kgoba/ft8_lib">ft8_lib</a>. We’ll publish numbers
+        once we’ve measured them.
       </li>
       <li>
-        <strong>TX that stays usable</strong> — The decode list stays live while transmitting
-        so you can queue the next QSO; power and SWR ride along in the HUD (on-device and in
-        the browser).
+        <strong>QMX and QDX only.</strong> KH1 support was dropped until someone with a
+        KH1 can test it.
       </li>
       <li>
-        <strong>A beacon that keeps beaconing</strong> — Quiet bands no longer silently kill
-        CQ; replies still outrank the beacon.
+        Some of the newest browser features, such as the map on a real phone and
+        <code>.local</code> names on Android, are still waiting on field checks.
       </li>
       <li>
-        <strong>Time from the browser, not the backpack</strong> — Clock sync from the page
-        means you can leave the GPS module at home when all you need is UTC.
+        This is an <strong>early pre-release</strong>. We’re looking for feedback;
+        it isn’t a finished release yet.
       </li>
-    </ol>
+    </ul>
   </section>
 
   <section>
@@ -536,20 +767,16 @@
     </p>
   </section>
 
-  <section>
-    <h2>Credits &amp; community</h2>
+  <footer>
     <p>
-      Built on Wei&nbsp;AG6AQ’s
+      Micro-FT8 continues Wei&nbsp;AG6AQ’s
       <a href="https://github.com/wcheng95/Mini-FT8">Mini-FT8</a>
-      and Karlis Goba’s
-      <a href="https://github.com/kgoba/ft8_lib">ft8_lib</a>.
-      P4 feasibility credit to
+      for the Cardputer ADV, and decodes with Karlis Goba’s
+      <a href="https://github.com/kgoba/ft8_lib">ft8_lib</a>. Credit for proving the P4
+      could do this goes to
       <a href="https://github.com/SteffenLav/qmx-panadapter">SteffenLav’s qmx-panadapter</a>.
     </p>
-  </section>
-
-  <footer>
-    73, Jeff&nbsp;KB2SLO
+    <p>73, Jeff Kalikstein&nbsp;KB2SLO · September 2026</p>
   </footer>
 </main>
 
