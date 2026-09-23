@@ -541,11 +541,27 @@ async function loadLogMapPlacesFine() {
 
 var logMapCenterLon = 0, logMapCenterLat = 0, logMapCenterSet = false;
 var logMapZoom = 1, logMapBaseScale = 1;
-var LOG_MAP_MAX_ZOOM = 16;
+// Ceiling reintroduced at 150, operator-requested 2026-09-22, after a
+// previous round removed it entirely (see git history on this line for that
+// trail -- 16 -> 19 -> 24 -> 50 -> 75 -> none -> 150). There's still no
+// rendering reason for a cap (hand-rolled vector canvas, not a tile
+// pyramid), so 150 is purely a settled operator preference, not a technical
+// limit -- every zoom-gated threshold below (state borders, grid squares,
+// POI labels, ...) is an absolute logMapZoom value, unaffected by where the
+// ceiling sits.
+var LOG_MAP_MAX_ZOOM = 150;
 var LOG_MAP_TAP_ZOOM_MIN = 4;
 var logMapPins = []; // rebuilt every render; hit-tested on tap -- {x,y,call,grid,lat,lon,source,...}
 
 function computeLogMapBaseScale(w, h) { return Math.max(w / 360, h / 180); }
+// logMapZoom is a *linear* multiplier here, not the doubling-per-level
+// scheme a typical slippy map (Leaflet/Google/Mapbox) uses -- scale is
+// directly proportional to logMapZoom, so going from e.g. 16 to 24 is only
+// 1.5x more scale, not the ~256x a slippy map's zoom 16 -> 24 would be.
+// Found live 2026-09-22 after raising a (since-removed) zoom cap several
+// times in small steps that each read as "no different" on a real phone --
+// the numbers were real, just small next to what the operator's mental
+// model expected a "zoom level" to mean.
 function logMapScale() { return logMapBaseScale * logMapZoom; }
 function projectPoint(lon, lat, lonOffset, w, h) {
   var s = logMapScale();
@@ -1168,6 +1184,30 @@ async function loadSpotLocations() {
 // fetching or drawing at world/continent zoom, where the volume would be
 // huge and the result too dense to read anyway.
 var LOG_MAP_POI_ZOOM_MIN = 3;
+// Separate, much tighter gate for the name/ref *text* (LOG_MAP_POI_ZOOM_MIN
+// above only gates the dots/triangles themselves) -- operator-requested
+// 2026-09-22, after raising LOG_MAP_MAX_ZOOM further: "don't show the
+// POTA/SOTA names until at least zoom level 17". Dots stay useful (and
+// count-capped by poiMaxVisible below) all the way down to zoom 3; text
+// only earns its keep once the operator has zoomed in close enough that a
+// crowded region has actually separated out.
+var LOG_MAP_POI_LABEL_ZOOM_MIN = 17;
+// The target cap on how many in-viewport POTA/SOTA static locations draw at
+// once, spread evenly across the viewport via an adaptive grid rather than
+// ranked by any single point (see the "Static POTA/SOTA locations" comment
+// in renderLogMap() for the full picture, including why distance-from-
+// center ranking was tried and rejected first). Was a live toolbar input
+// (#mapPoiMaxInput) for one round of on-device tuning; operator settled on
+// 40 and asked for the control removed 2026-09-22 ("keep that as a variable
+// in code, but not expose the UI to it anymore") -- a plain constant again,
+// not dead code, since nothing else in this file's dev-control lifecycle
+// (the zoom badge, the cluster-max input before it) has stuck around after
+// its tuning round ended. lastPoiCapStats is read-only state the render
+// loop writes every frame purely for the note-bar readout -- null whenever
+// the POI layer didn't run at all this frame (layer off, or too zoomed out
+// to fetch).
+var poiMaxVisible = 40;
+var lastPoiCapStats = null; // {shown, total} | null
 var poiPotaPrograms = {};   // programPrefix -> 'loading' | 'done' | 'error'
 var poiPotaParks = [];      // accumulated across every loaded program: [{ref, name, lat, lon}]
 var poiSotaAssociations = null; // loaded once: [{associationCode, minLat, maxLat, minLong, maxLong, ...}]
@@ -1468,6 +1508,13 @@ function updateMapNote() {
     } else if (spotLoadState === 'loading') parts.push('spots: loading…');
     else if (spotLoadState === 'error') parts.push('spots unavailable');
   }
+  // POI cap readout -- reports how many of the in-viewport candidates
+  // actually got drawn against poiMaxVisible, so "142 of 1,830 POIs" stays
+  // legible feedback about the settled cap even with its tuning control
+  // gone, not just a silently-truncated map.
+  if (lastPoiCapStats) {
+    parts.push(lastPoiCapStats.shown + ' of ' + lastPoiCapStats.total + ' POI' + (lastPoiCapStats.total === 1 ? '' : 's'));
+  }
   if (logMapZoom >= LOG_MAP_TAP_ZOOM_MIN) parts.push('tap a station for info');
   note.textContent = parts.join(' · ');
 }
@@ -1588,6 +1635,12 @@ function renderLogMap() {
   // Spots: POTA carries a grid; SOTA carries raw lat/lon -- project whichever
   // this spot actually has (loadSpotLocations() already filtered out rows
   // with neither).
+  //
+  // poiLabelCandidates collects name/ref text for both the live triangles
+  // below and the static dots further down, placed in one shared pass after
+  // both loops -- see that pass's own comment for why it's collision-checked
+  // rather than drawn unconditionally.
+  var poiLabelCandidates = [];
   var visibleSpots = visibleSpotLocations(); // already per-program filtered by layerState.pota/sota
   if (visibleSpots.length) {
     ctx.fillStyle = pal.spot;
@@ -1602,56 +1655,141 @@ function renderLogMap() {
         ctx.moveTo(p.x, p.y - 4); ctx.lineTo(p.x + 4, p.y + 3); ctx.lineTo(p.x - 4, p.y + 3);
         ctx.closePath();
         ctx.fill();
-        logMapPins.push({ x: p.x, y: p.y, call: r.call, grid: r.grid, lat: pt.lat, lon: pt.lon,
-                           source: r.program, ref: r.ref, name: r.name, band: r.band, ts: r.ts, points: r.points });
+        var spotPin = { x: p.x, y: p.y, call: r.call, grid: r.grid, lat: pt.lat, lon: pt.lon,
+                         source: r.program, ref: r.ref, name: r.name, band: r.band, ts: r.ts, points: r.points };
+        logMapPins.push(spotPin);
+        if (r.name && r.ref) poiLabelCandidates.push({ text: r.name + ' (' + r.ref + ')', x: p.x + 6, y: p.y, pin: spotPin });
       });
     });
   }
 
   // Static POTA/SOTA locations: every known park/summit the viewport has
-  // pulled in so far, drawn as a small hollow dot -- skipped for any ref
-  // that's currently an active spot (already drawn as the filled triangle
-  // above), so a currently-active park/summit never gets two markers at the
-  // same point. No text label (unlike Places): at this density, labeling
-  // every one would just re-fight the collision-avoidance problem for
-  // little benefit -- tap-to-inspect already names it.
+  // pulled in so far -- skipped for any ref that's currently an active spot
+  // (already drawn as the filled triangle above), so a currently-active
+  // park/summit never gets two markers at the same point.
   //
-  // Real-density problem found live 2026-09-22, not anticipated when the
-  // zoom gate alone was designed: POTA's ~13,000 US parks and SOTA's
-  // mountain-dense summit lists (New Mexico's alone rendered as a solid
-  // green mass even at zoom 8) mean *no* zoom threshold on its own keeps
-  // this legible -- a "high enough" threshold for a dense region is still
-  // far too sparse a requirement most other places, and there's no one
-  // number that's right everywhere. Fixed with a spatial-grid cap instead
-  // of a bigger threshold: bucket the *screen*, not the data, into
-  // LOG_MAP_POI_DOT_CELL_PX-wide cells and draw at most one dot per cell,
-  // first-candidate-wins. This adapts automatically to whatever the actual
-  // on-screen density is at any zoom, rather than guessing a zoom number
-  // that happens to work for the region being tested.
-  var LOG_MAP_POI_DOT_CELL_PX = 14;
+  // Real-density problem found live 2026-09-22: POTA's ~13,000 US parks and
+  // SOTA's mountain-dense summit lists (New Mexico's alone rendered as a
+  // solid green mass even at zoom 8) mean *no* zoom threshold on its own
+  // keeps this legible. Three approaches tried and dropped the same day
+  // before this one -- see git history on this comment for the full account
+  // of each if it matters again: a fixed-size spatial-grid dot cap (one dot
+  // per screen cell, silently dropping the rest); marker clustering on top
+  // of it (count-labeled circles, adaptive cell size) -- operator: "I don't
+  // like it"; then a plain visible-count cap sorted nearest-to-center --
+  // operator: "your center clustering of the POIs to show is wrong ...
+  // choose ones as even spread across the view as possible". **Settled on
+  // an adaptive spatial grid again, but without clustering's circles/counts
+  // and without the fixed 14px this page started from**: bucket the
+  // viewport into cells and keep one representative POI per cell
+  // (first-candidate-wins, same as the very first approach), but size the
+  // cell so the resulting occupied-cell count lands at poiMaxVisible --
+  // starting from an analytic guess (cell area = viewport area /
+  // poiMaxVisible, so a uniform density lands close on the first try) and
+  // growing from there (bounded) when real density is uneven enough that
+  // the guess still overshoots in a dense sub-region. A grid is what makes
+  // "even spread" the natural outcome, not a side effect to engineer for --
+  // distance-from-center ranking (the previous round) always biases toward
+  // the middle by construction; a grid samples the whole viewport by
+  // construction. The cap is still the only *number* the operator tunes;
+  // how the cap is spent is this algorithm's job, not a second knob.
+  var LOG_MAP_POI_GRID_MAX_GROWTH = 10;
   if ((layerState.pota === 'all' || layerState.sota === 'all') && logMapZoom >= LOG_MAP_POI_ZOOM_MIN) {
     triggerPoiFetches(cssW, cssH);
     var activeRefs = {};
     visibleSpots.forEach(function (r) { activeRefs[r.ref] = true; });
+
+    // totalSeen is identical across every cellPx tried below (it counts
+    // every viewport-visible candidate once, before any dedup), so it only
+    // needs computing on the first call and is reused for the "N of M"
+    // readout rather than a second full scan.
+    var poiTotalSeen = null;
+    var bucketPoisAtCellPx = function (cellPx) {
+      var cells = {}, cellCount = 0, seen = 0;
+      var bucketPoi = function (poi, program) {
+        if (activeRefs[poi.ref]) return;
+        forEachBandOffset(bands, function (band, lonOffset) {
+          var p = bandProject(band, poi.lat, poi.lon, lonOffset, cssW, cssH);
+          if (p.x < -10 || p.x > cssW + 10 || p.y < -10 || p.y > cssH + 10) return;
+          seen++;
+          var cellKey = Math.floor(p.x / cellPx) + ',' + Math.floor(p.y / cellPx);
+          if (cells[cellKey]) return; // first-candidate-wins -- one representative per cell is what makes the result spread evenly rather than merely counted
+          cells[cellKey] = { x: p.x, y: p.y, poi: poi, program: program };
+          cellCount++;
+        });
+      };
+      if (layerState.pota === 'all') poiPotaParks.forEach(function (poi) { bucketPoi(poi, 'POTA'); });
+      if (layerState.sota === 'all') poiSotaSummits.forEach(function (poi) { bucketPoi(poi, 'SOTA'); });
+      if (poiTotalSeen === null) poiTotalSeen = seen;
+      return { cells: cells, cellCount: cellCount };
+    };
+
+    var poiCellPx = Math.max(8, Math.sqrt((cssW * cssH) / Math.max(1, poiMaxVisible)));
+    var poiResult = bucketPoisAtCellPx(poiCellPx);
+    var poiGrowSteps = 0;
+    while (poiResult.cellCount > poiMaxVisible && poiGrowSteps < LOG_MAP_POI_GRID_MAX_GROWTH) {
+      poiCellPx *= 1.5; // gentler than doubling -- the analytic starting guess is usually already close
+      poiResult = bucketPoisAtCellPx(poiCellPx);
+      poiGrowSteps++;
+    }
+
     ctx.strokeStyle = pal.spot;
     ctx.lineWidth = 1.5;
-    var occupiedPoiCells = {};
-    var drawStaticPoi = function (poi, program) {
-      if (activeRefs[poi.ref]) return;
-      forEachBandOffset(bands, function (band, lonOffset) {
-        var p = bandProject(band, poi.lat, poi.lon, lonOffset, cssW, cssH);
-        if (p.x < -10 || p.x > cssW + 10 || p.y < -10 || p.y > cssH + 10) return;
-        var cellKey = Math.floor(p.x / LOG_MAP_POI_DOT_CELL_PX) + ',' + Math.floor(p.y / LOG_MAP_POI_DOT_CELL_PX);
-        if (occupiedPoiCells[cellKey]) return;
-        occupiedPoiCells[cellKey] = true;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
-        ctx.stroke();
-        logMapPins.push({ x: p.x, y: p.y, name: poi.name, lat: poi.lat, lon: poi.lon, source: program, ref: poi.ref, points: poi.points });
-      });
-    };
-    if (layerState.pota === 'all') poiPotaParks.forEach(function (poi) { drawStaticPoi(poi, 'POTA'); });
-    if (layerState.sota === 'all') poiSotaSummits.forEach(function (poi) { drawStaticPoi(poi, 'SOTA'); });
+    Object.keys(poiResult.cells).forEach(function (key) {
+      var cell = poiResult.cells[key];
+      ctx.beginPath();
+      ctx.arc(cell.x, cell.y, 2.5, 0, Math.PI * 2);
+      ctx.stroke();
+      var poiPin = { x: cell.x, y: cell.y, name: cell.poi.name, lat: cell.poi.lat, lon: cell.poi.lon,
+                      source: cell.program, ref: cell.poi.ref, points: cell.poi.points };
+      logMapPins.push(poiPin);
+      if (cell.poi.name && cell.poi.ref) poiLabelCandidates.push({ text: cell.poi.name + ' (' + cell.poi.ref + ')', x: cell.x + 5, y: cell.y, pin: poiPin });
+    });
+    lastPoiCapStats = { shown: poiResult.cellCount, total: poiTotalSeen };
+  } else {
+    lastPoiCapStats = null; // layer off or too zoomed out to fetch at all -- nothing for the readout to report
+  }
+
+  // POI labels, operator-requested 2026-09-22 ("if there is enough
+  // whitespace ... show the POTA/SOTA name and ID"), gated separately from
+  // the dots/triangles themselves at LOG_MAP_POI_LABEL_ZOOM_MIN (17) --
+  // "don't show the POTA/SOTA names until at least zoom level 17",
+  // operator-tightened the same day after LOG_MAP_MAX_ZOOM was raised
+  // further. Below that, dots still draw (LOG_MAP_POI_ZOOM_MIN, much
+  // lower) but carry no text -- tap-to-inspect still names one on demand.
+  // Same greedy collision-avoidance placer Places uses
+  // (labelBox()/boxesOverlap()): a candidate draws only if its padded box
+  // clears every label already placed this pass, first-candidate-wins,
+  // skipped (not hidden -- the marker itself always draws) rather than
+  // truncated when there's no room. Its own placement pass, not merged with
+  // drawLogMapPlaces()'s -- that function's `placed` list is local to its
+  // own call and runs earlier, so threading it through here for the rare
+  // Place/POI overlap isn't worth the coupling.
+  //
+  // The placed box is stashed on the candidate's own pin (c.pin.labelBox)
+  // so handleLogMapTap() can hit-test the text too, not just the dot --
+  // operator-requested 2026-09-22 ("is the text related to the poi also
+  // clickable? If not, it should be"). Only ever set below when a label
+  // actually draws this frame -- every pin is a fresh object built earlier
+  // in this same render (logMapPins is reset at the top of renderLogMap()),
+  // so a skipped-for-space label simply leaves labelBox undefined rather
+  // than needing to be cleared from a stale previous render.
+  if (logMapZoom >= LOG_MAP_POI_LABEL_ZOOM_MIN && poiLabelCandidates.length) {
+    ctx.font = LOG_MAP_PLACE_FONT;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = pal.spot;
+    var poiPlaced = [];
+    poiLabelCandidates.forEach(function (c) {
+      var width = ctx.measureText(c.text).width;
+      var box = labelBox(c.x, c.y, width, false);
+      for (var i = 0; i < poiPlaced.length; i++) {
+        if (boxesOverlap(box, poiPlaced[i])) return;
+      }
+      poiPlaced.push(box);
+      ctx.fillText(c.text, c.x, c.y);
+      if (c.pin) c.pin.labelBox = box;
+    });
   }
 
   var ownPt = lastCfg.grid ? gridToLatLon(lastCfg.grid) : null;
@@ -1721,15 +1859,38 @@ function showMapPopup(pin) {
 document.getElementById('mapPopupClose').onclick = function () {
   document.getElementById('mapPopup').hidden = true;
 };
+// Tap hit-radius raised 14 -> 22px, operator-reported 2026-09-22 ("we lost
+// the ability for the POIs to be clickable to their detail view"). Traced
+// this specifically, not just assumed: showMapPopup()/the tap-to-pin match
+// itself is unchanged and confirmed still correct with a precisely-aimed
+// tap. The even-spread round just above this one is what actually moved --
+// POIs used to be dense enough that a near-miss tap still landed within 14px
+// of *something*; spread out (by that round's own design), an imprecise tap
+// on an isolated dot now often lands on nothing. 22px doesn't change *which*
+// pin wins a tap near two candidates (still nearest-within-range), only how
+// forgiving "in range" is.
 function handleLogMapTap(clientX, clientY) {
   if (logMapZoom < LOG_MAP_TAP_ZOOM_MIN) return;
   var rect = document.getElementById('mapCanvas').getBoundingClientRect();
   var x = clientX - rect.left, y = clientY - rect.top;
-  var best = null, bestD = 14;
+  var best = null, bestD = 22;
   logMapPins.forEach(function (p) {
     var d = Math.hypot(p.x - x, p.y - y);
     if (d < bestD) { bestD = d; best = p; }
   });
+  // Fall back to a POI's drawn name/ref label, not just its dot -- operator-
+  // requested 2026-09-22 ("is the text related to the poi also clickable?
+  // If not, it should be"). A label can sit 5-6px past the dot radius plus
+  // its own text width, well outside bestD above, so this is a genuinely
+  // separate hit test (a rectangle, not a distance), tried only when the
+  // dot search missed -- a dot tap should never be shadowed by a nearby
+  // label's box.
+  if (!best) {
+    logMapPins.forEach(function (p) {
+      var box = p.labelBox;
+      if (box && x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1) best = p;
+    });
+  }
   if (best) showMapPopup(best);
 }
 
@@ -1739,13 +1900,36 @@ function handleLogMapTap(clientX, clientY) {
 // track to fight over touches with, so the stopPropagation() calls the
 // original needed for that reason are no longer load-bearing, but are kept
 // anyway since they're harmless and this is otherwise a verbatim port. ----
+//
+// Real bug found and fixed 2026-09-22, operator-reported from an actual
+// iPhone ("tapping POTA POIs is definitely still not working ... is there a
+// difference for a phone tap vs a mouse click?") -- yes, genuinely: touch
+// and mouse are two separate handler sets below with their own state, and
+// every tap verification up to this point (this session and earlier ones,
+// per this row's own "not provable by an agent: real touchscreen" caveats)
+// only ever exercised the mouse path, which never fires a single
+// intermediate move event for a synthetic click -- so it could never have
+// caught what was actually wrong with *movement tracking* on a real finger.
+// dragMoved/mouseMoved used to *accumulate* `|dx|+|dy|` across every
+// move tick -- that measures total path length, not how far the finger
+// actually ended up from where it started. A real touchscreen reports
+// several move events even for a finger that never leaves a ~3px spot
+// (capacitive sensor noise), and summing that noise tick over tick can
+// blow past DRAG_CLAIM_PX (10px) well before the finger has gone anywhere
+// -- exactly the class of bug a synthetic mouse click (zero move events,
+// so the old accumulator could never even engage) could never surface.
+// Fixed by tracking a start point and measuring straight-line displacement
+// from it at release time instead of summing per-tick deltas -- correct
+// for "did this drag" regardless of how many noisy samples arrived along
+// the way.
 (function () {
   var canvas = document.getElementById('mapCanvas');
   var DRAG_CLAIM_PX = 10;
-  var dragging = false, dragMoved = 0, lastX = 0, lastY = 0;
+  var dragging = false, lastX = 0, lastY = 0, startX = 0, startY = 0;
   var pinchStartDist = 0, pinchStartZoom = 1;
 
   function touchDist(t1, t2) { return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY); }
+  function netMoved(x, y) { return Math.hypot(x - startX, y - startY); }
   function panBy(dx, dy, w, h) {
     var s = logMapScale();
     logMapCenterLon -= dx / s;
@@ -1756,8 +1940,8 @@ function handleLogMapTap(clientX, clientY) {
   canvas.addEventListener('touchstart', function (e) {
     e.stopPropagation();
     if (e.touches.length === 1) {
-      dragging = true; dragMoved = 0;
-      lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+      dragging = true;
+      startX = lastX = e.touches[0].clientX; startY = lastY = e.touches[0].clientY;
     } else if (e.touches.length === 2) {
       dragging = false;
       pinchStartDist = touchDist(e.touches[0], e.touches[1]);
@@ -1771,7 +1955,6 @@ function handleLogMapTap(clientX, clientY) {
     var w = canvas.clientWidth, h = canvas.clientHeight;
     if (e.touches.length === 1 && dragging) {
       var dx = e.touches[0].clientX - lastX, dy = e.touches[0].clientY - lastY;
-      dragMoved += Math.abs(dx) + Math.abs(dy);
       lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
       panBy(dx, dy, w, h);
       renderLogMap();
@@ -1786,27 +1969,27 @@ function handleLogMapTap(clientX, clientY) {
 
   canvas.addEventListener('touchend', function (e) {
     e.stopPropagation();
-    if (dragging && dragMoved < DRAG_CLAIM_PX && e.changedTouches.length === 1) {
+    if (dragging && e.changedTouches.length === 1 &&
+        netMoved(e.changedTouches[0].clientX, e.changedTouches[0].clientY) < DRAG_CLAIM_PX) {
       handleLogMapTap(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
     }
     dragging = false;
     pinchStartDist = 0;
   }, { passive: true });
 
-  var mouseDown = false, mouseMoved = 0;
+  var mouseDown = false;
   canvas.addEventListener('mousedown', function (e) {
-    mouseDown = true; mouseMoved = 0; lastX = e.clientX; lastY = e.clientY;
+    mouseDown = true; startX = lastX = e.clientX; startY = lastY = e.clientY;
   });
   window.addEventListener('mousemove', function (e) {
     if (!mouseDown) return;
     var dx = e.clientX - lastX, dy = e.clientY - lastY;
-    mouseMoved += Math.abs(dx) + Math.abs(dy);
     lastX = e.clientX; lastY = e.clientY;
     panBy(dx, dy, canvas.clientWidth, canvas.clientHeight);
     renderLogMap();
   });
   window.addEventListener('mouseup', function (e) {
-    if (mouseDown && mouseMoved < DRAG_CLAIM_PX) handleLogMapTap(e.clientX, e.clientY);
+    if (mouseDown && netMoved(e.clientX, e.clientY) < DRAG_CLAIM_PX) handleLogMapTap(e.clientX, e.clientY);
     mouseDown = false;
   });
   canvas.addEventListener('wheel', function (e) {
