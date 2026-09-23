@@ -316,13 +316,14 @@ async function show(call, opts) {
       return;
     }
     var link = officialLink(spot.program, spot.ref);
+    var progRef = esc(spot.program) + ' ' + esc(spot.ref);
     section.innerHTML = '<div class=ci-label>POTA / SOTA</div>' +
-      'Active on ' + esc(spot.program) + ' ' + esc(spot.ref) +
+      'Active on ' + (link
+        ? '<a href="' + esc(link) + '" target=_blank rel=noopener style="color:var(--accent, #1d4ed8)">' + progRef + '</a>'
+        : progRef) +
       (spot.name ? ' · ' + esc(spot.name) : '') +
       (spot.program === 'SOTA' && spot.points != null ? ' · ' + esc(spot.points) + ' pts' : '') +
-      '<div class=ci-heard>' + esc(spot.band || '') + ' · ' + esc(fmtAgo(parseUtcIso(spot.ts))) + '</div>' +
-      (link ? '<a class=ci-link href="' + esc(link) + '" target=_blank rel=noopener>' +
-        esc(spot.program === 'POTA' ? 'View park on POTA' : 'View summit on SOTA') + ' →</a>' : '');
+      '<div class=ci-heard>' + esc(spot.band || '') + ' · ' + esc(fmtAgo(parseUtcIso(spot.ts))) + '</div>';
   });
 }
 
