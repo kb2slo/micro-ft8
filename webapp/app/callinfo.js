@@ -45,6 +45,31 @@ function gridToLatLon(grid) {
   lat += 0.5;
   return { lat: lat, lon: lon };
 }
+// Same field/square/subsquare parsing as gridToLatLon() above, but returns
+// the square's real extent rather than collapsing it to one point -- needed
+// below to tell whether a grid straddles a border, and to find a named
+// place that falls inside the square itself rather than just near its
+// center.
+function gridToBBox(grid) {
+  if (!grid || grid.length < 4) return null;
+  var g = grid.toUpperCase();
+  var A = 'A'.charCodeAt(0), Z0 = '0'.charCodeAt(0);
+  var fl = g.charCodeAt(0) - A, fu = g.charCodeAt(1) - A;
+  var sl = g.charCodeAt(2) - Z0, su = g.charCodeAt(3) - Z0;
+  if (fl < 0 || fl > 17 || fu < 0 || fu > 17 || sl < 0 || sl > 9 || su < 0 || su > 9) return null;
+  var lonMin = fl * 20 - 180 + sl * 2, latMin = fu * 10 - 90 + su * 1;
+  var lonSpan = 2, latSpan = 1;
+  if (g.length >= 6) {
+    var tl = g.charCodeAt(4) - A, tu = g.charCodeAt(5) - A;
+    if (tl >= 0 && tl <= 23 && tu >= 0 && tu <= 23) {
+      lonMin += tl * (2 / 24);
+      latMin += tu * (1 / 24);
+      lonSpan = 2 / 24;
+      latSpan = 1 / 24;
+    }
+  }
+  return { lonMin: lonMin, lonMax: lonMin + lonSpan, latMin: latMin, latMax: latMin + latSpan };
+}
 function greatCircle(a, b) {
   var R = 6371;
   var dLat = toRad(b.lat - a.lat), dLon = toRad(b.lon - a.lon);
@@ -192,6 +217,120 @@ function officialLink(program, ref) {
   return '';
 }
 
+// ---- grid square -> location text (operator-requested 2026-09-23) ----
+// Static reference data (country/state borders, world cities), not spot
+// data -- fetched once and cached for the life of the page, unlike the
+// POTA/SOTA cache above which has to keep expiring. These are the same
+// three files map.html already draws its own map from (ne_110m_*.json),
+// but this file fetches its own copy rather than depending on map.html
+// having loaded them first: app.html has no map and never loads these on
+// its own, same "host supplies what only it can know, this file owns
+// what's genuinely the same everywhere" reasoning the rest of this file
+// already follows for POTA/SOTA.
+var geoData = null;
+var geoFetchPromise = null;
+async function loadGeoData() {
+  if (geoData) return geoData;
+  if (geoFetchPromise) return geoFetchPromise;
+  geoFetchPromise = (async function () {
+    var files = await Promise.all(
+      ['ne_110m_countries.json', 'ne_110m_us_states.json', 'ne_110m_places.json'].map(function (f) {
+        return fetch(f).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+      })
+    );
+    geoData = { countries: files[0], states: files[1], places: files[2] };
+    geoFetchPromise = null;
+    return geoData;
+  })();
+  return geoFetchPromise;
+}
+// Standard even-odd ray-cast: XOR-ing every ring of a Polygon (exterior
+// plus any holes) gives "inside exterior, outside every hole" for free,
+// since a valid hole is wound inside its own exterior. A MultiPolygon
+// (Hawaii, an island nation, Russia split at the antimeridian) is a match
+// if any one of its pieces contains the point -- its pieces are separate
+// landmasses, not holes of each other, so those are OR'd rather than XOR'd.
+function pointInRing(lon, lat, ring) {
+  var inside = false;
+  for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    var xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if (((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+function pointInGeometry(lon, lat, geometry) {
+  var polys = geometry.type === 'Polygon' ? [geometry.coordinates]
+    : geometry.type === 'MultiPolygon' ? geometry.coordinates : [];
+  return polys.some(function (poly) {
+    var inside = false;
+    poly.forEach(function (ring) { if (pointInRing(lon, lat, ring)) inside = !inside; });
+    return inside;
+  });
+}
+// A grid square can straddle a border -- resolving only its center point
+// would silently pick a side and hide the other one. Sample a 3x3 grid of
+// points across the square's real extent (corners, edge midpoints, center)
+// instead, and rank every country/state that owns at least one sample by
+// how many of the 9 it owns. "More likely first" = whichever owns more of
+// the square's area, which this approximates cheaply without real
+// polygon-clipping; ties keep whatever order Array#sort leaves them in.
+function sampleBBox(bbox) {
+  var pts = [];
+  [0, 0.5, 1].forEach(function (fx) {
+    [0, 0.5, 1].forEach(function (fy) {
+      pts.push({ lon: bbox.lonMin + fx * (bbox.lonMax - bbox.lonMin), lat: bbox.latMin + fy * (bbox.latMax - bbox.latMin) });
+    });
+  });
+  return pts;
+}
+function rankByPoints(features, points) {
+  var counts = [];
+  features.forEach(function (f) {
+    var n = 0;
+    points.forEach(function (p) { if (pointInGeometry(p.lon, p.lat, f.geometry)) n++; });
+    if (n > 0) counts.push({ name: f.properties.name, n: n });
+  });
+  counts.sort(function (a, b) { return b.n - a.n; });
+  return counts.slice(0, 2).map(function (c) { return c.name; });
+}
+var COUNTRY_DISPLAY_NAME = { 'United States of America': 'United States' };
+function displayCountryName(name) { return COUNTRY_DISPLAY_NAME[name] || name; }
+// Nearest-named-place rubric: Natural Earth's ~243 largest cities/capitals
+// are single points, not areas, so no sampling is needed -- any of them
+// that land inside the grid square's own extent qualify, ranked by `rank`
+// (0 = most prominent, Natural Earth's own scalerank) and, among equal
+// ranks, by distance to the square's center.
+function placeInGrid(places, bbox, center) {
+  var hits = places.filter(function (f) {
+    var lon = f.geometry.coordinates[0], lat = f.geometry.coordinates[1];
+    return lon >= bbox.lonMin && lon <= bbox.lonMax && lat >= bbox.latMin && lat <= bbox.latMax;
+  });
+  if (!hits.length) return null;
+  hits.sort(function (a, b) {
+    if (a.properties.rank !== b.properties.rank) return a.properties.rank - b.properties.rank;
+    var pa = { lat: a.geometry.coordinates[1], lon: a.geometry.coordinates[0] };
+    var pb = { lat: b.geometry.coordinates[1], lon: b.geometry.coordinates[0] };
+    return greatCircle(center, pa).km - greatCircle(center, pb).km;
+  });
+  return hits[0].properties.name;
+}
+async function locateGrid(grid) {
+  var bbox = gridToBBox(grid), center = gridToLatLon(grid);
+  if (!bbox || !center) return null;
+  var geo = await loadGeoData();
+  var pts = sampleBBox(bbox);
+  var countries = geo.countries ? rankByPoints(geo.countries.features, pts).map(displayCountryName) : [];
+  if (!countries.length) return null;
+  var states = (geo.states && countries.indexOf('United States') !== -1)
+    ? rankByPoints(geo.states.features, pts) : [];
+  var place = geo.places ? placeInGrid(geo.places.features, bbox, center) : null;
+  var parts = [];
+  if (place) parts.push(place);
+  if (states.length) parts.push(states.join('/'));
+  parts.push(countries.join('/'));
+  return parts.join(' · ');
+}
+
 // ---- modal markup/styles, injected once ----
 // #callInfoModal[hidden] is not redundant with the UA stylesheet's own
 // [hidden]{display:none} -- #callInfoModal's own display:flex (an author
@@ -288,8 +427,12 @@ async function show(call, opts) {
       '</div>';
   }
 
-  body += '<div class=ci-row><div class=ci-label>Country / DXCC</div>' +
-    'Not looked up yet in this version -- check QRZ below.</div>';
+  // Country/state/place row: placeholder immediately when a grid is cached
+  // (same never-block-on-network pattern as the POTA/SOTA row below), or a
+  // plain message when there's no grid to look up at all.
+  body += '<div class=ci-row id=ciCountry><div class=ci-label>Country / DXCC</div>' +
+    (grid ? '<span style="color:GrayText">checking…</span>' : 'No grid square cached yet -- check QRZ below.') +
+    '</div>';
 
   // POTA/SOTA row: placeholder immediately (never blocks the rest of the
   // card on a network round trip), filled in once the fetch resolves --
@@ -301,6 +444,19 @@ async function show(call, opts) {
   document.getElementById('callInfoBody').innerHTML = body;
   document.getElementById('callInfoQrz').href = 'https://www.qrz.com/db/' + encodeURIComponent(call);
   document.getElementById('callInfoModal').hidden = false;
+
+  if (grid) {
+    locateGrid(grid).then(function (text) {
+      var modal = document.getElementById('callInfoModal');
+      var nameEl = document.getElementById('callInfoCallName');
+      var section = document.getElementById('ciCountry');
+      // Still open, and still the same callsign -- same guard as the
+      // POTA/SOTA fill-in below, for the same reason.
+      if (!section || modal.hidden || nameEl.textContent !== call) return;
+      section.innerHTML = '<div class=ci-label>Country / DXCC</div>' +
+        (text ? esc(text) : 'No country match for this grid square -- check QRZ below.');
+    });
+  }
 
   loadActiveSpots().then(function (rows) {
     var modal = document.getElementById('callInfoModal');
