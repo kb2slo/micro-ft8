@@ -17,6 +17,19 @@ export default {
     const response = await env.ASSETS.fetch(request);
     const headers = new Headers(response.headers);
     headers.set("Access-Control-Allow-Origin", "*");
+    // Static Assets' text/html responses carry no charset -- the sidekick's
+    // own httpd (web_fs.c) always sends "text/html; charset=utf-8" for every
+    // page it serves, so this host was the one silently relying on a
+    // browser's own encoding guess instead. That guess is more reliable the
+    // more valid UTF-8 it has to look at, which is exactly why this went
+    // unnoticed on app.html/map.html (dense, tens of KB) but produced real
+    // mojibake on geo.html (a few hundred bytes, one non-ASCII character
+    // total, found live 2026-09-22 on a real phone) -- not a defect unique
+    // to that one page, just the first one small enough to expose it.
+    const contentType = headers.get("content-type");
+    if (contentType && /^text\/html\b/i.test(contentType) && !/charset=/i.test(contentType)) {
+      headers.set("Content-Type", "text/html; charset=utf-8");
+    }
     // geo.html (RFC 0004 SS11's geolocation handoff) is the one page on this
     // site whose whole point is working with zero network -- an operator
     // reaching it at all already crossed the hard part (getting real
