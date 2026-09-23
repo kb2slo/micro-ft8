@@ -17,6 +17,21 @@ export default {
     const response = await env.ASSETS.fetch(request);
     const headers = new Headers(response.headers);
     headers.set("Access-Control-Allow-Origin", "*");
+    // geo.html (RFC 0004 SS11's geolocation handoff) is the one page on this
+    // site whose whole point is working with zero network -- an operator
+    // reaching it at all already crossed the hard part (getting real
+    // internet once). Static Assets' own default is
+    // "public, max-age=0, must-revalidate" (measured 2026-09-22), which
+    // would force a revalidation round-trip on *every* visit, defeating
+    // that entirely offline. immutable + a long max-age means a browser
+    // that already has a fresh copy skips the network outright -- not a
+    // fallback-after-failure, a real "don't even try" -- for as long as it
+    // keeps that cache entry. Scoped to this one path: every other asset
+    // here (app.html, map.html, manifest.json, ...) still wants normal
+    // revalidation, since those *do* change on every deploy.
+    if (url.pathname === "/geo.html") {
+      headers.set("Cache-Control", "public, max-age=31536000, immutable");
+    }
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,

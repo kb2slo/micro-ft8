@@ -252,6 +252,12 @@ button:disabled{opacity:.45}
 .daybody-inner{overflow:hidden;min-height:0}
 .dlink{font-weight:400;color:var(--accent);text-decoration:none}
 .dlink:active{opacity:.6}
+/* .dlink is always an <a> elsewhere on this page; #gridLocateBtn is a real
+   <button> (a confirm()+navigate action, not a plain link) that still
+   wants the same look -- strips the default button chrome down to just
+   .dlink's own color/weight rather than adding a second visual language
+   for one control. */
+button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:pointer}
 #logToolbar{display:flex;justify-content:space-between;align-items:center;padding:.6rem 1rem;font-size:.85rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
 .dlink-danger{color:var(--danger)}
 .frow{padding:.5rem 1rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
@@ -482,9 +488,12 @@ button:disabled{opacity:.45}
     </div>
     <p id=netMsg class=setnote></p>
 
-    <div class="hd sep">Station</div>
+    <div class="hd sep" id=stationSection>Station</div>
     <div class=setrow><label>Call <input id=call autocomplete=off spellcheck=false></label></div>
-    <div class=setrow><label>Grid <input id=grid autocomplete=off spellcheck=false></label></div>
+    <div class=setrow>
+      <label>Grid <input id=grid autocomplete=off spellcheck=false></label>
+      <button id=gridLocateBtn type=button class=dlink>Set from GPS &rarr;</button>
+    </div>
     <div class=setrow>
       <label>CQ type
         <select id=cq_type>
@@ -1437,6 +1446,48 @@ async function saveConfig() {
   await loadConfig();
 }
 
+// ---- geolocation handoff return (operator-requested 2026-09-23) ----
+// Reuses geo.html (RFC 0004 §11) -- the exact same handoff map.html's own
+// "locate me" button uses. This is the feature §11 was originally written
+// about ("set my grid from GPS"), designed then but never built until now;
+// see map.html's own copy of this same comment for the full explanation of
+// why a real top-level navigation out to a secure-context origin is
+// required at all, rather than an in-page API call.
+var GEO_HANDOFF_URL = 'https://micro-ft8.kalikstein.com/geo.html';
+document.getElementById('gridLocateBtn').onclick = function () {
+  var ok = confirm("Finding your location needs your phone's own internet connection, not just the sidekick's WiFi. Continue?");
+  if (!ok) return;
+  var ret = location.origin + location.pathname + '#station';
+  location.href = GEO_HANDOFF_URL + '?return=' + encodeURIComponent(ret);
+};
+
+// Called after loadConfig() resolves, near the bottom of this script --
+// needs a real lastCfg.grid to compare against, which applyHashRoute()'s
+// own #station branch (run at boot, before loadConfig()) doesn't have yet.
+// A no-op on every ordinary page load, which never carries these params.
+function handleGeoReturn() {
+  var params = new URLSearchParams(location.search);
+  var latStr = params.get('lat'), lonStr = params.get('lon');
+  if (latStr == null || lonStr == null) return;
+  history.replaceState(null, '', location.pathname + location.hash);
+  var lat = parseFloat(latStr), lon = parseFloat(lonStr);
+  if (!isFinite(lat) || !isFinite(lon)) return;
+
+  // Compared at whatever precision the operator's own configured grid
+  // already has -- a 4-character lastCfg.grid shouldn't provoke an
+  // "update?" prompt every time just because GPS is naturally more precise
+  // than 4 characters; only a real disagreement (or nothing configured at
+  // all) should ask.
+  var newGrid = latLonToGrid(lat, lon);
+  var current = (lastCfg.grid || '').toUpperCase();
+  var comparable = current.length === 4 ? newGrid.slice(0, 4).toUpperCase() : newGrid.toUpperCase();
+  if (comparable === current) return;
+  var prompt = current
+    ? 'Your GPS location is grid ' + newGrid + ', but your station is set to ' + current + '. Update it?'
+    : 'Set your station grid to ' + newGrid + ' (from GPS)?';
+  if (confirm(prompt)) putConfigLine('grid=' + newGrid, 'Setting grid from GPS…');
+}
+
 // Clock sync is fully automatic and silent -- no dot, no tap-to-sync
 // (operator-requested removal: decode-ago already gives a version of "is
 // this stale" without a dedicated clock readout). porta_host_set_clock() on
@@ -2135,6 +2186,23 @@ function gridToLatLon(grid) {
   lon += 1;   // center of the 4-char (2 deg lon x 1 deg lat) square
   lat += 0.5;
   return { lat: lat, lon: lon };
+}
+// Inverse of gridToLatLon() -- a real lat/lon (from GPS, operator-requested
+// 2026-09-23, shared with map.html's own copy of this exact function) to a
+// full 6-character Maidenhead locator. 6, not 4: GPS is far more precise
+// than even a 6-character square (~9 km) needs, so there's no reason to
+// throw resolution away. Lowercase subsquare letters, the same convention
+// every grid string already flowing through this app uses.
+function latLonToGrid(lat, lon) {
+  var lonShift = ((lon + 180) % 360 + 360) % 360;
+  var latShift = lat + 90;
+  var fieldLon = Math.floor(lonShift / 20), fieldLat = Math.floor(latShift / 10);
+  var sqLon = Math.floor((lonShift - fieldLon * 20) / 2), sqLat = Math.floor((latShift - fieldLat * 10) / 1);
+  var subLon = Math.floor((lonShift - fieldLon * 20 - sqLon * 2) / (2 / 24));
+  var subLat = Math.floor((latShift - fieldLat * 10 - sqLat * 1) / (1 / 24));
+  return String.fromCharCode(65 + fieldLon) + String.fromCharCode(65 + fieldLat) +
+    String(sqLon) + String(sqLat) +
+    String.fromCharCode(97 + subLon) + String.fromCharCode(97 + subLat);
 }
 function toRad(d) { return d * Math.PI / 180; }
 function greatCircle(a, b) {
@@ -2987,8 +3055,11 @@ if (MicroFT8Pairing.getToken()) {
 // Deep links: #network (from status.html's old / -> now a 303 to here, and
 // any other "take me to network settings" link) opens Settings straight to
 // the Network section; #tools (RFC 0004 §12) swipes straight to the Tools
-// tab. Both run once at boot and again on hashchange, so a link clicked
-// while the app is already open (not just a fresh load) still routes.
+// tab; #station (operator-requested 2026-09-23, the geolocation handoff's
+// own return route -- see handleGeoReturn() below) opens Settings straight
+// to the Station section, same pattern as #network. All three run once at
+// boot and again on hashchange, so a link clicked while the app is already
+// open (not just a fresh load) still routes.
 function applyHashRoute() {
   if (location.hash === '#network') {
     openSettings();
@@ -2996,6 +3067,14 @@ function applyHashRoute() {
     if (netSection) netSection.scrollIntoView();
   } else if (location.hash === '#tools') {
     showView('tools');
+  } else if (location.hash === '#station') {
+    openSettings();
+    var stationSection = document.getElementById('stationSection');
+    if (stationSection) stationSection.scrollIntoView();
+    // Not handleGeoReturn() here -- this runs at boot, before loadConfig()
+    // (below) has populated lastCfg.grid, and that comparison needs the
+    // real value, not the empty {} lastCfg starts as. Chained onto
+    // loadConfig() itself instead, near the bottom of this script.
   }
 }
 applyHashRoute();
@@ -3065,7 +3144,11 @@ if (Object.keys(lastCfg).length) {
   applyOperateLive(lastCfg);
 }
 
-loadConfig().catch(function () { /* setMsg already */ });
+// .catch() before .then(), not after -- handleGeoReturn() must run whether
+// loadConfig() resolved or rejected (a stale/unlinked ADV shouldn't silently
+// drop a pending GPS handoff), and loadConfig() already called setMsg() with
+// the failure reason before rejecting, so nothing here needs to repeat it.
+loadConfig().catch(function () { /* setMsg already */ }).then(handleGeoReturn);
 computeAppVersion();
 renderCountdown();
 renderBeacon();

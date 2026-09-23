@@ -66,6 +66,14 @@ body{font-family:system-ui;background:Canvas;color:CanvasText}
 #mapCanvasWrap{position:fixed;inset:0;top:0}
 #mapCanvas{width:100%;height:100%;display:block;touch-action:none;cursor:grab}
 #mapNote{position:fixed;left:0;right:0;bottom:0;padding:.4rem 0 calc(.4rem + env(safe-area-inset-bottom));text-align:center;font-size:.75rem;color:GrayText;background:color-mix(in srgb, Canvas 75%, transparent);pointer-events:none}
+/* Floating action, not a toolbar pill -- operator-requested 2026-09-23:
+   this is a one-shot action (find me), not a toggleable layer, so it
+   doesn't belong in the same visual language as QSOs/Decodes/POTA/SOTA/
+   Places/Grid squares. Same icon-button language as app.html's own
+   #navSettings (22px stroke icon, currentColor) for visual consistency
+   across the two pages, even though this control only exists here. */
+#mapLocateBtn{position:fixed;right:1rem;bottom:calc(3.2rem + env(safe-area-inset-bottom));z-index:7;width:2.75rem;height:2.75rem;border-radius:50%;border:1px solid color-mix(in srgb, GrayText 35%, transparent);background:Canvas;color:CanvasText;box-shadow:0 2px 8px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;padding:0}
+#mapLocateBtn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
 /* ---- tap-info popup: a lighter sheet than app.html's callInfoModal, since
    this page has none of that modal's session decode/QSO-history context to
@@ -105,6 +113,9 @@ body{font-family:system-ui;background:Canvas;color:CanvasText}
 <div id=mapCanvasWrap>
   <canvas id=mapCanvas></canvas>
 </div>
+<button id=mapLocateBtn type=button aria-label="Zoom to my location">
+  <svg viewBox="0 0 24 24"><circle cx=12 cy=12 r=3></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+</button>
 <div id=mapNote></div>
 
 <div id=mapPopup hidden>
@@ -116,6 +127,7 @@ body{font-family:system-ui;background:Canvas;color:CanvasText}
   <a id=mapPopupQrz target=_blank rel=noopener>QRZ lookup &rarr;</a>
 </div>
 
+<script src=/pairing.js></script>
 <script src=callinfo.js></script>
 <script>
 'use strict';
@@ -149,6 +161,26 @@ function gridToLatLon(grid) {
   lon += 1;
   lat += 0.5;
   return { lat: lat, lon: lon };
+}
+// Inverse of gridToLatLon() -- a real lat/lon (from GPS, operator-requested
+// 2026-09-23) to a full 6-character Maidenhead locator, same field/square/
+// subsquare partition that function already decodes. 6, not 4: GPS is far
+// more precise than even a 6-character square (~9 km) needs, so there's no
+// reason to throw away resolution the way gridSquareLabel() deliberately
+// does for its own purpose (labeling the *overlay's* 2x1 degree squares,
+// unrelated to this). Lowercase subsquare letters, the same convention
+// every grid string already flowing through this app uses (POTA's own
+// "FN54vh", "DM69wi", ...).
+function latLonToGrid(lat, lon) {
+  var lonShift = ((lon + 180) % 360 + 360) % 360;
+  var latShift = lat + 90;
+  var fieldLon = Math.floor(lonShift / 20), fieldLat = Math.floor(latShift / 10);
+  var sqLon = Math.floor((lonShift - fieldLon * 20) / 2), sqLat = Math.floor((latShift - fieldLat * 10) / 1);
+  var subLon = Math.floor((lonShift - fieldLon * 20 - sqLon * 2) / (2 / 24));
+  var subLat = Math.floor((latShift - fieldLat * 10 - sqLat * 1) / (1 / 24));
+  return String.fromCharCode(65 + fieldLon) + String.fromCharCode(65 + fieldLat) +
+    String(sqLon) + String(sqLat) +
+    String.fromCharCode(97 + subLon) + String.fromCharCode(97 + subLat);
 }
 function greatCircle(a, b) {
   var R = 6371;
@@ -1102,7 +1134,7 @@ async function loadSpotLocations() {
     spotLoadState = 'error';
   }
   updateMapNote();
-  if (layerState.pota || layerState.sota) renderLogMap();
+  if (layerState.pota !== 'off' || layerState.sota !== 'off') renderLogMap();
 }
 
 // ---- POTA/SOTA static locations (operator-requested 2026-09-22): every
@@ -1227,8 +1259,11 @@ function triggerPoiFetches(w, h) {
   // Each half gated by its own toggle now that POTA and SOTA are
   // independent layers (operator-requested 2026-09-22) -- an operator who
   // only wants SOTA shouldn't pay for POTA's per-country fetches (and vice
-  // versa) just because they're both zoomed in far enough.
-  if (layerState.pota) {
+  // versa) just because they're both zoomed in far enough. And within a
+  // program, this whole (heavy) static-location fetch only runs in 'all'
+  // state -- 'spots' mode is deliberately lighter, live activity only, so
+  // it must not trigger the same per-country/per-region walk 'all' does.
+  if (layerState.pota === 'all') {
     // Which bundled countries overlap the view -> that country's own
     // program. iso_a2 doubles as POTA's programPrefix for 171 of our 173
     // bundled countries (measured 2026-09-22); the two known misses
@@ -1239,7 +1274,7 @@ function triggerPoiFetches(w, h) {
       if (bboxesOverlap(c, view)) fetchPotaProgram(c.programPrefix);
     });
   }
-  if (!layerState.sota) return;
+  if (layerState.sota !== 'all') return;
 
   // SOTA: associations list first (once, cheap -- every association's own
   // bbox, no summits yet), then overlapping associations' region lists
@@ -1300,7 +1335,10 @@ function visibleDecodeLocations() { return decodeLocations.filter(function (d) {
 // of two places that could drift.
 function visibleSpotLocations() {
   return spotLocations.filter(function (r) {
-    return withinMapTimeWindow(parseUtcIso(r.ts)) && (r.program === 'POTA' ? layerState.pota : layerState.sota);
+    // Live spots show in *either* non-off state ('spots' and 'all' both
+    // want them) -- only the static-location fetch/render below cares
+    // about the distinction between the two.
+    return withinMapTimeWindow(parseUtcIso(r.ts)) && (r.program === 'POTA' ? layerState.pota : layerState.sota) !== 'off';
   });
 }
 
@@ -1319,18 +1357,31 @@ mapTimeSelectEl.onchange = function () {
 // see immediately, where QSOs/Decodes/spots/Places are all "here's what's
 // on the map" by default.
 // pota/sota split from one combined toggle into two, operator-requested
-// 2026-09-22 -- both live spots and static locations key off whichever of
-// the two is on (per-program filtering happens at render/fetch time, not
-// here).
-var layerState = { qsos: true, decodes: true, pota: true, sota: true, places: true, grid: false };
+// 2026-09-22, then each given a third state the same day: 'off' -> 'spots'
+// (live activations only, cheap) -> 'all' (also every known static
+// location, the heavy per-country/per-region fetch) -> back to 'off'.
+// 'spots' exists specifically so an operator can see current activity
+// without paying for the static-location fetch/render at all.
+var layerState = { qsos: true, decodes: true, pota: 'all', sota: 'all', places: true, grid: false };
 function setLayerBtn(id, on) {
   document.getElementById(id).classList.toggle('on', on);
+}
+// label is the button's own base text ("POTA"/"SOTA"); the state itself
+// appends to it so the three states are distinguishable by text, not only
+// by color -- a filled pill alone can't tell 'spots' and 'all' apart.
+function setPoiLayerBtn(id, label, state) {
+  var btn = document.getElementById(id);
+  btn.classList.toggle('on', state !== 'off');
+  btn.textContent = state === 'off' ? label : label + ': ' + (state === 'spots' ? 'Spots' : 'All');
+}
+function cyclePoiState(state) {
+  return state === 'off' ? 'spots' : state === 'spots' ? 'all' : 'off';
 }
 function refreshLayerBtns() {
   setLayerBtn('layerQsos', layerState.qsos);
   setLayerBtn('layerDecodes', layerState.decodes);
-  setLayerBtn('layerPota', layerState.pota);
-  setLayerBtn('layerSota', layerState.sota);
+  setPoiLayerBtn('layerPota', 'POTA', layerState.pota);
+  setPoiLayerBtn('layerSota', 'SOTA', layerState.sota);
   setLayerBtn('layerPlaces', layerState.places);
   setLayerBtn('layerGrid', layerState.grid);
 }
@@ -1349,17 +1400,18 @@ document.getElementById('layerDecodes').onclick = function () {
 // Live spot data itself stays one shared fetch (both feeds are cheap and
 // there's no reason to duplicate the request) -- only the toggle, the
 // render-time filter, and the static-location fetch trigger are actually
-// split per program. Either button can be the one that first triggers it.
+// split per program. Either button can be the one that first triggers it,
+// and either non-off state ('spots' or 'all') wants it loaded.
 document.getElementById('layerPota').onclick = function () {
-  layerState.pota = !layerState.pota;
+  layerState.pota = cyclePoiState(layerState.pota);
   refreshLayerBtns();
-  if (layerState.pota && spotLoadState === 'idle') loadSpotLocations();
+  if (layerState.pota !== 'off' && spotLoadState === 'idle') loadSpotLocations();
   renderLogMap();
 };
 document.getElementById('layerSota').onclick = function () {
-  layerState.sota = !layerState.sota;
+  layerState.sota = cyclePoiState(layerState.sota);
   refreshLayerBtns();
-  if (layerState.sota && spotLoadState === 'idle') loadSpotLocations();
+  if (layerState.sota !== 'off' && spotLoadState === 'idle') loadSpotLocations();
   renderLogMap();
 };
 // No load-on-toggle needed -- unlike the three above, Places' data is
@@ -1391,7 +1443,7 @@ function updateMapNote() {
     } else if (qsoLoadState.indexOf('loading') === 0) parts.push('QSOs: ' + qsoLoadState.replace('loading:', 'loading '));
     else if (qsoLoadState === 'error') parts.push('QSOs unavailable');
   }
-  if (layerState.pota || layerState.sota) {
+  if (layerState.pota !== 'off' || layerState.sota !== 'off') {
     if (spotLoadState === 'done') {
       var sn = visibleSpotLocations().length;
       parts.push(sn + ' spot' + (sn === 1 ? '' : 's'));
@@ -1559,7 +1611,7 @@ function renderLogMap() {
   // on-screen density is at any zoom, rather than guessing a zoom number
   // that happens to work for the region being tested.
   var LOG_MAP_POI_DOT_CELL_PX = 14;
-  if ((layerState.pota || layerState.sota) && logMapZoom >= LOG_MAP_POI_ZOOM_MIN) {
+  if ((layerState.pota === 'all' || layerState.sota === 'all') && logMapZoom >= LOG_MAP_POI_ZOOM_MIN) {
     triggerPoiFetches(cssW, cssH);
     var activeRefs = {};
     visibleSpots.forEach(function (r) { activeRefs[r.ref] = true; });
@@ -1580,8 +1632,8 @@ function renderLogMap() {
         logMapPins.push({ x: p.x, y: p.y, name: poi.name, lat: poi.lat, lon: poi.lon, source: program, ref: poi.ref, points: poi.points });
       });
     };
-    if (layerState.pota) poiPotaParks.forEach(function (poi) { drawStaticPoi(poi, 'POTA'); });
-    if (layerState.sota) poiSotaSummits.forEach(function (poi) { drawStaticPoi(poi, 'SOTA'); });
+    if (layerState.pota === 'all') poiPotaParks.forEach(function (poi) { drawStaticPoi(poi, 'POTA'); });
+    if (layerState.sota === 'all') poiSotaSummits.forEach(function (poi) { drawStaticPoi(poi, 'SOTA'); });
   }
 
   var ownPt = lastCfg.grid ? gridToLatLon(lastCfg.grid) : null;
@@ -1746,9 +1798,102 @@ function handleLogMapTap(clientX, clientY) {
   }, { passive: false });
 })();
 
+// ===================== geolocation (operator-requested 2026-09-23) =====================
+// navigator.geolocation is unreachable directly from this page -- gated on
+// a secure context, and http://micro-ft8.local deliberately isn't one
+// (RFC 0004 SS11). geo.html, hosted on the bundle host's real HTTPS
+// certificate, does the actual API call and redirects back here with
+// ?lat=&lon=. Generic on that page's own end (a `return` URL, not
+// hardcoded to this page) so Settings' still-unbuilt "set my grid from
+// GPS" -- SS11's original motivating feature -- can reuse the exact same
+// handoff later without its own copy.
+var GEO_HANDOFF_URL = 'https://micro-ft8.kalikstein.com/geo.html';
+document.getElementById('mapLocateBtn').onclick = function () {
+  // Leaving this origin entirely needs real internet, not just the
+  // sidekick's own AP -- everything else on this page degrades in place
+  // when offline; this is the one feature that can't, because leaving is
+  // the whole point. One-time confirmation so a no-signal phone hits an
+  // informed choice instead of a surprise (the browser's own connection-
+  // error page, with no way back except its own Back button).
+  var ok = confirm("Finding your location needs your phone's own internet connection, not just the sidekick's WiFi. Continue?");
+  if (!ok) return;
+  var ret = location.origin + location.pathname;
+  location.href = GEO_HANDOFF_URL + '?return=' + encodeURIComponent(ret);
+};
+
+async function writeGridConfig(grid) {
+  var note = document.getElementById('mapNote');
+  note.textContent = 'Setting grid…';
+  try {
+    var r = await MicroFT8Pairing.authFetch('/api/config', {
+      method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: 'grid=' + grid
+    });
+    if (r.status === 401) {
+      MicroFT8Pairing.needsReauth();
+      note.textContent = 'Press the sidekick button to pair';
+      return;
+    }
+    var j = await r.json().catch(function () { return {}; });
+    if (!r.ok || j.ok === false) {
+      note.textContent = 'Setting grid failed: ' + (j.why || r.status);
+      return;
+    }
+    lastCfg.grid = grid; // reflect immediately -- own marker, every distance/bearing reading
+    note.textContent = 'Grid set to ' + grid + '.';
+    renderLogMap();
+  } catch (e) {
+    note.textContent = 'Setting grid failed: ' + (e && e.message ? e.message : e);
+  }
+}
+// boot()'s own pairing logic, not a bare getToken() check -- boot() already
+// knows how to call straight through when a token exists and how to wait
+// for a button press (with a visible status) when it doesn't, so reusing
+// it here rather than half-reimplementing gets the "no token yet" path
+// correct for free, same as every mutating call on app.html already gets.
+function setGridFromGeo(grid) {
+  MicroFT8Pairing.boot({
+    status: document.getElementById('mapNote'),
+    onPaired: function () { writeGridConfig(grid); }
+  });
+}
+
+// Runs once, at boot, only when the URL actually carries a return from
+// geo.html -- an ordinary page load never has these params at all. Cleans
+// them from the URL immediately either way, so a later refresh of this
+// same tab can't replay the prompt against a since-changed lastCfg.grid.
+function handleGeoReturn() {
+  var params = new URLSearchParams(location.search);
+  var latStr = params.get('lat'), lonStr = params.get('lon');
+  if (latStr == null || lonStr == null) return;
+  history.replaceState(null, '', location.pathname);
+  var lat = parseFloat(latStr), lon = parseFloat(lonStr);
+  if (!isFinite(lat) || !isFinite(lon)) return;
+
+  logMapCenterLon = lon;
+  logMapCenterLat = lat;
+  logMapCenterSet = true;
+  logMapZoom = Math.max(logMapZoom, 12);
+  renderLogMap();
+
+  // Compared at whatever precision the operator's own configured grid
+  // already has -- a 4-character lastCfg.grid shouldn't provoke an "update?"
+  // prompt every time just because GPS is naturally more precise than 4
+  // characters; only a real disagreement (or nothing configured at all)
+  // should ask.
+  var newGrid = latLonToGrid(lat, lon);
+  var current = (lastCfg.grid || '').toUpperCase();
+  var comparable = current.length === 4 ? newGrid.slice(0, 4).toUpperCase() : newGrid.toUpperCase();
+  if (comparable === current) return;
+  var prompt = current
+    ? 'Your GPS location is grid ' + newGrid + ', but your station is set to ' + current + '. Update it?'
+    : 'Set your station grid to ' + newGrid + ' (from GPS)?';
+  if (confirm(prompt)) setGridFromGeo(newGrid);
+}
+
 // ===================== boot =====================
 (async function boot() {
   await loadCfg(); // own-grid marker + spots' band filter want this before first render, but basemap load below doesn't depend on it
+  handleGeoReturn(); // wants lastCfg.grid (just loaded) to compare against
   loadDecodeLocations();
   loadLogMapBasemap(); // renders as soon as the basemap itself is in, doesn't wait on data layers
   loadQsoLocations();

@@ -694,6 +694,19 @@ line was written about the ADV's own GPS module; whether the operator's reasonin
 good enough for first ship — extends to this phone-GPS path too is a roadmap-scope call, not a design one.
 This section describes how the feature would work if and when it is built, not that it is in I28d.
 
+**Built 2026-09-22, simpler than the design above — no map/pin-drag UI, so no tile-provider question.**
+The mechanism above (top-level navigation to the bundle host, real secure context, redirect back) is
+exactly what shipped, in `webapp/geo.html` — a plain, page-agnostic handoff, not a Settings-specific one.
+What did **not** ship is the drag-to-correct pin screen this section proposed: auto-fill only, no manual
+correction step, which makes "Open: the tile provider" above moot rather than answered — there is no map
+or pin on the handoff page at all, so no tile provider was ever needed. Two entry points reuse the one
+handoff page: the Tools map (§12.5) gained a floating locate button that recenters/zooms to the result
+directly on its own existing canvas basemap (no second map), and Settings' Grid field gained a "Set from
+GPS" link reaching the same handoff page via a new `#station` hash route. Both compare the resulting grid
+against the current config and prompt (`confirm()`) before writing, rather than silently overwriting an
+existing value — an addition beyond this section's original scope, which only covered auto-filling an
+empty field. Full account in [ROADMAP.md](../ROADMAP.md) I30.
+
 ### What this requires of §6, which is why the design pass came first
 
 * **A structured status event.** Per-entry autoseq state, retry counter and dxcall, plus slot parity,
@@ -1516,6 +1529,22 @@ their own layer with the other confirmed unaffected (pin counts checked before/a
 rendering together in one card) and from map.html (a real, currently-active POTA park's full card fetched
 live, plus a synthetic SOTA spot used specifically to exercise the points/link rendering path, since no real
 SOTA activation happened to be up on FT8 at the time this was tested).
+
+**One more change the same day, next round, operator-requested: POTA and SOTA each gained a third state.**
+Plain on/off became a three-way cycle on each click -- `'off' -> 'spots' -> 'all' -> 'off'` -- rather than a
+second toggle or a settings menu, matching the toolbar's existing "tap a pill" interaction language. `'spots'`
+is not a lighter *rendering* of the same data `'all'` shows; it is a genuinely cheaper *state*, deliberately:
+`triggerPoiFetches()`'s whole per-country/per-region static-location walk, and the static-dot render block,
+are now gated specifically on `layerState.pota === 'all'` / `layerState.sota === 'all'` rather than any
+non-off truthy value, so choosing "spots" skips the heavy fetch entirely rather than fetching it anyway and
+just not drawing the result. Live-spot visibility (`visibleSpotLocations()`) checks the weaker
+`!== 'off'`, since both `'spots'` and `'all'` want live activity shown — only the static layer cares about
+the distinction between the two. Buttons show which of the three states they're in through their own label
+text (`"POTA"`, `"POTA: Spots"`, `"POTA: All"`) rather than through color alone, which cannot distinguish
+three states as reliably as three different words can. Verified live: a real button cycled through all three
+states with `layerState.pota` read back correctly at each step; `'spots'` state confirmed to show live spot
+pins with zero static dots against real fetched data (4 live pins, 0 static); the toolbar label and the map's
+own note text both confirmed to update correctly at every step of the cycle.
 
 ### 12.6 Navigation
 

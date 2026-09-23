@@ -1,0 +1,87 @@
+<!doctype html>
+<meta name=viewport content='width=device-width,initial-scale=1'>
+<title>Locate</title>
+<!--
+  Generic geolocation handoff, RFC 0004 SS11 ("Grid square from the phone,
+  and why it needs a second origin"): navigator.geolocation is gated on a
+  secure context, and the sidekick's own http://micro-ft8.local
+  deliberately isn't one -- true regardless of whether the phone has
+  internet at that moment, since the browser refuses the API purely on the
+  URL scheme. An iframe doesn't help either (the Secure Contexts spec walks
+  the whole ancestor chain, so an HTTPS iframe inside a non-secure parent
+  is still non-secure). The only real fix is a genuine top-level
+  navigation out to somewhere that *is* secure -- this page, hosted on
+  micro-ft8.kalikstein.com, which already carries a real certificate for
+  the unrelated reason of serving the app bundle over HTTPS -- and back.
+
+  Generic (a `return` URL, not a hardcoded destination) rather than
+  map.html-specific, operator-requested 2026-09-22: this exists so both
+  map.html's own "locate me" button and Settings' still-unbuilt "set my
+  grid from GPS" (the feature SS11 was originally written about) can share
+  one implementation instead of two near-identical copies -- neither of
+  which is this page's business to know about.
+
+  Cached aggressively (see webapp/worker.js's own override for this exact
+  path) so a *repeat* use of this page needs no network at all, even
+  though a first-ever use does (there's nothing to have cached yet).
+-->
+<style>
+:root{color-scheme:light dark}
+body{font-family:system-ui;margin:0;padding:2.5rem 1.25rem;background:Canvas;color:CanvasText;box-sizing:border-box;min-height:100dvh}
+h1{font-size:1.15rem;margin:0 0 .5rem}
+p{color:GrayText;font-size:.9rem;line-height:1.4}
+a{color:#1d4ed8;display:inline-block;margin-top:1rem}
+</style>
+<h1 id=status>Locating…</h1>
+<p id=detail>Getting your phone's own GPS position. If this is the first time, your phone may ask permission to share your location with this page.</p>
+<p id=backWrap hidden><a id=backLink>&larr; Back, without updating location</a></p>
+
+<script>
+'use strict';
+// Only ever redirects to a plausible LAN-local address -- this page must
+// never become a way to bounce someone's precise coordinates to an
+// arbitrary external site just because they clicked a crafted link to it.
+function validReturn(url) {
+  var u;
+  try { u = new URL(url, location.href); } catch (e) { return false; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+  var h = u.hostname;
+  return h === 'localhost' || /\.local$/i.test(h) ||
+    /^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(h) || /^169\.254\./.test(h);
+}
+
+var statusEl = document.getElementById('status');
+var detailEl = document.getElementById('detail');
+var backWrap = document.getElementById('backWrap');
+var backLink = document.getElementById('backLink');
+var ret = new URLSearchParams(location.search).get('return');
+
+function fail(status, detail, showBack) {
+  statusEl.textContent = status;
+  detailEl.textContent = detail;
+  // Only show "Back" once ret has passed validReturn() -- with no valid
+  // return address there's nowhere safe left to send the link.
+  backWrap.hidden = !showBack;
+}
+
+if (!ret || !validReturn(ret)) {
+  fail('Nothing to return to', 'This page needs a valid return= address on the local network, and none was given.', false);
+} else {
+  backLink.href = ret;
+  if (!navigator.geolocation) {
+    fail('Location unavailable', "This browser doesn't support geolocation.", true);
+  } else {
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      // replace(), not assigning .href -- this page shouldn't sit in
+      // browser history between the two real pages on either side of it.
+      var u = new URL(ret);
+      u.searchParams.set('lat', pos.coords.latitude);
+      u.searchParams.set('lon', pos.coords.longitude);
+      location.replace(u.toString());
+    }, function (err) {
+      fail('Could not get your location', (err && err.message) || 'Permission denied or location unavailable.', true);
+    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  }
+}
+</script>
