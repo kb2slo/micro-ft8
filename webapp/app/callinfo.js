@@ -288,10 +288,10 @@ function rankByPoints(features, points) {
   features.forEach(function (f) {
     var n = 0;
     points.forEach(function (p) { if (pointInGeometry(p.lon, p.lat, f.geometry)) n++; });
-    if (n > 0) counts.push({ name: f.properties.name, n: n });
+    if (n > 0) counts.push({ props: f.properties, n: n });
   });
   counts.sort(function (a, b) { return b.n - a.n; });
-  return counts.slice(0, 2).map(function (c) { return c.name; });
+  return counts.slice(0, 2).map(function (c) { return c.props; });
 }
 var COUNTRY_DISPLAY_NAME = { 'United States of America': 'United States' };
 function displayCountryName(name) { return COUNTRY_DISPLAY_NAME[name] || name; }
@@ -314,21 +314,53 @@ function placeInGrid(places, bbox, center) {
   });
   return hits[0].properties.name;
 }
-async function locateGrid(grid) {
+// The point-sampling/ranking above is all synchronous once geoData itself
+// is in hand -- split out so both the modal's full-text row (locateGrid(),
+// async: waits on the fetch) and the decode/QSO rows' compact badge
+// (shortLocation(), sync: skips silently if the fetch hasn't landed yet
+// rather than blocking a row render on it) can share one implementation
+// instead of the ranking logic drifting between two copies.
+function resolveGridSync(grid) {
+  if (!geoData) return null;
   var bbox = gridToBBox(grid), center = gridToLatLon(grid);
   if (!bbox || !center) return null;
-  var geo = await loadGeoData();
   var pts = sampleBBox(bbox);
-  var countries = geo.countries ? rankByPoints(geo.countries.features, pts).map(displayCountryName) : [];
-  if (!countries.length) return null;
-  var states = (geo.states && countries.indexOf('United States') !== -1)
-    ? rankByPoints(geo.states.features, pts) : [];
-  var place = geo.places ? placeInGrid(geo.places.features, bbox, center) : null;
+  var countries = geoData.countries ? rankByPoints(geoData.countries.features, pts) : [];
+  if (!countries.length) return { countries: [], states: [], place: null };
+  var isUS = countries.some(function (c) { return c.name === 'United States of America'; });
+  var states = (isUS && geoData.states) ? rankByPoints(geoData.states.features, pts) : [];
+  var place = geoData.places ? placeInGrid(geoData.places.features, bbox, center) : null;
+  return { countries: countries, states: states, place: place };
+}
+async function locateGrid(grid) {
+  await loadGeoData();
+  var r = resolveGridSync(grid);
+  if (!r || !r.countries.length) return null;
   var parts = [];
-  if (place) parts.push(place);
-  if (states.length) parts.push(states.join('/'));
-  parts.push(countries.join('/'));
+  if (r.place) parts.push(r.place);
+  if (r.states.length) parts.push(r.states.map(function (s) { return s.name; }).join('/'));
+  parts.push(r.countries.map(function (c) { return displayCountryName(c.name); }).join('/'));
   return parts.join(' · ');
+}
+// Compact form for decode/QSO rows, where a full "Texas · United States"
+// doesn't fit: 2-letter codes only (state postal abbreviation, country
+// ISO 3166-1 alpha-2), no place name -- "TX·US", or "NM/AZ·US" for a
+// straddling grid, or a bare "CA" (Canada) when there's no US state to
+// pair it with. A bare 2-letter code is always a *country* in this
+// scheme -- a US state code never appears without its "·US" suffix -- so
+// "CA" alone can't be misread as California. Returns '' rather than
+// blocking the caller when the geo data hasn't finished loading yet or
+// the grid doesn't resolve to anything (open ocean); every call site
+// already treats '' as "nothing to show this render", same as an unfilled
+// distance/bearing badge, so the row just quietly gains the badge on its
+// next redraw once the fetch lands.
+function shortLocation(grid) {
+  var r = resolveGridSync(grid);
+  if (!r || !r.countries.length) return '';
+  var countryCodes = r.countries.map(function (c) { return c.iso_a2; }).filter(Boolean);
+  var stateCodes = r.states.map(function (s) { return s.postal; }).filter(Boolean);
+  if (stateCodes.length) return stateCodes.join('/') + (countryCodes.length ? '·' + countryCodes.join('/') : '');
+  return countryCodes.join('/');
 }
 
 // ---- modal markup/styles, injected once ----
@@ -494,5 +526,12 @@ if (document.readyState === 'loading') {
   inject();
 }
 
-window.CallInfo = { show: show, hide: hide, learnGrid: learnGrid, cachedGrid: cachedGrid };
+// Fired eagerly at load, not lazily on first show()/shortLocation() call --
+// shortLocation() is synchronous and gives up rather than waiting on a
+// fetch (a decode/QSO row can't block its own render on one), so the
+// sooner this lands the sooner rows actually get their badge instead of
+// silently going without it until whatever happens to open the modal first.
+loadGeoData();
+
+window.CallInfo = { show: show, hide: hide, learnGrid: learnGrid, cachedGrid: cachedGrid, shortLocation: shortLocation };
 })();

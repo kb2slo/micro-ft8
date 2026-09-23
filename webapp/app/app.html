@@ -1983,6 +1983,10 @@ function renderDecodes() {
       var allCalls = extractAllCallsigns(d.x);
       var theirGrid = senderCall && CallInfo.cachedGrid(senderCall);
       var distBearing = theirGrid ? fmtDistBearing(lastCfg.grid, theirGrid) : '';
+      // '' whenever the shared geo lookup hasn't finished loading yet or the
+      // grid doesn't resolve -- shortLocation() never blocks this render on
+      // its own fetch, so the badge just appears on a later redraw.
+      var shortLoc = theirGrid ? CallInfo.shortLocation(theirGrid) : '';
       return '<div class=drow data-id="' + d.id + '">' +
         '<div class=meta><span>DT ' + fmtDt(d.dt) + '</span><span>' + d.hz + ' Hz</span><span>' +
         (d.snr > 0 ? '+' : '') + d.snr + ' dB</span></div>' +
@@ -1991,7 +1995,8 @@ function renderDecodes() {
           (d.me ? '<span class=me>&rarr; ME</span>' : '') + '</div>' +
           (isReplyableDecode(d) ? '<button type=button class=replyBtn data-id="' + d.id + '">Reply</button>' : '') +
         '</div>' +
-        (distBearing ? '<div class=ddist><span>' + esc(theirGrid) + '</span><span>' + esc(distBearing) + '</span></div>' : '') +
+        (distBearing ? '<div class=ddist><span>' + esc(theirGrid) +
+          (shortLoc ? ' · ' + esc(shortLoc) : '') + '</span><span>' + esc(distBearing) + '</span></div>' : '') +
         '</div>';
     }).join('');
   }).join('');
@@ -2660,10 +2665,14 @@ function appendLogRows(file, rows, prependGroup) {
     // fmtDuration()'s own granularity (minutes once past a minute) makes a
     // live per-second update pointless here anyway.
     var qts = qsoEpochMs(file, q.time);
+    // Best-effort -- geo data may still be loading on a cold page (this
+    // runs once per row, at log-load time, not live), and shortLocation()
+    // just returns '' rather than blocking the row on its own fetch.
+    var qShortLoc = q.grid ? CallInfo.shortLocation(q.grid) : '';
     row.innerHTML =
       '<div class=frow-main>' +
         '<div><span><span class="call callink" data-call="' + esc(q.call) + '">' + esc(q.call) + '</span>' +
-        (q.grid ? '<span class=grid>' + esc(q.grid) + '</span>' : '') + '</span>' +
+        (q.grid ? '<span class=grid>' + esc(q.grid) + (qShortLoc ? ' · ' + esc(qShortLoc) : '') + '</span>' : '') + '</span>' +
         (qts !== null ? '<span class=ago>' + fmtAgo(qts) + '</span>' : '') + '</div>' +
         '<span class=sub><span>' + esc(q.time) + '</span><span>' + esc(q.band) +
         (q.freq ? ' · ' + esc(q.freq) + ' MHz' : '') + '</span><span>' +
