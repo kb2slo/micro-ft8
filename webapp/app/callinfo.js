@@ -101,6 +101,24 @@ function cachedGrid(call) {
     return typeof entry === 'string' ? entry : (entry.grid || '');
   } catch (e) { return ''; }
 }
+// Write side of the cache above (operator-requested 2026-09-22: "save the
+// callsign to grid square mapping as long as possible" -- every reliable
+// call+grid pairing anywhere in the app should land here, not just decodes).
+// Same last-write-wins policy app.html's own learnCallsignGrid() already
+// established for decodes: ts means "last seen with this grid," not "first
+// learned," so a later sighting always re-stamps rather than being compared
+// against what's already cached. Validates the grid itself (cheap, already
+// have gridToLatLon here) so a caller can pass anything without checking
+// first; a bad or empty grid is silently a no-op.
+function learnGrid(call, grid) {
+  if (!call || !grid || !gridToLatLon(grid)) return;
+  try {
+    var raw = localStorage.getItem('microft8_callsign_grids_v1');
+    var cache = raw ? (JSON.parse(raw) || {}) : {};
+    cache[call] = { grid: grid.toUpperCase(), ts: Date.now() };
+    localStorage.setItem('microft8_callsign_grids_v1', JSON.stringify(cache));
+  } catch (e) { /* localStorage unavailable -- cache just stays cold */ }
+}
 
 // ---- live POTA/SOTA spot awareness (operator-requested 2026-09-22) ----
 // On-demand, not a background poll: fetched the first time a card actually
@@ -319,5 +337,5 @@ if (document.readyState === 'loading') {
   inject();
 }
 
-window.CallInfo = { show: show, hide: hide };
+window.CallInfo = { show: show, hide: hide, learnGrid: learnGrid, cachedGrid: cachedGrid };
 })();

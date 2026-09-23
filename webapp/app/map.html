@@ -1050,6 +1050,12 @@ async function loadQsoLocations() {
         if (qGrid && qMyGrid && gridToLatLon(qGrid) && gridToLatLon(qMyGrid)) {
           locs.push({ call: q.call, grid: qGrid, myGrid: qMyGrid, ts: ts });
         }
+        // Field-found 2026-09-22: a logged QSO's own <gridsquare> is at
+        // least as trustworthy as a bare decode, and a map-only session
+        // (never opening the QSOs tab in app.html) would otherwise never
+        // learn it -- this is app.html's own appendLogRows() fix, mirrored
+        // here since this is an independent fetch of the same log data.
+        CallInfo.learnGrid(q.call, q.grid);
         // Kept unconditionally (unlike locs above, which only wants
         // plottable QSOs) -- the shared callsign-info card's QSO-history
         // section wants every QSO with this call, grid or not.
@@ -1124,11 +1130,23 @@ async function loadSpotLocations() {
     anyOk = true;
   } catch (e) { /* SOTA down this tick -- POTA half may still be good */ }
   if (anyOk) {
-    var inBand = activeBandFilter();
-    spotLocations = potaRows.concat(sotaRows).filter(function (r) {
-      return r.band && inBand(r.band) && r.mode && r.mode.toUpperCase() === 'FT8' &&
+    var ft8Valid = potaRows.concat(sotaRows).filter(function (r) {
+      return r.mode && r.mode.toUpperCase() === 'FT8' &&
              ((r.grid && gridToLatLon(r.grid)) || (r.lat != null && r.lon != null));
     });
+    // Field-found 2026-09-22: opportunistic callsign->grid learning from
+    // every FT8 spot, regardless of the operator's own active-band filter
+    // below -- a spot's callsign+location pairing is just as trustworthy on
+    // a band this station doesn't use, so caching shouldn't be narrowed by
+    // what's merely relevant to draw. POTA already reports the activator's
+    // own grid; SOTA gives real summit coordinates instead, so the summit's
+    // grid is computed from those directly.
+    ft8Valid.forEach(function (r) {
+      var grid = r.grid || (r.lat != null && r.lon != null ? latLonToGrid(r.lat, r.lon) : null);
+      if (grid) CallInfo.learnGrid(r.call, grid);
+    });
+    var inBand = activeBandFilter();
+    spotLocations = ft8Valid.filter(function (r) { return r.band && inBand(r.band); });
     spotLoadState = 'done';
   } else {
     spotLoadState = 'error';
