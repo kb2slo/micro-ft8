@@ -3,8 +3,13 @@
   "assets": [
     {
       "path": "app.html",
-      "sha256": "f930c6f13d4bad8c57ba4fbcc11f4a8ee2aa63912662e476aa4afdfff60afc1a",
-      "size": 149544
+      "sha256": "e3433b781d66a86cee7440538d814cede550c9e9ea75c7ef19233f22df66e7df",
+      "size": 146416
+    },
+    {
+      "path": "callinfo.js",
+      "sha256": "5212420f220762b9155bf14929b0c4bc304944e02189739251faeae8221aa43b",
+      "size": 16007
     },
     {
       "path": "installed.html",
@@ -13,13 +18,18 @@
     },
     {
       "path": "map.html",
-      "sha256": "46d6fd4d96255c7806e0a6e7ab09664692b40a9bf4b6745c774215c1a005b254",
-      "size": 61122
+      "sha256": "72a18a6972dcce856f1c8d265b7ea58be3ea8aa1e41e816b2ed590c36cff37a9",
+      "size": 83504
     },
     {
       "path": "ne_110m_countries.json",
       "sha256": "31616027ff6d5e60d5ec15f196878bce30c84fa7ba4d9a55ddd2e6c3c2ff75ea",
       "size": 174200
+    },
+    {
+      "path": "ne_110m_lakes.json",
+      "sha256": "f7589bdd2fffa47e5339c7e8bd0303bc8d01ecd3ee97bd4b04cf15e108221008",
+      "size": 8489
     },
     {
       "path": "ne_110m_land.json",

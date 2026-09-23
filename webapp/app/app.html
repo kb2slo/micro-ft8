@@ -319,16 +319,9 @@ button:disabled{opacity:.45}
 #staleBanner button,#linkBanner button{padding:.3rem .6rem;font-size:.8rem}
 .callink{text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
 .qrow .call,.frow .call{cursor:pointer;text-decoration:underline;text-decoration-style:dotted}
-#callInfoModal{position:fixed;inset:0;z-index:20;display:flex;align-items:flex-end;justify-content:center}
-#callInfoBackdrop{position:absolute;inset:0;background:rgba(0,0,0,.4)}
-#callInfoCard{position:relative;width:100%;max-width:26rem;max-height:80vh;overflow-y:auto;background:Canvas;color:CanvasText;border-radius:.75rem .75rem 0 0;padding:1rem;box-shadow:0 -2px 16px rgba(0,0,0,.25)}
-#callInfoHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem}
-#callInfoCallName{font-family:ui-monospace,monospace;font-weight:700;font-size:1.2rem}
-#callInfoClose{border:0;background:transparent;font-size:1.5rem;line-height:1;padding:.2rem .6rem;color:GrayText}
-.ci-row{padding:.5rem 0;border-top:1px solid color-mix(in srgb, GrayText 20%, transparent);font-size:.85rem}
-.ci-label{font-size:.7rem;color:GrayText;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.15rem}
-.ci-heard{font-family:ui-monospace,monospace;font-size:.75rem;padding:.15rem 0}
-#callInfoQrz{display:block;text-align:center;margin-top:.8rem;padding:.6rem;background:ButtonFace;color:var(--accent);border:1px solid GrayText;border-radius:.4rem;text-decoration:none;font-weight:700}
+/* #callInfoModal and friends: injected by callinfo.js (shared with
+   map.html, operator-requested 2026-09-22 -- "a common experience any
+   time we select a callsign anywhere in the web app"), not defined here. */
 </style>
 
 <!-- One slot, one at a time: linkBanner (something's actually wrong right
@@ -345,17 +338,6 @@ button:disabled{opacity:.45}
   <span id=linkBannerText></span>
   <button id=linkBannerDismiss type=button>Dismiss</button>
 </div>
-</div>
-<div id=callInfoModal hidden>
-  <div id=callInfoBackdrop></div>
-  <div id=callInfoCard>
-    <div id=callInfoHead>
-      <span id=callInfoCallName></span>
-      <button id=callInfoClose type=button aria-label=Close>&times;</button>
-    </div>
-    <div id=callInfoBody></div>
-    <a id=callInfoQrz href=# target=_blank rel="noopener">View on QRZ.com</a>
-  </div>
 </div>
 <div class=wrap>
   <header id=appHeader>
@@ -629,6 +611,7 @@ button:disabled{opacity:.45}
 </nav>
 
 <script src=/pairing.js></script>
+<script src=callinfo.js></script>
 <script>
 var m = document.getElementById('m');
 // Index order matches ADV g_bands[] (main.cpp); ft8/ft4 mirror that file's two
@@ -2520,64 +2503,33 @@ function highlightCallInText(text, calls) {
   }).join('');
 }
 
-// "Offline" here means everything this session already knows on its own --
-// the opportunistic grid cache and whatever decodes are still in
-// decodeSlots -- not an external lookup. Deliberately no country/DXCC
-// guess: that needs a real prefix table, sourced and verified rather than
-// typed from memory (see ROADMAP B57's identical caution about the CAT
-// commands this same session researched), so the row stays a labeled
-// placeholder pointing at QRZ instead of shipping something that might be
-// wrong. QRZ integration proper (their API, not just a link) is the stated
-// next iteration, not this one.
-function showCallInfo(call) {
-  if (!call) return;
-  call = call.toUpperCase();
-  var grid = cacheGridOf(callsignGridCache[call]);
-  var distBearing = (grid && lastCfg.grid) ? fmtDistBearing(lastCfg.grid, grid) : '';
-  var qsoHist = logEntriesByCall[call] || [];
+// Card itself lives in callinfo.js (shared with map.html, operator-
+// requested 2026-09-22: "a common experience any time we select a
+// callsign anywhere in the web app"). These two adapters hand it this
+// page's own session state -- decodeSlots (session decode history) and
+// logEntriesByCall (loaded-log QSO history) are app.html-only concepts
+// map.html has no equivalent of, so they stay here rather than inside the
+// shared module, which only owns what's genuinely the same everywhere
+// (grid/distance/bearing, and now live POTA/SOTA spot lookup).
+function qsoHistoryFor(call) {
+  return (logEntriesByCall[call] || []).map(function (q) {
+    return { when: dayLabel(q.file).replace(' (Today)', '') + (q.time ? ' ' + q.time : ''),
+             band: q.band, freq: q.freq, rstSent: q.rst_sent, rstRcvd: q.rst_rcvd };
+  });
+}
+function heardThisSessionFor(call) {
   var heard = [];
   decodeSlots.forEach(function (slot) {
     slot.forEach(function (d) {
-      if (extractSenderCall(d.x) === call) {
-        heard.push({ x: d.x, snr: d.snr, ts: slot.ts, band: slot.band });
-      }
+      if (extractSenderCall(d.x) === call) heard.push({ x: d.x, snr: d.snr, ts: slot.ts, band: slot.band });
     });
   });
-
-  document.getElementById('callInfoCallName').textContent = call;
-  var body = '';
-  body += '<div class=ci-row><div class=ci-label>Grid square</div>' +
-    (grid
-      ? esc(grid) + (distBearing ? ' · ' + esc(distBearing) : '') +
-        ' <span style="color:GrayText;font-size:.75rem">(cached)</span>'
-      : 'Not seen sending a grid yet this session') +
-    '</div>';
-  body += '<div class=ci-row><div class=ci-label>QSOs in log (' + qsoHist.length + ')</div>' +
-    (qsoHist.length
-      ? qsoHist.slice(0, 6).map(function (q) {
-          return '<div class=ci-heard>' + esc(dayLabel(q.file).replace(' (Today)', '')) +
-            (q.time ? ' ' + esc(q.time) : '') + (q.band ? ' · ' + esc(q.band) : '') +
-            (q.freq ? ' · ' + esc(q.freq) + ' MHz' : '') +
-            ' · ' + fmtRst(q.rst_sent) + '/' + fmtRst(q.rst_rcvd) + '</div>';
-        }).join('') +
-        ' <span style="color:GrayText;font-size:.75rem">(only what the Log tab has loaded so far)</span>'
-      : 'No QSOs with this callsign in the loaded log') +
-    '</div>';
-  body += '<div class=ci-row><div class=ci-label>Heard this session (' + heard.length + ')</div>' +
-    (heard.length
-      ? heard.slice(0, 6).map(function (h) {
-          return '<div class=ci-heard>' + esc(fmtSlotDateTime(h.ts)) + (h.band ? ' · ' + esc(h.band) : '') +
-            ' · ' + (h.snr > 0 ? '+' : '') + h.snr + ' dB · ' + esc(h.x) + '</div>';
-        }).join('')
-      : 'No decodes from this callsign in the current decode history') +
-    '</div>';
-  body += '<div class=ci-row><div class=ci-label>Country / DXCC</div>' +
-    'Not looked up yet in this version -- check QRZ below.</div>';
-  document.getElementById('callInfoBody').innerHTML = body;
-  document.getElementById('callInfoQrz').href = 'https://www.qrz.com/db/' + encodeURIComponent(call);
-  document.getElementById('callInfoModal').hidden = false;
+  return heard.map(function (h) { return { when: fmtSlotDateTime(h.ts), band: h.band, snr: h.snr, text: h.x }; });
 }
-function hideCallInfo() { document.getElementById('callInfoModal').hidden = true; }
+function showCallInfo(call) {
+  if (!call) return;
+  CallInfo.show(call.toUpperCase(), { myGrid: lastCfg.grid, qsoHistory: qsoHistoryFor, heardThisSession: heardThisSessionFor });
+}
 
 // Appends to `file`'s own persistent container rather than the end of
 // #logList, so a later call for a file that already has rows (either
@@ -2937,9 +2889,6 @@ document.getElementById('logClearAll').onclick = function (ev) {
   ev.preventDefault();
   clearAllAdif();
 };
-document.getElementById('callInfoClose').onclick = hideCallInfo;
-document.getElementById('callInfoBackdrop').onclick = hideCallInfo;
-
 // ensureLogFiles() only ever looks *past* the end of what it has fetched
 // (older files); a file newer than logFiles[0] -- the ADV's day rollover at
 // UTC midnight -- is otherwise never noticed short of a page reload, since

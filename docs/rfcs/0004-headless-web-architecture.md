@@ -1323,6 +1323,200 @@ unaffected. Verified live: "Texas," "Oklahoma," "Wyoming" and neighboring US sta
 centered within their own borders at a zoom where state labels are enabled; toggling the new Grid squares
 button on/off correctly shows/hides the Maidenhead overlay, defaulting to hidden on a fresh page load.
 
+**A finer, runtime-fetched city tier added the next round, closing the map-data-sourcing conversation from
+earlier this section with an actual build.** That conversation flagged `ne_10m_populated_places` (7,342
+places worldwide, the same Natural Earth source as the bundled 243, its higher-resolution tier) as a real
+option and estimated "a few hundred KB" stripped. Measured properly before building anything, same discipline
+as every other data source on this page: stripped the identical way (name/rank/coordinates only, 2-decimal
+coordinates), it's **867,595 B** — smaller than the estimate, and small enough that **one fetch, not
+region-chunked tiles**, is the right design. Chunking (a build step to pre-slice by geography, a manifest, a
+viewport-to-tile lookup) only pays for itself once a dataset is multiple megabytes; below that it's pure
+complexity with nothing to show for it.
+
+**Hosting this needed no new infrastructure at all — a real, load-bearing finding, not an assumption.**
+`map.html` runs from the sidekick's own non-secure `http://micro-ft8.local` (§12.4), so this data has to come
+from somewhere actually reachable, and the earlier conversation proposed `micro-ft8.kalikstein.com` for
+exactly that reason. Checked before relying on it: `webapp/worker.js` (the Cloudflare Worker that domain
+already runs) sets `Access-Control-Allow-Origin: *` on **every** response it serves, unconditionally, not
+scoped to any particular path — so a file placed anywhere under `webapp/` and pushed to `main` deploys with
+open CORS automatically via the existing `.github/workflows/pages.yml` pipeline, no code change to the Worker
+needed. The file lives at `webapp/data/ne_10m_places.json` — deliberately **outside** `webapp/app/`, the
+directory `webapp/tools/gen_manifest.py` scans and `desk_push.py` bundles to the sidekick — so it deploys to
+the public site without ever riding along into the device's own flash or its manifest. Fetched with
+`cache: 'force-cache'` rather than this page's usual `no-store` (every other fetch here is live device/spot
+state that must never go stale; this file is immutable reference data keyed by its own URL, so preferring
+whatever the browser already has is correct, not a staleness risk), which is the runtime-caching mechanism
+that same earlier conversation described but hadn't yet exercised.
+
+**Fetch trigger is zoom alone, unconditional on the Places toggle — the operator's own choice between two
+options put to them** (the alternative: only fetch if Places is also on, saving the request for an operator
+who never uses city labels). Chosen so that toggling Places on later already finds the finer tier warm rather
+than triggering its own fetch at that point. Once loaded, `logMapPlacesFine` entirely **replaces** the
+bundled 243 rather than merging with it — it's Natural Earth's own superset of the same source, so drawing
+both would double every major city's dot and label — and its own wider rank range (`SCALERANK` 0–10, against
+the bundled tier's 0–8) keeps revealing more detail past the zoom where the bundled tier alone would have
+gone flat.
+
+Verified live: confirmed the fetch stays idle below `LOG_MAP_PLACES_FINE_ZOOM_MIN`; confirmed it actually
+fires once zoomed past that threshold and correctly lands in an `error` state against the real, currently
+not-yet-deployed-with-this-file production domain — a genuine exercise of the degrade-visibly path, not a
+simulated one, with the bundled 243 continuing to render normally throughout; confirmed with a synthetic
+fine-tier payload that higher-rank places render their dot and correctly compete for label space against
+already-placed labels through the same collision-avoidance pass added earlier, rather than bypassing it.
+
+**Static POTA/SOTA locations added the same round — every known park/summit, not just currently-active
+ones, folded into the existing POTA/SOTA toggle rather than a new one (the operator's own choice between
+the two put to them).** A currently-active park/summit gets a distinct look, free of any new fetch: a ref
+lookup against the same live Spots-layer data this section already describes fetching. Both full databases
+are unambiguously too large for the bundle-or-fetch-whole question that governed the finer city tier above —
+measured before building anything, same discipline: POTA's US program alone is **1,153,405 B** stripped for
+one country (12,983 parks); SOTA's worldwide total, extrapolated from a real region sample (Colorado's Front
+Range, 227 summits, 17,976 B) across all 172,121 summits, is roughly **13.6 MB**. So this is loaded
+region-by-region, driven by the current viewport, using each API's own natural chunking rather than a tiling
+scheme invented for the purpose: **POTA** is bulk-per-country (`program/parks/{prefix}`) — `iso_a2` doubles
+as POTA's own program prefix for 171 of our 173 bundled countries (measured directly against POTA's
+`/programs/` listing before relying on it; the 2 misses, Kosovo's Natural-Earth placeholder `-99` and
+Taiwan's `CN-TW`, simply never fetch, degrading the same way any unreachable program would). **SOTA** is
+bulk-per-region-within-association: `/api/associations/` fetched once (66,943 B, every association's own
+bounding box, no summits yet) → each viewport-overlapping association's own detail endpoint (its regions'
+bboxes) → each viewport-overlapping region's own endpoint (the actual summit list, e.g. the Colorado sample
+above). Zoom-gated (`LOG_MAP_POI_ZOOM_MIN`) the same way grid squares and state borders already are. No text
+labels, unlike Places — tap-to-inspect already names a pin on demand, and at this density a label pass would
+just refight the collision-avoidance problem built earlier this round for little real benefit.
+
+`showMapPopup()` gained a fallback for this: `pin.call` is a real operator callsign (QSO/Decode/an active
+spot), `pin.name` is a place's own name — a static location has no operator at all, so the popup title now
+falls back to `pin.name` when `pin.call` is absent, and the QRZ link (a callsign lookup) is hidden entirely
+in that case rather than pointing at a park name QRZ was never going to resolve. `#mapPopupQrz[hidden]` had
+to be added explicitly — the element's own `display:inline-block` rule (ID selector, specificity 1-0-0) would
+otherwise outrank the UA stylesheet's default `[hidden]{display:none}` (specificity 0-1-0) and silently keep
+the link visible despite the attribute being set, a real bug caught before it ever rendered.
+
+**Two further real defects found live during this build, both caught by testing against real POTA/SOTA data
+rather than assumed away.** First: the viewport-to-country overlap check used a plain per-vertex longitude
+min/max, which breaks for any country crossing the antimeridian — Russia's westernmost and easternmost
+points are both near ±180°, so its computed bbox came out as `lonMin:-180, lonMax:180`, the entire globe, and
+matched every view unconditionally. Caught live: a view centered on Texas triggered a fetch of Russia's
+entire park list. Fixed with the standard technique for a circular domain (`featureBBox()`): sort every
+vertex's longitude, find the largest *circular* gap between consecutive ones, and treat that gap as the
+country's own "outside" — identical to a plain min/max for the ordinary non-crossing case, correct for the
+crossing one, with a `wraps` flag threaded through `bboxesOverlap()` so a wrapping box's real two-piece span
+(`[lonMin,180] ∪ [-180,lonMax]`) is tested as two pieces rather than one impossible straight range.
+
+Second: the original zoom gate alone (`>= 3`, matching the threshold style already used for state borders)
+was nowhere near enough to keep real-world POTA/SOTA density legible. A Texas-centered view at that zoom
+rendered roughly 20,000 POTA parks plus thousands of SOTA summits (New Mexico especially — SOTA counts every
+qualifying hill, and mountainous terrain means a lot of them) as a solid green mass, not a map. Raising the
+zoom threshold further only pushed the identical problem to a higher zoom rather than solving it — there is
+no single zoom number that is simultaneously right for a sparse region and a dense one, so tuning the
+threshold empirically for the test case in front of you would have just broken a different one. Fixed
+instead with a spatial-grid cap on the *screen*, not the underlying data: bucket the canvas into
+`LOG_MAP_POI_DOT_CELL_PX`-wide cells and draw at most one dot per cell, first candidate wins. This adapts
+automatically to whatever the actual on-screen density is at whatever zoom the operator is looking at,
+rather than encoding an assumption about how dense any particular region happens to be.
+
+Verified live against real POTA/SOTA data throughout, before and after each fix, not mocked: Russia confirmed
+absent from a Texas-area fetch once the bbox fix landed; the same Texas view rendered legibly (evenly spaced
+dots, no solid mass) at both zoom 5 and zoom 10 once the density fix landed; a re-render with ~20,000 POTA
+parks and ~35,000 SOTA summits already resident in memory measured **21.4 ms** — no perceptible jank despite
+the dataset size, confirming the per-render cost stays bounded by what's on screen, not by what's loaded;
+toggling the POTA/SOTA layer off correctly hid every static dot (0 pins) with active spots restored correctly
+on toggle back on; a static park's popup showed its own name as the title with the QRZ link hidden, while a
+separate check confirmed the pre-existing active-spot popup path (callsign title, full detail, QRZ link
+present) was unaffected by any of this round's changes.
+
+**Four more changes the next round, same day, all operator-requested, the largest being a real
+cross-page architecture change rather than another duplicated copy.**
+
+**POTA and SOTA split into two independent toggles.** Live spots, static locations, and the per-program
+fetch trigger (`triggerPoiFetches()`) all key off `layerState.pota`/`layerState.sota` separately now, rather
+than one combined toggle gating both programs together. The underlying live-spot fetch stays one shared call
+(`loadSpotLocations()`) — both feeds are cheap and there is no reason to duplicate the network request just
+because the toggle split — only the toggle state, the render-time filter (folded into `visibleSpotLocations()`
+itself, so the note text and the render pass can't drift out of sync on which programs are currently on), and
+the static-location fetch gate actually split per program.
+
+**SOTA summits now carry their own activation points** (`points` — the field SOTA uses for how many points
+activating that summit is worth, correlated with elevation/prominence). No new fetch needed: both the live
+spot endpoint and the per-region static endpoint already return it, this just needed to stop being dropped
+when each row was stripped down. Shown on both the static-location popup and the shared callsign card's
+active-spot section.
+
+**Both programs now link to their real, official detail page** from wherever their info is shown — POTA:
+`pota.app/#/park/{ref}`; SOTA: `sotadata.org.uk/en/summit/{ref}`. Neither guessed: both verified live in the
+browser before use (POTA's `/#/park/US-0001` correctly rendered "Acadia National Park"; SOTA's
+`/en/summit/W0C/FR-001` correctly rendered "Mount Lincoln, 10 points" — matching this file's own earlier
+measured data for both), the same "measure before relying on it" discipline every data source on this page
+has had from the start.
+
+**The largest piece: `webapp/app/callinfo.js`, a genuinely shared module, not another duplicated copy.**
+app.html's full callsign-info modal (`#callInfoModal`, serving Operate's decode rows and QSOs' log rows) and
+map.html's own lighter `#mapPopup` had grown into two different experiences for "tell me about this
+callsign" — operator-named directly: "make it a common experience any time we select a callsign anywhere in
+the web app." Given that framing, duplicating yet another copy of the modal (this page's usual answer to
+"no module system," used everywhere else so far — `esc()`, `gridToLatLon()`, and every other small helper
+both pages need) was the wrong call specifically *because* the operator's own goal was convergence, not two
+things that happen to look alike today and drift apart tomorrow. `callinfo.js` is loaded by both pages via a
+plain `<script>` tag and exposes one function, `CallInfo.show(call, opts)`. It owns what is genuinely the
+same everywhere a callsign is shown: grid/distance/bearing math, and new this round, live POTA/SOTA spot
+awareness — its own on-demand fetch (not a background poll; fetched only when a card actually opens, cached
+60 seconds so browsing several decode rows in a row doesn't refetch on every tap) filtered to FT8 for the
+same reason the map's own Spots layer already is. `opts` is where each host page hands over what only *it*
+can know: `myGrid`, and two optional callbacks, `qsoHistory(call)` and `heardThisSession(call)`, that a page
+simply omits when it has no equivalent — map.html has no live decode session at all, so its card never grows
+a "heard this session" section; there was nothing to fake there, and the shared module doesn't need to know
+that's why. map.html did gain a real capability to supply the other callback properly: `qsoHistoryByCall`, a
+callsign-keyed map built alongside `qsoLocations` during the same `/api/log/*` walk, but — unlike
+`qsoLocations`, which only ever wanted grid-plottable QSOs for pins — keeping *every* QSO with that call
+regardless of grid validity, since a history list shouldn't silently drop entries a map pin legitimately
+can. A callsign's currently-active POTA/SOTA spot, if any, now shows on the card from anywhere it opens —
+Operate, QSOs, or the map — not only from the map, which is the concrete thing "common experience" bought
+here beyond visual consistency. Static (non-active) POTA/SOTA locations on the map keep their own lighter,
+non-modal popup rather than the shared card — there is no operator to show a callsign card *for* — now also
+carrying the official link and SOTA points above.
+
+**Three real defects found and fixed live during this build, none of them hypothetical.** First:
+`#callInfoModal`'s own `display:flex` (an author-stylesheet rule, needed for its own layout) wins over the
+browser's default `[hidden]{display:none}` purely on **origin precedence** — an author rule beats a
+user-agent rule regardless of specificity, before specificity is even compared — so the injected modal
+stayed visible despite `hidden=true` being set correctly on the element (confirmed directly: `modal.hidden`
+read back `true` while the modal was plainly on screen). Invisible on app.html only because app.html already
+carries a page-wide `[hidden]{display:none!important}` rule from earlier work, unrelated to this file;
+map.html had no such rule at all, so the same bug was real and visible there. Fixed at both layers rather
+than patching the one selector: added the same global rule to map.html (foreclosing the whole bug class
+there for any future `hidden`-toggled element, not just this one), and separately added a defensive
+`#callInfoModal[hidden]{display:none}` inside callinfo.js itself, so the shared module doesn't quietly
+depend on every future host page happening to already carry that protection.
+
+Second: the official SOTA link used `encodeURIComponent()` on the whole summit code, which escapes the
+code's own meaningful internal "/" (e.g. "W7O/CC-001" — a summit code is itself two path segments,
+association/summit) to `%2F`. Confirmed live that SOTA's own router does not decode `%2F` back to a literal
+slash — the encoded link landed on the site's generic homepage, not the summit page, while the unencoded
+form correctly loaded "Marys Peak (2pts, 1249m.)" matching the exact synthetic spot used to test it. Fixed
+by encoding each path segment independently and rejoining with a literal "/" — `ref.split('/').map(encodeURIComponent).join('/')`
+— re-verified live afterward against the real site with the fix in place.
+
+Third, unrelated to callinfo.js: **the Great Lakes were missing from the map entirely.** Checked directly
+rather than assumed: only 1 of the land layer's 127 polygons has a hole at all, and Michigan's own polygon
+in the US-states layer is a single un-split `Polygon` — neither layer carves the lakes out, so a real state
+border that correctly traces a lake shoreline (Michigan, Ohio, New York, every Great Lakes state) looked
+like it was cutting across solid "land" with nothing there to explain the shape. Added
+`ne_110m_lakes.json` — Natural Earth's own lakes layer, all 24 major world lakes including all 5 Great
+Lakes, stripped to bare geometry with zero properties (matching `ne_110m_land.json`'s own "nothing but the
+shape" precedent exactly, since this data is never used for anything but a fill) — **8,489 B** for the
+whole set. Drawn last, after every border, filled the same color as ocean (a lake is exactly the same "not
+land" the ocean is, just landlocked) with a coastline-matching stroke, so it cuts cleanly through both the
+land fill and any border-line segment that happens to cross open water rather than sitting underneath them.
+
+Verified live throughout: the Great Lakes now render correctly as water, with Michigan's Upper/Lower
+Peninsula relationship visually sensible for the first time; the two new toggles independently show and hide
+their own layer with the other confirmed unaffected (pin counts checked before/after each: 828 POTA-only,
+700 SOTA-only, both zero with their own toggle off); the shared card round-tripped correctly from app.html
+(synthetic QSO history, synthetic decode history, and a real live POTA/SOTA fetch, all four sections
+rendering together in one card) and from map.html (a real, currently-active POTA park's full card fetched
+live, plus a synthetic SOTA spot used specifically to exercise the points/link rendering path, since no real
+SOTA activation happened to be up on FT8 at the time this was tested).
+
 ### 12.6 Navigation
 
 A third swipe tab — Operate / QSOs / Tools — not a Settings-style full-screen overlay.
