@@ -1807,7 +1807,10 @@ function handleLogMapTap(clientX, clientY) {
 // hardcoded to this page) so Settings' still-unbuilt "set my grid from
 // GPS" -- SS11's original motivating feature -- can reuse the exact same
 // handoff later without its own copy.
-var GEO_HANDOFF_URL = 'https://micro-ft8.kalikstein.com/geo.html';
+// "/geo", not "/geo.html" -- Static Assets 307s the .html form to this
+// canonical URL before worker.js's cache-control override would ever apply
+// (confirmed live 2026-09-22); linking straight here skips that redirect.
+var GEO_HANDOFF_URL = 'https://micro-ft8.kalikstein.com/geo';
 document.getElementById('mapLocateBtn').onclick = function () {
   // Leaving this origin entirely needs real internet, not just the
   // sidekick's own AP -- everything else on this page degrades in place

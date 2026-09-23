@@ -29,7 +29,16 @@ export default {
     // keeps that cache entry. Scoped to this one path: every other asset
     // here (app.html, map.html, manifest.json, ...) still wants normal
     // revalidation, since those *do* change on every deploy.
-    if (url.pathname === "/geo.html") {
+    //
+    // "/geo", not "/geo.html": Static Assets' default html_handling
+    // (auto-trailing-slash) 307s any *.html request to its extensionless
+    // canonical URL before this header would ever reach the real content --
+    // confirmed live 2026-09-22, the header landed on the redirect while
+    // "/geo" itself kept serving the default must-revalidate header. Callers
+    // (map.html, app.html) link straight to "/geo" for the same reason: one
+    // fewer round trip on the one page where a round trip is the whole cost
+    // being avoided.
+    if (url.pathname === "/geo") {
       headers.set("Cache-Control", "public, max-age=31536000, immutable");
     }
     return new Response(response.body, {
