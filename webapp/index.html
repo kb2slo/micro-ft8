@@ -115,13 +115,17 @@
     align-items: center;
     justify-content: center;
     padding: 1.25rem;
-    background: rgba(26, 31, 28, 0.82);
+    height: 100vh;
+    height: 100dvh;
+    background: rgba(26, 31, 28, 0.9);
   }
   .lightbox.open { display: flex; }
+  /* Fixed-height column: the image shrinks to fit, and the caption and
+     Prev/Next keep the same position from slide to slide. */
   .lightbox-inner {
     position: relative;
-    max-width: min(28rem, 100%);
-    max-height: 100%;
+    width: min(28rem, 100%);
+    height: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -129,21 +133,22 @@
   }
   .lightbox-inner img {
     display: block;
-    max-width: 100%;
-    max-height: calc(100vh - 7rem);
-    width: auto;
-    height: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    object-fit: contain;
     border-radius: 2px;
-    background: #1a1f1c;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
   }
   .lightbox-cap {
+    flex: none;
     margin: 0;
     color: #ebe4d6;
     font-size: 0.9rem;
     text-align: center;
     line-height: 1.35;
+    min-height: 2.7em;
   }
+  .lightbox-nav { flex: none; }
   .lightbox-nav {
     display: flex;
     gap: 0.5rem;
@@ -856,6 +861,17 @@
   });
   box.addEventListener("click", function (e) {
     if (e.target === box) close();
+  });
+
+  var touchX = null;
+  box.addEventListener("touchstart", function (e) {
+    touchX = e.touches.length === 1 ? e.touches[0].clientX : null;
+  }, { passive: true });
+  box.addEventListener("touchend", function (e) {
+    if (touchX === null) return;
+    var dx = e.changedTouches[0].clientX - touchX;
+    touchX = null;
+    if (Math.abs(dx) > 40) show(dx < 0 ? idx + 1 : idx - 1);
   });
   document.addEventListener("keydown", function (e) {
     if (!box.classList.contains("open")) return;
