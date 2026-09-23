@@ -143,10 +143,16 @@ async function servePskReporter(request, url) {
   let xml;
   try {
     const r = await fetch(upstream);
-    if (!r.ok) return jsonResponse({ error: "pskreporter_unreachable" }, 502);
+    if (!r.ok) return jsonResponse({ error: "pskreporter_unreachable", detail: "HTTP " + r.status }, 502);
     xml = await r.text();
   } catch (e) {
-    return jsonResponse({ error: "pskreporter_unreachable" }, 502);
+    // PSKReporter needs no credentials and this carries none, so there is
+    // nothing sensitive in the underlying error -- surfaced rather than
+    // swallowed, same "degrade visibly" instinct RFC 0004 SS12.2 applies to
+    // every online Tools card, one layer further in so the card itself can
+    // eventually show *why* (timeout vs. DNS vs. a hard refusal) rather than
+    // a single undifferentiated "unreachable".
+    return jsonResponse({ error: "pskreporter_unreachable", detail: String((e && e.message) || e) }, 502);
   }
 
   if (request.method === "HEAD") {
