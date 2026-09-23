@@ -67,7 +67,7 @@
     grid-template-columns: 1fr 1fr;
   }
   @media (min-width: 640px) {
-    .gallery.screens { grid-template-columns: repeat(4, 1fr); }
+    .gallery.screens { grid-template-columns: repeat(3, 1fr); }
   }
   .gallery figure {
     margin: 0;
@@ -273,8 +273,10 @@
     A continuation of Wei&nbsp;AG6AQ’s
     <a href="https://github.com/wcheng95/Mini-FT8">Mini-FT8</a>
     — the same QRP FT8 portable station for QMX and QDX —
-    with a new operating model: <strong>any browser on the same Wi‑Fi is the UI</strong>
-    — phone, tablet, or laptop.
+    with a new operating model: <strong>your phone is a wireless remote, not the
+    station</strong>. Any browser on the station’s Wi‑Fi — phone, tablet, or laptop —
+    sets it up and watches it work. Close the page, use other apps, or step away from
+    the table: CQs and the auto-sequencer keep running on the station.
   </p>
   <p class="byline">Jeff Kalikstein, KB2SLO · September 2026</p>
   <p class="byline">
@@ -307,7 +309,8 @@
         <strong>Full headless</strong> —
         <strong>M5Stack Unit PoE-P4</strong> as the radio host, the same AtomS3&nbsp;Lite as
         the Wi‑Fi companion, <strong>no keyboard and no screen</strong>. All of the compute
-        fits in <strong>35&nbsp;grams</strong>. Phone, tablet, or laptop only. This path has
+        fits in <strong>35&nbsp;grams</strong>. Set up and check in from a phone, tablet, or
+        laptop; no need to keep the page open. This path has
         completed real FT8 QSOs on the air.
       </li>
     </ol>
@@ -377,48 +380,77 @@
       Join the Atom’s own Wi‑Fi network directly (no router needed — a summit has
       no camp router any more than it has cell service), or put it on your home
       or camp network instead. Either way: no app-store install, just Safari or
-      Chrome on a phone, tablet, or laptop.
+      Chrome on a phone, tablet, or laptop. Three tabs: <strong>Operate</strong> drives
+      the radio, <strong>QSOs</strong> is your log, <strong>Tools</strong> is everything
+      about operating that isn’t transmitting.
+    </p>
+    <p class="note">
+      <strong>The phone is optional once you’re set up.</strong> The station talks to the
+      phone over Wi‑Fi, but the decoding, CQ beacon, and QSO sequencing all run on the
+      station itself. Pocket the phone, switch apps, or step away from the table, and the
+      station keeps calling CQ, working callers, and logging. Open the page again to
+      catch up.
     </p>
     <div class="gallery screens" id="screen-gallery">
       <figure>
         <button type="button" class="shot" data-index="0" aria-label="Enlarge Operate screenshot">
           <img
             src="img/ui-operate.jpeg"
-            alt="Micro-FT8 Operate tab showing Connect, Tune, queue, and transmitting status"
+            alt="Operate tab calling CQ at 4.8 W, SWR 1.04, with link status, queue, and a live decode"
             width="295"
             height="640">
         </button>
-        <figcaption>Operate — connect, tune, queue, TX.</figcaption>
+        <figcaption>Operate — CQ out, power/SWR live, decodes still flowing.</figcaption>
       </figure>
       <figure>
-        <button type="button" class="shot" data-index="1" aria-label="Enlarge Decodes screenshot">
+        <button type="button" class="shot" data-index="1" aria-label="Enlarge reply screenshot">
           <img
             src="img/ui-decodes.jpeg"
-            alt="Decode list with power and SWR during TX, grid bearing and distance"
+            alt="Operate tab answering K8OCN with a report, the caller's decode flagged as addressed to me"
             width="295"
             height="640">
         </button>
-        <figcaption>Decodes — power/SWR, bearing &amp; distance.</figcaption>
+        <figcaption>A caller answers — flagged <em>→&nbsp;ME</em>, queued, bearing &amp; distance.</figcaption>
       </figure>
       <figure>
         <button type="button" class="shot" data-index="2" aria-label="Enlarge QSOs screenshot">
           <img
             src="img/ui-qsos.jpeg"
-            alt="QSOs tab with ADI download and logged contacts"
+            alt="QSOs tab grouped by day with a QSO count, per-day ADI download, grid, distance and bearing per contact"
             width="295"
             height="640">
         </button>
-        <figcaption>QSOs — ADI download, logged contacts.</figcaption>
+        <figcaption>QSOs — grouped by day, ADI per day or all.</figcaption>
       </figure>
       <figure>
-        <button type="button" class="shot" data-index="3" aria-label="Enlarge Callsign screenshot">
+        <button type="button" class="shot" data-index="3" aria-label="Enlarge callsign screenshot">
           <img
             src="img/ui-callsign.jpeg"
-            alt="Callsign info sheet with grid distance and View on QRZ.com"
+            alt="Callsign card with grid, distance, QSOs in log, heard this session, POTA/SOTA status, and View on QRZ.com"
             width="295"
             height="640">
         </button>
-        <figcaption>Callsign tap — grid info + QRZ.com.</figcaption>
+        <figcaption>Tap a callsign — grid, log history, spots, QRZ.com.</figcaption>
+      </figure>
+      <figure>
+        <button type="button" class="shot" data-index="4" aria-label="Enlarge Tools screenshot">
+          <img
+            src="img/ui-tools.jpeg"
+            alt="Tools tab with NOAA space weather: solar flux, A and K index, X-ray flux, solar wind"
+            width="295"
+            height="640">
+        </button>
+        <figcaption>Tools — space weather, and the way into the map.</figcaption>
+      </figure>
+      <figure>
+        <button type="button" class="shot" data-index="5" aria-label="Enlarge map screenshot">
+          <img
+            src="img/ui-map.jpeg"
+            alt="North America map with great-circle paths to worked grids, POTA and SOTA spots, and the grayline"
+            width="295"
+            height="640">
+        </button>
+        <figcaption>Map — QSO paths, POTA/SOTA spots, grayline.</figcaption>
       </figure>
     </div>
   </section>
@@ -427,10 +459,24 @@
     <h2>Top improvements over Mini-FT8</h2>
     <ol>
       <li>
+        <strong>The phone is a remote, not the station</strong> — Your phone talks to the
+        station over Wi‑Fi, but it doesn’t need to stay connected. Decoding, the CQ beacon,
+        and the auto-sequencer all run on the station, so the page can close, the phone
+        can sleep, and you can use other apps while it keeps working.
+      </li>
+      <li>
         <strong>Browser-based UI</strong> — Operate, queue, tune, and pull logs from
-        Safari or Chrome on a phone, tablet, or laptop. No app-store install. Callsign
-        links open <a href="https://www.qrz.com/">QRZ.com</a>; grid squares show bearing
-        and distance; ADI download (and clear-all when you need it) is a tap away.
+        Safari or Chrome on a phone, tablet, or laptop. No app-store install. Tap any
+        callsign for its grid, bearing and distance, what’s already in your log, and a
+        link to <a href="https://www.qrz.com/">QRZ.com</a>. The log groups by day with a
+        count and its own ADI download.
+      </li>
+      <li>
+        <strong>A map that doesn’t need the internet</strong> — Great-circle paths to every
+        grid you’ve worked, with coastlines, country and state borders, and the grayline.
+        The Atom serves the world outline itself, so it works on a summit with no signal.
+        When you do have a connection, live POTA and SOTA activator spots and NOAA space
+        weather come along too.
       </li>
       <li>
         <strong>Point-to-point Wi‑Fi (AP mode)</strong> — run the whole UI off the Atom’s
@@ -467,7 +513,11 @@
         ceiling Mini-FT8 hits on the S3) for better recall on busy bands.
       </li>
       <li>
-        <strong>PSKReporter</strong> — live spotting and band awareness from the browser UI.
+        <strong>PSKReporter</strong> — who is hearing you, drawn on the same map.
+      </li>
+      <li>
+        <strong>Per-band conditions</strong> — a band-by-band read alongside the space
+        weather numbers.
       </li>
       <li>
         <strong>QRZ.com realtime logging</strong> — upload completed QSOs from the browser
