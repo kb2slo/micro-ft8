@@ -3,13 +3,13 @@
   "assets": [
     {
       "path": "app.html",
-      "sha256": "fc26ac027ff354da5bb149be9aae0db01fdab05229f9bde52a676e65e4b2fb18",
-      "size": 151801
+      "sha256": "7171689dc108a0f50015d7afbcaff055654a0f1d9539d74891a9f0cc59423d7f",
+      "size": 151938
     },
     {
       "path": "callinfo.js",
-      "sha256": "957f5644a062b92f1da87f57a762b4fa24ad666c58121a248e2e66c7fd5787de",
-      "size": 27183
+      "sha256": "6bf37394b9cc0613d1143fce35ccf726ba68dff39fd94916f5f20ad0a171f3cc",
+      "size": 28320
     },
     {
       "path": "installed.html",
@@ -18,8 +18,8 @@
     },
     {
       "path": "map.html",
-      "sha256": "a9e84661809b4b965c937825117f4c3e1e6e010f3dd6a8ae5a318876f9c66b95",
-      "size": 104361
+      "sha256": "23d190cc7b3d3c543b457abf3a6bb168e611e7302b38c904fcbc3684b911b283",
+      "size": 107476
     },
     {
       "path": "ne_110m_countries.json",

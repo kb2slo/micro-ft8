@@ -23,6 +23,15 @@ function esc(s) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
   });
 }
+// Every place a grid square is printed anywhere in the app (operator-
+// requested 2026-09-23: "universal ... decodes, QSOs, call sign detail
+// cards") should route through here rather than a bare esc(grid), so the
+// deep link (map.html?grid=..., handleGridDeepLink() in map.html) and its
+// exact URL shape live in exactly one place. A relative href, so it
+// resolves correctly whether the caller is app.html or map.html itself.
+function gridLink(grid) {
+  return '<a class=gridlink href="map.html?grid=' + encodeURIComponent(grid) + '">' + esc(grid) + '</a>';
+}
 function toRad(d) { return d * Math.PI / 180; }
 function gridToLatLon(grid) {
   if (!grid || grid.length < 4) return null;
@@ -383,6 +392,13 @@ var STYLE = '#callInfoModal{position:fixed;inset:0;z-index:20;display:flex;align
   '.ci-label{font-size:.7rem;color:GrayText;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.15rem}' +
   '.ci-heard{font-family:ui-monospace,monospace;font-size:.75rem;padding:.15rem 0}' +
   '.ci-link{display:inline-block;margin-top:.3rem;color:var(--accent, #1d4ed8);font-size:.8rem}' +
+  // Same affordance app.html's own .callink already uses for a clickable
+  // callsign (dotted underline, no color shift) -- a grid square link is
+  // the same kind of "this plain-looking text is tappable" case, just a
+  // real <a href> rather than a JS-driven modal open, so it gets its own
+  // class instead of literally reusing .callink (app.html's click-handler
+  // rebinding for that class expects a data-call attribute this isn't).
+  '.gridlink{text-decoration:underline;text-decoration-style:dotted;cursor:pointer;color:inherit}' +
   '#callInfoQrz{display:block;text-align:center;margin-top:.8rem;padding:.6rem;background:ButtonFace;color:var(--accent, #1d4ed8);border:1px solid GrayText;border-radius:.4rem;text-decoration:none;font-weight:700}';
 var HTML = '<div id=callInfoModal hidden>' +
   '<div id=callInfoBackdrop></div>' +
@@ -428,7 +444,7 @@ async function show(call, opts) {
   var body = '';
   body += '<div class=ci-row><div class=ci-label>Grid square</div>' +
     (grid
-      ? esc(grid) + (distBearing ? ' · ' + esc(distBearing) : '') +
+      ? gridLink(grid) + (distBearing ? ' · ' + esc(distBearing) : '') +
         ' <span style="color:GrayText;font-size:.75rem">(cached)</span>'
       : 'Not seen sending a grid yet this session') +
     '</div>';
@@ -533,5 +549,5 @@ if (document.readyState === 'loading') {
 // silently going without it until whatever happens to open the modal first.
 loadGeoData();
 
-window.CallInfo = { show: show, hide: hide, learnGrid: learnGrid, cachedGrid: cachedGrid, shortLocation: shortLocation };
+window.CallInfo = { show: show, hide: hide, learnGrid: learnGrid, cachedGrid: cachedGrid, shortLocation: shortLocation, gridLink: gridLink };
 })();

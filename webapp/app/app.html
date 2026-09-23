@@ -324,6 +324,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 #staleBanner,#linkBanner{background:var(--warn-bg);color:var(--warn-fg);padding:.5rem 1rem;font-size:.85rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem}
 #staleBanner button,#linkBanner button{padding:.3rem .6rem;font-size:.8rem}
 .callink{text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
+.gridlink{text-decoration:underline;text-decoration-style:dotted;cursor:pointer;color:inherit}
 .qrow .call,.frow .call{cursor:pointer;text-decoration:underline;text-decoration-style:dotted}
 /* #callInfoModal and friends: injected by callinfo.js (shared with
    map.html, operator-requested 2026-09-22 -- "a common experience any
@@ -1995,7 +1996,7 @@ function renderDecodes() {
           (d.me ? '<span class=me>&rarr; ME</span>' : '') + '</div>' +
           (isReplyableDecode(d) ? '<button type=button class=replyBtn data-id="' + d.id + '">Reply</button>' : '') +
         '</div>' +
-        (distBearing ? '<div class=ddist><span>' + esc(theirGrid) +
+        (distBearing ? '<div class=ddist><span>' + CallInfo.gridLink(theirGrid) +
           (shortLoc ? ' · ' + esc(shortLoc) : '') + '</span><span>' + esc(distBearing) + '</span></div>' : '') +
         '</div>';
     }).join('');
@@ -2672,7 +2673,7 @@ function appendLogRows(file, rows, prependGroup) {
     row.innerHTML =
       '<div class=frow-main>' +
         '<div><span><span class="call callink" data-call="' + esc(q.call) + '">' + esc(q.call) + '</span>' +
-        (q.grid ? '<span class=grid>' + esc(q.grid) + (qShortLoc ? ' · ' + esc(qShortLoc) : '') + '</span>' : '') + '</span>' +
+        (q.grid ? '<span class=grid>' + CallInfo.gridLink(q.grid) + (qShortLoc ? ' · ' + esc(qShortLoc) : '') + '</span>' : '') + '</span>' +
         (qts !== null ? '<span class=ago>' + fmtAgo(qts) + '</span>' : '') + '</div>' +
         '<span class=sub><span>' + esc(q.time) + '</span><span>' + esc(q.band) +
         (q.freq ? ' · ' + esc(q.freq) + ' MHz' : '') + '</span><span>' +
@@ -2682,7 +2683,7 @@ function appendLogRows(file, rows, prependGroup) {
         var distBearing = (q.my_grid && q.grid) ? fmtDistBearing(q.my_grid, q.grid) : '';
         if (!q.my_grid && !q.comment && !distBearing) return '';
         return '<div class=frow-extra>' +
-          (q.my_grid ? '<span class=degrid>DE ' + esc(q.my_grid) + '</span>' : '') +
+          (q.my_grid ? '<span class=degrid>DE ' + CallInfo.gridLink(q.my_grid) + '</span>' : '') +
           (distBearing ? '<span class=distbearing>' + esc(distBearing) + '</span>' : '') +
           (q.comment ? '<span class=comment>' + esc(q.comment) + '</span>' : '') +
         '</div>';
