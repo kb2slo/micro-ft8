@@ -270,7 +270,7 @@ reason is that the noise estimate (the minimum over the other tones) is biased l
 
 Ported as published, the P4 would run the zeroing variant and land ~1.3 points under the host's numbers. §3's
 parity check exists to catch exactly this. **Any port replaces the macro with an explicit, clamped subtraction
-whose fraction is a named, tuned parameter.** A draft upstream report exists; sending it is the operator's call.
+whose fraction is a named, tuned parameter.** Reported upstream as [howard0su/ft8_lib#2](https://github.com/howard0su/ft8_lib/pull/2) (2026-09-23; the repo has issues disabled): the behaviour-preserving clamped `x − 2y + 16`, measured with the fork's own `utils/run_tests.py` at 75.0% → 75.1% recall on arm64, against 73.5% for the saturate-to-0 behaviour RISC-V builds get today.
 
 #### What our own settings cost
 
