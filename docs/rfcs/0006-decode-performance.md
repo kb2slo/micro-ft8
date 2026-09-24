@@ -86,7 +86,8 @@ host-picked configuration ships, run ~20 corpus files on the target device and c
 match. If they do, the host is a valid proxy and later sweeps are free. If they don't, that is worth knowing
 before building on the assumption.
 
-**Host ranks; the device decides feasibility.** Decode must finish inside the guard band — FT8: 79 symbols
+**Host ranks; the device decides feasibility.** Decode must finish inside the guard band, which is a property
+of today's single-pass design rather than of FT8 (§4.3) — FT8: 79 symbols
 × 0.160 s = 12.64 s of signal in a 15 s slot, leaving **2.36 s**; FT4: 105 × 0.048 = 5.04 s in 7.5 s,
 leaving **2.46 s**. The host can say which configuration decodes more. Only a timed run on the device can
 say whether it fits.
@@ -408,6 +409,53 @@ has an FFT or DSP accelerator block.
 **Bearing on the ADV question (§8):** levers 1–3 apply to the S3 as well. §4.1's cheap features
 (candidates, subtraction, passes) need CPU and no memory, so these levers decide how many of them the S3 can
 afford inside its guard band.
+
+### 4.3 When decoding stops is a design choice (2026-09-24)
+
+**The 2.36 s guard is a property of today's design, not of FT8.** `ft8_audio_pipeline_run()` triggers decode
+after 79 blocks (12.64 s after the slot boundary) and decodes *inside the capture task*, so the decode has until
+the next boundary (15.0 s) before it eats the next slot's audio (B54). The TX trigger in `main/main.cpp` also
+waits for `decode_in_progress` to clear, then starts late and drops the opening symbols (`skip_tones`).
+
+**The hard constraints are only two:**
+
+1. **Half-duplex.** We cannot capture while we transmit. Our TX starts at the next slot boundary, so capture of
+   slot N may physically run to 15.0 s.
+2. **Causality for an immediate reply.** A reply in slot N+1 depends on slot N's decode, so the *reply decision*
+   must exist before our TX starts.
+
+Everything else is CPU and memory. Decoding slot N while capturing N+1 needs double buffering (B54's fix). When
+we transmit in N+1 there is no capture at all, so the full decode of N has roughly a whole slot.
+
+**Stopping at 12.64 s cuts the tail of every signal.** Transmitters start ~0.5 s after the boundary, plus clock
+error (DT), so a typical signal ends ~13.1–13.6 s. Measured on the host (parity with both boards is exact,
+§5 P0), decodes summed over the five busiest slots:
+
+| Decode starts at | today (50 candidates) | 256 candidates | t2/f2, 256 candidates |
+|---|---|---|---|
+| 12.00 s (75 blocks) | 69 | 79 | 93 |
+| **12.64 s (79, today)** | **70** | **82** | **95** |
+| 12.96 s (81) | 71 | 83 | 96 |
+| 13.28 s (83) | 76 | 84 | 97 |
+| 13.60 s (85) | 75 | 85 | 97 |
+| 14.08–14.88 s | 75 | 85 | 97 |
+
+The uncapped columns rise to ~13.3–13.6 s and then stay flat. **Do not read the capped column as a curve:** at 50
+candidates the list is exactly full on every slot, and extra blocks reshuffle which signals make the top 50.
+Going 83 → 85 blocks lost 4 messages and gained 3, and every lost one still decodes at 85 blocks with 256
+candidates. Late stations' third Costas array enters the waterfall and lifts their sync scores past borderline
+ones. So **the trigger and the candidate cap must be measured together**, and on five slots ±1 decode is noise.
+
+**Precedent.** WSJT-X decodes FT8 three times per slot, at `nzhsym` = 41, 47 and 50 (units of 3,456 samples at
+12 kHz), i.e. **11.8 s, 13.5 s and 14.4 s**, and the last pass subtracts what the earlier ones found
+(`lib/ft8_decode.f90`). Its middle pass sits where our curve flattens.
+
+**What follows:**
+
+- **Move the trigger to ~13.3–13.6 s** ([B90](../ROADMAP.md)), measured with the candidate cap raised. With
+  B89's `-O2`, today's settings would end at ~13.9 s on the P4 and ~14.3 s on the ADV. On the ADV that spends B89's
+  freed time on listening longer instead of on more candidates. P2 measures that trade on the full corpus.
+- **Two-pass decode** (§5 P7) removes the trade entirely.
 
 ## 5. Phases
 
@@ -748,6 +796,30 @@ crowded slots, and enough files for a held-out set.
 
 **Done-when:** a corpus large enough to hold out a test set, and P2's winner re-scored against it.
 
+### P7 — Two-pass decode ([B54](../ROADMAP.md) as the first slice)
+
+§4.3's design, after WSJT-X's multi-pass decode.
+
+- **Pass A, the reply decision.** It runs late (~14.0–14.4 s) and only has to answer "what do we send next?". In a
+  QSO it can be *targeted*: candidates near the partner's known offset only, the same idea as WSJT-X's AP window
+  (P5). That is cheap enough for the ADV. When we are calling CQ, replies can land anywhere, so it stays broad at
+  cheap settings.
+- **Pass B, the full decode.** Expensive settings (candidates, t2/f2, subtraction and passes), off the capture
+  task, after the boundary. It gets ~15 s when we transmit next, and overlaps the next capture when we do not. It
+  feeds the decode list, log and spots, and can catch a caller pass A missed, who gets answered one cycle later
+  (FT8 callers repeat).
+- **Memory decides the ADV's share.** Two waterfalls fit the P4. The ADV likely cannot hold two, so it would run
+  pass B only in its own TX slots, or at cheaper settings.
+- **B54 becomes this phase's first slice.** Moving decode off the capture task with double buffering is what makes
+  pass B possible. That is a stronger reason for B54 than USB starvation alone.
+- **Operator-visible:** some decodes would appear up to a slot later, in two waves as in WSJT-X. Whether that is
+  acceptable is the operator's call, and it is open (§8).
+
+It touches the sequencer and the decode list's UI timing, so it gets its own RFC when it is sequenced.
+
+**Done-when:** the RFC exists, and its first slice (B54) lands with pass A's reply decision measured against the TX
+start on both boards.
+
 ## 6. Non-goals
 
 - **A turnkey benchmarking tool.** Existing pieces are used as-is (`jt9`, kiwirecorder, kgoba's corpus);
@@ -785,5 +857,6 @@ crowded slots, and enough files for a held-out set.
   [RFC 0005](0005-p4-poe-headless-port.md)'s "both targets build from every build" (its §7 Phase 0) is the rule
   it would change.
 - Corpus storage location (§5 P6).
+- Whether decodes arriving in two waves (§5 P7) is acceptable on the operator's screen.
 - Whether the ADV should adopt anything from P2 beyond the S3-reachable swap and `DEC_MAX`.
 - Whether `DEC_MAX` above 32 needs an RX-list UI change on the ADV, or only a larger internal buffer.
