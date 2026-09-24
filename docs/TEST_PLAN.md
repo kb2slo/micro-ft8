@@ -71,7 +71,7 @@ Named explicitly so nobody mistakes a green run for coverage. None of the follow
   `monitor_process` → `ftx_find_candidates` → `ftx_decode_candidate` over seven committed WAVs, so decoder
   regressions are caught. What it does not catch is anything about our *tuning*: `decode_pcm()` hardcodes its
   own `max_cand`, `min_score` and LDPC iteration count rather than the firmware's, reads `time_osr`/`freq_osr`
-  as literals instead of `g_time_osr`/`g_freq_osr`, stops at the first successful decode so it cannot count
+  as literals instead of the firmware's `s_time_osr`/`s_freq_osr` (`decode_tx_state.cpp`), stops at the first successful decode so it cannot count
   yield, and skips the firmware's per-block AGC and decimation entirely. Every parameter in I26 could change
   without moving one bit of its output. B25 is the harness that would notice.
 - **Any field-only path**: USB host / UAC audio, CAT, CDC, display and SPI, GPS, DS3231, SD card, flash.

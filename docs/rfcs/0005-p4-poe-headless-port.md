@@ -44,6 +44,9 @@
   **Sequencing amended 2026-09-18:** Phase 3 companion/porta (ROADMAP B67) is Now before P4 TX
   (B68), so station config and beacon arming use the real sidekick path rather than throwaway
   hardcodes.
+  **Operator position 2026-09-23:** ADV support may be dropped if keeping both targets becomes a heavy
+  maintenance tax; the P4 is the target that stays. Not decided — the both-targets rule (§7 Phase 0) holds
+  until it is. [RFC 0006](0006-decode-performance.md) §8 names where that tax shows up first.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** porting Micro-FT8's radio-control/decode/TX core to run on this specific board — USB host
   bring-up for the QMX, the headless (no display, no keyboard) operating model, and the board-specific facts
