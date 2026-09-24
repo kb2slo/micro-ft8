@@ -4,7 +4,7 @@ Human- and tool-readable project memory. Prefer this tree over editor-specific r
 
 | File | Role |
 |---|---|
-| [ROADMAP.md](ROADMAP.md) | Plan: Now / Backlog / Ideas. Chat is intake; this file is truth. Shipped work is dropped, not archived — git history is the record. |
+| [ROADMAP.md](ROADMAP.md) | Plan: Next groom / Now / Backlog / Blocked / Ideas / Declined. Chat is intake; this file is truth. Shipped work is dropped, not archived — git history is the record. |
 | [../README.md](../README.md) | Operator landing. Fork notes (why this tree) above the Wei delimiter; Wei’s original below. |
 | [STYLE.md](STYLE.md) | Coding standard for our C/C++ (not vendored `M5*` / `ft8_lib`). |
 | [TEST_PLAN.md](TEST_PLAN.md) | What is verified and by whom: agent-run automation vs operator field checks, plus field checks owed on the current branch. |
@@ -12,7 +12,7 @@ Human- and tool-readable project memory. Prefer this tree over editor-specific r
 | [AUTOSEQ_ARCHITECTURE.md](AUTOSEQ_ARCHITECTURE.md) | Sequencer design (slot events, tick vs decode). |
 | [AUTOSEQ_INACTIVE_QUEUE.md](AUTOSEQ_INACTIVE_QUEUE.md) | Retry exhaustion / reincarnation / inactive zone. |
 | [FT8 Free-Text Reference Extension.md](FT8%20Free-Text%20Reference%20Extension.md) | Free-text / SOTA-style payload notes. |
-| `rfcs/` | Long specs. Extract/style/boundaries: [0002](rfcs/0002-extract-and-boundaries.md). Companion: [0001](rfcs/0001-ble-companion.md) (on-chip NimBLE failed the DMA gate; sidekick over UART, retargeting NanoC6 → AtomS3 Lite; **headless-Atom-as-main closed, hardware-confirmed**, §4.6; **phone path decided**: WiFi + plain browser, no app, §5.0 — BLE/GATT parked). [0003](rfcs/0003-m32-pocket-port-and-ble-time.md) **rejected** (Pocket+CTS bundle). B15 CTS is ROADMAP; I17 is Ideas (own RFC if sequenced). Decode performance: [0006](rfcs/0006-decode-performance.md) (measure against `jt9`, then tune; stages B87/B25/B53/B54/B85/B86/I26). Roadmap only links them. |
+| `rfcs/` | Design for work not yet built. Lifecycle and graduation: **Doc types** below. |
 
 Git history is the changelog. Do not keep a narrative log in these files.
 
@@ -24,13 +24,75 @@ At the start of a session, read `docs/ROADMAP.md` (and the architecture or RFC f
 
 **A line earns its place here if it changes what an agent does.** If it only explains how a rule came about, it belongs in the commit message, not in this file.
 
+### Doc types
+
+Each document answers one question. Put content where its question is answered.
+
+| Question | Where | Kind |
+|---|---|---|
+| What next? | `ROADMAP.md` | Plan rows |
+| Should we, and how? (not built yet) | `docs/rfcs/NNNN-*.md` | RFC |
+| How does this work now, and why? | `docs/<AREA>_ARCHITECTURE.md` | Architecture doc |
+| How do I build, flash, or use this part? | That directory's `README.md` | How-to |
+| What must two codebases agree on? | The code | One source of truth, plus a test holding the other side to it |
+| What can an operator do with it? | `webapp/` → `micro-ft8.kalikstein.com` | Public site |
+
+**No prose specs.** A contract that crosses a language or repo boundary (C ↔ webapp JS, our encoder ↔ WSJT-X) gets one side as the source of truth in code and a test that holds the other side to it — not a document restating it.
+
+**The site describes what ships.** Nothing unbuilt, unmeasured, or upstream-only goes on it.
+
+#### RFC lifecycle
+
+An RFC is warranted when a row's design will not fit in the row (**Row size** below), when work spans several rows or boards, or when real alternatives are still undecided.
+
+1. **Draft** — open questions, alternatives, an *Ask*. Changes freely. An RFC gets its number when its file is created, never earlier: a row for an unwritten RFC says "an RFC", not a number that could go stale or collide.
+2. **Accepted** — the operator says so. Backlog/Now rows point at its sections. After this it changes only by dated decision.
+3. **Graduate as each slice ships**, in the same commit as the slice:
+   - Move what is still true into an architecture doc (new or existing): how it works, the constraints, measurements that still hold, rejected alternatives as short "why not X" notes.
+   - Delete the rest — the Ask, phase plans, status history, resolved open questions. Git keeps them.
+   - Repoint every citation of the moved sections (`git grep -n 'RFC NNNN'`) at the architecture doc. Code never cites a graduated RFC.
+   - Commit message: `RFC NNNN: graduate §x–y to <doc>`.
+
+   **Exception:** a slice only CI can validate (Worker or Pages deploy, release workflow, PR merge-commit build) graduates in the next commit, once CI is green; its commit message says "graduation pending CI". Field checks are not an exception — `TEST_PLAN.md` Pending tracks those.
+4. **Graduated** — nothing undecided remains; the file becomes a stub:
+
+   ```markdown
+   # RFC NNNN: <title>
+   * **Status:** Graduated YYYY-MM-DD → [<doc>](../<doc>)
+   * Full text at graduation: `git show <sha>:docs/rfcs/NNNN-<slug>.md`
+   ```
+
+**Rejected** RFCs move to `docs/rfcs/rejected/` and stay whole and frozen — their reasoning is what stops the idea being re-proposed; out of `rfcs/`, they no longer sit beside live design work.
+
+#### Roadmap rows
+
+**Order is priority.** Within Now and Backlog, the top row is next. Grooming re-orders; a new row is placed deliberately, not appended by default.
+
+**Blocked is a section, not a tag,** so Backlog order stays pure priority. A Blocked row names **Blocked on:** (the condition that clears it) and keeps a Done-when; an optional **Collects:** lists work that attaches to it if it is ever done. Order within Blocked does not matter. Same size limit as every row — an overgrown **Collects:** becomes an RFC.
+
+**Declined is the last section.** A rejected row moves there as one line — ID, name, why — so the idea is not re-proposed. Git keeps the full row.
+
+**`ADV-only` rows.** A row that only matters for the Cardputer ADV carries `` `ADV-only` `` at the start of its name and sits at the bottom of Backlog (or in Ideas); if ADV support is dropped (row `za6n`), they go with it — `git grep -n ADV-only docs/ROADMAP.md` finds them.
+
+**IDs are opaque.** New rows get a random ID from `tools/roadmap_rows.sh new`, which checks it has never appeared in git history. Existing `B`/`I` IDs stay. Section is stage, position is priority; the ID encodes neither. Lineage — split from, merged into, replaced by — goes in the commit message that made the change, not in the row; `git log -S'<id>' --reverse -- docs/ROADMAP.md` finds where a row came from.
+
+**Row size.** `tools/roadmap_rows.sh` lists rows over its `LIMIT` (the only place the number lives). Flag any such row in chat — in the turn that writes it, before proposing the commit, and at grooming. Route the overflow by kind:
+
+- Design for unbuilt work → an RFC (an existing one if it fits).
+- Facts about current code → an architecture doc.
+- History ("built…", "extended…", "note, same day…") → delete; git has it.
+
+What stays is ID, name, a line of why, Done-when, and a link. A row stays long only on the operator's say-so, marked `` `long-ok` `` so the script counts it. Each grooming retro reads the script's output: many `long-ok` rows mean `LIMIT` is too low; rows under it that still needed trimming mean it is too high.
+
 **Push back before tools.** Classify the request against `ROADMAP.md` Now, the active RFC, and `STYLE.md` **before any edit of implementation, or before exploration spanning more than one file.** If it is not the current Now theme, not an explicit exception in those docs, or is still Ideas/Backlog (including “quick” UI/product tweaks), the first reply cites the doc and talks it through. No open-ended codebase exploration to be helpful — that is exactly the token spend this rule exists to stop. A single cheap lookup (one grep, one file read, "where is X defined") can just be answered without the gate. Tools only after the operator retracts, grants an exception, or updates the doc in the same turn — an exception is an explicit decision, not a shortcut, and never a silent divergence. Docs and roadmap questions are allowed without that gate.
 
 Update `ROADMAP.md` in the **same turn** as the work:
 
 - New idea → **Ideas** (do not implement until moved up)
 - Agreed / sequenced → **Backlog**
+- Decided or conditional, waiting on a named condition → **Blocked** (not picked up until it clears)
 - Next to build → **Now** (one theme)
+- Rejected → one line in **Declined**
 - Shipped → drop the row from Now/Backlog. No separate Done archive — git history (and the commit that dropped the row) is the record.
 
 Each row is an ID plus a name. Do not mix a feature change with an unrelated fix in the same commit.
@@ -48,8 +110,16 @@ An unproven fix is still worth making. Pretending it is proven is not.
 **Tier the model to the task, the same way work is tiered by verifiability above.** An agent can prove some things and not others; a model can carry some kinds of work well and not others, and a wrong choice here is not caught by the compiler the way a bad fix is. State which tier a task is before starting non-trivial work:
 
 1. **Mechanical, low blast radius** — `git mv`-shaped extracts, renames, doc formatting, running `host_mock`/`tx_e2e`/`idf.py build` and reporting the result, applying a change the operator already fully specified. Verified by the compiler or a host test regardless of which model did it — use whatever is fast and cheap.
-2. **Judgment under ambiguity** — RFC drafting, sizing a memory/timing budget, choosing an extract boundary, roadmap grooming, anything **Push back before tools** above would stop for. Use the strongest available model. Nothing mechanical catches a wrong call here, which is exactly what makes it expensive.
+2. **Judgment under ambiguity** — RFC drafting, sizing a memory/timing budget, choosing an extract boundary, RFC graduation, changes to this process, anything **Push back before tools** above would stop for. Use the strongest available model. Nothing mechanical catches a wrong call here, which is exactly what makes it expensive.
 3. **Field-only, no model tier substitutes** — USB/CDC/CAT, UAC timing, TX behaviour, anything [TEST_PLAN.md](TEST_PLAN.md) marks Pending. This is category 2/3 of the verifiability rubric above wearing a model-choice hat: a bigger model does not turn an operator-only or hardware-only check into something an agent can close. Say so plainly rather than picking a bigger model and reporting more confidence than the check supports.
+
+**Grooming spans tiers.** Running `tools/roadmap_rows.sh`, deleting history from rows, and applying decisions the operator already made are tier 1. Triage recommendations are tier 2 by default. The risk is not a wrong recommendation — the operator overrides it — but a finding never surfaced: a defect hiding in a row, a row contradicting a rule here, a stale reference. Weigh the model observations below when choosing, and ask for `file:line` or commit evidence behind every claim; verification, more than model size, is what surfaced findings.
+
+**Model observations (triage).** One blind triage of the same roadmap per model, 2026-09-24 — a single sample each, so treat as leads, not verdicts. Add a line when a groom shows something new; delete a line a later groom contradicts.
+
+- **Claude Opus** — strongest on judgment: defect severity (a TX-cancel bug as a safety issue), whether a row is still real work (obsolete, field-check-only, superseded-but-unbuilt). Missed stale facts that only a code check finds (a menu count, a dropped ID cited by an RFC). Flagged a row as breaking the pre-alpha rule from its text alone; the code had no such compat path (Composer made the same call).
+- **Cursor Composer (Auto)** — strongest on verification: cited `file:line` for nearly every claim, swept dangling IDs broadly, caught stale counts and a parked defect conflicting with **Fix defects in the slice**. Weaker on severity ranking; dropped a row whose remaining work was unbuilt.
+- **Claude Sonnet** — strongest on mechanical compliance (every missing Done-when, oversize row, dangling reference; the only one to catch an RFC citing a dropped row). Missed most judgment findings, and contradicted itself once against the pre-alpha rule.
 
 **Test plan matches the work too.** [TEST_PLAN.md](TEST_PLAN.md) is the same kind of living file as the roadmap, and gets updated in the **same turn** as the work:
 
@@ -138,7 +208,16 @@ every agent and every operator can see them — see "Memory lives in this repo" 
   firmware CI job, and during bench debugging that latency dominates. The merged image lands in `build/`
   (`POST_BUILD` writes `<sha>-microft8-dev.bin` alongside `MicroFT8_Merged_Auto.bin`). CI is for pre-merge
   verification, where its value is real: it builds the PR *merge commit*, which is what actually lands, and
-  it runs the sidekick and host-test jobs too. Stated 2026-09-04.
+  it runs the sidekick and host-test jobs too. Stated 2026-09-04. A **field check** may run on either a local
+  build or a CI image (`continuous` asset) — operator's call per check. The pass records which: the SHA
+  (and whether `-dirty`), or the asset name.
+
+- **Before patching a vendored library, diff a working reference.** When a bug traces into vendored or managed
+  code (e.g. `usb_host_uac`), first compare how our other board already drives it successfully (ADV
+  `main/audio/stream_uac.cpp` vs. P4 `poe_p4/main/qmx_transport.cpp`) and any cited reference project
+  (`SteffenLav/qmx-panadapter`). Patch the library only if those comparisons still point at it. The P4 UAC crash
+  (2026-09-18) looked like a library bug but was our port running UAC open/start on the same task as the USB
+  event pump. Stated 2026-09-18.
 
 - **Assume another agent may be in this worktree.** The operator sometimes runs a second Claude Code session
   on the same checkout. One worktree means one index, so a concurrent `git add -A` can sweep up files another
@@ -152,7 +231,10 @@ every agent and every operator can see them — see "Memory lives in this repo" 
   The operator does not hold the ID-to-topic mapping in their head, and a bare ID makes them go look it up
   mid-conversation. Applies to backlog (`B*`) and initiative (`I*`) IDs and RFC section numbers. Test-plan
   row IDs are fine bare when the surrounding text already says what the check does. Inside `ROADMAP.md` and
-  commit messages the bare ID is correct — this is about chat. Stated 2026-09-10.
+  commit messages the bare ID is correct — this is about chat. Stated 2026-09-10. **When asking for a
+  decision, put all the context it needs in the chat itself** — what the row said, what was found, what each
+  option does — so the operator never has to open a row, an RFC, or an earlier message to answer. Stated
+  2026-09-24.
 
 - **Announce a field/bench test in chat, not just as a `TEST_PLAN.md` row.** When a change needs an
   operator-run check — anything landing in `TEST_PLAN.md`'s Pending table per this doc's verifiability
@@ -219,32 +301,27 @@ If the operator asks to add an idea or “add to the backlog”:
 2. New items go in **Ideas**. Use **Backlog** only when they give a Done-when or say it is sequenced.
 3. After they approve, commit that row on `main`. Push `origin` only when they ask to push. Never `upstream` unless they explicitly ask.
 
-### Backlog grooming reminder
+### Backlog grooming
 
-The grooming *workflow* is still TBD. Until then:
+**A groom is a timeboxed session.**
 
-- Once per session start, check `git log -1 --format=%ci -- docs/ROADMAP.md`.
-- If that commit is older than about **1–2 days**, remind the operator once that it is time to groom Now / Backlog / Ideas (promote, drop shipped Now rows, sequence or park ideas).
-- While grooming, run `awk '{ print length, NR }' docs/ROADMAP.md | sort -rn | head -5` and name any outlier row. Say what's in it and let the operator decide: trim in place, extract to an RFC (the "long features get an RFC" rule), or leave it — do not refine or extract unprompted.
+1. **Open:** ask the operator for a rough timebox (e.g. 30 min, 1 h) and tune the pace to it. Read `ROADMAP.md`'s **Next groom** section — carried items come first. Run `tools/roadmap_rows.sh health` if you can and state the budget in one line.
+2. **Passes, in order, until the timebox runs out:** ① Now — drop what shipped, move out what is not the one theme; ② Backlog — drops, demotions, splits, missing Done-whens, over-size rows, then order; ③ Blocked — does each condition still hold; ④ Ideas — drops, Declined, over-size rows; ⑤ pick Now (one theme).
+3. **Wrap:** re-run `health`; rewrite **Next groom** in `ROADMAP.md` with what was not reached (delete the section's items, or the section, when nothing carries over); a short retro — what in this process to change, applied to this file in the same wrap; propose the commits (process changes separate from the groom). **Nothing is queued in chat:** each follow-up becomes a row or is done in the wrap. Carry-over state lives in the file every agent reads, never only in a commit message.
+
+**"Timebox"** — the operator can say it at any point. Stop proposing, apply nothing not yet accepted, and go straight to the wrap. An open proposal is listed as not reached, not applied.
+
+**Grooming is a conversation, not a sweep.** Propose one change at a time — or a small group of the same kind — with the evidence, and wait for the operator to accept or change it before moving on. A full-roadmap triage may be prepared as input, but it is never applied as a batch; the operator walks through it.
+
+**Health, not the calendar, decides when.** The backlog may drift from ideal for velocity; `tools/roadmap_rows.sh health` measures how far. Its budget constants live in the script, like `LIMIT`.
+
+- Once per session start, run `tools/roadmap_rows.sh health`. If the budget reads **OVER**, tell the operator once, with the numbers, that grooming comes before feature work. The operator may defer — that is allowed drift, chosen explicitly; say so and move on.
+- `health --at <sha>` gives any past state, so trends need no stored data.
+- Owed field checks are part of the budget (standing row `swsu`). After a bench session, drop the Pending rows that passed — no archive, git is the record.
+- While grooming, run `tools/roadmap_rows.sh` and apply **Row size** above — name each row it flags and let the operator decide; do not trim or extract unprompted.
+- The groom commit's subject is `ROADMAP: groom YYYY-MM-DD` (the script finds the last groom by it). Its body carries the `health` output before and after, lineage (splits, merges, drops, declines), the model that made the recommendations, and how many recommendations the operator overrode.
+- Each grooming retro asks whether each metric still tracks something worth caring about. A metric no retro uses gets deleted. Never game one — declining a good idea to improve flow is not health.
 - Do not repeat the reminder in later turns of the same session, and do not interrupt an in-progress coding task.
-
-### Bench-test grooming reminder (session start)
-
-Stated 2026-09-15, after a marathon hardware session cleared 15 rows in one sitting and the operator
-asked to be nudged going forward rather than let a comparable backlog re-accumulate silently.
-
-**Last bench session:** 2026-09-15 — 15 rows moved to passed/N/A and dropped; 57 remain owed.
-
-- Once per session start, if the date above is more than **7 days** old, remind the operator once that
-  a bench session is due. Name roughly how many rows are currently owed in `docs/TEST_PLAN.md`'s
-  **Pending** table (data rows whose Status does not start with `passed`/`N/A`), and point at the
-  **"Bench run — everything owed"** section — it exists specifically to close a backlog like this in
-  one ordered ~1-hour pass rather than piecemeal.
-- After a real bench session: drop the rows that passed the same way this session did — do not archive,
-  git history is the record, same discipline as `ROADMAP.md`'s Now/Backlog rows — and update the date
-  above regardless of how many rows moved, same discipline as the upstream watches below.
-- Do not repeat the reminder in later turns of the same session, and do not interrupt an in-progress
-  coding task.
 
 ### Upstream watches (session start)
 
