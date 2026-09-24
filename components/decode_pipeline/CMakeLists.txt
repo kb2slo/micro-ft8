@@ -4,3 +4,6 @@ idf_component_register(
     REQUIRES decode_types ft8_lib autoseq callsign_hashtable decode_tx_state
              debug_log protocol rtc_core board_power adif
 )
+
+# B89: decode loop at -O2, as ft8_lib (RFC 0006 §4.2 lever 1).
+target_compile_options(${COMPONENT_LIB} PRIVATE -O2)

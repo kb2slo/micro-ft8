@@ -423,7 +423,9 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
 
     // Fill static entry
     DecodeMsg* d = &s_dec[s_dec_count];
-    strncpy(d->text, final_text, DEC_TEXT_MAX - 1); d->text[DEC_TEXT_MAX - 1] = '\0';
+    // final_text is always NUL-terminated above; a same-size copy keeps -O2's stringop-truncation check quiet (B89).
+    static_assert(sizeof(d->text) == sizeof(final_text), "RX list text and decode text buffers must match");
+    memcpy(d->text, final_text, sizeof(d->text));
     d->snr = snr_q;
     d->offset_hz = (int)lrintf(freq_hz);
     d->slot_id = slot_id;

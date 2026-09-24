@@ -22,3 +22,7 @@ target_compile_options(${COMPONENT_LIB} PRIVATE
     -Wno-format
     -Wno-unused-function   # vendor/ft8/decode.c: ft8_decode_multi_symbols is unused upstream
 )
+
+# B89: the decoder runs at -O2 while the rest of the image stays at -Og and debuggable. Measured by
+# test_apps/decode_bench (RFC 0006 §5 P0): ~1.9x on the P4 and ~1.6x on the ADV, output identical on every slot.
+target_compile_options(${COMPONENT_LIB} PRIVATE -O2)
