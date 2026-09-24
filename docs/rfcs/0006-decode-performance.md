@@ -136,7 +136,12 @@ settings: 93 × 2 × 1 × 433 = **80,538 B**. The kiss_fftr arena beside it is 1
   decoder *is* the memory. The measurements behind these numbers are in git history (2026-09-04).
 - **The equal-cost swap is reachable.** `time_osr` = 1, `freq_osr` = 2 costs the same 80,538 B, trading time
   resolution for frequency resolution. `nfft` doubles to 1920, which pushes kiss_fftr past its 12,288 B
-  arena into a ~20 KB `malloc`, so that arena needs ~8 KB more BSS to stay static.
+  arena into a ~20 KB `malloc`, so that arena needs ~8 KB more BSS to stay static. **More than that, found
+  2026-09-23:** `components/ft8_lib/common/monitor.c` also sizes `window_static`, `last_frame_static`,
+  `timedata` and `freqdata` by `MONITOR_NFFT_MAX` = 960, and `monitor_init()` refuses any larger `nfft`.
+  **Any `freq_osr` = 2 configuration fails at start-up today, on either board.** Doubling those four buffers
+  costs ~15 KB more static, so the swap's real cost is ~23 KB, not ~8 KB. The cap is now `#ifndef`-overridable;
+  `test_apps/decode_bench` builds with 1920, and the firmware keeps 960 (preprocessed source identical).
 - **Candidates are cheap on memory** (a stack array) and cost CPU only.
 - **Neither ADV board has PSRAM** (confirmed with `esptool.py flash_id`, 2026-09-04; RFC 0001 §2). The
   waterfall is CPU-swept data, never a DMA target, so it *would* be a legitimate PSRAM candidate on a board
@@ -302,10 +307,10 @@ Three conclusions:
 
 For three independent reasons:
 
-1. **CPU.** `jt9` spends ~0.44–1.45 s per slot on a desktop core. Even at an optimistic 30× slowdown to a P4
-   core, that is 13–45 s against a 2.36 s guard band. Double-buffering (B54) does not rescue it: replying in
-   the next slot still needs the decode inside roughly the guard. The 30–50× factor is a guess until P0
-   replaces it, but the margin is an order of magnitude, not a rounding error.
+1. **CPU.** `jt9` spends ~0.44–1.45 s per slot on a desktop core. P0 measured the desktop-to-P4 factor at ~50×
+   for light work and ~100× for LDPC-heavy work (§5 P0 results), so that is ~22–145 s against a 2.36 s guard
+   band. Double-buffering (B54) does not rescue it: replying in the next slot still needs the decode inside
+   roughly the guard.
 2. **Language.** It is Fortran, and the ESP-IDF toolchains have no Fortran front end. A port is a hand
    translation. `e04/ft8ts` shows that is doable (TypeScript), not that it is cheap.
 3. **License.** WSJT-X is GPL-3.0. Translated code is a derivative work, so the firmware would ship under
@@ -368,7 +373,8 @@ benchmark (§5 P0), on both boards:
 
 1. **`-O2` for the decoder only.** A `target_compile_options` line for `ft8_lib` and `decode_pipeline`; the
    rest of the image stays at `-Og` and debuggable. Output must be identical, so the benchmark's
-   decode-set check is the whole test.
+   decode-set check is the whole test. **Measured on the P4: ~1.9× on the decode loop, with identical
+   output** (§5 P0 results). That alone moves 256 candidates and t2/f2 inside the guard.
 2. **The second core.** Both chips are dual-core and decode runs on one. Per-candidate LDPC is independent
    per candidate, so the loop splits across cores naturally. That could approach 2× on exactly the window
    that decides how much of §4.1's feature list fits. The constraint is what already runs on the other core (the
@@ -424,6 +430,49 @@ are the operator's. USB-C is free of the radio for this, so the console works ov
 **Done-when:** a table in this RFC of milliseconds per slot, per configuration, per board, against the
 2.36 s guard; each board's decode sets compared with the host's for the same files; and §4.1's 30–50×
 estimate replaced by the measured factor.
+
+**Built as `test_apps/decode_bench/`** (its README has the commands). It shares one C core and one configuration
+table between the device image and a host binary. The P4 image uses `poe_p4/partitions.csv` and is flashed to
+the app slot only, so `nvs` and the `storage` partition survive.
+
+#### Results, ESP32-P4 (2026-09-23)
+
+U213, v1.3 silicon, 360 MHz, one core. The five busiest corpus slots (27–33 `jt9` decodes each). Figures are
+**find + decode** (the guard-band clock), mean over the five slots, with the worst slot in brackets. Decodes are
+summed over the five slots.
+
+| Configuration | Decodes | P4 `-Og` (as shipped) | P4 `-O2` | Host `-O2` (M4) | P4 ÷ host |
+|---|---|---|---|---|---|
+| today (t2/f1, 50 candidates, `DEC_MAX` 32) | 72 | 585 ms (628) | **315 ms** (335) | 6.4 ms | ~49× |
+| 256 candidates | 83 | 3,646 ms (3,669) | **1,870 ms** (1,880) | 18.3 ms | ~102× |
+| t1/f2 swap, 256 candidates | 83 | 3,645 ms (3,722) | 1,874 ms (1,909) | 17.3 ms | ~108× |
+| t2/f2, 256 candidates | 96 | 3,357 ms (3,441) | **1,747 ms** (1,790) | 16.3 ms | ~107× |
+| t4/f2, 256 candidates | (100 on host) | allocation failed | allocation failed | 14.5 ms | — |
+
+Capture-time CPU (`monitor_process()` over the whole slot, not on the guard clock): 211 → 177 ms at t2/f1 and
+378 → 312 ms at t2/f2 (`-Og` → `-O2`), i.e. ~2% of a core.
+
+What this settles:
+
+1. **Host/device parity holds.** For all 20 (configuration, slot) pairs that ran, the P4 produced exactly the
+   host's messages, including frequency and DT, at both optimisation levels. RFC §3's licence for host-only
+   sweeps is granted for this decoder lineage.
+2. **`-O2` is worth ~1.9× on the P4** (decode loop 3.6 s → 1.8 s), against 1.1–1.2× on the M4 (§4.2). §4.2's
+   lever 1 is the largest single speed lever measured.
+3. **At `-O2`, 256 candidates and t2/f2 fit the 2.36 s guard on one core,** with ~0.5 s margin on the busiest
+   slots. At the firmware's `-Og` neither does. Today's firmware spends ~0.6 s of the guard on a busy slot.
+4. **The desktop-to-P4 factor is ~50× for light work and ~100× for the LDPC-heavy candidate loop,** worse than
+   the 30–50× this RFC first guessed. So `jt9 -d 1` (0.44 s on the M4) would need ~44 s. howard-lite (~24 ms host)
+   projects to ~2.4 s on one P4 core at `-O2`, which is right at the guard: it needs the second core (§4.2
+   lever 2) or cheaper failing candidates. The fork's OSD (~87 ms host) projects to ~9 s and is out.
+5. **t4/f2's 322 KB waterfall does not allocate** with 432 KB of internal heap free (no contiguous block that
+   large). It needs PSRAM, which the P4 build leaves off. The bench app has far more free heap than the
+   firmware, so **t2/f2's 161 KB must be re-checked inside `poe_p4` before it ships.**
+6. **The cost of 256 candidates is failing candidates.** Nearly all of the ~1.5 s added over "today" is LDPC
+   iterations spent on candidates that never decode. Cheaper rejection (fewer iterations for low-score
+   candidates, or an early parity check) is a lever P2 should measure.
+
+**Still owed for P0:** the same run on the ADV (ESP32-S3).
 
 ### P1 — Host harness on the existing corpora ([B25](../ROADMAP.md))
 
