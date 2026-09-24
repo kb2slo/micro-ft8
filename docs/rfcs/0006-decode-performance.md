@@ -472,7 +472,36 @@ What this settles:
    iterations spent on candidates that never decode. Cheaper rejection (fewer iterations for low-score
    candidates, or an early parity check) is a lever P2 should measure.
 
-**Still owed for P0:** the same run on the ADV (ESP32-S3).
+#### Results, ESP32-S3 / ADV (2026-09-24)
+
+Cardputer ADV (Stamp-S3A, v0.2 silicon), 240 MHz as the firmware runs, one core, same five slots.
+
+| Configuration | ADV `-Og` (as shipped) | ADV `-O2` | P4 `-O2` |
+|---|---|---|---|
+| today | 1,122 ms (1,205) | **718 ms** (771) | 315 ms |
+| 256 candidates | 7,077 ms (7,121) | 4,429 ms (4,456) | 1,870 ms |
+| t1/f2 swap, 256 candidates | 7,068 ms (7,231) | 4,425 ms (4,527) | 1,874 ms |
+| t2/f2, 256 candidates | allocation failed | 4,076 ms (4,185) | 1,747 ms |
+| t4/f2, 256 candidates | allocation failed | allocation failed | allocation failed |
+
+1. **Parity holds on the ADV too.** All 35 (configuration, slot) pairs that ran match the host exactly, including
+   frequency and DT. Across both boards and both optimisation levels, no decode ever differed from the host.
+2. **The ADV is ~1.95× slower than the P4 per core** at the same optimisation level (585 vs 1,122 ms today;
+   3,646 vs 7,077 ms at 256 candidates). `-O2` is worth less on the S3 (~1.6×) than on the P4 (~1.9×).
+3. **Today's shipped firmware spends about half the guard decoding a busy slot on the ADV** (1.1–1.2 s of
+   2.36 s). `-O2` alone brings that to ~0.7 s.
+4. **256 candidates does not fit the ADV on one core, even at `-O2`** (4.4 s). A failing candidate costs
+   ~17 ms at `-O2`. So on one core the ADV can afford roughly **100–130 candidates**, an estimate from the per-candidate
+   cost, not a measurement. On the host that range captures most of the ~5 points the full cap is worth
+   (§4.1: 50 → 140 gave +4.6 of +5.1). It is P2's ADV configuration to measure, together with cheaper candidate
+   rejection and the second core (§4.2), where the UI's share of that core is the constraint.
+5. **t2/f2 allocated in the `-O2` bench image and not in the `-Og` one.** Both had ~230 KB of internal heap free,
+   and the 161 KB waterfall needs one contiguous block, so layout decides it. Inside the firmware, with ~94 KB of
+   DIRAM remainder (§4), it cannot. Time is also against it (4.1 s). On the ADV, t2/f2 still depends on the 4-bit
+   waterfall, and on candidate cost.
+
+**P0 is done** on both boards. The results change P2's ADV arm from "256 candidates" to "the largest count that
+fits".
 
 ### P1 — Host harness on the existing corpora ([B25](../ROADMAP.md))
 

@@ -73,6 +73,8 @@ static const char* optimization_name(void)
 static void bench_task(void* argument)
 {
     (void)argument;
+    // Give the host time to reopen the USB-Serial-JTAG port after the reset, so the header is not lost.
+    vTaskDelay(pdMS_TO_TICKS(3000));
     esp_chip_info_t chip;
     esp_chip_info(&chip);
     printf("BENCH target=%s rev=%d.%d cores=%d cpu_mhz=%d opt=%s free_internal=%u\n",

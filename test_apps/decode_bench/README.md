@@ -42,6 +42,25 @@ python tools/run_on_device.py /dev/cu.usbmodemXXXX build_o2/decode_bench.bin p4_
 The P4 build uses `poe_p4/partitions.csv`, so writing only `0x10000` leaves the bootloader, `nvs` and the
 `storage` partition (Station.txt) alone. The firmware's app is overwritten, so reflash it afterwards.
 
+### ADV (ESP32-S3)
+
+Build the same two images with `set-target esp32s3`, into `build_s3_og` and `build_s3_o2`
+(`sdkconfig.defaults.esp32s3`: 240 MHz, 8 MB flash, console on USB-Serial-JTAG, and the repo `partitions.csv`,
+which is the firmware's native layout). The Cardputer needs button presses, because a software reset after
+flashing lands it back in download mode:
+
+1. Put it in bootloader mode (hold G0 while resetting or replugging).
+2. Flash: `python -m esptool --chip esp32s3 --port PORT --before no_reset --after no_reset write_flash 0x10000 build_s3_o2/decode_bench.bin`
+   (or `--full` through `run_on_device.py` to write the bench bootloader and partition table too, on a unit
+   without Launcher).
+3. Start the reader before resetting:
+   `python tools/run_on_device.py auto build_s3_o2/decode_bench.bin s3_O2.log --chip esp32s3 --capture-only --timeout 1800`
+   (`auto` follows the port if a replug renames it; `1101` became `101` on 2026-09-24).
+4. Reset normally, without G0. The bench waits 3 s before printing so the reader can reconnect.
+
+Launcher units have no factory app slot for this. Use an OTA slot as `tools/flash_keep_launcher.py` does, never
+`0x10000`.
+
 ## Reading the output
 
 - `RESULT <config> <slot> ... find_ms decode_ms total_ms process_ms`
