@@ -20,4 +20,5 @@ idf_component_register(SRCS
 target_compile_options(${COMPONENT_LIB} PRIVATE
     -Wno-unused-const-variable
     -Wno-format
+    -Wno-unused-function   # vendor/ft8/decode.c: ft8_decode_multi_symbols is unused upstream
 )
