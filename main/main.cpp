@@ -568,15 +568,6 @@ static bool log_gps_grid_line(const std::string& grid8) {
   return ok;
 }
 
-static const char* storage_owner_label(StorageOwner owner) {
-  switch (owner) {
-    case StorageOwner::UNAVAILABLE: return "unavailable";
-    case StorageOwner::FIRMWARE:    return "firmware";
-    case StorageOwner::TRANSITION:  return "transition";
-  }
-  return "unknown";
-}
-
 static void qso_load_file_list() {
   g_q_files.clear();
   g_q_entries.clear();
