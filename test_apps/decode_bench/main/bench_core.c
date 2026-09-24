@@ -94,8 +94,9 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
     }
     monitor_reset(&monitor);
 
-    // The firmware stops filling the waterfall at FT8_NN + 1 blocks (ft8_audio_pipeline_run()).
-    const int target_blocks = FT8_NN + 1;
+    // ft8_audio_pipeline_run() triggers decode once FT8_NN (79) blocks are in the waterfall, i.e. 12.64 s after
+    // the slot boundary; its FT8_NN + 1 fill limit is never reached before the trigger.
+    const int target_blocks = FT8_NN;
     static float block[1920];
     const int block_size = monitor.block_size;
 

@@ -500,6 +500,13 @@ Cardputer ADV (Stamp-S3A, v0.2 silicon), 240 MHz as the firmware runs, one core,
    DIRAM remainder (§4), it cannot. Time is also against it (4.1 s). On the ADV, t2/f2 still depends on the 4-bit
    waterfall, and on candidate cost.
 
+**Correction, 2026-09-24:** the bench filled 80 waterfall blocks, but the firmware triggers decode at 79
+(`ft8_audio_pipeline_run()`: `slot_blocks >= total_symbols && num_blocks >= total_symbols`). `bench_core.c` now
+stops at 79. Every table above was measured at 80 blocks. That is one extra 160 ms symbol of signal, so the
+candidate search is ~1% slower and a late station occasionally gets one more usable symbol than the firmware
+would see. Parity is unaffected, because host and device ran the same 80 blocks. Rerun before quoting timings to
+better than a few percent.
+
 **P0 is done** on both boards. The results change P2's ADV arm from "256 candidates" to "the largest count that
 fits".
 
