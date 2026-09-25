@@ -6,7 +6,7 @@ extern "C" {
 #include "ft8/message.h"
 }
 
-// FT8's compressed-callsign hash table (RFC 0005 Phase 2 -- extracted out of
+// FT8's compressed-callsign hash table (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)) -- extracted out of
 // main.cpp, which is where kgoba's reference demo also keeps it, but that is
 // an artifact of history here, not a real dependency: this table has no UI
 // coupling and no board-specific state, and is used by both the decode path

@@ -1,5 +1,5 @@
 # M5Stack Unit PoE-P4 (SKU U213): 16 MB flash, 32 MB octal PSRAM
-# (docs.m5stack.com/en/unit/Unit_PoE-P4, checked directly -- RFC 0005 §4).
+# (docs.m5stack.com/en/unit/Unit_PoE-P4, checked directly -- docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213))).
 # Without this the build takes ESP-IDF's default flash size and writes a
 # wrong flash-size field into the bootloader header, same reasoning as
 # sidekick/sdkconfig.defaults.

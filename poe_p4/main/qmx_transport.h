@@ -9,7 +9,7 @@ extern "C" {
 // Starts usb_lib_task (USB Host + CDC-ACM event pump) and uac_lib_task (UAC
 // open/settle/start, queue-woken), then polls for the QMX (VID:0x0483
 // PID:0xA34C) on the Host port -- one composite device, two class drivers on
-// the same usb_host_install() (RFC 0005 Phase 2: "the QMX ISO split," same
+// the same usb_host_install() (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)): "the QMX ISO split," same
 // FIFO tuning ADV's stream_uac.cpp already uses so UAC can attach without
 // reinstalling the host). Task split matches ADV: the events pump must never
 // block on UAC start. Once open, radio_control's cat_cdc_ready()/cat_cdc_send()

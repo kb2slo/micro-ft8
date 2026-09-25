@@ -209,9 +209,9 @@ jobs:
         with:
           submodules: true
 
-      # RFC 0005 Phase 0: every build produces both the ADV (esp32s3) and
-      # PoE-P4 (esp32p4) binaries, not one-or-the-other (docs/rfcs/0005-p4-poe-headless-port.md
-      # §7) -- this job is that requirement, not an opt-in target. Separate
+      # docs/STYLE.md (Two boards, one source): every build produces both the ADV (esp32s3) and
+      # PoE-P4 (esp32p4) binaries, not one-or-the-other -- this job is that
+      # requirement, not an opt-in target. Separate
       # idf.py project from both main/ and sidekick/ (poe_p4/CMakeLists.txt
       # pins esp32p4), so it needs no MICROFT8_GIT_SHA/build-identity plumbing
       # of its own yet. No radio, no UI: boot-only skeleton for now.
@@ -445,7 +445,7 @@ jobs:
 
             First boot may format the FATFS partition.
 
-            M5Stack Unit PoE-P4 (U213): RFC 0005 Phase 0 boot-only skeleton -- no radio, no UI, no decode yet. Flash at `0x0` over the USB-C port next to the RJ45 (labeled `USB-C PROG & OTG`).
+            M5Stack Unit PoE-P4 (U213): the headless main board -- pair it with a sidekick, whose web app is the only UI. Flash at `0x0` over the USB-C port next to the RJ45 (labeled `USB-C PROG & OTG`).
 
             ```
             esptool.py --chip esp32p4 write_flash 0x0 MicroFT8-PoE-P4-${{ github.ref_name }}-Merged.bin

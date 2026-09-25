@@ -41,12 +41,12 @@ static const char* TAG = "DECODE";
 //     headless board, a small always-present definition nothing else reads
 //     yet.
 //   log_rxtx_line: ADV's storage-backed RX/TX log; a board with no storage
-//     (P4, by design -- see RFC 0005) gets a no-op.
+//     (P4, by design -- see docs/architecture/main_board.md) gets a no-op.
 //   arm_from_autoseq_or_beacon/ignorelist_matches_normalized_dxcall: the
-//     TX-arming trigger and its ignorelist filter. TX itself (RFC 0005 Phase 2
+//     TX-arming trigger and its ignorelist filter. TX itself (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213))
 //     "headless decode/TX core") is a separate milestone from RX decode; a
 //     board with no TX pipeline wired yet gets a no-op/pass-through.
-//   porta_emit_decode: the sidekick link (RFC 0005 Phase 3 / B67). Safe to
+//   porta_emit_decode: the sidekick link (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)) / B67). Safe to
 //     call unconditionally — no-op until porta_start() has run; on P4 the
 //     decode task and porta_tick() share the same image so emits reach the
 //     phone once UAC is streaming.

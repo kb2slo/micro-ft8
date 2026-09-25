@@ -88,7 +88,7 @@ Rules that follow:
 Everything the app needs crosses Port A: decodes at slot cadence, TX control, config reads and writes, and the log. The message set is defined in `components/porta_proto/include/porta_proto.h`, which is the source of truth (host-tested by `host_test_porta_proto`); the sidekick side is `host_link.c`, the main-board side `components/porta`.
 
 * **Framed messages over a byte pipe**, with framing that assumes no stream, so the transport could change without touching the app or the API.
-* **Board-agnostic**: specified against the application, so the ADV and the P4 present the same surface.
+* **Board-agnostic**: specified against the application, so the ADV and the P4 present the same surface, and **one sidekick image pairs with either main board** — no per-board build or `#if` in the sidekick. There is one sidekick build, and it serves both.
 * **Versioned** (`PORTA_PROTO_VERSION`, carried in HELLO), for the same reason the bundle manifest pairs app and API.
 * **One build identity for both sides.** The sidekick and the ADV take their version string from the same `tools/git_version.cmake` (exact git SHA, plus a dirty flag), so "same commit" is an exact string match. CI pins `MICROFT8_GIT_SHA` for both jobs, because a pull request builds a synthesized merge commit and two jobs left to derive it separately could disagree.
 * **Asymmetric traffic**: commands are rare and want low latency; decodes arrive every 15 s and tolerate hundreds of milliseconds. A full slot of decodes is about 3 KB, so sustained load is a couple of hundred bytes per second.

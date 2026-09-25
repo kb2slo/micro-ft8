@@ -8,7 +8,7 @@ extern "C" {
 #include "common/monitor.h"
 }
 
-// The decode/autoseq-arm/RTC-auto-sync pipeline (RFC 0005 Phase 2 -- extracted
+// The decode/autoseq-arm/RTC-auto-sync pipeline (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)) -- extracted
 // out of main.cpp; this is what P4's "RX decode" milestone build-forces into
 // components/, per STYLE's module-placement rule). Called once per slot by
 // ft8_audio_pipeline_run() with a filled monitor_t.

@@ -9,7 +9,7 @@
 // audio/decode pipeline (main/audio/, core 1), owned here as accessor
 // functions instead of shared as bare `extern` globals -- this is the "real
 // interface" the original decode_tx_state.h (main/, now retired) named as
-// the goal, done as part of RFC 0005 Phase 2 rather than left for later.
+// the goal, done as part of docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)) rather than left for later.
 //
 // Semantics are unchanged from the file this replaces: the same
 // single-writer/single-reader access pattern per field, the same `volatile`

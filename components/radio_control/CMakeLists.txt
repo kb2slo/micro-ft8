@@ -1,4 +1,4 @@
-# Backend-agnostic QMX/QDX CAT control (RFC 0005 §5's shared-code goal).
+# Backend-agnostic QMX/QDX CAT control (docs/STYLE.md (Two boards, one source)).
 # No dependency on any board's audio pipeline or USB host lifecycle -- only
 # on cat_transport.h's four-function seam, which each board (main/'s
 # stream_uac.cpp for the ADV, poe_p4's own cat_transport.cpp) implements

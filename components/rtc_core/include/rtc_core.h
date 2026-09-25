@@ -9,7 +9,7 @@
 // ============================================================================
 // rtc_core.h
 //
-// The soft-clock primitives (RFC 0005 Phase 2 -- extracted out of main.cpp so
+// The soft-clock primitives (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)) -- extracted out of main.cpp so
 // the decode pipeline can stamp/auto-sync time without linking main.cpp).
 // This is arithmetic plus the ESP's own built-in RTC peripheral
 // (settimeofday/gettimeofday, present on every ESP32) -- no board coupling of

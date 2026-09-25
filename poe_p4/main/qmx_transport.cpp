@@ -13,8 +13,8 @@
 #include "usb/uac_host.h"
 #include "usb/usb_host.h"
 
-// RFC 0005 Phase 2: this board's implementation of the radio_transport.h
-// seam components/radio_control needs (RFC 0005 §5's shared-code goal) --
+// docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)): this board's implementation of the radio_transport.h
+// seam components/radio_control needs (docs/STYLE.md (Two boards, one source)) --
 // USB host, CDC-ACM, and UAC lifecycle are board-specific (the ADV shares a
 // port with a UAC audio pipeline and its own presence-detection client; this
 // board has neither the presence client nor TX audio yet), so that part

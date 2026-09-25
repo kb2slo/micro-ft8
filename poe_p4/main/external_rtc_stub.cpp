@@ -1,7 +1,7 @@
 #include "external_rtc.h"
 
 // This board has no DS3231 (or any external RTC chip) -- not a TODO, a
-// permanent fact of the hardware (RFC 0005 Phase 2 amendment, 2026-09-17).
+// permanent fact of the hardware (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213))).
 // rtc_core.h's rtc_write_external_from_soft() already checks
 // external_rtc_available() before touching this, so "always unavailable" is
 // the same code path ADV takes when it has the chip but hasn't found it on

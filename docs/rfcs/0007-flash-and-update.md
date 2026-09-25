@@ -21,7 +21,7 @@ Decided by the operator, 2026-09-25: **the sidekick downloads images itself** (�
 | App image (local build, 2026-09-25) | 955 KB | 725 KB | 2.36 MB, of which ~0.95 MB is the embedded sidekick image (`components/sidekick_flasher`) |
 | Partitions | `ota_0`/`ota_1` 3 MB each, `web` 1.9 MB | one `factory` 4 MB, `storage` 3 MB | one `factory` 4.9 MB, `storage` 3 MB |
 | Rollback | `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`; marked valid after three Port A heartbeats (`sidekick/main/main.c:110`) | none | none |
-| Network | WiFi | none (Ethernet PHY present but unused, RFC 0005) | none |
+| Network | WiFi | none (Ethernet PHY present but unused, [main_board.md](../architecture/main_board.md)) | none |
 | Update today | USB-C, or field-flashed from the ADV ([sidekick.md](../architecture/sidekick.md) (**Installing the sidekick from the ADV**)) | USB-C | USB-C, M5Launcher, `tools/flash_keep_launcher.py` |
 
 The release host already publishes, per board, a merged `0x0` image and its SHA-256 (`/download/manifest.json`, mirrored to R2 by `ci.yml`). It serves over **plain HTTP as well as HTTPS**: `curl -sI http://micro-ft8.kalikstein.com/download/manifest.json` returns 200 with no redirect (checked 2026-09-25). Each build's version string is the git SHA (`PROJECT_VER`).
@@ -83,7 +83,7 @@ The main board writes the chunks into its inactive slot (`esp_ota_begin/write/en
 
 ### 3.6 Version pairing
 
-**Each main board reports its version** (required by §3.5's done check). Today only the sidekick sends HELLO (`sidekick/main/main.c:77`); the main board only receives it (`components/porta/porta.cpp:164`), and the webapp shows just the sidekick's version (`sk_fw_version`). The main board sends HELLO too, with its `PORTA_PROTO_VERSION` and build version, on the same cadence; the sidekick adds both to its config JSON, and Settings shows them beside the sidekick's.
+**Each main board reports its version** (required by §3.5's done check). Today only the sidekick sends HELLO (`sidekick/main/main.c:77`); the main board only receives it (`components/porta/porta.cpp:164`), and the webapp shows just the sidekick's version (`sk_fw_version`). The main board sends HELLO too, with its `PORTA_PROTO_VERSION` and build version, on the same cadence. **Found 2026-09-25:** the P4 build has no build version yet (`poe_p4/` uses neither `git_version.cmake` nor `gen_build_identity.cmake`), so it gains one first; the sidekick adds both to its config JSON, and Settings shows them beside the sidekick's.
 
 The webapp compares each board's running version against the manifest and offers an update per board. It refuses a combination whose `PORTA_PROTO_VERSION`s differ, because a board that can no longer talk to the sidekick can only be recovered over USB. When both boards need updating, **the main board goes first**, while the sidekick still speaks its protocol; the frozen OTA messages are what make this safe.
 
@@ -146,7 +146,7 @@ Folded in by the operator, 2026-09-25: a faster link has been discussed before b
 * **The phone relays the image**, as the app bundle does ([architecture/sidekick.md](../architecture/sidekick.md), **Installing the app bundle**): the page fetches it over HTTPS and POSTs the bytes to the sidekick. It works in AP mode wherever the phone has cell signal, but the whole image sits in the browser as a Blob (Safari cannot stream a request body), and iOS suspends the page if the screen locks mid-upload. Rejected 2026-09-25 in favour of §3.2; one path, not two.
 
 * **IP over Port A** (PPP on the UART, sidekick routing with NAPT, lwIP and HTTP on the main boards). It redesigns Port A, costs RAM on both main boards, and runs slower on the same wire than raw chunks. It would also let a main board download for itself, which is the unattended-update trigger for reopening signing ([architecture/system.md](../architecture/system.md), **Why not signing**). Reopen if a main board needs the network for something continuous that cannot be handed down over Port A.
-* **P4 on its own Ethernet.** RFC 0005 already records that PoE and Ethernet are not a path this project uses.
+* **P4 on its own Ethernet.** [main_board.md](../architecture/main_board.md) records that PoE and Ethernet are not a path this project uses.
 * **Signing.** Unchanged from [architecture/system.md](../architecture/system.md) (**Why not signing**): the manifest's hash reaches the device over the owner's HTTPS-authenticated browser, and updates are started by the operator. Its reopen trigger stands.
 * **TLS on the sidekick.** Not needed while the host serves plain HTTP. Reopen if the host ever forces HTTPS; measure the handshake's heap cost first, since the board has no PSRAM.
 * **M5Launcher.** It owns the ADV's factory slot, which an A/B layout needs. Dropped by the operator, 2026-09-25.

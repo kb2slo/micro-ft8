@@ -6,7 +6,7 @@
 // ============================================================================
 // debug_log.h
 //
-// The on-screen "D" debug log ring buffer (RFC 0005 Phase 2 -- extracted out
+// The on-screen "D" debug log ring buffer (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)) -- extracted out
 // of main.cpp so a headless board's decode pipeline can log through the same
 // funnel without linking main.cpp itself). No board/UI coupling of its own:
 // g_debug_lines/debug_page are plain data a screen *may* choose to render

@@ -15,7 +15,7 @@
 #include "storage_service.h"
 #include "tx_scheduler.h"
 
-// RFC 0005 Phase 2/3: shared radio_control + decode; porta (B67) on Grove
+// docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)): shared radio_control + decode; porta (B67) on Grove
 // G53/G54. TX tone scheduling (B68) is still next.
 
 static const char *TAG = "poe_p4";

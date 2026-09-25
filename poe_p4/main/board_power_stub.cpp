@@ -3,7 +3,7 @@
 #include <cstring>
 
 // This board has no battery/pack monitoring circuit -- ADV's GPIO10 divider
-// is board-specific hardware, not a general ESP32 feature (RFC 0005 Phase 2
+// is board-specific hardware, not a general ESP32 feature (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213))
 // amendment, 2026-09-17). Permanently "no pack, never halted," not a TODO.
 
 esp_err_t board_power_init(void) {

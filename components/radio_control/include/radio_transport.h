@@ -15,7 +15,7 @@ extern "C" {
 // connection gets opened is board-specific (the ADV's stream_uac.cpp shares
 // the port with a UAC audio pipeline and its own USB host lifecycle; a
 // headless board has neither). Extracted from main/audio/stream_uac.h (RFC
-// 0005 Phase 2, RFC 0005 §5's shared-code goal) so radio_control itself
+// 0005 Phase 2, docs/STYLE.md (Two boards, one source)) so radio_control itself
 // depends on this narrow interface, not on one board's whole audio stack.
 //
 // Two groups, because the two backends need different halves: QMX tells the

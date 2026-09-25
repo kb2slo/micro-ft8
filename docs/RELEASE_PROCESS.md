@@ -17,11 +17,10 @@ Both rolling and versioned publish ADV + PoE-P4 merged images — the ADV (esp32
 The firmware artifact is skipped entirely for docs-only commits (the `changes` path filter, D7), so a roadmap-only merge
 neither rebuilds nor re-tags either binary.
 
-**The PoE-P4 asset carries no version identity of its own yet.** RFC 0005 Phase 0 (`poe_p4/`) is a boot-only
-skeleton with none of `gen_build_identity.cmake`'s `rel`/`dev` machinery below — every release, rolling or
-tagged, ships whatever `poe_p4/` happens to build to at that commit, with no version string burned into the
-image and no `Micro-FT8 dev <sha>`-style device display (it has no display). That is honest for what exists
-today, not a gap to silently work around — revisit once the port has something on-device worth versioning.
+**The PoE-P4 image carries no version identity of its own yet.** `poe_p4/` uses none of
+`gen_build_identity.cmake`'s `rel`/`dev` machinery below, so every release ships whatever it builds to at that
+commit, with no version string in the image. It has no display to show one; the web app will, once the P4
+reports its version over Port A — which OTA updates need (row hstv, [RFC 0007](rfcs/0007-flash-and-update.md) §3.6).
 
 ## The rolling `continuous` release
 

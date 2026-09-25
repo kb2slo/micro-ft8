@@ -6,10 +6,10 @@ cmake_minimum_required(VERSION 3.16)
 # mirroring sidekick's own CMakeLists.txt: ESP-IDF locks target and sdkconfig
 # per project, so a board on a different chip (M5Stack Unit PoE-P4, ESP32-P4 —
 # not the ADV's/sidekick's ESP32-S3) cannot share either project's configure.
-# See docs/rfcs/0005-p4-poe-headless-port.md ("RFC 0005"), Phase 0.
+# Board facts: docs/architecture/main_board.md (P4).
 set(IDF_TARGET esp32p4)
 
-# Shared with the ADV rather than duplicated (RFC 0005 §5, docs/STYLE.md's
+# Shared with the ADV rather than duplicated (docs/STYLE.md (Two boards, one source), docs/STYLE.md's
 # module-placement rule: more than one idf.py project compiles it --
 # the same pattern sidekick already uses for porta_proto). Only the specific
 # components this project actually needs, not the whole components/ tree

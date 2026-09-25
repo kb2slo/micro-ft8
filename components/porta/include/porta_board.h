@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-// Per-board seam for components/porta (RFC 0005 Phase 3 / B67).
+// Per-board seam for components/porta (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)) / B67).
 // ADV: Grove G1/G2. PoE-P4: Grove G53/G54. Same HY2.0-4P cable roles
 // (yellow = main RX, white = main TX) so the existing PORTA cable works.
 

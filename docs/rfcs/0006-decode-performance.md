@@ -7,7 +7,7 @@
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** how decode quality is measured, the corpus and its ground truth, the host harness, what is
   tunable on each board, and the order in which parameter, audio-path and algorithm changes are tried.
-* **Does not cover:** the P4 port itself ([RFC 0005](0005-p4-poe-headless-port.md)), the UI of the decode
+* **Does not cover:** the P4 port itself ([main_board.md](../architecture/main_board.md)), the UI of the decode
   list, or the QSO sequencer.
 * **Ask:** confirm the phase order in §5 before starting. P0 (device benchmark) and P1 (host harness) are the
   candidates for Now.
@@ -24,7 +24,7 @@ the `ft8ts` author decoded 8 messages with `ft8_lib` against 14 for WSJT-X. Nobo
 
 Two things changed the calculus in September 2026:
 
-- **The P4 lifts the memory ceiling.** RFC 0005 §4 confirms 32 MB of octal PSRAM on the U213 (not yet
+- **The P4 lifts the memory ceiling.** [main_board.md](../architecture/main_board.md) (**P4 (M5Stack Unit PoE-P4, U213)**) confirms 32 MB of octal PSRAM on the U213 (not yet
   enabled in the P4 build), and its internal RAM alone holds what the S3 cannot (§4.2). The settings §4 below
   proves unreachable on the ESP32-S3 become a matter of measurement, not arithmetic.
 - **Usable corpora already exist.** `components/ft8_lib/vendor/test/wav/` holds 22 scored 15-second slots
@@ -854,7 +854,7 @@ start on both boards.
   is dropped, P2 loses its ADV arm and §4's S3 analysis becomes history. Nothing here should be built *only*
   to keep the ADV viable until that is decided. The P2 16-level experiment bears directly on it: `freq_osr` 2
   is worth ~10 points (§4.1), and if 4-bit t2/f2 holds, the S3's gap to the P4 is mostly CPU, not memory.
-  [RFC 0005](0005-p4-poe-headless-port.md)'s "both targets build from every build" (its §7 Phase 0) is the rule
+  [STYLE.md](../STYLE.md)'s "CI builds both targets on every change" (**Two boards, one source**) is the rule
   it would change.
 - Corpus storage location (§5 P6).
 - Whether decodes arriving in two waves (§5 P7) is acceptable on the operator's screen.
