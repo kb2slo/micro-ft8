@@ -128,9 +128,11 @@ health() {
   declined="$(awk '$1 == "Declined"' <<<"$data" | wc -l | tr -d ' ')"
   no_blocked_on="$(awk '$1 == "Blocked" && $6 == 0 { print $3 }' <<<"$data" | tr '\n' ' ')"
   read -r added removed < <(flow --since="@$since" --until="@$now" "$rev")
-  # Owed field checks: Pending table rows whose last cell does not start passed / N/A.
+  # Owed field checks: Pending table rows whose status cell does not say the row is closed. Bold is
+  # stripped first -- a "**pass 2026-..**" left undropped once counted as owed and inflated this to 91.
   owed="$(awk -F'|' '/^## Pending/ { p = 1; next } /^## / { p = 0 }
-    p && /^\| / && !/^\| *(From|---)/ { s = $(NF - 1); gsub(/^ +/, "", s); if (s !~ /^(passed|N\/A)/) n++ }
+    p && /^\| / && !/^\| *(From|---)/ { s = tolower($(NF - 1)); gsub(/\*/, "", s); gsub(/^ +/, "", s)
+      if (s !~ /^(pass|answered|superseded|n\/a)/) n++ }
     END { print n + 0 }' <<<"$tp")"
 
   # Oldest Backlog row, by intake (first commit that added its row), not last edit.
