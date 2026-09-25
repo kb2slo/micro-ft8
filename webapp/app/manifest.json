@@ -3,8 +3,8 @@
   "assets": [
     {
       "path": "app.html",
-      "sha256": "358b51f1529e08011222e579a22faf2643cd766967c4643192b1d0d4a69e6a61",
-      "size": 152433
+      "sha256": "9aa839acb2a9ba1ded2f8a5dbab45dca3907c96511c1d5dc04f94a35ece5fa89",
+      "size": 152518
     },
     {
       "path": "callinfo.js",

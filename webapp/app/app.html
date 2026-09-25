@@ -561,7 +561,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     </div>
 
     <div class="hd sep">This device</div>
-    <p class=setnote>Local to this browser -- not saved to the ADV, not part of Save station below.</p>
+    <p class=setnote>Local to this browser -- not saved to the main board, not part of Save station below.</p>
     <div class=setrow>
       <label>Distance units
         <select id=dist_unit>
@@ -589,8 +589,8 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
          now". This answers "how flaky has this session actually been",
          which needs the raw numbers, not a glyph. See setDiagCounters(). -->
     <div class=hd>Link diagnostics</div>
-    <div class=setrow><div class=diagrow><span>ADV: CRC errors / frames OK</span><span id=diagPorta>—</span></div></div>
-    <div class=setrow><div class=diagrow><span>ADV: outbound frames dropped</span><span id=diagPortaDropped>—</span></div></div>
+    <div class=setrow><div class=diagrow><span>Main board: CRC errors / frames OK</span><span id=diagPorta>—</span></div></div>
+    <div class=setrow><div class=diagrow><span>Main board: outbound frames dropped</span><span id=diagPortaDropped>—</span></div></div>
     <div class=setrow><div class=diagrow><span>Sidekick: CRC errors / frames OK</span><span id=diagSk>—</span></div></div>
     <div class=setrow><div class=diagrow><span>Sidekick: browser-missed events</span><span id=diagSkRingGaps>—</span></div></div>
     <div class=setrow><div class=diagrow><span>Sidekick: config re-requests</span><span id=diagSkRetries>—</span></div></div>
@@ -806,7 +806,7 @@ function updateLinkLostBanner() {
   var lost = lastConfigOkMs > 0 && (Date.now() - lastConfigOkMs) > LINK_LOST_BANNER_MS;
   if (lost) {
     if (!linkLostDismissed) {
-      showLinkBanner('lost', 'Lost contact with the sidekick or ADV. Check the connection.');
+      showLinkBanner('lost', 'Lost contact with the sidekick or main board. Check the connection.');
     }
   } else {
     linkLostDismissed = false; // condition cleared -- re-arm for a future episode
@@ -820,21 +820,21 @@ function updateLinkLostBanner() {
 // power cut reset the sidekick's frames_ok to 0 with nothing telling the
 // operator it had happened). Which family dropped says which side.
 var lastLinkCounters = null; // null until the first successful poll
-var LINK_COUNTER_KEYS_ADV = ['porta_crc_errors', 'porta_frames_ok', 'porta_dropped'];
+var LINK_COUNTER_KEYS_MAIN = ['porta_crc_errors', 'porta_frames_ok', 'porta_dropped'];
 var LINK_COUNTER_KEYS_SK = ['sk_crc_errors', 'sk_frames_ok', 'sk_ring_gaps', 'sk_config_retries'];
 
 function checkLinkCounterReset(cfg) {
   if (lastLinkCounters) {
-    var advReset = LINK_COUNTER_KEYS_ADV.some(function (k) { return cfgNum(cfg, k) < lastLinkCounters[k]; });
+    var mainReset = LINK_COUNTER_KEYS_MAIN.some(function (k) { return cfgNum(cfg, k) < lastLinkCounters[k]; });
     var skReset = LINK_COUNTER_KEYS_SK.some(function (k) { return cfgNum(cfg, k) < lastLinkCounters[k]; });
-    if (advReset) {
-      showLinkBanner('reset', 'The ADV restarted. Link counters reset to 0.');
+    if (mainReset) {
+      showLinkBanner('reset', 'The main board restarted. Link counters reset to 0.');
     } else if (skReset) {
       showLinkBanner('reset', 'The sidekick restarted. Link counters reset to 0.');
     }
   }
   lastLinkCounters = {};
-  LINK_COUNTER_KEYS_ADV.concat(LINK_COUNTER_KEYS_SK).forEach(function (k) {
+  LINK_COUNTER_KEYS_MAIN.concat(LINK_COUNTER_KEYS_SK).forEach(function (k) {
     lastLinkCounters[k] = cfgNum(cfg, k);
   });
 }
@@ -1367,7 +1367,7 @@ function changeBand(idx) {
 }
 
 async function loadConfig() {
-  setMsg('Loading config from ADV…');
+  setMsg('Loading config from the main board…');
   var ac = new AbortController();
   var timer = setTimeout(function () { ac.abort(); }, 8000);
   try {
@@ -1386,16 +1386,16 @@ async function loadConfig() {
     var n = 0;
     for (var k in cfg) { if (Object.prototype.hasOwnProperty.call(cfg, k)) n++; }
     if (n === 0) {
-      setMsg('ADV returned empty config — is Port A linked?');
+      setMsg('The main board returned an empty config — is Port A linked?');
       return;
     }
     setMsg(MicroFT8Pairing.getToken()
-      ? ('Loaded ' + n + ' fields from ADV — edit and save')
-      : 'Loaded from ADV — press the sidekick button to pair before saving');
+      ? ('Loaded ' + n + ' fields from the main board — edit and save')
+      : 'Loaded from the main board — press the sidekick button to pair before saving');
   } catch (e) {
     clearTimeout(timer);
     var msg = (e && e.name === 'AbortError')
-      ? 'Config timed out — flash ADV with CONFIG support, check Port A'
+      ? 'Config timed out — check the main board and its Port A cable'
       : String(e && e.message ? e.message : e);
     setMsg(msg);
     throw e;
