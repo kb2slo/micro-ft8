@@ -659,7 +659,7 @@ A constraint on the obvious fix: `uac_read_ft8_samples()` ignores `max_samples` 
 **Done-when:** B53's line from a busy-band field run, FT8 and FT4, reads healthy (`lost`≈0, `g`≈14, `dec`
 well under the guard) or sick (`lost` tracking `dec`, `g` collapsing on high-`cand` slots). If sick, fix
 with an app-side ring deep enough to cover decode, then move decode off the capture task — one at a time,
-measured per `TEST_PLAN.md`'s decode-yield protocol.
+measured per [decode.md](../architecture/decode.md) (**Measuring decode yield on the air**).
 
 ### P5 — Algorithm changes ([I26](../ROADMAP.md))
 

@@ -768,7 +768,7 @@ document.getElementById('staleBannerReload').onclick = function () { location.re
 // no-ops this while backgrounded, so the timer itself costs nothing then.
 // 60s of a ~112 KB fetch averages under 2 KB/s -- nothing like the 2 Hz
 // *request-rate* pattern that caused the CCMP-replay regression this app
-// already carries a fix for (TEST_PLAN.md, "app.html WiFi poll rate"); this
+// already carries a fix for (see setInterval(pollLiveStatus) below); this
 // is a much bigger request far less often, not the same shape of load.
 setInterval(checkAppStale, 60000);
 

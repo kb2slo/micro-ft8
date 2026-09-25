@@ -153,7 +153,7 @@ device's `esp_app_desc_t` project name against `kExpectedProjectName[] = "sideki
 ([`components/sidekick_flasher/sidekick_flasher.cpp`](../components/sidekick_flasher/sidekick_flasher.cpp)),
 set by `project(sidekick)` in [`sidekick/CMakeLists.txt`](../sidekick/CMakeLists.txt). Change that project
 name and **every sidekick already in the field reads as a foreign device** — `H` offers `2: OVERWRITE it`
-instead of an update. That is [TEST_PLAN.md](TEST_PLAN.md) S3.5 working as designed, aimed at the wrong
+instead of an update. That is the flasher's foreign-device check working as designed, aimed at the wrong
 target. A rename must either leave `project(sidekick)` alone or ship knowing every companion needs a
 deliberate overwrite.
 

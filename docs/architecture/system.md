@@ -51,7 +51,7 @@ Dashed edges need internet; solid edges work without it. **Everything the statio
 
 ## Connectivity
 
-* **The phone keeps its cellular route while joined to the sidekick's AP.** The AP is not a captive portal, so iOS treats it as WiFi without internet, sends internet traffic over cellular, and still reaches `micro-ft8.local`. Operator-validated on an iPhone 2026-09-23; Android is unchecked (`TEST_PLAN.md` Pending). Wherever there is cell signal, online features work on a summit.
+* **The phone keeps its cellular route while joined to the sidekick's AP.** The AP is not a captive portal, so iOS treats it as WiFi without internet, sends internet traffic over cellular, and still reaches `micro-ft8.local`. Operator-validated on an iPhone 2026-09-23; Android is unchecked (`TEST_PLAN.md` Unverified). Wherever there is cell signal, online features work on a summit.
 * **The phone's own hotspot is the other route**: the sidekick joins it, and the phone has cellular internet on the same LAN. iPhone hotspots need *Maximize Compatibility* on, because the sidekick's radio is 2.4 GHz only.
 * With no cell signal at all, the operator is offline on either route, and the offline-derived tier ([webapp.md](webapp.md), **Tools**) is what works.
 

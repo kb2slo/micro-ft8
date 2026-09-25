@@ -30,3 +30,16 @@ What these settle:
 * **The P4 fits 256 candidates and t2/f2 inside the guard on one core**, with ~0.5 s to spare on the busiest slots. **The ADV does not fit 256 candidates on one core** (4.4 s); at ~17 ms per failing candidate it affords roughly 100–130, an estimate RFC 0006 P2 measures.
 * **Failing candidates are the cost.** Nearly all the time added by 256 candidates is LDPC spent on candidates that never decode.
 * **Large waterfalls are a contiguous-RAM question.** t4/f2's 322 KB waterfall cannot allocate on either board; on the P4 it would need PSRAM, which the build leaves off ([main_board.md](main_board.md), **P4**). t2/f2's 161 KB fit in the bench images but must be re-checked inside the firmware, which has far less free heap; on the ADV it cannot fit in the firmware.
+
+## Measuring decode yield on the air
+
+The bench measures time. Any change claiming to decode *more* is measured on the air, this way, not by impression:
+
+* **The metric is unique decodes per slot.** Not total rows.
+* **A/B at the same time of day, never the same evening.** Band conditions move faster than any change we would make.
+* **Build the comparison version in a separate worktree**, so the two arms are not one tree at two times.
+* **Full chip erase before each flash.** NVS carried over has changed behaviour between arms before.
+* **60 slots (15 minutes) per arm.** Report the mean and the standard deviation, not the mean alone.
+* **Change one thing at a time.**
+
+The standard deviation is what stops a false result. In one independent project on this decoder, two arms averaged 15.38 decodes per slot each, with σ 5.70 against 6.65: a suspected regression that was band fading.

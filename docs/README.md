@@ -7,7 +7,7 @@ Human- and tool-readable project memory. Prefer this tree over editor-specific r
 | [ROADMAP.md](ROADMAP.md) | Plan: Next groom / Now / Backlog / Blocked / Ideas / Declined. Chat is intake; this file is truth. Shipped work is dropped, not archived — git history is the record. |
 | [../README.md](../README.md) | Operator landing. Fork notes (why this tree) above the Wei delimiter; Wei’s original below. |
 | [STYLE.md](STYLE.md) | Coding standard for our C/C++ (not vendored `M5*` / `ft8_lib`). |
-| [TEST_PLAN.md](TEST_PLAN.md) | What is verified and by whom: agent-run automation vs operator field checks, plus field checks owed on the current branch. |
+| [TEST_PLAN.md](TEST_PLAN.md) | Ledger: what automation checks, what it cannot see, and the field checks still owed (**Pending**). |
 | [RELEASE_PROCESS.md](RELEASE_PROCESS.md) | How a build becomes a download: the rolling `continuous` tag, versioned `v*` releases, what a version tag does **not** set, and what a rename/de-fork would break. |
 | `architecture/` | How it works now, and why, one doc per area. Start at [system.md](architecture/system.md); it links the rest. Doc type: **Doc types** below. |
 | [FT8 Free-Text Reference Extension.md](FT8%20Free-Text%20Reference%20Extension.md) | Free-text / SOTA-style payload notes. |
@@ -122,12 +122,14 @@ An unproven fix is still worth making. Pretending it is proven is not.
 - **Cursor Composer (Auto)** — strongest on verification: cited `file:line` for nearly every claim, swept dangling IDs broadly, caught stale counts and a parked defect conflicting with **Fix defects in the slice**. Weaker on severity ranking; dropped a row whose remaining work was unbuilt.
 - **Claude Sonnet** — strongest on mechanical compliance (every missing Done-when, oversize row, dangling reference; the only one to catch an RFC citing a dropped row). Missed most judgment findings, and contradicted itself once against the pre-alpha rule.
 
-**Test plan matches the work too.** [TEST_PLAN.md](TEST_PLAN.md) is the same kind of living file as the roadmap, and gets updated in the **same turn** as the work:
+**Test plan matches the work too.** [TEST_PLAN.md](TEST_PLAN.md) is a ledger, not a manual, and is updated in the **same turn** as the work:
 
-- Added or changed a host-testable unit (parse / format / policy) → add or update its row under `host_mock` coverage, in the same commit as the code.
-- Touched a field-only path (USB/UAC, CAT, display, GPS, RTC, SD, flash, TX timing) → add a row to **Pending** naming the commit and the exact check. "Test the radio" is not a check; "MENU P3 `5` reports `Copied OK`" is.
-- Removed code that was provably never in the image — linker map plus `nm` on the ELF, byte-identical `micro_ft8.bin` — say so and add no row. That evidence *is* the test.
-- Removed a harness or a check → drop its row and say why in the commit message.
+- Touched a field-only path (USB/UAC, CAT, display, GPS, RTC, SD, flash, WiFi, TX timing) → say in chat what to flash, press or run and what result means it passed, and add **one Pending row** naming the change and that check. "Test the radio" is not a check; "MENU P3 `5` reports `Copied OK`" is. The chat is how the operator hears about it; the row is how it is not forgotten.
+- The operator reports a pass → drop the row in the **same turn**. The commit that drops it names the build that passed. A failure keeps the row and becomes a fix.
+- Added a host test → nothing to record here. What a test pins lives in its own source.
+- Added, removed or renamed a check in the **Automated** table (a harness, a CI job) → update that table in the same commit.
+- Shipped something no check is planned for → add it to **Unverified**, so it is not mistaken for proven.
+- Removed code that was provably never in the image (linker map plus `nm` on the ELF, byte-identical `micro_ft8.bin`) → say so and add no row. That evidence *is* the test.
 
 State which of these you did in the turn you report the work. **"No test-plan change needed" is a valid answer and must be said out loud**, exactly like the README audit — an audit you skipped and an audit you did are otherwise indistinguishable.
 
@@ -245,12 +247,6 @@ every agent and every operator can see them — see "Memory lives in this repo" 
   option does — so the operator never has to open a row, an RFC, or an earlier message to answer. Stated
   2026-09-24.
 
-- **Announce a field/bench test in chat, not just as a `TEST_PLAN.md` row.** When a change needs an
-  operator-run check — anything landing in `TEST_PLAN.md`'s Pending table per this doc's verifiability
-  tiers — say so directly in the same chat turn: what to flash/press/run, and what result confirms it
-  passed. The doc row is the durable record; a row nobody was told about in chat is easy to leave unrun,
-  since the operator does not necessarily re-read that file after every turn. Stated 2026-09-16.
-
 - **Prose is authoritative; a diagram is derived.** Never let a fact live only in a diagram. Agents read
   the prose and may not reconstruct a constraint that exists only as an arrow, and a diagram that is the sole
   source of something goes stale without anyone noticing. Where a diagram earns its place, write it as
@@ -290,7 +286,7 @@ comes out.
 
 Agents with a private per-machine memory store must not use it for anything about this project. These docs
 are the memory: `README.md` for working agreement and operating notes, `ROADMAP.md` for plan and history,
-`TEST_PLAN.md` for what has and has not been verified on hardware, `STYLE.md` for code conventions.
+`TEST_PLAN.md` for the field checks still owed and what has never run on hardware, `STYLE.md` for code conventions.
 
 **Why:** a private store is scoped to one machine and one account. It is invisible to the operator, to a
 second agent on another machine, to a future operator, and to code review — so it silently diverges from the
