@@ -5,5 +5,5 @@ idf_component_register(
              debug_log protocol rtc_core board_power adif
 )
 
-# B89: decode loop at -O2, as ft8_lib (RFC 0006 §4.2 lever 1).
+# B89: decode loop at -O2, as ft8_lib (docs/architecture/decode.md, Build).
 target_compile_options(${COMPONENT_LIB} PRIVATE -O2)

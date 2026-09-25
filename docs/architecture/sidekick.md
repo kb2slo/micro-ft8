@@ -93,3 +93,19 @@ Everything the app needs crosses Port A: decodes at slot cadence, TX control, co
 * **One build identity for both sides.** The sidekick and the ADV take their version string from the same `tools/git_version.cmake` (exact git SHA, plus a dirty flag), so "same commit" is an exact string match. CI pins `MICROFT8_GIT_SHA` for both jobs, because a pull request builds a synthesized merge commit and two jobs left to derive it separately could disagree.
 * **Asymmetric traffic**: commands are rare and want low latency; decodes arrive every 15 s and tolerate hundreds of milliseconds. A full slot of decodes is about 3 KB, so sustained load is a couple of hundred bytes per second.
 * **The browser polls** `GET /api/events?since=<seq>`; the sidekick keeps a ring of recent events so a client can catch up after a short gap. Config is `GET /api/config` (open) and `PUT /api/config` (token-guarded).
+
+## Tasks and cores
+
+Nothing of ours is pinned to a core: FreeRTOS places our tasks, and ESP-IDF pins some of its own to CPU0 by configuration (`sidekick/sdkconfig`). As of 2026-09-25:
+
+| Task | Created by | Priority | Core | Stack | Job |
+|---|---|---|---|---|---|
+| main loop | `app_main` (`main.c`) | 1 | CPU0 | 3.5 KB | Once a second: Port A HELLO, marking a new image valid, the pairing-button disclosure |
+| `porta_rx` | `host_link.c` | 5 | any | 4 KB | Reads Port A, parses frames, fills the event ring and the reply state |
+| `httpd` | `wifi_prov.c` (`httpd_start`) | 5 | any | 8 KB | Every HTTP handler; control requests wait on `porta_rx` for the main board's reply |
+| `scan_fresh` | `wifi_prov.c` | 3 | any | 3 KB | AP mode only: keeps the WiFi scan list fresh for provisioning |
+| WiFi driver, mDNS, `esp_timer` | ESP-IDF | IDF defaults (mDNS 1) | CPU0 | — | |
+| lwIP `tcpip` | ESP-IDF | 18 | any | — | |
+
+* **Known defect, row hvz8:** the reply state `porta_rx` writes and HTTP handlers read is not fully under `s_lock`, so a handler can read the previous reply's result.
+* **Not yet built: row wgjx** — pin the latency-sensitive work (main loop, `porta_rx`) to one core and the bursty work (HTTP, DNS, scanning) to the other. After hvz8, since pinning would make that race certain.

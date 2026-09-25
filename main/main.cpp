@@ -2425,7 +2425,7 @@ static void check_slot_boundary() {
   // previous RX slot (slot_idx - 1) has been fully applied to autoseq state before
   // we fire TX. Without this, a slot boundary that arrives before audio capture
   // has completed (FT8: ~12.6s of 15s slot; FT4: ~5.0s of 7.5s slot) could fire
-  // TX based on a prior cycle's state. See docs/architecture/autoseq_inactive_queue.md.
+  // TX based on a prior cycle's state. See docs/architecture/autoseq.md (Inactive queue).
   // Window = 4/15 of slot_time_ms (~26.7%): FT8=4000ms, FT4=2000ms.
   if (g_qso_xmit &&
       !board_power_halted() &&

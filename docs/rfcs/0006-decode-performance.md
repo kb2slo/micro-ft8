@@ -2,7 +2,7 @@
 
 * **Status:** Draft. Opened 2026-09-23 to stage the decode-performance work that had spread across four
   roadmap rows ([B25](../ROADMAP.md), [B53](../ROADMAP.md), [B54](../ROADMAP.md), [I26](../ROADMAP.md)) plus
-  three new ones ([B87](../ROADMAP.md), §5 P0; [B85](../ROADMAP.md), §5 P3; [B86](../ROADMAP.md), §5 P6). Those rows now carry an ID, a name and a
+  three new ones (B87, §5 P0, since shipped; [B85](../ROADMAP.md), §5 P3; [B86](../ROADMAP.md), §5 P6). Those rows now carry an ID, a name and a
   link here; the reasoning lives in this file.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** how decode quality is measured, the corpus and its ground truth, the host harness, what is
@@ -98,7 +98,7 @@ FPUs, is a clock ratio of 1.5× and an unknown IPC ratio. That is too coarse whe
 within a small factor of the guard. And paper cannot model what differs most: PSRAM latency on a
 waterfall sweep, cache behaviour, and `ft8_lib`'s static DIRAM arena against a PSRAM one.
 
-So the device benchmark is its own small deliverable, §5 P0 ([B87](../ROADMAP.md)). Same input on both
+So the device benchmark is its own small deliverable, §5 P0 (B87, done: [decode.md](../architecture/decode.md)). Same input on both
 boards, no radio, no USB audio. It serves four purposes at once: it replaces §4.1's guessed desktop-to-P4
 factor with a measured one, it is the host/device parity check above, it ranks ADV against P4 on identical
 work, and it is the A/B bench for §4.2's toolchain levers. The per-slot `SLOT … dec=…ms` line that
@@ -309,7 +309,7 @@ Three conclusions:
 For three independent reasons:
 
 1. **CPU.** `jt9` spends ~0.44–1.45 s per slot on a desktop core. P0 measured the desktop-to-P4 factor at ~50×
-   for light work and ~100× for LDPC-heavy work (§5 P0 results), so that is ~22–145 s against a 2.36 s guard
+   for light work and ~100× for LDPC-heavy work ([decode.md](../architecture/decode.md)), so that is ~22–145 s against a 2.36 s guard
    band. Double-buffering (B54) does not rescue it: replying in the next slot still needs the decode inside
    roughly the guard.
 2. **Language.** It is Fortran, and the ESP-IDF toolchains have no Fortran front end. A port is a hand
@@ -342,9 +342,7 @@ fork wholesale would buy OSD and FST4 we may not want, a C++-leaning build, and 
 `ft8_lib` is portable C, and we build it the way ESP-IDF builds everything by default. What the tree shows
 (2026-09-23):
 
-- **Both targets compile at `-Og`.** `CONFIG_COMPILER_OPTIMIZATION_DEBUG=y` in `sdkconfig` and
-  `poe_p4/sdkconfig`, and `components/ft8_lib/CMakeLists.txt` does not override it. That is ESP-IDF's
-  default, not a decision anyone made.
+- **Both targets compile at `-Og`**, ESP-IDF's default, **except the decoder**, which has been `-O2` since B89 ([decode.md](../architecture/decode.md)).
 - **The FFT is `kiss_fft`**, generic C. `esp-dsp`, Espressif's library with FFTs tuned for both chips, is not
   a dependency.
 - **No hidden `double`.** The hot paths in `vendor/ft8/decode.c`, `vendor/ft8/ldpc.c` and `common/monitor.c`
@@ -369,13 +367,13 @@ fork wholesale would buy OSD and FST4 we may not want, a C++-leaning build, and 
 A wide out-of-order desktop core hides much of what `-Og` leaves behind. The S3 and P4 are in-order cores,
 where the gap is usually larger. How much larger is a device measurement.
 
-**Levers, ranked by expected gain per unit of effort.** Each is an A/B on [B87](../ROADMAP.md)'s device
-benchmark (§5 P0), on both boards:
+**Levers, ranked by expected gain per unit of effort.** Each is an A/B on the device benchmark
+([decode.md](../architecture/decode.md)), on both boards:
 
 1. **`-O2` for the decoder only.** A `target_compile_options` line for `ft8_lib` and `decode_pipeline`; the
    rest of the image stays at `-Og` and debuggable. Output must be identical, so the benchmark's
    decode-set check is the whole test. **Measured on the P4: ~1.9× on the decode loop, with identical
-   output** (§5 P0 results). That alone moves 256 candidates and t2/f2 inside the guard.
+   output** ([decode.md](../architecture/decode.md)). That alone moves 256 candidates and t2/f2 inside the guard. **Shipped (B89).**
 2. **The second core.** Both chips are dual-core and decode runs on one. Per-candidate LDPC is independent
    per candidate, so the loop splits across cores naturally. That could approach 2× on exactly the window
    that decides how much of §4.1's feature list fits. The constraint is what already runs on the other core (the
@@ -429,7 +427,7 @@ we transmit in N+1 there is no capture at all, so the full decode of N has rough
 
 **Stopping at 12.64 s cuts the tail of every signal.** Transmitters start ~0.5 s after the boundary, plus clock
 error (DT), so a typical signal ends ~13.1–13.6 s. Measured on the host (parity with both boards is exact,
-§5 P0), decodes summed over the five busiest slots:
+[decode.md](../architecture/decode.md)), decodes summed over the five busiest slots:
 
 | Decode starts at | today (50 candidates) | 256 candidates | t2/f2, 256 candidates |
 |---|---|---|---|
@@ -453,7 +451,7 @@ ones. So **the trigger and the candidate cap must be measured together**, and on
 **What follows:**
 
 - **Move the trigger to ~13.3–13.6 s** ([B90](../ROADMAP.md)), measured with the candidate cap raised. With
-  B89's `-O2`, today's settings would end at ~13.9 s on the P4 and ~14.3 s on the ADV. On the ADV that spends B89's
+  the decoder's `-O2`, today's settings would end at ~13.9 s on the P4 and ~14.3 s on the ADV. On the ADV that spends that
   freed time on listening longer instead of on more candidates. P2 measures that trade on the full corpus.
 - **Two-pass decode** (§5 P7) removes the trade entirely.
 
@@ -462,101 +460,9 @@ ones. So **the trigger and the candidate cap must be measured together**, and on
 Each phase is a slice with its own done-when. P0 and P1 are the candidates for Now. P2 is blocked on both;
 the others are independent of each other unless stated.
 
-### P0 — Device decode benchmark ([B87](../ROADMAP.md))
+### P0 — Device decode benchmark
 
-First, because four questions wait on it (§3): the real desktop-to-device factor, host/device parity, ADV
-against P4, and §4.2's levers. It does not depend on P1 and is small.
-
-A `test_apps/` image per board, sharing one source, that embeds a few corpus slots (resampled to 6 kHz on the
-host, stored in flash) and decodes each under a list of configurations. It prints, per slot and
-configuration, the decoded messages and the wall time of candidate search plus decode. Configurations cover
-§4's parameters and §4.2's levers 1–3. `howard0su/ft8_lib` joins when P5 starts.
-
-**Tiering:** an agent builds both images and checks the host side. Flashing and reading the serial output
-are the operator's. USB-C is free of the radio for this, so the console works over USB on both boards.
-
-**Done-when:** a table in this RFC of milliseconds per slot, per configuration, per board, against the
-2.36 s guard; each board's decode sets compared with the host's for the same files; and §4.1's 30–50×
-estimate replaced by the measured factor.
-
-**Built as `test_apps/decode_bench/`** (its README has the commands). It shares one C core and one configuration
-table between the device image and a host binary. The P4 image uses `poe_p4/partitions.csv` and is flashed to
-the app slot only, so `nvs` and the `storage` partition survive.
-
-#### Results, ESP32-P4 (2026-09-23)
-
-U213, v1.3 silicon, 360 MHz, one core. The five busiest corpus slots (27–33 `jt9` decodes each). Figures are
-**find + decode** (the guard-band clock), mean over the five slots, with the worst slot in brackets. Decodes are
-summed over the five slots.
-
-| Configuration | Decodes | P4 `-Og` (as shipped) | P4 `-O2` | Host `-O2` (M4) | P4 ÷ host |
-|---|---|---|---|---|---|
-| today (t2/f1, 50 candidates, `DEC_MAX` 32) | 72 | 585 ms (628) | **315 ms** (335) | 6.4 ms | ~49× |
-| 256 candidates | 83 | 3,646 ms (3,669) | **1,870 ms** (1,880) | 18.3 ms | ~102× |
-| t1/f2 swap, 256 candidates | 83 | 3,645 ms (3,722) | 1,874 ms (1,909) | 17.3 ms | ~108× |
-| t2/f2, 256 candidates | 96 | 3,357 ms (3,441) | **1,747 ms** (1,790) | 16.3 ms | ~107× |
-| t4/f2, 256 candidates | (100 on host) | allocation failed | allocation failed | 14.5 ms | — |
-
-Capture-time CPU (`monitor_process()` over the whole slot, not on the guard clock): 211 → 177 ms at t2/f1 and
-378 → 312 ms at t2/f2 (`-Og` → `-O2`), i.e. ~2% of a core.
-
-What this settles:
-
-1. **Host/device parity holds.** For all 20 (configuration, slot) pairs that ran, the P4 produced exactly the
-   host's messages, including frequency and DT, at both optimisation levels. RFC §3's licence for host-only
-   sweeps is granted for this decoder lineage.
-2. **`-O2` is worth ~1.9× on the P4** (decode loop 3.6 s → 1.8 s), against 1.1–1.2× on the M4 (§4.2). §4.2's
-   lever 1 is the largest single speed lever measured.
-3. **At `-O2`, 256 candidates and t2/f2 fit the 2.36 s guard on one core,** with ~0.5 s margin on the busiest
-   slots. At the firmware's `-Og` neither does. Today's firmware spends ~0.6 s of the guard on a busy slot.
-4. **The desktop-to-P4 factor is ~50× for light work and ~100× for the LDPC-heavy candidate loop,** worse than
-   the 30–50× this RFC first guessed. So `jt9 -d 1` (0.44 s on the M4) would need ~44 s. howard-lite (~24 ms host)
-   projects to ~2.4 s on one P4 core at `-O2`, which is right at the guard: it needs the second core (§4.2
-   lever 2) or cheaper failing candidates. The fork's OSD (~87 ms host) projects to ~9 s and is out.
-5. **t4/f2's 322 KB waterfall does not allocate** with 432 KB of internal heap free (no contiguous block that
-   large). It needs PSRAM, which the P4 build leaves off. The bench app has far more free heap than the
-   firmware, so **t2/f2's 161 KB must be re-checked inside `poe_p4` before it ships.**
-6. **The cost of 256 candidates is failing candidates.** Nearly all of the ~1.5 s added over "today" is LDPC
-   iterations spent on candidates that never decode. Cheaper rejection (fewer iterations for low-score
-   candidates, or an early parity check) is a lever P2 should measure.
-
-#### Results, ESP32-S3 / ADV (2026-09-24)
-
-Cardputer ADV (Stamp-S3A, v0.2 silicon), 240 MHz as the firmware runs, one core, same five slots.
-
-| Configuration | ADV `-Og` (as shipped) | ADV `-O2` | P4 `-O2` |
-|---|---|---|---|
-| today | 1,122 ms (1,205) | **718 ms** (771) | 315 ms |
-| 256 candidates | 7,077 ms (7,121) | 4,429 ms (4,456) | 1,870 ms |
-| t1/f2 swap, 256 candidates | 7,068 ms (7,231) | 4,425 ms (4,527) | 1,874 ms |
-| t2/f2, 256 candidates | allocation failed | 4,076 ms (4,185) | 1,747 ms |
-| t4/f2, 256 candidates | allocation failed | allocation failed | allocation failed |
-
-1. **Parity holds on the ADV too.** All 35 (configuration, slot) pairs that ran match the host exactly, including
-   frequency and DT. Across both boards and both optimisation levels, no decode ever differed from the host.
-2. **The ADV is ~1.95× slower than the P4 per core** at the same optimisation level (585 vs 1,122 ms today;
-   3,646 vs 7,077 ms at 256 candidates). `-O2` is worth less on the S3 (~1.6×) than on the P4 (~1.9×).
-3. **Today's shipped firmware spends about half the guard decoding a busy slot on the ADV** (1.1–1.2 s of
-   2.36 s). `-O2` alone brings that to ~0.7 s.
-4. **256 candidates does not fit the ADV on one core, even at `-O2`** (4.4 s). A failing candidate costs
-   ~17 ms at `-O2`. So on one core the ADV can afford roughly **100–130 candidates**, an estimate from the per-candidate
-   cost, not a measurement. On the host that range captures most of the ~5 points the full cap is worth
-   (§4.1: 50 → 140 gave +4.6 of +5.1). It is P2's ADV configuration to measure, together with cheaper candidate
-   rejection and the second core (§4.2), where the UI's share of that core is the constraint.
-5. **t2/f2 allocated in the `-O2` bench image and not in the `-Og` one.** Both had ~230 KB of internal heap free,
-   and the 161 KB waterfall needs one contiguous block, so layout decides it. Inside the firmware, with ~94 KB of
-   DIRAM remainder (§4), it cannot. Time is also against it (4.1 s). On the ADV, t2/f2 still depends on the 4-bit
-   waterfall, and on candidate cost.
-
-**Correction, 2026-09-24:** the bench filled 80 waterfall blocks, but the firmware triggers decode at 79
-(`ft8_audio_pipeline_run()`: `slot_blocks >= total_symbols && num_blocks >= total_symbols`). `bench_core.c` now
-stops at 79. Every table above was measured at 80 blocks. That is one extra 160 ms symbol of signal, so the
-candidate search is ~1% slower and a late station occasionally gets one more usable symbol than the firmware
-would see. Parity is unaffected, because host and device ran the same 80 blocks. Rerun before quoting timings to
-better than a few percent.
-
-**P0 is done** on both boards. The results change P2's ADV arm from "256 candidates" to "the largest count that
-fits".
+**Done 2026-09-24** on both boards (row B87). The tool, the measured timings, and what they settle: [decode.md](../architecture/decode.md). The results change P2's ADV arm from "256 candidates" to "the largest count that fits".
 
 ### P1 — Host harness on the existing corpora ([B25](../ROADMAP.md))
 

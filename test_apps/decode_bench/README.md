@@ -1,6 +1,6 @@
 # decode_bench
 
-RFC 0006 §5 P0 (B87). Times the firmware's decode steps on the same corpus slots on every board, and checks
+docs/architecture/decode.md. Times the firmware's decode steps on the same corpus slots on every board, and checks
 the device decodes exactly what the host does. There is no radio or USB audio, only the decoder.
 
 What it runs is `main/bench_core.c`: the firmware's per-block AGC and `monitor_process()` (as
@@ -26,7 +26,7 @@ make -C test_apps/decode_bench/host && test_apps/decode_bench/host/decode_bench_
 ## 3. Device
 
 Build inside the ESP-IDF environment, from `test_apps/decode_bench`. `-Og` is how the firmware ships, and
-`-O2` is RFC 0006 §4.2 lever 1:
+`-O2` is docs/architecture/decode.md, Build:
 
 ```bash
 idf.py -B build_og -D SDKCONFIG=build_og/sdkconfig set-target esp32p4 build

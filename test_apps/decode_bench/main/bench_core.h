@@ -1,6 +1,6 @@
 #pragma once
 
-// Decode benchmark core (RFC 0006 §5 P0, B87). Runs the firmware's decode steps on one 15 s slot of
+// Decode benchmark core (docs/architecture/decode.md). Runs the firmware's decode steps on one 15 s slot of
 // 6 kHz audio: per-block AGC and monitor_process() as ft8_audio_pipeline_run() does, then
 // ftx_find_candidates() / ftx_decode_candidate() / ftx_message_decode() as decode_monitor_results()
 // does. Portable C: the same file builds into the device image and the host parity binary.

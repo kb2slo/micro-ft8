@@ -1,6 +1,6 @@
 #pragma once
 
-// Configurations timed by the decode benchmark (RFC 0006 §5 P0). Shared by the device image and the host
+// Configurations timed by the decode benchmark (docs/architecture/decode.md). Shared by the device image and the host
 // parity binary so both run exactly the same list. min_score 5 and 25 LDPC iterations are the firmware's.
 
 #include "bench_core.h"

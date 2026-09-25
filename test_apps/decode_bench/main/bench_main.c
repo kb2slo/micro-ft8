@@ -1,4 +1,4 @@
-// Device side of the decode benchmark (RFC 0006 §5 P0, B87). Decodes the embedded corpus slots under every
+// Device side of the decode benchmark (docs/architecture/decode.md). Decodes the embedded corpus slots under every
 // configuration in bench_configs.h and prints one RESULT line per (config, slot) and one MSG line per decode.
 // Output format is shared with host_main.c, so the two logs diff directly for the host/device parity check.
 

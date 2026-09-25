@@ -8,7 +8,7 @@ idf_py_*
 main/*.o
 # host_mock compiles some components/ sources in place too (autoseq, adif) --
 # same stray-.o pattern main/*.o above already covers, now in two more spots
-# since docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)) moved those files out of main/.
+# since the P4 port moved those files out of main/ into components/.
 components/autoseq/*.o
 components/adif/*.o
 

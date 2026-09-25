@@ -1,4 +1,4 @@
-# Decode benchmark (RFC 0006 §5 P0, B87): times the firmware's decode steps on embedded corpus slots.
+# Decode benchmark (docs/architecture/decode.md): times the firmware's decode steps on embedded corpus slots.
 # One source for every board; pick the board with `idf.py set-target`. See README.md.
 cmake_minimum_required(VERSION 3.16)
 

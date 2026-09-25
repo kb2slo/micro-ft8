@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare the corpus slots the decode benchmark embeds (RFC 0006 §5 P0).
+"""Prepare the corpus slots the decode benchmark embeds (docs/architecture/decode.md).
 
 Writes data/slot_0.raw .. slot_4.raw (6 kHz mono int16, little-endian) and data/slots.txt. The busiest
 slots are chosen on purpose: the benchmark measures worst-case decode time, and busy slots are where the
