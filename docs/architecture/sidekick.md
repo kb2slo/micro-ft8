@@ -93,6 +93,7 @@ Everything the app needs crosses Port A: decodes at slot cadence, TX control, co
 * **One build identity for both sides.** The sidekick and the ADV take their version string from the same `tools/git_version.cmake` (exact git SHA, plus a dirty flag), so "same commit" is an exact string match. CI pins `MICROFT8_GIT_SHA` for both jobs, because a pull request builds a synthesized merge commit and two jobs left to derive it separately could disagree.
 * **Asymmetric traffic**: commands are rare and want low latency; decodes arrive every 15 s and tolerate hundreds of milliseconds. A full slot of decodes is about 3 KB, so sustained load is a couple of hundred bytes per second.
 * **The browser polls** `GET /api/events?since=<seq>`; the sidekick keeps a ring of recent events so a client can catch up after a short gap. Config is `GET /api/config` (open) and `PUT /api/config` (token-guarded).
+* **The sidekick answers for itself without the main board.** Every `GET /api/config` reply carries its own facts (`sk_*`: firmware version, WiFi mode, network, IP, uptime, its link counters), built at reply time (`send_config_reply()` in `host_link.c`), including the `{"ok":false,...}` reply when the main board does not answer. The web app shows them only from a live reply, never from its browser cache.
 
 ## Tasks and cores
 

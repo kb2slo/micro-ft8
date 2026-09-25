@@ -489,6 +489,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <p id=netMsg class=setnote></p>
 
     <div class="hd sep" id=stationSection>Station</div>
+    <p id=stationCached class=setnote hidden></p>
     <div class=setrow><label>Call <input id=call autocomplete=off spellcheck=false></label></div>
     <div class=setrow>
       <label>Grid <input id=grid autocomplete=off spellcheck=false></label>
@@ -948,6 +949,7 @@ document.getElementById('settingsOverlayBack').onclick = closeSettings;
 // ===================== config (shared: Operate live header + Settings form) =====================
 
 var lastCfg = {};
+var lastCfgAt = 0; // when the main board last answered; kept with the cache
 
 function bandFreq(cfg, idx) {
   var k = 'band' + idx;
@@ -1162,12 +1164,47 @@ function updateLinkFaultState(cfg) {
 // end) resets them to 0, which is expected, not a bug to chase.
 function updateDiagCounters(cfg) {
   document.getElementById('diagPorta').textContent =
-    cfgNum(cfg, 'porta_crc_errors') + ' / ' + cfgNum(cfg, 'porta_frames_ok');
-  document.getElementById('diagPortaDropped').textContent = cfgNum(cfg, 'porta_dropped');
+    cfgCount(cfg, 'porta_crc_errors') + ' / ' + cfgCount(cfg, 'porta_frames_ok');
+  document.getElementById('diagPortaDropped').textContent = cfgCount(cfg, 'porta_dropped');
+  updateSidekickDiag(cfg);
+}
+
+function updateSidekickDiag(cfg) {
   document.getElementById('diagSk').textContent =
-    cfgNum(cfg, 'sk_crc_errors') + ' / ' + cfgNum(cfg, 'sk_frames_ok');
-  document.getElementById('diagSkRingGaps').textContent = cfgNum(cfg, 'sk_ring_gaps');
-  document.getElementById('diagSkRetries').textContent = cfgNum(cfg, 'sk_config_retries');
+    cfgCount(cfg, 'sk_crc_errors') + ' / ' + cfgCount(cfg, 'sk_frames_ok');
+  document.getElementById('diagSkRingGaps').textContent = cfgCount(cfg, 'sk_ring_gaps');
+  document.getElementById('diagSkRetries').textContent = cfgCount(cfg, 'sk_config_retries');
+}
+
+// For display: a counter the reply did not carry is unknown, not 0 -- "0 / 0"
+// would read as a healthy link. cfgNum() stays 0 for arithmetic.
+function cfgCount(cfg, key) {
+  return (cfg[key] === undefined || cfg[key] === '') ? '—' : String(cfgNum(cfg, key));
+}
+
+// The sidekick's facts about itself (sk_*). It sends them on every
+// /api/config reply, {"ok":false} ones included (host_link.c,
+// send_config_reply()), so they are always live and never taken from the
+// cache (loadStateCache()).
+function applySidekickFacts(cfg) {
+  updateNetInfo(cfg);
+  updateSidekickDiag(cfg);
+}
+
+// Main-board values -- the Station form, the main board's link counters --
+// come only from a reply the main board answered. When it is not answering,
+// the form still shows what this browser last saved, and says so.
+function setMainBoardLive(live) {
+  var note = document.getElementById('stationCached');
+  if (live || !Object.keys(lastCfg).length) {
+    note.hidden = true;
+    return;
+  }
+  note.textContent = 'The main board is not answering. Station values below are the ones this browser saved' +
+    (lastCfgAt ? ' ' + fmtAgo(lastCfgAt) : '') + '.';
+  note.hidden = false;
+  document.getElementById('diagPorta').textContent = '—';
+  document.getElementById('diagPortaDropped').textContent = '—';
 }
 
 // Settings > Network -- retired from status.html, same sk_* keys host_link.c
@@ -1376,15 +1413,23 @@ async function loadConfig() {
     if (!r.ok) throw new Error('config HTTP ' + r.status);
     var cfg = await r.json();
     if (cfg.ok === false) {
-      throw new Error(cfg.why || 'config failed');
+      applySidekickFacts(cfg);
+      throw new Error(cfg.why === 'no reply from host'
+        ? 'The main board is not answering — check it and its Port A cable'
+        : (cfg.why || 'config failed'));
     }
     lastCfg = cfg;
     lastConfigOkMs = Date.now();
+    lastCfgAt = lastConfigOkMs;
     saveStateCache();
     setForm(cfg);
     applyOperateLive(cfg);
+    setMainBoardLive(true);
+    // Main-board fields only: the sidekick's own sk_* facts ride on every reply.
     var n = 0;
-    for (var k in cfg) { if (Object.prototype.hasOwnProperty.call(cfg, k)) n++; }
+    for (var k in cfg) {
+      if (Object.prototype.hasOwnProperty.call(cfg, k) && k.indexOf('sk_') !== 0) n++;
+    }
     if (n === 0) {
       setMsg('The main board returned an empty config — is Port A linked?');
       return;
@@ -1394,8 +1439,12 @@ async function loadConfig() {
       : 'Loaded from the main board — press the sidekick button to pair before saving');
   } catch (e) {
     clearTimeout(timer);
+    setMainBoardLive(false);
+    // The sidekick answers within ~5 s even when the main board does not
+    // (host_link.c, wait_action_reply()), so running out the 8 s here means
+    // the sidekick itself did not answer.
     var msg = (e && e.name === 'AbortError')
-      ? 'Config timed out — check the main board and its Port A cable'
+      ? 'Config timed out — no answer from the sidekick'
       : String(e && e.message ? e.message : e);
     setMsg(msg);
     throw e;
@@ -1408,11 +1457,17 @@ async function pollLiveStatus() {
     var r = await fetch('/api/config', { cache: 'no-store' });
     if (!r.ok) return;
     var cfg = await r.json();
-    if (cfg.ok === false) return;
+    if (cfg.ok === false) {
+      applySidekickFacts(cfg);
+      setMainBoardLive(false);
+      return;
+    }
     lastCfg = cfg;
     lastConfigOkMs = Date.now();
+    lastCfgAt = lastConfigOkMs;
     saveStateCache();
     applyOperateLive(cfg);
+    setMainBoardLive(true);
   } catch (e) { /* next tick */ }
   // Gated internally (paired + backoff timer), so this is a no-op almost
   // every tick -- an actual sync attempt only every CLOCK_AUTO_SYNC_MS, or
@@ -3083,7 +3138,9 @@ window.addEventListener('hashchange', applyHashRoute);
 // "Loading..." for state the browser already knows -- operator-requested,
 // prompted by trying the new "reload available" banner for the first time.
 // Never a substitute for the wire: loadConfig()/pollEvents() below overwrite
-// all of this within about a second regardless, and decode slots already
+// all of this within about a second when the main board answers; when it does
+// not, Settings says the station values are cached (setMainBoardLive()), and
+// the sidekick's own facts are never cached at all. Decode slots already
 // carry their own date/time header, so a stale cached slot reads as exactly
 // what it is (old) rather than pretending to be fresh. saveStateCache() is
 // called after every place these variables actually change -- loadConfig(),
@@ -3092,7 +3149,7 @@ var STATE_CACHE_KEY = 'microft8_state_v1';
 function saveStateCache() {
   try {
     localStorage.setItem(STATE_CACHE_KEY, JSON.stringify({
-      lastCfg: lastCfg, queue: queue, queueOrder: queueOrder,
+      lastCfg: lastCfg, lastCfgAt: lastCfgAt, queue: queue, queueOrder: queueOrder,
       // Each decodeSlots entry is an array whose .ts/.band/.freqKhz are
       // properties *on the array object*, not indexed elements -- confirmed
       // separately, not assumed: JSON.stringify on an array serializes only
@@ -3111,7 +3168,16 @@ function loadStateCache() {
     var raw = localStorage.getItem(STATE_CACHE_KEY);
     if (!raw) return;
     var s = JSON.parse(raw);
-    if (s.lastCfg) lastCfg = s.lastCfg;
+    if (s.lastCfg) {
+      // Not the sidekick's own sk_* facts: those arrive live on every reply
+      // (applySidekickFacts()), so a cached firmware version or uptime is
+      // never shown as the running one.
+      lastCfg = {};
+      Object.keys(s.lastCfg).forEach(function (k) {
+        if (k.indexOf('sk_') !== 0) lastCfg[k] = s.lastCfg[k];
+      });
+    }
+    if (s.lastCfgAt) lastCfgAt = s.lastCfgAt;
     if (s.queue) queue = s.queue;
     if (s.queueOrder && s.queueOrder.length) {
       queueOrder = s.queueOrder.filter(function (id) { return !!queue[id]; });

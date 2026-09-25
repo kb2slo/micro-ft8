@@ -276,10 +276,15 @@ static char s_last_reply_reason[PORTA_EVENT_TEXT_MAX + 1];
 
 // How many times wait_action_reply() has had to resend a CONFIG_GET because
 // nothing answered halfway through the wait -- see that function. Relayed to
-// the browser alongside the CRC/frame counters (config_json_end() call site
-// in porta_rx_task()) so a flaky link shows up as a number, not a vague
-// slowness the operator can't attribute to anything.
+// the browser alongside the CRC/frame counters (sidekick_facts_json()) so a
+// flaky link shows up as a number, not a vague slowness the operator can't
+// attribute to anything.
 static volatile uint32_t s_config_get_retries;
+
+// Port A receive decoder. porta_rx_task() owns it; the HTTP side reads its
+// counters for /api/config. Plain 32-bit reads of diagnostic counters, so no
+// lock: a count one frame stale is still the right answer to "how healthy".
+static porta_decoder_t s_rx_dec;
 
 // CONFIG_GET all: VALUE frames arrive before the ACK; gather into JSON here.
 #define CONFIG_JSON_MAX 3072
@@ -319,16 +324,87 @@ static void config_json_add(const char *key, const char *value)
     s_config_json_first = false;
 }
 
-static void config_json_end(void)
+// Ends gathering when the ACK arrives. The object is left open: the reply
+// closes it after appending the sidekick's own facts (send_config_reply()),
+// so nothing here is still writing the buffer once the ACK is visible.
+static void config_json_stop(void)
 {
-    if (!s_config_gathering) {
-        return;
-    }
-    if (s_config_json_len + 2 < CONFIG_JSON_MAX) {
-        s_config_json[s_config_json_len++] = '}';
-        s_config_json[s_config_json_len] = '\0';
-    }
     s_config_gathering = false;
+}
+
+// The sidekick's facts about itself, as `"key":"value"` pairs with no braces.
+// None depends on the main board, so every /api/config reply carries them,
+// a failed one included: that is when "which firmware is this sidekick
+// running" matters most. Built at reply time on the httpd task.
+//   sk_crc_errors / sk_frames_ok  the main board -> sidekick direction, which
+//                                 the main board cannot see; its own
+//                                 counterparts are porta_crc_errors/frames_ok
+//   sk_ring_gaps / sk_config_retries  the browser-facing side of this file
+static size_t sidekick_facts_json(char *out, size_t cap)
+{
+    char num[4][12];
+    snprintf(num[0], sizeof(num[0]), "%" PRIu32, s_rx_dec.crc_errors);
+    snprintf(num[1], sizeof(num[1]), "%" PRIu32, s_rx_dec.frames_ok);
+    snprintf(num[2], sizeof(num[2]), "%" PRIu32, s_ring_gap_events);
+    snprintf(num[3], sizeof(num[3]), "%" PRIu32, s_config_get_retries);
+    const struct {
+        const char *key;
+        const char *value;
+    } facts[] = {
+        { "sk_crc_errors", num[0] },
+        { "sk_frames_ok", num[1] },
+        { "sk_ring_gaps", num[2] },
+        { "sk_config_retries", num[3] },
+        { "sk_wifi_mode", wifi_prov_ap_active() ? "ap" : "station" },
+        { "sk_network_name", wifi_prov_network_name() },
+        { "sk_ip", wifi_prov_ip_str() },
+        { "sk_uptime", wifi_prov_uptime_str() },
+        { "sk_fw_version", wifi_prov_fw_version() },
+    };
+    static char esc[PORTA_CONFIG_VALUE_MAX * 6 + 1];  // httpd task only
+    size_t w = 0;
+    out[0] = '\0';
+    for (size_t i = 0; i < sizeof(facts) / sizeof(facts[0]); ++i) {
+        json_escape(facts[i].value, esc, sizeof(esc));
+        const int n = snprintf(out + w, cap - w, "%s\"%s\":\"%s\"",
+                               w ? "," : "", facts[i].key, esc);
+        if (n < 0 || (size_t)n >= cap - w) {
+            out[w] = '\0';  // drop the fact that did not fit, keep the rest valid
+            break;
+        }
+        w += (size_t)n;
+    }
+    return w;
+}
+
+// Sends a /api/config reply with the sidekick's facts appended: the main
+// board's config when it answered (why == NULL; s_config_json, left open by
+// config_json_stop()), or {"ok":false,"why":...} when it did not.
+static esp_err_t send_config_reply(httpd_req_t *req, const char *why)
+{
+    // Static: the httpd task serves one request at a time, and its stack is
+    // better spent elsewhere.
+    static char facts[1024];
+    static char esc[PORTA_EVENT_TEXT_MAX * 6 + 1];
+    static char head[sizeof(esc) + 32];
+    const size_t facts_len = sidekick_facts_json(facts, sizeof(facts));
+    httpd_resp_set_type(req, "application/json");
+    if (why) {
+        json_escape(why, esc, sizeof(esc));
+        snprintf(head, sizeof(head), "{\"ok\":false,\"why\":\"%s\"%s", esc, facts_len ? "," : "");
+        httpd_resp_sendstr_chunk(req, head);
+    } else {
+        httpd_resp_send_chunk(req, s_config_json, s_config_json_len);
+        if (s_config_json_len > 1 && facts_len) {
+            httpd_resp_sendstr_chunk(req, ",");
+        }
+    }
+    // A zero-length chunk would end the response, so only send a real one.
+    if (facts_len) {
+        httpd_resp_send_chunk(req, facts, facts_len);
+    }
+    httpd_resp_sendstr_chunk(req, "}");
+    return httpd_resp_send_chunk(req, NULL, 0);
 }
 
 // FILE_LIST / FILE_READ (I28d, docs/architecture/webapp.md (Screens)): the reply is a burst of
@@ -516,11 +592,14 @@ static esp_err_t wait_action_reply(httpd_req_t *req, uint8_t verb)
         s_file_list_gathering = false;
         s_file_entries_gathering = false;
         ESP_LOGW(TAG, "no ACK for verb 0x%02x", verb);
+        if (verb == PORTA_MSG_CONFIG_GET) {
+            return send_config_reply(req, "no reply from host");
+        }
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"no reply from host\"}");
     }
     if (s_last_reply_ok) {
         if (verb == PORTA_MSG_CONFIG_GET) {
-            return httpd_resp_send(req, s_config_json, s_config_json_len);
+            return send_config_reply(req, NULL);
         }
         if (verb == PORTA_MSG_FILE_LIST) {
             return httpd_resp_send(req, s_file_list_json, s_file_list_json_len);
@@ -529,6 +608,9 @@ static esp_err_t wait_action_reply(httpd_req_t *req, uint8_t verb)
             return httpd_resp_send(req, s_file_entries_json, s_file_entries_json_len);
         }
         return httpd_resp_sendstr(req, "{\"ok\":true}");
+    }
+    if (verb == PORTA_MSG_CONFIG_GET) {
+        return send_config_reply(req, s_last_reply_reason);
     }
     char out[PORTA_EVENT_TEXT_MAX + 32];
     snprintf(out, sizeof(out), "{\"ok\":false,\"why\":\"%s\"}", s_last_reply_reason);
@@ -842,7 +924,8 @@ static esp_err_t delete_log_files(httpd_req_t *req)
     return wait_action_reply(req, PORTA_ACT_FILE_DELETE);
 }
 
-// GET /api/config — Station.txt surface as JSON. Open read: call/grid are on
+// GET /api/config — Station.txt surface as JSON, plus the sidekick's own
+// facts on every reply (send_config_reply()). Open read: call/grid are on
 // the air; WiFi secrets are not in this object.
 static esp_err_t get_config(httpd_req_t *req)
 {
@@ -852,8 +935,7 @@ static esp_err_t get_config(httpd_req_t *req)
     const size_t n = porta_proto_encode_config_get("", frame, sizeof(frame));
     if (!porta_send(frame, n)) {
         s_config_gathering = false;
-        httpd_resp_set_type(req, "application/json");
-        return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
+        return send_config_reply(req, "host link busy");
     }
     return wait_action_reply(req, PORTA_MSG_CONFIG_GET);
 }
@@ -932,8 +1014,7 @@ static esp_err_t put_config(httpd_req_t *req)
 static void porta_rx_task(void *arg)
 {
     (void)arg;
-    porta_decoder_t dec;
-    porta_decoder_init(&dec);
+    porta_decoder_init(&s_rx_dec);
 
     uint8_t buf[256];
     porta_frame_t frame;
@@ -950,7 +1031,7 @@ static void porta_rx_task(void *arg)
     while (1) {
         const int n = uart_read_bytes(PORTA_UART, buf, sizeof(buf), pdMS_TO_TICKS(50));
         for (int i = 0; i < n; ++i) {
-            if (!porta_decoder_push(&dec, buf[i], &frame)) {
+            if (!porta_decoder_push(&s_rx_dec, buf[i], &frame)) {
                 continue;
             }
             entry_t e = {0};
@@ -1026,35 +1107,11 @@ static void porta_rx_task(void *arg)
                     config_json_add(cfg_key, cfg_val);
                 } else if (porta_proto_parse_ack(&frame, (uint8_t *)&s_last_reply_verb)) {
                     switch (s_last_reply_verb) {
-                    case PORTA_MSG_CONFIG_GET: {
-                        // Sidekick-local link-health counters, added directly
-                        // rather than relayed from the ADV -- these describe
-                        // the ADV->sidekick direction and the browser-facing
-                        // event ring, neither of which the ADV can see. See
-                        // this file's own s_config_get_retries/
-                        // s_ring_gap_events comments, and porta_crc_errors()/
-                        // porta_frames_ok() in main.cpp for the ADV's own
-                        // (sidekick->ADV direction) counterparts.
-                        char buf[16];
-                        snprintf(buf, sizeof(buf), "%lu", (unsigned long)dec.crc_errors);
-                        config_json_add("sk_crc_errors", buf);
-                        snprintf(buf, sizeof(buf), "%lu", (unsigned long)dec.frames_ok);
-                        config_json_add("sk_frames_ok", buf);
-                        snprintf(buf, sizeof(buf), "%lu", (unsigned long)s_ring_gap_events);
-                        config_json_add("sk_ring_gaps", buf);
-                        snprintf(buf, sizeof(buf), "%lu", (unsigned long)s_config_get_retries);
-                        config_json_add("sk_config_retries", buf);
-                        // Network status, retired from status.html (now app.html's
-                        // Settings > Network section) -- same reasoning as the
-                        // counters above: sidekick-local facts the ADV cannot see.
-                        config_json_add("sk_wifi_mode", wifi_prov_ap_active() ? "ap" : "station");
-                        config_json_add("sk_network_name", wifi_prov_network_name());
-                        config_json_add("sk_ip", wifi_prov_ip_str());
-                        config_json_add("sk_uptime", wifi_prov_uptime_str());
-                        config_json_add("sk_fw_version", wifi_prov_fw_version());
-                        config_json_end();
+                    case PORTA_MSG_CONFIG_GET:
+                        // The sidekick's own facts are added by the HTTP side
+                        // at reply time (send_config_reply()), not here.
+                        config_json_stop();
                         break;
-                    }
                     case PORTA_MSG_FILE_LIST:
                         file_list_json_end();
                         break;
@@ -1080,10 +1137,10 @@ static void porta_rx_task(void *arg)
                 }
             }
         }
-        if (dec.crc_errors != reported_crc) {
-            reported_crc = dec.crc_errors;
+        if (s_rx_dec.crc_errors != reported_crc) {
+            reported_crc = s_rx_dec.crc_errors;
             ESP_LOGW(TAG, "link: %" PRIu32 " CRC errors, %" PRIu32 " frames ok",
-                     dec.crc_errors, dec.frames_ok);
+                     s_rx_dec.crc_errors, s_rx_dec.frames_ok);
         }
     }
 }
