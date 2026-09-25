@@ -115,6 +115,13 @@ jobs:
         with:
           submodules: true
 
+      # The web bundle manifest pins every webapp/app/ file's SHA-256, so any
+      # edit there -- a comment included -- must regenerate it. pages.yml runs
+      # the same check but only when a deploy is attempted; this fails on the
+      # first push instead (docs/README.md, Operating notes).
+      - name: Web bundle manifest matches assets
+        run: python3 webapp/tools/gen_manifest.py --check
+
       - name: Autoseq host_mock
         working-directory: host_mock
         run: |

@@ -222,6 +222,12 @@ every agent and every operator can see them — see "Memory lives in this repo" 
   (2026-09-18) looked like a library bug but was our port running UAC open/start on the same task as the USB
   event pump. Stated 2026-09-18.
 
+- **After any edit under `webapp/app/`, regenerate the bundle manifest** — `python3 webapp/tools/gen_manifest.py`
+  — and commit `manifest.json` with the edit. The manifest pins each file's SHA-256, so even a comment-only
+  change invalidates it; the sidekick verifies those digests on install. CI's Host tests job and the Pages
+  deploy both run `--check` and fail otherwise. Found 2026-09-25, when a citation repoint left Pages unable to
+  deploy.
+
 - **Assume another agent may be in this worktree.** The operator sometimes runs a second Claude Code session
   on the same checkout. One worktree means one index, so a concurrent `git add -A` can sweep up files another
   session wrote seconds earlier and commit them under an unrelated message — this happened on 2026-09-08
