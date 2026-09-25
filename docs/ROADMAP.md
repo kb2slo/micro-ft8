@@ -2,7 +2,7 @@
 
 Living plan for this fork. How to use it, and the rest of `docs/`, is in [README.md](README.md).
 
-Architecture details stay in `AUTOSEQ_ARCHITECTURE.md` and `AUTOSEQ_INACTIVE_QUEUE.md`. Companion: [RFC 0001](rfcs/0001-ble-companion.md) (Nano UART). [RFC 0003](rfcs/0003-m32-pocket-port-and-ble-time.md) (Pocket+CTS bundle) is **rejected**. When a row needs an RFC, and what happens to it: [README.md](README.md) **Doc types**.
+Architecture details stay in `AUTOSEQ_ARCHITECTURE.md` and `AUTOSEQ_INACTIVE_QUEUE.md`. Companion: [RFC 0001](rfcs/0001-ble-companion.md) (Nano UART). [RFC 0003](rfcs/rejected/0003-m32-pocket-port-and-ble-time.md) (Pocket+CTS bundle) is **rejected**. When a row needs an RFC, and what happens to it: [README.md](README.md) **Doc types**.
 
 Ship on `origin/main`. Talk through changes before a local commit (see [README.md](README.md)). No `upstream` remote exists; never push or open a PR to Wei's `wcheng95/Mini-FT8` unless explicitly asked.
 
@@ -11,7 +11,7 @@ Ship on `origin/main`. Talk through changes before a local commit (see [README.m
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| k7gc | Docs cleanup session: graduate finished RFCs | 314 KB of RFCs, mostly describing what is already built, which agents pay to read. **Collects:** RFC 0001 and the built parts of 0004/0005 into `docs/<AREA>_ARCHITECTURE.md` (starting with `docs/SIDEKICK_ARCHITECTURE.md`'s tasks-and-cores map); move RFC 0003 to `rfcs/rejected/`; fold `AUTOSEQ_INACTIVE_QUEUE.md` into `AUTOSEQ_ARCHITECTURE.md` if built; repoint RFC 0006's citations of the dropped B87. RFC 0004/0005 are reorganized by component, not merged: system, sidekick, webapp, main board — `SYSTEM_ARCHITECTURE.md` records where I27 landed (P4 main + AtomS3 sidekick + phone as the only UI, the daily station; claimed publicly in Wei's Micro-FT8 Discussions #45). **Done-when:** every RFC is Draft/Accepted holding only undecided material, a Graduated stub, or in `rfcs/rejected/`; `git grep` finds no citation of a graduated section; `docs/README.md`'s file table matches the tree. |
+| k7gc | Docs cleanup session: graduate finished RFCs | 314 KB of RFCs, mostly describing what is already built, which agents pay to read. **Collects:** RFC 0001 and the built parts of 0004/0005 into `docs/<AREA>_ARCHITECTURE.md` (starting with `docs/SIDEKICK_ARCHITECTURE.md`'s tasks-and-cores map); fold `AUTOSEQ_INACTIVE_QUEUE.md` into `AUTOSEQ_ARCHITECTURE.md` if built; repoint RFC 0006's citations of the dropped B87. RFC 0004/0005 are reorganized by component, not merged: system, sidekick, webapp, main board — `SYSTEM_ARCHITECTURE.md` records where I27 landed (P4 main + AtomS3 sidekick + phone as the only UI, the daily station; claimed publicly in Wei's Micro-FT8 Discussions #45). **Done-when:** every RFC is Draft/Accepted holding only undecided material, a Graduated stub, or in `rfcs/rejected/`; `git grep` finds no citation of a graduated section; `docs/README.md`'s file table matches the tree. |
 
 
 ## Backlog
