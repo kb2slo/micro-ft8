@@ -36,6 +36,8 @@ Each document answers one question. Put content where its question is answered.
 | What must two codebases agree on? | The code | One source of truth, plus a test holding the other side to it |
 | What can an operator do with it? | `webapp/` → `micro-ft8.kalikstein.com` | Public site |
 
+**One fact, one home.** A fact lives in the doc of the component that implements it. Other docs link to it and restate at most the one sentence needed to follow the link — the trust argument for the firmware download is in `system.md`, its mechanism in `sidekick.md`.
+
 **No prose specs.** A contract that crosses a language or repo boundary (C ↔ webapp JS, our encoder ↔ WSJT-X) gets one side as the source of truth in code and a test that holds the other side to it — not a document restating it.
 
 **The site describes what ships.** Nothing unbuilt, unmeasured, or upstream-only goes on it.
@@ -128,6 +130,8 @@ An unproven fix is still worth making. Pretending it is proven is not.
 - Removed a harness or a check → drop its row and say why in the commit message.
 
 State which of these you did in the turn you report the work. **"No test-plan change needed" is a valid answer and must be said out loud**, exactly like the README audit — an audit you skipped and an audit you did are otherwise indistinguishable.
+
+**Architecture docs match the code too.** A `docs/architecture/<area>.md` describes how things work now, so a change that alters behaviour one of them describes updates it in the **same commit**. As with the README audit, say it out loud when nothing needs changing: "no architecture-doc change needed". An RFC slice does this through graduation (**RFC lifecycle** above); this rule covers changes that come through no RFC. A doc may describe a decided but unbuilt design only under a label naming the roadmap rows that build it — "**not yet built: rows v697, hstv**" — so that when those rows ship and are dropped, `tools/roadmap_rows.sh dangling` flags the stale label.
 
 **Never report a field check as passed.** An agent runs `host_mock`, `tx_e2e`, and `idf.py build` and reports those honestly. Anything needing a Cardputer, a radio, or an antenna is the operator's to run: propose it, put it in **Pending**, and wait. A green build is evidence about linkage, not about whether the radio transmitted.
 
