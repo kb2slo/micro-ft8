@@ -71,7 +71,7 @@ esp_loader_error_t flash_image(esp_loader_t* loader, const FlashImage& img) {
 // esp_app_desc_t layout (esp_app_format/include/esp_app_desc.h): magic_word
 // (4) + secure_version (4) + reserv1[2] (8) + version[32] + project_name[32].
 // Offset within the app image verified empirically against a real sidekick
-// build (RFC 0001 §5.2b) — re-derive if target/IDF-version/partition-table/
+// build (docs/architecture/sidekick.md (Installing the sidekick from the ADV)) — re-derive if target/IDF-version/partition-table/
 // secure-boot ever change, don't assume it still holds.
 constexpr uint32_t kAppDescOffset = 0x20;
 constexpr uint32_t kVersionFieldOffset = kAppDescOffset + 16;
@@ -339,13 +339,13 @@ esp_err_t flash_after_connect(esp_loader_t* loader, bool allow_overwrite, bool p
     return ESP_OK;
 }
 
-// PORTA UART port setup (RFC 0001 §5.2c). Deliberately does not use
+// PORTA UART port setup (docs/rfcs/rejected/0001-ble-companion.md §5.2c). Deliberately does not use
 // esp-serial-flasher's stock esp32_uart_ops as-is: its .init unconditionally
 // configures a reset_pin/boot_pin pair as GPIO outputs, for chip-flashes-
 // chip setups with wired reset/boot control — which PORTA doesn't have and
 // this doesn't fake with a guessed-safe GPIO on the ADV board. sidekick
 // enters download mode entirely on its own (its on-board GPIO9 button, held
-// through a self-triggered esp_restart() — RFC 0001 §5.2), so this port
+// through a self-triggered esp_restart() — docs/architecture/sidekick.md (Installing the sidekick from the ADV)), so this port
 // only ever needs the bare UART peripheral: init sets that up and nothing
 // else; enter_bootloader/reset_target are no-ops, relying purely on
 // esp_loader_connect()'s own sync retries over the wire. Every other op

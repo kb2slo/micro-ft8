@@ -163,7 +163,7 @@ The rest is naming, but all of it is operator-visible:
 - Asset and tag names in `ci.yml` (`MicroFT8-<tag>-Merged.bin`, `YYYYMMDD-microft8-<commit>.bin`).
 - `MERGED_BIN_NAME` in `gen_build_identity.cmake` — the hash-first name M5Launcher truncates (D12).
 - The `MICROFT8_*` macro names, and `project(micro_ft8)` in `CMakeLists.txt`.
-- The mDNS hostname `micro-ft8.local` (RFC 0001 §5.0), which is in operators' browser history.
+- The mDNS hostname `micro-ft8.local` ([system.md](architecture/system.md) (**Why not**)), which is in operators' browser history.
 - Clone URLs and release links in `README.md` and `docs/`. GitHub redirects a renamed repo, so these keep
   working — but redirects are not a plan.
 

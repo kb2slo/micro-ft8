@@ -825,7 +825,7 @@ static void start_ap(void)
     // security, it is the appearance of it, and provisioning only runs when
     // the device has no credentials. Anyone in radio range during that window
     // could set them — a real exposure, judged acceptable for a bench device
-    // and recorded rather than glossed. RFC 0001 §5.2d.
+    // and recorded rather than glossed. docs/architecture/sidekick.md (Firmware updates).
     cfg.ap.authmode = WIFI_AUTH_OPEN;
 
     // APSTA, not AP: scanning requires a station interface, and in plain AP

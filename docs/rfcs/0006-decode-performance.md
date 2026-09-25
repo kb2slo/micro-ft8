@@ -144,7 +144,7 @@ settings: 93 × 2 × 1 × 433 = **80,538 B**. The kiss_fftr arena beside it is 1
   costs ~15 KB more static, so the swap's real cost is ~23 KB, not ~8 KB. The cap is now `#ifndef`-overridable;
   `test_apps/decode_bench` builds with 1920, and the firmware keeps 960 (preprocessed source identical).
 - **Candidates are cheap on memory** (a stack array) and cost CPU only.
-- **Neither ADV board has PSRAM** (confirmed with `esptool.py flash_id`, 2026-09-04; RFC 0001 §2). The
+- **Neither ADV board has PSRAM** (confirmed with `esptool.py flash_id`, 2026-09-04; [main_board.md](../architecture/main_board.md) (**No BLE and no WiFi on the ADV**)). The
   waterfall is CPU-swept data, never a DMA target, so it *would* be a legitimate PSRAM candidate on a board
   that had it.
 - **No other slower memory helps either** (checked 2026-09-23). PSRAM on this family is a second die in the

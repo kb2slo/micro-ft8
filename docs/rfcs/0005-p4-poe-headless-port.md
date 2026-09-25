@@ -76,7 +76,7 @@ the Ideas-rule requirement for large product shifts.
 ## 2. What B26 was actually testing, restated
 
 B26's own text is worth restating so this RFC doesn't quietly relax it: P4 "gets no free pass" from the
-ADV's own proven USB-host silicon (RFC 0001 §4.6) because it is a different chip family, and the AtomS3 Lite
+ADV's own proven USB-host silicon ([system.md](../architecture/system.md) (**Why not**)) because it is a different chip family, and the AtomS3 Lite
 precedent (same RFC, same section) is exactly a case where a same-vendor, same-general-purpose board turned
 out *not* to host a QMX despite looking like it should on paper. Nothing about accepting external evidence
 here should be read as "P4-family chips always host QMX-class radios" — it's "this specific external project,
@@ -96,7 +96,7 @@ ADIF logging with third-party upload, and live spotting. That is real, shipping 
 What it does **not** prove, because it is a different board:
 
 - That the **M5Stack Unit PoE-P4 (U213)** wires its USB-C ports, VBUS sourcing, or power rails the same way
-  the Tab5 does. RFC 0001 §4.6 is the cautionary precedent here — "AtomS3 Lite can't host" was a board-level
+  the Tab5 does. [system.md](../architecture/system.md) (**Why not**) is the cautionary precedent here — "AtomS3 Lite can't host" was a board-level
   finding about a specific SKU, not about ESP32-S3 in general, and the ADV's own Stamp-S3A was unaffected by
   it. The same board-specificity applies going the other direction: Tab5 hosting successfully doesn't
   guarantee U213 does, even though both carry the same SoC.
@@ -125,7 +125,7 @@ Phase 0 onward, not a one-time desk check; add it as an explicit Phase 0 task in
 
 I27's text (written before this hardware was in hand) flagged two open questions this section can now
 partly answer from the vendor spec (`docs.m5stack.com/en/unit/Unit_PoE-P4`, checked directly, same practice
-RFC 0001 §4.6 used before trusting a vendor description) — **not yet bench-confirmed on our unit**:
+[system.md](../architecture/system.md) (**Why not**) used before trusting a vendor description) — **not yet bench-confirmed on our unit**:
 
 **Two independent USB-C ports, not one shared port.** The datasheet lists a dedicated *"USB Type-C Host
 (USB 2.0)"* port and a separate *"USB Type-C Download/OTG (USB 2.0)"* port. Cross-checked against
@@ -133,7 +133,7 @@ Espressif's own ESP32-P4 USB host docs: the chip has two independent USB-OTG per
 one Full-Speed), both host-capable — which is the "two peripherals, IDF allows one host at a time" limitation
 B26 already named, now mapped onto two separate physical connectors rather than one connector time-shared
 between roles. **If this holds on the bench**, it removes the constraint that forced B26's own test design
-(and RFC 0001 §4.6's AtomS3 test, and the ADV's own G4/G5 note in `docs/README.md`) to choose between USB
+(and [system.md](../architecture/system.md) (**Why not**)'s AtomS3 test, and the ADV's own G4/G5 note in `docs/README.md`) to choose between USB
 host mode and a live USB-serial console — QMX hosting and log output could run simultaneously over the
 board's own two ports, with no external CP2102/CH340 UART-TTL adapter needed. This is exactly the kind of
 claim this project's own discipline says not to take from a datasheet alone: Phase 0 (§7) bench-confirms it
@@ -141,7 +141,7 @@ before anything downstream assumes it.
 
 **No WiFi radio.** ESP32-P4 has no integrated 2.4 GHz radio; this board pairs it with an IP101GRI Ethernet
 PHY and 802.3at PoE instead. I27 already anticipated this correctly — the AtomS3 Lite companion was always
-the WiFi-and-browser half (RFC 0001 §5.1), unchanged here — but it's worth stating plainly now that it's a
+the WiFi-and-browser half ([sidekick.md](../architecture/sidekick.md) (**Installing the sidekick from the ADV**)), unchanged here — but it's worth stating plainly now that it's a
 confirmed hardware fact rather than an assumption: **this board cannot serve the phone UI on its own under
 any circumstances**, on a summit or otherwise.
 
@@ -199,7 +199,7 @@ their own copy.** Concretely:
   specifies the protocol against the application, not the board ("no dependency on a board's
   keyboard or screen"), which is what makes this possible; §7 Phase 3 is where that gets verified
   rather than assumed.
-- Not on-chip WiFi/BLE on the main board — unchanged from RFC 0001's non-goals; WiFi stays on the companion.
+- Not on-chip WiFi/BLE on the main board — unchanged ([main_board.md](../architecture/main_board.md), **No BLE and no WiFi on the ADV**); WiFi stays on the companion.
 - Not decode-quality tuning (I26) — this RFC is about whether/how samples get captured and moved, not about
   `ftx_find_candidates` parameters.
 - Not the sidekick protocol or web app ([architecture/sidekick.md](../architecture/sidekick.md)) — the companion's role is unchanged; only the main board
@@ -240,7 +240,7 @@ bulk of the porting effort and the place `main.cpp`'s UI-vs-core coupling (STYLE
 off or doesn't.
 
 **Phase 3 — companion link.** AtomS3 Lite over Grove UART, unchanged mechanism and role from the ADV
-(I3/RFC 0001 §5.1) — this board's Grove pins (`G53`/`G54`) are the same physical pattern. **Verifies, rather
+(I3/[sidekick.md](../architecture/sidekick.md) (**Installing the sidekick from the ADV**)) — this board's Grove pins (`G53`/`G54`) are the same physical pattern. **Verifies, rather
 than assumes, the shared-binary requirement (§6): the same sidekick image already running against the ADV
 must pair against the P4 board with zero rebuild.** If that fails, the failure is in the protocol or in
 something the sidekick assumed about its main-board partner, not in a missing per-board sidekick variant —

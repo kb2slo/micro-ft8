@@ -1,6 +1,6 @@
 # System architecture: the phone is the UI, the sidekick is a peripheral
 
-How the boards, the phone and the internet divide the work, and who may key the transmitter. Component detail, one doc per area: [sidekick.md](sidekick.md), [webapp.md](webapp.md), [radio.md](radio.md), [autoseq.md](autoseq.md) (and [autoseq_inactive_queue.md](autoseq_inactive_queue.md)), [ft8_lib.md](ft8_lib.md).
+How the boards, the phone and the internet divide the work, and who may key the transmitter. Component detail, one doc per area: [sidekick.md](sidekick.md), [webapp.md](webapp.md), [radio.md](radio.md), [autoseq.md](autoseq.md) (and [autoseq_inactive_queue.md](autoseq_inactive_queue.md)), [ft8_lib.md](ft8_lib.md), [main_board.md](main_board.md).
 
 ## The station
 
@@ -84,3 +84,9 @@ Kept, and easy to mistake for signing: a **SHA-256 per asset** (catches a corrup
 * **Called directly from the browser when the source sends CORS.** QRZ's XML API sends `Access-Control-Allow-Origin: *` (measured 2026-09-10), so each operator's QRZ credentials go from their own browser to QRZ and never touch our infrastructure, which is right for terms of service, privacy and liability. The same holds for NOAA SWPC, POTA and SOTA ([webapp.md](webapp.md), **Tools**).
 * **A Worker route only when a source has no CORS**, and it **filters rather than relays**: it re-serves the small subset the app needs as JSON, because a phone on cellular must not pay for a full upstream payload (one PSKReporter query returned 1.25 MB of XML). Routes live in `webapp/worker.js`.
 * **CORS headers are observed behaviour, not policy.** Any of them can disappear without notice, so a refused request is a missing optional service, shown as such, never a fatal error. Re-check a source with `curl -sS -D - -o /dev/null -H 'Origin: http://micro-ft8.local' <url> | grep -i access-control`.
+
+## Why not
+
+* **Why a browser, not BLE or a native app.** iOS Safari has no Web Bluetooth, an Apple-wide platform limit, so a companion that needs no install on both iPhone and Android cannot use BLE at all. A page the sidekick serves works on any phone with no app store, no review, and one codebase. Decided 2026-09-05. Reopen only if a native-app phase is opened on purpose.
+* **Local network only.** Reaching the station from the internet (port forwarding, dynamic DNS, a cloud tunnel) is out of scope, decided 2026-09-05. A licensed station's control surface is not internet-reachable by default, and the project takes on none of that exposure. An operator who wants remote access sets up their own VPN.
+* **Why the sidekick cannot be the main board.** The main board must be a USB host to the radio. An AtomS3 Lite bench-tested as a QMX host (2026-09-05) never changed the radio's frequency, even with its own 5 V supplied over Grove: its USB-C is device mode only. The lesson is **bench-test USB host on the specific board** before relying on it, not trust a vendor description or a chip family. The P4 was bench-proven the same way ([RFC 0005](../rfcs/0005-p4-poe-headless-port.md)).

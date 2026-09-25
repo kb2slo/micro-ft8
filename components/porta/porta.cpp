@@ -158,7 +158,7 @@ void drain_out() {
 
 // HELLO replaces the ad-hoc beacon. Same purpose -- report the companion's
 // build so the operator learns, without a USB-C session, whether it matches the
-// image this ADV carries (RFC 0001 §5.2b/§5.2c) -- but it now arrives framed
+// image this ADV carries (docs/architecture/sidekick.md (Installing the sidekick from the ADV)) -- but it now arrives framed
 // and CRC-checked like everything else, and carries a protocol version the old
 // beacon had no room for.
 void handle_hello(const porta_frame_t& f) {

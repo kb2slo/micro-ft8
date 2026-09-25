@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Dumps details about the last ADV build: identity (git SHA/dirty), size vs
-# flash budget, DIRAM/IRAM usage (the resource RFC 0001 §4 gates the whole
+# flash budget, DIRAM/IRAM usage (the resource docs/architecture/main_board.md (The RAM that matters is the largest DMA block) gates the whole
 # companion feature on), and whether the built binary actually embedded the
-# currently-staged sidekick firmware (RFC 0001 §5.1) rather than
+# currently-staged sidekick firmware (docs/architecture/sidekick.md (Installing the sidekick from the ADV)) rather than
 # trusting a stale or no-firmware build silently.
 set -euo pipefail
 
@@ -54,7 +54,7 @@ if [[ -f "$MERGED_BIN" ]]; then
 fi
 
 echo
-echo "== DIRAM / IRAM (RFC 0001 §4 budget) =="
+echo "== DIRAM / IRAM =="
 if [[ -f "$MAP" && -n "${IDF_PATH:-}" && -f "$IDF_PATH/tools/idf_size.py" ]]; then
     python3 "$IDF_PATH/tools/idf_size.py" --format json2 "$MAP" 2>/dev/null | python3 -c '
 import json, sys
@@ -71,7 +71,7 @@ else
 fi
 
 echo
-echo "== sidekick embed (RFC 0001 §5.1) =="
+echo "== sidekick embed =="
 check_one() {
     local label="$1" symbol="$2" staged_file="$3"
     local start end embedded_size staged_size

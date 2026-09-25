@@ -69,7 +69,7 @@ if(NOT CMAKE_BUILD_EARLY_EXPANSION)
 
     # idf.py rather than ExternalProject: the sidekick is a separate idf.py
     # project precisely because ESP-IDF locks target and sdkconfig per project
-    # (RFC 0001 §5.1), so nesting its CMake inside this one fights that on
+    # (docs/architecture/sidekick.md (Installing the sidekick from the ADV)), so nesting its CMake inside this one fights that on
     # purpose. Treating it as an opaque external build is what a Makefile would
     # do, and keeps the two projects as independent as they were designed to be.
     # idf.py is incremental, so an unchanged sidekick costs a no-op.

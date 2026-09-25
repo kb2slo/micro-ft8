@@ -2,6 +2,17 @@
 
 The AtomS3 Lite sidekick is the station's WiFi and web server: it serves the web app, guards the control API with the pairing token, and relays between the browser and the main board over Port A. Why it is shaped this way (no TLS, the phone reaches the internet): [system.md](system.md).
 
+## Hardware
+
+**M5Stack AtomS3 Lite**, chosen over the NanoC6 it replaced (2026-09-05) for its dual cores: WiFi, lwIP and an HTTP server run beside the Port A UART work, where the C6 has one 160 MHz core.
+
+* **ESP32-S3FN8**: 8 MB embedded flash, **no PSRAM** (confirmed with `esptool.py flash_id`, 2026-09-04). Anything large is staged in flash, not RAM.
+* **Grove** (Port A): `GND / 5V / G2 / G1`. **USB-C** is device mode only — flashing and a console, never a USB host ([system.md](system.md), **Why not**).
+* **User button**: GPIO41, active low, used to disclose the pairing token.
+* **Over USB it is indistinguishable from the ADV**: both enumerate as Espressif's generic `303A:1001` with no board string, and both are the same chip. The MAC address is the only reliable way to tell them apart; a differing flash vendor is a production-batch artifact, not a model identifier.
+
+Building, flashing, and backing up a unit's stock firmware: [`sidekick/README.md`](../../sidekick/README.md).
+
 ## Web root
 
 **The sidekick serves the whole app, and the app is not in the firmware image.**
@@ -68,6 +79,10 @@ Rules that follow:
 
 **Reopen TLS as a client** if the release host stops serving plain HTTP, or a feature needs the sidekick itself to reach an HTTPS-only service with no phone present. Measure the handshake's heap first. **Reopen TLS as a server** if a way appears to give a LAN device a browser-trusted certificate without renewal or a clock, or if the station will be operated on networks its owner does not trust.
 
+## Installing the sidekick from the ADV
+
+**To be removed: row u8zt**, once the sidekick updates itself ([RFC 0007](../rfcs/0007-flash-and-update.md) §3.10). Today the ADV carries a copy of the sidekick image (`components/sidekick_flasher`, staged by `tools/stage_sidekick_firmware.sh`) and, when a sidekick is plugged into the ADV's USB-C, can write it through the sidekick's ROM bootloader after the operator confirms — the same protocol `esptool.py` uses, via `esp-serial-flasher`. Before offering, it reads the installed build's `esp_app_desc_t` straight off the sidekick's flash, so it can tell "not ours" from "ours, current" from "ours, outdated" without the app running. Only USB-C can do this: the ROM listens only on UART0's default pins, never on Grove ([`sidekick/README.md`](../../sidekick/README.md), B42).
+
 ## Port A: the link to the main board
 
 Everything the app needs crosses Port A: decodes at slot cadence, TX control, config reads and writes, and the log. The message set is defined in `components/porta_proto/include/porta_proto.h`, which is the source of truth (host-tested by `host_test_porta_proto`); the sidekick side is `host_link.c`, the main-board side `components/porta`.
@@ -75,5 +90,6 @@ Everything the app needs crosses Port A: decodes at slot cadence, TX control, co
 * **Framed messages over a byte pipe**, with framing that assumes no stream, so the transport could change without touching the app or the API.
 * **Board-agnostic**: specified against the application, so the ADV and the P4 present the same surface.
 * **Versioned** (`PORTA_PROTO_VERSION`, carried in HELLO), for the same reason the bundle manifest pairs app and API.
+* **One build identity for both sides.** The sidekick and the ADV take their version string from the same `tools/git_version.cmake` (exact git SHA, plus a dirty flag), so "same commit" is an exact string match. CI pins `MICROFT8_GIT_SHA` for both jobs, because a pull request builds a synthesized merge commit and two jobs left to derive it separately could disagree.
 * **Asymmetric traffic**: commands are rare and want low latency; decodes arrive every 15 s and tolerate hundreds of milliseconds. A full slot of decodes is about 3 KB, so sustained load is a couple of hundred bytes per second.
 * **The browser polls** `GET /api/events?since=<seq>`; the sidekick keeps a ring of recent events so a client can catch up after a short gap. Config is `GET /api/config` (open) and `PUT /api/config` (token-guarded).

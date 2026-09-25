@@ -6,7 +6,7 @@
 # rev-parse there would silently disagree with the pinned value.
 #
 # Used by both tools/gen_build_identity.cmake (ADV) and
-# sidekick/CMakeLists.txt: RFC 0001 §5.2b/§5.2c need the two independently-
+# sidekick/CMakeLists.txt: docs/architecture/sidekick.md (Port A: the link to the main board) need the two independently-
 # built firmwares' version strings to be exactly comparable — one shared
 # implementation, not two copies that can drift apart.
 #

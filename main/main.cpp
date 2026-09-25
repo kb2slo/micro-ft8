@@ -3238,7 +3238,7 @@ static void restore_usb_host_after_nano_flash() {
 // the USB host being parked already does to QMX/decode. Turning this into a
 // background task with progress feedback is the natural next slice once the
 // mechanism is proven on real hardware — do not mistake this for the
-// finished install-prompt UX from RFC 0001 §5.4.
+// finished install-prompt UX from docs/architecture/sidekick.md (Installing the sidekick from the ADV).
 static void report_sidekick_flash_result(esp_err_t err, const sidekick_flasher_info_t& info, const char* diag);
 
 // Park the USB host, run `body`, put it back. Both the probe and the flash
@@ -3391,7 +3391,7 @@ static void sidekick_flash_start_from_ui() {
 // connected differs before this point. Log lines stay within
 // ui_draw_list's ~20-char/row budget (240px screen, no wrap protection —
 // a longer single line garbles into the row below it, found the hard way
-// bench-testing the PORTA companion beacon, RFC 0001 §5.2c).
+// bench-testing the PORTA companion beacon, docs/architecture/sidekick.md (Port A: the link to the main board)).
 static void report_sidekick_flash_result(esp_err_t err, const sidekick_flasher_info_t& info, const char* diag) {
   const char* body = "Flash FAILED";
   if (err == ESP_OK) {
@@ -3425,7 +3425,7 @@ static void report_sidekick_flash_result(esp_err_t err, const sidekick_flasher_i
   g_usb_toast_until_ms = rtc_now_ms() + 2000;
 }
 
-// PORTA update flash (RFC 0001 §5.2c) — not offered on the BT screen right
+// PORTA update flash (docs/rfcs/rejected/0001-ble-companion.md §5.2c) — not offered on the BT screen right
 // now. Tried a button-hold self-restart trigger (operator holds sidekick's
 // on-board GPIO9 button, sidekick calls esp_restart() itself); bench-tested
 // 2026-09-04 and disproved — a software reset on ESP32-C6 does not cause
@@ -3435,7 +3435,7 @@ static void report_sidekick_flash_result(esp_err_t err, const sidekick_flasher_i
 // that finding — it correctly talks the esp_loader protocol over UART once
 // something is actually listening — so it stays as tested, reusable
 // infrastructure for whatever the real trigger mechanism ends up being
-// (see RFC 0001 §5.2's "Future phase" note: a custom second-stage
+// (see docs/architecture/sidekick.md (Installing the sidekick from the ADV)'s "Future phase" note: a custom second-stage
 // bootloader responder, not a button). USB-C stays the only flash path
 // until that's built.
 
@@ -3470,7 +3470,7 @@ static void draw_bt_view(bool force_redraw) {
     }
   }
   {
-    // PORTA update (RFC 0001 §5.2c) isn't offered here — the button-hold
+    // PORTA update (docs/rfcs/rejected/0001-ble-companion.md §5.2c) isn't offered here — the button-hold
     // trigger it depended on is proven not to work on ESP32-C6 (see
     // sidekick/main/main.c). USB-C stays the only flash path.
     char lbuf[24];
@@ -4215,8 +4215,8 @@ static void redraw_after_usb_toast() {
 // Tell the operator the companion needs updating, once, when it becomes true.
 //
 // The pieces to fix it already existed -- the ADV carries the sidekick image,
-// compares versions, and can flash it over USB-C without a computer (RFC 0001
-// §5.1). What was missing was the sentence joining them: the mismatch was two
+// compares versions, and can flash it over USB-C without a computer
+// (docs/architecture/sidekick.md, Installing the sidekick from the ADV). What was missing was the sentence joining them: the mismatch was two
 // cryptic lines on a screen you had to go looking for, while the action lived
 // on a different screen, and nothing pointed from one to the other.
 static void companion_update_toast_tick() {

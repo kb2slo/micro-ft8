@@ -3,7 +3,7 @@
 * **Status:** **Rejected.** Gluing M32 Pocket port and BLE CTS into one RFC was the wrong vehicle. Do not implement Pocket firmware or treat this file as the B15 spec.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Path:** `docs/rfcs/rejected/0003-m32-pocket-port-and-ble-time.md`
-* **What stays:** [I17](../../ROADMAP.md) (Pocket as a Mini-FT8 *host*) remains Ideas. Own RFC when sequenced. [B15](../../ROADMAP.md) one-shot CTS stays Now; contract is the ROADMAP Done-when (plus [RFC 0001](../0001-ble-companion.md) §4 RAM table), not this document.
+* **What stays:** [I17](../../ROADMAP.md) (Pocket as a Mini-FT8 *host*) remains Ideas. Own RFC when sequenced. [B15](../../ROADMAP.md) one-shot CTS stays Now; contract is the ROADMAP Done-when (plus [RFC 0001](0001-ble-companion.md) §4 RAM table), not this document.
 * **What this file is now:** Historical notes. §3.1 USB-C UFP/sink facts may inform I17. §4 iPhone CTS flow is the field recipe B15 already uses. Neither is an accepted RFC.
 
 Chat is intake; `docs/ROADMAP.md` is truth. No new logic in `main.cpp` ([STYLE.md](../../STYLE.md), [RFC 0002](../0002-extract-and-boundaries.md)).

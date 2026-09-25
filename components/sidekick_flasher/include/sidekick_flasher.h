@@ -15,13 +15,13 @@ extern "C" {
 // True when this build has embedded sidekick firmware to flash.
 // False until `tools/stage_sidekick_firmware.sh` has copied a `sidekick`
 // build into components/sidekick_flasher/target_firmware/ before this app was
-// configured. See RFC 0001 §5.1.
+// configured. See docs/architecture/sidekick.md (Installing the sidekick from the ADV).
 bool sidekick_flasher_has_firmware(void);
 
 // Copies the embedded sidekick build's own version string (up to 32 bytes
 // plus NUL) into `out` — the same value sidekick_flasher_flash_embedded()
 // compares a connected Nano against, and what a PORTA companion beacon
-// (RFC 0001 §5.2c) should be compared against too, without needing a USB-C
+// (docs/architecture/sidekick.md (Port A: the link to the main board)) should be compared against too, without needing a USB-C
 // session. False if no firmware is embedded (sidekick_flasher_has_firmware()
 // false) or `out_size` is too small; `out` is left empty either way.
 bool sidekick_flasher_embedded_version(char* out, size_t out_size);
@@ -62,7 +62,7 @@ esp_err_t sidekick_flasher_probe(uint16_t vid, uint16_t pid,
 // currently running on the target, same as any esp_loader session), checks
 // the ROM-reported chip against the embedded payload's own chip id, then
 // reads the esp_app_desc_t off its flash and compares project_name/version
-// against the embedded sidekick build (RFC 0001 §5.2b) before deciding
+// against the embedded sidekick build (docs/architecture/sidekick.md (Installing the sidekick from the ADV)) before deciding
 // whether to write anything:
 //   - chip does not match the payload    -> refuse (UNKNOWN, no write)
 //   - recognized, version matches        -> skip the write entirely
@@ -84,7 +84,7 @@ esp_err_t sidekick_flasher_flash_embedded(uint16_t vid, uint16_t pid, bool allow
                                        sidekick_flasher_info_t* out_info,
                                        char* out_diag, size_t out_diag_size);
 
-// PORTA UART variant (RFC 0001 §5.2c "Update flash over PORTA") — same
+// PORTA UART variant (docs/rfcs/rejected/0001-ble-companion.md §5.2c "Update flash over PORTA") — same
 // read-then-decide/write logic and out_status/out_remote_version contract
 // as sidekick_flasher_flash_embedded(), only the transport differs. Caller must
 // have already stopped porta.cpp's normal arbitration (porta_stop()) so
@@ -125,7 +125,7 @@ esp_err_t sidekick_flasher_flash_embedded(uint16_t vid, uint16_t pid, bool allow
 // because the transport itself is sound and is exactly what a custom
 // second-stage bootloader would use: code running from flash CAN take any
 // pins through the GPIO matrix, which is precisely the capability the ROM
-// lacks. RFC 0001 §5.2's parked "future phase" is not one option among
+// lacks. docs/architecture/sidekick.md (Installing the sidekick from the ADV)'s parked "future phase" is not one option among
 // several — it is the only path to PORTA updates.
 // Field-only — real hardware required, cannot be host-tested.
 // out_diag (nullable; keep short, ~16 chars, if the caller has a display-

@@ -164,7 +164,7 @@ jobs:
       # checks out a synthesized merge commit for a PR, not
       # github.event.pull_request.head.sha, so a bare `git rev-parse HEAD`
       # in sidekick/CMakeLists.txt would disagree with the ADV's pinned
-      # version — defeating the exact-match comparison RFC 0001 §5.2c
+      # version — defeating the exact-match comparison docs/architecture/sidekick.md (Port A: the link to the main board)
       # relies on. Must match the firmware job's value exactly.
       MICROFT8_GIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:

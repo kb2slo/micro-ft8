@@ -20,7 +20,7 @@
 // not exist -- and in a headless build (I28) that would have removed the only
 // UI, along with the only control capable of putting it back.
 //
-// What remains is the companion beacon (RFC 0001 §5.2c): the sidekick sends
+// What remains is the companion beacon (docs/architecture/sidekick.md (Port A: the link to the main board)): the sidekick sends
 // sync + version[32] + XOR checksum once a second, and the ADV reports whether
 // that version matches the sidekick image it carries. I28a replaces this with
 // a real bidirectional protocol; until then it is the whole conversation.

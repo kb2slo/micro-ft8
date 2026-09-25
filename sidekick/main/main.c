@@ -19,7 +19,7 @@
 
 static const char *TAG = "sidekick";
 
-// PORTA companion beacon — RFC 0001 §5.2c. One-way, sidekick -> ADV: sync
+// PORTA companion beacon — docs/architecture/sidekick.md (Port A: the link to the main board). One-way, sidekick -> ADV: sync
 // byte (never collides with NMEA's '$'-prefixed sentences, so the ADV can
 // tell GPS and companion apart by listening) + this build's version string
 // (from esp_app_desc_t, the same git-SHA+dirty value tools/git_version.cmake
@@ -81,7 +81,7 @@ static void porta_beacon_send(void) {
     }
 }
 
-// PORTA update flash (RFC 0001 §5.2c "Update flash over PORTA") — tried a
+// PORTA update flash (docs/rfcs/rejected/0001-ble-companion.md §5.2c "Update flash over PORTA") — tried a
 // button-hold self-restart (hold the on-board GPIO9 button, sidekick calls
 // esp_restart() on its own), reasoning the operator's finger holding GPIO9
 // low at that exact reset would land the chip in its ROM bootloader the
@@ -98,7 +98,7 @@ static void porta_beacon_send(void) {
 // its own flash-receiver instead of the app — sidesteps ROM strap-sampling
 // entirely, needs no wiring, but is real bootloader-level engineering
 // (higher stakes: bugs there affect every boot, not just updates) — see
-// RFC 0001 §5.2's "Future phase" note. USB-C stays the only flash path
+// docs/architecture/sidekick.md (Installing the sidekick from the ADV)'s "Future phase" note. USB-C stays the only flash path
 // until that's built.
 
 // With CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE an image installed by OTA boots

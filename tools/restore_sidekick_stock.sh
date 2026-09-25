@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Writes a full-flash backup back onto a sidekick, so a device can be re-used
-# for repeated field-flash testing (RFC 0001 §5.1) instead of being a one-shot
+# for repeated field-flash testing (docs/architecture/sidekick.md (Installing the sidekick from the ADV)) instead of being a one-shot
 # part. Takes it back to exactly the state it was in when the backup was
 # captured -- bootloader, partition table, app, NVS, all of it.
 #
 # READ THIS BEFORE RUNNING IT. The name says "stock". The backup is whatever
 # happened to be on the device the day it was captured, which is not the same
 # thing and on 2026-09-09 was not stock at all: it held `atoms3_qmx_host_poc`,
-# the USB-host proof-of-concept from RFC 0001 §4.6. That image configures the
+# the USB-host proof-of-concept from docs/architecture/system.md (Why not). That image configures the
 # S3's USB peripheral as a *host*, so it presents no USB device whatsoever --
 # no CDC, no serial-JTAG. Restoring it makes the board look dead:
 #

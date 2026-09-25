@@ -3,13 +3,13 @@
 # flash-size field into the bootloader header. Pinned in-repo (sdkconfig itself
 # is gitignored and regenerated) so a fresh clone configures the same way.
 #
-# Layout is unaffected: bootloader 0x0, partition table 0x8000, app 0x10000 on
-# S3 exactly as on the C6 this replaced, so the ADV still reads the sidekick's
-# esp_app_desc_t at absolute 0x10020 (RFC 0001 section 5.2b). Verified against
-# the built image after the retarget, not assumed.
+# Bootloader 0x0, partition table 0x8000, app in ota_0 at 0x20000, so the
+# sidekick's esp_app_desc_t is at absolute 0x20020 (sidekick/README.md,
+# Version identity). The ADV derives that from the partition table it embeds
+# rather than hardcoding it.
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
 
-# Two OTA slots (partitions.csv) — RFC 0001 §5.2d. No factory partition: with
+# Two OTA slots (partitions.csv) — docs/architecture/sidekick.md (Firmware updates). No factory partition: with
 # otadata erased the bootloader boots ota_0, which is what the ADV's USB-C
 # bootstrap writes.
 CONFIG_PARTITION_TABLE_CUSTOM=y

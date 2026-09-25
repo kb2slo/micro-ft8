@@ -22,7 +22,7 @@ Decided by the operator, 2026-09-25: **the sidekick downloads images itself** (�
 | Partitions | `ota_0`/`ota_1` 3 MB each, `web` 1.9 MB | one `factory` 4 MB, `storage` 3 MB | one `factory` 4.9 MB, `storage` 3 MB |
 | Rollback | `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`; marked valid after three Port A heartbeats (`sidekick/main/main.c:110`) | none | none |
 | Network | WiFi | none (Ethernet PHY present but unused, RFC 0005) | none |
-| Update today | USB-C, or field-flashed from the ADV (RFC 0001 §5.1) | USB-C | USB-C, M5Launcher, `tools/flash_keep_launcher.py` |
+| Update today | USB-C, or field-flashed from the ADV ([sidekick.md](../architecture/sidekick.md) (**Installing the sidekick from the ADV**)) | USB-C | USB-C, M5Launcher, `tools/flash_keep_launcher.py` |
 
 The release host already publishes, per board, a merged `0x0` image and its SHA-256 (`/download/manifest.json`, mirrored to R2 by `ci.yml`). It serves over **plain HTTP as well as HTTPS**: `curl -sI http://micro-ft8.kalikstein.com/download/manifest.json` returns 200 with no redirect (checked 2026-09-25). Each build's version string is the git SHA (`PROJECT_VER`).
 
@@ -124,7 +124,7 @@ Decided 2026-09-25. Once the sidekick updates itself (§3.4), the ADV no longer 
 * `porta_board_embedded_sidekick_version()` (both boards' `porta_board.cpp`, `porta_board.h`, the `-u` link flag in `main/CMakeLists.txt`) and the HELLO version-match check in `components/porta/porta.cpp` that uses it. Version pairing moves to the webapp (§3.6).
 * `tools/stage_sidekick_firmware.sh`, and the CI steps that stage the sidekick into the ADV build.
 * **Kept, and moved:** CI builds the sidekick's public merged image from that same staging folder (`ci.yml`, `tools/merge_sidekick_bin.sh`). That step moves into the sidekick's own build job, so `/download/` still publishes it.
-* RFC 0001 §5.1's field-flash design, and the docs and README text that describe it.
+* [sidekick.md](../architecture/sidekick.md) (**Installing the sidekick from the ADV**)'s field-flash design, and the docs and README text that describe it.
 
 **What this gives up:** installing or recovering a sidekick in the field from the ADV. Both now need a computer (Web Serial or `esptool.py`), which is where the P4 already is.
 

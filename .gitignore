@@ -54,12 +54,12 @@ Testing/
 *.diff
 *.patch
 
-# sidekick: separate idf.py project (RFC 0001 §5.1)
+# sidekick: separate idf.py project (docs/architecture/sidekick.md (Installing the sidekick from the ADV))
 sidekick/build/
 sidekick/managed_components/
 sidekick/sdkconfig
 
-# test_apps/atoms3_qmx_host_poc: separate idf.py project (RFC 0001 §4.6 evidence)
+# test_apps/atoms3_qmx_host_poc: separate idf.py project (docs/architecture/system.md (Why not) evidence)
 test_apps/atoms3_qmx_host_poc/build/
 test_apps/atoms3_qmx_host_poc/managed_components/
 test_apps/atoms3_qmx_host_poc/sdkconfig
