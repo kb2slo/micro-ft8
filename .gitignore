@@ -8,7 +8,7 @@ idf_py_*
 main/*.o
 # host_mock compiles some components/ sources in place too (autoseq, adif) --
 # same stray-.o pattern main/*.o above already covers, now in two more spots
-# since RFC 0005 Phase 2 moved those files out of main/.
+# since docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)) moved those files out of main/.
 components/autoseq/*.o
 components/adif/*.o
 
@@ -66,7 +66,7 @@ test_apps/atoms3_qmx_host_poc/sdkconfig
 test_apps/atoms3_qmx_host_poc/dependencies.lock
 sidekick/sdkconfig.old
 
-# poe_p4: separate idf.py project, ESP32-P4 (RFC 0005 Phase 0)
+# poe_p4: separate idf.py project, ESP32-P4 (docs/STYLE.md (Two boards, one source))
 poe_p4/build/
 poe_p4/managed_components/
 poe_p4/sdkconfig
