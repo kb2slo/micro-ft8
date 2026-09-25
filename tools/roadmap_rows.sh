@@ -5,6 +5,8 @@
 #   tools/roadmap_rows.sh new              print a fresh random row ID never seen in git history
 #   tools/roadmap_rows.sh health [--at REV]
 #                                          backlog health and drift budget, now or as of REV
+#   tools/roadmap_rows.sh dangling [--at REV]
+#                                          docs citing a row ID that is no longer a row (nor Declined)
 #
 # The constants below are the only place these numbers live. Each grooming retro
 # re-reads the output and decides whether any of them should move.
@@ -61,6 +63,32 @@ report() {
     echo "over the limit ($(wc -l <<<"$over" | tr -d ' ')):"
     awk '{ printf "  %5d  %s%s\n", $1, $2, ($3 ? "  (long-ok)" : "") }' <<<"$over"
   fi
+}
+
+# Row IDs that were once rows in ROADMAP.md (as of REV) but are not rows now,
+# in any section -- Declined lines count as rows, so a declined ID is not dead.
+# Only real ID shapes: B12 / I28a / D7, or an opaque 4-char ID.
+dead_ids() {
+  local rev="$1" text="$2"
+  local id_re='^([BID][0-9]+[a-z]?|[a-z][a-z2-9]{3})$'
+  comm -23 \
+    <(git log -p "$rev" -- "$ROADMAP" | awk -F'|' '/^[-+ ]\| *[A-Za-z0-9]+ *\|/ && !/^[-+ ]\| *(ID|---)/ { id = $2; gsub(/ /, "", id); print id }' \
+        | grep -E "$id_re" | sort -u) \
+    <(rows <<<"$text" | awk '{ print $3 }' | sort -u)
+}
+
+# "<file>: <id> <id> ..." for every doc citing a dead ID. TEST_PLAN.md is left
+# out (row IDs label what a check covers there), and so is rfcs/rejected/ (frozen).
+dangling() {
+  local rev="" worktree=1
+  if [[ "${1:-}" == "--at" ]]; then rev="$2"; worktree=0; fi
+  local text re
+  if (( worktree )); then text="$(cat "$ROADMAP")"; else text="$(git show "$rev:$ROADMAP")"; fi
+  re="$(dead_ids "${rev:-HEAD}" "$text" | paste -sd'|' -)"
+  [[ -z "$re" ]] && return 0
+  git grep -owE "($re)" ${rev:+"$rev"} -- 'docs/*.md' ':!docs/TEST_PLAN.md' ':!docs/rfcs/rejected/*' \
+    | sed "s|^${rev:+$rev:}||" \
+    | awk -F: '!seen[$1 FS $2]++ { ids[$1] = ids[$1] " " $2 } END { for (f in ids) print f ":" ids[f] }' | sort
 }
 
 pct() { awk -v a="$1" -v b="$2" 'BEGIN { printf "%d", (b ? 100 * a / b : 0) }'; }
@@ -126,6 +154,10 @@ health() {
   printf '  flow %dd          +%d / -%d rows\n' "$FLOW_DAYS" "$added" "$removed"
   printf '  oldest Backlog   %s, %d days since intake\n' "${oldest_id:-none}" "$oldest_days"
   printf '  owed field checks %d (TEST_PLAN Pending)          budget %d\n' "$owed" "$BUDGET_OWED"
+  # Reported, not budgeted: most dead citations sit in RFCs awaiting graduation (row k7gc).
+  local dang
+  dang="$(if (( worktree )); then dangling; else dangling --at "$rev"; fi)"
+  printf '  dangling IDs     %d file(s) cite a dropped row ID    (tools/roadmap_rows.sh dangling)\n' "$(grep -c . <<<"$dang" || true)"
 
   local why=()
   (( bytes / 1024 > BUDGET_READ_KB )) && why+=("read cost $(( bytes / 1024 )) KB")
@@ -158,5 +190,6 @@ case "${1:-}" in
   "") report ;;
   new) new_id ;;
   health) shift; health "$@" ;;
-  *) echo "usage: $0 [new | health [--at REV]]" >&2; exit 2 ;;
+  dangling) shift; dangling "$@" ;;
+  *) echo "usage: $0 [new | health [--at REV] | dangling [--at REV]]" >&2; exit 2 ;;
 esac
