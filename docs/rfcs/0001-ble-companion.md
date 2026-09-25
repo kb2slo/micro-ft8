@@ -45,7 +45,7 @@ We will **not**:
     * **Aside, since these boards are indistinguishable over USB:** `flash_id` reports the chip, and both are the same part; in USB-Serial/JTAG mode both enumerate as Espressif's generic `303A:1001` with no board string. The **MAC** is the only reliable discriminator (recorded above). The differing flash vendor is a production-batch artifact, not a model identifier — do not key anything off it.
 * Ship on-chip `ENABLE_BLE` in official `dev` / tagged binaries
 * Treat two ATOMs/Nanos (no USB-host brain) as a QMX radio
-* Use a Morserino-32 or M32 Pocket as the BLE coprocessor (classic 4-pin header or Pocket USB). Leave those boxes as CW. I17 (Pocket as a Micro-FT8 *host*) is Ideas, not this path.
+* Use a Morserino-32 or M32 Pocket as the BLE coprocessor (classic 4-pin header or Pocket USB). Leave those boxes as CW. I17 (Pocket as a Micro-FT8 *host*) is Declined.
 * Use IR or the headphone jack as the companion pipe
 
 The Cardputer remains the single source of truth and operation. The phone acts strictly as a **spectator and librarian**.
