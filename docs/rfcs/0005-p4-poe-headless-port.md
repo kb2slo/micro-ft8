@@ -176,7 +176,7 @@ their own copy.** Concretely:
   separate files. The test is whether the *file* is board-specific, not whether *any* line in it is — a file
   that is 90% shared logic with a 10% board-specific tail is a #ifdef candidate, not a fork candidate.
 - **What this rules out:** copying a function (or a modified near-copy of one) into a second file so each
-  board can edit "its own" version. That is exactly the failure mode STYLE and RFC 0002's extract campaign
+  board can edit "its own" version. That is exactly the failure mode STYLE's extract rules
   already spend effort preventing inside a single build target — this goal is the same discipline applied
   across the ADV/PoE-P4 boundary instead of within one binary.
 - This is the resolution to the open question Phase 0 (§7) originally left unstated: `main.cpp`'s
@@ -236,7 +236,7 @@ those files assume a working host stack under them, not prove one.
 
 **Phase 2 — headless decode/TX core.** Port the decode/autoseq/TX pipeline without the UI stack (`M5Unified`,
 `M5GFX`, `M5Cardputer` — none of which this board can use, since it has no display). This is likely the
-bulk of the porting effort and the place `main.cpp`'s UI-vs-core coupling (RFC 0002's extract campaign) pays
+bulk of the porting effort and the place `main.cpp`'s UI-vs-core coupling (STYLE's extract rules) pays
 off or doesn't.
 
 **Phase 3 — companion link.** AtomS3 Lite over Grove UART, unchanged mechanism and role from the ADV

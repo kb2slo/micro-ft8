@@ -17,10 +17,10 @@ dependencies:
   lvgl/lvgl: ^8.3.9
   # USB Host UAC for audio streaming. Pinned exact for the same reason as
   # usb_host_cdc_acm below: moving storage_service's manifest into this file
-  # (RFC 0002 §5.1) re-resolves every range here, and these two drifted on the
+  # (docs/STYLE.md module placement) re-resolves every range here, and these two drifted on the
   # first cascade build — usb_host_uac 1.3.3 -> 1.5.0, usb 1.1.0 -> 1.4.1.
-  # Both are on the QMX UAC audio path, which RFC 0002 §2.5 requires stay
-  # unchanged and which only a field session can check. These are the versions
+  # Both are on the QMX UAC audio path, which only a field session can check,
+  # so it does not change as a side effect. These are the versions
   # the lock already held; bump them deliberately, not by moving a file.
   espressif/usb_host_uac: 1.3.3
   espressif/usb: 1.1.0

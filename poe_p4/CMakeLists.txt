@@ -9,8 +9,8 @@ cmake_minimum_required(VERSION 3.16)
 # See docs/rfcs/0005-p4-poe-headless-port.md ("RFC 0005"), Phase 0.
 set(IDF_TARGET esp32p4)
 
-# Shared with the ADV rather than duplicated (RFC 0005 §5, RFC 0002 §5.1's
-# named exception for components/ across more than one idf.py project --
+# Shared with the ADV rather than duplicated (RFC 0005 §5, docs/STYLE.md's
+# module-placement rule: more than one idf.py project compiles it --
 # the same pattern sidekick already uses for porta_proto). Only the specific
 # components this project actually needs, not the whole components/ tree
 # (which would also expose ADV-only ones like M5Unified/board_cardputer_adv

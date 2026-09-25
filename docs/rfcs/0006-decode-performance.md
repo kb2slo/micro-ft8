@@ -180,7 +180,7 @@ further constraints:
    is a change in `monitor.c` alone. Real two-per-byte packing is harder: `vendor/ft8/decode.c` also walks
    the buffer with pointer arithmetic (`p8[sm]`, `block_stride` offsets in the sync-score loops, and
    `get_cand_mag()`). That means an accessor through the vendored decoder, which is a divergence from the
-   pin and belongs under [RFC 0002](0002-extract-and-boundaries.md) §6's pin discipline.
+   pin and belongs under [FT8_LIB_ARCHITECTURE.md](../FT8_LIB_ARCHITECTURE.md)'s pin discipline.
 3. **Unpacking costs CPU** in the sync-score and likelihood loops. P0 measures it.
 
 **Order:** simulate on the host in P2 first. Only if recall holds against 8-bit t2/f2 is packing worth
