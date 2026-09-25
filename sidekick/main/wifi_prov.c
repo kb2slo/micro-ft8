@@ -522,9 +522,11 @@ static esp_err_t post_provision(httpd_req_t *req)
         strncpy(ssid, manual, sizeof(ssid) - 1);
     }
     if (ssid[0] == '\0') {
+        // Plain text: send_error() escapes its message, so markup here would
+        // show as literal tags.
         return send_error(req, "400 Bad Request",
                           "Network required — pick one from the list, or choose "
-                          "<b>Other…</b> and type a name.");
+                          "Other… and type a name.");
     }
     (void)httpd_query_key_value(body, "pass", pass, sizeof(pass));
     url_decode(pass);
@@ -595,18 +597,21 @@ static void httpd_start_provisioning(void)
     static const httpd_uri_t rescan = {
         .uri = "/rescan", .method = HTTP_GET, .handler = get_rescan,
     };
-    // All three are open, and provisioning is the one place that has no
-    // choice: this is where the token is minted, so requiring one would be the
-    // chicken-and-egg. What stands in for authorization is that the AP only
-    // exists while the device has no working network, and reaching it means
-    // being in radio range.
+    // The form and a rescan are open: they change nothing stored. Saving
+    // credentials is a config write, so it needs the token like every other
+    // write (docs/architecture/system.md (Who may key the transmitter)). There is no chicken-and-egg:
+    // pairing_http_init() mints the token on first boot, before any route is
+    // registered, and the button discloses it here as anywhere. Being in radio
+    // range is no gate -- this AP is open, and it is how the station runs in
+    // the field (docs/architecture/system.md (Constraints)), not only a setup step. provision.html waits
+    // for the button before it enables Save.
     const struct {
         const httpd_uri_t *uri;
         pairing_policy_t policy;
     } core[] = {
         { &form, PAIRING_OPEN },
         { &rescan, PAIRING_OPEN },
-        { &provision, PAIRING_OPEN },
+        { &provision, PAIRING_REQUIRED },
     };
     _Static_assert(sizeof(core) / sizeof(core[0]) == PAIRING_ROUTES_WIFI_PROV_AP_CORE,
                    "AP core route count");

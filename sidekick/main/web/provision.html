@@ -80,6 +80,7 @@ label{display:block;font-size:.7rem;color:var(--muted);text-transform:uppercase;
 input,select,button{-webkit-appearance:none;appearance:none}
 input,select{width:100%;box-sizing:border-box;padding:.6rem;margin:.3rem 0 1rem;font-size:1rem;background:var(--field-bg);color:var(--field-fg);border:1px solid var(--accent-border);border-radius:.4rem}
 button{width:100%;padding:.7rem;font-size:1rem;background:var(--btn-bg);color:var(--btn-fg);border:1px solid var(--accent-border);border-radius:.4rem}
+button:disabled{opacity:.45}
 /* Same "link styled as a button" pattern app.html's own #callInfoQrz uses --
    reusing it rather than inventing a second button language for one CTA. */
 .cta{display:block;text-align:center;padding:.8rem;margin:.8rem 0 .3rem;background:var(--btn-bg);color:var(--accent);border:1px solid var(--accent-border);border-radius:.4rem;text-decoration:none;font-weight:700;font-size:1.05rem}
@@ -115,7 +116,7 @@ Compatibility</i> switched on before it will appear.</p>
 
 {{failure}}
 
-<form method=POST action=/provision>
+<form id=provForm method=POST action=/provision>
 
   {{networks}}
 
@@ -141,7 +142,8 @@ Compatibility</i> switched on before it will appear.</p>
 
   <label>Password</label>
   <input name=pass type=password maxlength=63>
-  <button>Save and join</button>
+  <button id=provSave disabled>Save and join</button>
+  <p id=provPair class=hint style='margin-top:.5rem'>Press the sidekick button to pair, then save.</p>
 </form>
 
 <p style='font-size:.85rem;color:var(--muted)'>
@@ -152,8 +154,47 @@ Compatibility</i> switched on before it will appear.</p>
 
 <script src=/pairing.js></script>
 <script>
-// Same re-auth path every page shares (pairing.js): a button press while on
-// this page stores the token so the first app.html load does not need a
-// second gesture.
-MicroFT8Pairing.boot();
+// Saving credentials is a write, so it carries the pairing token like every
+// other write (docs/architecture/system.md (Who may key the transmitter)).
+// Save stays disabled until pairing.js has the token from a button press --
+// the same gesture every page uses, and the first app.html load then needs no
+// second press.
+var provForm = document.getElementById('provForm');
+var provSave = document.getElementById('provSave');
+var provPair = document.getElementById('provPair');
+MicroFT8Pairing.boot({
+  onPaired: function () {
+    provSave.disabled = false;
+    provPair.textContent = 'Paired';
+  }
+});
+provForm.addEventListener('submit', async function (e) {
+  e.preventDefault();
+  provSave.disabled = true;
+  var r, html;
+  try {
+    r = await MicroFT8Pairing.authFetch('/provision', {
+      method: 'POST',
+      body: new URLSearchParams(new FormData(provForm))
+    });
+    html = await r.text();
+  } catch (err) {
+    provPair.textContent = 'No reply from the sidekick. Try again.';
+    provSave.disabled = false;
+    return;
+  }
+  if (r.status === 401) {
+    // The stored token is not this device's (say, NVS was erased and a new
+    // one minted). Drop it and wait for a press; onPaired re-enables Save.
+    provPair.textContent = 'The sidekick did not accept this pairing. Press its button again.';
+    MicroFT8Pairing.needsReauth();
+    return;
+  }
+  // saved.html on success, error.html on a refusal, shown in place: after a
+  // save the sidekick restarts and this AP goes away, so there is nothing to
+  // navigate to. Parsed rather than written, so their scripts do not run.
+  var page = new DOMParser().parseFromString(html, 'text/html');
+  document.title = page.title;
+  document.body.replaceWith(page.body);
+});
 </script>

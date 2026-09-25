@@ -64,8 +64,8 @@ extern "C" {
 // has no rewind -- httpd_req_recv() consumes from the socket, so the wrapper
 // would steal the body from the handler that needs it. Every guarded write is
 // issued by JavaScript the sidekick itself serves, which can set a header, so
-// a plain HTML form never needs to carry a token. The open provisioning form
-// is the one that stays a plain form, and it needs no token at all.
+// a plain HTML form never needs to carry a token. The provisioning form is no
+// exception: it submits through JavaScript too (provision.html).
 #define PAIRING_TOKEN_HEADER "X-MicroFT8-Token"
 
 // Renders `PAIRING_TOKEN_BYTES` of caller-supplied entropy as a NUL-terminated
