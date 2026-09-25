@@ -2,11 +2,11 @@
 
 * **Status:** **Rejected.** Gluing M32 Pocket port and BLE CTS into one RFC was the wrong vehicle. Do not implement Pocket firmware or treat this file as the B15 spec.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
-* **Path:** `docs/rfcs/0003-m32-pocket-port-and-ble-time.md`
-* **What stays:** [I17](../ROADMAP.md) (Pocket as a Mini-FT8 *host*) remains Ideas. Own RFC when sequenced. [B15](../ROADMAP.md) one-shot CTS stays Now; contract is the ROADMAP Done-when (plus [RFC 0001](0001-ble-companion.md) §4 RAM table), not this document.
+* **Path:** `docs/rfcs/rejected/0003-m32-pocket-port-and-ble-time.md`
+* **What stays:** [I17](../../ROADMAP.md) (Pocket as a Mini-FT8 *host*) remains Ideas. Own RFC when sequenced. [B15](../../ROADMAP.md) one-shot CTS stays Now; contract is the ROADMAP Done-when (plus [RFC 0001](../0001-ble-companion.md) §4 RAM table), not this document.
 * **What this file is now:** Historical notes. §3.1 USB-C UFP/sink facts may inform I17. §4 iPhone CTS flow is the field recipe B15 already uses. Neither is an accepted RFC.
 
-Chat is intake; `docs/ROADMAP.md` is truth. No new logic in `main.cpp` ([STYLE.md](../STYLE.md), [RFC 0002](0002-extract-and-boundaries.md)).
+Chat is intake; `docs/ROADMAP.md` is truth. No new logic in `main.cpp` ([STYLE.md](../../STYLE.md), [RFC 0002](../0002-extract-and-boundaries.md)).
 
 ---
 
@@ -140,7 +140,7 @@ B15 measures the **iPhone** GAP role (peripheral+GATTC). Android Central is a la
 
 ## 5. Board split (track B)
 
-STYLE is not the reason. We would change [STYLE.md](../STYLE.md) in this RFC if a class HAL were the better engineering. It is not, for this split.
+STYLE is not the reason. We would change [STYLE.md](../../STYLE.md) in this RFC if a class HAL were the better engineering. It is not, for this split.
 
 ADV vs Pocket is two **flash images**: different `sdkconfig`, pins, partition table, display driver. One binary never holds both boards. A `class Board` / `IDisplay` vtable is how you pick an implementation at runtime (and how you get `dynamic_cast` you cannot use: no RTTI). Here the linker already picks the implementation. That is the same choice we already made for radio: `radio_control_ops_t` (NULL op = not supported), and for ADV hardware: `components/board_cardputer_adv` as C APIs (`board_audio_*`, `board_pins.h`). Host tests stub the same functions; they do not need fake subclasses.
 
