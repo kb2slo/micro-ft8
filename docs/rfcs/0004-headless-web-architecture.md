@@ -133,7 +133,7 @@ a bundle, and that is all. Constraint 2 is what makes this acceptable.
 3. The page **POSTs the bundle to the sidekick**, which checks §7's pairing token, stages the tree, checks
    the manifest's per-asset digests, then atomically promotes onto the web FS (and may replace former seed
    pages).
-4. Firmware travels the same path to an OTA endpoint.
+4. Firmware does **not** travel this path. **Amended 2026-09-25 by [RFC 0007](0007-flash-and-update.md) §3.2:** the sidekick downloads firmware itself, over plain HTTP, and checks it against a SHA-256 the page fetched over HTTPS.
 
 This is the conclusion of §2 and it deletes an entire class of work: **no TLS stack on the device, no CA
 bundle to maintain as roots rotate, no certificate expiry, no clock dependency for certificate validity.**

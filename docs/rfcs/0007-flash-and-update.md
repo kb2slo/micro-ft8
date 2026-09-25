@@ -1,8 +1,7 @@
 # RFC 0007: Flashing and updating Micro-FT8
 
-* **Status:** Draft 2026-09-25
-* **Row:** B44
-* **Amends on acceptance:** [RFC 0004](0004-headless-web-architecture.md) §4 step 4 ("firmware travels the same path to an OTA endpoint")
+* **Status:** Accepted 2026-09-25
+* **Amends:** [RFC 0004](0004-headless-web-architecture.md) §4 step 4 (firmware no longer travels the phone-relay path)
 
 ## 1. Goal
 
@@ -162,17 +161,13 @@ Not part of this design; each gets its own row or RFC when wanted.
 
 ## 6. Slices
 
-Each becomes a row on acceptance.
+Each is a `ROADMAP.md` Backlog row.
 
-* **S0** — Port A speed (§3.11): the stress test, its message types (frame codec and payload checker `host_mock`-tested), then the rate change. Field check: the stress test passes at the chosen rate on both main boards, under RX and TX load.
-* **S1** — CI publishes app-only images and the manifest's `ota` entries (§3.1).
-* **S2** — Sidekick self-update (§3.2, §3.4). Field check: update from the webapp, then a forced bad image rolls back.
-* **S3** — Main-board HELLO (§3.6), update mode, the `FW_*` messages with resume, and the shared receiver, with `host_mock` tests; P4 partition table and rollback enabled (§3.5, §3.7). Field check: P4 updated from the webapp, transfer time measured, a forced bad image rolls back.
-* **S4** — Webapp update UX and version pairing (§3.6, §3.9). Field check: walk §3.9's steps 1–6 with a QSO in progress, with the phone locked mid-transfer, and with a second phone open.
-* **S5** — Remove the ADV's sidekick flashing (§3.10), after S2 has shipped so the sidekick can still be updated without a computer. Proof: `idf.py build` for the ADV, with the image size drop checked; the sidekick's public merged image is still published; README audit, because a documented workflow goes.
-* **S6** — ADV partition table and rollback, reusing S3's receiver (§3.7). Field check as S3, on the ADV.
-* Remove M5Launcher support: `tools/flash_keep_launcher.py` and the docs that describe it.
-
-## Ask
-
-Accept as the design for B44, so its §6 slices become rows.
+* **S0** (`v3hh`) — Port A speed (§3.11): the stress test, its message types (frame codec and payload checker `host_mock`-tested), then the rate change. Field check: the stress test passes at the chosen rate on both main boards, under RX and TX load.
+* **S1** (`wanw`) — CI publishes app-only images and the manifest's `ota` entries (§3.1).
+* **S2** (`v697`) — Sidekick self-update (§3.2, §3.4). Field check: update from the webapp, then a forced bad image rolls back.
+* **S3** (`hstv`) — Main-board HELLO (§3.6), update mode, the `FW_*` messages with resume, and the shared receiver, with `host_mock` tests; P4 partition table and rollback enabled (§3.5, §3.7). Field check: P4 updated from the webapp, transfer time measured, a forced bad image rolls back.
+* **S4** (`yme5`) — Webapp update UX and version pairing (§3.6, §3.9). Field check: walk §3.9's steps 1–6 with a QSO in progress, with the phone locked mid-transfer, and with a second phone open.
+* **S5** (`u8zt`) — Remove the ADV's sidekick flashing (§3.10), after S2 has shipped so the sidekick can still be updated without a computer. Proof: `idf.py build` for the ADV, with the image size drop checked; the sidekick's public merged image is still published; README audit, because a documented workflow goes.
+* **S6** (`gujg`) — ADV partition table and rollback, reusing S3's receiver (§3.7). Field check as S3, on the ADV.
+* (`ve47`) Remove M5Launcher support: `tools/flash_keep_launcher.py` and the docs that describe it.
