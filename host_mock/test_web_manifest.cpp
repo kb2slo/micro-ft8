@@ -1,4 +1,4 @@
-// Host test for I28c bundle manifest parse + API version gate (RFC 0004 §4).
+// Host test for I28c bundle manifest parse + API version gate (docs/architecture/sidekick.md (Installing the app bundle)).
 //
 // Pins the refuse-incompatible rule and the path/digest jail that make a bad
 // upload fail before promote, not after. Device install (stage/verify/promote)

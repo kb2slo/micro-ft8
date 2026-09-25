@@ -1,4 +1,4 @@
-// Shared pairing for every sidekick page (RFC 0004 section 7).
+// Shared pairing for every sidekick page (docs/architecture/system.md (Who may key the transmitter)).
 //
 // Served at /pairing.js. Pages include it with <script src=/pairing.js></script>
 // and call MicroFT8Pairing.boot(...) so re-auth is the same gesture everywhere:

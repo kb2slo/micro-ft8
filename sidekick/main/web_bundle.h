@@ -1,6 +1,6 @@
 #pragma once
 
-// web_bundle.h -- token-guarded stage → verify → promote (RFC 0004 §4).
+// web_bundle.h -- token-guarded stage → verify → promote (docs/architecture/sidekick.md (Installing the app bundle)).
 //
 // Wire protocol (all PAIRING_REQUIRED):
 //   POST /api/bundle/begin   body = manifest JSON

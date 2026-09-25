@@ -1,4 +1,4 @@
-// Authorization for the sidekick's HTTP API (I28b, RFC 0004 §7). See
+// Authorization for the sidekick's HTTP API (I28b, docs/architecture/system.md (Who may key the transmitter)). See
 // pairing_token.h for why this is the whole security design, why reads are
 // open on principle, and why it carries no dependencies.
 

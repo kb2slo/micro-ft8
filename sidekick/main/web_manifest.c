@@ -1,5 +1,5 @@
 // Bundle manifest: constrained JSON parse + version/path/digest checks.
-// See web_manifest.h and RFC 0004 §4.
+// See web_manifest.h and docs/architecture/sidekick.md (Installing the app bundle).
 
 #include "web_manifest.h"
 

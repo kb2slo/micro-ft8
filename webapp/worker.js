@@ -1,7 +1,7 @@
 // Adds CORS so the sidekick's plain-HTTP page (http://micro-ft8.local/) can
 // fetch this bundle cross-origin -- Cloudflare Workers Static Assets serves
 // files with no CORS header by default, unlike GitHub Pages, which is what
-// RFC 0004 SS4's "publicly-trusted certificate, and a CORS header permitting
+// docs/architecture/sidekick.md (Installing the app bundle)'s "publicly-trusted certificate, and a CORS header permitting
 // a plain-HTTP origin to read the response" host requirement was measured
 // against. Everything else about serving stays default asset behavior.
 //
@@ -33,7 +33,7 @@ export default {
     if (contentType && /^text\/html\b/i.test(contentType) && !/charset=/i.test(contentType)) {
       headers.set("Content-Type", "text/html; charset=utf-8");
     }
-    // geo.html (RFC 0004 SS11's geolocation handoff) is the one page on this
+    // geo.html (docs/architecture/webapp.md (A non-secure origin)'s geolocation handoff) is the one page on this
     // site whose whole point is working with zero network -- an operator
     // reaching it at all already crossed the hard part (getting real
     // internet once). Static Assets' own default is
@@ -110,7 +110,7 @@ function guessContentType(key) {
   return "application/octet-stream";
 }
 
-// I37 (Tools: PSKReporter -- who is hearing me), RFC 0004 SS8. PSKReporter
+// I37 (Tools: PSKReporter -- who is hearing me), docs/architecture/system.md (Third-party services). PSKReporter
 // sends no Access-Control-Allow-Origin (measured 2026-09-10, re-confirmed
 // 2026-09-21 against both retrieve.pskreporter.info/query and
 // cgi-bin/pskquery5.pl), so the browser can't call it directly -- and even
@@ -120,7 +120,7 @@ function guessContentType(key) {
 // network-wide, not specific to the requested callsign) rather than the
 // handful of <receptionReport> elements -- the actual "who heard this
 // callsign" spots -- the card needs. This fetches server-side and re-serves
-// only those, as small JSON: filter, not relay, per SS8's own rule for this
+// only those, as small JSON: filter, not relay, per docs/architecture/system.md (Third-party services)'s own rule for this
 // route. No secrets either way -- PSKReporter needs no credentials.
 const PSKREPORTER_QUERY_URL = "https://retrieve.pskreporter.info/query";
 async function servePskReporter(request, url) {
@@ -148,7 +148,7 @@ async function servePskReporter(request, url) {
   } catch (e) {
     // PSKReporter needs no credentials and this carries none, so there is
     // nothing sensitive in the underlying error -- surfaced rather than
-    // swallowed, same "degrade visibly" instinct RFC 0004 SS12.2 applies to
+    // swallowed, same "degrade visibly" instinct docs/architecture/webapp.md (Tools) applies to
     // every online Tools card, one layer further in so the card itself can
     // eventually show *why* (timeout vs. DNS vs. a hard refusal) rather than
     // a single undifferentiated "unreachable".

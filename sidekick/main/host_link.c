@@ -66,9 +66,9 @@ static bool porta_send(const uint8_t *frame, size_t n)
 typedef enum {
     ENTRY_LOG = 0,
     ENTRY_DECODE = 1,
-    ENTRY_QUEUE_ENTRY = 2,  // I28d, RFC 0004 §11
+    ENTRY_QUEUE_ENTRY = 2,  // I28d, docs/architecture/webapp.md (Screens)
     ENTRY_SLOT_STATE = 3,
-    ENTRY_TX_HUD = 4,       // I28d, RFC 0004 §11
+    ENTRY_TX_HUD = 4,       // I28d, docs/architecture/webapp.md (Screens)
     ENTRY_USB_STATUS = 5,   // host's own USB-C host port: device attached/detached
 } entry_kind_t;
 
@@ -331,7 +331,7 @@ static void config_json_end(void)
     s_config_gathering = false;
 }
 
-// FILE_LIST / FILE_READ (I28d, RFC 0004 §11): the reply is a burst of
+// FILE_LIST / FILE_READ (I28d, docs/architecture/webapp.md (Screens)): the reply is a burst of
 // FILE_DATA rows followed by ACK, same shape as CONFIG_GET-all above --
 // gathered here into a complete JSON response body, so wait_action_reply()
 // can send it as-is once the ACK for PORTA_MSG_FILE_LIST/PORTA_MSG_FILE_READ
@@ -751,7 +751,7 @@ static bool query_uint(httpd_req_t *req, const char *key, unsigned long dflt, un
 }
 
 // GET /api/log/files?skip=&take=  -- day-file names, newest first, paged.
-// Open read: QSO log browsing is the same category §7 already opened up for
+// Open read: QSO log browsing is the same category docs/architecture/system.md (Who may key the transmitter) already opened up for
 // the viewer and the event feed.
 static esp_err_t get_log_files(httpd_req_t *req)
 {
@@ -1145,9 +1145,9 @@ void host_link_register_uris(httpd_handle_t server)
     // transmitter changes the device, so those need the token. Station config
     // read is open (call/grid are on the air); writes are guarded. Connect /
     // tune are writes (UAC + CAT / TX tone). Beacon / queue cancel / queue
-    // reply all change device state (RFC 0004 §11) -- guarded like
+    // reply all change device state (docs/architecture/webapp.md (Screens)) -- guarded like
     // connect/tune. Log files/entries are QSO-log reads, the same category
-    // §7 already opened up for the event feed. Log delete is destructive —
+    // docs/architecture/system.md (Who may key the transmitter) already opened up for the event feed. Log delete is destructive —
     // PAIRING_REQUIRED. (/log's own raw viewer.html is retired -- app.html's
     // Operate view is the same event feed, same design system.)
     const struct {

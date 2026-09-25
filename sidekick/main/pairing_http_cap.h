@@ -18,7 +18,7 @@ enum {
     PAIRING_ROUTES_HOST_LINK = 13,  // /log (viewer.html) retired -- app.html covers it
     PAIRING_ROUTES_WEB_BUNDLE = 3,
     PAIRING_ROUTES_BUNDLE_HOST = 2,
-    // B55 (RFC 0004 §1): AP mode now serves the full application, the same as
+    // B55 (docs/architecture/system.md (Constraints)): AP mode now serves the full application, the same as
     // station mode, so it registers the same host_link/web_bundle/bundle_host/
     // web_fs_rehydrate routes rather than a "static files only" subset. There
     // is no separate AP-only web_fs count any more -- both modes share

@@ -1,4 +1,4 @@
-# Framing for the sidekick/main link (I28a, RFC 0004 §6).
+# Framing for the sidekick/main link (I28a, docs/architecture/sidekick.md (Port A)).
 #
 # No REQUIRES: the codec is deliberately dependency-free -- no ESP-IDF, no
 # driver, nothing transport-specific. That is what lets the sidekick project

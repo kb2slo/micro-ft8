@@ -9,10 +9,7 @@ Human- and tool-readable project memory. Prefer this tree over editor-specific r
 | [STYLE.md](STYLE.md) | Coding standard for our C/C++ (not vendored `M5*` / `ft8_lib`). |
 | [TEST_PLAN.md](TEST_PLAN.md) | What is verified and by whom: agent-run automation vs operator field checks, plus field checks owed on the current branch. |
 | [RELEASE_PROCESS.md](RELEASE_PROCESS.md) | How a build becomes a download: the rolling `continuous` tag, versioned `v*` releases, what a version tag does **not** set, and what a rename/de-fork would break. |
-| [AUTOSEQ_ARCHITECTURE.md](AUTOSEQ_ARCHITECTURE.md) | Sequencer design (slot events, tick vs decode). |
-| [FT8_LIB_ARCHITECTURE.md](FT8_LIB_ARCHITECTURE.md) | `ft8_lib` vendor boundary: the pin, our wrappers, patch policy, how to bump. |
-| [RADIO_ARCHITECTURE.md](RADIO_ARCHITECTURE.md) | Radio backends: operations table, capabilities, how a radio is added. |
-| [AUTOSEQ_INACTIVE_QUEUE.md](AUTOSEQ_INACTIVE_QUEUE.md) | Retry exhaustion / reincarnation / inactive zone. |
+| `architecture/` | How it works now, and why, one doc per area. Start at [system.md](architecture/system.md); it links the rest. Doc type: **Doc types** below. |
 | [FT8 Free-Text Reference Extension.md](FT8%20Free-Text%20Reference%20Extension.md) | Free-text / SOTA-style payload notes. |
 | `rfcs/` | Design for work not yet built. Lifecycle and graduation: **Doc types** below. |
 
@@ -34,7 +31,7 @@ Each document answers one question. Put content where its question is answered.
 |---|---|---|
 | What next? | `ROADMAP.md` | Plan rows |
 | Should we, and how? (not built yet) | `docs/rfcs/NNNN-*.md` | RFC |
-| How does this work now, and why? | `docs/<AREA>_ARCHITECTURE.md` | Architecture doc |
+| How does this work now, and why? | `docs/architecture/<area>.md` | Architecture doc |
 | How do I build, flash, or use this part? | That directory's `README.md` | How-to |
 | What must two codebases agree on? | The code | One source of truth, plus a test holding the other side to it |
 | What can an operator do with it? | `webapp/` → `micro-ft8.kalikstein.com` | Public site |
@@ -138,7 +135,7 @@ State which of these you did in the turn you report the work. **"No test-plan ch
 
 **Triggers, stated so they cannot be missed.** Audit that section when a change adds, alters, or **removes** any of: a key binding or screen; an on-screen string the README quotes; a documented workflow (log offload, flash/Launcher, charge, time sync); or a supported radio/board. **Removal counts, and is the easy one to miss** — a README documenting a key that now does nothing is worse than one that never mentioned it. If Wei’s original below the delimiter documents the same thing, do **not** edit it: put the correction in the fork note and let the delimiter rule (“use the fork notes above where they disagree”) carry it. When it genuinely does not apply, say so explicitly in that turn, as above. CI enforces the mechanical half of this (`readme-audit` in `.github/workflows/ci.yml`): a PR that removes a `UIMode` enumerator or changes a key binding under `main/` without touching `README.md` fails, unless the PR body says `README-audit: none - <why>`. The check catches signals, not judgement — it will not notice a behaviour change that alters no enum and no key.
 
-Do not expand `main.cpp` without extracting a tested function ([STYLE.md](STYLE.md)). Radio and `ft8_lib` boundaries: [RADIO_ARCHITECTURE.md](RADIO_ARCHITECTURE.md), [FT8_LIB_ARCHITECTURE.md](FT8_LIB_ARCHITECTURE.md). Read the current Now from `ROADMAP.md` rather than trusting a name written here — this line has gone stale before.
+Do not expand `main.cpp` without extracting a tested function ([STYLE.md](STYLE.md)). Radio and `ft8_lib` boundaries: [architecture/radio.md](architecture/radio.md), [architecture/ft8_lib.md](architecture/ft8_lib.md). Read the current Now from `ROADMAP.md` rather than trusting a name written here — this line has gone stale before.
 
 This project ships on **`origin/main`** (`kb2slo/micro-ft8`, private). De-forked 2026-09-15 from `kb2slo/Micro-FT8` (now archived, public) — there is no `upstream` git remote. Wei's `wcheng95/Micro-FT8` is watched for portable fixes (**Upstream watches** below), not tracked as a fork; never push or open a PR there unless the operator explicitly asks.
 
@@ -150,7 +147,7 @@ This project ships on **`origin/main`** (`kb2slo/micro-ft8`, private). De-forked
 git clone --recurse-submodules git@github.com:kb2slo/micro-ft8.git
 ```
 
-Existing trees: `git submodule update --init`. Pin and bump path: [FT8_LIB_ARCHITECTURE.md](FT8_LIB_ARCHITECTURE.md).
+Existing trees: `git submodule update --init`. Pin and bump path: [architecture/ft8_lib.md](architecture/ft8_lib.md).
 
 ### Reproducibility
 
@@ -331,7 +328,7 @@ Three watches, different cadences. Network fail → skip (any of them); do not i
 
 #### `ft8_lib` pin — every session start
 
-Scoped to the submodule pin ([FT8_LIB_ARCHITECTURE.md](FT8_LIB_ARCHITECTURE.md)) only. General Micro-FT8 firmware drift is the separate watch below, not this one. The pin has **two** parents and both need watching. GitHub **Sync fork** on `kb2slo/ft8_lib` is off (parent is Wei, not Karlis).
+Scoped to the submodule pin ([architecture/ft8_lib.md](architecture/ft8_lib.md)) only. General Micro-FT8 firmware drift is the separate watch below, not this one. The pin has **two** parents and both need watching. GitHub **Sync fork** on `kb2slo/ft8_lib` is off (parent is Wei, not Karlis).
 
 **Karlis** — protocol upstream:
 
@@ -356,7 +353,7 @@ Expect `message.c` to differ by our own `stpcpy_compat` removal (`f211146`); any
 
 **Why both.** Written 2026-09-08, after this watch missed a live stack overflow (B41): Karlis’s master has not moved since **2025-08-23**, while the one protocol fix worth having in that window came from Wei. Watching only Karlis watches the quiet parent.
 
-Then draft a Backlog row in chat. Do not commit it yet. Do not merge, bump the submodule, or open a kgoba PR in that turn. Done-when: written take (sync now / wait / drop). Sync uses [FT8_LIB_ARCHITECTURE.md](FT8_LIB_ARCHITECTURE.md) **Bumping the pin** and is a separate Now. Goldens gate the pin. If a row for that SHA already exists, remind; do not duplicate.
+Then draft a Backlog row in chat. Do not commit it yet. Do not merge, bump the submodule, or open a kgoba PR in that turn. Done-when: written take (sync now / wait / drop). Sync uses [architecture/ft8_lib.md](architecture/ft8_lib.md) **Bumping the pin** and is a separate Now. Goldens gate the pin. If a row for that SHA already exists, remind; do not duplicate.
 
 #### Wei's Micro-FT8 (`wcheng95/Micro-FT8`) — at least weekly
 

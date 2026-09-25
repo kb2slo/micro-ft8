@@ -1,4 +1,4 @@
-// The ESP-IDF half of RFC 0004 §7's pairing token. See pairing_http.h for the
+// The ESP-IDF half of docs/architecture/system.md (Who may key the transmitter)'s pairing token. See pairing_http.h for the
 // split, and pairing_token.h for why reads are open on principle.
 
 #include <stdio.h>

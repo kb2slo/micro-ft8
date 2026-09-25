@@ -1,6 +1,6 @@
 #pragma once
 
-// web_fs.h -- LittleFS web root (RFC 0004 §3).
+// web_fs.h -- LittleFS web root (docs/architecture/sidekick.md (Web root)).
 //
 // Partition label `web` mounts at WEB_FS_ROOT. Files under main/web/ are the
 // hydrate seed (CMake globs that directory — drop a file in, it is embedded

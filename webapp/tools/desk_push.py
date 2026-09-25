@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Desk-push webapp/app onto a sidekick (RFC 0004 §4 bundle API).
+"""Desk-push webapp/app onto a sidekick (docs/architecture/sidekick.md (Installing the app bundle) bundle API).
 
 Regenerates the manifest, resolves the host once (mDNS is slow per-request),
 then pushes using a cached pairing token if one is on disk (see sidekick.py)

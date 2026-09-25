@@ -1,4 +1,4 @@
-// Host test for the sidekick/main frame codec (I28a, RFC 0004 §6).
+// Host test for the sidekick/main frame codec (I28a, docs/architecture/sidekick.md (Port A)).
 //
 // The codec is where a link protocol quietly goes wrong: a length off by one,
 // a CRC that misses a class of errors, a decoder that treats a payload byte as

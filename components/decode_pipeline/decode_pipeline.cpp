@@ -67,8 +67,7 @@ void ui_set_rx_list_static(const RxDecodeEntry* entries, int count);
 
 AdifLoggerDedupe s_adif_logger_dedupe;
 
-// ---- Recent decodes, keyed by the id handed out with EVENT DECODE (RFC 0004
-// §11) so Port A's QUEUE_REPLY can name one without re-parsing rendered text
+// ---- Recent decodes, keyed by the id handed out with EVENT DECODE (docs/architecture/webapp.md (Screens)) so Port A's QUEUE_REPLY can name one without re-parsing rendered text
 // on the phone. A ring, not a map: bounded and allocation-free like
 // everything else on this path. An id that has scrolled out of the ring
 // resolves to nothing, which porta_host_queue_reply reports plainly rather

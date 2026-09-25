@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate webapp/app/manifest.json from sibling files (RFC 0004 §4).
+"""Generate webapp/app/manifest.json from sibling files (docs/architecture/sidekick.md (Installing the app bundle)).
 
 Usage:
   python3 webapp/tools/gen_manifest.py          # write manifest.json

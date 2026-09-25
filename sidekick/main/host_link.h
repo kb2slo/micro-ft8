@@ -2,7 +2,7 @@
 
 // ============================================================================
 // host_link.h — what the host is doing, received over PORTA and served to a
-// browser (I28a, RFC 0004 §6).
+// browser (I28a, docs/architecture/sidekick.md (Port A)).
 //
 // Read-only on purpose. This is the first slice that runs the whole stack for
 // real -- host -> PORTA -> sidekick -> HTTP -> phone -- and it does so without

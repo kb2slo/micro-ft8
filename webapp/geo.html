@@ -3,7 +3,7 @@
 <meta name=viewport content='width=device-width,initial-scale=1'>
 <title>Locate</title>
 <!--
-  Generic geolocation handoff, RFC 0004 SS11 ("Grid square from the phone,
+  Generic geolocation handoff, docs/architecture/webapp.md (A non-secure origin) ("Grid square from the phone,
   and why it needs a second origin"): navigator.geolocation is gated on a
   secure context, and the sidekick's own http://micro-ft8.local
   deliberately isn't one -- true regardless of whether the phone has
@@ -18,7 +18,7 @@
   Generic (a `return` URL, not a hardcoded destination) rather than
   map.html-specific, operator-requested 2026-09-22: this exists so both
   map.html's own "locate me" button and Settings' still-unbuilt "set my
-  grid from GPS" (the feature SS11 was originally written about) can share
+  grid from GPS" (the feature the handoff was first designed for) can share
   one implementation instead of two near-identical copies -- neither of
   which is this page's business to know about.
 

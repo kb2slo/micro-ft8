@@ -1,6 +1,6 @@
 #pragma once
 
-// web_manifest.h -- bundle manifest parse + API version gate (RFC 0004 §4).
+// web_manifest.h -- bundle manifest parse + API version gate (docs/architecture/sidekick.md (Installing the app bundle)).
 //
 // Dependency-free so host_mock can pin refuse-incompatible and path/digest
 // shape without flash. Device install (stage/verify/promote) lives elsewhere.
@@ -40,10 +40,10 @@ bool web_manifest_path_ok(const char *relpath);
 // True if s is exactly 64 lowercase hex digits.
 bool web_manifest_sha256_hex_ok(const char *s);
 
-// api_min must be >= 1 and <= device_api. Plain refuse for skew (RFC 0004 §4).
+// api_min must be >= 1 and <= device_api. Plain refuse for skew (docs/architecture/sidekick.md (Installing the app bundle)).
 bool web_manifest_api_ok(unsigned api_min, unsigned device_api);
 
-// Parse the constrained JSON shape documented in RFC 0004 §4. On failure
+// Parse the constrained JSON shape documented in docs/architecture/sidekick.md (Installing the app bundle). On failure
 // writes a short reason into err (if non-NULL) and returns false. Does not
 // allocate.
 bool web_manifest_parse(const char *json, web_manifest_t *out, char *err, size_t err_len);

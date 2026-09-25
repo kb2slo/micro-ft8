@@ -1,7 +1,6 @@
 # RFC 0007: Flashing and updating Micro-FT8
 
 * **Status:** Accepted 2026-09-25
-* **Amends:** [RFC 0004](0004-headless-web-architecture.md) §4 step 4 (firmware no longer travels the phone-relay path)
 
 ## 1. Goal
 
@@ -39,15 +38,15 @@ OTA writes an **app image**, not the merged `0x0` image. CI adds, per board, an 
 
 ### 3.2 How an image reaches the sidekick: it downloads it
 
-Decided 2026-09-25. The webapp fetches the manifest over HTTPS, so the phone's browser authenticates it. It then POSTs to the sidekick, behind the pairing token (RFC 0004 §7): which board, the image URL, size and SHA-256. The sidekick downloads the image over plain HTTP into its staging slot (§3.3) and refuses it unless the hash matches.
+Decided 2026-09-25. The webapp fetches the manifest over HTTPS, so the phone's browser authenticates it. It then POSTs to the sidekick, behind the pairing token ([architecture/system.md](../architecture/system.md) (**Who may key the transmitter**)): which board, the image URL, size and SHA-256. The sidekick downloads the image over plain HTTP into its staging slot (§3.3) and refuses it unless the hash matches.
 
-* **No TLS on the device.** Trust comes from the same HTTPS fetch RFC 0004 §4 relies on; someone tampering with the traffic can only make the download fail.
+* **No TLS on the device.** Trust comes from the same HTTPS fetch [architecture/sidekick.md](../architecture/sidekick.md) (**Installing the app bundle**) relies on; someone tampering with the traffic can only make the download fail.
 * **The phone only makes a short request**, then polls for progress, so a screen lock mid-update does not matter.
 * **Updates need the sidekick on a network with internet** (home WiFi or the phone's hotspot). In AP mode it has none, and updating is refused with that reason. Updating is a desk activity, and the hotspot also works in the field.
 
 The phone-relay alternative is in §4.
 
-The web-page bundle relay (`/update`, RFC 0004 §4 steps 1–3) is out of scope here (§5).
+The web-page bundle relay (`/update`, [architecture/sidekick.md](../architecture/sidekick.md) (**Installing the app bundle**) steps 1–3) is out of scope here (§5).
 
 ### 3.3 Staging on the sidekick
 
@@ -144,11 +143,11 @@ Folded in by the operator, 2026-09-25: a faster link has been discussed before b
 
 ## 4. Rejected alternatives
 
-* **The phone relays the image** (RFC 0004 §4 as written): the page fetches it over HTTPS and POSTs the bytes to the sidekick. It works in AP mode wherever the phone has cell signal, but the whole image sits in the browser as a Blob (Safari cannot stream a request body), and iOS suspends the page if the screen locks mid-upload. Rejected 2026-09-25 in favour of §3.2; one path, not two.
+* **The phone relays the image**, as the app bundle does ([architecture/sidekick.md](../architecture/sidekick.md), **Installing the app bundle**): the page fetches it over HTTPS and POSTs the bytes to the sidekick. It works in AP mode wherever the phone has cell signal, but the whole image sits in the browser as a Blob (Safari cannot stream a request body), and iOS suspends the page if the screen locks mid-upload. Rejected 2026-09-25 in favour of §3.2; one path, not two.
 
-* **IP over Port A** (PPP on the UART, sidekick routing with NAPT, lwIP and HTTP on the main boards). It redesigns Port A, costs RAM on both main boards, and runs slower on the same wire than raw chunks. It would also let a main board download for itself, which is the unattended-update trigger for reopening signing (RFC 0004 §4). Reopen if a main board needs the network for something continuous that cannot be handed down over Port A.
+* **IP over Port A** (PPP on the UART, sidekick routing with NAPT, lwIP and HTTP on the main boards). It redesigns Port A, costs RAM on both main boards, and runs slower on the same wire than raw chunks. It would also let a main board download for itself, which is the unattended-update trigger for reopening signing ([architecture/system.md](../architecture/system.md), **Why not signing**). Reopen if a main board needs the network for something continuous that cannot be handed down over Port A.
 * **P4 on its own Ethernet.** RFC 0005 already records that PoE and Ethernet are not a path this project uses.
-* **Signing.** Unchanged from RFC 0004 §4: the manifest's hash reaches the device over the owner's HTTPS-authenticated browser, and updates are started by the operator. Its reopen trigger stands.
+* **Signing.** Unchanged from [architecture/system.md](../architecture/system.md) (**Why not signing**): the manifest's hash reaches the device over the owner's HTTPS-authenticated browser, and updates are started by the operator. Its reopen trigger stands.
 * **TLS on the sidekick.** Not needed while the host serves plain HTTP. Reopen if the host ever forces HTTPS; measure the handshake's heap cost first, since the board has no PSRAM.
 * **M5Launcher.** It owns the ADV's factory slot, which an A/B layout needs. Dropped by the operator, 2026-09-25.
 

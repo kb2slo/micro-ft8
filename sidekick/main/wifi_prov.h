@@ -18,7 +18,7 @@
 //   3. no credentials, or the join fails -> raise an open SoftAP
 //   4. form submitted -> store to NVS, try to join, report the result
 //
-// B55 (RFC 0004 §1): the AP raised by steps 1 or 3 is a real operating mode,
+// B55 (docs/architecture/system.md (Constraints)): the AP raised by steps 1 or 3 is a real operating mode,
 // not only a bootstrap state -- it serves the full application (app.html,
 // /api/...) alongside the credential form at http://192.168.4.1/
 // (provision.html), which now links to both rather than only the form. The

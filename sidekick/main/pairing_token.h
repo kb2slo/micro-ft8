@@ -1,8 +1,8 @@
 #pragma once
 
-// pairing_token.h -- authorization for the sidekick's HTTP API (I28b, RFC 0004 §7).
+// pairing_token.h -- authorization for the sidekick's HTTP API (I28b, docs/architecture/system.md (Who may key the transmitter)).
 //
-// RFC 0004 §4 rejected image signing: the bundle is already authenticated by
+// docs/architecture/system.md (Why not signing) rejected image signing: the bundle is already authenticated by
 // the browser's TLS session to the bundle host, one hop before the device sees
 // it. What the device actually lacks is a way to tell an operator's paired
 // browser from any other device on the LAN. This is that, and it is therefore
@@ -31,11 +31,11 @@
 // components/ directory. Entropy is injected rather than drawn here, which is
 // what makes minting host-testable.
 //
-// Scope, from RFC 0004 §7: this is a nuisance control, not a targeted-attacker
+// Scope, from docs/architecture/system.md (Who may key the transmitter): this is a nuisance control, not a targeted-attacker
 // control. The token travels in clear over plain HTTP and is replayable by
 // anyone who can read the traffic. WPA2/WPA3 per-station encryption makes that
 // materially harder; an open network does not. Raising that bar needs a
-// certificate for a name that resolves on one LAN, which §3 declined.
+// certificate for a name that resolves on one LAN, which docs/architecture/webapp.md (A non-secure origin) declines.
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -56,7 +56,7 @@ extern "C" {
 // operator happens to visit, since a form POST of urlencoded data needs no
 // preflight and would carry the cookie automatically. An explicit token the
 // attacker cannot read closes that, and costs nothing here because requests
-// from the app are same-origin -- the simple-request restriction in §4 applies
+// from the app are same-origin -- the simple-request rule in docs/architecture/sidekick.md (Installing the app bundle) applies
 // to the cross-origin bundle fetch, not to this.
 // A header is also the *only* place the token may travel, which is a
 // constraint rather than a preference. Checking a `token=` form field would

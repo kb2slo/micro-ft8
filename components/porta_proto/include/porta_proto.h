@@ -1,7 +1,7 @@
 #pragma once
 
 // ============================================================================
-// porta_proto.h — framing for the sidekick/main link (I28a, RFC 0004 §6).
+// porta_proto.h — framing for the sidekick/main link (I28a, docs/architecture/sidekick.md (Port A)).
 //
 // Pure codec: no UART, no I2C, no globals, no ESP-IDF. Host-tested
 // (host_test_porta_proto). It lives in components/ rather than main/ because
@@ -27,11 +27,11 @@
 // WHY IT LOOKS LIKE THIS
 //
 // One message per frame, length-prefixed, max 255 bytes of payload. Frames
-// stay small deliberately: RFC 0004 §6 requires framing that does not assume a
+// stay small deliberately: docs/architecture/sidekick.md (Port A) requires framing that does not assume a
 // stream, because B47 leaves UART-versus-I2C open, and small self-describing
 // frames map onto a single I2C transaction as readily as onto a byte stream.
 // A busy FT8 slot produces more decodes than fit in one frame; the polled
-// design (also RFC 0004 §6) handles that by the poller asking again, rather
+// design (also docs/architecture/sidekick.md (Port A)) handles that by the poller asking again, rather
 // than by growing the frame.
 //
 // RESYNC, AND WHAT IT COSTS
@@ -60,7 +60,7 @@ extern "C" {
 
 #define PORTA_PROTO_SYNC 0xC6u
 
-// Bumped only when a change breaks an older peer. RFC 0004 §4's version
+// Bumped only when a change breaks an older peer. docs/architecture/sidekick.md (Installing the app bundle)'s version
 // pairing applies here too: this is NOT the git build version the beacon
 // carries -- they answer different questions, and conflating them is how a
 // cosmetic rebuild reads as a protocol change.
@@ -162,7 +162,7 @@ bool porta_proto_parse_hello(const porta_frame_t *f, uint8_t *protocol_version_o
 // --- EVENT payloads ------------------------------------------------------
 // EVENT is a namespace, not a single message: the first payload byte is the
 // subtype and the rest is subtype-specific. New telemetry is a new subtype, not
-// a new frame type, so the type byte stops growing (RFC 0004 §6).
+// a new frame type, so the type byte stops growing (docs/architecture/sidekick.md (Port A)).
 //
 // Every event carries a timestamp in the envelope rather than in each subtype's
 // body, so a new subtype inherits one without thinking about it. It is the

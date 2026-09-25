@@ -2,7 +2,7 @@
  * Assert: R-screen touch does not duplicate the same DX in the TX queue.
  * - Second touch of the same CQ promotes to front (one entry).
  * - Touch while that call is the live queue head is ignored.
- * - QsoContext::entry_id (RFC 0004 §11 QUEUE_ENTRY/QUEUE_CANCEL): distinct
+ * - QsoContext::entry_id (docs/architecture/webapp.md (Screens) QUEUE_ENTRY/QUEUE_CANCEL): distinct
  *   per real entry, stable across a reshuffle that moves the same contact,
  *   fresh for a re-touch that actually drops and re-creates one, and
  *   autoseq_drop_by_entry_id removes the right one and nothing else.

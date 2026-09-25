@@ -1,4 +1,4 @@
-# web/ is the single source of truth for seed assets (RFC 0004 §3).
+# web/ is the single source of truth for seed assets (docs/architecture/sidekick.md (Web root)).
 # Drop a file in web/ → it is embedded, hydrated onto LittleFS, and served at
 # /<filename> by the static handler. No C table to edit. Templated routes
 # (/, /log, …) still need handlers because their URLs are not the filenames.

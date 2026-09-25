@@ -2,7 +2,7 @@
 <meta name=viewport content='width=device-width,initial-scale=1,viewport-fit=cover'>
 <title>Micro-FT8 Map</title>
 <!--
-  Full-screen map tool (RFC 0004 §12.5 addendum, 2026-09-22): split out of
+  Full-screen map tool (docs/architecture/webapp.md (The map), 2026-09-22): split out of
   the Log tab's former List/Map toggle into its own page, reached from
   Tools. The Log tab only ever had room for one data layer (QSOs); this page
   fills the whole viewport and adds independent show/hide layers (QSOs,
@@ -375,7 +375,7 @@ var LOG_MAP_PLACES_URL = 'ne_110m_places.json';
 // zoomed in far enough to want more than the bundled 243 -- never bundled,
 // this is exactly the "more detail at runtime, if connected" case discussed
 // 2026-09-22. Not same-origin: `map.html` runs from the sidekick's own
-// non-secure `http://micro-ft8.local` (RFC 0004 §12.4), so this has to come
+// non-secure `http://micro-ft8.local` (docs/architecture/webapp.md (A non-secure origin)), so this has to come
 // from somewhere that IS reachable, not from the bundle -- served from
 // `micro-ft8.kalikstein.com` (the Cloudflare Worker `webapp/worker.js`
 // already deploys) rather than the vendor's raw GitHub content, so it comes
@@ -1135,7 +1135,7 @@ function loadDecodeLocations() {
 }
 
 // ---- POTA/SOTA spots: same sourcing/filtering Tools' own spot card used
-// (§12.2/§12.3 online-required; SOTA's api-db2 endpoint, found live while
+// (docs/architecture/webapp.md (Tools): online-required; SOTA's api-db2 endpoint, found live while
 // building that card -- see app.html git history) -- here as map pins
 // instead of a list, per the operator's request to fold this into the map
 // as a data layer rather than keep it a separate Tools card. ----
@@ -2027,11 +2027,11 @@ function handleLogMapTap(clientX, clientY) {
 // ===================== geolocation (operator-requested 2026-09-23) =====================
 // navigator.geolocation is unreachable directly from this page -- gated on
 // a secure context, and http://micro-ft8.local deliberately isn't one
-// (RFC 0004 SS11). geo.html, hosted on the bundle host's real HTTPS
+// (docs/architecture/webapp.md (A non-secure origin)). geo.html, hosted on the bundle host's real HTTPS
 // certificate, does the actual API call and redirects back here with
 // ?lat=&lon=. Generic on that page's own end (a `return` URL, not
 // hardcoded to this page) so Settings' still-unbuilt "set my grid from
-// GPS" -- SS11's original motivating feature -- can reuse the exact same
+// GPS" -- the handoff's original motivating feature -- can reuse the exact same
 // handoff later without its own copy.
 // "/geo", not "/geo.html" -- Static Assets 307s the .html form to this
 // canonical URL before worker.js's cache-control override would ever apply

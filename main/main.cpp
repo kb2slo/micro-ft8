@@ -656,7 +656,7 @@ static void qso_load_entries_tick() {
   }
 }
 
-// Port A's own FILE_READ request (RFC 0004 §11), independent of
+// Port A's own FILE_READ request (docs/architecture/webapp.md (Screens)), independent of
 // s_qso_load_stream/s_qso_load_pager above for the same reason as FILE_LIST:
 // Port A must work whether or not the on-device Q screen is open. A second,
 // independent stream handle is a supported pattern here, not a new risk --
@@ -741,7 +741,7 @@ static void porta_file_read_tick() {
   porta_emit_ack(PORTA_MSG_FILE_READ);
 }
 
-// Periodic QUEUE_ENTRY/SLOT_STATE broadcast (I28d, RFC 0004 §11), once a
+// Periodic QUEUE_ENTRY/SLOT_STATE broadcast (I28d, docs/architecture/webapp.md (Screens)), once a
 // second -- the same cadence decodes already arrive at. One mechanism
 // serves two needs at once: a freshly-connected browser sees today's queue
 // within a tick with no separate "give me a snapshot" request, and an
@@ -753,7 +753,7 @@ static void porta_file_read_tick() {
 //
 // Active zone only, not the inactive zone AUTOSEQ_MAX_QUEUE's 30 also
 // covers -- watching a live QSO never needs a dormant, retry-exhausted
-// context, and RFC 0004 §11 leaves whether the inactive zone gets its own
+// context, and docs/architecture/webapp.md (Screens) leaves whether the inactive zone gets its own
 // disclosure as still open.
 static void porta_queue_state_tick() {
   static uint32_t s_last_ms = 0;
@@ -800,7 +800,7 @@ static void qso_draw_page() {
   }
 }
 
-// Port A's own FILE_LIST request (RFC 0004 §11), independent of the
+// Port A's own FILE_LIST request (docs/architecture/webapp.md (Screens)), independent of the
 // on-device Q/Delete screens' g_q_files/g_d_files -- Port A must work
 // whether or not either screen is open. 0 = none pending.
 //
@@ -1158,7 +1158,7 @@ static void draw_tx_hud(bool force) {
   s_was_tx = decode_tx_state_get_tx_active();
 }
 
-// Mirrors draw_tx_hud() onto Port A (I28d, RFC 0004 §11) so app.html's
+// Mirrors draw_tx_hud() onto Port A (I28d, docs/architecture/webapp.md (Screens)) so app.html's
 // Operate screen can show the same message/power/SWR/battery the on-device
 // banner does. Independent tick rather than a call from inside draw_tx_hud()
 // itself: that function is UI-only (guarded by ui_mode == RX) and this must
@@ -2425,7 +2425,7 @@ static void check_slot_boundary() {
   // previous RX slot (slot_idx - 1) has been fully applied to autoseq state before
   // we fire TX. Without this, a slot boundary that arrives before audio capture
   // has completed (FT8: ~12.6s of 15s slot; FT4: ~5.0s of 7.5s slot) could fire
-  // TX based on a prior cycle's state. See AUTOSEQ_INACTIVE_QUEUE.md.
+  // TX based on a prior cycle's state. See docs/architecture/autoseq_inactive_queue.md.
   // Window = 4/15 of slot_time_ms (~26.7%): FT8=4000ms, FT4=2000ms.
   if (g_qso_xmit &&
       !board_power_halted() &&

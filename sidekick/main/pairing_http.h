@@ -1,6 +1,6 @@
 #pragma once
 
-// pairing_http.h -- the ESP-IDF half of RFC 0004 §7's pairing token.
+// pairing_http.h -- the ESP-IDF half of docs/architecture/system.md (Who may key the transmitter)'s pairing token.
 //
 // Split from pairing_token.{c,h} along the line that matters for testing: the
 // decision logic there is dependency-free and host-tested, while everything
@@ -37,7 +37,7 @@ esp_err_t pairing_http_register(httpd_handle_t server, const httpd_uri_t *uri, p
 
 // Registers the token disclosure route and the shared pairing.js script. Call
 // from both the provisioning and station servers: the route exists in either
-// mode, because RFC 0004 §1 makes AP mode an operating mode rather than a
+// mode, because docs/architecture/system.md (Constraints) makes AP mode an operating mode rather than a
 // setup state, and a retrieval path that only worked during setup would be the
 // assumption B55 warns about.
 //
@@ -47,7 +47,7 @@ esp_err_t pairing_http_register(httpd_handle_t server, const httpd_uri_t *uri, p
 // disclosure, not the credential itself.
 esp_err_t pairing_http_register_disclosure(httpd_handle_t server);
 
-// Opens the disclosure window (RFC 0004 §7). Driven by the AtomS3 Lite's user
+// Opens the disclosure window (docs/architecture/system.md (Who may key the transmitter)). Driven by the AtomS3 Lite's user
 // button, which is physical and therefore correct in either mode -- gating
 // disclosure on AP mode would stop being a gate the moment the application
 // runs there. Re-arming while open extends the window rather than stacking.

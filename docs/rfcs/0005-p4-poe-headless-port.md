@@ -51,7 +51,7 @@
 * **Covers:** porting Micro-FT8's radio-control/decode/TX core to run on this specific board — USB host
   bring-up for the QMX, the headless (no display, no keyboard) operating model, and the board-specific facts
   that change B26/I27's original assumptions now that a real datasheet exists.
-* **Does not cover:** the sidekick-to-browser protocol or web app ([RFC 0004](0004-headless-web-architecture.md),
+* **Does not cover:** the sidekick-to-browser protocol or web app ([architecture/sidekick.md](../architecture/sidekick.md), [architecture/webapp.md](../architecture/webapp.md),
   unchanged — the AtomS3 Lite companion carries over in the same role per [I27](../ROADMAP.md)), or decode
   tuning ([I26](../ROADMAP.md), a separate axis: what the decoder does with samples it already has, not
   whether this chip can capture them).
@@ -195,14 +195,14 @@ their own copy.** Concretely:
   bit-rot between occasional manual builds is exactly the failure mode this rules out.
 - **Not a second sidekick.** The AtomS3 Lite companion is required hardware for this main board too (I27
   already assumed this), but the sidekick **firmware image must be the same binary** regardless of which main
-  board it's paired with — no `#ifdef`/build-time branch on ADV-vs-P4 inside the sidekick. RFC 0004 already
-  specifies the protocol against the application, not the board (its §1.3 "no dependency on the ADV's
-  keyboard or screen" constraint), which is what makes this possible; §7 Phase 3 is where that gets verified
+  board it's paired with — no `#ifdef`/build-time branch on ADV-vs-P4 inside the sidekick. [architecture/system.md](../architecture/system.md) (**Constraints**)
+  specifies the protocol against the application, not the board ("no dependency on a board's
+  keyboard or screen"), which is what makes this possible; §7 Phase 3 is where that gets verified
   rather than assumed.
 - Not on-chip WiFi/BLE on the main board — unchanged from RFC 0001's non-goals; WiFi stays on the companion.
 - Not decode-quality tuning (I26) — this RFC is about whether/how samples get captured and moved, not about
   `ftx_find_candidates` parameters.
-- Not the sidekick protocol or web app (RFC 0004) — the companion's role is unchanged; only the main board
+- Not the sidekick protocol or web app ([architecture/sidekick.md](../architecture/sidekick.md)) — the companion's role is unchanged; only the main board
   under it is new.
 - Not PoE. The board's PoE input exists in silicon; this project has no plan to use it (§4).
 - Not a commitment to ship I27's full scope on a fixed timeline — Phase 0 through Phase 4 (§7) is the

@@ -3,7 +3,7 @@
 <title>Install app</title>
 
 <!--
-  Phone-relayed bundle install (RFC 0004 §4). Fetches the manifest from the
+  Phone-relayed bundle install (docs/architecture/sidekick.md (Installing the app bundle)). Fetches the manifest from the
   configured HTTPS bundle host (simple GET, no custom headers), then POSTs
   through /api/bundle/* with the pairing token. Digests are checked on the
   device; this page does not need crypto.subtle (unavailable on plain HTTP).

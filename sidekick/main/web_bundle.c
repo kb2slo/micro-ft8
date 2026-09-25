@@ -1,5 +1,5 @@
 // Bundle install onto the web FS: stage → verify digests → promote.
-// See web_bundle.h and RFC 0004 §4.
+// See web_bundle.h and docs/architecture/sidekick.md (Installing the app bundle).
 
 #include "web_bundle.h"
 

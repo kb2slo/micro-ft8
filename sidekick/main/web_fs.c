@@ -1,5 +1,5 @@
 // LittleFS web root: mount, hydrate from EMBED_TXTFILES, load for HTTP.
-// See web_fs.h and RFC 0004 §3.
+// See web_fs.h and docs/architecture/sidekick.md (Web root).
 //
 // Seed membership comes from main/web/ via the generated web_seed_table — not
 // a handwritten list in this file.
@@ -192,7 +192,7 @@ esp_err_t web_fs_register_rehydrate(httpd_handle_t server)
         .method = HTTP_POST,
         .handler = post_rehydrate,
     };
-    // B55: AP mode now registers this route too (RFC 0004 §1 -- it serves the
+    // B55: AP mode now registers this route too (docs/architecture/system.md (Constraints) -- it serves the
     // full application, not just static files), so both modes share the same
     // count.
     _Static_assert(PAIRING_ROUTES_WEB_FS_STATION == 2, "rehydrate + static, both modes");
@@ -380,6 +380,6 @@ esp_err_t web_fs_register_static(httpd_handle_t server)
         .method = HTTP_GET,
         .handler = get_static,
     };
-    // Open: same as reading any other page on the device (RFC 0004 §7).
+    // Open: same as reading any other page on the device (docs/architecture/system.md (Who may key the transmitter)).
     return pairing_http_register(server, &route, PAIRING_OPEN);
 }

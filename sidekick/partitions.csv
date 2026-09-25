@@ -1,7 +1,7 @@
 # Sidekick partition table — AtomS3 Lite (ESP32-S3FN8, 8 MB).
 #
 # Two OTA slots, no factory. Firmware updates are phone-relayed into an OTA
-# slot (RFC 0004 §4); the ROM/USB-C path remains first install and hard
+# slot (docs/architecture/sidekick.md (Installing the app bundle)); the ROM/USB-C path remains first install and hard
 # recovery. With otadata erased the bootloader boots ota_0, which is what the
 # ADV's USB-C bootstrap writes.
 #
@@ -12,7 +12,7 @@
 # distribution.
 #
 # web (LittleFS) claims the free tail above ota_1 (~1.9 MB). It is the sole
-# HTTP origin for HTML/JS/CSS once hydrated (RFC 0004 §3). Firmware still
+# HTTP origin for HTML/JS/CSS once hydrated (docs/architecture/sidekick.md (Web root)). Firmware still
 # embeds sidekick/main/web/* as the hydrate seed; the FS is what is served.
 # nvs stays at 0x9000 with its original 24 KB — move it and WiFi/token config
 # are silently lost.

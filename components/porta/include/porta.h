@@ -56,7 +56,7 @@ void porta_emit_log(const char* text);
 void porta_emit_decode(uint32_t decode_id, const char* text, int snr, int offset_hz,
                        float dt_s, bool is_cq, bool is_to_me, bool is_recent_qso);
 
-// One autoseq queue row (I28d, RFC 0004 §11). `state` is the AutoseqState
+// One autoseq queue row (I28d, docs/architecture/webapp.md (Screens)). `state` is the AutoseqState
 // wire value; IDLE (6) is the removal signal, not a separate flag -- callers
 // use it to tell a browser an entry is gone, same as the host side does.
 void porta_emit_queue_entry(uint16_t entry_id, uint8_t state, uint8_t retry_count,
@@ -119,7 +119,7 @@ uint32_t porta_crc_errors();
 uint32_t porta_frames_ok();
 
 // ---------------------------------------------------------------------------
-// FILE_LIST / FILE_READ row emitters (I28d, RFC 0004 §11). The request/reply
+// FILE_LIST / FILE_READ row emitters (I28d, docs/architecture/webapp.md (Screens)). The request/reply
 // itself is asynchronous -- a directory listing runs on a background task
 // and a file read is paced across many main-loop ticks, so neither can
 // answer in the same call that received the request the way every other

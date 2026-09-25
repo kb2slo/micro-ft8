@@ -1,4 +1,4 @@
-// Bundle-host base URL in NVS (RFC 0004 §4). See bundle_host.h.
+// Bundle-host base URL in NVS (docs/architecture/sidekick.md (Installing the app bundle)). See bundle_host.h.
 
 #include "bundle_host.h"
 

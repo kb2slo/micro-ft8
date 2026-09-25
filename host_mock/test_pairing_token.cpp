@@ -1,4 +1,4 @@
-// Host test for the sidekick's API authorization (I28b, RFC 0004 §7).
+// Host test for the sidekick's API authorization (I28b, docs/architecture/system.md (Who may key the transmitter)).
 //
 // This module decides who may key a transmitter, so the things worth pinning
 // are the ones that fail open rather than the ones that fail loudly. Three in

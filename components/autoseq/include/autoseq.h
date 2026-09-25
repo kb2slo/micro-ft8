@@ -55,7 +55,7 @@ struct QsoContext {
     TxMsgType next_tx = TxMsgType::TX_NONE;
     TxMsgType rcvd_msg_type = TxMsgType::TX_NONE;
 
-    // Stable identity for Port A (RFC 0004 §11 QUEUE_ENTRY/QUEUE_CANCEL):
+    // Stable identity for Port A (docs/architecture/webapp.md (Screens) QUEUE_ENTRY/QUEUE_CANCEL):
     // 0 means "not a real entry" (a free slot's default). Assigned once, in
     // append_ctx(), and never reused within a boot -- the queue re-sorts by
     // priority and moves entries around the array via plain struct copies,

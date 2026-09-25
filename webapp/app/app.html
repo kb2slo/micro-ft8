@@ -2,13 +2,13 @@
 <meta name=viewport content='width=device-width,initial-scale=1'>
 <title>Micro-FT8</title>
 <!--
-  Entry asset for the installed app (RFC 0004 §11). Three screens behind one
+  Entry asset for the installed app (docs/architecture/webapp.md (Screens)). Three screens behind one
   bottom tab bar: Operate (default) collapses what the ADV's 240x135 splits
   across RX/TX/STATUS; Log browses the day files over the async FILE_LIST/
   FILE_READ relay; Settings is the station-config form this page used to be
   on its own before I28d's screen model landed.
 
-  All three share one /api/events poll (RFC 0004 §6 -- the same polled shape
+  All three share one /api/events poll (docs/architecture/sidekick.md (Port A) -- the same polled shape
   as the ADV's own Port A link) and one /api/config fetch. Settings' form
   fields are only ever written by loadConfig() at boot or right after an
   explicit action (save/connect/tune/clock) -- never by the periodic poll,
@@ -119,7 +119,7 @@ button:disabled{opacity:.45}
 /* min-height:0 is load-bearing: without it a flex child won't shrink below
    its content size, so #viewport would grow to fit the tallest panel
    (Log's infinite-scroll list, unbounded) instead of scrolling within a
-   fixed strip. Three panels now (Operate/Log/Tools, RFC 0004 §12.6) --
+   fixed strip. Three panels now (Operate/Log/Tools, docs/architecture/webapp.md (Screens)) --
    Settings is still its own overlay (#settingsOverlay below), reached from
    the header gear rather than swiped to, since it isn't a screen you flip
    to mid-QSO the way Operate/Log/Tools are. */
@@ -283,7 +283,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 #logMore{padding:.7rem 1rem;text-align:center;color:GrayText;font-size:.8rem}
 
 /* ---- tools ---- */
-/* One card per §12.2 tier (RFC 0004 §12): band conditions is offline-
+/* One card per tier (docs/architecture/webapp.md (Tools)): band conditions is offline-
    derived with no live/stale state to report; space weather is online, so
    it gets its own #...Note element for "loading…"/"unreachable" -- never a
    blank card and never a stale value with nothing marking it stale. */
@@ -412,7 +412,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
   </section>
 
   <!-- ================= LOG ================= -->
-  <!-- One continuous list spanning every day file (RFC 0004 §11) -- day
+  <!-- One continuous list spanning every day file (docs/architecture/webapp.md (Screens)) -- day
        dividers, lazy-loaded older entries, no file picker. loadMoreLog()
        walks logFiles transparently: file boundaries are an implementation
        detail, not something the operator navigates. -->
@@ -426,11 +426,10 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
   </section>
 
   <!-- ================= TOOLS ================= -->
-  <!-- What the operator consults *instead of* the radio (RFC 0004 §12.1):
+  <!-- What the operator consults *instead of* the radio (docs/architecture/webapp.md (Tools)):
        band conditions (offline-derived half + online-optional space
-       weather) and the full-screen map (I30, its own page per RFC 0004
-       §12.5 addendum -- QSOs/Decodes/Spots as independent data layers).
-       Every card names its own tier per §12.2 and degrades visibly --
+       weather) and the full-screen map (I30, its own page per docs/architecture/webapp.md (The map) -- QSOs/Decodes/Spots as independent data layers).
+       Every card names its own tier and degrades visibly --
        never a stale value rendered as a current one. -->
   <section id=view-tools>
     <div class=hd>Space weather &middot; online <span id=spaceWxNote class=toolsnote></span></div>
@@ -455,7 +454,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
   </div>
   <div id=settingsOverlayBody>
   <section id=view-settings>
-    <!-- Retired from status.html (RFC 0004 §7): the one place this app
+    <!-- Retired from status.html (docs/architecture/system.md (Who may key the transmitter)): the one place this app
          previously split into a second, unstyled page. sk_* keys are
          sidekick-local (host_link.c's config_json_add(), PORTA_MSG_CONFIG_GET
          case) -- the ADV has no way to know its own companion's WiFi state,
@@ -666,7 +665,7 @@ function esc(s) {
 }
 
 // Not crypto.subtle -- that's unavailable on this page's own origin, since
-// RFC 0004 §2 means the sidekick never speaks TLS and a plain-HTTP origin is
+// docs/architecture/system.md (The inversion) means the sidekick never speaks TLS and a plain-HTTP origin is
 // not a secure context (SubtleCrypto requires one). FNV-1a over the UTF-8
 // bytes is plenty for "did this desk_push actually land": desk_push.py
 // prints the identical hash (same algorithm, over the same file's bytes on
@@ -849,7 +848,7 @@ function checkLinkCounterReset(cfg) {
 // not a panel here -- it's a full-screen overlay (#settingsOverlay), reached
 // from the header gear, not swiped to: it isn't a screen you flip to mid-QSO
 // the way Operate/Log/Tools are, so it doesn't belong in the same gesture
-// (RFC 0004 §12.6).
+// (docs/architecture/webapp.md (Screens)).
 
 var VIEWS = ['operate', 'log', 'tools'];
 var currentView = 'operate';
@@ -1448,8 +1447,8 @@ async function saveConfig() {
 }
 
 // ---- geolocation handoff return (operator-requested 2026-09-23) ----
-// Reuses geo.html (RFC 0004 §11) -- the exact same handoff map.html's own
-// "locate me" button uses. This is the feature §11 was originally written
+// Reuses geo.html (docs/architecture/webapp.md (A non-secure origin)) -- the exact same handoff map.html's own
+// "locate me" button uses. This is the feature the handoff was originally written
 // about ("set my grid from GPS"), designed then but never built until now;
 // see map.html's own copy of this same comment for the full explanation of
 // why a real top-level navigation out to a secure-context origin is
@@ -1759,7 +1758,7 @@ var queue = {}; // entry_id -> {dxcall, state, retry_count, retry_limit, lastSee
 // put a fresh REPLYING below CALLING/CQ.
 var queueOrder = [];
 
-// Safety net against a lost IDLE (RFC 0004 §11's removal signal): /api/events
+// Safety net against a lost IDLE (docs/architecture/webapp.md (Screens)'s removal signal): /api/events
 // is a bounded 64-entry ring shared by every event type (decodes, slot_state,
 // TX HUD, queue), and porta_queue_state_tick() re-sends QUEUE_ENTRY for every
 // still-active id every single second whether or not it changed -- so the
@@ -2017,7 +2016,7 @@ function renderDecodes() {
 }
 
 // ===================== Operate: event poll =====================
-// Same polled /api/events?since= shape as /log's viewer (RFC 0004 §6):
+// Same polled /api/events?since= shape as /log's viewer (docs/architecture/sidekick.md (Port A)):
 // a poll cannot wedge the server the way a long-lived stream could.
 
 var evSeq = 0;
@@ -2043,7 +2042,7 @@ function applyEvent(e) {
     learnCallsignGrid(e.x); // opportunistic, regardless of who this was addressed to
   } else if (e.d === 2) {
     if (e.st === 6) {
-      delete queue[e.eid]; // IDLE is the removal signal (RFC 0004 §11)
+      delete queue[e.eid]; // IDLE is the removal signal (docs/architecture/webapp.md (Screens))
     } else {
       queue[e.eid] = { dxcall: e.x, state: e.st, retry_count: e.rc, retry_limit: e.rl,
                        lastSeenMs: Date.now() };
@@ -2106,7 +2105,7 @@ async function pollEvents() {
 }
 
 // ===================== Log =====================
-// One continuous list of QSOs spanning every day file (RFC 0004 §11): day
+// One continuous list of QSOs spanning every day file (docs/architecture/webapp.md (Screens)): day
 // dividers, lazy-loaded, file boundaries invisible to the operator. Built
 // entirely on the existing per-file /api/log/files and /api/log/entries
 // endpoints -- loadMoreLog() walks day files in order and stitches their
@@ -2276,8 +2275,7 @@ function applyTheme() {
 }
 
 // "1,234 km 047°" or "723 mi 047°", per the operator's chosen distUnit --
-// shared by fmtDistBearing (two grids) below and Tools' spot rows (RFC 0004
-// §12), which have a raw lat/lon from SOTA rather than a grid string on one
+// shared by fmtDistBearing (two grids) below and Tools' spot rows (docs/architecture/webapp.md (Tools)), which have a raw lat/lon from SOTA rather than a grid string on one
 // side and would otherwise have to fake one just to reuse the grid-to-grid
 // path.
 function fmtKm(km) {
@@ -2388,9 +2386,9 @@ function learnCallsignGrid(text) {
 }
 
 // ===================== Tools =====================
-// RFC 0004 §12: what the operator consults *instead of* the radio. Three
-// cards, each declaring its own tier per §12.2. No new protocol verbs, no
-// new HTTP routes (§12.7) -- everything below is either already-held state
+// docs/architecture/webapp.md (Tools): what the operator consults *instead of* the radio. Three
+// cards, each declaring its own tier (docs/architecture/webapp.md, Tools). No new protocol verbs, no
+// new HTTP routes -- everything below is either already-held state
 // or a direct fetch to the public internet.
 
 // Both NOAA's time_tag and SOTA's timeStamp are UTC with no offset, but only
@@ -2405,9 +2403,9 @@ function parseUtcIso(s) {
 
 var toolsLoadedOnce = false;
 
-// ---- online-optional: space weather (§12.2, §12.3) ----
+// ---- online-optional: space weather ----
 // NOAA SWPC only -- hamqsl.com deliberately not used (no CORS header, no
-// JSON endpoint; §12.3/§12.8). Operator-requested 2026-09-22: a richer set
+// JSON endpoint; docs/architecture/webapp.md (Tools)). Operator-requested 2026-09-22: a richer set
 // closer to what hamqsl.com/solar.html shows, sourced from NOAA's own small
 // "summary" endpoints rather than the multi-hundred-KB history files the
 // same data also lives in (measured 2026-09-22, all open CORS):
@@ -2430,16 +2428,16 @@ var toolsLoadedOnce = false;
 //                Good/Fair/Poor <calculatedconditions> table: that is
 //                N0NBH's own undocumented formula, and guessing at an
 //                equivalent risks shipping a wrong verdict the operator
-//                would make a real band decision on (§12.2) -- the NOAA
+//                would make a real band decision on -- the NOAA
 //                scale above is the closest *authoritative* substitute.
 // Sunspot number has no comparably small current-value endpoint (the
 // smallest NOAA source for it is a multi-hundred-KB history file) and is
 // left out rather than paying that cost for one number.
 // ovation_aurora_latest.json is 922,577 B and must never be fetched here
-// (§12.3). Every value renders with its own age from the API's own
+// (docs/architecture/webapp.md, Tools). Every value renders with its own age from the API's own
 // time_tag, not fetch time -- so a value from an earlier successful fetch,
 // still on screen after a later fetch fails, is never mistaken for current
-// (§12.2's "never render a stale value as a current one").
+// (docs/architecture/webapp.md (Tools): "never show a stale value as a current one").
 var NOAA_KINDEX_URL = 'https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json';
 var NOAA_SFI_URL = 'https://services.swpc.noaa.gov/products/summary/10cm-flux.json';
 var NOAA_XRAY_URL = 'https://services.swpc.noaa.gov/json/goes/primary/xray-flares-latest.json';
@@ -3054,7 +3052,7 @@ if (MicroFT8Pairing.getToken()) {
 
 // Deep links: #network (from status.html's old / -> now a 303 to here, and
 // any other "take me to network settings" link) opens Settings straight to
-// the Network section; #tools (RFC 0004 §12) swipes straight to the Tools
+// the Network section; #tools (docs/architecture/webapp.md (Tools)) swipes straight to the Tools
 // tab; #station (operator-requested 2026-09-23, the geolocation handoff's
 // own return route -- see handleGeoReturn() below) opens Settings straight
 // to the Station section, same pattern as #network. All three run once at

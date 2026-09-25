@@ -1,7 +1,7 @@
 #pragma once
 
 // bundle_host.h -- NVS-stored HTTPS base URL for the phone-relayed app bundle
-// (RFC 0004 §4). Soft identity: a rename changes the build-time default and
+// (docs/architecture/sidekick.md (Installing the app bundle)). Soft identity: a rename changes the build-time default and
 // optionally an NVS write; it is not a wire-protocol name.
 
 #include <stdbool.h>

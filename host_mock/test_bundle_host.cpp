@@ -1,4 +1,4 @@
-// Host test: bundle-host URL validation (I28c, RFC 0004 §4).
+// Host test: bundle-host URL validation (I28c, docs/architecture/sidekick.md (Installing the app bundle)).
 // Soft identity — https base only; no product name baked into the rule.
 
 #include "bundle_host.h"

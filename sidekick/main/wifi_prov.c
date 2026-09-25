@@ -614,7 +614,7 @@ static void httpd_start_provisioning(void)
         pairing_http_register(s_httpd, core[i].uri, core[i].policy);
     }
     pairing_http_register_disclosure(s_httpd);
-    // B55 (RFC 0004 §1): AP mode is a real operating mode now, not only a
+    // B55 (docs/architecture/system.md (Constraints)): AP mode is a real operating mode now, not only a
     // bootstrap-to-provisioning state, so it registers the same application
     // routes station mode does -- each module applies its own per-route
     // policy (pairing_http.h).
@@ -783,7 +783,7 @@ static void httpd_start_status(void)
     }
     pairing_http_register_disclosure(s_httpd);
     // Same application routes httpd_start_provisioning() now registers for AP
-    // mode (B55, RFC 0004 §1) -- kept as a separate, near-duplicate block
+    // mode (B55, docs/architecture/system.md (Constraints)) -- kept as a separate, near-duplicate block
     // rather than factored out, because the two modes' *core* three routes
     // and open/guarded policy genuinely differ and a shared helper would just
     // hide that at a call site instead of removing it.
@@ -921,7 +921,7 @@ void wifi_prov_start(void)
     }
 
     // Before any HTTP handler: mount the web FS and hydrate seed pages from
-    // the firmware embed (RFC 0004 §3). Not ESP_ERROR_CHECK'd — a sidekick
+    // the firmware embed (docs/architecture/sidekick.md (Web root)). Not ESP_ERROR_CHECK'd — a sidekick
     // that cannot mount still beacons; pages will 500 until flash is fixed.
     if (web_fs_init() != ESP_OK) {
         ESP_LOGE(TAG, "Web FS unavailable — bootstrap pages will fail");

@@ -1,6 +1,6 @@
 # Coding style
 
-Small written preferences for *our* C/C++. Do not apply to vendored `M5*` / `ft8_lib`. Radio boundary: [RADIO_ARCHITECTURE.md](RADIO_ARCHITECTURE.md).
+Small written preferences for *our* C/C++. Do not apply to vendored `M5*` / `ft8_lib`. Radio boundary: [architecture/radio.md](architecture/radio.md).
 
 Baseline is ESP-IDF’s guide where it matches this tree. We do not adopt Google function naming or a full LLVM restyle.
 
@@ -78,7 +78,7 @@ No new logic in `main.cpp`. Call sites, wiring, and UI only. If it can be host-t
 
 | Component | Why it stays |
 |---|---|
-| `M5Cardputer`, `M5GFX`, `M5Unified`, `ft8_lib` | Vendored third-party. [FT8_LIB_ARCHITECTURE.md](FT8_LIB_ARCHITECTURE.md) vendor boundary — do not format, do not restructure. |
+| `M5Cardputer`, `M5GFX`, `M5Unified`, `ft8_lib` | Vendored third-party. [architecture/ft8_lib.md](architecture/ft8_lib.md) vendor boundary — do not format, do not restructure. |
 | `board_cardputer_adv` | Also forced (prong 1): `test_apps/cardputer_adv_audio_keyboard` requires it. Board/HAL seam [RFC 0001](rfcs/0001-ble-companion.md) I24 needs for a headless host. |
 | `ui` | The display seam I24 needs to run headless. Demoting it would remove the abstraction that work depends on. 4200+ lines, 8 files. |
 | `sidekick_flasher` | `EMBED_FILES` packaging of the `sidekick` image, a generated header, and conditional compile defines. That machinery is about shipping a payload, not about source layout. |
@@ -89,7 +89,7 @@ Host-testability does **not** force a component. `host_mock/Makefile` compiles s
 
 Being a component is a cost: a directory, a `CMakeLists.txt`, an `include/` level, a possible `idf_component.yml`, and an entry in someone's `REQUIRES`. Pay it for one of the two reasons above, not by default.
 
-**No HTML, CSS or JavaScript inside C or C++ source** (2026-09-12). A page is a `.html` file under `<project>/main/web/`. On the sidekick, CMake globs that directory into `EMBED_TXTFILES` and a generated seed table — drop a file in `web/` and it is embedded, hydrated onto LittleFS, and served at `/<filename>` (templated URLs like `/` and `/log` still need handlers). Values are interpolated with `{{name}}` placeholders, not `printf`. After `web_fs_init()` the LittleFS `web` partition is the sole HTTP origin ([RFC 0004](rfcs/0004-headless-web-architecture.md) §3).
+**No HTML, CSS or JavaScript inside C or C++ source** (2026-09-12). A page is a `.html` file under `<project>/main/web/`. On the sidekick, CMake globs that directory into `EMBED_TXTFILES` and a generated seed table — drop a file in `web/` and it is embedded, hydrated onto LittleFS, and served at `/<filename>` (templated URLs like `/` and `/log` still need handlers). Values are interpolated with `{{name}}` placeholders, not `printf`. After `web_fs_init()` the LittleFS `web` partition is the sole HTTP origin ([architecture/sidekick.md](architecture/sidekick.md) (**Web root**)).
 
 The cost of the old way was not ugliness. CSS had to be written `width:100%%` to survive `snprintf`, which put every page outside the reach of a formatter, a validator, a browser or a linter — a page's JavaScript could not even be checked for a syntax error. A page split across four fragments could not be read as a document, and every wording change was a C change. The move also closed a live hole: the status page interpolated the stored SSID raw, and an SSID is whatever a nearby access point broadcast, so substitution now escapes by default and passing markup through takes an explicit flag.
 

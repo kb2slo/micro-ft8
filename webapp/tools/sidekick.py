@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Shared "talk to a real sidekick" plumbing for webapp/tools/*.py scripts
-(RFC 0004 §7's pairing token, §4's bundle API, and whatever hardware-test
+(docs/architecture/system.md (Who may key the transmitter)'s pairing token, docs/architecture/sidekick.md (Installing the app bundle)'s bundle API, and whatever hardware-test
 scripts follow). Not a CLI on its own.
 
 Token caching: the pairing token is scoped to one physical sidekick and does
-not rotate on retrieval (RFC 0004 §7), so once a script has claimed it via
+not rotate on retrieval (docs/architecture/system.md (Who may key the transmitter)), so once a script has claimed it via
 the button, every later script run can reuse it from disk instead of making
 the operator walk over and press the button again. Cached at TOKEN_CACHE,
 outside version control (.gitignore) since it is a live credential that
