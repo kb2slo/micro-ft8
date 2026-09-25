@@ -185,14 +185,12 @@ Hardware split is locked: **ADV (QMX + Micro-FT8, unchanged) + sidekick (AtomS3 
 | Path | Status |
 |---|---|
 | **WiFi + plain browser (no app), sidekick-hosted** | **Primary, decided.** Decisive, not just preferred: iOS Safari has no Web Bluetooth support at all — a long-standing Apple-wide limitation, not a bug that might be fixed — so a genuine no-app companion working on *both* iPhone and Android cannot use BLE regardless of any other tradeoff. |
-| Sidekick-as-AP (I19's original shape, phone joins it) | In scope, mode TBD vs STA below. No credential bootstrap needed — the sidekick's own network is fixed/known, nothing to configure. |
-| Sidekick-as-STA joining phone Personal Hotspot or home WiFi | In scope, real reason to prefer it over AP-only for the field case: joining a Personal Hotspot means the *phone* is the one sharing its own cellular connection — standard, Apple-documented behavior — rather than the phone trying to be a WiFi client of the sidekick while hoping iOS keeps LTE (I19's original, undocumented DHCP-based risk). Credential bootstrap for this direction: SoftAP provisioning (below), not BLE. |
+| Sidekick-as-AP (phone joins it) | In scope, mode TBD vs STA below. No credential bootstrap needed — the sidekick's own network is fixed/known, nothing to configure. |
+| Sidekick-as-STA joining phone Personal Hotspot or home WiFi | In scope, real reason to prefer it over AP-only for the field case: joining a Personal Hotspot means the *phone* is the one sharing its own cellular connection — standard, Apple-documented behavior — rather than the phone trying to be a WiFi client of the sidekick while hoping iOS keeps LTE (it does: iPhone, operator-validated 2026-09-23, RFC 0004 §5). Credential bootstrap for this direction: SoftAP provisioning (below), not BLE. |
 | BLE GATT + native app (§5.3 / §6) | **Parked, not deleted.** No role in the MVP given the Safari constraint above. Revisit only if a native-app phase is explicitly opened later; the GATT design in §5.3 stays as reference for that. |
 | Credential bootstrap for STA modes | **SoftAP provisioning** (ESP-IDF's `wifi_provisioning`, `scheme_softap.h` — verified present in this project's IDF 5.5.1 install): sidekick temporarily becomes its own setup AP, operator's browser (phone *or* Mac, device-agnostic) joins it, submits the real target SSID/password via a plain page, sidekick reboots as STA. No app, no BLE. Reuses AP-mode capability the sidekick needs anyway for the row above — not new radio work. |
 | Internet-routable (port-forward/DDNS, cloud tunnel, VPN mesh) | **Out of scope for this project entirely**, decided 2026-09-05, not just deferred. Local-network reachability only. If an operator wants remote/internet access, that is their own VPN/tunnel to set up — Micro-FT8 does not attempt it, and does not take on the auth/exposure risk of a licensed station's control surface being internet-reachable by default. |
 | HTTP-over-BLE, Wi-Fi on the ADV | Out (unchanged). |
-
-I19's original DHCP-no-gateway field test was never actually run — superseded by the Safari/Web-Bluetooth finding above before it became necessary, since AP-vs-STA-vs-hotspot is now a mode choice within the WiFi path, not a competing candidate against GATT.
 
 ### 5.1 Split: ADV + AtomS3 Lite (pivoted 2026-09-05, was NanoC6)
 
@@ -374,7 +372,7 @@ transport is sound and costs nothing dormant, but nothing is expected to call it
 
 WiFi + browser is the primary phone path (§5.0); iOS Safari's lack of Web Bluetooth support rules BLE out for a no-app MVP on iPhone specifically, not just deprioritizes it. Kept below as reference for a possible future native-app phase, not something to build now.
 
-Hypothesis only until I19 is resolved. One minimalist service with notify and pull semantics. No remote execution. The ADV never exposes these characteristics.
+Hypothesis only. One minimalist service with notify and pull semantics. No remote execution. The ADV never exposes these characteristics.
 
 One minimalist service with notify and pull semantics. No remote execution. The ADV never exposes these characteristics.
 
@@ -429,7 +427,7 @@ Operator path: Nano or QMX on ADV USB-C at boot → toast → unplug/plug → to
 
 Superseded for the MVP: the browser page the sidekick serves (§5.0) covers "value-add helpers" without a native app on either platform. Kept below only as reference should a native-app phase be explicitly opened later.
 
-Skip this section’s App Store app if I19’s Safari path passes and we lock that instead. The phone still provides **value-add helpers**, not radio controls. It talks to the **Nano**, not to the ADV.
+The phone still provides **value-add helpers**, not radio controls. It talks to the **Nano**, not to the ADV.
 
 The phone application provides **value-add helpers**, not radio controls. It connects to the **Nano**, not to the ADV.
 

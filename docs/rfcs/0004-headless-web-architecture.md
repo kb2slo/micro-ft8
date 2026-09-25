@@ -21,11 +21,9 @@ Three constraints were settled before any of this was drawn, and they decide mos
    radio whose UI lives on the internet is a radio with no UI on a summit. **Followed to its conclusion
    2026-09-12, which this RFC had not done: a summit has no router either.** The only path from phone to
    sidekick there is the sidekick's own access point, so this constraint does not merely require surviving
-   without internet — it requires **the whole application to run over AP mode**. §5 and
-   [I19](../ROADMAP.md) each call that "the AP-mode fallback", which is backwards: station mode is the
+   without internet — it requires **the whole application to run over AP mode**. Station mode is the
    convenience case, and AP mode is the one this first constraint names. Nothing in this design may assume AP
-   mode is a transient setup state. [B55](../ROADMAP.md) carries the investigation and the list of ways that
-   assumption could get baked in before anyone notices.
+   mode is a transient setup state.
 2. **Internet may be required for initial station setup.** Not for operating. This is what makes the design
    affordable — the firmware does not need to carry a full UI as a fallback.
 3. **No dependency on the ADV's keyboard or screen.** A build that works on P4 must also work on ADV, so the
@@ -309,32 +307,31 @@ Seed page `/update` fetches `{base}/manifest.json` and drives the wire protocol 
 ```mermaid
 flowchart LR
     subgraph s1["1 · Provision"]
-        p1["Phone<br/>on sidekick AP"] --> cp["Captive portal<br/>credentials form"]
-        cp --> ni["No internet here<br/>cannot fetch the app"]
+        p1["Phone<br/>on sidekick AP"] --> cp["Provisioning page<br/>credentials form"]
+        cp --> ni["Cellular stays up<br/>can fetch the app"]
     end
     subgraph s2["2 · Join"]
         rs["Sidekick restarts<br/>joins wifi"] --> md["Reachable by name<br/>micro-ft8.local"]
     end
     subgraph s3["3 · Bootstrap"]
-        p3["Phone<br/>wifi and internet"] --> fb["Fetch bundle<br/>from GitHub Pages"]
+        p3["Phone<br/>wifi and internet"] --> fb["Fetch bundle<br/>from the bundle host"]
         fb --> po["POST to sidekick<br/>pairing token checked"]
     end
     s1 --> s2 --> s3
 ```
 
-The phone cannot fetch a bundle while joined to the provisioning AP, because a captive portal generally takes
-the default route and leaves the phone with no internet. As drawn, bootstrap therefore needs a network that
-has internet.
+**The phone keeps its cellular route while joined to the sidekick's AP.** The AP is not a captive portal
+(B74/B75 removed that), so iOS treats it as WiFi without internet and sends internet traffic over cellular
+while still reaching `micro-ft8.local`. Operator-validated on an iPhone 2026-09-23 (`TEST_PLAN.md`, B75);
+Android is unchecked (`TEST_PLAN.md` Pending). Wherever there is cell signal, then, the phone can fetch a
+bundle while on the AP, and no other network is needed.
 
-**The phone's own hotspot resolves this, and it is a documentation answer before it is an engineering one.**
-If the sidekick joins the operator's Personal Hotspot, the phone has cellular internet *and* is on the same
-LAN as the sidekick — stages 1 and 3 collapse, a factory sidekick can be set up on a summit, and QRZ lookups
-work in the field. The existing constraint applies: iPhone hotspots need *Maximize Compatibility* on, because
-this radio is 2.4 GHz only.
+**The phone's own hotspot is the other route.** If the sidekick joins the operator's Personal Hotspot, the
+phone has cellular internet *and* is on the same LAN as the sidekick. iPhone hotspots need *Maximize
+Compatibility* on, because this radio is 2.4 GHz only.
 
-[I19](../ROADMAP.md) — an AP whose DHCP omits the router and DNS options so the phone keeps its cellular
-route — remains the answer for the AP-mode fallback where there is no cell signal at all. It is no longer on
-the critical path, because in that situation the operator is offline regardless.
+With no cell signal at all, the operator is offline on either route; the offline-derived tier (§12.2) is what
+works there.
 
 ## 6. The sidekick-to-main protocol
 
@@ -803,12 +800,10 @@ current one.** A K-index from four hours ago displayed as though it were now is 
 because the operator makes a band decision on it. Stale data is shown with its age or not at all.
 
 **The reason this is a requirement and not a preference:** §1's first constraint. Every online card
-depends on the phone retaining cellular *while joined to the sidekick's AP*. [B75](../ROADMAP.md) argues
-that now holds, because removing the captive-portal mechanism leaves iOS classifying the network as plain
-"no internet on WiFi" rather than "captive, unauthenticated" — but that sits in B75's Done-when, **owed
-and unproven on hardware**. If it turns out not to hold, every online-required card is dead exactly where
-§1 says the radio must work, and the offline-derived tier is the entire field story. Design as though
-that is the likely case.
+depends on the phone retaining cellular *while joined to the sidekick's AP*. That holds on an iPhone
+(operator-validated 2026-09-23, §5), so online cards work in the field wherever there is cell signal. A
+summit often has none, and then the offline-derived tier is the entire field story — so every card must
+still degrade as this section requires.
 
 ### 12.3 What is reachable from the browser, measured
 
