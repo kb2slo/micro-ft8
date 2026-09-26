@@ -65,7 +65,7 @@ A contact's state is **what we last sent**. `next_tx` is what we send next.
   * A decode addressed to us enters through the table. Anything else (a CQ, or tail-ending someone's RR73 or 73) starts in REPLYING sending TX1, or REPORT sending TX2 with Skip TX1 on.
   * The new entry is moved to the front, or behind `queue[0]` while a TX is on the air, so the transmission in flight is not displaced.
 * **The beacon.** When the queue is empty, `arm_from_autoseq_or_beacon()` adds a one-shot CQ on the beacon's parity (Even is slot parity 0, Odd is 1). Only one CQ is ever queued. Turning the beacon off or changing its parity cancels queued CQs, but leaves `queue[0]` alone while it is on the air (`autoseq_cancel_cq(skip_head)`). The CQ's text is rendered from the template at refresh time (`CQ`, `CQ SOTA`, `CQ POTA`, `CQ QRP`, `CQ FD`, or a free-text CQ), so a station or CQ-type change applies to a CQ already queued.
-* **Dropping an entry** (the ADV's TX screen, Port A `QUEUE_CANCEL`) removes a CQ outright and moves a QSO to the inactive zone, so a late reply still finds its metadata.
+* **Dropping an entry** (the ADV's TX screen, Port A `QUEUE_CANCEL`) removes a CQ outright and moves a QSO to the inactive zone, so a late reply still finds its metadata. Dropping the entry that is on the air also stops the transmission (**The slot cycle**).
 * **Rotate** (the ADV's TX screen, `autoseq_rotate_same_parity()`) moves `queue[0]` behind the other entries of the same parity at the front of the queue.
 
 ## The slot cycle
@@ -98,7 +98,7 @@ Each board runs `check_slot_boundary()` on every pass of its main loop. It does 
 
 **A TX cancel** (the ADV's backtick, Port A `TX_CANCEL`) stops the TX and leaves autoseq untouched. The cancelled TX does not count as sent, so no tick runs and no retry is used. The entry re-arms, but the trigger refuses the slot the cancel landed in, so one press stops it for the rest of that slot (row B21 is the bench check).
 
-**A queue cancel** (the web app's row ×, Port A `QUEUE_CANCEL`) removes a CQ, or parks a QSO. If that entry is armed but not yet on the air, the head check before the trigger drops the armed TX and re-arms. If it is already on the air, the transmission runs to its end, and the tick after it finds nothing to advance. Stopping the transmission itself is a TX cancel; a band change sends both.
+**A queue cancel** (the web app's row ×, Port A `QUEUE_CANCEL`) removes a CQ, or parks a QSO. If that entry is armed but not yet on the air, the head check before the trigger drops the armed TX and re-arms. If it is on the air (`autoseq_transmitting_entry_id()` names it and a TX is active), the cancel also stops the transmission, as a TX cancel does, so no retry is spent and the rest of that slot stays quiet. The ADV's TX-screen drop keys do the same (`drop_qso()`). A band change sends a TX cancel as well as a queue cancel for every QSO.
 
 **TX offset** is resolved when the TX is armed (`resolve_tx_offset()`):
 

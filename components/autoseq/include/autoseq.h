@@ -189,6 +189,12 @@ bool autoseq_fetch_pending_tx(AutoseqTxEntry& out);
 // did not re-arm (a cancel, a drop) would otherwise send the old message.
 uint16_t autoseq_head_entry_id();
 
+// entry_id of the entry whose TX started last (autoseq_on_tx_starting), until
+// the tick after that TX; 0 if none. Only meaningful while a TX is on the air:
+// a cancelled TX gets no tick, so the board gates this on its own tx_active.
+// Cancelling that entry from the queue also stops the transmission.
+uint16_t autoseq_transmitting_entry_id();
+
 // Mark TX as sent (called after transmission completes)
 void autoseq_mark_sent(int64_t slot_idx);
 

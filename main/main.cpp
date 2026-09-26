@@ -1925,7 +1925,13 @@ static void request_tx_cancel() {
 
 // Drop one active QSO by queue index.
 static bool drop_qso(int idx) {
+  // Same rule as Port A's QUEUE_CANCEL: dropping the QSO on the air stops it.
+  QsoContext ctx;
+  const bool on_air = decode_tx_state_get_tx_active() &&
+                      autoseq_get_active_context(idx, &ctx) &&
+                      ctx.entry_id == autoseq_transmitting_entry_id();
   const bool ok = autoseq_drop_index(idx);
+  if (ok && on_air) request_tx_cancel();
   if (ok) g_tx_view_dirty = true;
   return ok;
 }
@@ -4069,9 +4075,14 @@ const char* porta_host_beacon(uint8_t mode) {
 }
 
 const char* porta_host_queue_cancel(uint16_t entry_id) {
+  // Cancelling the QSO on the air stops the transmission too, not only its
+  // later ones (operator decision, 2026-09-26).
+  const bool on_air = decode_tx_state_get_tx_active() &&
+                      autoseq_transmitting_entry_id() == entry_id;
   if (!autoseq_drop_by_entry_id(entry_id)) {
     return "unknown entry";
   }
+  if (on_air) request_tx_cancel();
   g_tx_view_dirty = true;
   return nullptr;
 }

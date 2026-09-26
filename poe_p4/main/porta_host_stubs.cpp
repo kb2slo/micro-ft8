@@ -468,8 +468,15 @@ static const char *apply_reply_touch(const UiRxLine &msg) {
 }
 
 const char *porta_host_queue_cancel(uint16_t entry_id) {
+    // Cancelling the QSO on the air stops the transmission too, not only its
+    // later ones (operator decision, 2026-09-26).
+    const bool on_air = decode_tx_state_get_tx_active() &&
+                        autoseq_transmitting_entry_id() == entry_id;
     if (!autoseq_drop_by_entry_id(entry_id)) {
         return "unknown entry";
+    }
+    if (on_air) {
+        tx_scheduler_cancel();
     }
     g_tx_view_dirty = true;
     ESP_LOGI(TAG, "queue cancel entry_id=%u", (unsigned)entry_id);

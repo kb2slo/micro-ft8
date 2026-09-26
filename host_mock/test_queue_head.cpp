@@ -6,7 +6,9 @@
  *   to leave the tick to advance whatever was queue[0] next: a QSO that never
  *   transmitted lost a retry.
  * - autoseq_head_entry_id()/AutoseqTxEntry::entry_id let a board check that
- *   its armed TX is still autoseq's head before keying.
+ *   its armed TX is still autoseq's head before keying, and
+ *   autoseq_transmitting_entry_id() tells it that a cancelled entry is the one
+ *   on the air, so the cancel stops the transmission too.
  * - A parked entry reactivated by a message autoseq cannot classify (no third
  *   field, say) came back with next_tx = TX_NONE: empty text at queue[0], and
  *   nothing transmitted, the beacon included, until it was removed.
@@ -150,8 +152,27 @@ static void test_reactivated_report_resends_report() {
     check(transmit() == "K1ABC KB2SLO -8", "reactivated REPORT resends the report");
 }
 
+// The board stops the TX when the cancelled entry is the one on the air.
+static void test_transmitting_id_names_the_on_air_entry() {
+    reset();
+    check(autoseq_transmitting_entry_id() == 0, "nothing on the air yet");
+    decode(to_me("K1ABC", "FN42"));
+    decode(to_me("N0CALL", "EM12"));
+    AutoseqTxEntry pending;
+    autoseq_fetch_pending_tx(pending);
+    autoseq_on_tx_starting();
+    check(autoseq_transmitting_entry_id() == pending.entry_id, "names the entry that started");
+    QsoContext other;
+    autoseq_get_active_context(1, &other);
+    check(other.entry_id != autoseq_transmitting_entry_id(), "a queued entry is not on the air");
+    autoseq_mark_sent(0);
+    autoseq_tick(0, 0, 0);
+    check(autoseq_transmitting_entry_id() == 0, "cleared by the tick after the TX");
+}
+
 int main() {
     test_head_id_matches_fetch();
+    test_transmitting_id_names_the_on_air_entry();
     test_tick_skips_dropped_on_air_entry();
     test_tick_follows_moved_entry();
     test_reactivation_by_unclassified_message_can_transmit();

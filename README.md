@@ -4,6 +4,7 @@ This is Jeff KB2SLO’s continuation of Wei AG6AQ’s Micro-FT8 for the Cardpute
 
 - **Improved UX while transmitting.** The decode list stays tappable so you can queue a QSO; a one-row banner shows the TX message plus QMX power and SWR (abort and high SWR stay pinned). Leftover rows dim after the slot so they don’t look live.
 - **One tap, one callsign.** R-tap will not stack the same station twice.
+- **Cancelling the QSO on the air stops it.** In the web app's queue, × on the row that is transmitting ends the transmission at once instead of after it; on the Cardputer, the TX queue's drop keys (`T` then `2`–`6`) do the same.
 - **Flash without losing M5Launcher.** `tools/flash_keep_launcher.py` writes the app slot only. Merges that change firmware also publish a rolling flashable image.
 - **Logs survive the workflow.** Copy-to-SD merges `.adi` instead of overwriting; internal LittleFS append no longer leaves empty QSO files. Critically low battery stops TX and flash writes so a dying pack does not corrupt the filesystem.
 - **Charge Mode, not a dead Sleep.** MENU charge matches Launcher: percent stripe (or `SW ON to charge`), then dim and screen off; first key wakes.

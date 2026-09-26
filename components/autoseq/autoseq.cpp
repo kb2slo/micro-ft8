@@ -608,6 +608,10 @@ uint16_t autoseq_head_entry_id() {
     return s_tx_msg_buffer.empty() ? 0 : s_queue[0].entry_id;
 }
 
+uint16_t autoseq_transmitting_entry_id() {
+    return s_tx_entry_id;
+}
+
 void autoseq_mark_sent(int64_t slot_idx) {
     if (s_active_count == 0) return;
 
