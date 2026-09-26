@@ -856,6 +856,20 @@ var currentView = 'operate';
 var viewIndex = 0;
 var viewTrack = document.getElementById('viewTrack');
 
+// One #view-<name> section per VIEWS entry is already load-bearing for the
+// swipe track (each panel's position comes from its index in VIEWS) -- this
+// just makes that pairing explicit and checked once, instead of every
+// consumer re-deriving '#view-' + name and finding out only when a query
+// silently matches nothing. A VIEWS entry with no matching section is
+// already a broken build (the swipe track would be missing a panel), so
+// failing here is not a new failure mode, just an earlier, clearer one.
+var VIEW_CONTAINERS = {};
+VIEWS.forEach(function (name) {
+  var el = document.getElementById('view-' + name);
+  if (!el) throw new Error('VIEWS entry "' + name + '" has no #view-' + name + ' section');
+  VIEW_CONTAINERS[name] = el;
+});
+
 function trackPercentFor(idx) { return -idx * (100 / VIEWS.length); }
 
 function setTrackTransform(percent, animate) {
@@ -1971,7 +1985,10 @@ function fmtSlotDateTime(ts) {
 
 // Coarse human duration -- the two largest non-zero units (days/hours,
 // hours/minutes, minutes/seconds, or bare seconds). Shared shape for any
-// "how long" readout; fmtAgo below is the only caller today.
+// "how long" readout; fmtAgo below is the only caller today. Seconds drop
+// out past the 5-minute mark -- below that, a ticking "3m 45s" is the point
+// (a QSO or decode that just happened); above it, the second digit is noise
+// nobody reads and just churns the DOM on every refresh.
 function fmtDuration(totalSeconds) {
   var s = Math.max(0, Math.floor(totalSeconds));
   var d = Math.floor(s / 86400); s -= d * 86400;
@@ -1979,14 +1996,14 @@ function fmtDuration(totalSeconds) {
   var m = Math.floor(s / 60); s -= m * 60;
   if (d > 0) return d + 'd ' + h + 'h';
   if (h > 0) return h + 'h ' + m + 'm';
-  if (m > 0) return m + 'm ' + s + 's';
+  if (m > 0) return totalSeconds > 300 ? m + 'm' : m + 'm ' + s + 's';
   return s + 's';
 }
 
-// Relative "how long ago" for a slot's receipt time. Recomputed at render
-// time and again every second by refreshDecodeAges() (tick() below) so it
-// keeps counting up between decode batches instead of freezing at whatever
-// it read when the slot last rendered.
+// Relative "how long ago" for a timestamp. Recomputed at render time and
+// again on every tick() while its view is on screen (refreshVisibleAgo()
+// below) so it keeps counting up instead of freezing at whatever it read
+// when the row last rendered.
 function fmtAgo(ts) {
   var secs = (Date.now() - ts) / 1000;
   return secs < 1 ? 'just now' : fmtDuration(secs) + ' ago';
@@ -2578,8 +2595,9 @@ async function fetchSpaceWx() {
   renderSpaceWx();
 }
 function swRow(label, value, ts) {
+  var tsMs = parseUtcIso(ts);
   return '<div class=swrow><span>' + esc(label) + '</span><span class=v>' + esc(value) +
-    ' <span class=toolsnote>' + fmtAgo(parseUtcIso(ts)) + '</span></span></div>';
+    ' <span class=toolsnote data-ts="' + tsMs + '">' + fmtAgo(tsMs) + '</span></span></div>';
 }
 function renderSpaceWx() {
   var row = document.getElementById('spaceWxRow');
@@ -2736,10 +2754,10 @@ function appendLogRows(file, rows, prependGroup) {
     // least as trustworthy a source as a bare decode, so it belongs in the
     // same shared cache.
     CallInfo.learnGrid(q.call, q.grid);
-    // Static at render, not ticking like Operate's decode-ago -- these are
-    // completed QSOs, potentially hundreds loaded across a session, and
-    // fmtDuration()'s own granularity (minutes once past a minute) makes a
-    // live per-second update pointless here anyway.
+    // data-ts, not just the rendered text -- refreshVisibleAgo() (tick()
+    // below) re-reads it every second while Log is the visible view, same
+    // as Operate's decode-ago, so a QSO logged minutes ago doesn't sit there
+    // showing a stale age for however long the operator keeps the tab open.
     var qts = qsoEpochMs(file, q.time);
     // Best-effort -- geo data may still be loading on a cold page (this
     // runs once per row, at log-load time, not live), and shortLocation()
@@ -2749,7 +2767,7 @@ function appendLogRows(file, rows, prependGroup) {
       '<div class=frow-main>' +
         '<div><span><span class="call callink" data-call="' + esc(q.call) + '">' + esc(q.call) + '</span>' +
         (q.grid ? '<span class=grid>' + CallInfo.gridLink(q.grid) + (qShortLoc ? ' · ' + esc(qShortLoc) : '') + '</span>' : '') + '</span>' +
-        (qts !== null ? '<span class=ago>' + fmtAgo(qts) + '</span>' : '') + '</div>' +
+        (qts !== null ? '<span class=ago data-ts="' + qts + '">' + fmtAgo(qts) + '</span>' : '') + '</div>' +
         '<span class=sub><span>' + esc(q.time) + '</span><span>' + esc(q.band) +
         (q.freq ? ' · ' + esc(q.freq) + ' MHz' : '') + '</span><span>' +
         fmtRst(q.rst_sent) + '/' + fmtRst(q.rst_rcvd) + '</span></span>' +
@@ -3241,12 +3259,17 @@ renderQueue();
 renderDecodes();
 renderTxHud();
 
-// Cheap per-second text update -- avoids rebuilding #opDecodeRows just to
-// keep "X ago" counting between decode batches.
-function refreshDecodeAges() {
-  document.querySelectorAll('#opDecodeRows .ago').forEach(function (el) {
-    el.textContent = fmtAgo(parseInt(el.getAttribute('data-ts'), 10));
-  });
+// Cheap per-second text update for every "X ago" in the view currently on
+// screen -- avoids rebuilding a whole row list just to keep an age counting.
+// Scoped to VIEW_CONTAINERS[currentView] rather than the whole document: Log
+// alone can hold hundreds of loaded QSO rows, and there is no point
+// re-rendering their ages every second while the operator is looking at
+// Operate or Tools instead.
+function refreshVisibleAgo() {
+  VIEW_CONTAINERS[currentView].querySelectorAll('.ago[data-ts], .toolsnote[data-ts]')
+    .forEach(function (el) {
+      el.textContent = fmtAgo(parseInt(el.getAttribute('data-ts'), 10));
+    });
 }
 
 // Flips CAT/Audio/Link to the "stale" glyph once we've gone too long since
@@ -3264,7 +3287,7 @@ function updateLinkFreshness() {
 
 function tick() {
   pollEvents();
-  refreshDecodeAges();
+  refreshVisibleAgo();
   updateLinkFreshness();
   expireStaleTxHud();
   updateLinkLostBanner();

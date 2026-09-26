@@ -107,7 +107,7 @@ function fmtDuration(totalSeconds) {
   var m = Math.floor(s / 60); s -= m * 60;
   if (d > 0) return d + 'd ' + h + 'h';
   if (h > 0) return h + 'h ' + m + 'm';
-  if (m > 0) return m + 'm ' + s + 's';
+  if (m > 0) return totalSeconds > 300 ? m + 'm' : m + 'm ' + s + 's';
   return s + 's';
 }
 function fmtAgo(ts) {
@@ -527,9 +527,20 @@ async function show(call, opts) {
         : progRef) +
       (spot.name ? ' · ' + esc(spot.name) : '') +
       (spot.program === 'SOTA' && spot.points != null ? ' · ' + esc(spot.points) + ' pts' : '') +
-      '<div class=ci-heard>' + esc(spot.band || '') + ' · ' + esc(fmtAgo(parseUtcIso(spot.ts))) + '</div>';
+      '<div class=ci-heard>' + esc(spot.band || '') + ' · <span class=ago data-ts="' +
+        parseUtcIso(spot.ts) + '">' + esc(fmtAgo(parseUtcIso(spot.ts))) + '</span></div>';
   });
 }
+
+// Keeps the POTA/SOTA spot's "X ago" counting while the card is open --
+// cheap (at most one element) and only does anything while the modal is
+// actually visible, so it costs nothing the rest of the time.
+setInterval(function () {
+  var modal = document.getElementById('callInfoModal');
+  if (!modal || modal.hidden) return;
+  var el = modal.querySelector('.ci-heard .ago[data-ts]');
+  if (el) el.textContent = fmtAgo(parseInt(el.getAttribute('data-ts'), 10));
+}, 5000);
 
 // Injected at load, not lazily on first show() -- map.html's own lighter
 // static-location popup (#mapPopup, not this file's modal) reuses this
