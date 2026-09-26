@@ -7,14 +7,14 @@ The engine is a port of the DX-FT8 transceiver's `autoseq_engine.c`, and that li
 ## The queue
 
 * **One array, two zones.** `s_queue[AUTOSEQ_MAX_QUEUE]` (30 entries) holds a `QsoContext` per contact. The **active zone** grows from index 0 and is what gets transmitted. The **inactive zone** grows from the back and holds contacts that ran out of retries but whose metadata is still worth keeping (**Inactive zone** below). The free space between the zones is shared: a new entry evicts the oldest inactive one when the zones meet. A parked entry also expires 10 minutes after it was parked.
-* **Only `queue[0]` transmits.** `autoseq_tick()` advances `queue[0]`, `autoseq_on_tx_starting()` logs `queue[0]`, and `refresh_tx_msg_buffer()` renders `queue[0]`'s text into a single buffer, which `autoseq_fetch_pending_tx()` reads. Every public call that can change `queue[0]` refreshes that buffer, so an empty queue and an empty buffer always go together.
+* **Only `queue[0]` transmits.** `autoseq_on_tx_starting()` logs `queue[0]` and records its `entry_id` as the entry on the air, and `refresh_tx_msg_buffer()` renders `queue[0]`'s text into a single buffer, which `autoseq_fetch_pending_tx()` reads. Every public call that can change `queue[0]` refreshes that buffer, so an empty queue and an empty buffer always go together.
 * **Sort order** (`compare_ctx()`, applied to the active zone by `sort_and_clean()`, which then pops leading IDLE entries):
   1. IDLE first, so it is popped.
   2. A free-text one-shot next. **Nothing enqueues one any more:** `autoseq_schedule_freetext()` has no caller since one-shot free-text TX was removed.
   3. Then by state, further along first: SIGNOFF > ROGERS > ROGER_REPORT > REPORT > REPLYING > CALLING. A QSO near completion goes before a new one, and the beacon CQ comes last.
   4. **Within one state, fewer retries first.** Contacts at the same stage take turns rather than one burning all its retries while the others wait.
 * **Stable IDs.** Each entry gets an `entry_id` when it is created, never reused within a boot, and carried along as the array re-sorts. Port A's `QUEUE_ENTRY` and `QUEUE_CANCEL` address entries by it, because the browser's snapshot and the live order can disagree by the time a cancel arrives ([webapp.md](webapp.md), **Screens**).
-* **Sort only on the call paths that need it.** `sort_and_clean()` runs after decodes, a touch and a reactivation, not after `autoseq_tick()`. A tick only pops `queue[0]` if it went IDLE, so the round-robin in rule 4 takes effect at the next decode.
+* **Sort only on the call paths that need it.** `sort_and_clean()` runs after decodes, a touch and a reactivation, not after `autoseq_tick()`. A tick only removes the entry it advanced if that entry finished, so the round-robin in rule 4 takes effect at the next decode.
 
 ## States and messages
 
@@ -45,7 +45,8 @@ A contact's state is **what we last sent**. `next_tx` is what we send next.
 | ROGERS | keep | keep | → ROGERS (fresh retries) | → IDLE | → IDLE |
 | SIGNOFF | keep | keep | keep | → SIGNOFF (73 again) | → IDLE |
 
-* **`generate_response()` is total over (state, received).** Every cell is explicit, and "keep" rewrites `next_tx` to the canonical value. That is what repairs an entry coming back from the inactive zone with `next_tx = TX_NONE`. **The repair has a hole:** a received message that classifies as `TX_NONE` returns before the state machine runs, so a reactivated entry keeps `TX_NONE`. If it reaches `queue[0]`, its text is empty, `fetch_pending_tx()` returns false, and nothing transmits (not even the beacon, whose CQ sorts behind it) until the entry is removed.
+* **`generate_response()` is total over (state, received).** Every cell is explicit, and "keep" rewrites `next_tx` to the canonical value. A message that classifies as `TX_NONE` returns before the table and changes nothing.
+* **Reactivation restores `next_tx` itself.** `move_to_inactive()` clears `next_tx`, and `reactivate()` sets it back to the state's canonical value (`canonical_next_tx()`) before the table runs. Relying on the table's "keep" was not enough, because a message the classifier cannot place (no third field, say) returns before the table. An active entry with `TX_NONE` renders no text, so at `queue[0]` it stopped every TX, the beacon's included (`host_mock/test_queue_head.cpp`).
 * **A new contact enters through the same table.** For a new entry, `generate_response(override=true)` first sets the state *before* the one the received message answers: TX1 → CALLING, TX2 → REPLYING, TX3 → REPORT, TX4 → ROGER_REPORT, TX5 → ROGERS. Then it applies the table. A grid answering our CQ lands in REPORT, and a straight report lands in ROGER_REPORT. The new entry takes DX's audio offset, and the slot parity opposite the one DX sent in.
 * **`snr_tx`** (the report we send) is latched from the first TX1 or TX2 we decode from DX and never changes after that. A touch sets it from the tapped decode.
 * **Field Day.** A contact is FD if the operator tapped a `CQ FD`, or if our CQ type is FD and DX sent a valid exchange. TX2 and TX3 then carry our exchange (parsed from the CQ free-text setting) instead of a report, and the received exchange is kept for Cabrillo.
@@ -80,14 +81,16 @@ Each board runs `check_slot_boundary()` on every pass of its main loop. It does 
    * **the previous slot's decode has been applied** (`decode_applied_slot_idx >= slot_idx − 1`);
    * the slot is not the one a TX cancel landed in.
 
+   Just before the trigger, if the armed TX's `entry_id` is no longer `autoseq_head_entry_id()`, the board discards it and re-arms from the queue. This covers any queue change that did not re-arm, such as a Port A `QUEUE_CANCEL` between the decode and the slot. The check waits while a decode runs, since the decode mutates the queue on the other core.
+
    A late start skips the tones it has missed. Tones are timed from the slot boundary, not from the start, so a late TX still ends on time.
 
-**Why this ordering.** Two rules keep the tick and the trigger acting on the same entry:
+**Why this ordering.** Two rules keep the trigger, the transmission and the tick on the same entry. The `entry_id` checks (the head check above, and the tick's lookup below) are the backstop for queue changes the rules do not cover:
 
 * **A decode only arms; the boundary transmits.** If a decode started a TX directly, a second decode could re-sort the queue while the TX was being prepared, and the tick afterwards would advance a different entry. That is the failure the DX-FT8 design avoids.
 * **The trigger waits for the previous slot's decode to be applied.** Otherwise a boundary reached before capture and decode finish (about 12.6 s into an FT8 slot) could fire a TX from the cycle before.
 
-**`autoseq_tick()`** acts on `queue[0]`:
+**`autoseq_tick()`** acts on the entry that went on the air (the `entry_id` recorded at TX start), wherever it now sits, not on `queue[0]`. A cancel can drop that entry mid-TX, and a touch can re-sort another entry ahead of it. Acting on `queue[0]` regardless charged the retry to a QSO that never transmitted. If the entry is gone (dropped or parked), the tick does nothing. Otherwise:
 
 * CALLING → IDLE, popped: a CQ is one-shot.
 * REPLYING through ROGERS: resend with `retry_counter` + 1 while under `retry_limit` (the Station.txt max-retry setting, default `AUTOSEQ_MAX_RETRY` = 5). Once exhausted, REPLYING is evicted and REPORT or later moves to the inactive zone.
@@ -95,7 +98,7 @@ Each board runs `check_slot_boundary()` on every pass of its main loop. It does 
 
 **A TX cancel** (the ADV's backtick, Port A `TX_CANCEL`) stops the TX and leaves autoseq untouched. The cancelled TX does not count as sent, so no tick runs and no retry is used. The entry re-arms, but the trigger refuses the slot the cancel landed in, so one press stops it for the rest of that slot (row B21 is the bench check).
 
-**A queue cancel does not disarm.** `QUEUE_CANCEL` removes the entry but leaves an already-armed TX armed. Only the next decode's arm replaces it. If the cancel lands between the decode and the TX trigger, the cancelled message goes out once, and the tick after it advances whatever is now `queue[0]`.
+**A queue cancel** (the web app's row ×, Port A `QUEUE_CANCEL`) removes a CQ, or parks a QSO. If that entry is armed but not yet on the air, the head check before the trigger drops the armed TX and re-arms. If it is already on the air, the transmission runs to its end, and the tick after it finds nothing to advance. Stopping the transmission itself is a TX cancel; a band change sends both.
 
 **TX offset** is resolved when the TX is armed (`resolve_tx_offset()`):
 
@@ -134,4 +137,4 @@ Logging also starts the 10-minute recently-worked window for that call, so the s
 
 ## Tests
 
-`host_mock/host_main.cpp` runs the JSON scenarios in `host_mock/` (a normal QSO, the beacon lifecycle, Field Day, the tail-ended RR73 touch, reincarnation and the two queue deadlocks). Each drives decodes, touches, beacon changes and ticks through the engine and **prints** the exchange. A scenario fails only on a crash, never on a wrong exchange ([TEST_PLAN.md](../TEST_PLAN.md)). The asserting tests are `test_unique_callsign.cpp` (touch de-duplication and `entry_id`), `test_beacon_cancel.cpp` (CQ cancellation) and `test_recent_qso.cpp` (the recently-worked check blocks only new QSOs, and parked entries expire). The slot cycle, the IgnoreList and arming are board code, and no host test covers them.
+`host_mock/host_main.cpp` runs the JSON scenarios in `host_mock/` (a normal QSO, the beacon lifecycle, Field Day, the tail-ended RR73 touch, reincarnation and the two queue deadlocks). Each drives decodes, touches, beacon changes and ticks through the engine and **prints** the exchange. A scenario fails only on a crash, never on a wrong exchange ([TEST_PLAN.md](../TEST_PLAN.md)). The asserting tests are `test_unique_callsign.cpp` (touch de-duplication and `entry_id`), `test_beacon_cancel.cpp` (CQ cancellation), `test_recent_qso.cpp` (the recently-worked check blocks only new QSOs, and parked entries expire), and `test_queue_head.cpp` (the tick advances the entry that transmitted, and a reactivated entry can transmit). The slot cycle, the head check before the trigger, the IgnoreList and arming are board code, and no host test covers them.

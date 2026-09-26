@@ -322,6 +322,19 @@ static void check_slot_boundary(void) {
         tx_scheduler_arm_from_autoseq_or_beacon();
     }
 
+    // The armed TX must still be autoseq's head. A queue change that did not
+    // re-arm -- a Port A QUEUE_CANCEL landing between the decode and this slot
+    // -- would otherwise key the cancelled message once.
+    // Not while a decode runs: it mutates the queue on the other task, and
+    // the trigger below waits for it anyway.
+    if (s_qso_xmit && s_pending_tx_valid && !decode_tx_state_get_tx_active() &&
+        !decode_tx_state_get_decode_in_progress() &&
+        autoseq_head_entry_id() != s_pending_tx.entry_id) {
+        s_qso_xmit = false;
+        s_pending_tx_valid = false;
+        tx_scheduler_arm_from_autoseq_or_beacon();
+    }
+
     if (s_qso_xmit && s_target_slot_parity == slot_parity && slot_idx != s_tx_cancel_slot_idx &&
         slot_ms < (g_protocol->slot_time_ms * 4 / 15) && !decode_tx_state_get_tx_active() &&
         !decode_tx_state_get_decode_in_progress() &&

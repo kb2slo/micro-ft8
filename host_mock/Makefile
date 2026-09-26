@@ -62,6 +62,7 @@ WEB_PAGE_TARGET = host_test_web_page
 WEB_MANIFEST_TARGET = host_test_web_manifest
 BUNDLE_HOST_TARGET = host_test_bundle_host
 RECENT_QSO_TARGET = host_test_recent_qso
+QUEUE_HEAD_TARGET = host_test_queue_head
 
 all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
      $(DECODE_SORT_TARGET) $(POWER_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) $(COPY_BLOCK_TARGET) \
@@ -70,7 +71,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET
      $(USB_C_PRESENCE_TARGET) $(MENU_MODEL_TARGET) $(SCREEN_MODEL_TARGET) \
      $(DATETIME_FIELD_TARGET) $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
      $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(BUNDLE_HOST_TARGET) \
-     $(RECENT_QSO_TARGET)
+     $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET)
 
 $(TARGET): $(OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
@@ -85,6 +86,10 @@ $(CANCEL_TARGET): $(CANCEL_OBJ)
 
 RECENT_QSO_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_recent_qso.o
 $(RECENT_QSO_TARGET): $(RECENT_QSO_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+QUEUE_HEAD_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_queue_head.o
+$(QUEUE_HEAD_TARGET): $(QUEUE_HEAD_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 ADIF_OBJ = adif.o test_adif_merge.o

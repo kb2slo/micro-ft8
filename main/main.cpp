@@ -2438,6 +2438,19 @@ static void check_slot_boundary() {
     arm_from_autoseq_or_beacon();
   }
 
+  // The armed TX must still be autoseq's head. A queue change that did not
+  // re-arm -- a Port A QUEUE_CANCEL landing between the decode and this slot --
+  // would otherwise key the cancelled message once.
+  // Not while a decode runs: it mutates the queue on the other core, and the
+  // trigger below waits for it anyway.
+  if (g_qso_xmit && g_pending_tx_valid && !decode_tx_state_get_tx_active() &&
+      !decode_tx_state_get_decode_in_progress() &&
+      autoseq_head_entry_id() != g_pending_tx.entry_id) {
+    g_qso_xmit = false;
+    g_pending_tx_valid = false;
+    arm_from_autoseq_or_beacon();
+  }
+
   // TX trigger: check if we should start TX in this slot
   // Conditions: qso_xmit flag set, correct parity, early enough in slot, not already TXing,
   // and decode must be complete (TX is always triggered by decode results).

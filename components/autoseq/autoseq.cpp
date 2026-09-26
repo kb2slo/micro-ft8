@@ -77,6 +77,9 @@ static bool s_pending_valid = false;
 static AutoseqTxEntry s_pending;
 static int s_pending_ctx_idx = -1;
 static int64_t s_last_tx_slot_idx = -1000;
+// entry_id of the entry that went on the air (autoseq_on_tx_starting), which
+// the next autoseq_tick() advances. 0: nothing transmitted since the last tick.
+static uint16_t s_tx_entry_id = 0;
 static int s_last_tx_parity = -1;
 
 // ============== Forward declarations ==============
@@ -123,6 +126,20 @@ static inline int64_t mono_ms() {
     return esp_timer_get_time() / 1000;
 }
 
+// What an entry in `state` sends when nothing advances it: the "keep" column
+// of generate_response()'s table. CALLING and IDLE have none (a CQ's text
+// comes from its template).
+static TxMsgType canonical_next_tx(AutoseqState state) {
+    switch (state) {
+        case AutoseqState::REPLYING:     return TxMsgType::TX1;
+        case AutoseqState::REPORT:       return TxMsgType::TX2;
+        case AutoseqState::ROGER_REPORT: return TxMsgType::TX3;
+        case AutoseqState::ROGERS:       return TxMsgType::TX4;
+        case AutoseqState::SIGNOFF:      return TxMsgType::TX5;
+        default:                         return TxMsgType::TX_NONE;
+    }
+}
+
 static inline int clamp_retry_limit(int retry) {
     if (retry < 0) return 0;
     return retry;
@@ -137,6 +154,7 @@ void autoseq_init() {
     s_pending_ctx_idx = -1;
     s_last_tx_slot_idx = -1000;
     s_last_tx_parity = -1;
+    s_tx_entry_id = 0;
     s_tx_msg_buffer.clear();
     s_pending_ft_text.clear();
 }
@@ -488,9 +506,28 @@ void autoseq_on_decodes(const std::vector<UiRxLine>& to_me_messages) {
 void autoseq_tick(int64_t slot_idx, int slot_parity, int ms_to_boundary) {
     (void)slot_idx; (void)slot_parity; (void)ms_to_boundary;  // unused for now
 
-    if (s_active_count == 0) return;
+    // Advance the entry that went on the air, wherever it is now. It is
+    // usually queue[0], but a cancel can drop it mid-TX and a touch can re-sort
+    // ahead of it; acting on queue[0] regardless charged the retry to a QSO
+    // that never transmitted. Gone (dropped or parked): nothing to advance.
+    const uint16_t sent_id = s_tx_entry_id;
+    s_tx_entry_id = 0;
+    int idx = -1;
+    for (int i = 0; i < s_active_count; ++i) {
+        if (sent_id != 0 && s_queue[i].entry_id == sent_id) {
+            idx = i;
+            break;
+        }
+    }
+    if (idx < 0) {
+        ESP_LOGI(TAG, "Tick: transmitted entry %u no longer active; nothing to advance",
+                 (unsigned)sent_id);
+        refresh_tx_msg_buffer();
+        return;
+    }
 
-    QsoContext* ctx = &s_queue[0];
+    QsoContext* ctx = &s_queue[idx];
+    bool finished = false;
 
     // Advance retry counter or move to inactive zone
     switch (ctx->state) {
@@ -499,49 +536,37 @@ void autoseq_tick(int64_t slot_idx, int slot_parity, int ms_to_boundary) {
         case AutoseqState::ROGER_REPORT:
         case AutoseqState::ROGERS: {
             if (ctx->retry_counter < ctx->retry_limit) {
-                // Set up next retry based on current state
-                switch (ctx->state) {
-                    case AutoseqState::REPLYING:     ctx->next_tx = TxMsgType::TX1; break;
-                    case AutoseqState::REPORT:       ctx->next_tx = TxMsgType::TX2; break;
-                    case AutoseqState::ROGER_REPORT: ctx->next_tx = TxMsgType::TX3; break;
-                    case AutoseqState::ROGERS:       ctx->next_tx = TxMsgType::TX4; break;
-                    default: break;
-                }
+                ctx->next_tx = canonical_next_tx(ctx->state);
                 ctx->retry_counter++;
             } else if (has_exchanged(ctx)) {
                 // Retries exhausted but we exchanged data with DX — move to
                 // inactive zone to preserve metadata in case DX retries.
-                move_to_inactive(0);
+                move_to_inactive(idx);
             } else {
                 // No exchange happened (e.g. sent TX1 but got nothing back).
                 // Safe to evict.
-                ctx->state = AutoseqState::IDLE;
-                ctx->next_tx = TxMsgType::TX_NONE;
+                finished = true;
             }
             break;
         }
         case AutoseqState::CALLING:  // CQ only once (controlled by beacon)
             // CQ with no response — safe to evict (dxcall is "CQ")
-            ctx->state = AutoseqState::IDLE;
-            ctx->next_tx = TxMsgType::TX_NONE;
+            finished = true;
             break;
         case AutoseqState::SIGNOFF:
-            // After TX5:
-            // - First pass: park in inactive so late RR73 can be answered once.
-            // - Late-ack pass: finish immediately.
+            // After TX5: park in inactive so a late RR73 can be answered.
             if (ctx->park_after_signoff_tx) {
-                move_to_inactive(0);
+                move_to_inactive(idx);
             } else {
-                ctx->state = AutoseqState::IDLE;
-                ctx->next_tx = TxMsgType::TX_NONE;
+                finished = true;
             }
             break;
         default:
             break;
     }
 
-    if (s_active_count > 0 && s_queue[0].state == AutoseqState::IDLE) {
-        pop_front();
+    if (finished) {
+        remove_active_at(idx);
     }
     refresh_tx_msg_buffer();
 
@@ -566,6 +591,7 @@ bool autoseq_fetch_pending_tx(AutoseqTxEntry& out) {
     // Queue must be non-empty for the buffer to be non-empty (invariant).
     QsoContext* ctx = &s_queue[0];
     out.text = s_tx_msg_buffer;
+    out.entry_id = ctx->entry_id;
     out.dxcall = ctx->dxcall;
     out.offset_hz = ctx->offset_hz;
     out.slot_id = ctx->slot_id;
@@ -576,6 +602,10 @@ bool autoseq_fetch_pending_tx(AutoseqTxEntry& out) {
     ESP_LOGI(TAG, "Fetch TX: %s (state=%d, next_tx=%d)",
              out.text.c_str(), (int)ctx->state, (int)ctx->next_tx);
     return true;
+}
+
+uint16_t autoseq_head_entry_id() {
+    return s_tx_msg_buffer.empty() ? 0 : s_queue[0].entry_id;
 }
 
 void autoseq_mark_sent(int64_t slot_idx) {
@@ -602,6 +632,7 @@ void autoseq_mark_sent(int64_t slot_idx) {
 void autoseq_on_tx_starting() {
     if (s_active_count == 0) return;
     QsoContext* ctx = &s_queue[0];
+    s_tx_entry_id = ctx->entry_id;
     if (ctx->next_tx == TxMsgType::TX4 || ctx->next_tx == TxMsgType::TX5) {
         log_qso_if_needed(ctx);
     }
@@ -1436,6 +1467,12 @@ static void reactivate(int inactive_idx) {
     // Reset retry counter for fresh attempts
     s_queue[s_active_count - 1].retry_counter = 0;
     s_queue[s_active_count - 1].inactive_since_ms = 0;
+    // move_to_inactive() cleared next_tx. Restore it here rather than relying
+    // on generate_response(): a message it cannot classify returns before the
+    // state machine runs, and an active entry with TX_NONE renders no text --
+    // at queue[0] that stopped every TX, the beacon's included.
+    s_queue[s_active_count - 1].next_tx =
+        canonical_next_tx(s_queue[s_active_count - 1].state);
     ESP_LOGI(TAG, "Reactivated %s into active zone (active=%d)",
              saved.dxcall.c_str(), s_active_count);
 }

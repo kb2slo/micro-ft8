@@ -113,6 +113,7 @@ struct AutoseqTxEntry {
     int slot_id = 0;
     int repeat_counter = 5;
     bool is_signoff = false; // True for TX4/TX5 (priority scheduling)
+    uint16_t entry_id = 0;   // QsoContext::entry_id of the queue[0] this came from
 };
 
 // ADIF logging callback type
@@ -182,6 +183,11 @@ bool autoseq_get_next_tx(std::string& out_text);
 
 // Fetch pending TX entry based on current state (does NOT modify state)
 bool autoseq_fetch_pending_tx(AutoseqTxEntry& out);
+
+// entry_id of the entry autoseq would transmit next, 0 if none. A board
+// compares it with its armed TX's entry_id before keying: a queue change that
+// did not re-arm (a cancel, a drop) would otherwise send the old message.
+uint16_t autoseq_head_entry_id();
 
 // Mark TX as sent (called after transmission completes)
 void autoseq_mark_sent(int64_t slot_idx);
