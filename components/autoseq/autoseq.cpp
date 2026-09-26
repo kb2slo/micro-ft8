@@ -93,6 +93,7 @@ static void pop_front();
 static QsoContext* append_ctx();
 static void move_to_inactive(int idx);
 static void evict_oldest_inactive();
+static void expire_inactive();
 static int find_inactive_by_dxcall(const std::string& dxcall);
 static void remove_active_at(int idx);
 static void force_active_to_front(int idx);
@@ -467,6 +468,8 @@ void autoseq_on_decodes(const std::vector<UiRxLine>& to_me_messages) {
     ESP_LOGI(TAG, "on_decodes: %d messages, active=%d inactive=%d",
              (int)to_me_messages.size(), s_active_count,
              AUTOSEQ_MAX_QUEUE - s_inactive_start);
+    // Before any lookup: a stale parked entry must not be found and revived.
+    expire_inactive();
     for (const auto& msg : to_me_messages) {
         ESP_LOGI(TAG, "  msg: %s %s %s snr=%d",
                  msg.field1.c_str(), msg.field2.c_str(), msg.field3.c_str(), msg.snr);
@@ -1383,6 +1386,26 @@ static void evict_oldest_inactive() {
         s_queue[i] = s_queue[i - 1];
     }
     ++s_inactive_start;
+}
+
+// Drop every inactive entry parked for AUTOSEQ_INACTIVE_EXPIRY_MS or longer,
+// keeping the zone contiguous and the survivors in order. A parked entry is
+// there to catch DX retrying the same QSO; past the window, a decode from that
+// call is a new QSO, and reviving the old entry would bring back its state,
+// its reports and its `logged` flag (a SIGNOFF entry answered a fresh call
+// with 73, and the new QSO was never logged).
+static void expire_inactive() {
+    const int64_t now = mono_ms();
+    int write = AUTOSEQ_MAX_QUEUE;
+    for (int read = AUTOSEQ_MAX_QUEUE - 1; read >= s_inactive_start; --read) {
+        if (now - s_queue[read].inactive_since_ms >= AUTOSEQ_INACTIVE_EXPIRY_MS) {
+            ESP_LOGI(TAG, "Expired parked ctx for %s", s_queue[read].dxcall.c_str());
+            continue;
+        }
+        --write;
+        if (write != read) s_queue[write] = s_queue[read];
+    }
+    s_inactive_start = write;
 }
 
 // Find an inactive entry by dxcall (case-insensitive). Returns array index or -1.

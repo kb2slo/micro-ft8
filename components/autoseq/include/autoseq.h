@@ -10,6 +10,12 @@
 constexpr int AUTOSEQ_MAX_QUEUE = 30;
 // Maximum retries before moving to inactive zone
 constexpr int AUTOSEQ_MAX_RETRY = 5;
+// How long a parked (inactive) entry lives. It is parked to catch DX retrying
+// the same QSO; after this, anything from that call is a new QSO, so the old
+// state, reports and `logged` must not come back. Equal to the ADIF dedupe
+// window (kAdifLoggerDedupeWindowMs; decode_pipeline.cpp asserts it), so a
+// call is refused a new QSO for exactly as long as its parked entry lives.
+constexpr int64_t AUTOSEQ_INACTIVE_EXPIRY_MS = 10 * 60 * 1000LL;
 
 // High-level auto-sequencer states
 // Order matters for priority sorting (higher = more advanced in QSO)

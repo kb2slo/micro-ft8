@@ -6,7 +6,7 @@ The engine is a port of the DX-FT8 transceiver's `autoseq_engine.c`, and that li
 
 ## The queue
 
-* **One array, two zones.** `s_queue[AUTOSEQ_MAX_QUEUE]` (30 entries) holds a `QsoContext` per contact. The **active zone** grows from index 0 and is what gets transmitted. The **inactive zone** grows from the back and holds contacts that ran out of retries but whose metadata is still worth keeping (**Inactive zone** below). The free space between the zones is shared: a new entry evicts the oldest inactive one when the zones meet.
+* **One array, two zones.** `s_queue[AUTOSEQ_MAX_QUEUE]` (30 entries) holds a `QsoContext` per contact. The **active zone** grows from index 0 and is what gets transmitted. The **inactive zone** grows from the back and holds contacts that ran out of retries but whose metadata is still worth keeping (**Inactive zone** below). The free space between the zones is shared: a new entry evicts the oldest inactive one when the zones meet. A parked entry also expires 10 minutes after it was parked.
 * **Only `queue[0]` transmits.** `autoseq_tick()` advances `queue[0]`, `autoseq_on_tx_starting()` logs `queue[0]`, and `refresh_tx_msg_buffer()` renders `queue[0]`'s text into a single buffer, which `autoseq_fetch_pending_tx()` reads. Every public call that can change `queue[0]` refreshes that buffer, so an empty queue and an empty buffer always go together.
 * **Sort order** (`compare_ctx()`, applied to the active zone by `sort_and_clean()`, which then pops leading IDLE entries):
   1. IDLE first, so it is popped.
@@ -54,7 +54,7 @@ A contact's state is **what we last sent**. `next_tx` is what we send next.
 
 * **Decodes addressed to us.** After each RX decode, `decode_pipeline.cpp` builds the list of decodes whose first field is our call and calls `autoseq_on_decodes()`. It skips this while transmitting and while battery-halted. The ADV's IgnoreList drops decodes before autoseq sees them (the P4 has none yet, row j4xh). `on_decode()` then:
   1. finds an active entry for the sender and applies the table, re-anchoring its slot parity to the decode;
-  2. else finds an inactive one, reactivates it with fresh retries, and applies the table;
+  2. else finds an inactive one, reactivates it with fresh retries, and applies the table. Parked entries past their 10 minutes are expired before any lookup, so a stale one is never found;
   3. else creates a new entry, **except** for `RR73`/`RRR`/`73` (a late signoff for a QSO we no longer hold), `R±NN` (**Inactive zone** below says why), and a station logged in the last 10 minutes. A grid, a report or an FD exchange starts a QSO.
 
   **The recently-worked check sits only at step 3**: `autoseq_set_recent_qso_callback()`, which each board sets to `decode_pipeline_recently_logged()`, the ADIF dedupe window (`kAdifLoggerDedupeWindowMs`). It must never filter before steps 1 and 2. A QSO is logged when we send RR73, so the station's 73, or an `R±NN` resent because they missed our RR73, arrives after the call is already "recent" and must still reach its entry. Filtering in the decode pipeline did exactly that, and the ROGERS entry resent RR73 on every retry (`host_mock/test_recent_qso.cpp`). The decode list still shows recent calls grey and sorts them last, and a touch is never filtered.
@@ -91,7 +91,7 @@ Each board runs `check_slot_boundary()` on every pass of its main loop. It does 
 
 * CALLING → IDLE, popped: a CQ is one-shot.
 * REPLYING through ROGERS: resend with `retry_counter` + 1 while under `retry_limit` (the Station.txt max-retry setting, default `AUTOSEQ_MAX_RETRY` = 5). Once exhausted, REPLYING is evicted and REPORT or later moves to the inactive zone.
-* SIGNOFF → inactive zone, always, so a late RR73 can still be answered with another 73.
+* SIGNOFF → inactive zone, always, so a late RR73 within the next 10 minutes can still be answered with another 73.
 
 **A TX cancel** (the ADV's backtick, Port A `TX_CANCEL`) stops the TX and leaves autoseq untouched. The cancelled TX does not count as sent, so no tick runs and no retry is used. The entry re-arms, but the trigger refuses the slot the cancel landed in, so one press stops it for the rest of that slot (row B21 is the bench check).
 
@@ -115,7 +115,7 @@ Row B88 holds the offset for the length of a QSO.
 
 `logged` stops a retry from logging twice. A failed write stays unlogged and retries on the next emission. A Field Day contact also writes a Cabrillo line first, with its own flag. A QSO that DX closes with 73 while we are still at ROGER_REPORT goes IDLE unlogged, because we never sent RR73 or 73.
 
-Logging also starts the 10-minute recently-worked window for that call, so the station cannot start a second QSO with us until it passes. Its closing messages still reach the QSO (**Where entries come from**, step 3).
+Logging also starts the 10-minute recently-worked window for that call, so the station cannot start a second QSO with us until it passes. Its closing messages still reach the QSO (**Where entries come from**, step 3). Once the window and the parked entry's own 10 minutes have both passed, a call from that station is a new QSO, with a fresh report, and is logged again.
 
 ## Inactive zone
 
@@ -126,9 +126,12 @@ Logging also starts the 10-minute recently-worked window for that call, so the s
 * **Exhausted retries park, not pop,** once reports have been exchanged (state REPORT or later, `has_exchanged()`). The entry keeps its call, grid, both reports, `logged` and FD data. REPLYING (only our grid sent) and CALLING are evicted, since a fresh entry built from DX's next report gets the metadata right.
 * **A decode from a parked contact reactivates it** at the end of the active zone with fresh retries, then applies the table. A dropped QSO is parked the same way.
 * **An `R±NN` from an unknown contact is refused**, because a fresh entry would skip the `snr_tx` latch. TX1, TX2 and FD exchanges from unknown contacts are accepted, since each carries what a fresh entry needs. A late signoff from an unknown contact is ignored.
-* **Eviction is oldest-parked first** (`inactive_since_ms`), and only when the queue is full. There is no expiry by time, and `logged` plays no part.
+* **A parked entry expires `AUTOSEQ_INACTIVE_EXPIRY_MS` (10 minutes) after it was parked** (`inactive_since_ms`). `expire_inactive()` runs at the start of every `autoseq_on_decodes()`, before any lookup. `logged` plays no part.
+  * **Why.** A parked entry exists to catch DX retrying the same QSO, and that happens within minutes. After that, a decode from the same call is a new QSO. Reviving the old entry would bring back its state, its reports and its `logged` flag. A parked SIGNOFF would answer a fresh grid with 73 on every call and never log the new QSO. A parked REPORT would send a report measured long before.
+  * **Why 10 minutes.** It equals the recently-worked window (`kAdifLoggerDedupeWindowMs`, which `decode_pipeline.cpp` asserts is equal). For as long as the station is refused a new QSO, its parked entry still catches its retries. Once the window ends, it gets a fresh start. The two start at different moments, one when the QSO is logged and one when the entry is parked. A SIGNOFF entry parks in the same slot its 73 logs. A ROGERS entry that ran out of retries logged at its first RR73 but parked after its last, so its parked entry outlives the recently-worked window by that retry run (about 2.5 minutes at the default 5). During that gap, a fresh call from the station gets RR73.
+* **When the queue is full, the oldest parked entry is evicted first**, whatever its age.
 * **A touch purges** every entry for that call, parked ones included, so the operator's pick always starts clean.
 
 ## Tests
 
-`host_mock/host_main.cpp` runs the JSON scenarios in `host_mock/` (a normal QSO, the beacon lifecycle, Field Day, the tail-ended RR73 touch, reincarnation and the two queue deadlocks). Each drives decodes, touches, beacon changes and ticks through the engine and **prints** the exchange. A scenario fails only on a crash, never on a wrong exchange ([TEST_PLAN.md](../TEST_PLAN.md)). The asserting tests are `test_unique_callsign.cpp` (touch de-duplication and `entry_id`), `test_beacon_cancel.cpp` (CQ cancellation) and `test_recent_qso.cpp` (the recently-worked check blocks only new QSOs). The slot cycle, the IgnoreList and arming are board code, and no host test covers them.
+`host_mock/host_main.cpp` runs the JSON scenarios in `host_mock/` (a normal QSO, the beacon lifecycle, Field Day, the tail-ended RR73 touch, reincarnation and the two queue deadlocks). Each drives decodes, touches, beacon changes and ticks through the engine and **prints** the exchange. A scenario fails only on a crash, never on a wrong exchange ([TEST_PLAN.md](../TEST_PLAN.md)). The asserting tests are `test_unique_callsign.cpp` (touch de-duplication and `entry_id`), `test_beacon_cancel.cpp` (CQ cancellation) and `test_recent_qso.cpp` (the recently-worked check blocks only new QSOs, and parked entries expire). The slot cycle, the IgnoreList and arming are board code, and no host test covers them.

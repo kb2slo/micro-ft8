@@ -7,6 +7,10 @@
  * send RR73, so the station's 73 never arrived, and ROGERS resent RR73 on every
  * retry. Here the "logged" set is filled by the ADIF callback, as the firmware's
  * dedupe list is, and registered as the recent-QSO check.
+ *
+ * Also pins parked-entry expiry (AUTOSEQ_INACTIVE_EXPIRY_MS): a parked entry
+ * catches DX's retries inside the window, and past it a call from that station
+ * is a fresh QSO with a fresh report that is logged again.
  */
 #include <cstdio>
 #include <set>
@@ -65,6 +69,7 @@ static std::string transmit() {
 }
 
 static void reset() {
+    mock_clock_set(1000);  // parked entries stamp this; 0 reads as "not parked"
     autoseq_init();
     autoseq_set_station("KB2SLO", "FN30");
     autoseq_set_max_retry(5);
@@ -163,12 +168,80 @@ static void test_recent_call_cannot_start_new_qso() {
     check(autoseq_active_count() == 2, "K1ABC can call again once the window passes");
 }
 
+// Answer dx's CQ and finish with our 73, which parks the entry.
+static void work_to_our_73(const char* dx, const char* grid) {
+    UiRxLine cq;
+    cq.field1 = "CQ";
+    cq.field2 = dx;
+    cq.field3 = grid;
+    cq.snr = -5;
+    cq.offset_hz = 900;
+    cq.slot_id = 1;
+    cq.is_cq = true;
+    autoseq_on_touch(cq);
+    transmit();
+    decode(to_me(dx, "-12"));
+    transmit();
+    decode(to_me(dx, "RR73"));
+    transmit();
+}
+
+static void work_w1aw_to_our_73() { work_to_our_73("W1AW", "FN31"); }
+
+// Inside the window a parked entry still catches DX's retries.
+static void test_parked_entry_lives_through_the_window() {
+    reset();
+    work_w1aw_to_our_73();
+    mock_clock_advance(AUTOSEQ_INACTIVE_EXPIRY_MS - 60 * 1000);
+    decode(to_me("W1AW", "RR73"));
+    check(transmit() == "W1AW KB2SLO 73", "late RR73 inside the window gets 73");
+}
+
+// Past the window the parked entry is gone: a new call is a new QSO, with a
+// fresh report, and it is logged again. Without expiry the old SIGNOFF entry
+// reactivated, answered the grid with 73, and never logged.
+static void test_parked_entry_expires() {
+    reset();
+    work_w1aw_to_our_73();
+    check(s_log_count == 1, "first QSO logged");
+
+    mock_clock_advance(AUTOSEQ_INACTIVE_EXPIRY_MS + 1000);
+    s_logged.clear();  // the recently-worked window has passed too
+
+    UiRxLine again = to_me("W1AW", "FN31");
+    again.snr = -15;
+    decode(again);
+    check(transmit() == "W1AW KB2SLO -15", "a new QSO with a fresh report, not a 73");
+    decode(to_me("W1AW", "R-09"));
+    check(transmit() == "W1AW KB2SLO RR73", "RR73 on the new QSO");
+    check(s_log_count == 2, "the new QSO is logged");
+}
+
+// Expiry drops only the stale entry; a newer parked one survives.
+static void test_expiry_keeps_newer_parked_entries() {
+    reset();
+    work_w1aw_to_our_73();                                       // parked at t0
+    mock_clock_advance(AUTOSEQ_INACTIVE_EXPIRY_MS / 2);
+    work_to_our_73("N0CALL", "EM12");                            // parked at t0 + W/2
+    mock_clock_advance(AUTOSEQ_INACTIVE_EXPIRY_MS / 2 + 1000);   // W1AW past W, N0CALL not
+
+    decode(to_me("N0CALL", "RR73"));
+    check(transmit() == "N0CALL KB2SLO 73", "the newer parked entry survived");
+
+    s_logged.clear();
+    decode(to_me("W1AW", "FN31"));
+    check(transmit() == "W1AW KB2SLO -8", "the stale one expired: W1AW starts fresh");
+}
+
 int main() {
     test_rr73_once_then_73_closes();
     test_resent_r_report_gets_rr73();
     test_late_rr73_reactivates_parked_signoff();
     test_recent_call_cannot_start_new_qso();
+    test_parked_entry_lives_through_the_window();
+    test_parked_entry_expires();
+    test_expiry_keeps_newer_parked_entries();
     if (s_failed) return 1;
-    printf("PASS: recent-QSO filter only blocks new QSOs\n");
+    printf("PASS: recent-QSO filter only blocks new QSOs; parked entries expire\n");
     return 0;
 }

@@ -67,6 +67,11 @@ void ui_set_rx_list_static(const RxDecodeEntry* entries, int count);
 
 AdifLoggerDedupe s_adif_logger_dedupe;
 
+// autoseq refuses a recently logged call a new QSO for this long, and expires
+// its parked entry after the same span; unequal, one outlives the other.
+static_assert(AUTOSEQ_INACTIVE_EXPIRY_MS == kAdifLoggerDedupeWindowMs,
+              "parked-entry expiry must match the recently-worked window");
+
 bool decode_pipeline_recently_logged(const std::string& dxcall_norm) {
   return adif_logger_dedupe_is_duplicate(&s_adif_logger_dedupe, dxcall_norm, rtc_now_ms());
 }
