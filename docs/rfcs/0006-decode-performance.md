@@ -1,16 +1,13 @@
 # RFC 0006: Decode performance — measure, then tune
 
-* **Status:** Draft. Opened 2026-09-23 to stage the decode-performance work that had spread across four
-  roadmap rows ([B25](../ROADMAP.md), [B53](../ROADMAP.md), [B54](../ROADMAP.md), [I26](../ROADMAP.md)) plus
-  three new ones (B87, §5 P0, since shipped; [B85](../ROADMAP.md), §5 P3; [B86](../ROADMAP.md), §5 P6). Those rows now carry an ID, a name and a
-  link here; the reasoning lives in this file.
+* **Status:** Accepted 2026-09-25, phase order in §5 as written. Rows [B25](../ROADMAP.md), [B53](../ROADMAP.md),
+  [B54](../ROADMAP.md), [I26](../ROADMAP.md), [B85](../ROADMAP.md) and [B86](../ROADMAP.md) carry an ID, a name and a link
+  here; the reasoning lives in this file.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** how decode quality is measured, the corpus and its ground truth, the host harness, what is
   tunable on each board, and the order in which parameter, audio-path and algorithm changes are tried.
 * **Does not cover:** the P4 port itself ([main_board.md](../architecture/main_board.md)), the UI of the decode
   list, or the QSO sequencer.
-* **Ask:** confirm the phase order in §5 before starting. P0 (device benchmark) and P1 (host harness) are the
-  candidates for Now.
 
 ---
 
