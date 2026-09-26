@@ -1,668 +1,138 @@
-# Autoseq Architecture: Reference Project Design
+# Autoseq: the QSO queue and the slot cycle
 
-This document describes the single-threaded state machine architecture used in the
-DX-FT8 reference project and how Micro-FT8 implements the same pattern.
+Autoseq decides what the station transmits next. It covers replying to stations that call us, working the stations the operator picks, the beacon CQ, and logging each QSO. The engine is `components/autoseq/` (`autoseq.h` is the API), shared by both main boards. The slot cycle that drives it has one copy per board: `check_slot_boundary()`, `tx_start()` and `tx_tick()` in `main/main.cpp` for the ADV, and `poe_p4/main/tx_scheduler.cpp` for the P4 (**not yet merged: row j4xh**). Clock and slot timing: [time.md](time.md).
 
-## Core Principle: Three Events, Strict Ordering
+The engine is a port of the DX-FT8 transceiver's `autoseq_engine.c`, and that lineage is where the two ordering rules under **The slot cycle** come from.
 
-The reference project is a **single-threaded state machine** with exactly 3 events:
+## The queue
 
-```
-Event 1: 79 symbols received → start decoding
-Event 2: decoding finished → autoseq parses decodes, populates TX message
-Event 3: 15s slot boundary → check parity, TX if message ready, tick if was_txing
-```
+* **One array, two zones.** `s_queue[AUTOSEQ_MAX_QUEUE]` (30 entries) holds a `QsoContext` per contact. The **active zone** grows from index 0 and is what gets transmitted. The **inactive zone** grows from the back and holds contacts that ran out of retries but whose metadata is still worth keeping (**Inactive zone** below). The free space between the zones is shared: a new entry evicts the oldest inactive one when the zones meet.
+* **Only `queue[0]` transmits.** `autoseq_tick()` advances `queue[0]`, `autoseq_on_tx_starting()` logs `queue[0]`, and `refresh_tx_msg_buffer()` renders `queue[0]`'s text into a single buffer, which `autoseq_fetch_pending_tx()` reads. Every public call that can change `queue[0]` refreshes that buffer, so an empty queue and an empty buffer always go together.
+* **Sort order** (`compare_ctx()`, applied to the active zone by `sort_and_clean()`, which then pops leading IDLE entries):
+  1. IDLE first, so it is popped.
+  2. A free-text one-shot next. **Nothing enqueues one any more:** `autoseq_schedule_freetext()` has no caller since one-shot free-text TX was removed.
+  3. Then by state, further along first: SIGNOFF > ROGERS > ROGER_REPORT > REPORT > REPLYING > CALLING. A QSO near completion goes before a new one, and the beacon CQ comes last.
+  4. **Within one state, fewer retries first.** Contacts at the same stage take turns rather than one burning all its retries while the others wait.
+* **Stable IDs.** Each entry gets an `entry_id` when it is created, never reused within a boot, and carried along as the array re-sorts. Port A's `QUEUE_ENTRY` and `QUEUE_CANCEL` address entries by it, because the browser's snapshot and the live order can disagree by the time a cancel arrives ([webapp.md](webapp.md), **Screens**).
+* **Sort only on the call paths that need it.** `sort_and_clean()` runs after decodes, a touch and a reactivation, not after `autoseq_tick()`. A tick only pops `queue[0]` if it went IDLE, so the round-robin in rule 4 takes effect at the next decode.
 
-**Critical: Event 2 ALWAYS happens before Event 3.** This ordering eliminates race conditions.
+## States and messages
 
-## Event Flow Diagram
+A contact's state is **what we last sent**. `next_tx` is what we send next.
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         15-SECOND SLOT TIMELINE                          │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  SLOT N (RX)              │  SLOT N+1 (TX)           │  SLOT N+2 (RX)   │
-│  ─────────────────────────┼──────────────────────────┼─────────────────  │
-│                           │                          │                   │
-│  [Receive 79 symbols]     │  [Transmit if ready]     │  [Receive again]  │
-│           │               │         │                │                   │
-│           ▼               │         │                │                   │
-│  Event 1: Decode start    │         │                │                   │
-│           │               │         │                │                   │
-│           ▼               │         │                │                   │
-│  Event 2: Decode done     │         │                │                   │
-│    - autoseq_on_decodes() │         │                │                   │
-│    - Check TX ready       │         │                │                   │
-│    - Set QSO_xmit flag    │         │                │                   │
-│           │               │         │                │                   │
-│           └───────────────┼────►Event 3: Slot boundary                   │
-│                           │    - if was_txing: tick()│                   │
-│                           │    - if QSO_xmit &&      │                   │
-│                           │      correct_parity:     │                   │
-│                           │      start TX            │                   │
-│                           │         │                │                   │
-│                           │         ▼                │                   │
-│                           │    [TX runs ~12.8s]      │                   │
-│                           │         │                │                   │
-│                           │         └────────────────┼──► tick() at      │
-│                           │                          │    next boundary  │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-## Reference Project Code Pattern (main.c)
-
-```c
-// EVENT 3: Slot boundary detection and TX trigger
-int current_slot = ft8_time / 15000 % 2;
-if (current_slot != slot_state) {
-    slot_state ^= 1;
-
-    // If we were transmitting, call tick to pop completed TX
-    if (was_txing) {
-        autoseq_tick();  // Pops the entry that was just transmitted
-    }
-    was_txing = 0;
-}
-
-// TX trigger: check if we should transmit in this slot
-if (QSO_xmit && target_slot == slot_state && FT_8_counter < 29) {
-    setup_to_transmit_on_next_DSP_Flag();
-    QSO_xmit = 0;
-    was_txing = 1;
-}
-
-// EVENT 2: After decode finishes (decode_flag set by decoder)
-if (decode_flag) {
-    // Only process decodes when NOT transmitting
-    if (!was_txing) {
-        autoseq_on_decodes(new_decoded, master_decoded);
-
-        // Check if TX is ready from autoseq
-        if (autoseq_get_next_tx(autoseq_txbuf)) {
-            queue_custom_text(autoseq_txbuf);
-            QSO_xmit = 1;
-        }
-        // ELSE IF beacon on, add CQ
-        else if (Beacon_On) {
-            autoseq_start_cq();
-            autoseq_get_next_tx(autoseq_txbuf);
-            queue_custom_text(autoseq_txbuf);
-            QSO_xmit = 1;
-            target_slot = slot_state ^ 1;
-        }
-    }
-    decode_flag = 0;
-}
-```
-
-## CQ/Beacon Design: Short-Lived Entries
-
-**Key insight: CQ entries are SHORT-LIVED.** They exist in the queue for exactly ONE transmission.
-
-```
-1. Beacon is ON, no active QSO
-2. Decode callback: autoseq_get_next_tx() returns false (queue empty)
-3. Since Beacon_On: autoseq_start_cq() adds CQ entry
-   - state = CALLING
-   - next_tx = TX6 (CQ message)
-   - dxcall = "CQ"
-4. autoseq_get_next_tx() now returns true (CQ ready)
-5. Set QSO_xmit = 1, target_slot = opposite parity
-6. At slot boundary: TX starts, was_txing = 1
-7. TX completes (12.8 seconds)
-8. Next slot boundary: autoseq_tick() is called
-9. tick() sees state=CALLING, transitions to IDLE, pops entry
-10. Queue is now empty
-11. Next decode: back to step 2, new CQ is added
-```
-
-**Why short-lived?**
-- Makes beacon flag changes take effect immediately
-- If beacon is turned OFF, the CQ in queue transmits once, then tick() removes it
-- No stale CQ entries accumulating
-
-## Queue Sorting Rules
-
-The queue is sorted with this priority (descending):
-```
-IDLE (6)      → highest priority (gets popped first)
-SIGNOFF (5)
-ROGERS (4)
-ROGER_REPORT (3)
-REPORT (2)
-REPLYING (1)
-CALLING (0)   → lowest priority (CQ stays at bottom)
-```
-
-**Rationale:**
-- IDLE entries are popped immediately by sort_and_clean()
-- More advanced QSOs (closer to completion) get priority
-- CQ (CALLING) stays at bottom, only transmitted when no active QSO
-
-## autoseq_tick() Behavior
-
-Called ONCE per TX slot, at slot boundary AFTER TX completes:
-
-```c
-void autoseq_tick(void) {
-    if (queue_size == 0) return;
-
-    ctx_t *ctx = &ctx_queue[0];  // Always operates on FRONT entry
-
-    switch (ctx->state) {
-        case AS_REPLYING:
-        case AS_REPORT:
-        case AS_ROGER_REPORT:
-        case AS_ROGERS:
-            // Increment retry counter or transition to IDLE if max retries
-            if (ctx->retry_counter < ctx->retry_limit) {
-                ctx->next_tx = TX_for_state;
-                ctx->retry_counter++;
-            } else {
-                ctx->state = AS_IDLE;
-            }
-            break;
-
-        case AS_CALLING:   // CQ - only once (controlled by beacon)
-        case AS_SIGNOFF:   // 73 - only once
-            ctx->state = AS_IDLE;
-            ctx->next_tx = TX_UNDEF;
-            break;
-    }
-
-    if (ctx->state == AS_IDLE) {
-        pop();  // Remove from queue
-    }
-}
-```
-
-**Key points:**
-- tick() always operates on queue[0] (the front)
-- CALLING (CQ) immediately transitions to IDLE and gets popped
-- This is why CQ is short-lived: one TX, one tick, gone
-
-## Why This Design Prevents Race Conditions
-
-**Problem with immediate TX scheduling:**
-```
-1. Decode finishes, TX is scheduled with delay
-2. During delay, ANOTHER decode happens
-3. New decode adds entries, queue is re-sorted
-4. Original TX entry is no longer at queue[0]
-5. tick() operates on wrong entry
-6. Bug: CQ never gets popped, or wrong entry gets popped
-```
-
-**Reference design solution:**
-```
-1. Decode finishes, just SET FLAGS (QSO_xmit, target_slot)
-2. Another decode happens - flags might be updated, that's fine
-3. At slot boundary: check flags, start TX if conditions met
-4. TX runs for entire slot
-5. Next slot boundary: tick() operates on queue[0]
-6. Since Event 2 always before Event 3, queue is stable when tick() runs
-```
-
-## Micro-FT8 Implementation
-
-Micro-FT8 now follows the same pattern:
-
-```cpp
-// State machine variables
-static volatile bool g_qso_xmit = false;        // TX is pending
-static volatile int g_target_slot_parity = 0;   // Parity for TX
-static volatile bool g_was_txing = false;       // For tick timing
-static int g_last_slot_parity = -1;             // Slot boundary detection (parity only)
-
-// Called from main loop every tick
-static void check_slot_boundary() {
-    int64_t slot_idx = now_ms / 15000;
-    int slot_parity = slot_idx & 1;
-
-    // Detect slot boundary (parity change)
-    if (slot_parity != g_last_slot_parity) {
-        g_last_slot_parity = slot_parity;
-
-        // If we were transmitting, call tick
-        if (g_was_txing) {
-            autoseq_tick(slot_idx, slot_parity, 0);
-            g_was_txing = false;
-        }
-    }
-
-    // TX trigger
-    if (g_qso_xmit && g_target_slot_parity == slot_parity &&
-        slot_ms < 4000 && s_tx_task_handle == NULL) {
-        g_qso_xmit = false;
-        tx_start_immediate(skip_tones);
-    }
-}
-
-// In decode_monitor_results (Event 2)
-if (!g_was_txing) {
-    if (!to_me.empty()) {
-        autoseq_on_decodes(to_me);
-    }
-
-    AutoseqTxEntry pending;
-    if (autoseq_fetch_pending_tx(pending)) {
-        g_qso_xmit = true;
-        g_target_slot_parity = pending.slot_id & 1;
-    } else if (g_beacon != BeaconMode::OFF) {
-        enqueue_beacon_cq();
-        if (autoseq_fetch_pending_tx(pending)) {
-            g_qso_xmit = true;
-            g_target_slot_parity = pending.slot_id & 1;
-        }
-    }
-}
-```
-
-## Audio Sample-Driven Timing (Critical Design Detail)
-
-The reference project uses **audio sample timing** to drive all RX/TX symbol processing,
-NOT wall clock timing. This is critical for proper synchronization.
-
-### Reference Design: I2S-Driven Event Loop
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    AUDIO SAMPLE TIMING ARCHITECTURE                      │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  I2S DMA Interrupt (32kHz sample rate)                                   │
-│  ├── Fires every 40ms (1280 samples per half-buffer)                    │
-│  ├── Sets DSP_Flag in ISR                                               │
-│  └── Main loop checks DSP_Flag                                          │
-│                                                                          │
-│  Symbol Timing (4 × 40ms = 160ms per symbol)                            │
-│  ├── frame_counter increments on each DSP_Flag                          │
-│  ├── When frame_counter == 2, send next TX tone                         │
-│  └── 79 tones × 160ms = 12,640ms TX duration                           │
-│                                                                          │
-│  RX Symbol Counting                                                      │
-│  ├── FT_8_counter increments per 160ms of audio                         │
-│  ├── At 91 symbols (14,560ms), decode is triggered                      │
-│  └── decode_flag is set for main loop                                   │
-│                                                                          │
-│  Slot Boundary (HAL_GetTick based, 15s intervals)                       │
-│  ├── ft8_time = HAL_GetTick() - start_time                              │
-│  ├── current_slot = ft8_time / 15000 % 2                                │
-│  └── When slot changes: reset counters, call tick if was_txing         │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### Key Insight: TX Duration is Guaranteed by Sample Counting
-
-In the reference design:
-1. **TX starts** when `setup_to_transmit_on_next_DSP_Flag()` is called
-2. **Each DSP_Flag** (40ms) advances `frame_counter`
-3. **Every 4 DSP_Flags** (160ms), a tone is sent
-4. **After 79 tones**, TX automatically stops: `ft8_xmit_counter == 79`
-5. **Slot boundary detection** happens AFTER TX completes because:
-   - 79 tones × 160ms = 12,640ms
-   - Slot boundary at 15,000ms
-   - TX completes ~2,360ms before slot boundary
-
-### Reference Code: TX Tone Timing
-
-```c
-if (DSP_Flag) {
-    DSP_Flag = 0;
-    I2S2_RX_ProcessBuffer(buff_offset);
-
-    if (xmit_flag) {
-        if (ft8_xmit_delay >= 28) {  // ~1.1s startup delay
-            if ((ft8_xmit_counter < 79) && (frame_counter == 2)) {
-                set_FT8_Tone(tones[ft8_xmit_counter]);
-                ft8_xmit_counter++;
-            }
-            if (ft8_xmit_counter == 79) {
-                ft8_receive_sequence();
-                receive_sequence();
-                xmit_flag = 0;
-            }
-        } else {
-            ++ft8_xmit_delay;
-        }
-    }
-}
-```
-
-### Why This Matters for Micro-FT8
-
-**Problem with wall clock timing:**
-- TX starts at slot boundary (t=0ms)
-- `tx_tick()` uses `rtc_now_ms()` to check if 160ms elapsed
-- Slot boundary detected at t=15000ms via wall clock
-- BUT: Wall clock and audio timing can drift apart
-- If TX hasn't sent all 79 tones when slot boundary hits, `tick()` is called too early
-
-**Solution: Sample-Driven Timing**
-- Count UAC audio samples instead of wall clock time
-- 48kHz × 0.160s = 7,680 samples per symbol
-- 79 symbols × 7,680 = 606,720 samples for full TX
-- TX completion is guaranteed before slot boundary detection
-
-### Micro-FT8 Implementation Options
-
-**Option 1: Sample-Counted TX**
-```cpp
-// In UAC audio callback (fires every block of samples)
-static int g_tx_sample_count = 0;
-static int g_tx_current_tone = 0;
-
-void on_audio_block(int samples_received) {
-    if (g_tx_active) {
-        g_tx_sample_count += samples_received;
-        if (g_tx_sample_count >= 7680) {  // 160ms at 48kHz
-            g_tx_sample_count -= 7680;
-            send_next_tone();
-            g_tx_current_tone++;
-            if (g_tx_current_tone >= 79) {
-                tx_complete();
-            }
-        }
-    }
-}
-```
-
-**Option 2: Block-Counted TX**
-```cpp
-// Block size = 1920 samples at 48kHz = 40ms per block
-// 4 blocks = 160ms = 1 symbol
-static int g_tx_block_count = 0;
-
-void on_audio_block() {
-    if (g_tx_active) {
-        g_tx_block_count++;
-        if (g_tx_block_count >= 4) {  // 4 × 40ms = 160ms
-            g_tx_block_count = 0;
-            send_next_tone();
-        }
-    }
-}
-```
-
-## Inactive queue: keeping QSO metadata across retry exhaustion
-
-### Problem Statement
-
-The autoseq engine stores all per-QSO metadata (dxcall, dxgrid, snr_tx, snr_rx,
-logged, is_fd) in queue entries (`QsoContext`). When a context exhausts its retries,
-it transitions to IDLE and is popped from the queue, destroying all metadata.
-
-If DX is more patient than us and continues retrying, their message creates a
-"reincarnated" context with default values (snr_tx=-99, logged=false). This
-reincarnated context can complete the QSO and log an ADIF entry with wrong metadata.
-
-#### The Concrete Bug: REPORT + TX3 Reincarnation
-
-```
-T=0:00   We send TX2 (rst_sent=-12), retry 1
-T=0:30   DX sends TX3 (R-08) — we don't decode (QRM)
-T=1:00   We send TX2, retry 2
-T=1:30   DX sends TX3 — we don't decode
-  ...
-T=2:30   Retries exhausted → IDLE → pop. snr_tx=-12 is gone forever.
-T=3:00   DX sends TX3 — propagation improves, we decode!
-         → on_decode: no matching ctx → new ctx (snr_tx=-99)
-         → REPORT+TX3 → ROGERS → log_qso_if_needed
-         → ADIF entry has rst_sent=-99 ← WRONG, no prior correct entry exists
-```
-
-#### Root Cause
-
-Our retry window (~2.5 min) can be shorter than DX's retry window (WSJT-X: up to
-7+ min with 15 retries). After our context is popped, DX is still actively working
-the QSO. The queue's lifetime is bounded by OUR retry limit, but the QSO's real
-lifetime is bounded by DX's.
-
-#### Safety Invariant Analysis
-
-Every pop from the queue falls into one of these cases:
-
-| State at exhaustion | Logged? | DX received our TX | DX did NOT receive our TX |
-|---|---|---|---|
-| CALLING (CQ) | No | DX sends TX1 → normal new QSO | Nothing happens |
-| REPLYING (TX1) | No | DX sends TX2 → new ctx, fresh exchange, consistent | DX resends CQ → not addressed to us |
-| REPORT (TX2) | No | DX sends TX3 → new ctx, **snr_tx=-99 (BUG)** | DX resends TX2/TX1 → new ctx, snr_tx from msg.snr, OK |
-| ROGER_REPORT (TX3) | No | DX sends TX4 → signoff guard filters it | DX resends TX2 → new ctx, fresh exchange, OK |
-| ROGERS (TX4) | **Yes** | DX sends TX4/TX5 → signoff guard filters it | DX resends TX3 → **duplicate ADIF, snr_tx=-99** (original correct entry exists) |
-| SIGNOFF (TX5) | **Yes** | QSO done | DX sends TX4/TX5 → signoff guard filters it |
-
-The **REPORT + DX received** row is the critical gap: no prior correct ADIF entry
-exists, and the reincarnated context has lost snr_tx.
-
-### Solution: Active + Inactive Queue
-
-Instead of popping contexts when retries exhaust, move them to an **inactive zone**
-at the back of the queue. The single `s_queue[]` array serves two logical partitions:
-
-```
-s_queue[0 .. s_active_count-1]   → Active zone: has retries, gets scheduled by tick()
-s_queue[s_active_count .. s_queue_size-1] → Inactive zone: retries exhausted, metadata preserved
-```
-
-#### Key Design Rules
-
-1. **Retry exhaustion → inactive, not IDLE.** When tick() exhausts retries, the
-   context is marked `inactive = true` and moved to the back via sort. It is NOT
-   popped. All metadata (snr_tx, snr_rx, dxgrid, logged, is_fd) is preserved.
-
-2. **on_decode finds inactive contexts.** The existing dxcall-matching loop in
-   on_decode() already scans the full queue. When DX retries, the dormant context
-   is found, generate_response() advances its state, `inactive` is cleared, and
-   it moves back to the active zone with fresh retries.
-
-3. **Eviction only when safe.** A context can be evicted (popped) only if:
-   - `logged == true` — ADIF has the correct entry, safe to discard
-   - State is CALLING or REPLYING — no reports exchanged yet. CALLING is a bare
-     CQ. REPLYING means we only sent TX1 (grid); if DX retries with TX2, a fresh
-     context gets correct snr_tx from msg.snr, so nothing valuable is lost.
-   - Contexts in REPORT or beyond (sent TX2+) must be preserved — they carry the
-     snr_tx we actually transmitted, which would be lost on eviction.
-
-4. **Reject only R+report (TX3) from unknown DX.** If DX sends TX3 (R+report)
-   and has no context in either active or inactive zone, reject it — TX3 skips
-   the snr_tx latch, producing wrong ADIF metadata. All other message types are
-   allowed for new context creation:
-   - TX1 (grid): new QSO start, correct metadata
-   - TX2 (report): DX skipped TX1 (WSJT-X "skip TX1" feature), snr_tx set from
-     msg.snr, snr_rx from report text — correct metadata
-   - FD exchange: equivalent to TX2 in Field Day mode — correct metadata
-   - TX4/TX5 (RR73/73): filtered separately by signoff guard
-
-5. **Time-based expiry.** Inactive contexts expire after a configurable window.
-   Expired inactive contexts are evicted regardless of logged state — if we haven't
-   heard from DX in that long, the QSO is truly dead.
-
-#### Queue Layout: Dynamic Boundary
-
-The active and inactive zones share a single array and grow from opposite ends.
-No fixed partition — both zones expand until their pointers meet.
-
-```
-s_queue[]:
- index 0                                               index AUTOSEQ_MAX_QUEUE-1
- ┌──────────────────────┬────────────┬──────────────────────┐
- │   Active zone        │  (free)    │   Inactive zone      │
- │   grows →            │            │            ← grows   │
- └──────────────────────┴────────────┴──────────────────────┘
-       s_active_count ──┘            └── s_inactive_start
-```
-
-- `s_active_count`: number of active entries at the front (grows right)
-- `s_inactive_start`: index of first inactive entry at the back (grows left)
-- Free space: `s_inactive_start - s_active_count`
-- When both pointers meet (free space = 0), queue is full:
-  evict the oldest inactive entry (rightmost) to make room.
-
-Queue size: **120 entries.** This accommodates a busy 1-hour activation.
-QsoContext is ~80 bytes with std::string SSO, so 120 entries ≈ 10 KB —
-negligible on ESP32-S3 (512 KB SRAM).
-
-#### Sort Order
-
-Active entries are sorted by state priority (same as before):
-```
-  IDLE > SIGNOFF > ROGERS > ROGER_REPORT > REPORT > REPLYING > CALLING
-```
-
-Inactive entries are stored at the back in insertion order (oldest at the
-rightmost end). When eviction is needed, the oldest (rightmost) entry is
-removed first.
-
-#### Modified tick() Behavior
-
-```
-Before:  retry exhausted → state = IDLE → pop_front()
-After:   retry exhausted + state > REPLYING → move to inactive zone at back
-         retry exhausted + state <= REPLYING → evict (no reports exchanged)
-```
-
-tick() only processes the front of the active zone.
-
-#### Modified on_decode() Behavior
-
-```
-Before:  no matching ctx + not signoff → append_ctx + generate_response(override=true)
-After:   no matching ctx → check message type:
-           TX4/TX5 (RR73/73): reject (signoff guard, as before)
-           TX3 (R+report): reject (snr_tx would be -99, reincarnation bug)
-           TX1/TX2/FD exchange: allow (fresh context gets correct metadata)
-```
-
-#### Reincarnation Eliminated
-
-The reincarnation problem disappears because:
-- Dormant contexts stay in the queue with all metadata
-- on_decode finds them by dxcall, reactivates them
-- Mid-QSO messages from unknown DX are rejected (no memory-less reincarnation)
-- The only new contexts created are for TX1 (fresh QSO starts) where default
-  metadata is correct
-
-### Invariant: Active entries always have a valid next_tx
-
-The autoseq engine maintains this invariant for every active queue entry:
-
-> **If `ctx` is in the active zone and `state != IDLE`, then `next_tx != TX_UNDEF`.**
-
-This invariant is what lets `autoseq_fetch_pending_tx()` safely return the TX
-at `s_queue[0]` without checking for degenerate states. Violating it causes a
-hard deadlock: `fetch_pending_tx` returns false, no TX fires, `tick()` never
-runs to advance the state, and the dead entry blocks every subsequent TX —
-including beacon CQs sorted behind it.
-
-#### How the invariant was maintained (pre-inactive-queue)
-
-1. `set_state()` is the only legitimate way to change `state`, and it always
-   writes `next_tx` at the same time.
-2. The override path in `generate_response()` sets `next_tx = TX_UNDEF` as a
-   "clean slate" but is always immediately followed by a state machine
-   transition that restores a valid `next_tx`.
-3. `autoseq_tick()` refreshes `next_tx` idempotently based on `state` on every
-   call (within retry limit).
-4. For an existing active ctx passed to `generate_response(override=false)`,
-   the invariant holds by induction: if the state machine transitions, the new
-   `set_state` maintains it; if it falls to `default`, `next_tx` was already
-   valid from the prior tick or transition.
-
-#### How the inactive queue almost broke it
-
-`move_to_inactive()` clobbers `next_tx = TX_UNDEF` before parking an entry.
-When DX retries and `on_decode()` reactivates the dormant context, the
-reactivated entry lands in the active zone with `next_tx == TX_UNDEF`.
-`generate_response(override=false)` then runs the state machine; if the
-(state, rcvd) combination falls to `default: return false`, `next_tx` is
-*never* restored. The active zone now contains an entry violating the
-invariant, and the queue deadlocks.
-
-#### Fix: make `generate_response` locally total
-
-Every state handler in `generate_response()` must explicitly handle every
-possible `rcvd` type — there is no implicit `default` that silently leaves
-`next_tx` stale. For `(state, rcvd)` combinations that don't advance the QSO,
-the handler refreshes `next_tx` to the state's canonical value and returns
-false. The canonical mapping:
-
-| State | Canonical next_tx | Meaning |
+| State | We sent | Canonical `next_tx` |
 |---|---|---|
-| CALLING | TX6 | Send CQ |
-| REPLYING | TX1 | Send our grid |
-| REPORT | TX2 | Send our report |
-| ROGER_REPORT | TX3 | Send R+report |
-| ROGERS | TX4 | Send RR73 |
-| SIGNOFF | TX5 | Send 73 |
+| CALLING | CQ (a one-shot) | `TX_NONE`: text comes from the CQ template |
+| REPLYING | TX1 `DX ME GRID` | TX1 |
+| REPORT | TX2 `DX ME ±NN` | TX2 |
+| ROGER_REPORT | TX3 `DX ME R±NN` | TX3 |
+| ROGERS | TX4 `DX ME RR73` | TX4 |
+| SIGNOFF | TX5 `DX ME 73` | TX5 |
+| IDLE | done | `TX_NONE`; popped |
 
-The semantics of every "no-op" case is identical: **"DX sent something that
-doesn't advance our state — they probably didn't decode our last message.
-Keep sending what matches our current state."** Encoding this in the
-switch/case (rather than a centralized fallback) makes every state handler
-self-contained and locally reasonable — when you read the REPORT case, you
-see exactly what happens for every possible input, including the ones that
-don't advance the QSO.
+`TX6` (CQ) exists in the enum but is never assigned to `next_tx`.
 
-The invariant is restored even across the inactive queue boundary: if
-`reactivate()` brings back an entry with stale `next_tx`, the very next call
-to `generate_response()` repairs it unconditionally.
+**Classifying what DX sent** (`parse_rcvd_msg()`, on the third field): `RR73` or `RRR` is TX4, and `73` is TX5. An ARRL Field Day exchange (`1B SCV`, or `R 1B SCV`) counts as TX2, or TX3 with the `R`. A four-character grid is TX1, and fills in `dxgrid` if it is still empty (`RR73` is excluded; it matches the shape). `R±NN` is TX3 and `±NN` is TX2, either one setting `snr_rx`, within ±30. Anything else is `TX_NONE` and changes nothing.
 
-**Note on CALLING (CQ):** The CALLING state handler does NOT refresh `next_tx`
-in its default case, because CALLING is unreachable via reactivation by
-construction (CQ ctxs have dxcall="CQ", never enter the inactive zone, and
-the override path always transitions immediately). See inline comment in
-`generate_response()` for the full proof.
+**Transitions** (`generate_response()`). Rows are our state and columns are what DX sent. "→ X" means the state becomes X with fresh retries; "keep" means we resend the state's canonical message.
 
-### Formal design notes
+| We are in | DX sent TX1 | TX2 | TX3 | TX4 (RR73) | TX5 (73) |
+|---|---|---|---|---|---|
+| CALLING | → REPORT | → ROGER_REPORT | → ROGERS | keep | → IDLE |
+| REPLYING | keep | → ROGER_REPORT | → ROGERS | → SIGNOFF | → IDLE |
+| REPORT | keep | → ROGER_REPORT | → ROGERS | → SIGNOFF | → IDLE |
+| ROGER_REPORT | keep | keep | keep | → SIGNOFF | → IDLE |
+| ROGERS | keep | keep | → ROGERS (fresh retries) | → IDLE | → IDLE |
+| SIGNOFF | keep | keep | keep | → SIGNOFF (73 again) | → IDLE |
 
-#### Orthogonality of logical position and scheduling state
+* **`generate_response()` is total over (state, received).** Every cell is explicit, and "keep" rewrites `next_tx` to the canonical value. That is what repairs an entry coming back from the inactive zone with `next_tx = TX_NONE`. **The repair has a hole:** a received message that classifies as `TX_NONE` returns before the state machine runs, so a reactivated entry keeps `TX_NONE`. If it reaches `queue[0]`, its text is empty, `fetch_pending_tx()` returns false, and nothing transmits (not even the beacon, whose CQ sorts behind it) until the entry is removed.
+* **A new contact enters through the same table.** For a new entry, `generate_response(override=true)` first sets the state *before* the one the received message answers: TX1 → CALLING, TX2 → REPLYING, TX3 → REPORT, TX4 → ROGER_REPORT, TX5 → ROGERS. Then it applies the table. A grid answering our CQ lands in REPORT, and a straight report lands in ROGER_REPORT. The new entry takes DX's audio offset, and the slot parity opposite the one DX sent in.
+* **`snr_tx`** (the report we send) is latched from the first TX1 or TX2 we decode from DX and never changes after that. A touch sets it from the tapped decode.
+* **Field Day.** A contact is FD if the operator tapped a `CQ FD`, or if our CQ type is FD and DX sent a valid exchange. TX2 and TX3 then carry our exchange (parsed from the CQ free-text setting) instead of a report, and the received exchange is kept for Cabrillo.
 
-A QsoContext has two independent coordinates:
+## Where entries come from
 
-- **Logical position** (`state`): where we are in the FT8 protocol exchange.
-  Maps to the conversational order TX6 → TX1 → TX2 → TX3 → TX4 → TX5.
-  Active ctxs always have a well-defined position in {CALLING..SIGNOFF}.
+* **Decodes addressed to us.** After each RX decode, `decode_pipeline.cpp` builds the list of decodes whose first field is our call and calls `autoseq_on_decodes()`. It skips this while transmitting and while battery-halted. **Two filters drop decodes before autoseq sees them:** the ADV's IgnoreList (the P4 has none yet, row j4xh), and any station logged in the last 10 minutes (the ADIF dedupe window, `kAdifLoggerDedupeWindowMs`). `on_decode()` then:
+  1. finds an active entry for the sender and applies the table, re-anchoring its slot parity to the decode;
+  2. else finds an inactive one, reactivates it with fresh retries, and applies the table;
+  3. else creates a new entry, **except** for `RR73`/`RRR`/`73` (a late signoff for a QSO we no longer hold) and `R±NN` (**Inactive zone** below says why). A grid, a report or an FD exchange starts a QSO.
+* **A touch** (the ADV's R-screen tap, Port A `QUEUE_REPLY`) calls `autoseq_on_touch()`:
+  * If that call is `queue[0]` in a live state, the touch is ignored ("QSO in progress").
+  * Otherwise every entry for that call, active or inactive, is removed and a fresh one is created.
+  * A decode addressed to us enters through the table. Anything else (a CQ, or tail-ending someone's RR73 or 73) starts in REPLYING sending TX1, or REPORT sending TX2 with Skip TX1 on.
+  * The new entry is moved to the front, or behind `queue[0]` while a TX is on the air, so the transmission in flight is not displaced.
+* **The beacon.** When the queue is empty, `arm_from_autoseq_or_beacon()` adds a one-shot CQ on the beacon's parity (Even is slot parity 0, Odd is 1). Only one CQ is ever queued. Turning the beacon off or changing its parity cancels queued CQs, but leaves `queue[0]` alone while it is on the air (`autoseq_cancel_cq(skip_head)`). The CQ's text is rendered from the template at refresh time (`CQ`, `CQ SOTA`, `CQ POTA`, `CQ QRP`, `CQ FD`, or a free-text CQ), so a station or CQ-type change applies to a CQ already queued.
+* **Dropping an entry** (the ADV's TX screen, Port A `QUEUE_CANCEL`) removes a CQ outright and moves a QSO to the inactive zone, so a late reply still finds its metadata.
+* **Rotate** (the ADV's TX screen, `autoseq_rotate_same_parity()`) moves `queue[0]` behind the other entries of the same parity at the front of the queue.
 
-- **Scheduling state**: whether the ctx is actively participating in TX
-  scheduling. Three modes: active (in active zone, `tick()` processes it,
-  `fetch_pending_tx` can select it), inactive (in inactive zone, dormant,
-  preserving metadata for reactivation), or eliminated (popped from queue).
+## The slot cycle
 
-These two dimensions are **orthogonal**. A ctx at logical position REPORT can
-be active (retrying TX2) or inactive (parked after retry exhaustion). Its
-logical position doesn't change when it moves between active and inactive —
-only its scheduling state does. When reactivated, it resumes at the same
-logical position with the same metadata.
+Each board runs `check_slot_boundary()` on every pass of its main loop. It does three things, in order:
 
-#### Semantics of TX_UNDEF
+1. **Tick after TX.** When a TX has finished (`was_txing` and no TX active), it calls `autoseq_tick()` once. A TX ends 12.64 s into its slot (FT8), so the tick lands there, before the next boundary, not at it.
+2. **Arm.** If nothing is armed and no TX is in flight, it arms `queue[0]`, or a beacon CQ if the queue is empty. The decode pipeline also arms after every RX decode, including empty ones, so a quiet band cannot stall the beacon.
+3. **Trigger.** It starts the armed TX when all of these hold:
+   * the slot parity matches;
+   * the slot is under 4/15 elapsed (4 s for FT8, 2 s for FT4);
+   * no TX is on the air and no decode is running;
+   * **the previous slot's decode has been applied** (`decode_applied_slot_idx >= slot_idx − 1`);
+   * the slot is not the one a TX cancel landed in.
 
-`TX_UNDEF` in the `next_tx` field means **"this context has no TX to schedule
-and should be eliminated from the active zone on the next cleanup."** It is a
-scheduling-layer tombstone, not a logical position.
+   A late start skips the tones it has missed. Tones are timed from the slot boundary, not from the start, so a late TX still ends on time.
 
-Specifically: `(next_tx == TX_UNDEF) ⇔ (state == IDLE, about to be popped)`.
+**Why this ordering.** Two rules keep the tick and the trigger acting on the same entry:
 
-TX_UNDEF is NOT a protocol position. It should never appear on an active ctx
-with state != IDLE. The idempotent `generate_response()` state machine
-enforces this by refreshing `next_tx` to the canonical value for the current
-state whenever the state machine runs.
+* **A decode only arms; the boundary transmits.** If a decode started a TX directly, a second decode could re-sort the queue while the TX was being prepared, and the tick afterwards would advance a different entry. That is the failure the DX-FT8 design avoids.
+* **The trigger waits for the previous slot's decode to be applied.** Otherwise a boundary reached before capture and decode finish (about 12.6 s into an FT8 slot) could fire a TX from the cycle before.
 
-**Pragmatic exception:** `autoseq_start_cq()` sets `next_tx = TX6` on CALLING
-ctxs so that CQ text can be generated through the same `format_tx_text()`
-path as QSO messages. This reuses the TX-generation pipeline uniformly for
-all message types, including the broadcast initiator (CQ). CALLING ctxs are
-one-shot (tick immediately transitions to IDLE → pop) and never retried or
-moved to inactive, so this does not violate the scheduling semantics of
-TX_UNDEF.
+**`autoseq_tick()`** acts on `queue[0]`:
 
-## Summary: The Golden Rules
+* CALLING → IDLE, popped: a CQ is one-shot.
+* REPLYING through ROGERS: resend with `retry_counter` + 1 while under `retry_limit` (the Station.txt max-retry setting, default `AUTOSEQ_MAX_RETRY` = 5). Once exhausted, REPLYING is evicted and REPORT or later moves to the inactive zone.
+* SIGNOFF → inactive zone, always, so a late RR73 can still be answered with another 73.
 
-1. **Decode sets flags, slot boundary triggers TX** - Never start TX immediately after decode
-2. **tick() at slot boundary AFTER TX** - Not during TX, not after decode
-3. **CQ is short-lived** - Added when needed, transmitted once, popped by tick
-4. **Queue[0] is always the active entry** - tick() and fetch_pending_tx() both use queue[0]
-5. **Event 2 before Event 3** - Decode processing completes before TX decision is made
-6. **Audio samples drive symbol timing** - RX/TX duration determined by sample count, not wall clock
-7. **Slot boundary uses wall clock** - 15s intervals based on system tick/RTC
+**A TX cancel** (the ADV's backtick, Port A `TX_CANCEL`) stops the TX and leaves autoseq untouched. The cancelled TX does not count as sent, so no tick runs and no retry is used. The entry re-arms, but the trigger refuses the slot the cancel landed in, so one press stops it for the rest of that slot (row B21 is the bench check).
+
+**A queue cancel does not disarm.** `QUEUE_CANCEL` removes the entry but leaves an already-armed TX armed. Only the next decode's arm replaces it. If the cancel lands between the decode and the TX trigger, the cancelled message goes out once, and the tick after it advances whatever is now `queue[0]`.
+
+**TX offset** is resolved when the TX is armed (`resolve_tx_offset()`):
+
+* CURSOR: the operator's cursor.
+* RX: DX's own offset, except for a CQ.
+* RANDOM (the default), and RX for a CQ: a fresh 500–2500 Hz roll every arm.
+
+Row B88 holds the offset for the length of a QSO.
+
+## Logging
+
+**A QSO is logged when we emit RR73 or 73**, from `autoseq_on_tx_starting()` in `tx_start()`, never on a received message:
+
+* We only log QSOs we actually attempted to close.
+* Each TX slot yields at most one log line, so stamps are unique.
+* Both reports are latched by ROGERS or SIGNOFF.
+
+`logged` stops a retry from logging twice. A failed write stays unlogged and retries on the next emission. A Field Day contact also writes a Cabrillo line first, with its own flag. A QSO that DX closes with 73 while we are still at ROGER_REPORT goes IDLE unlogged, because we never sent RR73 or 73.
+
+**Logging arms the 10-minute recent-QSO filter** (**Where entries come from**), and that filter runs before autoseq. So once we have sent RR73, derived from the code and unconfirmed on air:
+
+* DX's 73 never reaches the ROGERS entry, which keeps resending RR73 until its retries run out (default 5) and then parks.
+* A re-sent `R±NN` from DX, which did not copy our RR73, is dropped too. The RR73 retries cover that case by accident.
+* The SIGNOFF late-RR73 path cannot fire within the window.
+
+The host scenarios feed `autoseq_on_decodes()` directly, so they never see this filter.
+
+## Inactive zone
+
+**The problem it solves.** Our retry window (a first TX plus 5 retries, every other slot: about 3 minutes) can be shorter than DX's. If an entry that had already sent a report were simply popped when its retries ran out, a late TX3 from DX would create a fresh entry with `snr_tx = −99`. That entry would complete the QSO and log the wrong `rst_sent`: the **reincarnation** bug (`host_mock/test_report_reincarnation.json`, `test_rogers_reincarnation.json`).
+
+**The rules.**
+
+* **Exhausted retries park, not pop,** once reports have been exchanged (state REPORT or later, `has_exchanged()`). The entry keeps its call, grid, both reports, `logged` and FD data. REPLYING (only our grid sent) and CALLING are evicted, since a fresh entry built from DX's next report gets the metadata right.
+* **A decode from a parked contact reactivates it** at the end of the active zone with fresh retries, then applies the table. A dropped QSO is parked the same way.
+* **An `R±NN` from an unknown contact is refused**, because a fresh entry would skip the `snr_tx` latch. TX1, TX2 and FD exchanges from unknown contacts are accepted, since each carries what a fresh entry needs. A late signoff from an unknown contact is ignored.
+* **Eviction is oldest-parked first** (`inactive_since_ms`), and only when the queue is full. There is no expiry by time, and `logged` plays no part.
+* **A touch purges** every entry for that call, parked ones included, so the operator's pick always starts clean.
+
+## Tests
+
+`host_mock/host_main.cpp` runs the JSON scenarios in `host_mock/`. Each drives decodes, touches, beacon changes and ticks through the engine and checks the queue and the log: a normal QSO, the beacon lifecycle, Field Day, the tail-ended RR73 touch, reincarnation and the two queue deadlocks. `test_unique_callsign.cpp` pins touch de-duplication and `entry_id`, and `test_beacon_cancel.cpp` pins CQ cancellation. The slot cycle, the decode filters and arming are board code, and no host test covers them.

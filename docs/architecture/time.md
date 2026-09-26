@@ -75,7 +75,7 @@ After each decoded slot with more than three decodes, `decode_pipeline.cpp` take
 
 * **Read at boot only.** A read is refused if the oscillator-stop flag is set (the chip lost power, so its time is meaningless), if it is in 12-hour mode or the century bit is set, or if the year is outside 2024–2099.
 * **Written by every full set and every auto-sync nudge,** in whole seconds. The write clears the oscillator-stop flag.
-* Persistence of an auto-sync correction across a power cycle has never been checked on hardware ([TEST_PLAN.md](../TEST_PLAN.md), **Unverified**, B27).
+* Persistence of an auto-sync correction across a power cycle has never been checked on hardware ([TEST_PLAN.md](../TEST_PLAN.md), **Unverified**).
 * The `external_rtc` seam in shared code (`components/external_rtc/`, `rtc_core`'s DS3231 write, the P4's stub) outlives the ADV only until row za6n.
 
 ## BLE CTS (ADV)
