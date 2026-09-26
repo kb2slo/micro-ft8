@@ -39,6 +39,7 @@ field-only path, naming the change and the exact check. **Drop it when the check
 
 | From | Check | Status |
 | --- | --- | --- |
+| RR73 once (the recently-worked check moved into autoseq) | Beacon on, either board. A station answers and the QSO runs to our RR73; they send 73. We send **one** RR73, the entry leaves the queue, and the next CQ goes out on our next slot. Before the fix, RR73 repeated on every retry (up to 5 more) with the beacon silent. Then, within 10 minutes, that station calls us again: no QSO starts (log: `worked recently, not starting a new QSO`). | **owed** |
 | B76 (fall back to AP mode on mid-session WiFi loss) | Join a real network; Settings > Network shows "Station (joined)". (1) **Permanent loss**: power off the router. The monitor shows `Join failed (...), retry N/20`, then `Lost '<ssid>' and could not rejoin after 20 tries ... -- falling back to the AP`, and the AP comes up. Join it, reach `app.html`, and confirm the credentials survived (right SSID once the network is back). Watch for a crash or hang at the moment of fallback: `esp_restart()` runs from the WiFi event callback, a context nothing else restarts from. (2) **Transient loss**: reboot the router instead. The sidekick rejoins the original network within the retry window, with no fallback. (3) The main board's Port A link survives the fallback restart; a brief gap is expected. | **owed** |
 
 ### Unverified, no check planned

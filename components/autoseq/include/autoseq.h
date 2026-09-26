@@ -212,6 +212,16 @@ void autoseq_set_adif_callback(AdifLogCallback cb);
 using CabrilloFdLogCallback = bool (*)(const std::string& dxcall, const std::string& their_fd_exchange);
 void autoseq_set_cabrillo_fd_callback(CabrilloFdLogCallback cb);
 
+// "Worked this call recently?" -- true stops a decode from a caller with no
+// queue entry (active or inactive) starting a new QSO, so a station just
+// worked is not worked twice. Messages for an entry already in the queue are
+// never filtered: a QSO is logged when we send RR73, so the station's 73 or a
+// resent R+report arrives after it is "recent" and must still reach its
+// entry. A touch is not filtered either. dxcall_norm is upper case with <>
+// stripped. Null (the default) filters nothing.
+using AutoseqRecentQsoCallback = bool (*)(const std::string& dxcall_norm);
+void autoseq_set_recent_qso_callback(AutoseqRecentQsoCallback cb);
+
 // Configuration setters (called when station data changes)
 void autoseq_set_station(const std::string& call, const std::string& grid);
 void autoseq_set_skip_tx1(bool skip);  // Skip TX1 and start with TX2

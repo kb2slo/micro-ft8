@@ -67,6 +67,10 @@ void ui_set_rx_list_static(const RxDecodeEntry* entries, int count);
 
 AdifLoggerDedupe s_adif_logger_dedupe;
 
+bool decode_pipeline_recently_logged(const std::string& dxcall_norm) {
+  return adif_logger_dedupe_is_duplicate(&s_adif_logger_dedupe, dxcall_norm, rtc_now_ms());
+}
+
 // ---- Recent decodes, keyed by the id handed out with EVENT DECODE (docs/architecture/webapp.md (Screens)) so Port A's QUEUE_REPLY can name one without re-parsing rendered text
 // on the phone. A ring, not a map: bounded and allocation-free like
 // everything else on this path. An id that has scrolled out of the ring
@@ -486,10 +490,10 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
         ESP_LOGI(TAG, "IgnoreList: skip auto reply to %s", dxnorm);
         continue;
       }
-      if (s_dec[i].is_recent_qso) {
-        ESP_LOGI(TAG, "Recent QSO: skip auto reply to %s", dxnorm);
-        continue;
-      }
+      // A recently worked call is not dropped here: autoseq refuses it a new
+      // QSO itself (decode_pipeline_recently_logged), and a QSO still in the
+      // queue needs the station's closing 73 -- which arrives after our RR73
+      // has already logged it.
       UiRxLine rx;
       rx.text = s_dec[i].text;
       rx.field1 = s_dec[i].field1;

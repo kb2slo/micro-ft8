@@ -68,6 +68,9 @@ static AdifLogCallback s_adif_callback;
 // Cabrillo Field Day callback (for ARRL-FD logging)
 static CabrilloFdLogCallback s_cabrillo_fd_callback = nullptr;
 
+// Recently-worked check, consulted only before starting a new QSO.
+static AutoseqRecentQsoCallback s_recent_qso_callback = nullptr;
+
 
 // TX scheduling state
 static bool s_pending_valid = false;
@@ -661,6 +664,10 @@ void autoseq_set_cabrillo_fd_callback(CabrilloFdLogCallback cb) {
     s_cabrillo_fd_callback = cb;
 }
 
+void autoseq_set_recent_qso_callback(AutoseqRecentQsoCallback cb) {
+    s_recent_qso_callback = cb;
+}
+
 void autoseq_set_station(const std::string& call, const std::string& grid) {
     s_my_call = call;
     s_my_grid = grid;
@@ -1245,6 +1252,15 @@ static void on_decode(const UiRxLine& msg) {
                      dxcall.c_str());
             return;
         }
+    }
+
+    // Worked recently: do not start a second QSO. Checked here, after the
+    // active and inactive lookups, and never before them -- the station's
+    // closing 73 arrives after our RR73 has already logged it.
+    if (s_recent_qso_callback && s_recent_qso_callback(dxcall)) {
+        ESP_LOGI(TAG, "on_decode: %s worked recently, not starting a new QSO",
+                 dxcall.c_str());
+        return;
     }
 
     ESP_LOGI(TAG, "on_decode: new QSO from %s (field3=%s, active=%d)",

@@ -4334,6 +4334,7 @@ static void app_task_core0(void* /*param*/) {
 
 autoseq_set_adif_callback(log_adif_entry);
 autoseq_set_cabrillo_fd_callback(log_cabrillo_fd_entry);
+autoseq_set_recent_qso_callback(decode_pipeline_recently_logged);
 
 
   ui_mode = UIMode::RX;

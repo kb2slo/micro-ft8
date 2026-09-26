@@ -202,6 +202,7 @@ static bool log_adif_entry(const std::string &dxcall, const std::string &dxgrid,
 
 void porta_p4_adif_register(void) {
     autoseq_set_adif_callback(log_adif_entry);
+    autoseq_set_recent_qso_callback(decode_pipeline_recently_logged);
     ESP_LOGI(TAG, "ADIF archive callback registered");
 }
 

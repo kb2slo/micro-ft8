@@ -52,10 +52,12 @@ A contact's state is **what we last sent**. `next_tx` is what we send next.
 
 ## Where entries come from
 
-* **Decodes addressed to us.** After each RX decode, `decode_pipeline.cpp` builds the list of decodes whose first field is our call and calls `autoseq_on_decodes()`. It skips this while transmitting and while battery-halted. **Two filters drop decodes before autoseq sees them:** the ADV's IgnoreList (the P4 has none yet, row j4xh), and any station logged in the last 10 minutes (the ADIF dedupe window, `kAdifLoggerDedupeWindowMs`). `on_decode()` then:
+* **Decodes addressed to us.** After each RX decode, `decode_pipeline.cpp` builds the list of decodes whose first field is our call and calls `autoseq_on_decodes()`. It skips this while transmitting and while battery-halted. The ADV's IgnoreList drops decodes before autoseq sees them (the P4 has none yet, row j4xh). `on_decode()` then:
   1. finds an active entry for the sender and applies the table, re-anchoring its slot parity to the decode;
   2. else finds an inactive one, reactivates it with fresh retries, and applies the table;
-  3. else creates a new entry, **except** for `RR73`/`RRR`/`73` (a late signoff for a QSO we no longer hold) and `R±NN` (**Inactive zone** below says why). A grid, a report or an FD exchange starts a QSO.
+  3. else creates a new entry, **except** for `RR73`/`RRR`/`73` (a late signoff for a QSO we no longer hold), `R±NN` (**Inactive zone** below says why), and a station logged in the last 10 minutes. A grid, a report or an FD exchange starts a QSO.
+
+  **The recently-worked check sits only at step 3**: `autoseq_set_recent_qso_callback()`, which each board sets to `decode_pipeline_recently_logged()`, the ADIF dedupe window (`kAdifLoggerDedupeWindowMs`). It must never filter before steps 1 and 2. A QSO is logged when we send RR73, so the station's 73, or an `R±NN` resent because they missed our RR73, arrives after the call is already "recent" and must still reach its entry. Filtering in the decode pipeline did exactly that, and the ROGERS entry resent RR73 on every retry (`host_mock/test_recent_qso.cpp`). The decode list still shows recent calls grey and sorts them last, and a touch is never filtered.
 * **A touch** (the ADV's R-screen tap, Port A `QUEUE_REPLY`) calls `autoseq_on_touch()`:
   * If that call is `queue[0]` in a live state, the touch is ignored ("QSO in progress").
   * Otherwise every entry for that call, active or inactive, is removed and a fresh one is created.
@@ -113,13 +115,7 @@ Row B88 holds the offset for the length of a QSO.
 
 `logged` stops a retry from logging twice. A failed write stays unlogged and retries on the next emission. A Field Day contact also writes a Cabrillo line first, with its own flag. A QSO that DX closes with 73 while we are still at ROGER_REPORT goes IDLE unlogged, because we never sent RR73 or 73.
 
-**Logging arms the 10-minute recent-QSO filter** (**Where entries come from**), and that filter runs before autoseq. So once we have sent RR73, derived from the code and unconfirmed on air:
-
-* DX's 73 never reaches the ROGERS entry, which keeps resending RR73 until its retries run out (default 5) and then parks.
-* A re-sent `R±NN` from DX, which did not copy our RR73, is dropped too. The RR73 retries cover that case by accident.
-* The SIGNOFF late-RR73 path cannot fire within the window.
-
-The host scenarios feed `autoseq_on_decodes()` directly, so they never see this filter.
+Logging also starts the 10-minute recently-worked window for that call, so the station cannot start a second QSO with us until it passes. Its closing messages still reach the QSO (**Where entries come from**, step 3).
 
 ## Inactive zone
 
@@ -135,4 +131,4 @@ The host scenarios feed `autoseq_on_decodes()` directly, so they never see this 
 
 ## Tests
 
-`host_mock/host_main.cpp` runs the JSON scenarios in `host_mock/`. Each drives decodes, touches, beacon changes and ticks through the engine and checks the queue and the log: a normal QSO, the beacon lifecycle, Field Day, the tail-ended RR73 touch, reincarnation and the two queue deadlocks. `test_unique_callsign.cpp` pins touch de-duplication and `entry_id`, and `test_beacon_cancel.cpp` pins CQ cancellation. The slot cycle, the decode filters and arming are board code, and no host test covers them.
+`host_mock/host_main.cpp` runs the JSON scenarios in `host_mock/` (a normal QSO, the beacon lifecycle, Field Day, the tail-ended RR73 touch, reincarnation and the two queue deadlocks). Each drives decodes, touches, beacon changes and ticks through the engine and **prints** the exchange. A scenario fails only on a crash, never on a wrong exchange ([TEST_PLAN.md](../TEST_PLAN.md)). The asserting tests are `test_unique_callsign.cpp` (touch de-duplication and `entry_id`), `test_beacon_cancel.cpp` (CQ cancellation) and `test_recent_qso.cpp` (the recently-worked check blocks only new QSOs). The slot cycle, the IgnoreList and arming are board code, and no host test covers them.
