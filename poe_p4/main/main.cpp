@@ -6,6 +6,7 @@
 
 #include "autoseq.h"
 #include "callsign_hashtable.h"
+#include "decode_tx_state.h"
 #include "ft8_audio_pipeline.h"
 #include "porta.h"
 #include "porta_p4_host.h"
@@ -67,7 +68,6 @@ extern "C" void app_main(void) {
 
     xTaskCreatePinnedToCore(decode_audio_task, "decode_audio", 8192, nullptr, 4, nullptr, 1);
 
-    bool synced = false;
     int ticks = 0;
     while (true) {
         porta_tick();
@@ -76,15 +76,10 @@ extern "C" void app_main(void) {
         porta_p4_file_tick();
         tx_scheduler_tick();
         vTaskDelay(pdMS_TO_TICKS(10));
-        if (!synced && radio_control_ready()) {
-            const int freq_hz = porta_p4_station_freq_hz();
-            esp_err_t err = radio_control_sync_frequency_mode(freq_hz);
-            ESP_LOGI(TAG, "radio_control_sync_frequency_mode(%d) -> %s", freq_hz,
-                     esp_err_to_name(err));
-            if (err == ESP_OK) {
-                synced = true;
-                ESP_LOGI(TAG, "check the QMX's own screen for %d Hz", freq_hz);
-            }
+        // Set by qmx_transport on every CAT open; retried until it lands.
+        if (decode_tx_state_get_cdc_initial_sync_pending() && radio_control_ready() &&
+            !decode_tx_state_get_tx_active() && porta_p4_sync_vfo("QMX connect") == nullptr) {
+            decode_tx_state_set_cdc_initial_sync_pending(false);
         }
         if (++ticks >= 500) {  // ~5 s at 10 ms
             ticks = 0;

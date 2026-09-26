@@ -219,6 +219,9 @@ static bool g_pending_tx_valid = false;
 // g_offset_src has been declared.
 void arm_pending_tx(const AutoseqTxEntry& pending);
 static volatile bool g_tx_cancel_requested = false;
+// Slot a cancel landed in. The trigger will not start a TX in it, or the
+// re-armed CQ/reply restarts at once as a late start (see request_tx_cancel).
+static int64_t g_tx_cancel_slot_idx = -1;
 static void enter_mode(UIMode new_mode);
 static void tx_tick();
 static void redraw_countdown_now();
@@ -1899,9 +1902,23 @@ static bool rx_tap_reply(int rx_list_idx) {
 
 // Abort the in-flight TX. tx_tick() reads g_tx_cancel_requested on its next
 // iteration; radio_control_end_tx() PTTs down immediately. The asynchrony here
-// is the standing suspect in B21 -- behaviour is deliberately unchanged.
+// is the standing suspect in B21. With nothing on air, drop the armed TX now
+// and leave no flag behind: only tx_tick() clears it, so a sticky flag keyed
+// the radio for the next TX and killed it at its first tone -- the P4 hit
+// this in the field (B68) and fixed it the same way.
 static void request_tx_cancel() {
-  g_tx_cancel_requested = true;
+  // Autoseq still holds the entry, so the next tick re-arms it; without this
+  // it restarted in the same slot whenever the cancel came in its first
+  // 4/15, which needed several presses to stop and kept a band change from
+  // retuning the radio.
+  g_tx_cancel_slot_idx = rtc_now_ms() / g_protocol->slot_time_ms;
+  g_qso_xmit = false;
+  if (decode_tx_state_get_tx_active()) {
+    g_tx_cancel_requested = true;
+  } else {
+    g_pending_tx_valid = false;
+    g_tx_cancel_requested = false;
+  }
   if (radio_control_ready()) radio_control_end_tx();
   g_tx_view_dirty = true;
 }
@@ -2365,6 +2382,9 @@ void arm_pending_tx(const AutoseqTxEntry& pending) {
     begin_low_batt_tx_abort_hud();
     return;
   }
+  // A cancel aimed at an earlier TX must not abort this one -- but a TX still
+  // on air keeps its pending cancel.
+  if (!decode_tx_state_get_tx_active()) g_tx_cancel_requested = false;
   g_qso_xmit           = true;
   g_target_slot_parity = pending.slot_id & 1;
   g_pending_tx         = pending;
@@ -2430,6 +2450,7 @@ static void check_slot_boundary() {
   if (g_qso_xmit &&
       !board_power_halted() &&
       g_target_slot_parity == slot_parity &&
+      slot_idx != g_tx_cancel_slot_idx &&
       slot_ms < (g_protocol->slot_time_ms * 4 / 15) &&
       !decode_tx_state_get_tx_active() &&
       !decode_tx_state_get_decode_in_progress() &&
@@ -3887,26 +3908,16 @@ size_t porta_host_config_snapshot(char* out, size_t out_cap) {
   const int64_t kAudioRxFreshMs = 2000;
   const bool audio_rx = audio_source_is_streaming() &&
       (rtc_now_ms() - audio_source_last_rx_ms()) < kAudioRxFreshMs;
-  const char* clock_src = rtc_time_source_suffix();
-  if (*clock_src == ' ') ++clock_src;  // trim the on-screen suffix's leading space
   char live[256];
   const int freq_khz = (int)(g_bands[g_band_sel].freq + 0.5f);
-  // Link-health counters, GET-only same as the rest of this block: how many
-  // PORTA frames from the sidekick failed CRC (porta.cpp's own decoder) and
-  // how many outbound frames toward the sidekick were dropped for a full
-  // queue (porta_dropped_events()) -- both already tracked and logged to the
-  // ADV's own serial log, just not previously reachable from the phone. The
-  // sidekick adds its own matching counters (sk_crc_errors etc.) directly
-  // when it relays this snapshot -- see host_link.c's config_json_end() call.
+  // Port A link counters are appended by porta.cpp's handle_config_get(),
+  // for both boards.
   snprintf(live, sizeof(live),
            "streaming=%d\ncat_ready=%d\ntune=%d\nband_name=%s\nfreq_khz=%d\n"
-           "audio_rx=%d\nclock_set=%d\nclock_source=%s\n"
-           "porta_crc_errors=%lu\nporta_frames_ok=%lu\nporta_dropped=%lu\n",
+           "audio_rx=%d\nclock_set=%d\n",
            audio_source_is_streaming() ? 1 : 0, radio_control_ready() ? 1 : 0,
            g_tune ? 1 : 0, g_bands[g_band_sel].name, freq_khz,
-           audio_rx ? 1 : 0, rtc_valid ? 1 : 0, clock_src,
-           (unsigned long)porta_crc_errors(), (unsigned long)porta_frames_ok(),
-           (unsigned long)porta_dropped_events());
+           audio_rx ? 1 : 0, rtc_valid ? 1 : 0);
   text += live;
   if (text.size() + 1 > out_cap) {
     return 0;

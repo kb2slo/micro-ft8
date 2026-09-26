@@ -47,26 +47,6 @@ static const float kFt8DefaultKhz[kStationBandCount] = {
     18100.f, 21074.f, 24915.f, 28074.f, 50313.f, 144174.f,
 };
 
-static const char *clock_source_name(void) {
-    switch (g_rtc_time_source) {
-        case RtcTimeSource::ESP_RTC:
-            return "esp_rtc";
-        case RtcTimeSource::DS3231:
-            return "ds3231";
-        case RtcTimeSource::GPS:
-            return "gps";
-        case RtcTimeSource::MANUAL:
-            return "manual";
-        case RtcTimeSource::PHONE:
-            return "phone";
-        case RtcTimeSource::BROWSER:
-            return "browser";
-        case RtcTimeSource::SAVED:
-        default:
-            return "saved";
-    }
-}
-
 static std::string grid_ft8_4(const std::string &grid) {
     if (grid.size() <= 4) {
         return grid;
@@ -174,6 +154,13 @@ static const char *sync_vfo(const char *reason) {
                  reason ? reason : "", freq_hz);
         return "CAT not ready";
     }
+    // Never retune under a transmission: a TX cancel lands on the scheduler's
+    // next tick, so the app's cancel-then-change-band can still find one on air.
+    if (decode_tx_state_get_tx_active()) {
+        ESP_LOGW(TAG, "VFO sync skipped (%s): TX active", reason ? reason : "");
+        return "TX active";
+    }
+    radio_control_end_tx();  // RX mode first, as the ADV does (idempotent)
     const esp_err_t err = radio_control_sync_frequency_mode(freq_hz);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "VFO sync failed (%s) freq=%d: %s", reason ? reason : "", freq_hz,
@@ -186,6 +173,11 @@ static const char *sync_vfo(const char *reason) {
 
 void porta_p4_station_boot(void) {
     load_station_from_storage();
+}
+
+const char *porta_p4_sync_vfo(const char *reason) {
+    ensure_seeded();
+    return sync_vfo(reason);
 }
 
 static bool log_adif_entry(const std::string &dxcall, const std::string &dxgrid, int rst_sent,
@@ -243,14 +235,13 @@ void porta_p4_companion_status_tick(void) {
     }
     s_last_ms = now_ms;
 
-    uint8_t parity = 0;
-    if (rtc_valid) {
-        // FT8 15 s slots; FT4 would be 7.5 s — P4 is FT8-only until protocol_mode
-        // actually switches the decode pipeline (later).
-        parity = (uint8_t)((rtc_current_epoch_seconds() / 15) & 1);
-    }
-    porta_emit_slot_state(parity, tx_scheduler_beacon_mode(),
-                          (uint16_t)s_station.offset_hz);
+    // Same fields as the ADV's porta_queue_state_tick(): the armed TX's slot
+    // parity and its resolved offset, 0 when nothing is armed. The app shows
+    // that offset as "TX: … Hz" and places the passband cursor with it.
+    int armed_offset_hz = 0;
+    const bool armed = tx_scheduler_hud_snapshot(nullptr, &armed_offset_hz);
+    porta_emit_slot_state((uint8_t)(tx_scheduler_target_parity() & 1), tx_scheduler_beacon_mode(),
+                          (uint16_t)(armed ? armed_offset_hz : 0));
 
     uint16_t current_ids[AUTOSEQ_MAX_QUEUE];
     const int n = autoseq_active_count();
@@ -362,10 +353,9 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
     char live[192];
     snprintf(live, sizeof(live),
              "streaming=%d\ncat_ready=%d\ntune=%d\nband_name=%s\nfreq_khz=%d\n"
-             "audio_rx=%d\nclock_set=%d\nclock_source=%s\nbeacon=%u\n",
+             "audio_rx=%d\nclock_set=%d\n",
              qmx_audio_ready() ? 1 : 0, radio_control_ready() ? 1 : 0, s_tune ? 1 : 0, band_name,
-             freq_khz, qmx_audio_ready() ? 1 : 0, rtc_valid ? 1 : 0, clock_source_name(),
-             (unsigned)tx_scheduler_beacon_mode());
+             freq_khz, qmx_audio_ready() ? 1 : 0, rtc_valid ? 1 : 0);
     text += live;
 
     if (text.size() + 1 > out_cap) {
@@ -379,11 +369,6 @@ const char *porta_host_config_set(const char *key, const char *value) {
     ensure_seeded();
     if (!key || !value) {
         return "malformed";
-    }
-    if (strcmp(key, "beacon") == 0) {
-        tx_scheduler_set_beacon((uint8_t)atoi(value));
-        ESP_LOGI(TAG, "config beacon=%u", (unsigned)tx_scheduler_beacon_mode());
-        return nullptr;
     }
     if (!station_key_known(key)) {
         return "unknown key";
@@ -413,7 +398,8 @@ const char *porta_host_config_set(const char *key, const char *value) {
         // stayed put. Other band-ish keys stay silent on a sync miss.
         if (strcmp(key, "band_sel") == 0 && why) {
             ESP_LOGI(TAG, "config %s=%s (saved, VFO not moved: %s)", key, value, why);
-            return "band saved, VFO not moved (CAT not ready)";
+            return strcmp(why, "TX active") == 0 ? "band saved, VFO not moved (TX active)"
+                                                 : "band saved, VFO not moved (CAT not ready)";
         }
     }
 
@@ -455,6 +441,9 @@ const char *porta_host_tune(bool on) {
 }
 
 const char *porta_host_beacon(uint8_t mode) {
+    if (mode > 2) {
+        return "unknown beacon mode";
+    }
     tx_scheduler_set_beacon(mode);
     return nullptr;
 }

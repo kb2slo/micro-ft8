@@ -8,6 +8,8 @@
 
 void tx_scheduler_set_beacon(uint8_t mode);  // 0=OFF, 1=EVEN, 2=ODD
 uint8_t tx_scheduler_beacon_mode(void);
+// Slot parity the armed (or last armed) TX goes out on; SLOT_STATE's parity.
+int tx_scheduler_target_parity(void);
 
 void tx_scheduler_arm_from_autoseq_or_beacon(void);
 void arm_pending_tx(const AutoseqTxEntry &pending);

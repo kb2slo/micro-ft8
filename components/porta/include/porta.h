@@ -113,8 +113,8 @@ uint32_t porta_dropped_events();
 
 // Link health, decoding bytes *from* the sidekick: a CRC failure here means a
 // corrupt frame arrived and was silently dropped (porta_proto.h's decoder
-// never rescans a bad frame's bytes). Counts, not events -- see
-// porta_host_config_snapshot() in main.cpp for how these reach the browser.
+// never rescans a bad frame's bytes). Counts, not events. handle_config_get()
+// in porta.cpp appends these to every board's CONFIG_GET reply.
 uint32_t porta_crc_errors();
 uint32_t porta_frames_ok();
 

@@ -384,7 +384,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
           <option value=2>Odd</option>
         </select>
       </div>
-      <div id=opLive><select id=opBandSel disabled></select><span id=opOffset>TX: —</span></div>
+      <div id=opLive><select id=opBandSel disabled></select><span id=opOffset>Next TX: —</span></div>
     </div>
 
     <div id=opTxHud hidden>
@@ -1392,7 +1392,29 @@ async function authPostQuiet(path, body) {
 // seamlessly on the new band once it's synced. Fires TX-cancel and every
 // non-CQ queue-cancel together rather than one after another -- band_sel
 // itself is the last thing sent, once the rest have landed.
+//
+// Ending live QSOs or cutting off a transmission is not something to do by a
+// stray tap on a dropdown, so with either in play the operator confirms
+// first, and a "no" puts both band dropdowns back on the band the main board
+// last reported. A beacon CQ waiting for its slot does not ask: it simply
+// carries on on the new band.
 function changeBand(idx) {
+  var calls = Object.keys(queue)
+    .filter(function (id) { return queue[id].dxcall !== 'CQ'; })
+    .map(function (id) { return queue[id].dxcall; });
+  var ends = [];
+  if (calls.length) {
+    ends.push('ends ' + (calls.length === 1 ? 'your QSO' : 'your ' + calls.length + ' QSOs') +
+              ' with ' + calls.join(', '));
+  }
+  if (txHud && txHud.active && !txHud.aborted) ends.push('stops the transmission on the air');
+  if (ends.length && !confirm('Change band? This ' + ends.join(' and ') + '.')) {
+    if (lastCfg.band_sel !== undefined && lastCfg.band_sel !== null) {
+      document.getElementById('band_sel').value = String(lastCfg.band_sel);
+      document.getElementById('opBandSel').value = String(lastCfg.band_sel);
+    }
+    return;
+  }
   setMsg('Changing band…');
   var stops = [authPostQuiet('/api/tx/cancel')];
   Object.keys(queue).forEach(function (id) {
@@ -1733,11 +1755,11 @@ function renderBeacon() {
   // an open native picker's own pending selection, so there's nothing here
   // actually worth guarding against.
   document.getElementById('beaconSel').value = String(mode);
-  // 0 means "nothing pending" (main.cpp's porta_queue_state_tick sends it
-  // when g_pending_tx_valid is false) -- not a real offset, so it must not
-  // pass a != null check the way it would.
+  // The armed TX's offset, not one on air: the TX panel shows that. 0 means
+  // nothing is armed (both main boards send 0 then) -- not a real offset, so
+  // it must not pass a != null check the way it would.
   document.getElementById('opOffset').textContent =
-    'TX: ' + (slotState && slotState.hz > 0 ? (slotState.hz + ' Hz') : '—');
+    'Next TX: ' + (slotState && slotState.hz > 0 ? (slotState.hz + ' Hz') : '—');
 }
 
 document.getElementById('beaconSel').onchange = function () {

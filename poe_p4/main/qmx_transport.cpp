@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "decode_tx_state.h"
 #include "porta.h"
 #include "qmx_transport.h"
 #include "radio_transport.h"
@@ -266,6 +267,10 @@ static void try_open(void) {
     s_cdc_open_attempts = 0;
     s_cdc_first_attempt_ms = 0;
     porta_emit_usb_status(true, 0, kQmxVid, kQmxPid);
+    // The main loop pushes the Station band to the VFO once CAT is up. Every
+    // open, not just the first: the QMX comes back only after a power cycle,
+    // and it powers up on its own frequency.
+    decode_tx_state_set_cdc_initial_sync_pending(true);
 }
 
 // Set for the duration of try_open_uac()'s blocking settle-and-retry loop

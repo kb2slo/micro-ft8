@@ -41,6 +41,8 @@ static int64_t s_tx_next_tone_time = 0;
 static int64_t s_tx_slot_idx = 0;
 static bool s_tx_cat_ok = false;
 static bool s_tx_cancel_requested = false;
+// Slot a cancel landed in; the trigger will not start a TX in it.
+static int64_t s_tx_cancel_slot_idx = -1;
 static int s_tx_last_ta_int = -1;
 static int s_tx_last_ta_frac = -1;
 
@@ -59,7 +61,10 @@ static int resolve_tx_offset(const AutoseqTxEntry &e) {
 void arm_pending_tx(const AutoseqTxEntry &pending) {
     // A prior TX_CANCEL (e.g. Operate band change) must not abort this new
     // arm — field-hit B68: first beacon TX died at tone 0, second succeeded.
-    s_tx_cancel_requested = false;
+    // A TX still on air keeps its pending cancel.
+    if (!decode_tx_state_get_tx_active()) {
+        s_tx_cancel_requested = false;
+    }
     s_qso_xmit = true;
     s_target_slot_parity = pending.slot_id & 1;
     s_pending_tx = pending;
@@ -93,29 +98,40 @@ void tx_scheduler_arm_from_autoseq_or_beacon(void) {
     }
 }
 
+// Same three cases as the ADV's apply_beacon_mode(): Off re-arms whatever
+// autoseq still has queued rather than dropping it, and Even <-> Odd drops the
+// old-parity CQ before queueing the new one.
 void tx_scheduler_set_beacon(uint8_t mode) {
-    if (mode > 2) {
-        mode = 0;
-    }
     const BeaconMode next = (BeaconMode)mode;
-    if (s_beacon == next) {
+    if (mode > 2 || s_beacon == next) {
         return;
     }
+    const bool was_off = (s_beacon == BeaconMode::OFF);
+    const bool tx_active = decode_tx_state_get_tx_active();
     s_beacon = next;
-    if (s_beacon == BeaconMode::OFF) {
-        autoseq_cancel_cq(decode_tx_state_get_tx_active());
-        if (!decode_tx_state_get_tx_active()) {
-            s_qso_xmit = false;
-            s_pending_tx_valid = false;
-        }
-        ESP_LOGI(TAG, "beacon OFF");
-        return;
-    }
-    enqueue_beacon_cq();
+    ESP_LOGI(TAG, "beacon mode=%u", (unsigned)mode);
     AutoseqTxEntry pending;
-    if (autoseq_fetch_pending_tx(pending)) {
-        arm_pending_tx(pending);
-        ESP_LOGI(TAG, "beacon mode=%u armed: %s", (unsigned)mode, pending.text.c_str());
+    if (s_beacon == BeaconMode::OFF) {
+        autoseq_cancel_cq(tx_active);
+        if (!tx_active) {
+            if (autoseq_fetch_pending_tx(pending)) {
+                arm_pending_tx(pending);
+            } else {
+                s_qso_xmit = false;
+                s_pending_tx_valid = false;
+            }
+        }
+    } else if (was_off) {
+        enqueue_beacon_cq();
+        if (autoseq_fetch_pending_tx(pending)) {
+            arm_pending_tx(pending);
+        }
+    } else {
+        autoseq_cancel_cq(tx_active);
+        enqueue_beacon_cq();
+        if (!tx_active && autoseq_fetch_pending_tx(pending)) {
+            arm_pending_tx(pending);
+        }
     }
 }
 
@@ -123,7 +139,16 @@ uint8_t tx_scheduler_beacon_mode(void) {
     return (uint8_t)s_beacon;
 }
 
+int tx_scheduler_target_parity(void) {
+    return s_target_slot_parity;
+}
+
 void tx_scheduler_cancel(void) {
+    // Autoseq still holds the entry and the next tick re-arms it. Without
+    // this it restarted in the same slot as a late start whenever the cancel
+    // came in its first 4/15 -- on the old band, so a band change found a TX
+    // on air and could not retune.
+    s_tx_cancel_slot_idx = rtc_now_ms() / g_protocol->slot_time_ms;
     s_qso_xmit = false;
     if (!decode_tx_state_get_tx_active()) {
         // Idle/armed: drop the pending TX now. Do not leave
@@ -297,7 +322,7 @@ static void check_slot_boundary(void) {
         tx_scheduler_arm_from_autoseq_or_beacon();
     }
 
-    if (s_qso_xmit && s_target_slot_parity == slot_parity &&
+    if (s_qso_xmit && s_target_slot_parity == slot_parity && slot_idx != s_tx_cancel_slot_idx &&
         slot_ms < (g_protocol->slot_time_ms * 4 / 15) && !decode_tx_state_get_tx_active() &&
         !decode_tx_state_get_decode_in_progress() &&
         decode_tx_state_get_decode_applied_slot_idx() >= slot_idx - 1) {

@@ -6,6 +6,8 @@ void porta_p4_station_boot(void);
 void porta_p4_adif_register(void);
 void porta_p4_file_tick(void);
 int porta_p4_station_freq_hz(void);
+// Push the Station band to the VFO. nullptr on success, else why not.
+const char *porta_p4_sync_vfo(const char *reason);
 int porta_p4_station_offset_hz(void);
 int porta_p4_station_offset_src(void);  // 0=RANDOM, 1=CURSOR, 2=RX
 void porta_p4_companion_status_tick(void);

@@ -2,6 +2,7 @@
 #include "porta_board.h"
 
 #include <cinttypes>
+#include <cstdio>
 #include <cstring>
 #include <string>
 
@@ -334,11 +335,26 @@ void handle_config_get(const porta_frame_t& f) {
   // Static: ADV station snapshot can be ~1–2 KiB; keeping this on the
   // caller's stack blew the P4's default 3584-byte main task (B67 bench).
   static char snap[2048];
-  const size_t n = porta_host_config_snapshot(snap, sizeof(snap));
+  size_t n = porta_host_config_snapshot(snap, sizeof(snap));
   if (n == 0) {
     uint8_t buf[PORTA_PROTO_MAX_FRAME];
     enqueue(buf, porta_proto_encode_nak(PORTA_MSG_CONFIG_GET, "empty config", buf, sizeof(buf)));
     return;
+  }
+  // Link health, appended here rather than by each board's snapshot because
+  // the counters are this component's own: frames from the sidekick that
+  // failed CRC or decoded, and outbound frames dropped for a full queue.
+  // GET-only like the board's live lines (station_key_known() rejects a SET).
+  // The sidekick adds its matching sk_* counters when it relays the reply.
+  // If they do not fit, the reply goes without them rather than not at all.
+  const int m = snprintf(snap + n, sizeof(snap) - n,
+                         "porta_crc_errors=%lu\nporta_frames_ok=%lu\nporta_dropped=%lu\n",
+                         (unsigned long)s_dec.crc_errors, (unsigned long)s_dec.frames_ok,
+                         (unsigned long)s_dropped);
+  if (m > 0 && (size_t)m < sizeof(snap) - n) {
+    n += (size_t)m;
+  } else {
+    snap[n] = '\0';
   }
 
   const bool want_all = (key[0] == '\0');
