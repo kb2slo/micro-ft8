@@ -11,7 +11,7 @@ The daily station. Headless is the only mode: the module has no display, touch o
 * **ESP32-P4, revision v1.3.** ESP-IDF treats pre-v3 P4 silicon as a separate hardware branch and defaults to v3+, whose bootloader refuses to boot on this board; `poe_p4/sdkconfig.defaults` selects `CONFIG_ESP32P4_SELECTS_REV_LESS_V3`. Newer P4 improvements (400 MHz, better PIE) do not apply to it.
 * **16 MB flash. 32 MB PSRAM per the datasheet, not enabled in our build** (`CONFIG_SPIRAM` unset). Unlike on the ADV, plain CPU data (the waterfall buffer, decode working sets) could move there; DMA buffers still cannot.
 * **No WiFi and no BLE.** The board pairs the P4 with an Ethernet PHY and 802.3at PoE; **neither is used, by decision** (2026-09-16). The phone reaches the station only through the sidekick ([system.md](system.md)).
-* **No RTC chip, battery gauge or GPS.** `external_rtc_stub.cpp` and `board_power_stub.cpp` report them absent. The clock is the chip's own RTC, set from the phone's clock over Port A (`PORTA_ACT_SET_CLOCK`).
+* **No RTC chip, battery gauge or GPS.** `external_rtc_stub.cpp` and `board_power_stub.cpp` report them absent. The clock is unset at every boot until the web app sets it from the phone's clock over Port A ([time.md](time.md)).
 * **Grove** `G53`/`G54` to the sidekick: same cable and pinout as the ADV's Port A.
 * **Storage:** a LittleFS `storage` partition holds `Station.txt` and the daily `.adi` files, as on the ADV (`poe_p4/partitions.csv`).
 
@@ -39,7 +39,7 @@ The ADV has **no PSRAM** (ESP32-S3FN8, confirmed with `esptool.py flash_id`, 202
 
 ### No BLE and no WiFi on the ADV
 
-Neither runs on the ADV while the radio is connected, for the reason above; WiFi and lwIP cost more internal RAM than BLE, not less. The phone link lives on the sidekick instead. **An upstream difference:** Wei's Micro-FT8 V2.0.4 removed BLE because initializing NimBLE before USB CDC silently failed the CDC allocation and killed QMX transmit. Do not re-add either to the ADV to "make room" for a phone feature.
+Neither runs on the ADV while the radio is connected, for the reason above; WiFi and lwIP cost more internal RAM than BLE, not less. The phone link lives on the sidekick instead. **An upstream difference:** Wei's Micro-FT8 V2.0.4 removed BLE because initializing NimBLE before USB CDC silently failed the CDC allocation and killed QMX transmit. Do not re-add either to the ADV to "make room" for a phone feature. The one exception is BLE time sync, which parks the USB host first and cannot run twice in a boot ([time.md](time.md), **BLE CTS**).
 
 ### USB-C is one port, held in host mode
 

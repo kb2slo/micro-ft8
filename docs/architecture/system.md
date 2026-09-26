@@ -1,6 +1,6 @@
 # System architecture: the phone is the UI, the sidekick is a peripheral
 
-How the boards, the phone and the internet divide the work, and who may key the transmitter. Component detail, one doc per area: [sidekick.md](sidekick.md), [webapp.md](webapp.md), [radio.md](radio.md), [autoseq.md](autoseq.md), [decode.md](decode.md), [ft8_lib.md](ft8_lib.md), [main_board.md](main_board.md).
+How the boards, the phone and the internet divide the work, and who may key the transmitter. Component detail, one doc per area: [sidekick.md](sidekick.md), [webapp.md](webapp.md), [radio.md](radio.md), [autoseq.md](autoseq.md), [decode.md](decode.md), [ft8_lib.md](ft8_lib.md), [main_board.md](main_board.md), [time.md](time.md).
 
 ## The station
 

@@ -9,7 +9,7 @@
 // ============================================================================
 // rtc_core.h
 //
-// The soft-clock primitives (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)) -- extracted out of main.cpp so
+// The soft-clock primitives (docs/architecture/time.md) -- extracted out of main.cpp so
 // the decode pipeline can stamp/auto-sync time without linking main.cpp).
 // This is arithmetic plus the ESP's own built-in RTC peripheral
 // (settimeofday/gettimeofday, present on every ESP32) -- no board coupling of
@@ -75,8 +75,8 @@ void rtc_sync_to_esp_rtc();
 // same as a board that has the chip but hasn't found it yet on the bus.
 esp_err_t rtc_write_external_from_soft(const char* reason);
 
-// Nudges the soft clock by delta_ms (positive = clock was ahead, negative =
-// behind) and re-syncs everything downstream (strings, ESP RTC, DS3231 if
+// Nudges the soft clock by delta_ms (positive = clock was behind, negative =
+// ahead) and re-syncs everything downstream (strings, ESP RTC, DS3231 if
 // present) in one step. Used by the decode pipeline's auto-sync-from-timing
 // correction -- callers used to poke rtc_ms_start/rtc_last_update directly
 // and call the three re-sync steps themselves; this is that, named.
