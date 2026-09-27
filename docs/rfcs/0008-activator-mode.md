@@ -1,0 +1,203 @@
+# RFC 0008: Activator mode — POTA and SOTA from the field
+
+* **Status:** Draft 2026-09-26
+* **Author / Lead:** Jeff Kalikstein, KB2SLO
+* **Covers:** the activation as an object the station knows about; where it lives so an activation runs with no internet; what goes on the air; what the log records and how it is exported for pota.app and the SOTA database; choosing a nearby reference and checking the grid offline; planning activations while online; where spotting fits.
+* **Does not cover:** hunter mode (§6), programs other than POTA and SOTA (§6), log editing and the on-device storage format ([ROADMAP.md](../ROADMAP.md) I31, I32).
+* **Replaces** the design sketch in row I18.
+
+---
+
+## 1. Goal
+
+Stated by the operator, 2026-09-26:
+
+* **Activator mode.** The operator is at a park or on a summit and others work them. A **hunter mode** may follow; it is not designed here, and nothing here should make it harder.
+* **The activation must run offline.** A planned activation may be prepared online beforehand. Once in the field, selecting it, operating it and logging it need no internet. This is [system.md](../architecture/system.md) constraint 1 applied to the feature.
+* **The top goal: a log that pota.app and the SOTA database accept without hand-editing.**
+* **Then, what helps an activator:** picking a nearby registered reference, making sure the grid matches where the operator actually is, planning activations (references near me while travelling, spotting 2-fers), and spotting (wanted, not required this round).
+* **Go broad here, then slice** (§7).
+
+## 2. What exists
+
+Each fact is from the code or docs at `9d0d704`.
+
+* **CQ.** `AutoseqCqType::SOTA` / `POTA` send `CQ SOTA <call> <grid>` / `CQ POTA <call> <grid>` (`components/autoseq/autoseq.cpp:788`). The grid in the CQ is 4 characters. That is the whole existing feature: a CQ prefix.
+* **The log record.** `adif_format_log_record()` writes `call, gridsquare, mode, qso_date, time_on, freq, station_callsign, my_gridsquare, rst_sent, rst_rcvd, comment` (`components/adif/adif.cpp:547`). There is **no `BAND`**, and **no `MY_SIG` / `SIG` family**. `my_gridsquare` is cut to 4 characters (`grid_ft8_4(g_grid)`, `main/main.cpp:902`) even when the operator entered 6.
+* **One ADIF file per UTC day** on the main board. That matches POTA, whose activation window is the UTC day.
+* **Export is rebuilt, not copied.** `FILE_READ` sends parsed rows (`porta_qso_entry_row_t`, `components/porta_proto/include/porta_proto.h:486`), and the browser rebuilds each ADIF line from them (`buildAdifRecord`, `webapp/app/app.html:2856`). This was deliberate (`porta_proto.h:441`). The consequence: **a new logged field touches four places**, namely the writer, `qso_browse` parsing, the Port A row and the JS builder, or export silently drops it. The row already carries `band`, but export does not write it. The row's worst case today is about 140 bytes of the 255-byte payload.
+* **Location.** The P4 has no GPS ([main_board.md](../architecture/main_board.md)). The ADV reads GNSS from the LoRa cap ([time.md](../architecture/time.md)). The browser can use geolocation only through `geo.html` on the HTTPS release host ([webapp.md](../architecture/webapp.md), **A non-secure origin**), so **today the phone's location needs internet**.
+* **Browser storage on this origin.** `localStorage` and IndexedDB work; the Cache API and service workers do not ([webapp.md](../architecture/webapp.md)). Safari evicts script-writable storage after seven days unused ([system.md](../architecture/system.md)).
+* **Reference data already fetched online.** `map.html` loads POTA parks per country (`api.pota.app/program/parks/{prefix}`) and SOTA summits per association region, driven by the viewport; `callinfo.js` and `map.html` read live activator spots. All of it is online-only today.
+* **Device storage.** Sidekick `web` partition: LittleFS, 1.9 MB, 512 KB per file, holding the app bundle. Main boards: `storage` 3 MB LittleFS. Port A: 115200 baud, 255-byte payloads, until RFC 0007 S0 raises the rate.
+* **`/P`.** `ft8_lib` packs a `/P` suffix as message type i3=2, grid included (`components/ft8_lib/vendor/ft8/message.c:288`).
+* **No reference goes on the air today.** An upstream convention for sending one in place of the sign-off is documented but has no code, and Backlog row `nuvm` removes its doc.
+
+## 3. What the programs require
+
+External facts, checked 2026-09-26. They change without notice, so every slice that depends on one re-checks it and finishes with a real upload (§7).
+
+**POTA** ([ADIF for POTA](https://docs.pota.app/docs/activator_reference/ADIF_for_POTA_reference.html), [Park to Park](https://docs.pota.app/docs/activator_reference/park_2_park.html)):
+
+* Required: `STATION_CALLSIGN` or `OPERATOR`, `CALL`, `QSO_DATE`, `TIME_ON` (QSO start), **`BAND`** (with unit, `20M`), `MODE`.
+* Read by POTA: `MY_SIG`=`POTA`, `MY_SIG_INFO`=park; `SIG`/`SIG_INFO` for park-to-park; `MY_STATE`. If `MY_SIG_INFO` is missing, the uploader takes the park from a file named `CALL@PARK.adi`.
+* **N-fers are one file per park**, with a QSO line for every combination: "If you are two-fer and working a three-fer activator, you generate two ADIF log files, each having three lines." Without a distinct `SIG_INFO` on each line, the combinations are "rejected as duplicates".
+* ADIF 3.1.4 added `MY_POTA_REF` / `POTA_REF`, which accept comma lists. PoLo's notes say POTA does not read them yet (`src/extensions/activities/pota/POTA Notes.md`), and PoLo writes both.
+* Activation: 10 QSOs in a UTC day. A contact is unique by call, band, mode and park; `/P` and `/M` count as different calls. P2P matching needs both logs within 15 minutes and exactly matching callsigns.
+
+**SOTA** (SOTA reflector threads and K0NR's logging notes, §8):
+
+* The SOTA database imports ADIF. `MY_SOTA_REF` goes on every record of the activation, and `SOTA_REF` on summit-to-summit contacts.
+* Activation: 4 QSOs. Points count only from inside the activation zone, typically within 25 m vertical of the summit.
+
+**ADIF 3.1.6:** `POTARef` is `xxxx-nnnnn[@yyyyyy]`. `MY_GRIDSQUARE` takes 2, 4, 6 or 8 characters.
+
+**FT8 field practice** (§8):
+
+* POTA activators send `CQ POTA <call> <grid>`. The park reference does not fit in the message, so hunters get it from spots, and POTA's own hunter guide says to work a `CQ POTA` station even when the park is unknown.
+* SOTA advice: use a non-standard frequency, and spot with the exact frequency plus offset and parity. Compound calls (`EA4/G7WKX/P`) lose the grid, and two compound calls cannot complete a QSO.
+* Sending the reference: as free text after 73 (M1EYP), or as tagged free text in place of the sign-off (AG6AQ).
+
+**Spotting:**
+
+* POTA's `POST https://api.pota.app/spot` takes unauthenticated JSON (`activator, spotter, frequency, reference, mode, source, comments`; PoLo `POTAPostSpotAPI.js`).
+* SOTAwatch needs an SSO login and a registered User-Agent, and its API terms restrict AI-authored clients ([webapp.md](../architecture/webapp.md) records the operator's 2026-09-21 decision to read from it anyway).
+* **Offline self-spotting already exists in two forms.**
+  - **RBN auto-spot:** POTA spots a *scheduled* activation when the Reverse Beacon Network hears the activator's call. Activators report this working for FT8 `CQ POTA`; we have not verified it. SOTA's RBNHole does the same from SOTAwatch alerts; its FT8 coverage is unverified.
+  - **SOTAmat:** encodes a spot in FT8 free text that PSKReporter skimmers relay. The encoding is undocumented and needs a registered account.
+
+## 4. Design
+
+### 4.1 The activation
+
+One object, generic across programs so WWFF and hunter mode can reuse it:
+
+* **References:** 1..N entries of program plus reference (`POTA US-1234`, `POTA US-5678`, `SOTA W7O/CC-001`). A summit inside a park is a normal mixed case.
+* **On-air call:** the station call as configured today. Activator mode adds no `/P` option (§9).
+* **Grid:** 6 characters.
+* **`MY_STATE`:** optional; POTA's location descriptor supplies it (`US-ME`).
+* **State:** *planned*, then *active*, then *ended*. Only one activation is active at a time. No activation active means today's behaviour, unchanged.
+
+### 4.2 Where it lives
+
+The rule: **whatever must work offline lives on a device; the browser only caches.** The browser cannot be the durable store: Safari evicts it, a second phone lacks it, and the phone may be asleep in a pocket while autoseq logs QSOs.
+
+* **The active activation: main-board config.** The main board writes the log and sends the CQ, so it must know the references even with no browser attached. A config key such as `act_refs=POTA:US-1234,SOTA:W7O/CC-001` fits `PORTA_CONFIG_VALUE_MAX` (200 bytes) and uses the existing `CONFIG_*` path and Station file.
+* **Plans and reference extracts: main-board `storage`.** A plan is a few hundred bytes. A reference extract (every ref within a radius of the planned points, or along a route) is small by construction: about 60 bytes per stripped park row, so 500 refs is about 30 KB, a few seconds over Port A at today's rate. Both boards have 3 MB and the logs use kilobytes. The browser caches what it read in IndexedDB for speed, never as the only copy.
+* **Why not the sidekick:** the `web` partition belongs to the app bundle, a bundle install owns it, and the 8 MB flash has no room for another partition (RFC 0007 §2).
+
+### 4.3 Location and the grid check
+
+In order of preference:
+
+1. **The phone's GNSS, offline.** The release host is HTTPS, so it may run a service worker. One that caches `geo.html` makes the existing top-level navigation work with no network, and a phone's GNSS needs no cell signal. It is the only phone-location path the P4 has offline. **Unverified on iOS**, so the slice ends in a field check.
+2. **The ADV's GNSS cap**, where fitted.
+3. **The selected reference's coordinates.** POTA's data carries a 6-character grid, and SOTA gives coordinates. This is a suggestion only: a big park's point can be many kilometres from the operator.
+4. **Manual entry**, as today.
+
+**Nearby:** sort the stored extract by distance from the fix (PoLo takes a 0.25° box, then sorts). **The data is points, not boundaries**, so "nearest" does not mean "inside". The UI says "nearest registered references", never "you are in".
+
+**Grid check:** warn when the configured grid, the fix, and the chosen references disagree, i.e. the fix's grid differs from the configured one, or a reference is further than a threshold. A warning, never a block: the operator can be right when the data is not.
+
+### 4.4 On the air
+
+* **CQ:** unchanged in shape: `CQ POTA` or `CQ SOTA` from the activation. **A mixed activation defaults to `CQ SOTA`, and the operator can switch while operating** (decided 2026-09-26), so the switch is a control on Operate, not in Settings. The CQ text is built when a CQ is queued (`generate_cq_text_into()`, `autoseq.cpp:788`), so a switch applies from the next queued CQ; whether it also rebuilds a CQ already armed for this slot is settled in A1.
+* **No `/P` feature** (decided 2026-09-26, §9). The own-call field is free text with no validation found, so an operator can still enter a suffixed call; the log just records it faithfully (§4.5).
+* **The reference stays off the air**, matching POTA practice: hunters get it from spots (§3). See §5 for why.
+* **The other station's reference (P2P, S2S)** reaches the record at log time from a live spot when online (`callinfo.js` already matches spots to callsigns), or from a reference the operator attaches to the queue entry. Adding one *after* logging needs record editing, which waits on I31/I32.
+
+### 4.5 The log
+
+* **One QSO is one record on the device**, carrying every reference as a comma list: `MY_POTA_REF`, `MY_SOTA_REF`, and `POTA_REF` / `SOTA_REF` for the other station. The device log stays truthful: QSO counts, dedupe, and the ADV's own files are all per QSO.
+* **N-fer expansion happens at export**, not on the device: one POTA file per park per UTC day, named `CALL@PARK-YYYYMMDD.adi`. Each line gets `MY_SIG`/`MY_SIG_INFO` for that file's park and, for P2P, one line per partner park with a distinct `SIG_INFO`, as POTA requires. SOTA gets one file per summit with `MY_SOTA_REF` / `SOTA_REF`. This is PoLo's shape (`adifFieldCombinationsForOneQSO`).
+* **Fields added to every record, activation or not:** `BAND` (POTA requires it, and it is missing today), and `MY_GRIDSQUARE` at the grid's full length. Under an activation: `MY_STATE` when known. `STATION_CALLSIGN` stays exactly what was transmitted, because POTA's P2P matching needs an exact callsign match (§3).
+* **The four-place cost (§2):** new fields ride the Port A row, following the rule `porta_proto.h:441` wrote down. The references need a length-capped field in the ~110 free bytes. A value over the cap is flagged at log time, never silently cut.
+
+### 4.6 Activation status
+
+Offline-derived. It answers a mid-QSO question ("am I there yet?"), so it belongs on Operate, not in Tools ([webapp.md](../architecture/webapp.md), **Screens**).
+
+* QSOs counted per reference against its threshold (POTA 10, SOTA 4).
+* Unique by call, band and mode.
+* A countdown to 0000Z, when a POTA activation starts over.
+* A dupe cue on decode rows.
+
+### 4.7 Planning
+
+Online-required, with the results stored for offline use:
+
+* Find references near a point, near the phone, or along a route, reusing `map.html`'s fetchers and layers.
+* Save a plan, and store its extract on the device (§4.2).
+* **N-fer candidates:** from point data this can only be a proximity list ("these refs are within X km"), labelled as candidates for the operator to confirm. POTA itself says no list of 2-fer locations exists. Park boundaries (PAD-US, as potamap.us uses) are a later phase.
+* **Scheduling:** deep links to pota.app's scheduler and SOTAwatch alerts, not API writes. This has an offline payoff: a scheduled POTA activation is what lets RBN auto-spot the activator (§3).
+
+### 4.8 Spotting
+
+A later phase (§6). What the design keeps open:
+
+* Online POTA self-spotting is an unauthenticated POST. [webapp.md](../architecture/webapp.md) still records it as a different risk class, a write under the operator's name, so it needs its own operator decision.
+* SOTAwatch needs SSO and runs into the terms question.
+* Offline, **pre-scheduling plus RBN** is zero code on our side. SOTAmat would need its author's cooperation for the encoding.
+
+## 5. Rejected alternatives
+
+* **Full reference databases on the device** (I18's sketch). POTA's `all_parks_ext.csv` is 9.4 MB and SOTA's `summitslist.csv` 25.2 MB (measured 2026-09-26), against 3 MB of main-board storage. An activator needs the references near where they are going, so an extract made at planning time is enough.
+* **The active activation in browser storage only.** Evicted by Safari, invisible to a second phone, and absent while the phone sleeps. The main board logs the QSO, so the main board holds the references.
+* **References in `COMMENT`**, the WSJT-X workaround POTA's digital guide describes. No importer reads it; it defeats the top goal.
+* **N-fers as one file with comma lists.** POTA does not read `MY_POTA_REF` (§3), so the per-park files POTA asks for are built at export.
+* **Sending the reference over the air** as free text, whether after 73 or in place of the sign-off. The one written convention for this is being dropped (row `nuvm`). In practice POTA hunters take the park from spots, and a free-text slot costs a 15 s cycle per QSO. Reopen if P2P/S2S capture from spots and queue entries (§4.4) proves not to be enough.
+* **Raw ADIF over Port A for export.** Reverses a recorded decision (`porta_proto.h:441`) for a problem the row's free space covers. Reopen if the row runs out of room.
+
+## 6. Later phases
+
+Not part of this design; each gets a row or an RFC when wanted.
+
+* **Hunter mode:** spots matched to decodes (started in `callinfo.js`), `SIG_INFO` on the hunter's own log, worked-park tracking.
+* **More programs:** WWFF (`MY_WWFF_REF`; 44 QSOs), and others PoLo supports.
+* **Park boundaries** for real n-fer detection and an "inside the park" check.
+* **Self-spotting:** POTA POST; SOTAwatch; SOTAmat if its encoding becomes available.
+* **Log editing** of references after the fact: I31, blocked on I32.
+
+## 7. Slices
+
+Proposed. Rows are created when the RFC is accepted.
+
+* **A0 — Log baseline.** `BAND` in records and export; `MY_GRIDSQUARE` at full length. Worth doing with or without the rest. Proof: `host_mock` tests on the writer and parser, and a JS test on `buildAdifRecord`.
+* **A1 — The activation and the log.** The `act_refs` config key, manual reference entry in Settings, `CQ POTA`/`CQ SOTA` from it with the live switch on Operate, the §4.5 fields at log time, and per-reference/per-day export with n-fer expansion. **This meets the top goal.** Proof: host tests on record and expansion. Field check: an unedited export uploads to pota.app (a 2-fer) and to the SOTA database.
+* **A2 — Activation status** (§4.6).
+* **A3 — Plans and extracts on the device, with an offline nearby pick and the grid check** (§4.2, §4.3).
+* **A4 — Offline phone location** (the service-worker `geo.html`) and the ADV GNSS feed (§4.3). Field check: on an iPhone with cellular off, the grid fills from GNSS.
+* **A5 — P2P/S2S capture:** a reference attached to a queue entry, and auto-filled from spots (§4.4).
+* **A6 — The planning UI:** nearby, route, n-fer candidates, scheduling links (§4.7).
+
+## 8. Prior art
+
+| Source | What we take from it |
+|---|---|
+| [POTA: ADIF for POTA](https://docs.pota.app/docs/activator_reference/ADIF_for_POTA_reference.html), [Park to Park](https://docs.pota.app/docs/activator_reference/park_2_park.html), [Digital Modes](https://docs.pota.app/docs/digital_modes.html), [Hunter Guide](https://docs.pota.app/docs/hunter_guide-english.html) | Required fields, n-fer file shape, P2P matching, FT8 practice |
+| [ADIF 3.1.6](https://adif.org/316/ADIF_316.htm) | `POTA_REF`/`SOTA_REF` families, `POTARef` format, grid lengths |
+| Ham2K PoLo ([polo.ham2k.com](https://polo.ham2k.com/), `github.com/ham2k/app-polo`, MPL-2.0; read, not copied) | Offline park list from `all_parks_ext.csv` refreshed monthly, SOTA from `summitslist.csv`; nearest park from GPS; one export per reference with field combinations; the POTA spot POST |
+| qFT8 ([manual](https://qft8.com/manual/)): Android FT8 for QMX and others | `CQ POTA` modifier; `MY_SIG`/`MY_SIG_INFO`/`MY_POTA_REF` written; partner references back-filled from spots within an hour |
+| FT8TW ([releases](https://github.com/danleetw/FT8TW/releases)) | Summit and park set in config, written on every QSO; lists cached offline; per-summit export |
+| [SOTAmat](https://sotamat.com/faq/), [HROB: off-grid self-spotting](https://hamradiooutsidethebox.ca/2023/08/30/how-to-self-spot-off-grid-for-sota-pota-using-hf/) | Offline self-spot through FT8 free text and PSKReporter |
+| [QRPer: RBN auto-spotting](https://qrper.com/2022/04/how-to-use-the-reverse-beacon-network-rbn-for-automatic-pota-and-sota-spotting/), [RBNHole](https://github.com/vk3arr/rbnhole) | Scheduling ahead enables auto-spotting from the field |
+| SOTA reflector: [SOTA summit identifying on FT8](https://reflector.sota.org.uk/t/sota-summit-identifying-on-ft8/25464), [FT8 from summits](https://reflector.sota.org.uk/t/ft8-from-summits/33719), [long callsigns](https://reflector.sota.org.uk/t/newbie-activate-summit-on-ft8-with-long-callsign/38524), [QMX + Mini-FT8](https://reflector.sota.org.uk/t/qmx-mini-ft8-for-sota-activations/40042) | Reference as free text after 73 (M1EYP) or in place of the sign-off (AG6AQ), non-standard frequency and spotting advice (K6CPR), the compound-call limits; Mini-FT8 already in SOTA use |
+| K0NR, [Combined logging for SOTA and POTA](https://www.k0nr.com/wordpress/2022/03/logging-for-sota-and-pota/) | `MY_SOTA_REF` / `SOTA_REF` in SOTA database uploads |
+| [potamap.us](https://potamap.us/), [KB9VBR on stacking parks](https://www.jpole-antenna.com/2026/03/06/stacking-up-pota-parks-for-maximum-effect/) | Boundaries come from PAD-US; no 2-fer list exists |
+
+## 9. Decisions and open questions
+
+Decided by the operator, 2026-09-26:
+
+1. **The ADV gets no activator UI of its own.** Activator mode is phone-driven on both boards. The ADV still logs the references correctly from `act_refs`, since the log is written on the main board (§4.2).
+2. **A mixed POTA + SOTA activation defaults to `CQ SOTA`,** and the operator can switch while operating (§4.4).
+3. **No `/P` support.** It is a regional convention, not an FT8 or program requirement: the US never required it, and POTA counts `K1ABC/P` as a different call from `K1ABC`, which complicates P2P matching and dupe counts. Received `/P` calls already decode and log as sent. Reopen if an operator in a jurisdiction that expects it asks.
+4. **The 2026-09-21 SOTA API decision covers bulk `summitslist.csv` downloads** from `storage.sota.org.uk` for planning.
+
+Open, to settle during slicing:
+
+* Whether pota.app accepts `FREQ` without `BAND`. Moot once A0 lands, but it decides whether existing logs need re-export.
+* The Port A row's cap on references.
+* The extract radius, and whether a plan may hold several areas (a road trip).
+* Whether switching the CQ prefix rebuilds a CQ already armed for the current slot (§4.4).
+* Free space in the sidekick's `web` partition, if §4.2's choice is ever revisited.
