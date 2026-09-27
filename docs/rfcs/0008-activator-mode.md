@@ -3,7 +3,7 @@
 * **Status:** Draft 2026-09-26
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** the activation as an object the station knows about; where it lives so an activation runs with no internet; what goes on the air; what the log records and how it is exported for pota.app and the SOTA database; choosing a nearby reference and checking the grid offline; planning activations while online; where spotting fits.
-* **Does not cover:** hunter mode (§6), programs other than POTA and SOTA (§6), log editing and the on-device storage format ([ROADMAP.md](../ROADMAP.md) I31, I32).
+* **Does not cover:** how any of it looks on Operate ([RFC 0009](0009-operate-station-surface.md): this RFC supplies the data, 0009 the surface), hunter mode (§6), programs other than POTA and SOTA (§6), log editing and the on-device storage format ([ROADMAP.md](../ROADMAP.md) I31, I32).
 * **Replaces** the design sketch in row I18.
 
 ---
@@ -83,8 +83,16 @@ One object, generic across programs so WWFF and hunter mode can reuse it:
 The rule: **whatever must work offline lives on a device; the browser only caches.** The browser cannot be the durable store: Safari evicts it, a second phone lacks it, and the phone may be asleep in a pocket while autoseq logs QSOs.
 
 * **The active activation: main-board config.** The main board writes the log and sends the CQ, so it must know the references even with no browser attached. A config key such as `act_refs=POTA:US-1234,SOTA:W7O/CC-001` fits `PORTA_CONFIG_VALUE_MAX` (200 bytes) and uses the existing `CONFIG_*` path and Station file.
-* **Plans and reference extracts: main-board `storage`.** A plan is a few hundred bytes. A reference extract (every ref within a radius of the planned points, or along a route) is small by construction: about 60 bytes per stripped park row, so 500 refs is about 30 KB, a few seconds over Port A at today's rate. Both boards have 3 MB and the logs use kilobytes. The browser caches what it read in IndexedDB for speed, never as the only copy.
-* **Why not the sidekick:** the `web` partition belongs to the app bundle, a bundle install owns it, and the 8 MB flash has no room for another partition (RFC 0007 §2).
+* **The reference store: the sidekick** (decided 2026-09-27). It holds saved areas of POTA parks and SOTA summits, each record carrying reference, program, trimmed name, lat/lon, grid and summit points, about 60 bytes.
+  - **Why the sidekick.** Every reader is the browser (the map, the nearby list, search), and the sidekick serves the browser directly over WiFi. The main board would force every read through Port A: about 10 KB/s at 115200 baud until [RFC 0007](0007-flash-and-update.md) S0, plus new protocol messages, for data only the browser uses. The main board needs only the active references.
+  - **Layout.** A reserved directory in the `web` partition that no bundle ships or touches (for example `data/refs/`). It holds one file per saved area plus an index of name, bounding box, date saved and count. Reads are open; saving and deleting need the pairing token ([system.md](../architecture/system.md), **Who may key the transmitter**).
+  - **Budget.** The partition is 1.9 MB. The bundle takes about 650 KB, and a bundle install briefly stages a second copy. The store is capped (for example 256 KB, about 4,000 references); the saved-areas list shows usage and refuses, with a clear message, past the cap.
+  - **Filled by the map's existing fetches** (operator, 2026-09-27). `map.html` already downloads POTA parks per country and SOTA summits per association region while online (its "All" layers). **Save this area** filters what is already loaded to the view and writes it; there is no second download path. The map's live path and the store share one record format and one parser, so a stored area and a live fetch draw identically. Offline, the store is the map's POTA/SOTA source.
+  - **Freshness.** Each area shows its age; saving an area again replaces it.
+  - **To confirm in code before building:** that bundle commit never removes files outside its manifest, and what boot or rehydrate does to an unmountable filesystem. A format would lose the store, which is acceptable only because it can be re-downloaded.
+  - **If the cap pinches:** the sidekick's OTA slots are 3 MB for a 955 KB image (RFC 0007 §2), so a repartition could roughly double `web`. It costs a USB reflash of every sidekick, so do it only alongside another one.
+* **The browser caches** in IndexedDB, keyed by area and version, purely for speed. It is never the only copy.
+* **Why not the main board for the store:** Port A throughput and new protocol work for data only the browser reads. An earlier draft chose the main board and rejected the sidekick for lack of a partition to add. Files in the existing `web` partition need no new partition.
 
 ### 4.3 Location and the grid check
 
@@ -95,13 +103,22 @@ In order of preference:
 3. **The selected reference's coordinates.** POTA's data carries a 6-character grid, and SOTA gives coordinates. This is a suggestion only: a big park's point can be many kilometres from the operator.
 4. **Manual entry**, as today.
 
-**Nearby:** sort the stored extract by distance from the fix (PoLo takes a 0.25° box, then sorts). **The data is points, not boundaries**, so "nearest" does not mean "inside". The UI says "nearest registered references", never "you are in".
+**Nearby:** sort the stored extract by distance from the fix (PoLo takes a 0.25° box, then sorts). **The data is points, not boundaries**, so "nearest" does not mean "inside". The UI says "nearest registered references", never "you are in". The list and the grid check live in the station sheet ([RFC 0009](0009-operate-station-surface.md) §3.5 and §3.9).
+
+**Typed references, offline:**
+
+* **Search covers the whole store,** not only what is nearby, so a reference saved for another trip is found.
+* **A well-formed reference not in the store can still be added.** The program comes from the format: a slash means SOTA (`W2/GC-001`), otherwise POTA (`US-1234`).
+  - It is marked **unverified**: there is no name, no location and no grid check.
+  - The next time the app is online it checks the reference against pota.app or the SOTA API, and flags one that does not exist.
+  - The per-reference export (§4.5) warns about an unverified reference before upload.
+* **Input that is not a reference** gets the format hint instead of an Add row.
 
 **Grid check:** warn when the configured grid, the fix, and the chosen references disagree, i.e. the fix's grid differs from the configured one, or a reference is further than a threshold. A warning, never a block: the operator can be right when the data is not.
 
 ### 4.4 On the air
 
-* **CQ:** unchanged in shape: `CQ POTA` or `CQ SOTA` from the activation. **A mixed activation defaults to `CQ SOTA`, and the operator can switch while operating** (decided 2026-09-26), so the switch is a control on Operate, not in Settings. The CQ text is built when a CQ is queued (`generate_cq_text_into()`, `autoseq.cpp:788`), so a switch applies from the next queued CQ; whether it also rebuilds a CQ already armed for this slot is settled in A1.
+* **CQ:** unchanged in shape: `CQ POTA` or `CQ SOTA` from the activation. **A mixed activation defaults to `CQ SOTA`, and the operator can switch while operating** (decided 2026-09-26), so the switch is a control on Operate ([RFC 0009](0009-operate-station-surface.md) §3.5), not in Settings. `autoseq_set_cq_type()` re-derives a queued CQ's text at once (`autoseq.cpp:737`); whether a TX the board has already armed for this slot picks up the change is checked in A1.
 * **No `/P` feature** (decided 2026-09-26, §9). The own-call field is free text with no validation found, so an operator can still enter a suffixed call; the log just records it faithfully (§4.5).
 * **The reference stays off the air**, matching POTA practice: hunters get it from spots (§3). See §5 for why.
 * **The other station's reference (P2P, S2S)** reaches the record at log time from a live spot when online (`callinfo.js` already matches spots to callsigns), or from a reference the operator attaches to the queue entry. Adding one *after* logging needs record editing, which waits on I31/I32.
@@ -115,7 +132,7 @@ In order of preference:
 
 ### 4.6 Activation status
 
-Offline-derived. It answers a mid-QSO question ("am I there yet?"), so it belongs on Operate, not in Tools ([webapp.md](../architecture/webapp.md), **Screens**).
+Offline-derived. It answers a mid-QSO question ("am I there yet?"), so it belongs on Operate, as the dock's progress line, and only while the station has references (decided 2026-09-26). Where and how it appears: [RFC 0009](0009-operate-station-surface.md) §3.10. What it computes:
 
 * QSOs counted per reference against its threshold (POTA 10, SOTA 4).
 * Unique by call, band and mode.
@@ -162,13 +179,19 @@ Not part of this design; each gets a row or an RFC when wanted.
 
 Proposed. Rows are created when the RFC is accepted.
 
-* **A0 — Log baseline.** `BAND` in records and export; `MY_GRIDSQUARE` at full length. Worth doing with or without the rest. Proof: `host_mock` tests on the writer and parser, and a JS test on `buildAdifRecord`.
-* **A1 — The activation and the log.** The `act_refs` config key, manual reference entry in Settings, `CQ POTA`/`CQ SOTA` from it with the live switch on Operate, the §4.5 fields at log time, and per-reference/per-day export with n-fer expansion. **This meets the top goal.** Proof: host tests on record and expansion. Field check: an unedited export uploads to pota.app (a 2-fer) and to the SOTA database.
-* **A2 — Activation status** (§4.6).
-* **A3 — Plans and extracts on the device, with an offline nearby pick and the grid check** (§4.2, §4.3).
-* **A4 — Offline phone location** (the service-worker `geo.html`) and the ADV GNSS feed (§4.3). Field check: on an iPhone with cellular off, the grid fills from GNSS.
-* **A5 — P2P/S2S capture:** a reference attached to a queue entry, and auto-filled from spots (§4.4).
-* **A6 — The planning UI:** nearby, route, n-fer candidates, scheduling links (§4.7).
+**Order with RFC 0009** (agreed 2026-09-27): 0009 builds each Operate surface for the home case first, and this RFC then adds references to a surface that already exists, so no activation work ships its own screen. The firmware half of A1 does not wait on O1; only its entry in the sheet does.
+
+1. **A0: log baseline.** `BAND` in records and export; `MY_GRIDSQUARE` at full length. Worth doing with or without the rest, and can start at once. Proof: `host_mock` tests on the writer and parser.
+2. **O0:** layout chosen, RFC 0009 accepted.
+3. **O1:** the dock layout, home case: the dock, the CQ row in the queue, and the Station sheet (RFC 0009 §6).
+4. **A1: the activation and the log.** The `act_refs` config key; references entered in the station sheet; `CQ SOTA`/`CQ POTA` from them with the live switch; the §4.5 fields at log time; per-reference and per-day export with n-fer expansion. **The top goal lands here.** Proof: host tests on record and expansion. Field check: an unedited export uploads to pota.app (a 2-fer) and to the SOTA database.
+5. **A2: activation status** (§4.6), as the dock's progress line.
+6. **A4: offline phone location** (the service-worker `geo.html`) and the ADV GNSS feed (§4.3), then the grid check in the sheet. Field check: on an iPhone with cellular off, the grid fills from GNSS.
+7. **A3: the reference store on the sidekick, filled from the map's fetches** (§4.2). Also the map's Save this area, pick mode and offline layer, and the nearby list, search and unverified typed references in the add screen (§4.3; the UI is [RFC 0009](0009-operate-station-surface.md)'s). After this, **a whole activation works offline**.
+8. **A5: P2P/S2S capture:** a partner reference on queue entries, auto-filled from spots, and the "worked on this reference today" cue (§4.4).
+9. **A6: the planning UI:** nearby, route, n-fer candidates, scheduling links (§4.7).
+
+RFC 0009's O2–O6 (radio status, reply feedback, decode sort and filter, per-QSO retries, CQ timeout) do not depend on this RFC and fit wherever they are most wanted.
 
 ## 8. Prior art
 
@@ -194,10 +217,12 @@ Decided by the operator, 2026-09-26:
 3. **No `/P` support.** It is a regional convention, not an FT8 or program requirement: the US never required it, and POTA counts `K1ABC/P` as a different call from `K1ABC`, which complicates P2P matching and dupe counts. Received `/P` calls already decode and log as sent. Reopen if an operator in a jurisdiction that expects it asks.
 4. **The 2026-09-21 SOTA API decision covers bulk `summitslist.csv` downloads** from `storage.sota.org.uk` for planning.
 
+5. **The reference store lives on the sidekick, capped; the active references stay on the main board** (2026-09-27, §4.2). The store is filled from the map's own POTA/SOTA fetches.
+
 Open, to settle during slicing:
 
 * Whether pota.app accepts `FREQ` without `BAND`. Moot once A0 lands, but it decides whether existing logs need re-export.
 * The Port A row's cap on references.
-* The extract radius, and whether a plan may hold several areas (a road trip).
-* Whether switching the CQ prefix rebuilds a CQ already armed for the current slot (§4.4).
-* Free space in the sidekick's `web` partition, if §4.2's choice is ever revisited.
+* The store's cap, and whether areas are named and listed for deletion (proposed: yes, with usage shown).
+* Whether a TX already armed for the current slot picks up a CQ prefix switch (§4.4).
+* The measured free space in the sidekick's `web` partition on a device with the current bundle, which sets the cap (§4.2).
