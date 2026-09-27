@@ -11,7 +11,6 @@ Ship on `origin/main`. Talk through changes before a local commit (see [README.m
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| B84 | Build process: minify webapp HTML/JS | The hand-written `webapp/app/` shipped verbatim onto the sidekick's 1.9 MB `web` partition, and its committed manifest went stale twice. **Built 2026-09-27** ([architecture/webapp.md](architecture/webapp.md), **Build**): `webapp/tools/build.py` writes `webapp/dist/app/`, minified (html-minifier-terser, terser; top-level names kept), build-stamped, manifest from the output, within an 800 KB budget; Pages, CI and `desk_push.py` run it; output and manifest are never committed. 637 KB → 469 KB. **Done-when:** the B84 field check in TEST_PLAN passes. |
 
 
 ## Backlog
