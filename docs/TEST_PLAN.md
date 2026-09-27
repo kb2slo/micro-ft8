@@ -16,6 +16,7 @@ An agent runs these itself before saying work is done. CI runs them too. No hard
 | P4 build | `idf.py -C poe_p4 build`; CI job **PoE-P4 (ESP32-P4)** | The P4 image compiles and links |
 | Sidekick build | `idf.py -C sidekick build`; CI job **Sidekick (ESP32-S3)** | The sidekick compiles and stages into the ADV image |
 | Web bundle manifest | `python3 webapp/tools/gen_manifest.py --check` | `manifest.json` matches every `webapp/app/` file |
+| Webapp decode batching | `node webapp/tests/test_decode_batching.js` | Extracts and runs `app.html`'s own `applyEvent`/`flushDecodeBatch`/`decodeSortCmp` — a poll response spanning more than one real FT8 slot renders as separate batches, not merged into one |
 | README audit | CI job **README audit** (PRs) | A removed `UIMode` enumerator or a changed key binding under `main/` must touch `README.md` |
 | Decode benchmark | `test_apps/decode_bench/README.md`. Local only; the device half needs a board on USB | Decode time per configuration against the 2.36 s guard; host and device decode the same messages |
 

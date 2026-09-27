@@ -2115,6 +2115,30 @@ function renderDecodes() {
 
 var evSeq = 0;
 var pendingDecodes = []; // scratch: this poll's new decodes, sorted then merged in
+// Slot parity (SLOT_STATE's `sp`, flips once per real 15s FT8 slot,
+// independent of the host clock) that pendingDecodes currently belongs to --
+// lets a poll response spanning more than one real slot (a lagging or
+// backgrounded tab catching up several ring events at once) still render as
+// separate batches instead of one merged list, which read as the same
+// decode appearing twice with different SNRs (2026-09-26).
+var pendingDecodesSp = null;
+
+function flushDecodeBatch() {
+  if (!pendingDecodes.length) return;
+  pendingDecodes.sort(decodeSortCmp);
+  pendingDecodes.ts = Date.now();
+  // Captured per-slot, not read fresh at render time -- a band change
+  // mid-session must not relabel older slots with the new band. Both
+  // are plain CONFIG keys (main.cpp's porta_host_config_snapshot()),
+  // relayed through as JSON strings verbatim.
+  pendingDecodes.band = lastCfg.band_name || '';
+  pendingDecodes.freqKhz = lastCfg.freq_khz || '';
+  decodeSlots.unshift(pendingDecodes);
+  if (decodeSlots.length > DECODE_SLOTS_MAX) decodeSlots.length = DECODE_SLOTS_MAX;
+  recordDecodeBatch(pendingDecodes.length);
+  pendingDecodes = [];
+  pendingDecodesSp = null;
+}
 
 // USB_STATUS's `kind` is UsbCKind's own wire value (usb_c_presence.h):
 // 0=QmxQdx, 1=EspressifRom (the sidekick, mid its own flash workflow),
@@ -2131,6 +2155,11 @@ function fmtUsbDevice(kind, vid, pid) {
 
 function applyEvent(e) {
   if (e.d === 1) {
+    var sp = slotState ? slotState.sp : null;
+    if (pendingDecodes.length && sp !== null && sp !== pendingDecodesSp) {
+      flushDecodeBatch(); // this decode is from a later real slot than the open batch
+    }
+    pendingDecodesSp = sp;
     pendingDecodes.push({ id: e.id, dt: e.dt, hz: e.hz, snr: e.snr, x: e.x,
                           me: !!e.me, cq: !!e.cq, rq: !!e.rq });
     learnCallsignGrid(e.x); // opportunistic, regardless of who this was addressed to
@@ -2166,22 +2195,12 @@ async function pollEvents() {
     var j = await r.json();
     var gotEvents = j.events && j.events.length;
     if (gotEvents) {
-      pendingDecodes = [];
       j.events.forEach(applyEvent);
       rebuildQueueOrderFromEvents(j.events);
-      if (pendingDecodes.length) {
-        pendingDecodes.sort(decodeSortCmp);
-        pendingDecodes.ts = Date.now();
-        // Captured per-slot, not read fresh at render time -- a band change
-        // mid-session must not relabel older slots with the new band. Both
-        // are plain CONFIG keys (main.cpp's porta_host_config_snapshot()),
-        // relayed through as JSON strings verbatim.
-        pendingDecodes.band = lastCfg.band_name || '';
-        pendingDecodes.freqKhz = lastCfg.freq_khz || '';
-        decodeSlots.unshift(pendingDecodes);
-        if (decodeSlots.length > DECODE_SLOTS_MAX) decodeSlots.length = DECODE_SLOTS_MAX;
-        recordDecodeBatch(pendingDecodes.length);
-      }
+      // Whatever's accumulated so far this tick, same as before -- a decode
+      // still shows up within a poll of being decoded. applyEvent() already
+      // flushed early if this poll's events crossed a real slot boundary.
+      flushDecodeBatch();
       renderDecodes();
       renderBeacon();
       renderTxHud();

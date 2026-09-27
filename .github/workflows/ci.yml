@@ -122,6 +122,12 @@ jobs:
       - name: Web bundle manifest matches assets
         run: python3 webapp/tools/gen_manifest.py --check
 
+      # Extracts and runs the real batching functions out of app.html (no
+      # separate re-implementation to drift from the source) -- see the
+      # test's own header comment.
+      - name: Webapp decode-batching test
+        run: node webapp/tests/test_decode_batching.js
+
       - name: Autoseq host_mock
         working-directory: host_mock
         run: |
