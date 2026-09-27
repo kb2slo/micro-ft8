@@ -1,6 +1,6 @@
 # RFC 0008: Activator mode — POTA and SOTA from the field
 
-* **Status:** Draft 2026-09-26
+* **Status:** Accepted 2026-09-27 (drafted 2026-09-26). Slices: §7. Decisions and deferred questions: §9.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** the activation as an object the station knows about; where it lives so an activation runs with no internet; what goes on the air; what the log records and how it is exported for pota.app and the SOTA database; choosing a nearby reference and checking the grid offline; planning activations while online; where spotting fits.
 * **Does not cover:** how any of it looks on Operate ([RFC 0009](0009-operate-station-surface.md): this RFC supplies the data, 0009 the surface), hunter mode (§6), programs other than POTA and SOTA (§6), log editing and the on-device storage format ([ROADMAP.md](../ROADMAP.md) I31, I32).
@@ -177,13 +177,13 @@ Not part of this design; each gets a row or an RFC when wanted.
 
 ## 7. Slices
 
-Proposed. Rows are created when the RFC is accepted.
+Accepted 2026-09-27. The slices stay listed here, under row I18, until each is next; then it becomes its own row.
 
 **Order with RFC 0009** (agreed 2026-09-27): 0009 builds each Operate surface for the home case first, and this RFC then adds references to a surface that already exists, so no activation work ships its own screen. The firmware half of A1 does not wait on O1; only its entry in the sheet does.
 
 1. **A0: log baseline.** `BAND` in records and export; `MY_GRIDSQUARE` at full length. Worth doing with or without the rest, and can start at once. Proof: `host_mock` tests on the writer and parser.
-2. **O0:** layout chosen, RFC 0009 accepted.
-3. **O1:** the dock layout, home case: the dock, the CQ row in the queue, and the Station sheet (RFC 0009 §6).
+2. **O0:** done 2026-09-27; RFC 0009 accepted.
+3. **O1:** the dock layout, home case, in three pieces: the CQ row, the dock, and the Station sheet (RFC 0009 §6).
 4. **A1: the activation and the log.** The `act_refs` config key; references entered in the station sheet; `CQ SOTA`/`CQ POTA` from them with the live switch; the §4.5 fields at log time; per-reference and per-day export with n-fer expansion. **The top goal lands here.** Proof: host tests on record and expansion. Field check: an unedited export uploads to pota.app (a 2-fer) and to the SOTA database.
 5. **A2: activation status** (§4.6), as the dock's progress line.
 6. **A4: offline phone location** (the service-worker `geo.html`) and the ADV GNSS feed (§4.3), then the grid check in the sheet. Field check: on an iPhone with cellular off, the grid fills from GNSS.
@@ -219,10 +219,10 @@ Decided by the operator, 2026-09-26:
 
 5. **The reference store lives on the sidekick, capped; the active references stay on the main board** (2026-09-27, §4.2). The store is filled from the map's own POTA/SOTA fetches.
 
-Open, to settle during slicing:
+Open, deferred at acceptance (2026-09-27) to the slice that needs each:
 
-* Whether pota.app accepts `FREQ` without `BAND`. Moot once A0 lands, but it decides whether existing logs need re-export.
-* The Port A row's cap on references.
-* The store's cap, and whether areas are named and listed for deletion (proposed: yes, with usage shown).
-* Whether a TX already armed for the current slot picks up a CQ prefix switch (§4.4).
-* The measured free space in the sidekick's `web` partition on a device with the current bundle, which sets the cap (§4.2).
+* **A0:** whether pota.app accepts `FREQ` without `BAND`. Moot once A0 lands, but it decides whether existing logs need re-export.
+* **A1:** the Port A row's cap on references.
+* **A1:** whether a TX already armed for the current slot picks up a CQ prefix switch (§4.4).
+* **A3:** the store's cap, and whether areas are named and listed for deletion (proposed: yes, with usage shown).
+* **A3:** the measured free space in the sidekick's `web` partition on a device with the current bundle, which sets the cap (§4.2). The web build's 800 KB budget assumes a 256 KB cap ([webapp.md](../architecture/webapp.md), **Build**).

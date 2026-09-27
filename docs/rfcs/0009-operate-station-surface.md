@@ -1,6 +1,6 @@
 # RFC 0009: Operate — one station surface, home or activation
 
-* **Status:** Draft 2026-09-27. Layout chosen: the dock layout (§3.2).
+* **Status:** Accepted 2026-09-27. Decisions: §7. Build order and the O1 build notes: §6.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:**
   - the Operate view's layout, and a CQ row in the queue;
@@ -55,7 +55,7 @@ Each fact is from the code at `3777f3c` plus the working-tree fix in §2.1.
   - Parks and summits draw identically (hollow green circles), at most 40 spread evenly across the view.
   - A tap opens a popup with name, reference, distance and a link to the official page.
   - Deep links: `?grid=` and `?lat=&lon=`.
-* **Contrast.** CQ decode text is `#00c800` on white (`--good-hot`), about 2.3:1, which fails WCAG's 4.5:1.
+* **Contrast.** CQ decode text is `#00c800` on white (`--good-hot`), about 2.3:1, which fails WCAG's 4.5:1. Fixed in O1a (§6.1).
 * **The P4 transmits "silently" when CAT is down.** If `radio_control_ready()` is false when a slot starts, `tx_start()` still marks TX active and runs the whole slot without keying the radio (`poe_p4/main/tx_scheduler.cpp:217`, `:245`). At the end it calls `autoseq_mark_sent()` (`:283`), so the try is counted and the HUD shows "Transmitting" with no power reading. The ADV has not been checked. Row `t7xf`.
 
 ### 2.1 Settings writes, fixed with this draft
@@ -106,7 +106,7 @@ Top to bottom:
 * **Settings ›** and a tap on the CQ text open the Station sheet (§3.5).
 * **It replaces today's CQ / CALLING entry and its ×**, since Off does that job.
 * **Never tap-to-cycle.** Off → Even → Odd on one button would key the transmitter on a stray tap.
-* **Stop while calling CQ turns CQ off.** This is proposed, and a change from today, where Cancel TX leaves the beacon on and the next CQ goes out a cycle later.
+* **Stop while calling CQ turns CQ off** (decided 2026-09-27). Today Cancel TX leaves the beacon on, and the next CQ goes out a cycle later.
   - The HUD's button reads **Stop CQ** during our CQ, and **Stop TX** during a QSO message, where it stops only that transmission.
   - The CQ row stays reachable under the HUD (§3.12).
 
@@ -135,8 +135,9 @@ Opened from the CQ row's **Settings ›** and the dock's **Station ›**. Each c
 1. **Calling CQ**, first:
    - A **Sends** preview of the exact message.
    - **Type:** CQ, SOTA, POTA, QRP, FD, Free text (the existing `cq_type` values).
-     - Free text shows a 13-character field.
-     - FD shows a class-and-section field. Confirm the key before building: FD currently passes `free_text` to autoseq (`main/main.cpp:2620`).
+     - Free text shows a "CQ message" field, up to 13 characters.
+     - FD shows an "FD exchange" field, for class and section.
+     - **Both write `free_text`** (decided 2026-09-27). It is what both boards send for a Free text CQ and as the FD exchange (`main/main.cpp:2621`, `poe_p4/main/porta_host_stubs.cpp:66`), and what the ADV logs as our Field Day exchange. Settings' "CQ / exchange text" (`cq_ft`) never reaches the air, so it leaves the web app, and row `sfwz` retires the key. The two types share the key, so after a switch the field shows the other type's text before a CQ goes out.
    - **Grid:** with Locate, a format check, and the grid check against the references and the phone's fix (RFC 0008 §4.3). A note says the CQ carries the first four characters.
    - **CQ timeout:** turn CQ off if nobody answers for Never / 10 / 30 / 60 minutes (§3.6).
 2. **QSOs:** retries per message, and TX offset.
@@ -150,7 +151,7 @@ Opened from the CQ row's **Settings ›** and the dock's **Station ›**. Each c
 * **Behaviour.** No such setting exists today. CQ turns itself off after N minutes of calling with no answer; the clock restarts whenever someone answers.
 * **It runs on the main board, not in the browser.** The phone may sleep while CQ keeps going out, so a browser timer would silently fail.
 * **Build:** a new Station key and a timer beside the beacon, with a host test of the timer logic, and the status line on the CQ row.
-* **Proposed default: Never**, so existing behaviour does not change unless the operator chooses a timeout.
+* **Default: Never** (decided 2026-09-27), so existing behaviour does not change unless the operator chooses a timeout.
 
 ### 3.7 Radio status replaces Connect
 
@@ -186,6 +187,7 @@ The radio chip shows one of five states (Redesign canvas: `Radio status`, and th
 Redesign canvas: `Decode sort and filter`, interactive. On Operate the controls sit in the Decodes header.
 
 * **Sort:** Newest (today's order), Strongest (SNR), Nearest (distance). A decode with no known grid sorts after those with one.
+* **Sorting applies within each slot, and slots stay newest first** (decided 2026-09-27). The 15 s rhythm stays visible, and replies go to the newest slot anyway.
 * **Show only:** CQ, New, POTA / SOTA, under a distance. Filters combine.
 * **Messages addressed to the operator always stay on top**, and are never filtered out.
 * **The choice is remembered per browser** (`localStorage`: a per-viewer convenience).
@@ -234,6 +236,7 @@ Redesign canvas: `Per-QSO retries`, interactive.
   - The retry count on a queue row is a button. It opens a stepper for that QSO: "Tries at each step".
   - An overridden entry reads `· custom` and offers "Use station default".
   - Only active QSO entries have the control.
+  - **The range is 1–20** (decided 2026-09-27). Raising the count on a parked entry does not revive it; reviving is a separate action.
 * **Mechanics:**
   - `QsoContext` gains an override, with 0 meaning "follow the default". `set_state()` uses the override when set.
   - `autoseq_set_max_retry()` skips overridden entries, which also keeps the ADV's sync on every config write (§2.1) from clobbering them.
@@ -249,7 +252,7 @@ Redesign canvas: `Per-QSO retries`, interactive.
 Dock Options canvas: the chosen page's transmitting board. Redesign canvas: `TX HUD states`, interactive.
 
 * **Today** (`renderTxHud()`, `app.html:1818`):
-  - A red band under the header: "Transmitting", the message, then power, SWR and battery (the ADV only; the P4 reports -1), and **Cancel TX**.
+  - A red band under the header: "Transmitting", the message, then power and SWR (both boards poll the QMX), battery (the ADV only; the P4 sends -1), and **Cancel TX**.
   - An abort (the ADV's low battery) turns it amber with the reason.
   - On the ADV, "WRITE BLOCKED" replaces the meter when the battery is too low to write storage.
   - Tune shows as `TUNE` (`porta_host_stubs.cpp:303`).
@@ -261,17 +264,16 @@ Dock Options canvas: the chosen page's transmitting board. Redesign canvas: `TX 
   - For Tune, large power and SWR readings.
   - **Stop CQ / Stop TX** (§3.3).
 * **New states:**
-  - **High SWR:** above 3.0, amber advice to check the antenna. The threshold is a guess to confirm on the bench.
   - **Not keyed:** CAT was not ready when the slot started. The message is struck through and "not counted" is shown (row `t7xf`).
   - **Log blocked** replaces "WRITE BLOCKED" with what it means: QSOs completed now will not be saved.
 
 ### 3.13 Reply feedback
 
-Redesign canvas: `Reply feedback`, interactive.
+Redesign canvas: `Reply feedback`, interactive. The feedback is on the Reply button and in the queue, not in a dialog (decided 2026-09-27).
 
-* **Tap Reply:** the button locks at once ("Sending…"), and a dashed placeholder appears in the queue.
-* **`QUEUE_ENTRY` for that call arrives:** the placeholder becomes the real entry.
-* **The POST is refused, or no entry arrives within a timeout:** the placeholder goes, and the reason shows on the decode row with a Retry button.
+* **Tap Reply:** the button locks at once and reads "Sending…". The sidekick holds the POST until the main board accepts or refuses (`post_queue_reply()`, `sidekick/main/host_link.c:795`), so the answer takes about a second.
+* **Accepted:** the button reads "Queued ✓", and a dashed placeholder for that call appears in the queue. When a `QUEUE_ENTRY` for the same call arrives, the placeholder becomes the real entry. Matching on the call needs no protocol change. If the call is already queued, that row is highlighted instead.
+* **Refused, or no entry within 10 s:** the placeholder goes, and the reason shows on the decode row with a Retry button.
 
 ## 4. Rejected alternatives
 
@@ -283,6 +285,8 @@ Redesign canvas: `Reply feedback`, interactive.
 * **CQ controls in the dock** (the dock layout's first version) and **a separate CQ settings sheet.** CQ's status belongs with the queue it waits on, and two sheets split one set of settings.
 * **Keeping Connect as a button.** Autodetect and the P4's sync on CAT open already do its job; a manual retune survives behind the radio chip.
 * **A Save button for Operate controls.** Mid-QSO a control should take effect when touched, and batching is what caused §2.1.
+* **A dialog confirming a reply was taken.** It needs a tap to dismiss on a 15 s clock and covers the decodes, while the Reply button is where the operator is already looking (§3.13).
+* **A high-SWR warning in the TX HUD** (dropped 2026-09-27). The QMX protects itself, and a browser warning adds nothing to that. The HUD still shows the SWR reading.
 
 ## 5. Later phases
 
@@ -295,18 +299,15 @@ Redesign canvas: `Reply feedback`, interactive.
 
 ## 6. Slices
 
-Proposed. Rows are created when the RFC is accepted. The combined order with RFC 0008 is RFC 0008 §7.
+O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); they are the Now rows. The later slices stay listed here, under row `s6qk`, until each is next. The combined order with RFC 0008 is RFC 0008 §7.
 
-* **O0:** accept this RFC. The layout is decided (§3.2).
-* **O1: the dock layout, home case.**
-  - The dock: band grid, frequency editor, Station link.
-  - The CQ row in the queue, and the Station sheet's Calling CQ and QSOs sections, with per-key writes.
-  - Web app only, on existing keys.
-  - **Proof:** behaviour on a bench station; there is no JS test harness yet.
+* **O1a: the CQ row** (§3.3). Row `sc6b`.
+* **O1b: the dock** (§3.4). Row `q8sm`.
+* **O1c: the Station sheet** (§3.5). Row `cuca`.
 * **O2: radio status replaces Connect, the read-back, and the TX HUD** (§3.7, §3.12).
   - Web app; the `IF;` read-back operation, its parser test and its Port A message; the ADV's attach-time host start (`ADV-only`).
   - **Field check:** unplug and replug the QMX. The chip walks No radio, Found, Ready, and the VFO lands on the selected band with nothing pressed. Then Tune from the chip's panel shows power and SWR there and in the HUD, and Stop in the HUD ends it.
-* **O3: reply feedback** (§3.13).
+* **O3: reply feedback** (§3.13). Web app only.
 * **O4: decode sort and filter** (§3.8).
 * **O5: per-QSO retries** (§3.11).
   - The autoseq override with host tests, the Port A request, the sidekick route, and the queue-row stepper.
@@ -317,11 +318,72 @@ Proposed. Rows are created when the RFC is accepted. The combined order with RFC
 * **The Activation section and the add screen ship with RFC 0008's slices:**
   - A1 brings typed references.
   - A3 brings the store, the nearby list and search, and the map's pick mode.
-* **O7, later:** auto-reply (§5).
+* **O7, later:** auto-reply (§5), row `r2bu`.
 
-## 7. Decisions and Ask
+### 6.1 O1 build notes
 
-**Decided 2026-09-27:**
+Decided 2026-09-27. What building O1 needs beyond §3.2–3.5.
+
+**For all three pieces**
+
+* The web app is `webapp/app/app.html`; read [webapp.md](../architecture/webapp.md) first. The mockups are a visual reference only: use the app's own classes and theme tokens, and keep decode rows exactly as they are (§3.2).
+* **Each control writes its own key** with `putConfigLine()` (one `key=value` PUT). The result shows through `setMsg()`, which both Operate and Settings display. A refusal also reloads that control from the station.
+* **Until O2 ships,** Connect and Tune stay where they are, and "what the radio reports" (§3.4) is not shown: only what was sent.
+* **Proof before the bench:**
+  - `python3 webapp/tools/build.py` and `node webapp/tests/test_decode_batching.js`;
+  - the page in `tools/serve_webapp_local.py` (the sources, then `--dist`) at 375 px, light and dark, with the sidekick stubbed from the browser console: `fetch` answering `GET /api/config` with a real config, and `MicroFT8Pairing.getToken` and `authFetch` answering the writes, including a refusal;
+  - there is no JS test harness, so each piece then adds a bench check to [TEST_PLAN.md](../TEST_PLAN.md) Pending.
+* **Each piece graduates its sections** into webapp.md in its own commit ([README.md](../README.md), **RFC lifecycle**).
+
+**O1a: the CQ row** (§3.3)
+
+* It replaces the beacon row (`beaconCqName`, `beaconSel`) and the queue's CQ entry (`dxcall` `CQ`, with its ×).
+* **Off | Even | Odd** posts `/api/beacon` with 0, 1 or 2, as `beaconSel` does today. The current mode is `SLOT_STATE`'s `bm` (`renderBeacon()`).
+* **The Sends text** follows autoseq's `generate_cq_text_into()` (`components/autoseq/autoseq.cpp`): `CQ`, `CQ SOTA`, `CQ POTA`, `CQ QRP` or `CQ FD`, then the call and the grid's first four characters. For Free text it is `free_text` as it stands.
+* **The status line:** "Calling · Even slots" when CQ is on and no QSO entry is active; "Waits for the queue · Even" when one is; "Off".
+* **Settings ›** opens Settings until O1c, then the Station sheet.
+* **Stop during our CQ turns CQ off** (§3.3). While the TX HUD shows our CQ, its button reads **Stop CQ** and posts `/api/tx/cancel`, then beacon Off. During a QSO message it reads **Stop TX** and only cancels.
+* **The CQ decode colour** (§2): the light theme's `--good-hot` becomes a green with at least 4.5:1 contrast on the page background, for example `#007a00`. The dark themes keep `#4ade80`.
+
+**O1b: the dock** (§3.4)
+
+* It replaces Operate's band select (`opBandSel`). A band change keeps `changeBand()`'s confirmation and cancels.
+* The band grid shows `active_bands`.
+* **The frequency editor:**
+  - A typed value under 1000 is MHz, otherwise kHz, kept to 0.1 kHz (the station file already stores tenths).
+  - It writes the band's own key: `band<N>`, or `ft4_band<N>` when `protocol_mode` is FT4, as Settings' band rows do today. **Standard** writes the app's default for that band.
+  - A value in another active band writes that band's key, then `band_sel`.
+  - Mid-QSO, both ask first, as `changeBand()` does.
+* **Band edges,** in kHz: Region 2's amateur allocations (ITU Radio Regulations, Article 5). A sanity check, not a licence check. 60 m is one range spanning the US channels and the WRC-15 allocation.
+
+  | Band | 160 | 80 | 60 | 40 | 30 | 20 | 17 | 15 | 12 | 10 | 6 | 2 |
+  |---|---|---|---|---|---|---|---|---|---|---|---|---|
+  | From | 1800 | 3500 | 5330 | 7000 | 10100 | 14000 | 18068 | 21000 | 24890 | 28000 | 50000 | 144000 |
+  | To | 2000 | 4000 | 5407 | 7300 | 10150 | 14350 | 18168 | 21450 | 24990 | 29700 | 54000 | 148000 |
+
+* **Firmware: a frequency that does not reach the radio is refused** (decided 2026-09-27).
+  - Today only `band_sel` reports a VFO sync miss. A write to the operating band's own frequency key is saved and reported as success (`main/main.cpp:3972`, `poe_p4/main/porta_host_stubs.cpp:394`).
+  - Add a function to `main/storage/station.cpp`, host-tested in `host_mock`: does this key name the band being operated (`band_sel`, or that band's `band<N>` or `ft4_band<N>` for the active protocol)?
+  - Both boards call it where they now test for `band_sel`, and refuse with "frequency saved, VFO not moved (TX active)" or "… (CAT not ready)". `main.cpp` may only shrink ([STYLE.md](../STYLE.md)).
+* **The dock's second line,** "Retries 5 · 1500 Hz · Station ›", opens Settings until O1c, then the Station sheet.
+* **Settings loses** `band_sel` and the per-band frequency rows, and keeps `active_bands`. Its Save stops sending those keys, which also ends the mid-TX `band_sel` refusal on every Settings save (§2.1).
+
+**O1c: the Station sheet** (§3.5)
+
+* A sheet over Operate, opened from the CQ row's **Settings ›** and the dock's **Station ›**.
+* **Calling CQ:**
+  - the Sends preview, as in O1a;
+  - Type (`cq_type`, 0–5: CQ, SOTA, POTA, QRP, FD, Free text);
+  - one text field, shown only for the types that send it, writing `free_text` (§3.5);
+  - Grid (`grid`), with Locate (the existing `geo.html` handoff) and a format check.
+* **QSOs:** retries (`autoseq_max_retry`) and TX offset (`offset`, `offset_src`), with today's validation.
+* **Footer:** the call, read-only.
+* **Not in O1c:** CQ timeout (O6), Activation (RFC 0008 A1 and A3), and the grid check against references (A4).
+* **Settings loses** `cq_type`, `cq_ft`, `free_text`, `grid`, `autoseq_max_retry`, `offset` and `offset_src`, and its Save stops sending them. An all-keys save would otherwise overwrite the sheet's writes with stale values (§2.1). `cq_ft` goes outright, since it never reaches the air (§3.5). The call stays in Settings.
+
+## 7. Decisions
+
+**2026-09-27, before acceptance:**
 
 * The dock layout (§3.2).
 * Band and frequency are a primary Operate control, with a typed frequency, and a second band row beyond seven (§3.4).
@@ -330,12 +392,17 @@ Proposed. Rows are created when the RFC is accepted. The combined order with RFC
 * The radio is read back on panel open and after each sync (§3.7).
 * The map popup always offers **Add to activation** (§3.9).
 
-**Ask:**
+**2026-09-27, at acceptance:**
 
-1. **Decode sort (§3.8):** flatten across slots, or sort within each slot? Flattening reads better for "who is strongest right now"; per-slot keeps the 15 s rhythm visible.
-2. **Reply ACK (§3.13):** carry the new `entry_id` (a Port A payload change, `PORTA_PROTO_VERSION` bump), or match on callsign?
-3. **The CQ decode colour (§2):** fix the contrast now, or with O1?
-4. **Per-QSO retries (§3.11):** what range, for example 1–20? Should raising the count on a parked entry revive it? (Recommendation: no. Reviving is a separate action.)
-5. **High-SWR warning (§3.12):** is 3.0 the right threshold for the QMX, and should it hold the next TX or only warn? (Recommendation: only warn.)
-6. **Stop CQ (§3.3):** should stopping our CQ transmission also turn CQ off? (Recommendation: yes.)
-7. **CQ timeout default (§3.6):** Never, or a value? (Recommendation: Never.)
+* Decodes sort within each slot, and slots stay newest first (§3.8).
+* Reply feedback is on the Reply button and in the queue, matched by call, with no dialog and no protocol change (§3.13).
+* The CQ decode colour is fixed in O1a (§6.1).
+* Per-QSO retries run 1–20, and raising the count on a parked entry does not revive it (§3.11).
+* No high-SWR warning (§4).
+* Stop during our CQ turns CQ off (§3.3).
+* The CQ timeout defaults to Never (§3.6).
+* The main board refuses a frequency that does not reach the radio (§6.1).
+* Connect and Tune stay until O2 (§6.1).
+* The CQ text field writes `free_text`; `cq_ft` leaves the web app, and row `sfwz` retires it (§3.5).
+* The Station sheet's keys, band and frequency leave Settings, and its Save stops sending them (§6.1).
+* O1 ships as three pieces, O1a to O1c (§6).
