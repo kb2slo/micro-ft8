@@ -115,12 +115,14 @@ jobs:
         with:
           submodules: true
 
-      # The web bundle manifest pins every webapp/app/ file's SHA-256, so any
-      # edit there -- a comment included -- must regenerate it. pages.yml runs
-      # the same check but only when a deploy is attempted; this fails on the
-      # first push instead (docs/README.md, Operating notes).
-      - name: Web bundle manifest matches assets
-        run: python3 webapp/tools/gen_manifest.py --check
+      # The same build pages.yml deploys (docs/architecture/webapp.md
+      # (Build)): minify, compile-check every script, write the manifest,
+      # hold the size budget. pages.yml only runs when a deploy is
+      # attempted; this fails on the first push instead.
+      - name: Web bundle build
+        run: |
+          npm ci --prefix webapp/tools
+          python3 webapp/tools/build.py
 
       # Extracts and runs the real batching functions out of app.html (no
       # separate re-implementation to drift from the source) -- see the

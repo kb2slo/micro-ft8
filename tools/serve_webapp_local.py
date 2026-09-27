@@ -6,6 +6,9 @@ Bins/manifest are not in git; this proxies them from the live R2 mirror.
 
   python3 tools/serve_webapp_local.py
   open http://127.0.0.1:8787/downloads.html
+
+  python3 tools/serve_webapp_local.py --dist   # /app/ from the built bundle
+    (run python3 webapp/tools/build.py first; docs/architecture/webapp.md, Build)
 """
 from __future__ import annotations
 
@@ -16,13 +19,34 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 ROOT = Path(__file__).resolve().parents[1] / "webapp"
+DIST_APP = ROOT / "dist" / "app"
+# The sidekick serves /pairing.js from its bootstrap, not from the bundle
+# (docs/architecture/system.md, Who may key the transmitter); serve the same
+# file here so the app's script runs past its pairing calls.
+PAIRING_JS = ROOT.parent / "sidekick" / "main" / "web" / "pairing.js"
+SERVE_DIST = False  # set by --dist
 UPSTREAM_HOST = "micro-ft8.kalikstein.com"
 PORT = 8787
 
 
 class Handler(SimpleHTTPRequestHandler):
+    # The sidekick sends these with charset=utf-8 (sidekick/main/web_fs.c) and
+    # the pages carry no <meta charset>, so say the same here or "·" renders as "Â·".
+    extensions_map = {**SimpleHTTPRequestHandler.extensions_map,
+                      ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8"}
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
+
+    def translate_path(self, path: str) -> str:
+        if urlparse(path).path == "/pairing.js":
+            return str(PAIRING_JS)
+        # --dist: /app/ comes from the built bundle, everything else from webapp/.
+        if SERVE_DIST:
+            rel = urlparse(path).path
+            if rel.startswith("/app/"):
+                return str(DIST_APP / unquote(rel[len("/app/"):]))
+        return super().translate_path(path)
 
     def log_message(self, fmt: str, *args) -> None:
         print("[%s] %s" % (self.log_date_time_string(), fmt % args))
@@ -66,10 +90,18 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 def main() -> None:
+    global SERVE_DIST
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Local preview of webapp/.")
+    ap.add_argument("--dist", action="store_true", help="serve /app/ from webapp/dist/app (the built bundle)")
+    SERVE_DIST = ap.parse_args().dist
     if not ROOT.is_dir():
         raise SystemExit(f"missing {ROOT}")
+    if SERVE_DIST and not (DIST_APP / "app.html").is_file():
+        raise SystemExit(f"missing {DIST_APP}; run: python3 webapp/tools/build.py")
     httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    print(f"Serving {ROOT}")
+    print(f"Serving {ROOT}" + (f" (/app/ from {DIST_APP})" if SERVE_DIST else ""))
     print(f"  http://127.0.0.1:{PORT}/downloads.html")
     print(f"  /download/* → https://{UPSTREAM_HOST}/download/*")
     print("Ctrl-C to stop.")

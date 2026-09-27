@@ -1,0 +1,10 @@
+{
+  "name": "micro-ft8-webapp-build",
+  "private": true,
+  "description": "Minifier for the web app bundle, run by webapp/tools/build.py (docs/architecture/webapp.md, Build). Install with: npm ci --prefix webapp/tools",
+  "type": "module",
+  "devDependencies": {
+    "html-minifier-terser": "7.2.0",
+    "terser": "5.51.2"
+  }
+}

@@ -224,11 +224,12 @@ every agent and every operator can see them — see "Memory lives in this repo" 
   (2026-09-18) looked like a library bug but was our port running UAC open/start on the same task as the USB
   event pump. Stated 2026-09-18.
 
-- **After any edit under `webapp/app/`, regenerate the bundle manifest** — `python3 webapp/tools/gen_manifest.py`
-  — and commit `manifest.json` with the edit. The manifest pins each file's SHA-256, so even a comment-only
-  change invalidates it; the sidekick verifies those digests on install. CI's Host tests job and the Pages
-  deploy both run `--check` and fail otherwise. Found 2026-09-25, when a citation repoint left Pages unable to
-  deploy.
+- **`webapp/app/` is source; what ships is its build** (`python3 webapp/tools/build.py`, after
+  `npm ci --prefix webapp/tools` once per clone): minified into `webapp/dist/app/`, manifest written from the
+  output, size budget checked ([architecture/webapp.md](architecture/webapp.md), **Build**). Never commit a
+  manifest or build output; both are ignored. Pages, CI's Host tests and `desk_push.py` each build, so an edit
+  under `webapp/app/` needs no extra step. Before pushing one, run the build locally: it is the check CI runs.
+  The committed manifest this replaced went stale on 2026-09-25 and again 2026-09-27, failing Pages both times.
 
 - **Assume another agent may be in this worktree.** The operator sometimes runs a second Claude Code session
   on the same checkout. One worktree means one index, so a concurrent `git add -A` can sweep up files another

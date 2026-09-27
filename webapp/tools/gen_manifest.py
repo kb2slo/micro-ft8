@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Generate webapp/app/manifest.json from sibling files (docs/architecture/sidekick.md (Installing the app bundle)).
+"""Write manifest.json for a built web bundle (docs/architecture/sidekick.md (Installing the app bundle)).
 
-Usage:
-  python3 webapp/tools/gen_manifest.py          # write manifest.json
-  python3 webapp/tools/gen_manifest.py --check  # exit 1 if committed file drifts
+The manifest is part of the build's output, never committed: webapp/tools/build.py
+calls write() on webapp/dist/app as its last step, so the digests always match
+the exact bytes that ship.
+
+Usage (normally via build.py):
+  python3 webapp/tools/gen_manifest.py webapp/dist/app
 """
 
 from __future__ import annotations
@@ -11,19 +14,16 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import sys
 from pathlib import Path
 
 API_MIN = 1
-ROOT = Path(__file__).resolve().parents[1] / "app"
-MANIFEST = ROOT / "manifest.json"
-SKIP = {"manifest.json"}
+MANIFEST_NAME = "manifest.json"
 
 
-def assets() -> list[dict]:
+def assets(root: Path) -> list[dict]:
     out = []
-    for path in sorted(ROOT.iterdir()):
-        if not path.is_file() or path.name in SKIP or path.name.startswith("."):
+    for path in sorted(root.iterdir()):
+        if not path.is_file() or path.name == MANIFEST_NAME or path.name.startswith("."):
             continue
         data = path.read_bytes()
         out.append(
@@ -34,31 +34,26 @@ def assets() -> list[dict]:
             }
         )
     if not out:
-        raise SystemExit(f"no assets under {ROOT}")
+        raise SystemExit(f"no assets under {root}")
     return out
 
 
-def build() -> dict:
-    return {"api_min": API_MIN, "assets": assets()}
+def build(root: Path) -> dict:
+    return {"api_min": API_MIN, "assets": assets(root)}
+
+
+def write(root: Path) -> dict:
+    doc = build(root)
+    (root / MANIFEST_NAME).write_text(json.dumps(doc, indent=2) + "\n")
+    return doc
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--check", action="store_true")
+    ap.add_argument("root", type=Path, help="bundle directory, e.g. webapp/dist/app")
     args = ap.parse_args()
-    doc = build()
-    text = json.dumps(doc, indent=2) + "\n"
-    if args.check:
-        if not MANIFEST.is_file():
-            print(f"missing {MANIFEST}", file=sys.stderr)
-            return 1
-        if MANIFEST.read_text() != text:
-            print(f"{MANIFEST} is stale; run: python3 webapp/tools/gen_manifest.py", file=sys.stderr)
-            return 1
-        print("manifest ok")
-        return 0
-    MANIFEST.write_text(text)
-    print(f"wrote {MANIFEST} ({len(doc['assets'])} assets)")
+    doc = write(args.root)
+    print(f"wrote {args.root / MANIFEST_NAME} ({len(doc['assets'])} assets)")
     return 0
 
 

@@ -688,6 +688,12 @@ function fnv1a(bytes) {
 // gap above, but the "same bytes in, same hash out" property is what makes
 // this a useful A/B against desk_push.py's own printed hash.
 var loadedAppHash = null;
+// webapp/tools/build.py replaces this with "<git sha>[-dirty] <UTC date>";
+// the unbuilt source (a local preview) keeps the placeholder and shows "source".
+var APP_BUILD = '__APP_BUILD__';
+function appBuildLabel() {
+  return APP_BUILD.indexOf('__') === 0 ? 'source' : APP_BUILD;
+}
 async function computeAppVersion() {
   try {
     var r = await fetch(location.pathname, { cache: 'no-store' });
@@ -695,7 +701,7 @@ async function computeAppVersion() {
     var bytes = new TextEncoder().encode(text);
     loadedAppHash = fnv1a(bytes);
     document.getElementById('appVersion').textContent =
-      loadedAppHash + ' · ' + bytes.length + ' B';
+      appBuildLabel() + ' · ' + loadedAppHash + ' · ' + bytes.length + ' B';
   } catch (e) {
     document.getElementById('appVersion').textContent = 'unknown';
   }

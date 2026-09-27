@@ -89,3 +89,10 @@ webapp/tools/.sidekick_token
 # of git.
 webapp/node_modules/
 webapp/.wrangler/
+
+# The web app build (webapp/tools/build.py, docs/architecture/webapp.md
+# (Build)): its minifier's packages, its output, and the manifest, which is
+# written from the output and so is never committed.
+webapp/tools/node_modules/
+webapp/dist/
+webapp/app/manifest.json

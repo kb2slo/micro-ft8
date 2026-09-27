@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Desk-push webapp/app onto a sidekick (docs/architecture/sidekick.md (Installing the app bundle) bundle API).
+"""Desk-push the built web bundle onto a sidekick (docs/architecture/sidekick.md (Installing the app bundle) bundle API).
 
-Regenerates the manifest, resolves the host once (mDNS is slow per-request),
+Builds webapp/dist/app first (webapp/tools/build.py, docs/architecture/webapp.md
+(Build)), so what lands on the bench is what Pages ships; resolves the host once (mDNS is slow per-request),
 then pushes using a cached pairing token if one is on disk (see sidekick.py)
 — the button is only needed the first time, or if the cached token gets
 rejected (401), or with --forget-token.
@@ -14,6 +15,7 @@ Usage:
   python3 webapp/tools/desk_push.py --host http://192.168.50.128
   python3 webapp/tools/desk_push.py --token HEX…   # skip cache + button
   python3 webapp/tools/desk_push.py --forget-token # clear cache, re-pair
+  python3 webapp/tools/desk_push.py --no-build     # push webapp/dist/app as it is
 """
 
 from __future__ import annotations
@@ -36,21 +38,16 @@ from sidekick import (  # noqa: E402
     with_token_retry,
 )
 
-APP = ROOT / "webapp" / "app"
+APP = ROOT / "webapp" / "dist" / "app"
 MANIFEST = APP / "manifest.json"
 DEFAULT_HOST = "http://micro-ft8.local"
 WAIT_S = 120.0
 
 
-def gen_manifest() -> dict:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    import gen_manifest as gm
+def build_bundle() -> dict:
+    import build
 
-    doc = gm.build()
-    text = json.dumps(doc, indent=2) + "\n"
-    MANIFEST.write_text(text)
-    print(f"wrote {MANIFEST.relative_to(ROOT)} ({len(doc['assets'])} assets)")
-    return doc
+    return build.build()
 
 
 def fnv1a(data: bytes) -> str:
@@ -89,7 +86,7 @@ def push(host: str, token: str, doc: dict) -> None:
         path = asset["path"]
         data = (APP / path).read_bytes()
         if len(data) != asset["size"]:
-            die(f"{path}: size {len(data)} != manifest {asset['size']} — re-run without --no-regen")
+            die(f"{path}: size {len(data)} != manifest {asset['size']} — re-run without --no-build")
         code, body = http(
             "PUT",
             url(host, f"/api/bundle/file?path={urllib.parse.quote(path)}"),
@@ -121,12 +118,12 @@ def main() -> int:
     import argparse
 
     ap = argparse.ArgumentParser(
-        description="Desk-push webapp/app to a sidekick via a cached pairing token or the button."
+        description="Build webapp/app and desk-push the result to a sidekick via a cached pairing token or the button."
     )
     ap.add_argument("--host", default=DEFAULT_HOST, help=f"sidekick base URL (default {DEFAULT_HOST})")
     ap.add_argument("--token", default="", help="pairing token hex; skips the cache and the button")
     ap.add_argument("--wait", type=float, default=WAIT_S, help=f"seconds to wait for the button (default {int(WAIT_S)})")
-    ap.add_argument("--no-regen", action="store_true", help="use existing manifest.json without regenerating")
+    ap.add_argument("--no-build", action="store_true", help="push webapp/dist/app as it is, without rebuilding")
     ap.add_argument("--forget-token", action="store_true", help="clear the cached token before running (forces the button)")
     args = ap.parse_args()
 
@@ -143,13 +140,13 @@ def main() -> int:
         die(f"sidekick not reachable at {host}/ (HTTP {code})")
     print(f"sidekick ok at {host}")
 
-    if args.no_regen:
+    if args.no_build:
         if not MANIFEST.is_file():
-            die(f"missing {MANIFEST}")
+            die(f"missing {MANIFEST}; run without --no-build")
         doc = json.loads(MANIFEST.read_text())
-        print(f"using existing manifest ({len(doc.get('assets', []))} assets)")
+        print(f"using existing build ({len(doc.get('assets', []))} assets)")
     else:
-        doc = gen_manifest()
+        doc = build_bundle()
 
     token = args.token.strip()
     try:
