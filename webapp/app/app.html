@@ -140,6 +140,10 @@ button:disabled{opacity:.45}
 #settingsOverlayHead h2{flex:1;font-size:1.05rem;margin:0}
 #settingsOverlayBack{border:0;background:transparent;color:var(--accent);font-size:.95rem;padding:.3rem .2rem .3rem 0}
 #settingsOverlayBody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+/* #m sits under the page header, which the overlay covers, so the same text
+   also shows here, outside the scrolling body (setMsg()). */
+#settingsMsg{flex:none;margin:0;padding:.45rem 1rem;font-size:.85rem;background:color-mix(in srgb, var(--accent) 12%, transparent)}
+#settingsMsg:empty{display:none}
 
 /* ---- tab bar ---- */
 #tabbar{position:fixed;left:0;right:0;bottom:0;display:flex;border-top:1px solid GrayText;background:Canvas}
@@ -452,6 +456,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <button id=settingsOverlayBack type=button aria-label=Back>&larr;</button>
     <h2>Settings</h2>
   </div>
+  <p id=settingsMsg role=status></p>
   <div id=settingsOverlayBody>
   <section id=view-settings>
     <!-- Retired from status.html (docs/architecture/system.md (Who may key the transmitter)): the one place this app
@@ -624,6 +629,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 <script src=callinfo.js></script>
 <script>
 var m = document.getElementById('m');
+var settingsMsg = document.getElementById('settingsMsg');
 // Index order matches ADV g_bands[] (main.cpp); ft8/ft4 mirror that file's two
 // default tables (the compiled-in g_bands initializer and the FT4 reset block
 // in station_apply_to_globals()) byte-for-byte, since CONFIG only ever
@@ -653,7 +659,10 @@ var CQ_TYPE_NAMES = ['CQ', 'SOTA', 'POTA', 'QRP', 'FD', 'FreeText'];
 // AutoseqState wire values (main/autoseq.h). 6 = IDLE = remove from display.
 var QUEUE_STATE_NAMES = ['CALLING', 'REPLYING', 'REPORT', 'ROGER REPORT', 'ROGERS', 'SIGNOFF'];
 
-function setMsg(t) { m.textContent = t; }
+// Both lines: #m is hidden behind the Settings overlay while it is open.
+function setMsg(t) { m.textContent = t; settingsMsg.textContent = t; }
+// "Changing band…" -> "Changing band", for "<action> ok." / "<action> failed: …".
+function actionName(busyMsg) { return busyMsg.replace(/(\.\.\.|…)$/, ''); }
 
 function yn(v) {
   return (v === '1' || v === 1 || v === true || v === 'true') ? 'yes' : 'no';
@@ -908,7 +917,7 @@ document.querySelectorAll('#tabbar button').forEach(function (b) {
 // ===================== settings (full-screen overlay, not a swipe panel) ====
 
 var settingsOverlay = document.getElementById('settingsOverlay');
-function openSettings() { settingsOverlay.classList.add('open'); }
+function openSettings() { settingsMsg.textContent = ''; settingsOverlay.classList.add('open'); }
 function closeSettings() { settingsOverlay.classList.remove('open'); }
 document.getElementById('navSettings').onclick = openSettings;
 document.getElementById('settingsOverlayBack').onclick = closeSettings;
@@ -1375,11 +1384,11 @@ async function putConfigLine(line, busyMsg) {
   }
   var j = await r.json().catch(function () { return {}; });
   if (!r.ok || j.ok === false) {
-    setMsg((busyMsg.replace(/\.\.\.$/, '')) + ' failed: ' + (j.why || r.status));
+    setMsg(actionName(busyMsg) + ' failed: ' + (j.why || r.status));
     return;
   }
-  setMsg(busyMsg.replace(/\.\.\.$/, '') + ' ok.');
-  await loadConfig();
+  await loadConfig(true);
+  setMsg(actionName(busyMsg) + ' ok.');
 }
 
 // Auth'd POST without radioPost()'s status-message/loadConfig() ceremony --
@@ -1445,8 +1454,11 @@ function changeBand(idx) {
   }).catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 }
 
-async function loadConfig() {
-  setMsg('Loading config from the main board…');
+// quiet: a reload after an action, whose own result message must stay on
+// screen; only a failure is reported. Otherwise (boot, pairing) progress and
+// the field count are shown.
+async function loadConfig(quiet) {
+  if (!quiet) setMsg('Loading config from the main board…');
   var ac = new AbortController();
   var timer = setTimeout(function () { ac.abort(); }, 8000);
   try {
@@ -1476,6 +1488,7 @@ async function loadConfig() {
       setMsg('The main board returned an empty config — is Port A linked?');
       return;
     }
+    if (quiet) return;
     setMsg(MicroFT8Pairing.getToken()
       ? ('Loaded ' + n + ' fields from the main board — edit and save')
       : 'Loaded from the main board — press the sidekick button to pair before saving');
@@ -1523,27 +1536,47 @@ async function saveConfig() {
     MicroFT8Pairing.needsReauth();
     return;
   }
+  var btn = document.getElementById('save');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
   setMsg('Saving…');
-  var r = await MicroFT8Pairing.authFetch('/api/config', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'text/plain' },
-    body: formBody()
-  });
-  if (r.status == 401) {
-    MicroFT8Pairing.needsReauth();
-    setMsg('Press the sidekick button to pair');
-    return;
+  try {
+    var r = await MicroFT8Pairing.authFetch('/api/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'text/plain' },
+      body: formBody()
+    });
+    if (r.status == 401) {
+      MicroFT8Pairing.needsReauth();
+      setMsg('Press the sidekick button to pair');
+      return;
+    }
+    var text = await r.text();
+    var j = {};
+    try { j = JSON.parse(text); } catch (e) { /* not JSON: report the text */ }
+    var failed = (!r.ok || j.ok === false)
+      ? 'Save failed: ' + (j.why || text || ('HTTP ' + r.status))
+      : null;
+    // Reload either way: the sidekick applies every key it can past a
+    // refusal, so the form must show what the station now holds, not what
+    // was typed.
+    var reloadFailed = null;
+    try { await loadConfig(true); } catch (e) { reloadFailed = e; }
+    if (failed) {
+      setMsg(failed); // Settings stays open, beside the fields to fix
+      return;
+    }
+    if (reloadFailed) {
+      setMsg('Station saved, but the form did not reload: '
+        + String(reloadFailed && reloadFailed.message ? reloadFailed.message : reloadFailed));
+      return;
+    }
+    closeSettings();
+    setMsg('Station saved.');
+  } finally {
+    btn.textContent = 'Save station';
+    btn.disabled = !writesEnabled;
   }
-  var j = await r.json().catch(function () { return {}; });
-  if (!r.ok || j.ok === false) {
-    setMsg('Save failed: ' + (j.why || await r.text()));
-    // The sidekick applies every key it can past a refusal, so reload: the
-    // form must show what the station now holds, not what was typed.
-    await loadConfig();
-    return;
-  }
-  setMsg('Saved.');
-  await loadConfig();
 }
 
 // ---- geolocation handoff return (operator-requested 2026-09-23) ----
@@ -1649,14 +1682,16 @@ async function radioPost(path, body, busyMsg) {
   }
   var j = await r.json().catch(function () { return {}; });
   if (!r.ok || j.ok === false) {
-    setMsg((busyMsg.replace(/\.\.\.$/, '')) + ' failed: ' + (j.why || r.status));
+    setMsg(actionName(busyMsg) + ' failed: ' + (j.why || r.status));
     return;
   }
-  setMsg(busyMsg.replace(/\.\.\.$/, '') + ' ok.');
-  await loadConfig();
+  await loadConfig(true);
+  setMsg(actionName(busyMsg) + ' ok.');
 }
 
+var writesEnabled = false;
 function enableWrites(on) {
+  writesEnabled = on;
   document.getElementById('save').disabled = !on;
   document.getElementById('opConnect').disabled = !on;
   document.getElementById('opTune').disabled = !on;
