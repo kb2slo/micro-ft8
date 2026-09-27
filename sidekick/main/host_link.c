@@ -942,6 +942,12 @@ static esp_err_t get_config(httpd_req_t *req)
 
 // PUT /api/config  body: one or more Station.txt lines (key=value\n).
 // Token required: this changes the station.
+//
+// A key the host refuses does not stop the keys after it: the refusals are
+// independent, and some mean "saved, but" (band_sel's "VFO not moved" while
+// TX is active). Stopping there silently dropped every later key, so a save
+// made mid-QSO never applied autoseq_max_retry. The first refusal is still
+// reported. A link failure does stop, since later keys would fail the same way.
 static esp_err_t put_config(httpd_req_t *req)
 {
     char body[1024];
@@ -953,6 +959,8 @@ static esp_err_t put_config(httpd_req_t *req)
     body[received] = '\0';
 
     int applied = 0;
+    int refused = 0;
+    char first_why[PORTA_EVENT_TEXT_MAX + 1] = "";
     char *line = body;
     while (line && *line) {
         char *nl = strchr(line, '\n');
@@ -991,14 +999,20 @@ static esp_err_t put_config(httpd_req_t *req)
                 return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"no reply from host\"}");
             }
             if (!s_last_reply_ok) {
-                char out[PORTA_EVENT_TEXT_MAX + 32];
-                snprintf(out, sizeof(out), "{\"ok\":false,\"why\":\"%s\"}", s_last_reply_reason);
-                httpd_resp_set_type(req, "application/json");
-                return httpd_resp_sendstr(req, out);
+                if (refused++ == 0) {
+                    memcpy(first_why, s_last_reply_reason, sizeof(first_why));
+                }
+            } else {
+                ++applied;
             }
-            ++applied;
         }
         line = nl ? nl + 1 : NULL;
+    }
+    if (refused > 0) {
+        char out[PORTA_EVENT_TEXT_MAX + 64];
+        snprintf(out, sizeof(out), "{\"ok\":false,\"why\":\"%s\"}", first_why);
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, out);
     }
     if (applied == 0) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "empty");

@@ -1531,6 +1531,9 @@ async function saveConfig() {
   var j = await r.json().catch(function () { return {}; });
   if (!r.ok || j.ok === false) {
     setMsg('Save failed: ' + (j.why || await r.text()));
+    // The sidekick applies every key it can past a refusal, so reload: the
+    // form must show what the station now holds, not what was typed.
+    await loadConfig();
     return;
   }
   setMsg('Saved.');

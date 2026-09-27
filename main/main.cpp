@@ -3856,6 +3856,13 @@ static RadioType load_station_radio_type_only() {
   return radio_profile_canonical(radio_profile_from_saved_int(s.radio));
 }
 
+// Autoseq keeps its own copy of these, so every path that rewrites them from Station settings calls this.
+static void sync_autoseq_from_globals() {
+  autoseq_set_station(g_call, grid_ft8_4(g_grid));
+  update_autoseq_cq_type();
+  autoseq_set_max_retry(g_autoseq_max_retry);
+}
+
 static void load_station_data() {
   storage_sync_station_from_sd();
 
@@ -3866,18 +3873,13 @@ static void load_station_data() {
   g_grid_gps_display8.clear();
 
   StorageStream* stream = storage_stream_open(STATION_FILE, StorageOpenMode::READ);
-  if (!stream) {
-    autoseq_set_max_retry(g_autoseq_max_retry);
-    return;
-  }
+  if (!stream) return;
 
   StationSettings s;
   station_fill_from_globals(&s);
   station_parse(station_read_stream_text(stream), &s);
   storage_stream_close(stream);
   station_apply_to_globals(s);
-
-  autoseq_set_max_retry(g_autoseq_max_retry);
   if (!rtc_init_from_ds3231() && !rtc_init_from_esp_rtc()) {
     // Leave rtc_valid false. The STATUS edit buffers default to
     // 2025-12-11 / 10:10:00 for typing, but those are not a clock -- seeding
@@ -3960,6 +3962,7 @@ const char* porta_host_config_set(const char* key, const char* value) {
   std::string line = std::string(key) + "=" + value + "\n";
   station_parse(line, &s);
   station_apply_to_globals(s);
+  sync_autoseq_from_globals();
   // protocol_mode matches MENU: pending until reboot.
   g_protocol_pending_ft4 = s.protocol_ft4;
   rebuild_active_bands();
@@ -4365,10 +4368,7 @@ autoseq_set_recent_qso_callback(decode_pipeline_recently_logged);
   load_station_data();
   release_debug_uart_pins();
   apply_radio_profile_binding();
-  update_autoseq_cq_type();
-
-  // Update autoseq with station info after loading
-  autoseq_set_station(g_call, grid_ft8_4(g_grid));
+  sync_autoseq_from_globals();
 
   // Prepare RX list (but don't draw yet - startup screen may be shown)
   std::vector<UiRxLine> empty;
