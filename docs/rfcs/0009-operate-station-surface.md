@@ -86,7 +86,7 @@ Clearing the references is the whole of ending an activation.
 Top to bottom:
 
 1. **Status strip:** the slot bar and parity, plus the radio chip (§3.7).
-2. **Queue:** QSO rows as today (call, retry count, state, ×), with per-QSO retries (§3.11). Then the **CQ row**, always last (§3.3).
+2. **Queue:** QSO rows as today (call, retry count, state, ×), with per-QSO retries (§3.11). Then the **CQ row**, always last ([webapp.md](../architecture/webapp.md), **The CQ row**).
 3. **Decodes:**
    - **Rows exactly as today's app:** a mono meta line with DT and Hz in fixed left columns and dB right-justified; the message, with callsigns as links and the → ME badge; then grid · location on the left and distance and bearing on the right.
    - **The Reply button is the new style:** a 36 px outlined button.
@@ -95,20 +95,6 @@ Top to bottom:
 5. **Tab bar.**
 
 **Why the dock layout.** Decodes are the scarce resource on a phone, and the dock keeps its height fixed. Band is one tap. Every control touched mid-QSO is in thumb reach or in the queue. The rejected variants are in §4.
-
-### 3.3 CQ is the last row of the queue
-
-* **Always present, pinned to the queue's bottom** while QSO rows scroll above it.
-* **What it shows:**
-  - the CQ text that goes on the air (`CQ SOTA KB2SLO FN31`);
-  - an inline **Off | Even | Odd** control (the beacon, `BeaconMode`, called "CQ" on screen because that is what it sends);
-  - a status line: "Calling · Even slots", "Waits for the queue · Even" (autoseq sends CQ only when no QSO is active, [autoseq.md](../architecture/autoseq.md)), or "Off". With a timeout set, it adds "· 30 min timeout".
-* **Settings ›** and a tap on the CQ text open the Station sheet (§3.5).
-* **It replaces today's CQ / CALLING entry and its ×**, since Off does that job.
-* **Never tap-to-cycle.** Off → Even → Odd on one button would key the transmitter on a stray tap.
-* **Stop while calling CQ turns CQ off** (decided 2026-09-27). Today Cancel TX leaves the beacon on, and the next CQ goes out a cycle later.
-  - The HUD's button reads **Stop CQ** during our CQ, and **Stop TX** during a QSO message, where it stops only that transmission.
-  - The CQ row stays reachable under the HUD (§3.12).
 
 ### 3.4 The dock: band and frequency (decided 2026-09-27: a primary action)
 
@@ -335,16 +321,6 @@ Decided 2026-09-27. What building O1 needs beyond §3.2–3.5.
   - there is no JS test harness, so each piece then adds a bench check to [TEST_PLAN.md](../TEST_PLAN.md) Pending.
 * **Each piece graduates its sections** into webapp.md in its own commit ([README.md](../README.md), **RFC lifecycle**).
 
-**O1a: the CQ row** (§3.3)
-
-* It replaces the beacon row (`beaconCqName`, `beaconSel`) and the queue's CQ entry (`dxcall` `CQ`, with its ×).
-* **Off | Even | Odd** posts `/api/beacon` with 0, 1 or 2, as `beaconSel` does today. The current mode is `SLOT_STATE`'s `bm` (`renderBeacon()`).
-* **The Sends text** follows autoseq's `generate_cq_text_into()` (`components/autoseq/autoseq.cpp`): `CQ`, `CQ SOTA`, `CQ POTA`, `CQ QRP` or `CQ FD`, then the call and the grid's first four characters. For Free text it is `free_text` as it stands.
-* **The status line:** "Calling · Even slots" when CQ is on and no QSO entry is active; "Waits for the queue · Even" when one is; "Off".
-* **Settings ›** opens Settings until O1c, then the Station sheet.
-* **Stop during our CQ turns CQ off** (§3.3). While the TX HUD shows our CQ, its button reads **Stop CQ** and posts `/api/tx/cancel`, then beacon Off. During a QSO message it reads **Stop TX** and only cancels.
-* **The CQ decode colour** (§2): the light theme's `--good-hot` becomes a green with at least 4.5:1 contrast on the page background, for example `#007a00`. The dark themes keep `#4ade80`.
-
 **O1b: the dock** (§3.4)
 
 * It replaces Operate's band select (`opBandSel`). A band change keeps `changeBand()`'s confirmation and cancels.
@@ -387,7 +363,6 @@ Decided 2026-09-27. What building O1 needs beyond §3.2–3.5.
 
 * The dock layout (§3.2).
 * Band and frequency are a primary Operate control, with a typed frequency, and a second band row beyond seven (§3.4).
-* CQ is the last row of the queue, with Off / Even / Odd (§3.3).
 * One Station sheet, opened from the CQ row and the dock, with no band or frequency in it (§3.5).
 * The radio is read back on panel open and after each sync (§3.7).
 * The map popup always offers **Add to activation** (§3.9).
@@ -396,10 +371,8 @@ Decided 2026-09-27. What building O1 needs beyond §3.2–3.5.
 
 * Decodes sort within each slot, and slots stay newest first (§3.8).
 * Reply feedback is on the Reply button and in the queue, matched by call, with no dialog and no protocol change (§3.13).
-* The CQ decode colour is fixed in O1a (§6.1).
 * Per-QSO retries run 1–20, and raising the count on a parked entry does not revive it (§3.11).
 * No high-SWR warning (§4).
-* Stop during our CQ turns CQ off (§3.3).
 * The CQ timeout defaults to Never (§3.6).
 * The main board refuses a frequency that does not reach the radio (§6.1).
 * Connect and Tune stay until O2 (§6.1).

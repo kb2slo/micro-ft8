@@ -8,10 +8,20 @@ The web app (`webapp/app/`) is the station's only UI on the headless P4, served 
 
 **Every action reports where the operator is looking.** The page's status line sits under the header, which the overlay covers, so Settings repeats it on a line under its own fixed header. **Save station** closes Settings on success, leaving "Station saved." on Operate, and on a refusal stays open with the reason and the form reloaded to what the station holds. An action's result is never replaced by the form reload that follows it.
 
-* **Operate** stacks a state header (slot countdown and parity, beacon, band and frequency, CAT and audio liveness, resolved TX offset), the queue, and the decode stream. The ADV splits these across RX, TX and STATUS because 240×135 forces it; a phone shows all three at once, and that is the real gain.
+* **Operate** stacks a state header (slot countdown and parity, band and frequency, CAT and audio liveness, resolved TX offset), the queue (**The CQ row** below), and the decode stream. The ADV splits these across RX, TX and STATUS because 240×135 forces it; a phone shows all three at once, and that is the real gain.
 * **Grow by destination, never by feature.** QRZ is not a screen: per-callsign data expands on the row it belongs to. One shared expand-on-tap component, used on decode, queue and QSO rows, shows **offline-derived** facts at once (DXCC and zones from the prefix, distance and bearing from grid arithmetic) and **online-enriched** ones (QRZ bio, photo) when reachable, failing legibly when not.
 * **QSOs is one continuous list** with day dividers ("Today", "Sep 13"), not a day-file picker. The main board keeps one ADIF file per UTC day; the list loads the current day on open and older days as the operator scrolls (`FILE_LIST`/`FILE_READ`), because Port A's budget cannot carry the whole log on every open.
 * **Worked/new flags are computed in the browser** from the QSOs loaded so far, for decode rows and the map. A station worked on a day not yet loaded shows as new; accepted 2026-09-25, and row xv23 explores loading and caching more of the log.
+
+### The CQ row
+
+The queue's last row, always present (`app.html`, `#opCqRow`), replacing the old header beacon control and the queue's own CQ/CALLING placeholder entry:
+
+* **Off | Even | Odd** is the beacon (`BeaconMode`, `POST /api/beacon`), labeled "CQ" here because that is what it transmits. Never a single tap-to-cycle button — Off → Even → Odd on one control could key the transmitter on a stray tap.
+* **The Sends text** mirrors autoseq's `generate_cq_text_into()` (`components/autoseq/autoseq.cpp`): the type's prefix (`CQ`, `CQ SOTA`, `CQ POTA`, `CQ QRP`, `CQ FD`) plus the call and the grid's first four characters, or the free-text field verbatim for a Free-text CQ. Tapping it, or **Settings ›**, opens Settings today (**not yet built: row cuca** opens the Station sheet instead).
+* **The status line** reads "Off"; "Calling · Even/Odd slots" when the beacon is on and the queue holds no other station (autoseq arms a beacon CQ only when its own queue is otherwise empty, [autoseq.md](autoseq.md)); or "Waits for the queue · Even/Odd slots" once a real QSO is active.
+* **Stop, during our own CQ, turns the beacon off too.** The TX HUD's cancel button reads **Stop CQ** while the CQ is what's on the air, and posts `/api/tx/cancel` then `/api/beacon 0`; during a QSO message it reads **Stop TX** and only cancels that transmission. Otherwise the beacon stayed armed and the next CQ went out a cycle later regardless of the operator's tap.
+* **The CQ decode color** (`--good-hot`, `.c-cq`) is `#007a00` in light mode, `#4ade80` in dark. The light value was `#00c800` (about 2.3:1 on white), which fails WCAG's 4.5:1 text-contrast minimum.
 
 ### Decisions a reference app would make differently
 

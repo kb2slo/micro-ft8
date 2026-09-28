@@ -50,7 +50,7 @@
   --warn:#b45309;          /* #opTxHud.aborted .hd; .dot.stale's glyph */
   --warn-bg:#fef3c7;       /* .qs-1/2/3, #staleBanner */
   --warn-fg:#78350f;       /* .qs-1/2/3, #staleBanner */
-  --good-hot:#00c800;      /* .c-cq -- brighter green, decode text for a fresh CQ */
+  --good-hot:#007a00;      /* .c-cq -- brighter green, decode text for a fresh CQ; 5.5:1 on white (was #00c800, ~2.3:1, RFC 0009 §6.1) */
   --good-bg:#dcfce7;       /* .pill-beacon-on, .qs-4/5 */
   --good-fg:#14532d;       /* .pill-beacon-on, .qs-4/5 */
   --info-bg:#dbeafe;       /* .qs-0 */
@@ -183,7 +183,6 @@ button:disabled{opacity:.45}
 .dot.bad{color:var(--danger-strong)}
 .dot.bad::before{content:"\2715"}
 #opConnRow button{font-size:.85rem}
-#opBeaconRow{display:flex;justify-content:space-between;align-items:center;margin-top:.6rem;font-size:.85rem}
 #beaconSel{width:auto;margin-top:0;padding:.25rem .4rem;font-size:.8rem;font-family:inherit}
 
 /* ---- operate: TX HUD ---- */
@@ -207,6 +206,18 @@ button:disabled{opacity:.45}
 .qs-4,.qs-5{background:var(--good-bg);color:var(--good-fg)}                /* ROGERS/SIGNOFF */
 .qcancel{background:transparent;border:0;color:GrayText;font-size:1rem;padding:0 .2rem}
 #opQueueEmpty{padding:.6rem 1rem;font-size:.8rem;color:GrayText}
+
+/* ---- operate: the CQ row (RFC 0009 §3.3) ---- */
+/* Pinned under the real QSO rows, inside #opQueue's own scroll box, per the
+   RFC's "always last" -- sticky, not just last-in-DOM, so a long queue never
+   scrolls it out of reach. Static markup, not part of #opQueueRows' innerHTML
+   rebuild: that list is re-stringified on every poll tick, which would yank
+   the native Off/Even/Odd <select> out from under an operator mid-pick the
+   same way rebuilding #opBandSel's options would (see renderBeacon()). */
+#opCqRow{position:sticky;bottom:0;background:Canvas;padding:.5rem 1rem .6rem;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+.cqline{display:flex;justify-content:space-between;align-items:center;gap:.5rem}
+.cqline+.cqline{margin-top:.3rem;font-size:.75rem;color:GrayText}
+.cqsends{font-family:ui-monospace,monospace;font-weight:700;font-size:.85rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* ---- operate: decode stream ---- */
 #opDecodes{padding-bottom:.5rem}
@@ -380,14 +391,6 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         <button id=opConnect type=button disabled>Connect</button>
         <button id=opTune type=button disabled>Tune: Off</button>
       </div>
-      <div id=opBeaconRow>
-        <span id=beaconCqName>Beacon: —</span>
-        <select id=beaconSel disabled>
-          <option value=0>Off</option>
-          <option value=1>Even</option>
-          <option value=2>Odd</option>
-        </select>
-      </div>
       <div id=opLive><select id=opBandSel disabled></select><span id=opOffset>Next TX: —</span></div>
     </div>
 
@@ -399,14 +402,35 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
            otherwise replicated here) -- a manual abort for a stuck or
            errant TX, not just the automatic band-change cancel changeBand()
            already fires. Same /api/tx/cancel, gated the same way every
-           other write is (enableWrites()). -->
-      <button id=opTxCancel type=button disabled>Cancel TX</button>
+           other write is (enableWrites()). Label is set live by
+           renderTxHud(): "Stop CQ" while this TX is our own CQ (RFC 0009
+           §3.3), which also turns the beacon off; "Stop TX" otherwise,
+           cancelling only this transmission. -->
+      <button id=opTxCancel type=button disabled>Stop TX</button>
     </div>
 
     <div id=opQueue>
       <div class=hd>Queue</div>
       <div id=opQueueEmpty>No active QSOs</div>
       <div id=opQueueRows></div>
+      <!-- Always present (RFC 0009 §3.3), replacing the old header beacon row
+           and the queue's own CQ/CALLING placeholder entry and its x -- Off
+           does that job now. See the CSS comment above #opCqRow for why this
+           is static markup rather than part of opQueueRows. -->
+      <div id=opCqRow>
+        <div class=cqline>
+          <span id=cqSendsText class="cqsends callink">—</span>
+          <select id=beaconSel disabled>
+            <option value=0>Off</option>
+            <option value=1>Even</option>
+            <option value=2>Odd</option>
+          </select>
+        </div>
+        <div class=cqline>
+          <span id=cqStatusLine>Off</span>
+          <button id=cqSettingsBtn type=button class=dlink>Settings &rsaquo;</button>
+        </div>
+      </div>
     </div>
 
     <div id=opDecodes>
@@ -1665,11 +1689,15 @@ async function autoSyncClock() {
   }
 }
 
+// Resolves true/false so a caller can chain a follow-up action on success
+// only (opTxCancel's onclick, below) -- every existing caller before that one
+// just .catch()es the promise and ignores what it resolves to, so this is
+// safe to add without touching them.
 async function radioPost(path, body, busyMsg) {
   if (!MicroFT8Pairing.getToken()) {
     setMsg('Press the sidekick button to pair first.');
     MicroFT8Pairing.needsReauth();
-    return;
+    return false;
   }
   setMsg(busyMsg);
   var opts = { method: 'POST' };
@@ -1678,15 +1706,16 @@ async function radioPost(path, body, busyMsg) {
   if (r.status == 401) {
     MicroFT8Pairing.needsReauth();
     setMsg('Press the sidekick button to pair');
-    return;
+    return false;
   }
   var j = await r.json().catch(function () { return {}; });
   if (!r.ok || j.ok === false) {
     setMsg(actionName(busyMsg) + ' failed: ' + (j.why || r.status));
-    return;
+    return false;
   }
   await loadConfig(true);
   setMsg(actionName(busyMsg) + ' ok.');
+  return true;
 }
 
 var writesEnabled = false;
@@ -1730,8 +1759,19 @@ document.getElementById('opTune').onclick = function () {
   radioPost('/api/radio/tune', next, 'Tune…')
     .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 };
+// Stop during our own CQ turns the beacon off too (RFC 0009 §3.3) --
+// otherwise Off/Even/Odd stays armed and the next CQ just goes out a cycle
+// later, exactly the surprise the operator asked to fix. The beacon-off
+// POST is quiet (authPostQuiet, same reasoning as changeBand()'s own
+// multi-step sequence above) so the visible message stays "Stopping CQ…
+// ok." from the cancel itself, and only fires once that cancel actually
+// succeeded.
 document.getElementById('opTxCancel').onclick = function () {
-  radioPost('/api/tx/cancel', undefined, 'Cancelling TX…')
+  var stoppingCq = queueHasCq();
+  radioPost('/api/tx/cancel', undefined, stoppingCq ? 'Stopping CQ…' : 'Stopping TX…')
+    .then(function (ok) {
+      if (ok && stoppingCq) return authPostQuiet('/api/beacon', '0').then(function () { loadConfig(true); });
+    })
     .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 };
 // ===================== Operate: countdown + parity (client clock, no wire dependency) =====================
@@ -1798,14 +1838,35 @@ function renderCountdown() {
 }
 setInterval(renderCountdown, 250);
 
-// ===================== Operate: beacon =====================
+// ===================== Operate: the CQ row (RFC 0009 §3.3) =====================
 
 var slotState = null; // last SLOT_STATE event: {sp, bm, hz}
 
+// Mirrors autoseq's generate_cq_text_into() (components/autoseq/autoseq.cpp)
+// so the Sends preview matches what a CQ transmission actually carries: the
+// type's prefix, the call, and the grid's first four characters -- or the
+// free-text field verbatim for a Free-text CQ.
+function cqSendsText() {
+  var type = parseInt(lastCfg.cq_type, 10) || 0;
+  if (type === 5) return lastCfg.free_text || ''; // FreeText: no prefix, sent as-is
+  var parts = [type === 0 ? 'CQ' : 'CQ ' + CQ_TYPE_NAMES[type], lastCfg.call || ''];
+  var grid4 = (lastCfg.grid || '').toUpperCase().slice(0, 4);
+  if (grid4) parts.push(grid4);
+  return parts.join(' ');
+}
+
+// autoseq arms a beacon CQ only when the active queue is otherwise empty
+// (autoseq.md) -- so a real QSO entry's presence is exactly "Waits for the
+// queue" and its absence is exactly "Calling".
+function cqStatusText(mode) {
+  if (!mode) return 'Off';
+  var hasQso = Object.keys(queue).some(function (id) { return queue[id].dxcall !== 'CQ'; });
+  return (hasQso ? 'Waits for the queue · ' : 'Calling · ') + (mode === 1 ? 'Even' : 'Odd') + ' slots';
+}
+
 function renderBeacon() {
   var mode = slotState ? slotState.bm : 0;
-  var cqName = CQ_TYPE_NAMES[parseInt(lastCfg.cq_type, 10)] || 'CQ';
-  document.getElementById('beaconCqName').textContent = 'Beacon: ' + cqName;
+  document.getElementById('cqSendsText').textContent = cqSendsText();
   // A native <select> stays document.activeElement after the operator picks
   // an option (focus doesn't return to the page), so gating this on focus --
   // the original approach -- silently stopped all future live updates after
@@ -1813,6 +1874,7 @@ function renderBeacon() {
   // an open native picker's own pending selection, so there's nothing here
   // actually worth guarding against.
   document.getElementById('beaconSel').value = String(mode);
+  document.getElementById('cqStatusLine').textContent = cqStatusText(mode);
   // The armed TX's offset, not one on air: the TX panel shows that. 0 means
   // nothing is armed (both main boards send 0 then) -- not a real offset, so
   // it must not pass a != null check the way it would.
@@ -1825,6 +1887,11 @@ document.getElementById('beaconSel').onchange = function () {
   radioPost('/api/beacon', sel.value, 'Beacon…')
     .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 };
+// Settings > opens the Station sheet once it ships (RFC 0009 §6.1, row
+// cuca); until then, plain Settings. The CQ text and the explicit link both
+// go to the same place.
+document.getElementById('cqSendsText').onclick = openSettings;
+document.getElementById('cqSettingsBtn').onclick = openSettings;
 
 // ===================== Operate: TX HUD =====================
 // Mirrors the on-device TX HUD banner (main.cpp's draw_tx_hud() / porta_tx_hud_tick()):
@@ -1882,6 +1949,10 @@ function renderTxHud() {
   document.getElementById('opTxHudMeta').textContent = txHud.aborted
     ? ('TX ABORTED: ' + (txHud.reason || 'unknown reason'))
     : (parts.length ? parts.join(' · ') : '—');
+  // RFC 0009 §3.3: Stop CQ while this transmission is our own CQ (it also
+  // turns the beacon off, see opTxCancel's onclick), Stop TX during a QSO
+  // message (cancels only this transmission).
+  document.getElementById('opTxCancel').textContent = queueHasCq() ? 'Stop CQ' : 'Stop TX';
 }
 
 // ===================== Operate: queue =====================
@@ -1892,6 +1963,15 @@ var queue = {}; // entry_id -> {dxcall, state, retry_count, retry_limit, lastSee
 // poll's QUEUE_ENTRY stream (latest full emit wins). Sorting by state (B64)
 // put a fresh REPLYING below CALLING/CQ.
 var queueOrder = [];
+
+// True while a beacon CQ is armed or on the air. autoseq only ever arms one
+// when the active queue is otherwise empty (autoseq.md), so this placeholder
+// entry's presence already means "our CQ", with no extra wire signal needed
+// by renderTxHud()'s Stop CQ / Stop TX button (RFC 0009 §3.3) or
+// cqStatusText()'s Calling / Waits-for-the-queue line below.
+function queueHasCq() {
+  return Object.keys(queue).some(function (id) { return queue[id].dxcall === 'CQ'; });
+}
 
 // Safety net against a lost IDLE (docs/architecture/webapp.md (Screens)'s removal signal): /api/events
 // is a bounded 64-entry ring shared by every event type (decodes, slot_state,
@@ -1945,22 +2025,20 @@ function rebuildQueueOrderFromEvents(events) {
 }
 
 function renderQueue() {
-  var ids = queueOrder.filter(function (id) { return !!queue[id]; });
+  // CQ is the beacon placeholder, not a real station -- it gets its own
+  // static row (#opCqRow, RFC 0009 §3.3) instead of one of these, the same
+  // reasoning changeBand() already uses to leave it out of the per-band
+  // queue clear.
+  var ids = queueOrder.filter(function (id) { return !!queue[id] && queue[id].dxcall !== 'CQ'; });
   Object.keys(queue).forEach(function (id) {
-    if (ids.indexOf(id) < 0) ids.push(id);
+    if (queue[id].dxcall !== 'CQ' && ids.indexOf(id) < 0) ids.push(id);
   });
   var rows = document.getElementById('opQueueRows');
   document.getElementById('opQueueEmpty').hidden = ids.length > 0;
   rows.innerHTML = ids.map(function (id) {
     var q = queue[id];
-    // CQ is the beacon placeholder, not a real station -- not clickable,
-    // same reasoning changeBand() already uses to leave it out of the
-    // per-band queue clear.
-    var callSpan = q.dxcall === 'CQ'
-      ? '<span class=call>' + esc(q.dxcall) + '</span>'
-      : '<span class="call callink" data-call="' + esc(q.dxcall) + '">' + esc(q.dxcall) + '</span>';
     return '<div class=qrow>' +
-      '<div>' + callSpan +
+      '<div><span class="call callink" data-call="' + esc(q.dxcall) + '">' + esc(q.dxcall) + '</span>' +
       '<span class=retry>retry ' + q.retry_count + '/' + q.retry_limit + '</span></div>' +
       '<span class="qstate qs-' + q.state + '">' + esc(QUEUE_STATE_NAMES[q.state] || '?') + '</span>' +
       '<button type=button class=qcancel data-id="' + id + '">&times;</button>' +
@@ -2246,8 +2324,6 @@ async function pollEvents() {
       // flushed early if this poll's events crossed a real slot boundary.
       flushDecodeBatch();
       renderDecodes();
-      renderBeacon();
-      renderTxHud();
     }
     // Runs every tick, not just when this poll carried events -- a quiet
     // poll (nothing new) is exactly when a previously-missed IDLE needs to
@@ -2255,6 +2331,11 @@ async function pollEvents() {
     var queueChanged = sweepStaleQueue();
     if (queueChanged || gotEvents) {
       renderQueue();
+      // Both read `queue` now (the CQ row's status line and the TX HUD's
+      // Stop CQ / Stop TX label, RFC 0009 §3.3), so they need to run after
+      // sweepStaleQueue() too, not only when an event itself arrived.
+      renderBeacon();
+      renderTxHud();
     }
     evSeq = j.seq;
     if (gotEvents || queueChanged) saveStateCache();
