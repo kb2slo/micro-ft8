@@ -124,8 +124,9 @@ An unproven fix is still worth making. Pretending it is proven is not.
 
 **Test plan matches the work too.** [TEST_PLAN.md](TEST_PLAN.md) is a ledger, not a manual, and is updated in the **same turn** as the work:
 
-- Touched a field-only path (USB/UAC, CAT, display, GPS, RTC, SD, flash, WiFi, TX timing) → say in chat what to flash, press or run and what result means it passed, and add **one Pending row** naming the change and that check. "Test the radio" is not a check; "MENU P3 `5` reports `Copied OK`" is. The chat is how the operator hears about it; the row is how it is not forgotten.
-- The operator reports a pass → drop the row in the **same turn**. The commit that drops it names the build that passed. A failure keeps the row and becomes a fix.
+- Touched a field-only path (USB/UAC, CAT, display, GPS, RTC, SD, flash, WiFi, TX timing) → say in chat what to flash, press or run and what result means it passed, and add **one Pending row** naming the change and that check, written as numbered steps, each with its expected result. "Test the radio" is not a check; "MENU P3 `5` reports `Copied OK`" is. The chat is how the operator hears about it; the row is how it is not forgotten.
+- **Asking the operator to run a check → put the check itself in chat, never just its row's name.** For each owed row being asked for, give its numbered steps and expected results, and first how to get the build onto the device (the flash or `desk_push.py` command). "Run the O1a row in TEST_PLAN" sends the operator to a file in the middle of a bench session. Ask for a result per step. Stated 2026-09-28.
+- The operator reports a pass **for every step** → drop the row in the **same turn**. The commit that drops it names the build that passed. A summary "it passed", or a step with no result, keeps the row: say which step is still open. A failure keeps the row and becomes a fix. Found 2026-09-28: a check reported as run, but not step by step, dropped row `sc6b`, and the skipped step would have caught a bug.
 - Added a host test → nothing to record here. What a test pins lives in its own source.
 - Added, removed or renamed a check in the **Automated** table (a harness, a CI job) → update that table in the same commit.
 - Shipped something no check is planned for → add it to **Unverified**, so it is not mistaken for proven.
