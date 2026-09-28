@@ -45,3 +45,11 @@ std::string station_serialize(const StationSettings& in);
 // True for Station.txt keys CONFIG may set (call, grid, band0…, …). Beacon and
 // clock lines are not included — those are live controls / not persisted here.
 bool station_key_known(const char* name);
+
+// True when a CONFIG write of this key needs the VFO already on the
+// operating band to take effect right now: band_sel itself (it picks the new
+// operating band), or that band's own frequency key under the active
+// protocol (band<band_sel> for FT8, ft4_band<band_sel> for FT4). A frequency
+// written for a different band, or for the other protocol's table, is a
+// config edit that does not need the radio to move.
+bool station_key_names_operating_band(const char* key, int band_sel, bool protocol_ft4);

@@ -3,6 +3,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <sstream>
 #include <string>
 
@@ -393,6 +394,25 @@ bool station_key_known(const char* name)
     int idx = 0;
     if (sscanf(name, "band%d", &idx) == 1 || sscanf(name, "ft4_band%d", &idx) == 1) {
         return idx >= 0 && idx < kStationBandCount;
+    }
+    return false;
+}
+
+bool station_key_names_operating_band(const char* key, int band_sel, bool protocol_ft4)
+{
+    if (!key) {
+        return false;
+    }
+    if (strcmp(key, "band_sel") == 0) {
+        return true;
+    }
+    int idx = -1;
+    if (sscanf(key, "ft4_band%d", &idx) == 1) {
+        return protocol_ft4 && idx == band_sel;
+    }
+    idx = -1;
+    if (sscanf(key, "band%d", &idx) == 1) {
+        return !protocol_ft4 && idx == band_sel;
     }
     return false;
 }

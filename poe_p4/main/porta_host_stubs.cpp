@@ -394,13 +394,14 @@ const char *porta_host_config_set(const char *key, const char *value) {
     if (strcmp(key, "band_sel") == 0 || strcmp(key, "active_bands") == 0 ||
         strncmp(key, "band", 4) == 0 || strncmp(key, "ft4_band", 8) == 0) {
         const char *why = sync_vfo("porta config");
-        // Match ADV: band_sel means "operate on this band now" — NAK if the
-        // VFO did not move so the phone does not look saved while the radio
-        // stayed put. Other band-ish keys stay silent on a sync miss.
-        if (strcmp(key, "band_sel") == 0 && why) {
+        // Match ADV: a write that names the band actually being operated
+        // needs the VFO to have moved to mean what it says. Other band-ish
+        // keys stay silent on a sync miss.
+        if (why && station_key_names_operating_band(key, s_station.band_sel,
+                                                      g_protocol == &kProtocolFT4)) {
             ESP_LOGI(TAG, "config %s=%s (saved, VFO not moved: %s)", key, value, why);
-            return strcmp(why, "TX active") == 0 ? "band saved, VFO not moved (TX active)"
-                                                 : "band saved, VFO not moved (CAT not ready)";
+            return strcmp(why, "TX active") == 0 ? "frequency saved, VFO not moved (TX active)"
+                                                 : "frequency saved, VFO not moved (CAT not ready)";
         }
     }
 

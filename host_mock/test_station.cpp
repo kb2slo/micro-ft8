@@ -136,6 +136,19 @@ int main()
         expect_str(s.active_bands, "5", "legacy active_band");
     }
 
+    // station_key_names_operating_band (RFC 0009 §6.1): does this CONFIG key
+    // need the VFO already on the operating band to take effect right now.
+    expect_true(station_key_names_operating_band("band_sel", 5, false), "band_sel always names the operating band");
+    expect_true(station_key_names_operating_band("band_sel", 0, true), "band_sel regardless of protocol");
+    expect_true(station_key_names_operating_band("band5", 5, false), "FT8 freq for the operating band");
+    expect_true(!station_key_names_operating_band("band5", 5, true), "FT8 key while FT4 is active is not operating");
+    expect_true(station_key_names_operating_band("ft4_band5", 5, true), "FT4 freq for the operating band");
+    expect_true(!station_key_names_operating_band("ft4_band5", 5, false), "FT4 key while FT8 is active is not operating");
+    expect_true(!station_key_names_operating_band("band3", 5, false), "a different band's frequency is not operating");
+    expect_true(!station_key_names_operating_band("active_bands", 5, false), "active_bands never names the operating band");
+    expect_true(!station_key_names_operating_band("call", 5, false), "an unrelated key is never the operating band");
+    expect_true(!station_key_names_operating_band(nullptr, 5, false), "a null key is never the operating band");
+
     if (g_fails) {
         fprintf(stderr, "%d FAIL(s)\n", g_fails);
         return 1;

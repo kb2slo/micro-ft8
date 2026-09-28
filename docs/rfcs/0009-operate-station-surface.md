@@ -55,7 +55,7 @@ Each fact is from the code at `3777f3c` plus the working-tree fix in §2.1.
   - Parks and summits draw identically (hollow green circles), at most 40 spread evenly across the view.
   - A tap opens a popup with name, reference, distance and a link to the official page.
   - Deep links: `?grid=` and `?lat=&lon=`.
-* **Contrast.** CQ decode text is `#00c800` on white (`--good-hot`), about 2.3:1, which fails WCAG's 4.5:1. Fixed in O1a (§6.1).
+* **Contrast.** CQ decode text is `#00c800` on white (`--good-hot`), about 2.3:1, which fails WCAG's 4.5:1. Fixed in O1a ([webapp.md](../architecture/webapp.md), **The CQ row**).
 * **The P4 transmits "silently" when CAT is down.** If `radio_control_ready()` is false when a slot starts, `tx_start()` still marks TX active and runs the whole slot without keying the radio (`poe_p4/main/tx_scheduler.cpp:217`, `:245`). At the end it calls `autoseq_mark_sent()` (`:283`), so the try is counted and the HUD shows "Transmitting" with no power reading. The ADV has not been checked. Row `t7xf`.
 
 ### 2.1 Settings writes, fixed with this draft
@@ -91,28 +91,10 @@ Top to bottom:
    - **Rows exactly as today's app:** a mono meta line with DT and Hz in fixed left columns and dB right-justified; the message, with callsigns as links and the → ME badge; then grid · location on the left and distance and bearing on the right.
    - **The Reply button is the new style:** a 36 px outlined button.
    - Sort and filter sit in the Decodes header (§3.8).
-4. **Dock:** the band grid and one line with the frequency and a Station link (§3.4). At an activation, a progress line is added (§3.10).
+4. **Dock:** the band grid and one line with the frequency and a Station link ([webapp.md](../architecture/webapp.md), **The dock**). At an activation, a progress line is added (§3.10).
 5. **Tab bar.**
 
 **Why the dock layout.** Decodes are the scarce resource on a phone, and the dock keeps its height fixed. Band is one tap. Every control touched mid-QSO is in thumb reach or in the queue. The rejected variants are in §4.
-
-### 3.4 The dock: band and frequency (decided 2026-09-27: a primary action)
-
-* **Band grid:**
-  - It shows the active bands (`active_bands`), each a button of at least 44 px, one tap per band.
-  - One row holds up to seven bands, with columns equal to the count. More than seven use a second row, so every band stays visible at one tap.
-  - The frequency is not in the grid, so it is never squeezed into one cell.
-* **Changing band keeps today's safety** (`changeBand()`, `app.html:1415`). With QSOs queued or a transmission on the air it asks first ("ends your QSO with K9ABC and stops the transmission on the air"), then cancels them and writes `band_sel`.
-* **The frequency button** (`14.074 MHz ›`) opens the frequency editor above the dock:
-  - **Typed entry**, with a numeric keypad: MHz (`14.080`) or kHz (`14080`), to 0.1 kHz, so the half-kHz FT4 channels fit. **Set** or Enter applies it.
-  - **±1 kHz** and **Standard** (the band's FT8 default, from the app's band table).
-  - A frequency in another active band switches to that band.
-  - A frequency outside every amateur band, or on a band that is not active, is refused with the reason. The band edges are a sanity check, not a licence check (they follow Region 2, and 60 m is treated as one range).
-  - A non-standard value is saved as that band's own frequency (the existing per-band keys). This is what SOTA's FT8 advice needs (RFC 0008 §3).
-  - Moving the frequency mid-QSO asks first, because the partner is listening on the old frequency.
-  - After each change it shows what was sent and what the radio reports (§3.7).
-* **The rest of the line**, "Retries 5 · 1500 Hz · Station ›", opens the Station sheet.
-* **Settings keeps only which bands appear.**
 
 ### 3.5 One Station sheet (decided 2026-09-27)
 
@@ -288,7 +270,7 @@ Redesign canvas: `Reply feedback`, interactive. The feedback is on the Reply but
 O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); they are the Now rows. The later slices stay listed here, under row `s6qk`, until each is next. The combined order with RFC 0008 is RFC 0008 §7.
 
 * **O1a: the CQ row**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The CQ row**).
-* **O1b: the dock** (§3.4). Row `q8sm`.
+* **O1b: the dock** ([webapp.md](../architecture/webapp.md), **The dock**). Bench check owed ([TEST_PLAN.md](../TEST_PLAN.md) Pending); row `q8sm` stays in Now until it passes.
 * **O1c: the Station sheet** (§3.5). Row `cuca`.
 * **O2: radio status replaces Connect, the read-back, and the TX HUD** (§3.7, §3.12).
   - Web app; the `IF;` read-back operation, its parser test and its Port A message; the ADV's attach-time host start (`ADV-only`).
@@ -314,35 +296,12 @@ Decided 2026-09-27. What building O1 needs beyond §3.2–3.5.
 
 * The web app is `webapp/app/app.html`; read [webapp.md](../architecture/webapp.md) first. The mockups are a visual reference only: use the app's own classes and theme tokens, and keep decode rows exactly as they are (§3.2).
 * **Each control writes its own key** with `putConfigLine()` (one `key=value` PUT). The result shows through `setMsg()`, which both Operate and Settings display. A refusal also reloads that control from the station.
-* **Until O2 ships,** Connect and Tune stay where they are, and "what the radio reports" (§3.4) is not shown: only what was sent.
+* **Until O2 ships,** Connect and Tune stay where they are, and "what the radio reports" ([webapp.md](../architecture/webapp.md), **The dock**) is not shown: only what was sent.
 * **Proof before the bench:**
   - `python3 webapp/tools/build.py` and `node webapp/tests/test_decode_batching.js`;
   - the page in `tools/serve_webapp_local.py` (the sources, then `--dist`) at 375 px, light and dark, with the sidekick stubbed from the browser console: `fetch` answering `GET /api/config` with a real config, and `MicroFT8Pairing.getToken` and `authFetch` answering the writes, including a refusal;
   - there is no JS test harness, so each piece then adds a bench check to [TEST_PLAN.md](../TEST_PLAN.md) Pending.
 * **Each piece graduates its sections** into webapp.md in its own commit ([README.md](../README.md), **RFC lifecycle**).
-
-**O1b: the dock** (§3.4)
-
-* It replaces Operate's band select (`opBandSel`). A band change keeps `changeBand()`'s confirmation and cancels.
-* The band grid shows `active_bands`.
-* **The frequency editor:**
-  - A typed value under 1000 is MHz, otherwise kHz, kept to 0.1 kHz (the station file already stores tenths).
-  - It writes the band's own key: `band<N>`, or `ft4_band<N>` when `protocol_mode` is FT4, as Settings' band rows do today. **Standard** writes the app's default for that band.
-  - A value in another active band writes that band's key, then `band_sel`.
-  - Mid-QSO, both ask first, as `changeBand()` does.
-* **Band edges,** in kHz: Region 2's amateur allocations (ITU Radio Regulations, Article 5). A sanity check, not a licence check. 60 m is one range spanning the US channels and the WRC-15 allocation.
-
-  | Band | 160 | 80 | 60 | 40 | 30 | 20 | 17 | 15 | 12 | 10 | 6 | 2 |
-  |---|---|---|---|---|---|---|---|---|---|---|---|---|
-  | From | 1800 | 3500 | 5330 | 7000 | 10100 | 14000 | 18068 | 21000 | 24890 | 28000 | 50000 | 144000 |
-  | To | 2000 | 4000 | 5407 | 7300 | 10150 | 14350 | 18168 | 21450 | 24990 | 29700 | 54000 | 148000 |
-
-* **Firmware: a frequency that does not reach the radio is refused** (decided 2026-09-27).
-  - Today only `band_sel` reports a VFO sync miss. A write to the operating band's own frequency key is saved and reported as success (`main/main.cpp:3972`, `poe_p4/main/porta_host_stubs.cpp:394`).
-  - Add a function to `main/storage/station.cpp`, host-tested in `host_mock`: does this key name the band being operated (`band_sel`, or that band's `band<N>` or `ft4_band<N>` for the active protocol)?
-  - Both boards call it where they now test for `band_sel`, and refuse with "frequency saved, VFO not moved (TX active)" or "… (CAT not ready)". `main.cpp` may only shrink ([STYLE.md](../STYLE.md)).
-* **The dock's second line,** "Retries 5 · 1500 Hz · Station ›", opens Settings until O1c, then the Station sheet.
-* **Settings loses** `band_sel` and the per-band frequency rows, and keeps `active_bands`. Its Save stops sending those keys, which also ends the mid-TX `band_sel` refusal on every Settings save (§2.1).
 
 **O1c: the Station sheet** (§3.5)
 
@@ -362,7 +321,6 @@ Decided 2026-09-27. What building O1 needs beyond §3.2–3.5.
 **2026-09-27, before acceptance:**
 
 * The dock layout (§3.2).
-* Band and frequency are a primary Operate control, with a typed frequency, and a second band row beyond seven (§3.4).
 * One Station sheet, opened from the CQ row and the dock, with no band or frequency in it (§3.5).
 * The radio is read back on panel open and after each sync (§3.7).
 * The map popup always offers **Add to activation** (§3.9).
@@ -374,8 +332,7 @@ Decided 2026-09-27. What building O1 needs beyond §3.2–3.5.
 * Per-QSO retries run 1–20, and raising the count on a parked entry does not revive it (§3.11).
 * No high-SWR warning (§4).
 * The CQ timeout defaults to Never (§3.6).
-* The main board refuses a frequency that does not reach the radio (§6.1).
 * Connect and Tune stay until O2 (§6.1).
 * The CQ text field writes `free_text`; `cq_ft` leaves the web app, and row `sfwz` retires it (§3.5).
-* The Station sheet's keys, band and frequency leave Settings, and its Save stops sending them (§6.1).
+* The Station sheet's keys leave Settings once O1c ships, and its Save stops sending them (§6.1).
 * O1 ships as three pieces, O1a to O1c (§6).

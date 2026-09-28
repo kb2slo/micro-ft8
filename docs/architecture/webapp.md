@@ -8,7 +8,7 @@ The web app (`webapp/app/`) is the station's only UI on the headless P4, served 
 
 **Every action reports where the operator is looking.** The page's status line sits under the header, which the overlay covers, so Settings repeats it on a line under its own fixed header. **Save station** closes Settings on success, leaving "Station saved." on Operate, and on a refusal stays open with the reason and the form reloaded to what the station holds. An action's result is never replaced by the form reload that follows it.
 
-* **Operate** stacks a state header (slot countdown and parity, band and frequency, CAT and audio liveness, resolved TX offset), the queue (**The CQ row** below), and the decode stream. The ADV splits these across RX, TX and STATUS because 240×135 forces it; a phone shows all three at once, and that is the real gain.
+* **Operate** stacks a state header (slot countdown and parity, CAT and audio liveness, Connect/Tune), the queue (**The CQ row** below), the decode stream, and the dock (**The dock** below, band and frequency). The ADV splits these across RX, TX and STATUS because 240×135 forces it; a phone shows all four at once, and that is the real gain.
 * **Grow by destination, never by feature.** QRZ is not a screen: per-callsign data expands on the row it belongs to. One shared expand-on-tap component, used on decode, queue and QSO rows, shows **offline-derived** facts at once (DXCC and zones from the prefix, distance and bearing from grid arithmetic) and **online-enriched** ones (QRZ bio, photo) when reachable, failing legibly when not.
 * **QSOs is one continuous list** with day dividers ("Today", "Sep 13"), not a day-file picker. The main board keeps one ADIF file per UTC day; the list loads the current day on open and older days as the operator scrolls (`FILE_LIST`/`FILE_READ`), because Port A's budget cannot carry the whole log on every open.
 * **Worked/new flags are computed in the browser** from the QSOs loaded so far, for decode rows and the map. A station worked on a day not yet loaded shows as new; accepted 2026-09-25, and row xv23 explores loading and caching more of the log.
@@ -22,6 +22,28 @@ The queue's last row, always present (`app.html`, `#opCqRow`), replacing the old
 * **The status line** reads "Off"; "Calling · Even/Odd slots" when the beacon is on and the queue holds no other station; or "Waits for the queue · Even/Odd slots" once a real QSO is active, since every live QSO outranks a CQ ([autoseq.md](autoseq.md)).
 * **Stop, during our own CQ, turns the beacon off too.** The TX HUD's cancel button reads **Stop CQ** while the CQ is what's on the air, and posts `/api/tx/cancel` then `/api/beacon 0`; during a QSO message it reads **Stop TX** and only cancels that transmission. Which one is decided from the text on the air (`txIsOurCq()`: it starts with `CQ `, or is a Free text CQ's `free_text`), never from the queue: the P4 arms the next beacon CQ during an empty cycle, and it stays queued behind a QSO that answers, while our report is what transmits. Otherwise the beacon stayed armed and the next CQ went out a cycle later regardless of the operator's tap.
 * **The CQ decode color** (`--good-hot`, `.c-cq`) is `#007a00` in light mode, `#4ade80` in dark. The light value was `#00c800` (about 2.3:1 on white), which fails WCAG's 4.5:1 text-contrast minimum.
+
+### The dock
+
+Last on Operate, below the decode stream and above the tab bar (`app.html`, `#opDock`), replacing the old header's band select (`opBandSel`) and its "Next TX" offset line. Connect and Tune stay in the header until O2 ([RFC 0009](../rfcs/0009-operate-station-surface.md) §6).
+
+* **The band grid** (`#opBandGrid`) shows `active_bands`, one button of at least 44 px per band. Up to seven bands share one row with columns equal to the count (`grid-template-columns: repeat(N, 1fr)`, `buildDockBandGrid()`); more than seven wrap to a second row on their own, so no band is ever a swipe away.
+* **A tap changes band at once** (`changeBand()`), asking first only when a QSO is queued or our own transmission is on the air ("ends your QSO with K9ABC and stops the transmission on the air," `confirmRetune()`), then cancelling both (`cancelQsosAndTx()`) and writing `band_sel`. A "no" leaves the grid as it was — it never shows the new band until the write actually lands.
+* **The dock's second line** reads "`<freq>` MHz ›" and "Retries `<N>` · `<hz>` Hz · Station ›" (`renderDockLine()`). The frequency button opens the frequency editor above the band grid; the rest of the line opens Settings until the Station sheet ships (row `cuca`). Hz is the armed TX's offset from the last `SLOT_STATE` event — 0 means nothing is armed, not a real offset.
+* **The frequency editor** (`#opFreqEditor`):
+  - A typed value under 1000 is MHz, otherwise kHz, kept to 0.1 kHz (the station file stores tenths).
+  - **Set**/Enter, **−1/+1 kHz**, and **Standard** (the app's own default for that band and protocol) all write the operating band's own key (`band<N>`, or `ft4_band<N>` under FT4) with one `putConfigLine()` PUT.
+  - A value in another active band writes that band's key, then `band_sel` — the same confirm-and-cancel `changeBand()` uses. A non-standard value saves as that band's own frequency (the existing per-band keys), which is what SOTA's FT8 field advice needs: a non-standard calling frequency, spotted with the exact frequency plus offset and parity ([RFC 0008](../rfcs/0008-activator-mode.md) §3).
+  - A value outside every Region 2 amateur band, or on a band not in `active_bands`, is refused client-side (`bandForKhz()`) with the reason. The band edges (kHz, ITU Radio Regulations Article 5) are a sanity check, not a licence check; 60 m is one range spanning the US channels and the WRC-15 allocation:
+
+    | Band | 160 | 80 | 60 | 40 | 30 | 20 | 17 | 15 | 12 | 10 | 6 | 2 |
+    |---|---|---|---|---|---|---|---|---|---|---|---|---|
+    | From | 1800 | 3500 | 5330 | 7000 | 10100 | 14000 | 18068 | 21000 | 24890 | 28000 | 50000 | 144000 |
+    | To | 2000 | 4000 | 5407 | 7300 | 10150 | 14350 | 18168 | 21450 | 24990 | 29700 | 54000 | 148000 |
+
+  - Moving the frequency mid-QSO asks first (`confirmRetune()`, same wording `changeBand()` uses), since the partner is listening on the old frequency. Unlike a band change, a same-band edit does not cancel the queue: the main board itself can't retune under an active transmission (next bullet), so nothing needs pre-emptive cancelling.
+* **The main board refuses a frequency write that does not reach the radio.** `station_key_names_operating_band()` (`main/storage/station.cpp`, host-tested) answers whether a CONFIG key names the band actually being operated — `band_sel`, or that band's own frequency key under the active protocol. Both boards call it where they already tested for `band_sel`, and refuse with "frequency saved, VFO not moved (TX active)" or "… (CAT not ready)"; a write to any other band's frequency, or to `active_bands`, stays silent on a sync miss, same as before.
+* **Settings keeps only which bands appear** (`active_bands`, `buildBandRows()`). `band_sel` and the per-band frequency rows left Settings for the dock; Save no longer sends either key, which also ends the mid-TX `band_sel` refusal that could hit every Settings save (§2.1 of [RFC 0009](../rfcs/0009-operate-station-surface.md), now moot since Settings can no longer trigger it).
 
 ### Decisions a reference app would make differently
 

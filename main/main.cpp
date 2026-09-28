@@ -3972,15 +3972,15 @@ const char* porta_host_config_set(const char* key, const char* value) {
   if (strcmp(key, "band_sel") == 0 || strcmp(key, "active_bands") == 0 ||
       strncmp(key, "band", 4) == 0 || strncmp(key, "ft4_band", 8) == 0) {
     const bool synced = sync_radio_to_current_band("porta config");
-    // band_sel means "operate on this band now" -- a browser that asked for
-    // that and silently got true regardless of whether the VFO actually
-    // moved would look "saved" while the radio stayed put. The other
-    // band-ish keys (active_bands, per-band frequency) are config edits
-    // that do not necessarily mean "and retune immediately", so they stay
-    // silent on a sync miss, same as before.
-    if (strcmp(key, "band_sel") == 0 && !synced) {
-      return decode_tx_state_get_tx_active() ? "band saved, VFO not moved (TX active)"
-                          : "band saved, VFO not moved (CAT not ready)";
+    // A write that names the band actually being operated needs the VFO to
+    // have moved to mean what it says -- band_sel picks a new operating
+    // band, and a frequency write for that same band retunes it in place.
+    // Any other band-ish key (active_bands, another band's frequency) is a
+    // config edit that does not need the radio to move, so it stays silent
+    // on a sync miss, same as before.
+    if (!synced && station_key_names_operating_band(key, g_band_sel, g_protocol == &kProtocolFT4)) {
+      return decode_tx_state_get_tx_active() ? "frequency saved, VFO not moved (TX active)"
+                          : "frequency saved, VFO not moved (CAT not ready)";
     }
   }
   return nullptr;

@@ -166,8 +166,6 @@ button:disabled{opacity:.45}
 .pill{display:inline-block;font-size:.7rem;font-weight:700;padding:.15rem .5rem;border-radius:999px}
 .pill-beacon-on{background:var(--good-bg);color:var(--good-fg)}
 .pill-beacon-off{background:color-mix(in srgb, GrayText 20%, transparent);color:GrayText}
-#opLive{display:flex;justify-content:space-between;align-items:center;font-family:ui-monospace,monospace;font-size:.75rem;color:GrayText;margin-top:.6rem}
-#opBandSel{width:auto;margin-top:0;padding:.25rem .4rem;font-size:.75rem;font-family:ui-monospace,monospace;background:Field;color:FieldText}
 #opDots{display:flex;flex-wrap:wrap;row-gap:.3rem;gap:.9rem;margin-top:.6rem;font-size:.7rem;color:GrayText}
 /* Glyph, not just a color, on purpose (operator feedback: colorblind-hostile
    to signal state with a plain colored dot). Shape carries the meaning --
@@ -215,11 +213,32 @@ button:disabled{opacity:.45}
    Static markup, not part of #opQueueRows' innerHTML rebuild: that list is
    re-stringified on every poll tick, which would yank the native Off/Even/Odd
    <select> out from under an operator mid-pick the same way rebuilding
-   #opBandSel's options would (see renderBeacon()). */
+   #opBandGrid's buttons would (see buildDockBandGrid()/syncDockBandGrid()). */
 #opCqRow{padding:.5rem 1rem .6rem;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent)}
 .cqline{display:flex;justify-content:space-between;align-items:center;gap:.5rem}
 .cqline+.cqline{margin-top:.3rem;font-size:.75rem;color:GrayText}
 .cqsends{font-family:ui-monospace,monospace;font-weight:700;font-size:.85rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---- operate: the dock (RFC 0009 §3.4/§3.2 item 4 -- band grid, frequency,
+   and Retries/offset/Station preview, last before the tab bar) ---- */
+#opDock{padding:.6rem 1rem .7rem;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+/* Columns == band count up to 7; buildDockBandGrid() sets grid-template-columns
+   to min(count,7) so an 8th+ band wraps to a second row on its own, no manual
+   row-splitting logic needed (RFC 0009 §3.4: "one row holds up to seven"). */
+.bandgrid{display:grid;gap:.4rem}
+.bandbtn{min-height:44px;font-size:.8rem;font-family:ui-monospace,monospace;background:ButtonFace;color:ButtonText;border:1px solid GrayText;border-radius:.4rem;padding:.2rem}
+.bandbtn.on{color:var(--accent);border-color:var(--accent);font-weight:700}
+.dockline{display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-top:.6rem;font-size:.8rem}
+.dockfreq{font-family:ui-monospace,monospace;font-weight:700;font-size:.9rem}
+.dockmeta{color:GrayText;font-size:.75rem;text-align:right}
+/* Above the band grid, not a separate overlay -- opening it pushes the grid
+   down rather than covering decodes above (RFC 0009 §3.4: "opens the
+   frequency editor above the dock"). */
+#opFreqEditor{margin-bottom:.6rem}
+#opFreqEditor .row{display:flex;gap:.4rem;align-items:center;margin-top:0}
+#opFreqEditor .row+.row{margin-top:.4rem}
+#opFreqInput{flex:1;margin-top:0}
+#opFreqEditor button{font-size:.8rem;padding:.4rem .5rem}
 
 /* ---- operate: decode stream ---- */
 #opDecodes{padding-bottom:.5rem}
@@ -332,12 +351,8 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
   border:0;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent);
   border-radius:0;padding:.3rem 0;font-size:.9rem;background:transparent;color:CanvasText}
 .setnote{padding:0 1rem;font-size:.8rem;color:GrayText;margin-top:0}
-.bandrow{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
 .bandcheck{display:flex;align-items:center;gap:.4rem;font-size:.85rem;text-transform:none;letter-spacing:normal;color:CanvasText;margin:0}
 .bandcheck input{width:auto;margin:0}
-.bandfreqwrap{display:flex;align-items:center;gap:.3rem;font-size:.8rem;color:GrayText;white-space:nowrap}
-.bandfreq{width:5.5rem;margin:0;padding:.3rem .4rem;font-size:.85rem}
-.bandfreq:disabled{opacity:.5}
 #staleBanner,#linkBanner{background:var(--warn-bg);color:var(--warn-fg);padding:.5rem 1rem;font-size:.85rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem}
 #staleBanner button,#linkBanner button{padding:.3rem .6rem;font-size:.8rem}
 .callink{text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
@@ -393,7 +408,6 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         <button id=opConnect type=button disabled>Connect</button>
         <button id=opTune type=button disabled>Tune: Off</button>
       </div>
-      <div id=opLive><select id=opBandSel disabled></select><span id=opOffset>Next TX: —</span></div>
     </div>
 
     <div id=opTxHud hidden>
@@ -438,6 +452,30 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <div id=opDecodes>
       <div class=hd>Decodes &middot; tap a callsign for info</div>
       <div id=opDecodeRows></div>
+    </div>
+
+    <!-- ================= DOCK (RFC 0009 §3.2 item 4, §3.4) ================= -->
+    <!-- Last on Operate, before the tab bar: band is one tap, frequency and
+         Retries/offset preview share the line below the grid. Replaces the
+         old header's opBandSel/opOffset (opConnRow's Connect/Tune stay in
+         the header until O2, RFC 0009 §6.1). -->
+    <div id=opDock>
+      <div id=opFreqEditor hidden>
+        <div class=row>
+          <input id=opFreqInput type=number step=0.1 inputmode=decimal placeholder="MHz or kHz">
+          <button id=opFreqSet type=button disabled>Set</button>
+        </div>
+        <div class=row>
+          <button id=opFreqDown type=button disabled>&minus;1 kHz</button>
+          <button id=opFreqStd type=button disabled>Standard</button>
+          <button id=opFreqUp type=button disabled>+1 kHz</button>
+        </div>
+      </div>
+      <div id=opBandGrid class=bandgrid></div>
+      <div class=dockline>
+        <button id=opDockFreqBtn type=button class="dlink dockfreq">&mdash;</button>
+        <button id=opDockMetaBtn type=button class="dlink dockmeta">&mdash;</button>
+      </div>
     </div>
   </section>
 
@@ -564,8 +602,8 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       </label>
     </div>
     <div class=hd>Bands</div>
+    <p class=setnote>Which bands appear. Band and frequency are set from Operate's dock.</p>
     <div id=bandList></div>
-    <div class=setrow><label>Band <select id=band_sel></select></label></div>
     <div class=setrow>
       <label>Protocol
         <select id=protocol_mode>
@@ -676,9 +714,18 @@ var BANDS = [
   {i: 10, name: '6m',  n: 6,   ft8: 50313,  ft4: 50318},
   {i: 11, name: '2m',  n: 2,   ft8: 144174, ft4: 144170}
 ];
+// Region 2 amateur allocations (ITU RR Article 5), kHz -- a sanity check,
+// not a licence check, mirroring the table the dock's frequency editor is
+// refused against on the main board (RFC 0009 §6.1). 60m is one range
+// spanning the US channels and the WRC-15 allocation. Keyed by BANDS[].n.
+var BAND_EDGES_KHZ = {
+  160: [1800, 2000], 80: [3500, 4000], 60: [5330, 5407], 40: [7000, 7300],
+  30: [10100, 10150], 20: [14000, 14350], 17: [18068, 18168], 15: [21000, 21450],
+  12: [24890, 24990], 10: [28000, 29700], 6: [50000, 54000], 2: [144000, 148000]
+};
 var FIELDS = [
   'call','grid','cq_type','cq_ft','free_text','comment1','ignore_prefixes',
-  'offset','offset_src','radio','band_sel','protocol_mode',
+  'offset','offset_src','radio','protocol_mode',
   'skiptx1','autoseq_max_retry','rxtx_log'
 ];
 var CQ_TYPE_NAMES = ['CQ', 'SOTA', 'POTA', 'QRP', 'FD', 'FreeText'];
@@ -1014,39 +1061,6 @@ function bandFreq(cfg, idx) {
   return '';
 }
 
-// Shared by both band dropdowns (Operate + Settings) -- one function, one
-// set of option labels, so they can never drift out of sync with each other.
-function fillBandSelect(cfg, sel) {
-  var want = {};
-  var any = false;
-  String(cfg.active_bands || '').split(/[\s,;\/]+/).forEach(function (t) {
-    var n = parseInt(t, 10);
-    if (n > 0) { want[n] = true; any = true; }
-  });
-  var rows = [];
-  BANDS.forEach(function (b) {
-    if (any && !want[b.n]) return;
-    var freq = bandFreq(cfg, b.i);
-    rows.push({ i: b.i, label: b.name + (freq ? (' · ' + freq + ' kHz') : '') });
-  });
-  if (!rows.length) {
-    BANDS.forEach(function (b) {
-      var freq = bandFreq(cfg, b.i);
-      rows.push({ i: b.i, label: b.name + (freq ? (' · ' + freq + ' kHz') : '') });
-    });
-  }
-  var cur = String(cfg.band_sel !== undefined && cfg.band_sel !== null ? cfg.band_sel : '');
-  sel.innerHTML = '';
-  rows.forEach(function (r) {
-    var opt = document.createElement('option');
-    opt.value = String(r.i);
-    opt.textContent = r.label;
-    sel.appendChild(opt);
-  });
-  if (cur !== '') sel.value = cur;
-  if (sel.value !== cur && rows.length) sel.selectedIndex = 0;
-}
-
 // Parses active_bands the same lenient way rebuild_active_bands() (main.cpp)
 // does -- whitespace/comma/semicolon/slash separated band numbers, "m" suffix
 // tolerated implicitly since parseInt stops at the first non-digit. Empty or
@@ -1063,53 +1077,122 @@ function parseActiveBands(text) {
   return { want: want, any: any };
 }
 
-// One row per band: checkbox (membership in active_bands) plus an editable
-// frequency defaulting to BANDS[i]'s ft8/ft4 value when CONFIG carries no
-// explicit bandN=/ft4_band<n>= override. isFt4 is a parameter rather than
-// always reading cfg.protocol_mode because the Protocol <select> itself can
-// change it before Save -- see that element's onchange below -- and a
-// changed-but-unsaved protocol has no overrides of its own in this cfg
-// snapshot at all (CONFIG only ever reports the currently *active*
-// protocol's bandN keys), so switching shows defaults only. That is a real
-// limitation, not a bug: the client cannot know the other protocol's stored
-// overrides without the ADV actually rebooting into it.
-function buildBandRows(cfg, isFt4) {
+// One row per band: a checkbox for active_bands membership only. Band and
+// frequency (band_sel, band<N>/ft4_band<N>) left Settings for the dock's
+// band grid and frequency editor (RFC 0009 §3.4, §6.1: "Settings keeps only
+// which bands appear").
+function buildBandRows(cfg) {
   var parsed = parseActiveBands(cfg.active_bands);
   var container = document.getElementById('bandList');
   container.innerHTML = '';
   BANDS.forEach(function (b) {
     var checked = parsed.any ? !!parsed.want[b.n] : true;
-    var override = bandFreq(cfg, b.i);
-    var freq = override || String(isFt4 ? b.ft4 : b.ft8);
     var row = document.createElement('div');
     row.className = 'setrow';
     row.innerHTML =
-      '<div class=bandrow>' +
-        '<label class=bandcheck><input type=checkbox class=bandactive data-n="' + b.n + '"' +
-          (checked ? ' checked' : '') + '> ' + esc(b.name) + '</label>' +
-        '<span class=bandfreqwrap><input type=number step=0.1 class=bandfreq data-i="' + b.i + '" value="' +
-          esc(freq) + '"' + (checked ? '' : ' disabled') + '> kHz</span>' +
-      '</div>';
+      '<label class=bandcheck><input type=checkbox class=bandactive data-n="' + b.n + '"' +
+        (checked ? ' checked' : '') + '> ' + esc(b.name) + '</label>';
     container.appendChild(row);
-  });
-  container.querySelectorAll('.bandactive').forEach(function (cb) {
-    cb.onchange = function () {
-      var wrap = cb.closest('.bandrow');
-      var freqInput = wrap && wrap.querySelector('.bandfreq');
-      if (freqInput) freqInput.disabled = !cb.checked;
-    };
   });
 }
 
+// Finds which amateur band a typed frequency falls in, by the Region 2 edge
+// table (RFC 0009 §6.1) -- null when it lands outside every band.
+function bandForKhz(khz) {
+  for (var i = 0; i < BANDS.length; i++) {
+    var edges = BAND_EDGES_KHZ[BANDS[i].n];
+    if (edges && khz >= edges[0] && khz <= edges[1]) return BANDS[i];
+  }
+  return null;
+}
+
+// The operating band's current frequency in kHz: an explicit bandN=/
+// ft4_bandN= override when CONFIG carries one, else BANDS[i]'s default for
+// the active protocol. Null when band_sel itself is unknown (no config yet).
+function currentDockFreqKhz(cfg) {
+  var idx = (cfg.band_sel !== undefined && cfg.band_sel !== null) ? parseInt(cfg.band_sel, 10) : NaN;
+  var band = BANDS[idx];
+  if (!band) return null;
+  var override = bandFreq(cfg, idx);
+  var isFt4 = cfg.protocol_mode === 'FT4';
+  return parseFloat(override || (isFt4 ? band.ft4 : band.ft8));
+}
+
+// Stations store tenths of a kHz, so MHz needs at most 4 decimals -- trims
+// exactly one trailing zero rather than a generic regex so a whole-kHz value
+// still reads "14.074" (3 decimals), not "14.07".
+function khzToMhzLabel(khz) {
+  var s = (khz / 1000).toFixed(4);
+  return s.slice(-1) === '0' ? s.slice(0, -1) : s;
+}
+
+// The dock's band grid (RFC 0009 §3.4): one button per active band, up to
+// seven columns -- an 8th+ band wraps to a second row on its own (see the
+// .bandgrid CSS comment). Rebuilds the buttons themselves; only called at
+// boot/after an explicit action (setForm()), never the periodic poll -- same
+// "don't yank a picker out from under a mid-pick tap" reasoning #opBandSel
+// used to need, still real for a touch target under a finger (see
+// syncDockBandGrid() for the periodic-poll half, which only re-classes the
+// already-built buttons).
+function buildDockBandGrid(cfg) {
+  var parsed = parseActiveBands(cfg.active_bands);
+  var active = BANDS.filter(function (b) { return !parsed.any || parsed.want[b.n]; });
+  if (!active.length) active = BANDS.slice();
+  var grid = document.getElementById('opBandGrid');
+  grid.style.gridTemplateColumns = 'repeat(' + Math.min(active.length, 7) + ', 1fr)';
+  var cur = String(cfg.band_sel !== undefined && cfg.band_sel !== null ? cfg.band_sel : '');
+  grid.innerHTML = '';
+  active.forEach(function (b) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'bandbtn' + (String(b.i) === cur ? ' on' : '');
+    btn.textContent = b.name;
+    btn.disabled = !writesEnabled;
+    btn.dataset.i = String(b.i);
+    grid.appendChild(btn);
+  });
+}
+
+// Periodic-poll half of the grid: re-classes the buttons already built by
+// buildDockBandGrid() so a band changed elsewhere (MENU, another browser
+// tab) shows up here without disturbing a tap in progress.
+function syncDockBandGrid(cfg) {
+  var cur = String(cfg.band_sel !== undefined && cfg.band_sel !== null ? cfg.band_sel : '');
+  document.querySelectorAll('#opBandGrid .bandbtn').forEach(function (btn) {
+    btn.classList.toggle('on', btn.dataset.i === cur);
+  });
+}
+document.getElementById('opBandGrid').onclick = function (ev) {
+  var btn = ev.target.closest('.bandbtn');
+  if (!btn || btn.disabled) return;
+  changeBand(btn.dataset.i);
+};
+
+// The dock's second line: "Retries N · Hz · Station ›". Retries and the
+// frequency label come from lastCfg (config-driven); Hz is the armed TX's
+// offset from the last SLOT_STATE event, same value/meaning Operate's old
+// header line showed as "Next TX:" (0 means nothing armed, not a real
+// offset, so it must not pass a != null check the way it would).
+function renderDockLine(cfg) {
+  var khz = currentDockFreqKhz(cfg);
+  document.getElementById('opDockFreqBtn').textContent =
+    (khz != null ? khzToMhzLabel(khz) + ' MHz' : '—') + ' ›';
+  var retries = (cfg.autoseq_max_retry !== undefined && cfg.autoseq_max_retry !== null)
+    ? cfg.autoseq_max_retry : '—';
+  document.getElementById('opDockMetaBtn').textContent =
+    'Retries ' + retries + ' · ' + (slotState && slotState.hz > 0 ? (slotState.hz + ' Hz') : '—') +
+    ' · Station ›';
+}
+
 function setForm(cfg) {
-  // Rebuilding a <select>'s options while the operator has it open would
-  // yank the picker out from under them -- same reason loadConfig() only
-  // ever runs at boot or right after an explicit action, never on the
-  // periodic poll (see pollLiveStatus()/applyOperateLive() below). Same
-  // reasoning covers rebuilding the band checkboxes/frequency inputs.
-  fillBandSelect(cfg, document.getElementById('band_sel'));
-  fillBandSelect(cfg, document.getElementById('opBandSel'));
-  buildBandRows(cfg, cfg.protocol_mode === 'FT4');
+  // Rebuilding while the operator has a control open would yank it out from
+  // under them -- same reason loadConfig() only ever runs at boot or right
+  // after an explicit action, never on the periodic poll (see
+  // pollLiveStatus()/applyOperateLive() below). Same reasoning covers
+  // rebuilding the band checkboxes and the dock's band grid.
+  buildBandRows(cfg);
+  buildDockBandGrid(cfg);
+  renderDockLine(cfg);
   FIELDS.forEach(function (k) {
     var el = document.getElementById(k);
     if (!el) return;
@@ -1117,56 +1200,34 @@ function setForm(cfg) {
       el.value = (cfg.protocol_mode === 'FT4') ? 'FT4' : 'FT8';
       return;
     }
-    if (k === 'band_sel') return; // filled above
     if (cfg[k] === undefined || cfg[k] === null) return;
     el.value = String(cfg[k]);
   });
-  if (cfg.band_sel !== undefined && cfg.band_sel !== null) {
-    document.getElementById('band_sel').value = String(cfg.band_sel);
-    document.getElementById('opBandSel').value = String(cfg.band_sel);
-  }
 }
 
 function formBody() {
   var lines = [];
-  var isFt4 = false;
   FIELDS.forEach(function (k) {
     var el = document.getElementById(k);
     if (!el) return;
     var v = el.value;
     if (k === 'protocol_mode') {
-      isFt4 = (v === 'FT4');
-      lines.push('protocol_mode=' + (isFt4 ? 'FT4' : 'FT8'));
+      lines.push('protocol_mode=' + (v === 'FT4' ? 'FT4' : 'FT8'));
       return;
     }
     lines.push(k + '=' + v);
   });
-  // active_bands and per-band frequency come from the checkboxes/inputs
-  // buildBandRows() renders, not a plain FIELDS entry -- same reasoning
-  // as band_sel already had its own dropdown-shared path above.
+  // active_bands comes from the checkboxes buildBandRows() renders, not a
+  // plain FIELDS entry. band_sel and per-band frequency left Settings for
+  // the dock (RFC 0009 §3.4, §6.1), so Save no longer sends them.
   var active = [];
   document.querySelectorAll('#bandList .bandactive').forEach(function (cb) {
     if (cb.checked) active.push(cb.getAttribute('data-n'));
   });
   lines.push('active_bands=' + active.join(' '));
-  document.querySelectorAll('#bandList .bandfreq').forEach(function (input) {
-    if (input.value === '') return;
-    lines.push((isFt4 ? 'ft4_band' : 'band') + input.getAttribute('data-i') + '=' + input.value);
-  });
   return lines.join('\n');
 }
 
-// Operate's header: CAT/audio/clock status, Connect/Tune labels, cq_type (for
-// the beacon label), and #opBandSel's selected value. Safe to call on every
-// poll tick -- never touches Settings' inputs, and never rebuilds
-// #opBandSel's *options* (that only happens in setForm(), same reasoning as
-// the comment there: rebuilding the list while the operator has the picker
-// open would yank it out from under them). Syncing the already-built list's
-// *value* carries no such risk (see renderBeacon()'s beaconSel comment) and
-// is what makes a band changed on the ADV itself -- MENU, not this page --
-// show up here without a reload. One gap this doesn't close: if the device
-// also changed active_bands so the new band isn't among the options already
-// built, the value silently fails to apply until the next full setForm().
 // Shared by the header dots: "up" (confirmed good), "bad" (confirmed
 // not-good) or neither (unknown -- never confirmed either way, e.g. before
 // the first successful poll). Clearing 'stale' here means a fresh answer
@@ -1282,10 +1343,21 @@ function updateNetInfo(cfg) {
   document.getElementById('netModeLink').hidden = isStation || !mode;
 }
 
+// Operate's header and dock: CAT/audio/link dots, Connect/Tune labels, and
+// the dock's band grid/frequency line. Safe to call on every poll tick --
+// never touches Settings' inputs, and never rebuilds the band grid's
+// *buttons* (that only happens in setForm(), same reasoning as the comment
+// there: rebuilding while the operator has a control open would yank it out
+// from under them). syncDockBandGrid() only re-classes the already-built
+// buttons, which is what makes a band changed on the ADV itself -- MENU, not
+// this page -- show up here without a reload. renderDockLine() reruns for
+// the same reason: its Retries/frequency text can change from either side
+// too. One gap this doesn't close: if the device also changed active_bands
+// so the new band isn't among the buttons already built, the highlight
+// silently fails to apply until the next full setForm().
 function applyOperateLive(cfg) {
-  if (cfg.band_sel !== undefined && cfg.band_sel !== null) {
-    document.getElementById('opBandSel').value = String(cfg.band_sel);
-  }
+  syncDockBandGrid(cfg);
+  renderDockLine(cfg);
   // "bad" (not just "unknown") only once we've had at least one real answer
   // from the ADV this session -- otherwise a cold boot reading the localStorage
   // cache before the first live poll would flash every dot red for no reason.
@@ -1433,27 +1505,13 @@ async function authPostQuiet(path, body) {
   }
 }
 
-// Operator-requested: a band change means every queued contact was for the
-// old band, and an in-flight TX on the old frequency should not continue
-// once the operator has already moved on. Both /api/tx/cancel and
-// /api/queue/cancel already exist for the TX-HUD cancel button and the
-// Queue section's own per-row cancel -- reused here rather than adding a
-// new bulk-cancel ACTION, since looping the client's own already-current
-// `queue` (kept live by the same QUEUE_ENTRY stream the Queue section
-// renders from) covers it without any wire/firmware change. The beacon CQ
-// placeholder (dxcall "CQ") is deliberately left alone: it carries no
-// per-band state of its own (frequency is resolved from g_band_sel at the
-// moment of TX, not baked into the queue entry), so beaconing continues
-// seamlessly on the new band once it's synced. Fires TX-cancel and every
-// non-CQ queue-cancel together rather than one after another -- band_sel
-// itself is the last thing sent, once the rest have landed.
-//
-// Ending live QSOs or cutting off a transmission is not something to do by a
-// stray tap on a dropdown, so with either in play the operator confirms
-// first, and a "no" puts both band dropdowns back on the band the main board
-// last reported. A beacon CQ waiting for its slot does not ask: it simply
-// carries on on the new band.
-function changeBand(idx) {
+// Shared by changeBand() and the dock's frequency editor (RFC 0009 §3.4:
+// "Mid-QSO, both ask first, as changeBand() does") -- moving the radio off
+// the frequency a queued QSO or an on-air transmission is using leaves the
+// partner listening to nothing, so either action confirms first with the
+// same wording. Returns true when it is safe to proceed (nothing queued, or
+// the operator said yes).
+function confirmRetune(verb) {
   var calls = Object.keys(queue)
     .filter(function (id) { return queue[id].dxcall !== 'CQ'; })
     .map(function (id) { return queue[id].dxcall; });
@@ -1463,22 +1521,150 @@ function changeBand(idx) {
               ' with ' + calls.join(', '));
   }
   if (txHud && txHud.active && !txHud.aborted) ends.push('stops the transmission on the air');
-  if (ends.length && !confirm('Change band? This ' + ends.join(' and ') + '.')) {
-    if (lastCfg.band_sel !== undefined && lastCfg.band_sel !== null) {
-      document.getElementById('band_sel').value = String(lastCfg.band_sel);
-      document.getElementById('opBandSel').value = String(lastCfg.band_sel);
-    }
-    return;
-  }
-  setMsg('Changing band…');
+  return !ends.length || confirm(verb + '? This ' + ends.join(' and ') + '.');
+}
+
+// Both /api/tx/cancel and /api/queue/cancel already exist for the TX-HUD
+// cancel button and the Queue section's own per-row cancel -- reused here
+// rather than adding a new bulk-cancel ACTION, since looping the client's
+// own already-current `queue` (kept live by the same QUEUE_ENTRY stream the
+// Queue section renders from) covers it without any wire/firmware change.
+// The beacon CQ placeholder (dxcall "CQ") is deliberately left alone: it
+// carries no per-band state of its own (frequency is resolved from
+// g_band_sel at the moment of TX, not baked into the queue entry), so
+// beaconing continues seamlessly on the new band once it's synced.
+function cancelQsosAndTx() {
   var stops = [authPostQuiet('/api/tx/cancel')];
   Object.keys(queue).forEach(function (id) {
     if (queue[id].dxcall !== 'CQ') stops.push(authPostQuiet('/api/queue/cancel', id));
   });
-  Promise.all(stops).then(function () {
+  return Promise.all(stops);
+}
+
+// Operator-requested: a band change means every queued contact was for the
+// old band, and an in-flight TX on the old frequency should not continue
+// once the operator has already moved on -- so a band change cancels both
+// before writing band_sel itself, the last thing sent once the rest have
+// landed. A "no" leaves everything as it was: unlike the old <select>, the
+// dock's band grid never shows the new band until the write actually lands
+// (see buildDockBandGrid()/syncDockBandGrid()), so there is nothing to
+// revert here.
+function changeBand(idx) {
+  if (!confirmRetune('Change band')) return;
+  setMsg('Changing band…');
+  cancelQsosAndTx().then(function () {
     return putConfigLine('band_sel=' + idx, 'Changing band…');
   }).catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 }
+
+// ===================== Operate: the dock's frequency editor (RFC 0009 §3.4) =====================
+
+// A same-band edit (a nudge, Standard, or a typed value that lands in the
+// band already operating) does not cancel the queue the way changeBand()
+// does -- the QSO is still on the right band, just a shifted frequency
+// within it. If our own TX is active the radio can't retune underneath it
+// anyway: the main board itself refuses the write ("frequency saved, VFO
+// not moved (TX active)", RFC 0009 §6.1), surfaced here the same way any
+// other putConfigLine() refusal is.
+function setOperatingBandFreq(khz) {
+  var idx = parseInt(lastCfg.band_sel, 10);
+  if (isNaN(idx)) return;
+  if (!confirmRetune('Change frequency')) return;
+  var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + idx;
+  putConfigLine(key + '=' + khz, 'Setting frequency…')
+    .then(refreshFreqInputIfOpen)
+    .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+}
+
+// The nudge/Standard buttons leave the editor open (only a typed Set/Enter
+// closes it), so their input needs its own refresh once the write actually
+// lands -- unlike renderDockLine() (every poll tick), this only runs right
+// after our own explicit write, so it never overwrites a value the operator
+// is still typing.
+function refreshFreqInputIfOpen() {
+  var editor = document.getElementById('opFreqEditor');
+  if (editor.hidden) return;
+  var khz = currentDockFreqKhz(lastCfg);
+  document.getElementById('opFreqInput').value = khz != null ? khz : '';
+}
+
+// A value in another active band is a band change with a non-standard
+// frequency for it (RFC 0009 §6.1: "writes that band's key, then band_sel"),
+// so it gets changeBand()'s full cancel treatment, not just a confirm.
+function switchToBandWithFreq(band, khz) {
+  if (!confirmRetune('Change band')) return;
+  var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + band.i;
+  cancelQsosAndTx().then(function () {
+    return putConfigLine(key + '=' + khz, 'Setting frequency…');
+  }).then(function () {
+    return putConfigLine('band_sel=' + band.i, 'Changing band…');
+  }).catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+}
+
+function openFreqEditor() {
+  var khz = currentDockFreqKhz(lastCfg);
+  document.getElementById('opFreqInput').value = khz != null ? khz : '';
+  document.getElementById('opFreqEditor').hidden = false;
+}
+function closeFreqEditor() {
+  document.getElementById('opFreqEditor').hidden = true;
+}
+document.getElementById('opDockFreqBtn').onclick = function () {
+  var editor = document.getElementById('opFreqEditor');
+  if (editor.hidden) openFreqEditor(); else closeFreqEditor();
+};
+// Until O1c ships (row cuca), both halves of the dock's second line open
+// Settings -- the Station sheet does not exist yet (RFC 0009 §6.1).
+document.getElementById('opDockMetaBtn').onclick = openSettings;
+
+// A typed value under 1000 is MHz, otherwise kHz, kept to 0.1 kHz (RFC 0009
+// §6.1 -- the station file already stores tenths).
+function applyDockFreqInput() {
+  var raw = document.getElementById('opFreqInput').value;
+  var v = parseFloat(raw);
+  if (!raw || !isFinite(v) || v <= 0) {
+    setMsg('Enter a frequency.');
+    return;
+  }
+  var khz = Math.round((v < 1000 ? v * 1000 : v) * 10) / 10;
+  var band = bandForKhz(khz);
+  if (!band) {
+    setMsg('That frequency is outside every amateur band.');
+    return;
+  }
+  var parsed = parseActiveBands(lastCfg.active_bands);
+  if (parsed.any && !parsed.want[band.n]) {
+    setMsg(band.name + ' is not an active band.');
+    return;
+  }
+  closeFreqEditor();
+  var curIdx = parseInt(lastCfg.band_sel, 10);
+  if (band.i === curIdx) {
+    setOperatingBandFreq(khz);
+  } else {
+    switchToBandWithFreq(band, khz);
+  }
+}
+document.getElementById('opFreqSet').onclick = applyDockFreqInput;
+document.getElementById('opFreqInput').onkeydown = function (ev) {
+  if (ev.key === 'Enter') {
+    ev.preventDefault();
+    applyDockFreqInput();
+  }
+};
+function nudgeDockFreq(deltaKhz) {
+  var khz = currentDockFreqKhz(lastCfg);
+  if (khz == null) return;
+  setOperatingBandFreq(Math.round((khz + deltaKhz) * 10) / 10);
+}
+document.getElementById('opFreqDown').onclick = function () { nudgeDockFreq(-1); };
+document.getElementById('opFreqUp').onclick = function () { nudgeDockFreq(1); };
+document.getElementById('opFreqStd').onclick = function () {
+  var idx = parseInt(lastCfg.band_sel, 10);
+  var band = BANDS[idx];
+  if (!band) return;
+  setOperatingBandFreq(lastCfg.protocol_mode === 'FT4' ? band.ft4 : band.ft8);
+};
 
 // quiet: a reload after an action, whose own result message must stay on
 // screen; only a failure is reported. Otherwise (boot, pairing) progress and
@@ -1728,25 +1914,15 @@ function enableWrites(on) {
   document.getElementById('opTune').disabled = !on;
   document.getElementById('opTxCancel').disabled = !on;
   document.getElementById('beaconSel').disabled = !on;
-  document.getElementById('opBandSel').disabled = !on;
+  document.getElementById('opFreqSet').disabled = !on;
+  document.getElementById('opFreqDown').disabled = !on;
+  document.getElementById('opFreqUp').disabled = !on;
+  document.getElementById('opFreqStd').disabled = !on;
+  document.querySelectorAll('#opBandGrid .bandbtn').forEach(function (b) { b.disabled = !on; });
   document.getElementById('netForget').disabled = !on;
   document.getElementById('netModeSwitch').disabled = !on;
   document.getElementById('netRehydrate').disabled = !on;
 }
-
-document.getElementById('opBandSel').onchange = function () {
-  changeBand(this.value);
-};
-document.getElementById('band_sel').onchange = function () {
-  changeBand(this.value);
-};
-// protocol_mode is pending-until-reboot (matches MENU), so switching it here
-// can't retarget which set of overrides is live -- but the band rows should
-// still switch which defaults/prefix they show and save against, rather than
-// silently saving FT8 numbers under ft4_bandN or vice versa.
-document.getElementById('protocol_mode').onchange = function () {
-  buildBandRows(lastCfg, this.value === 'FT4');
-};
 document.getElementById('dist_unit').onchange = function () { setDistUnit(this.value); };
 document.getElementById('theme_pref').onchange = function () { setTheme(this.value); };
 document.getElementById('save').onclick = function () {
@@ -1876,11 +2052,10 @@ function renderBeacon() {
   // actually worth guarding against.
   document.getElementById('beaconSel').value = String(mode);
   document.getElementById('cqStatusLine').textContent = cqStatusText(mode);
-  // The armed TX's offset, not one on air: the TX panel shows that. 0 means
-  // nothing is armed (both main boards send 0 then) -- not a real offset, so
-  // it must not pass a != null check the way it would.
-  document.getElementById('opOffset').textContent =
-    'Next TX: ' + (slotState && slotState.hz > 0 ? (slotState.hz + ' Hz') : '—');
+  // slotState just changed -- renderDockLine()'s Hz (the armed TX's offset)
+  // needs the same refresh the dock's config-driven fields already get from
+  // applyOperateLive().
+  renderDockLine(lastCfg);
 }
 
 document.getElementById('beaconSel').onchange = function () {
