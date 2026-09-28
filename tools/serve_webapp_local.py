@@ -35,6 +35,13 @@ class Handler(SimpleHTTPRequestHandler):
     extensions_map = {**SimpleHTTPRequestHandler.extensions_map,
                       ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8"}
 
+    # No caching: a preview must show the file on disk now. Without this the
+    # browser reused an earlier build's app.html after a code change, and the
+    # preview checked the old code (2026-09-28).
+    def end_headers(self) -> None:
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
