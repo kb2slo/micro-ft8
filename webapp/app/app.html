@@ -219,21 +219,26 @@ button:disabled{opacity:.45}
 .cqline+.cqline{margin-top:.3rem;font-size:.75rem;color:GrayText}
 .cqsends{font-family:ui-monospace,monospace;font-weight:700;font-size:.85rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* ---- operate: the dock (RFC 0009 §3.4/§3.2 item 4 -- band grid, frequency,
-   and Retries/offset/Station preview, last before the tab bar) ---- */
-#opDock{padding:.6rem 1rem .7rem;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+/* ---- operate: the dock (webapp.md, The dock) ---- */
+/* Fixed above the tab bar and shown only on Operate (body.on-operate), so band
+   is one tap however long the decode list gets. layoutDock() keeps --tabbar-h
+   and --dock-h current; Operate's bottom padding makes room for both, so the
+   last decode is never hidden behind the dock. */
+#opDock{position:fixed;left:0;right:0;bottom:var(--tabbar-h,3.375rem);z-index:5;background:Canvas;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+#opDock .dockinner{max-width:26rem;margin:0 auto;padding:.6rem 2rem .7rem;box-sizing:border-box}
+body:not(.on-operate) #opDock{display:none}
+body.on-operate{padding-bottom:calc(var(--tabbar-h,3.375rem) + var(--dock-h,0px))}
 /* Columns == band count up to 7; buildDockBandGrid() sets grid-template-columns
    to min(count,7) so an 8th+ band wraps to a second row on its own, no manual
-   row-splitting logic needed (RFC 0009 §3.4: "one row holds up to seven"). */
+   row-splitting logic needed. */
 .bandgrid{display:grid;gap:.4rem}
 .bandbtn{min-height:44px;font-size:.8rem;font-family:ui-monospace,monospace;background:ButtonFace;color:ButtonText;border:1px solid GrayText;border-radius:.4rem;padding:.2rem}
 .bandbtn.on{color:var(--accent);border-color:var(--accent);font-weight:700}
 .dockline{display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-top:.6rem;font-size:.8rem}
 .dockfreq{font-family:ui-monospace,monospace;font-weight:700;font-size:.9rem}
 .dockmeta{color:GrayText;font-size:.75rem;text-align:right}
-/* Above the band grid, not a separate overlay -- opening it pushes the grid
-   down rather than covering decodes above (RFC 0009 §3.4: "opens the
-   frequency editor above the dock"). */
+/* Above the band grid, inside the dock: opening it grows the dock upward, and
+   Operate's bottom padding grows with it (layoutDock()). */
 #opFreqEditor{margin-bottom:.6rem}
 #opFreqEditor .row{display:flex;gap:.4rem;align-items:center;margin-top:0}
 #opFreqEditor .row+.row{margin-top:.4rem}
@@ -454,29 +459,6 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       <div id=opDecodeRows></div>
     </div>
 
-    <!-- ================= DOCK (RFC 0009 §3.2 item 4, §3.4) ================= -->
-    <!-- Last on Operate, before the tab bar: band is one tap, frequency and
-         Retries/offset preview share the line below the grid. Replaces the
-         old header's opBandSel/opOffset (opConnRow's Connect/Tune stay in
-         the header until O2, RFC 0009 §6.1). -->
-    <div id=opDock>
-      <div id=opFreqEditor hidden>
-        <div class=row>
-          <input id=opFreqInput type=number step=0.1 inputmode=decimal placeholder="MHz or kHz">
-          <button id=opFreqSet type=button disabled>Set</button>
-        </div>
-        <div class=row>
-          <button id=opFreqDown type=button disabled>&minus;1 kHz</button>
-          <button id=opFreqStd type=button disabled>Standard</button>
-          <button id=opFreqUp type=button disabled>+1 kHz</button>
-        </div>
-      </div>
-      <div id=opBandGrid class=bandgrid></div>
-      <div class=dockline>
-        <button id=opDockFreqBtn type=button class="dlink dockfreq">&mdash;</button>
-        <button id=opDockMetaBtn type=button class="dlink dockmeta">&mdash;</button>
-      </div>
-    </div>
   </section>
 
   <!-- ================= LOG ================= -->
@@ -674,6 +656,32 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
   </div>
 </div>
 
+<!-- The dock (webapp.md, The dock): band grid and frequency, pinned above the
+     tab bar and shown only on Operate. Outside #viewTrack on purpose: the track
+     slides with a transform, and a fixed child of a transformed element scrolls
+     with the page instead of staying put. Connect and Tune stay in Operate's
+     header until O2 (RFC 0009 §6). -->
+<div id=opDock>
+  <div class=dockinner>
+    <div id=opFreqEditor hidden>
+      <div class=row>
+        <input id=opFreqInput type=number step=0.1 inputmode=decimal placeholder="MHz or kHz">
+        <button id=opFreqSet type=button disabled>Set</button>
+      </div>
+      <div class=row>
+        <button id=opFreqDown type=button disabled>&minus;1 kHz</button>
+        <button id=opFreqStd type=button disabled>Standard</button>
+        <button id=opFreqUp type=button disabled>+1 kHz</button>
+      </div>
+    </div>
+    <div id=opBandGrid class=bandgrid></div>
+    <div class=dockline>
+      <button id=opDockFreqBtn type=button class="dlink dockfreq">&mdash;</button>
+      <button id=opDockMetaBtn type=button class="dlink dockmeta">&mdash;</button>
+    </div>
+  </div>
+</div>
+
 <nav id=tabbar>
   <button type=button data-view=operate class=on>
     <svg viewBox="0 0 24 24"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>
@@ -715,9 +723,9 @@ var BANDS = [
   {i: 11, name: '2m',  n: 2,   ft8: 144174, ft4: 144170}
 ];
 // Region 2 amateur allocations (ITU RR Article 5), kHz -- a sanity check,
-// not a licence check, mirroring the table the dock's frequency editor is
-// refused against on the main board (RFC 0009 §6.1). 60m is one range
-// spanning the US channels and the WRC-15 allocation. Keyed by BANDS[].n.
+// not a licence check, applied only here: the main board takes any frequency
+// (webapp.md, The dock). 60m is one range spanning the US channels and the
+// WRC-15 allocation. Keyed by BANDS[].n.
 var BAND_EDGES_KHZ = {
   160: [1800, 2000], 80: [3500, 4000], 60: [5330, 5407], 40: [7000, 7300],
   30: [10100, 10150], 20: [14000, 14350], 17: [18068, 18168], 15: [21000, 21450],
@@ -941,6 +949,7 @@ function checkLinkCounterReset(cfg) {
 
 var VIEWS = ['operate', 'log', 'tools'];
 var currentView = 'operate';
+document.body.classList.add('on-operate');
 var viewIndex = 0;
 var viewTrack = document.getElementById('viewTrack');
 
@@ -967,6 +976,7 @@ function setTrackTransform(percent, animate) {
 
 function showView(name, animate) {
   currentView = name;
+  document.body.classList.toggle('on-operate', name === 'operate');
   viewIndex = VIEWS.indexOf(name);
   document.querySelectorAll('#tabbar button').forEach(function (b) {
     b.classList.toggle('on', b.getAttribute('data-view') === name);
@@ -1079,8 +1089,7 @@ function parseActiveBands(text) {
 
 // One row per band: a checkbox for active_bands membership only. Band and
 // frequency (band_sel, band<N>/ft4_band<N>) left Settings for the dock's
-// band grid and frequency editor (RFC 0009 §3.4, §6.1: "Settings keeps only
-// which bands appear").
+// band grid and frequency editor (webapp.md, The dock).
 function buildBandRows(cfg) {
   var parsed = parseActiveBands(cfg.active_bands);
   var container = document.getElementById('bandList');
@@ -1097,7 +1106,7 @@ function buildBandRows(cfg) {
 }
 
 // Finds which amateur band a typed frequency falls in, by the Region 2 edge
-// table (RFC 0009 §6.1) -- null when it lands outside every band.
+// table (BAND_EDGES_KHZ) -- null when it lands outside every band.
 function bandForKhz(khz) {
   for (var i = 0; i < BANDS.length; i++) {
     var edges = BAND_EDGES_KHZ[BANDS[i].n];
@@ -1126,7 +1135,7 @@ function khzToMhzLabel(khz) {
   return s.slice(-1) === '0' ? s.slice(0, -1) : s;
 }
 
-// The dock's band grid (RFC 0009 §3.4): one button per active band, up to
+// The dock's band grid (webapp.md, The dock): one button per active band, up to
 // seven columns -- an 8th+ band wraps to a second row on its own (see the
 // .bandgrid CSS comment). Rebuilds the buttons themselves; only called at
 // boot/after an explicit action (setForm()), never the periodic poll -- same
@@ -1162,17 +1171,41 @@ function syncDockBandGrid(cfg) {
     btn.classList.toggle('on', btn.dataset.i === cur);
   });
 }
+// The dock is fixed above the tab bar (see its CSS); keep Operate's bottom
+// padding equal to the tab bar plus the dock, whose height changes with a
+// second band row or the open frequency editor.
+function layoutDock() {
+  var root = document.documentElement.style;
+  root.setProperty('--tabbar-h', document.getElementById('tabbar').offsetHeight + 'px');
+  root.setProperty('--dock-h', document.getElementById('opDock').offsetHeight + 'px');
+}
+if (window.ResizeObserver) {
+  var dockResize = new ResizeObserver(layoutDock);
+  dockResize.observe(document.getElementById('opDock'));
+  dockResize.observe(document.getElementById('tabbar'));
+}
+window.addEventListener('resize', layoutDock);
+layoutDock();
+
 document.getElementById('opBandGrid').onclick = function (ev) {
   var btn = ev.target.closest('.bandbtn');
   if (!btn || btn.disabled) return;
   changeBand(btn.dataset.i);
 };
 
-// The dock's second line: "Retries N · Hz · Station ›". Retries and the
-// frequency label come from lastCfg (config-driven); Hz is the armed TX's
-// offset from the last SLOT_STATE event, same value/meaning Operate's old
-// header line showed as "Next TX:" (0 means nothing armed, not a real
-// offset, so it must not pass a != null check the way it would).
+// The TX offset setting as the dock line shows it: offset_src 0 is Random,
+// 1 is RX, 2 is Fixed at cfg.offset (the Settings select's values).
+function offsetSettingLabel(cfg) {
+  var src = parseInt(cfg.offset_src, 10);
+  if (src === 0) return 'Random offset';
+  if (src === 1) return 'RX offset';
+  return (cfg.offset !== undefined && cfg.offset !== null && cfg.offset !== '') ? cfg.offset + ' Hz' : '—';
+}
+
+// The dock's second line: the frequency, then "Retries N · <offset> ·
+// Station ›", a preview of the Station settings that part of the line opens
+// (operator decision 2026-09-28: the setting, not the armed TX's offset,
+// which moves into the TX banner with O2, RFC 0009 §3.12).
 function renderDockLine(cfg) {
   var khz = currentDockFreqKhz(cfg);
   document.getElementById('opDockFreqBtn').textContent =
@@ -1180,8 +1213,7 @@ function renderDockLine(cfg) {
   var retries = (cfg.autoseq_max_retry !== undefined && cfg.autoseq_max_retry !== null)
     ? cfg.autoseq_max_retry : '—';
   document.getElementById('opDockMetaBtn').textContent =
-    'Retries ' + retries + ' · ' + (slotState && slotState.hz > 0 ? (slotState.hz + ' Hz') : '—') +
-    ' · Station ›';
+    'Retries ' + retries + ' · ' + offsetSettingLabel(cfg) + ' · Station ›';
 }
 
 function setForm(cfg) {
@@ -1219,7 +1251,7 @@ function formBody() {
   });
   // active_bands comes from the checkboxes buildBandRows() renders, not a
   // plain FIELDS entry. band_sel and per-band frequency left Settings for
-  // the dock (RFC 0009 §3.4, §6.1), so Save no longer sends them.
+  // the dock (webapp.md, The dock), so Save no longer sends them.
   var active = [];
   document.querySelectorAll('#bandList .bandactive').forEach(function (cb) {
     if (cb.checked) active.push(cb.getAttribute('data-n'));
@@ -1505,13 +1537,11 @@ async function authPostQuiet(path, body) {
   }
 }
 
-// Shared by changeBand() and the dock's frequency editor (RFC 0009 §3.4:
-// "Mid-QSO, both ask first, as changeBand() does") -- moving the radio off
-// the frequency a queued QSO or an on-air transmission is using leaves the
-// partner listening to nothing, so either action confirms first with the
-// same wording. Returns true when it is safe to proceed (nothing queued, or
-// the operator said yes).
-function confirmRetune(verb) {
+// What moving the radio would end: queued QSOs (their partners are listening
+// on the old frequency) and a transmission on the air. Shared by a band change
+// and a frequency change, which both confirm first and then end these
+// (webapp.md, The dock).
+function retuneEnds() {
   var calls = Object.keys(queue)
     .filter(function (id) { return queue[id].dxcall !== 'CQ'; })
     .map(function (id) { return queue[id].dxcall; });
@@ -1521,6 +1551,11 @@ function confirmRetune(verb) {
               ' with ' + calls.join(', '));
   }
   if (txHud && txHud.active && !txHud.aborted) ends.push('stops the transmission on the air');
+  return ends;
+}
+// True when it is safe to proceed: nothing to end, or the operator said yes.
+function confirmRetune(verb) {
+  var ends = retuneEnds();
   return !ends.length || confirm(verb + '? This ' + ends.join(' and ') + '.');
 }
 
@@ -1557,22 +1592,26 @@ function changeBand(idx) {
   }).catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 }
 
-// ===================== Operate: the dock's frequency editor (RFC 0009 §3.4) =====================
+// ===================== Operate: the dock's frequency editor (webapp.md, The dock) =====================
 
-// A same-band edit (a nudge, Standard, or a typed value that lands in the
-// band already operating) does not cancel the queue the way changeBand()
-// does -- the QSO is still on the right band, just a shifted frequency
-// within it. If our own TX is active the radio can't retune underneath it
-// anyway: the main board itself refuses the write ("frequency saved, VFO
-// not moved (TX active)", RFC 0009 §6.1), surfaced here the same way any
-// other putConfigLine() refusal is.
+// A same-band edit (a nudge, Standard, or a typed value in the band already
+// operating) ends queued QSOs and stops a transmission on the air, after the
+// same confirmation a band change asks (operator decision 2026-09-28). The
+// stop comes first because a frequency the VFO cannot reach mid-TX is still
+// saved: the main board refuses the write ("frequency saved, VFO not moved
+// (TX active)") but nothing retunes the radio when the TX ends, so the dock
+// would show a frequency the radio is not on. With nothing to end, no cancel
+// is sent: a cancel also blocks a TX armed for this slot.
 function setOperatingBandFreq(khz) {
   var idx = parseInt(lastCfg.band_sel, 10);
   if (isNaN(idx)) return;
+  var stopping = retuneEnds().length > 0;
   if (!confirmRetune('Change frequency')) return;
   var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + idx;
-  putConfigLine(key + '=' + khz, 'Setting frequency…')
-    .then(refreshFreqInputIfOpen)
+  setMsg('Setting frequency…');
+  (stopping ? cancelQsosAndTx() : Promise.resolve()).then(function () {
+    return putConfigLine(key + '=' + khz, 'Setting frequency…');
+  }).then(refreshFreqInputIfOpen)
     .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 }
 
@@ -1589,8 +1628,8 @@ function refreshFreqInputIfOpen() {
 }
 
 // A value in another active band is a band change with a non-standard
-// frequency for it (RFC 0009 §6.1: "writes that band's key, then band_sel"),
-// so it gets changeBand()'s full cancel treatment, not just a confirm.
+// frequency for it: that band's key, then band_sel, with changeBand()'s full
+// confirm-and-cancel.
 function switchToBandWithFreq(band, khz) {
   if (!confirmRetune('Change band')) return;
   var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + band.i;
@@ -1614,11 +1653,11 @@ document.getElementById('opDockFreqBtn').onclick = function () {
   if (editor.hidden) openFreqEditor(); else closeFreqEditor();
 };
 // Until O1c ships (row cuca), both halves of the dock's second line open
-// Settings -- the Station sheet does not exist yet (RFC 0009 §6.1).
+// Settings -- the Station sheet does not exist yet (row cuca).
 document.getElementById('opDockMetaBtn').onclick = openSettings;
 
-// A typed value under 1000 is MHz, otherwise kHz, kept to 0.1 kHz (RFC 0009
-// §6.1 -- the station file already stores tenths).
+// A typed value under 1000 is MHz, otherwise kHz, kept to 0.1 kHz (the
+// station file already stores tenths).
 function applyDockFreqInput() {
   var raw = document.getElementById('opFreqInput').value;
   var v = parseFloat(raw);
@@ -2052,10 +2091,6 @@ function renderBeacon() {
   // actually worth guarding against.
   document.getElementById('beaconSel').value = String(mode);
   document.getElementById('cqStatusLine').textContent = cqStatusText(mode);
-  // slotState just changed -- renderDockLine()'s Hz (the armed TX's offset)
-  // needs the same refresh the dock's config-driven fields already get from
-  // applyOperateLive().
-  renderDockLine(lastCfg);
 }
 
 document.getElementById('beaconSel').onchange = function () {

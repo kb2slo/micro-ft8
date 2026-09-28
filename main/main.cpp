@@ -3979,8 +3979,7 @@ const char* porta_host_config_set(const char* key, const char* value) {
     // config edit that does not need the radio to move, so it stays silent
     // on a sync miss, same as before.
     if (!synced && station_key_names_operating_band(key, g_band_sel, g_protocol == &kProtocolFT4)) {
-      return decode_tx_state_get_tx_active() ? "frequency saved, VFO not moved (TX active)"
-                          : "frequency saved, VFO not moved (CAT not ready)";
+      return station_vfo_refusal(key, decode_tx_state_get_tx_active());
     }
   }
   return nullptr;

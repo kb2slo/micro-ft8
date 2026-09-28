@@ -149,6 +149,13 @@ int main()
     expect_true(!station_key_names_operating_band("call", 5, false), "an unrelated key is never the operating band");
     expect_true(!station_key_names_operating_band(nullptr, 5, false), "a null key is never the operating band");
 
+    // station_vfo_refusal: a refused band change says "band", a refused
+    // frequency write says "frequency", each with the reason.
+    expect_str(station_vfo_refusal("band_sel", true), "band saved, VFO not moved (TX active)", "band_sel, TX active");
+    expect_str(station_vfo_refusal("band_sel", false), "band saved, VFO not moved (CAT not ready)", "band_sel, CAT not ready");
+    expect_str(station_vfo_refusal("band5", true), "frequency saved, VFO not moved (TX active)", "frequency, TX active");
+    expect_str(station_vfo_refusal("ft4_band5", false), "frequency saved, VFO not moved (CAT not ready)", "FT4 frequency, CAT not ready");
+
     if (g_fails) {
         fprintf(stderr, "%d FAIL(s)\n", g_fails);
         return 1;

@@ -53,3 +53,8 @@ bool station_key_known(const char* name);
 // written for a different band, or for the other protocol's table, is a
 // config edit that does not need the radio to move.
 bool station_key_names_operating_band(const char* key, int band_sel, bool protocol_ft4);
+
+// The CONFIG refusal for such a write when the VFO did not move: "band saved,
+// VFO not moved (…)" for band_sel, "frequency saved, VFO not moved (…)" for a
+// frequency key, with "TX active" or "CAT not ready" as the reason.
+const char* station_vfo_refusal(const char* key, bool tx_active);

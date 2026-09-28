@@ -11,7 +11,7 @@ Ship on `origin/main`. Talk through changes before a local commit (see [README.m
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| q8sm | Operate O1b: the dock (band grid and typed frequency) | [RFC 0009](rfcs/0009-operate-station-surface.md) §3.4, §6.1. The active bands one tap each (a second row past seven), and a frequency editor: typed MHz or kHz, ±1 kHz, Standard, band edges. The main board refuses a frequency that did not reach the radio (a host-tested `station.cpp` function, both boards). Settings loses `band_sel` and the per-band frequencies. **Done-when:** the host test and both board builds pass; the O1b bench check in TEST_PLAN passes. |
+| q8sm | Operate O1b: the dock (band grid and typed frequency) | Built 2026-09-28 ([architecture/webapp.md](architecture/webapp.md), **The dock**): pinned above the tab bar on Operate, the active bands one tap each (a second row past seven), a frequency editor (typed MHz or kHz, ±1 kHz, Standard, band edges); a same-band change mid-QSO confirms and ends the QSOs like a band change; the main board refuses a frequency that did not reach the radio (host-tested in `station.cpp`, both boards). Settings keeps only which bands appear. **Done-when:** the O1b bench check in TEST_PLAN passes. |
 | cuca | Operate O1c: the Station sheet | [RFC 0009](rfcs/0009-operate-station-surface.md) §3.5, §6.1. One sheet from the CQ row and the dock: Calling CQ (Sends preview, type, the `free_text` field, grid), QSOs (retries, TX offset), the call read-only. Each control writes its own key; Settings loses those keys and its Save stops sending them. **Done-when:** the O1c bench check in TEST_PLAN passes, including a Settings save that leaves the sheet's values alone. |
 
 

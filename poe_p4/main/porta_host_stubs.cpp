@@ -400,8 +400,7 @@ const char *porta_host_config_set(const char *key, const char *value) {
         if (why && station_key_names_operating_band(key, s_station.band_sel,
                                                       g_protocol == &kProtocolFT4)) {
             ESP_LOGI(TAG, "config %s=%s (saved, VFO not moved: %s)", key, value, why);
-            return strcmp(why, "TX active") == 0 ? "frequency saved, VFO not moved (TX active)"
-                                                 : "frequency saved, VFO not moved (CAT not ready)";
+            return station_vfo_refusal(key, strcmp(why, "TX active") == 0);
         }
     }
 

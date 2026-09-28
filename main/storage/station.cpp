@@ -416,3 +416,14 @@ bool station_key_names_operating_band(const char* key, int band_sel, bool protoc
     }
     return false;
 }
+
+const char* station_vfo_refusal(const char* key, bool tx_active)
+{
+    const bool band = key && strcmp(key, "band_sel") == 0;
+    if (band) {
+        return tx_active ? "band saved, VFO not moved (TX active)"
+                         : "band saved, VFO not moved (CAT not ready)";
+    }
+    return tx_active ? "frequency saved, VFO not moved (TX active)"
+                     : "frequency saved, VFO not moved (CAT not ready)";
+}
