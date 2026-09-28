@@ -96,23 +96,13 @@ Top to bottom:
 
 **Why the dock layout.** Decodes are the scarce resource on a phone, and the dock keeps its height fixed. Band is one tap. Every control touched mid-QSO is in thumb reach or in the queue. The rejected variants are in §4.
 
-### 3.5 One Station sheet (decided 2026-09-27)
+### 3.5 The Station sheet: what's still to add
 
-Opened from the CQ row's **Settings ›** and the dock's **Station ›**. Each control writes its own key when changed; there is no Save button, and a refusal shows on that control. That keeps these controls off the all-keys Settings save (§2.1).
+Built as O1c ([webapp.md](../architecture/webapp.md), **The Station sheet**). Still to add:
 
-1. **Calling CQ**, first:
-   - A **Sends** preview of the exact message.
-   - **Type:** CQ, SOTA, POTA, QRP, FD, Free text (the existing `cq_type` values).
-     - Free text shows a "CQ message" field, up to 13 characters.
-     - FD shows an "FD exchange" field, for class and section.
-     - **Both write `free_text`** (decided 2026-09-27). It is what both boards send for a Free text CQ and as the FD exchange (`main/main.cpp:2621`, `poe_p4/main/porta_host_stubs.cpp:66`), and what the ADV logs as our Field Day exchange. Settings' "CQ / exchange text" (`cq_ft`) never reaches the air, so it leaves the web app, and row `sfwz` retires the key. The two types share the key, so after a switch the field shows the other type's text before a CQ goes out.
-   - **Grid:** with Locate, a format check, and the grid check against the references and the phone's fix (RFC 0008 §4.3). A note says the CQ carries the first four characters.
-   - **CQ timeout:** turn CQ off if nobody answers for Never / 10 / 30 / 60 minutes (§3.6).
-2. **QSOs:** retries per message, and TX offset.
-3. **Activation:** the references, each with × and an **unverified** badge where it applies; **Add a park or summit** (§3.9). CQ follows the references until the type is picked by hand: a park gives POTA, and any summit gives SOTA (RFC 0008 §4.4).
-4. **Footer:** the call, read-only, with a note that it is changed in Settings. The call is the licence identity, not something changed mid-QSO.
-
-**Not in the sheet:** Off / Even / Odd (the queue row), and band and frequency (the dock). Each control has one home.
+* **CQ timeout:** turn CQ off if nobody answers for Never / 10 / 30 / 60 minutes (§3.6).
+* **Activation:** the references, each with × and an **unverified** badge where it applies; **Add a park or summit** (§3.9). CQ follows the references until the type is picked by hand: a park gives POTA, and any summit gives SOTA (RFC 0008 §4.4).
+* **The grid check against the references and the phone's fix** (RFC 0008 §4.3), on top of the sheet's own format check.
 
 ### 3.6 CQ timeout (new)
 
@@ -272,7 +262,7 @@ O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); th
 
 * **O1a: the CQ row**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The CQ row**).
 * **O1b: the dock**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The dock**).
-* **O1c: the Station sheet** (§3.5). Row `cuca`.
+* **O1c: the Station sheet** ([webapp.md](../architecture/webapp.md), **The Station sheet**). Bench check owed ([TEST_PLAN.md](../TEST_PLAN.md) Pending); row `cuca` stays in Now until it passes.
 * **O2: radio status replaces Connect, the read-back, and the TX HUD** (§3.7, §3.12).
   - Web app; the `IF;` read-back operation, its parser test and its Port A message; the ADV's attach-time host start (`ADV-only`).
   - **Field check:** unplug and replug the QMX. The chip walks No radio, Found, Ready, and the VFO lands on the selected band with nothing pressed. Then Tune from the chip's panel shows power and SWR there and in the HUD, and Stop in the HUD ends it.
@@ -289,40 +279,11 @@ O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); th
   - A3 brings the store, the nearby list and search, and the map's pick mode.
 * **O7, later:** auto-reply (§5), row `r2bu`.
 
-### 6.1 O1 build notes
-
-Decided 2026-09-27. What building O1 needs beyond §3.2–3.5.
-
-**For all three pieces**
-
-* The web app is `webapp/app/app.html`; read [webapp.md](../architecture/webapp.md) first. The mockups are a visual reference only: use the app's own classes and theme tokens, and keep decode rows exactly as they are (§3.2).
-* **Each control writes its own key** with `putConfigLine()` (one `key=value` PUT). The result shows through `setMsg()`, which both Operate and Settings display. A refusal also reloads that control from the station.
-* **Until O2 ships,** Connect and Tune stay where they are, and "what the radio reports" ([webapp.md](../architecture/webapp.md), **The dock**) is not shown: only what was sent.
-* **Proof before the bench:**
-  - `python3 webapp/tools/build.py` and `node webapp/tests/test_decode_batching.js`;
-  - the page in `tools/serve_webapp_local.py` (the sources, then `--dist`) at 375 px, light and dark, with the sidekick stubbed from the browser console: `fetch` answering `GET /api/config` with a real config, and `MicroFT8Pairing.getToken` and `authFetch` answering the writes, including a refusal;
-  - there is no JS test harness, so each piece then adds a bench check to [TEST_PLAN.md](../TEST_PLAN.md) Pending.
-* **Each piece graduates its sections** into webapp.md in its own commit ([README.md](../README.md), **RFC lifecycle**).
-
-**O1c: the Station sheet** (§3.5)
-
-* A sheet over Operate, opened from the CQ row's **Settings ›** and the dock's **Station ›**.
-* **Calling CQ:**
-  - the Sends preview, as in O1a;
-  - Type (`cq_type`, 0–5: CQ, SOTA, POTA, QRP, FD, Free text);
-  - one text field, shown only for the types that send it, writing `free_text` (§3.5);
-  - Grid (`grid`), with Locate (the existing `geo.html` handoff) and a format check.
-* **QSOs:** retries (`autoseq_max_retry`) and TX offset (`offset`, `offset_src`), with today's validation.
-* **Footer:** the call, read-only.
-* **Not in O1c:** CQ timeout (O6), Activation (RFC 0008 A1 and A3), and the grid check against references (A4).
-* **Settings loses** `cq_type`, `cq_ft`, `free_text`, `grid`, `autoseq_max_retry`, `offset` and `offset_src`, and its Save stops sending them. An all-keys save would otherwise overwrite the sheet's writes with stale values (§2.1). `cq_ft` goes outright, since it never reaches the air (§3.5). The call stays in Settings.
-
 ## 7. Decisions
 
 **2026-09-27, before acceptance:**
 
 * The dock layout (§3.2).
-* One Station sheet, opened from the CQ row and the dock, with no band or frequency in it (§3.5).
 * The radio is read back on panel open and after each sync (§3.7).
 * The map popup always offers **Add to activation** (§3.9).
 
@@ -333,7 +294,4 @@ Decided 2026-09-27. What building O1 needs beyond §3.2–3.5.
 * Per-QSO retries run 1–20, and raising the count on a parked entry does not revive it (§3.11).
 * No high-SWR warning (§4).
 * The CQ timeout defaults to Never (§3.6).
-* Connect and Tune stay until O2 (§6.1).
-* The CQ text field writes `free_text`; `cq_ft` leaves the web app, and row `sfwz` retires it (§3.5).
-* The Station sheet's keys leave Settings once O1c ships, and its Save stops sending them (§6.1).
 * O1 ships as three pieces, O1a to O1c (§6).

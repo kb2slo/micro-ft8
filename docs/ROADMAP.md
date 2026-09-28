@@ -11,7 +11,7 @@ Ship on `origin/main`. Talk through changes before a local commit (see [README.m
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| cuca | Operate O1c: the Station sheet | [RFC 0009](rfcs/0009-operate-station-surface.md) §3.5, §6.1. One sheet from the CQ row and the dock: Calling CQ (Sends preview, type, the `free_text` field, grid), QSOs (retries, TX offset), the call read-only. Each control writes its own key; Settings loses those keys and its Save stops sending them. **Done-when:** the O1c bench check in TEST_PLAN passes, including a Settings save that leaves the sheet's values alone. |
+| cuca | Operate O1c: the Station sheet | Built; owed its bench check. [webapp.md](architecture/webapp.md), **The Station sheet**. One sheet from the CQ row and the dock: Calling CQ (Sends preview, type, the `free_text` field, grid), QSOs (retries, TX offset), the call read-only. Each control writes its own key; Settings loses those keys and its Save stops sending them. **Done-when:** the O1c bench check in TEST_PLAN passes, including a Settings save that leaves the sheet's values alone. |
 
 
 ## Backlog

@@ -131,19 +131,23 @@ button:disabled{opacity:.45}
 .row button{margin-top:.5rem}
 [hidden]{display:none!important}
 
-/* ---- settings overlay ---- */
+/* ---- settings overlay, and the Station sheet (same motion language) ---- */
 /* Bottom-sheet motion language, same as #callInfoModal, but full-screen: a
-   destination you navigate to and back from, not a transient popover. */
-#settingsOverlay{position:fixed;inset:0;z-index:12;background:Canvas;color:CanvasText;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .25s ease}
-#settingsOverlay.open{transform:translateY(0)}
-#settingsOverlayHead{flex:none;display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
-#settingsOverlayHead h2{flex:1;font-size:1.05rem;margin:0}
-#settingsOverlayBack{border:0;background:transparent;color:var(--accent);font-size:.95rem;padding:.3rem .2rem .3rem 0}
-#settingsOverlayBody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
-/* #m sits under the page header, which the overlay covers, so the same text
-   also shows here, outside the scrolling body (setMsg()). */
-#settingsMsg{flex:none;margin:0;padding:.45rem 1rem;font-size:.85rem;background:color-mix(in srgb, var(--accent) 12%, transparent)}
-#settingsMsg:empty{display:none}
+   destination you navigate to and back from, not a transient popover. The
+   Station sheet (RFC 0009 §3.5, docs/architecture/webapp.md, "The Station
+   sheet") is a second, independent overlay built the same way -- grouped
+   into these same rules rather than duplicated, since the two never need to
+   look different. */
+#settingsOverlay,#stationSheet{position:fixed;inset:0;z-index:12;background:Canvas;color:CanvasText;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .25s ease}
+#settingsOverlay.open,#stationSheet.open{transform:translateY(0)}
+#settingsOverlayHead,#stationSheetHead{flex:none;display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+#settingsOverlayHead h2,#stationSheetHead h2{flex:1;font-size:1.05rem;margin:0}
+#settingsOverlayBack,#stationSheetBack{border:0;background:transparent;color:var(--accent);font-size:.95rem;padding:.3rem .2rem .3rem 0}
+#settingsOverlayBody,#stationSheetBody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+/* #m sits under the page header, which either overlay covers, so the same
+   text also shows here, outside the scrolling body (setMsg()). */
+#settingsMsg,#stationSheetMsg{flex:none;margin:0;padding:.45rem 1rem;font-size:.85rem;background:color-mix(in srgb, var(--accent) 12%, transparent)}
+#settingsMsg:empty,#stationSheetMsg:empty{display:none}
 
 /* ---- tab bar ---- */
 #tabbar{position:fixed;left:0;right:0;bottom:0;display:flex;border-top:1px solid GrayText;background:Canvas}
@@ -357,7 +361,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 .diagrow span:last-child{font-family:ui-monospace,monospace}
 #netModeSwitch{margin-left:.5rem;padding:.1rem .5rem;font-size:.7rem;font-family:inherit}
 #netModeLink{margin-left:.5rem;font-family:inherit}
-#view-settings input,#view-settings select{
+#view-settings input,#view-settings select,#stationSheetBody input,#stationSheetBody select{
   border:0;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent);
   border-radius:0;padding:.3rem 0;font-size:.9rem;background:transparent;color:CanvasText}
 .setnote{padding:0 1rem;font-size:.8rem;color:GrayText;margin-top:0}
@@ -544,42 +548,15 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     </div>
     <p id=netMsg class=setnote></p>
 
-    <div class="hd sep" id=stationSection>Station</div>
+    <div class="hd sep">Station</div>
     <p id=stationCached class=setnote hidden></p>
+    <p class=setnote>CQ type, grid, retries and TX offset are in Operate's Station sheet.</p>
     <div class=setrow><label>Call <input id=call autocomplete=off spellcheck=false></label></div>
-    <div class=setrow>
-      <label>Grid <input id=grid autocomplete=off spellcheck=false></label>
-      <button id=gridLocateBtn type=button class=dlink>Set from GPS &rarr;</button>
-    </div>
-    <div class=setrow>
-      <label>CQ type
-        <select id=cq_type>
-          <option value=0>CQ</option>
-          <option value=1>SOTA</option>
-          <option value=2>POTA</option>
-          <option value=3>QRP</option>
-          <option value=4>FD</option>
-          <option value=5>FreeText</option>
-        </select>
-      </label>
-    </div>
-    <div class=setrow><label>CQ / exchange text <input id=cq_ft autocomplete=off></label></div>
-    <div class=setrow><label>Free-text field <input id=free_text autocomplete=off></label></div>
     <div class=setrow><label>Comment <input id=comment1 autocomplete=off></label></div>
     <div class=setrow><label>Ignore prefixes <input id=ignore_prefixes autocomplete=off></label></div>
 
     <div class="hd sep">Radio</div>
     <p class=setnote>Connect, tune and clock sync now live on Operate.</p>
-    <div class="setrow row">
-      <label>Offset Hz <input id=offset type=number></label>
-      <label>Offset src
-        <select id=offset_src>
-          <option value=0>Random</option>
-          <option value=1>RX</option>
-          <option value=2>Fixed</option>
-        </select>
-      </label>
-    </div>
     <div class=setrow>
       <label>Radio
         <select id=radio>
@@ -599,14 +576,13 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         </select>
       </label>
     </div>
-    <div class="setrow row">
+    <div class=setrow>
       <label>Skip TX1
         <select id=skiptx1>
           <option value=0>Off</option>
           <option value=1>On</option>
         </select>
       </label>
-      <label>Max retry <input id=autoseq_max_retry type=number min=0></label>
     </div>
     <div class=setrow>
       <label>RxTx log
@@ -661,6 +637,71 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
   </div>
 </div>
 
+<!-- ================= STATION SHEET ================= -->
+<!-- RFC 0009 §3.5 / docs/architecture/webapp.md ("The Station sheet"): opened
+     from the CQ row's Settings > and the dock's Station >. Each control here
+     writes its own key with putConfigLine() the moment it changes -- there is
+     no Save button -- which is exactly why Settings' own FIELDS (below) drops
+     these keys: an all-keys Settings save must never overwrite a value one of
+     these controls just wrote (RFC 0009 §2.1). Same overlay mechanics as
+     #settingsOverlay (see that CSS rule) -- a second, independent instance,
+     never open at the same time (openSettings()/openStationSheet() each close
+     the other first). -->
+<div id=stationSheet>
+  <div id=stationSheetHead>
+    <button id=stationSheetBack type=button aria-label=Back>&larr;</button>
+    <h2>Station</h2>
+  </div>
+  <p id=stationSheetMsg role=status></p>
+  <div id=stationSheetBody>
+    <div class=hd>Calling CQ</div>
+    <div class=setrow>
+      <p class=setnote style="padding:0;margin:0 0 .2rem">Sends</p>
+      <div id=sheetSendsText class=cqsends>&mdash;</div>
+    </div>
+    <div class=setrow>
+      <label>Type
+        <select id=cq_type>
+          <option value=0>CQ</option>
+          <option value=1>SOTA</option>
+          <option value=2>POTA</option>
+          <option value=3>QRP</option>
+          <option value=4>FD</option>
+          <option value=5>FreeText</option>
+        </select>
+      </label>
+    </div>
+    <!-- Shown only for FD and Free text (onchange of #cq_type toggles this,
+         setStationSheetForm()); both write the one free_text key (RFC 0009
+         §3.5), so switching types leaves the other type's text sitting in
+         the field until a new CQ actually goes out under the new type. -->
+    <div class=setrow id=freeTextRow hidden>
+      <label><span id=freeTextLabel>CQ message</span> <input id=free_text autocomplete=off></label>
+    </div>
+    <div class=setrow>
+      <label>Grid <input id=grid autocomplete=off spellcheck=false maxlength=8></label>
+      <button id=gridLocateBtn type=button class=dlink>Set from GPS &rarr;</button>
+    </div>
+    <p id=gridHint class=setnote>The CQ carries the first four characters.</p>
+
+    <div class="hd sep">QSOs</div>
+    <div class=setrow><label>Max retry <input id=autoseq_max_retry type=number min=0></label></div>
+    <div class="setrow row">
+      <label>Offset Hz <input id=offset type=number></label>
+      <label>Offset src
+        <select id=offset_src>
+          <option value=0>Random</option>
+          <option value=1>RX</option>
+          <option value=2>Fixed</option>
+        </select>
+      </label>
+    </div>
+
+    <div class=setrow><div class=diagrow><span>Call</span><span id=sheetCall>&mdash;</span></div></div>
+    <p class=setnote>Changed in Settings.</p>
+  </div>
+</div>
+
 <!-- The dock (webapp.md, The dock): band grid and frequency, pinned above the
      tab bar and shown only on Operate. Outside #viewTrack on purpose: the track
      slides with a transform, and a fixed child of a transformed element scrolls
@@ -708,6 +749,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 <script>
 var m = document.getElementById('m');
 var settingsMsg = document.getElementById('settingsMsg');
+var stationSheetMsg = document.getElementById('stationSheetMsg');
 // Index order matches ADV g_bands[] (main.cpp); ft8/ft4 mirror that file's two
 // default tables (the compiled-in g_bands initializer and the FT4 reset block
 // in station_apply_to_globals()) byte-for-byte, since CONFIG only ever
@@ -737,17 +779,27 @@ var BAND_EDGES_KHZ = {
   30: [10100, 10150], 20: [14000, 14350], 17: [18068, 18168], 15: [21000, 21450],
   12: [24890, 24990], 10: [28000, 29700], 6: [50000, 54000], 2: [144000, 148000]
 };
+// cq_type, free_text, grid, offset, offset_src and autoseq_max_retry left
+// Settings for the Station sheet (RFC 0009 §3.5, docs/architecture/webapp.md,
+// "The Station sheet"): each now writes its own key the moment it changes
+// (setStationSheetForm()'s onchange handlers), so Settings' own Save must
+// never resend them -- formBody() only walks FIELDS, so removing them here is
+// what stops Save from overwriting a sheet write with a stale value (RFC 0009
+// §2.1). cq_ft leaves the web app outright: it never reaches the air on
+// either board (main/main.cpp:2621, poe_p4/main/porta_host_stubs.cpp:66 both
+// send free_text instead); row sfwz retires it from the rest of the firmware
+// later.
 var FIELDS = [
-  'call','grid','cq_type','cq_ft','free_text','comment1','ignore_prefixes',
-  'offset','offset_src','radio','protocol_mode',
-  'skiptx1','autoseq_max_retry','rxtx_log'
+  'call','comment1','ignore_prefixes',
+  'radio','protocol_mode','skiptx1','rxtx_log'
 ];
 var CQ_TYPE_NAMES = ['CQ', 'SOTA', 'POTA', 'QRP', 'FD', 'FreeText'];
 // AutoseqState wire values (main/autoseq.h). 6 = IDLE = remove from display.
 var QUEUE_STATE_NAMES = ['CALLING', 'REPLYING', 'REPORT', 'ROGER REPORT', 'ROGERS', 'SIGNOFF'];
 
-// Both lines: #m is hidden behind the Settings overlay while it is open.
-function setMsg(t) { m.textContent = t; settingsMsg.textContent = t; }
+// All three: #m is hidden behind whichever overlay (Settings, the Station
+// sheet) is open, and each repeats the same text under its own header.
+function setMsg(t) { m.textContent = t; settingsMsg.textContent = t; stationSheetMsg.textContent = t; }
 // "Changing band…" -> "Changing band", for "<action> ok." / "<action> failed: …".
 function actionName(busyMsg) { return busyMsg.replace(/(\.\.\.|…)$/, ''); }
 
@@ -1006,10 +1058,23 @@ document.querySelectorAll('#tabbar button').forEach(function (b) {
 // ===================== settings (full-screen overlay, not a swipe panel) ====
 
 var settingsOverlay = document.getElementById('settingsOverlay');
-function openSettings() { settingsMsg.textContent = ''; settingsOverlay.classList.add('open'); }
+// Never both open: the Station sheet is a second overlay of its own (below),
+// and each open closes the other first, so the two never stack.
+function openSettings() { closeStationSheet(); settingsMsg.textContent = ''; settingsOverlay.classList.add('open'); }
 function closeSettings() { settingsOverlay.classList.remove('open'); }
 document.getElementById('navSettings').onclick = openSettings;
 document.getElementById('settingsOverlayBack').onclick = closeSettings;
+
+// ===================== the Station sheet (webapp.md, The Station sheet) ====
+// Opened from the CQ row's Settings > and the dock's Station > (RFC 0009
+// §3.5). Same overlay mechanics as Settings above -- see that CSS rule --
+// and its own fields are populated by setStationSheetForm() below, called
+// from setForm() alongside the rest so a reload after any write (this
+// sheet's own, or a plain Settings save) refreshes what it shows.
+var stationSheet = document.getElementById('stationSheet');
+function openStationSheet() { closeSettings(); stationSheetMsg.textContent = ''; stationSheet.classList.add('open'); }
+function closeStationSheet() { stationSheet.classList.remove('open'); }
+document.getElementById('stationSheetBack').onclick = closeStationSheet;
 
 // Live drag: the track follows the finger 1:1 (no transition -- it would
 // fight the live position), then snaps on release to whichever panel is
@@ -1231,6 +1296,7 @@ function setForm(cfg) {
   buildBandRows(cfg);
   buildDockBandGrid(cfg);
   renderDockLine(cfg);
+  setStationSheetForm(cfg);
   FIELDS.forEach(function (k) {
     var el = document.getElementById(k);
     if (!el) return;
@@ -1242,6 +1308,100 @@ function setForm(cfg) {
     el.value = String(cfg[k]);
   });
 }
+
+// A Maidenhead locator exactly as main/storage/station.cpp's
+// normalize_grid_maidenhead() accepts one (verified against that function,
+// station.cpp:39-91, shared by both boards): 4, 6 or 8 characters -- field
+// A-R, square 0-9, and (6 or 8 characters) subsquare A-X, extension 0-9.
+// station_parse() silently keeps the *old* grid on a bad write rather than
+// refusing it, so this check runs before the PUT: without it, a typo here
+// would look accepted (setMsg() still says "ok") while the grid never
+// actually changed.
+function gridFormatOk(g) {
+  return /^[A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2}([0-9]{2})?)?$/.test(g);
+}
+
+function updateGridHint() {
+  var v = document.getElementById('grid').value.trim();
+  var hint = document.getElementById('gridHint');
+  if (!v || gridFormatOk(v)) {
+    hint.textContent = 'The CQ carries the first four characters.';
+    hint.classList.remove('dlink-danger');
+  } else {
+    hint.textContent = 'Not a valid grid -- 4, 6 or 8 characters, e.g. FN20 or FN20aa.';
+    hint.classList.add('dlink-danger');
+  }
+}
+document.getElementById('grid').addEventListener('input', updateGridHint);
+
+// The Station sheet's own fields (RFC 0009 §3.5): cq_type, free_text, grid,
+// autoseq_max_retry, offset and offset_src left Settings' FIELDS loop above
+// for this sheet, so they need their own population here, called from
+// setForm() alongside it -- same call sites (boot from cache, loadConfig()),
+// same reasoning against rebuilding mid-edit. The two free-typing fields
+// (grid, free_text) skip their own reload while focused, so a write
+// triggered by some *other* sheet control (which reloads the whole config)
+// can't clobber an edit still in progress here.
+function setStationSheetForm(cfg) {
+  var type = parseInt(cfg.cq_type, 10) || 0;
+  document.getElementById('cq_type').value = String(type);
+  var showFree = type === 4 || type === 5;
+  document.getElementById('freeTextRow').hidden = !showFree;
+  document.getElementById('freeTextLabel').textContent = type === 5 ? 'CQ message' : 'FD exchange';
+  var ftEl = document.getElementById('free_text');
+  // "up to 13 characters" is Free text's own limit (RFC 0009 §3.5), not FD's --
+  // removeAttribute, not maxLength = -1: the setter throws IndexSizeError for
+  // anything below 0, so "no limit" has to be the attribute's absence.
+  if (type === 5) ftEl.maxLength = 13; else ftEl.removeAttribute('maxlength');
+  if (document.activeElement !== ftEl) ftEl.value = cfg.free_text || '';
+  var gridEl = document.getElementById('grid');
+  if (document.activeElement !== gridEl) gridEl.value = cfg.grid || '';
+  updateGridHint();
+  var retryEl = document.getElementById('autoseq_max_retry');
+  retryEl.value = (cfg.autoseq_max_retry !== undefined && cfg.autoseq_max_retry !== null) ? cfg.autoseq_max_retry : '';
+  var offsetEl = document.getElementById('offset');
+  offsetEl.value = (cfg.offset !== undefined && cfg.offset !== null) ? cfg.offset : '';
+  document.getElementById('offset_src').value =
+    (cfg.offset_src !== undefined && cfg.offset_src !== null) ? String(cfg.offset_src) : '0';
+  document.getElementById('sheetSendsText').textContent = cqSendsText();
+  document.getElementById('sheetCall').textContent = cfg.call || '—';
+}
+
+// Each control below writes its own key the moment it changes (RFC 0009
+// §3.5) -- no Save button for this sheet. putConfigLine() reloads the whole
+// station on success or failure either way, which is what brings every field
+// here (and the CQ row's Sends text, and the dock line) back in sync with
+// what the station actually holds.
+function sheetPutLine(line, busyMsg) {
+  putConfigLine(line, busyMsg, true).catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+}
+document.getElementById('cq_type').onchange = function () {
+  sheetPutLine('cq_type=' + this.value, 'Setting CQ type…');
+};
+document.getElementById('free_text').onchange = function () {
+  sheetPutLine('free_text=' + this.value, 'Setting CQ text…');
+};
+// Malformed input is refused client-side, in a dialog, same as the dock's
+// frequency editor (webapp.md, The dock) -- station_parse() would otherwise
+// just silently keep the old grid (StationKey::Grid in
+// main/storage/station.cpp) and report the write as ok anyway.
+document.getElementById('grid').onchange = function () {
+  var v = this.value.trim();
+  if (v && !gridFormatOk(v)) {
+    alert('Not a valid grid: "' + v + '". A grid is 4, 6 or 8 characters, e.g. FN20 or FN20aa.');
+    return;
+  }
+  sheetPutLine('grid=' + v, 'Setting grid…');
+};
+document.getElementById('autoseq_max_retry').onchange = function () {
+  sheetPutLine('autoseq_max_retry=' + this.value, 'Setting retries…');
+};
+document.getElementById('offset').onchange = function () {
+  sheetPutLine('offset=' + this.value, 'Setting TX offset…');
+};
+document.getElementById('offset_src').onchange = function () {
+  sheetPutLine('offset_src=' + this.value, 'Setting offset source…');
+};
 
 function formBody() {
   var lines = [];
@@ -1697,9 +1857,10 @@ document.getElementById('opDockFreqBtn').onclick = function () {
   var editor = document.getElementById('opFreqEditor');
   if (editor.hidden) openFreqEditor(); else closeFreqEditor();
 };
-// Until O1c ships (row cuca), both halves of the dock's second line open
-// Settings -- the Station sheet does not exist yet (row cuca).
-document.getElementById('opDockMetaBtn').onclick = openSettings;
+// "Retries N · <offset> · Station ›" opens the Station sheet (RFC 0009
+// §3.5), which is what it previews -- band and frequency are the other half
+// of the dock line, opDockFreqBtn above, not this one.
+document.getElementById('opDockMetaBtn').onclick = openStationSheet;
 
 // A typed value under 1000 is MHz, otherwise kHz, kept to 0.1 kHz (the
 // station file already stores tenths).
@@ -1913,14 +2074,14 @@ var GEO_HANDOFF_URL = 'https://micro-ft8.kalikstein.com/geo';
 document.getElementById('gridLocateBtn').onclick = function () {
   var ok = confirm("Finding your location needs your phone's own internet connection, not just the sidekick's WiFi. Continue?");
   if (!ok) return;
-  var ret = location.origin + location.pathname + '#station';
+  var ret = location.origin + location.pathname + '#stationsheet';
   location.href = GEO_HANDOFF_URL + '?return=' + encodeURIComponent(ret);
 };
 
 // Called after loadConfig() resolves, near the bottom of this script --
 // needs a real lastCfg.grid to compare against, which applyHashRoute()'s
-// own #station branch (run at boot, before loadConfig()) doesn't have yet.
-// A no-op on every ordinary page load, which never carries these params.
+// own #stationsheet branch (run at boot, before loadConfig()) doesn't have
+// yet. A no-op on every ordinary page load, which never carries these params.
 function handleGeoReturn() {
   var params = new URLSearchParams(location.search);
   var latStr = params.get('lat'), lonStr = params.get('lon');
@@ -1941,7 +2102,7 @@ function handleGeoReturn() {
   var prompt = current
     ? 'Your GPS location is grid ' + newGrid + ', but your station is set to ' + current + '. Update it?'
     : 'Set your station grid to ' + newGrid + ' (from GPS)?';
-  if (confirm(prompt)) putConfigLine('grid=' + newGrid, 'Setting grid from GPS…');
+  if (confirm(prompt)) sheetPutLine('grid=' + newGrid, 'Setting grid from GPS…');
 }
 
 // Clock sync is fully automatic and silent -- no dot, no tap-to-sync
@@ -2152,6 +2313,7 @@ function cqStatusText(mode) {
 function renderBeacon() {
   var mode = slotState ? slotState.bm : 0;
   document.getElementById('cqSendsText').textContent = cqSendsText();
+  document.getElementById('sheetSendsText').textContent = cqSendsText();
   // A native <select> stays document.activeElement after the operator picks
   // an option (focus doesn't return to the page), so gating this on focus --
   // the original approach -- silently stopped all future live updates after
@@ -2167,11 +2329,10 @@ document.getElementById('beaconSel').onchange = function () {
   radioPost('/api/beacon', sel.value, 'Beacon…')
     .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 };
-// Settings > opens the Station sheet once it ships (RFC 0009 §6.1, row
-// cuca); until then, plain Settings. The CQ text and the explicit link both
-// go to the same place.
-document.getElementById('cqSendsText').onclick = openSettings;
-document.getElementById('cqSettingsBtn').onclick = openSettings;
+// The CQ text and Settings > both open the Station sheet (RFC 0009 §3.5),
+// where Calling CQ (Sends preview, type, grid) now lives.
+document.getElementById('cqSendsText').onclick = openStationSheet;
+document.getElementById('cqSettingsBtn').onclick = openStationSheet;
 
 // ===================== Operate: TX HUD =====================
 // Mirrors the on-device TX HUD banner (main.cpp's draw_tx_hud() / porta_tx_hud_tick()):
@@ -3701,9 +3862,9 @@ if (MicroFT8Pairing.getToken()) {
 // Deep links: #network (from status.html's old / -> now a 303 to here, and
 // any other "take me to network settings" link) opens Settings straight to
 // the Network section; #tools (docs/architecture/webapp.md (Tools)) swipes straight to the Tools
-// tab; #station (operator-requested 2026-09-23, the geolocation handoff's
-// own return route -- see handleGeoReturn() below) opens Settings straight
-// to the Station section, same pattern as #network. All three run once at
+// tab; #stationsheet (operator-requested 2026-09-23, the geolocation
+// handoff's own return route -- see handleGeoReturn() below) opens the
+// Station sheet, where Grid now lives (RFC 0009 §3.5). All three run once at
 // boot and again on hashchange, so a link clicked while the app is already
 // open (not just a fresh load) still routes.
 function applyHashRoute() {
@@ -3713,10 +3874,8 @@ function applyHashRoute() {
     if (netSection) netSection.scrollIntoView();
   } else if (location.hash === '#tools') {
     showView('tools');
-  } else if (location.hash === '#station') {
-    openSettings();
-    var stationSection = document.getElementById('stationSection');
-    if (stationSection) stationSection.scrollIntoView();
+  } else if (location.hash === '#stationsheet') {
+    openStationSheet();
     // Not handleGeoReturn() here -- this runs at boot, before loadConfig()
     // (below) has populated lastCfg.grid, and that comparison needs the
     // real value, not the empty {} lastCfg starts as. Chained onto

@@ -118,7 +118,7 @@ In order of preference:
 
 ### 4.4 On the air
 
-* **CQ:** unchanged in shape: `CQ POTA` or `CQ SOTA` from the activation. **A mixed activation defaults to `CQ SOTA`, and the operator can switch while operating** (decided 2026-09-26), so the switch is a control on Operate ([RFC 0009](0009-operate-station-surface.md) §3.5), not in Settings. `autoseq_set_cq_type()` re-derives a queued CQ's text at once (`autoseq.cpp:737`); whether a TX the board has already armed for this slot picks up the change is checked in A1.
+* **CQ:** unchanged in shape: `CQ POTA` or `CQ SOTA` from the activation. **A mixed activation defaults to `CQ SOTA`, and the operator can switch while operating** (decided 2026-09-26), so the switch is the Station sheet's Type control ([webapp.md](../architecture/webapp.md), **The Station sheet**), not in Settings. `autoseq_set_cq_type()` re-derives a queued CQ's text at once (`autoseq.cpp:737`); whether a TX the board has already armed for this slot picks up the change is checked in A1.
 * **No `/P` feature** (decided 2026-09-26, §9). The own-call field is free text with no validation found, so an operator can still enter a suffixed call; the log just records it faithfully (§4.5).
 * **The reference stays off the air**, matching POTA practice: hunters get it from spots (§3). See §5 for why.
 * **The other station's reference (P2P, S2S)** reaches the record at log time from a live spot when online (`callinfo.js` already matches spots to callsigns), or from a reference the operator attaches to the queue entry. Adding one *after* logging needs record editing, which waits on I31/I32.
