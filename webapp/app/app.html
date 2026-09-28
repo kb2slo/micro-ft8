@@ -244,6 +244,11 @@ body.on-operate{padding-bottom:calc(var(--tabbar-h,3.375rem) + var(--dock-h,0px)
 #opFreqEditor .row+.row{margin-top:.4rem}
 #opFreqInput{flex:1;margin-top:0}
 #opFreqEditor button{font-size:.8rem;padding:.4rem .5rem}
+#opFreqEditor .freqclose{background:transparent;border:0;color:GrayText;font-size:1.3rem;line-height:1;padding:0;min-width:44px;min-height:44px}
+/* .row shares its width equally among children; here the input takes it, and
+   Set and the close button keep at least a 44 px touch target. */
+#opFreqEditor #opFreqSet,#opFreqEditor .freqclose{flex:none}
+#opFreqEditor #opFreqSet{min-width:4rem;min-height:44px}
 
 /* ---- operate: decode stream ---- */
 #opDecodes{padding-bottom:.5rem}
@@ -667,6 +672,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       <div class=row>
         <input id=opFreqInput type=number step=0.1 inputmode=decimal placeholder="MHz or kHz">
         <button id=opFreqSet type=button disabled>Set</button>
+        <button id=opFreqClose type=button class=freqclose aria-label="Close the frequency editor">&times;</button>
       </div>
       <div class=row>
         <button id=opFreqDown type=button disabled>&minus;1 kHz</button>
@@ -1495,11 +1501,15 @@ document.getElementById('netRehydrate').onclick = async function () {
 // Shared by both band dropdowns (Operate + Settings) -- one PUT, one code
 // path, one fix. A single-field PUT rather than the full Settings form, so
 // picking a band applies immediately and never touches any other field.
-async function putConfigLine(line, busyMsg) {
+// Resolves true when the station took every line. A refusal can still mean
+// "saved, but" (a band or frequency the radio could not reach), so the form
+// is re-read either way. alertOnFail: the dock's actions also show a refusal
+// in a dialog, since the operator is looking at the dock, not the status line.
+async function putConfigLine(line, busyMsg, alertOnFail) {
   if (!MicroFT8Pairing.getToken()) {
     setMsg('Press the sidekick button to pair first.');
     MicroFT8Pairing.needsReauth();
-    return;
+    return false;
   }
   setMsg(busyMsg);
   var r = await MicroFT8Pairing.authFetch('/api/config', {
@@ -1510,15 +1520,19 @@ async function putConfigLine(line, busyMsg) {
   if (r.status == 401) {
     MicroFT8Pairing.needsReauth();
     setMsg('Press the sidekick button to pair');
-    return;
+    return false;
   }
   var j = await r.json().catch(function () { return {}; });
   if (!r.ok || j.ok === false) {
-    setMsg(actionName(busyMsg) + ' failed: ' + (j.why || r.status));
-    return;
+    var why = actionName(busyMsg) + ' failed: ' + (j.why || r.status);
+    await loadConfig(true).catch(function () { /* loadConfig reports it */ });
+    setMsg(why);
+    if (alertOnFail) alert(why);
+    return false;
   }
   await loadConfig(true);
   setMsg(actionName(busyMsg) + ' ok.');
+  return true;
 }
 
 // Auth'd POST without radioPost()'s status-message/loadConfig() ceremony --
@@ -1588,7 +1602,7 @@ function changeBand(idx) {
   if (!confirmRetune('Change band')) return;
   setMsg('Changing band…');
   cancelQsosAndTx().then(function () {
-    return putConfigLine('band_sel=' + idx, 'Changing band…');
+    return putConfigLine('band_sel=' + idx, 'Changing band…', true);
   }).catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 }
 
@@ -1602,17 +1616,20 @@ function changeBand(idx) {
 // (TX active)") but nothing retunes the radio when the TX ends, so the dock
 // would show a frequency the radio is not on. With nothing to end, no cancel
 // is sent: a cancel also blocks a TX armed for this slot.
+// Returns false when the operator declined the confirmation, so a typed value
+// stays in the open editor.
 function setOperatingBandFreq(khz) {
   var idx = parseInt(lastCfg.band_sel, 10);
-  if (isNaN(idx)) return;
+  if (isNaN(idx)) return false;
   var stopping = retuneEnds().length > 0;
-  if (!confirmRetune('Change frequency')) return;
+  if (!confirmRetune('Change frequency')) return false;
   var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + idx;
   setMsg('Setting frequency…');
   (stopping ? cancelQsosAndTx() : Promise.resolve()).then(function () {
-    return putConfigLine(key + '=' + khz, 'Setting frequency…');
+    return putConfigLine(key + '=' + khz, 'Setting frequency…', true);
   }).then(refreshFreqInputIfOpen)
     .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+  return true;
 }
 
 // The nudge/Standard buttons leave the editor open (only a typed Set/Enter
@@ -1627,17 +1644,24 @@ function refreshFreqInputIfOpen() {
   document.getElementById('opFreqInput').value = khz != null ? khz : '';
 }
 
-// A value in another active band is a band change with a non-standard
-// frequency for it: that band's key, then band_sel, with changeBand()'s full
-// confirm-and-cancel.
+// A value in another active band is a band change, so it always asks, even
+// with nothing to end (operator decision 2026-09-28), then cancels like
+// changeBand(). One PUT carries both lines, the band's frequency first so
+// band_sel lands on it: the sidekick applies them in order, and a single
+// round trip leaves no gap for a stale read between two writes. Returns false
+// when declined, so the typed value stays in the open editor.
 function switchToBandWithFreq(band, khz) {
-  if (!confirmRetune('Change band')) return;
+  var ends = retuneEnds();
+  if (!confirm('Change band to ' + band.name + '? ' + khzToMhzLabel(khz) + ' MHz is on ' +
+               band.name + '.' + (ends.length ? ' This ' + ends.join(' and ') + '.' : ''))) {
+    return false;
+  }
   var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + band.i;
+  setMsg('Changing band…');
   cancelQsosAndTx().then(function () {
-    return putConfigLine(key + '=' + khz, 'Setting frequency…');
-  }).then(function () {
-    return putConfigLine('band_sel=' + band.i, 'Changing band…');
+    return putConfigLine(key + '=' + khz + '\nband_sel=' + band.i, 'Changing band…', true);
   }).catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+  return true;
 }
 
 function openFreqEditor() {
@@ -1658,39 +1682,45 @@ document.getElementById('opDockMetaBtn').onclick = openSettings;
 
 // A typed value under 1000 is MHz, otherwise kHz, kept to 0.1 kHz (the
 // station file already stores tenths).
+// A refusal shows in a dialog, where the operator is looking, and the editor
+// stays open with the typed value to fix (operator feedback 2026-09-28).
+function refuseDockFreq(why) {
+  setMsg(why);
+  alert(why);
+}
 function applyDockFreqInput() {
   var raw = document.getElementById('opFreqInput').value;
   var v = parseFloat(raw);
   if (!raw || !isFinite(v) || v <= 0) {
-    setMsg('Enter a frequency.');
+    refuseDockFreq('Enter a frequency.');
     return;
   }
   var khz = Math.round((v < 1000 ? v * 1000 : v) * 10) / 10;
   var band = bandForKhz(khz);
   if (!band) {
-    setMsg('That frequency is outside every amateur band.');
+    refuseDockFreq(khzToMhzLabel(khz) + ' MHz is outside every amateur band.');
     return;
   }
   var parsed = parseActiveBands(lastCfg.active_bands);
   if (parsed.any && !parsed.want[band.n]) {
-    setMsg(band.name + ' is not an active band.');
+    refuseDockFreq(khzToMhzLabel(khz) + ' MHz is on ' + band.name +
+                   ', which is not an active band. Add it in Settings > Bands.');
     return;
   }
-  closeFreqEditor();
   var curIdx = parseInt(lastCfg.band_sel, 10);
-  if (band.i === curIdx) {
-    setOperatingBandFreq(khz);
-  } else {
-    switchToBandWithFreq(band, khz);
-  }
+  var went = (band.i === curIdx) ? setOperatingBandFreq(khz) : switchToBandWithFreq(band, khz);
+  if (went) closeFreqEditor();
 }
 document.getElementById('opFreqSet').onclick = applyDockFreqInput;
 document.getElementById('opFreqInput').onkeydown = function (ev) {
   if (ev.key === 'Enter') {
     ev.preventDefault();
     applyDockFreqInput();
+  } else if (ev.key === 'Escape') {
+    closeFreqEditor();
   }
 };
+document.getElementById('opFreqClose').onclick = closeFreqEditor;
 function nudgeDockFreq(deltaKhz) {
   var khz = currentDockFreqKhz(lastCfg);
   if (khz == null) return;
