@@ -17,7 +17,7 @@ The daily station. Headless is the only mode: the module has no display, touch o
 
 ### Two USB-C ports
 
-* **Host** — the QMX: CAT (USB CDC) and audio (UAC) run as two USB host clients in `poe_p4/main/qmx_transport.cpp`. The QMX takes about 11 s to enumerate after it is plugged in (a QMX-side fact, measured 2026-09-20). Do not run UAC open/start on the task that pumps USB host events: that crashed the P4 on 2026-09-18 ([README.md](../README.md), **Operating notes**).
+* **Host** — the QMX: CAT (USB CDC) and audio (UAC) run as two USB host clients in `poe_p4/main/qmx_transport.cpp`. The QMX takes about 11 s to enumerate after it is plugged in (a QMX-side fact, measured 2026-09-20). A P4 reboot with the QMX already attached can log `ENUM: CHECK_SHORT_DEV_DESC FAILED` (and `QMX CDC open attempt 1 failed`) in the first two seconds, from ESP-IDF's USB host catching the QMX before it is ready; it recovers on its own, with `QMX CDC-ACM opened` and `VFO sync ok` a few seconds later (seen 2026-09-28). Do not run UAC open/start on the task that pumps USB host events: that crashed the P4 on 2026-09-18 ([README.md](../README.md), **Operating notes**).
 * **PROG**, next to the RJ45 — flashing, the serial console, and 5 V power in, all at once. Confirmed in daily use (operator, 2026-09-25): the QMX streams on Host while the console runs on PROG.
 
 ### Field power
