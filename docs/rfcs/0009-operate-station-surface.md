@@ -270,7 +270,7 @@ Redesign canvas: `Reply feedback`, interactive. The feedback is on the Reply but
 O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); they are the Now rows. The later slices stay listed here, under row `s6qk`, until each is next. The combined order with RFC 0008 is RFC 0008 §7.
 
 * **O1a: the CQ row**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The CQ row**).
-* **O1b: the dock** ([webapp.md](../architecture/webapp.md), **The dock**). Bench check owed ([TEST_PLAN.md](../TEST_PLAN.md) Pending); row `q8sm` stays in Now until it passes.
+* **O1b: the dock**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The dock**).
 * **O1c: the Station sheet** (§3.5). Row `cuca`.
 * **O2: radio status replaces Connect, the read-back, and the TX HUD** (§3.7, §3.12).
   - Web app; the `IF;` read-back operation, its parser test and its Port A message; the ADV's attach-time host start (`ADV-only`).
