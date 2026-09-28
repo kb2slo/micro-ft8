@@ -242,6 +242,7 @@ Redesign canvas: `Reply feedback`, interactive. The feedback is on the Reply but
 * **Tap Reply:** the button locks at once and reads "Sending…". The sidekick holds the POST until the main board accepts or refuses (`post_queue_reply()`, `sidekick/main/host_link.c:795`), so the answer takes about a second.
 * **Accepted:** the button reads "Queued ✓", and a dashed placeholder for that call appears in the queue. When a `QUEUE_ENTRY` for the same call arrives, the placeholder becomes the real entry. Matching on the call needs no protocol change. If the call is already queued, that row is highlighted instead.
 * **Refused, or no entry within 10 s:** the placeholder goes, and the reason shows on the decode row with a Retry button.
+* **Already built** (2026-09-28): a reply to a decode heard on another frequency is refused in the app with a dialog ([webapp.md](../architecture/webapp.md), **The dock**).
 
 ## 4. Rejected alternatives
 

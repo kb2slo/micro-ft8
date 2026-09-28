@@ -1607,13 +1607,18 @@ function standardKhz(band) {
 // one typed there (operator decision 2026-09-28): the band's key and band_sel
 // go in one PUT, frequency first. That overwrites whatever the ADV's BAND
 // menu programmed for the band; keeping chosen frequencies is row y9js.
-// Tapping the band already selected, at its standard, changes nothing.
+// Tapping the band already selected, at its standard, changes nothing. A tap
+// that goes ahead closes the frequency editor (operator feedback 2026-09-28).
 function changeBand(idx) {
   var band = BANDS[parseInt(idx, 10)];
   if (!band) return;
   var std = standardKhz(band);
-  if (String(band.i) === String(lastCfg.band_sel) && currentDockFreqKhz(lastCfg) === std) return;
+  if (String(band.i) === String(lastCfg.band_sel) && currentDockFreqKhz(lastCfg) === std) {
+    closeFreqEditor();
+    return;
+  }
   if (!confirmRetune('Change band')) return;
+  closeFreqEditor();
   var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + band.i;
   setMsg('Changing band…');
   cancelQsosAndTx().then(function () {
@@ -2505,10 +2510,41 @@ function renderDecodes() {
   rows.querySelectorAll('.replyBtn').forEach(function (el) {
     el.onclick = function (ev) {
       ev.stopPropagation();
+      var why = replyFrequencyMismatch(el.getAttribute('data-id'));
+      if (why) {
+        setMsg(why);
+        alert(why);
+        return;
+      }
       radioPost('/api/queue/reply', el.getAttribute('data-id'), 'Queueing…')
         .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
     };
   });
+}
+
+// A reply goes out on the frequency the radio is on now, so a decode heard on
+// another one (before a band or frequency change) is refused with a dialog
+// instead (operator request 2026-09-28). Both sides are the main board's own
+// freq_khz, in whole kHz: the slot's, captured when its decodes arrived
+// (flushDecodeBatch()), and the latest config's. Null when they match, or
+// when either is unknown and there is nothing to compare.
+function replyFrequencyMismatch(decodeId) {
+  var slot = null, decode = null;
+  for (var i = 0; i < decodeSlots.length && !decode; i++) {
+    for (var k = 0; k < decodeSlots[i].length; k++) {
+      if (String(decodeSlots[i][k].id) === String(decodeId)) {
+        slot = decodeSlots[i];
+        decode = decodeSlots[i][k];
+        break;
+      }
+    }
+  }
+  var heard = slot ? parseInt(slot.freqKhz, 10) : NaN;
+  var now = parseInt(lastCfg.freq_khz, 10);
+  if (!heard || !now || heard === now) return null;
+  var who = (decode && extractSenderCall(decode.x)) || 'This station';
+  return who + ' was heard on ' + fmtSlotFreqMHz(heard) + ' MHz, and the radio is on ' +
+    fmtSlotFreqMHz(now) + ' MHz now. Tune back to ' + fmtSlotFreqMHz(heard) + ' MHz to reply.';
 }
 
 // ===================== Operate: event poll =====================
