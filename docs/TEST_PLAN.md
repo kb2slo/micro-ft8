@@ -40,7 +40,6 @@ field-only path, naming the change and the exact check. **Drop it when the check
 
 | From | Check | Status |
 | --- | --- | --- |
-| jbap (Port A v2: decodes carry their slot and frequency; webapp.md) | Flash the **sidekick and the P4 together** with this build (the protocol changed; until both are updated, decodes show garbled in the app), then desk-push the app. **Step 1:** decode headers read times on :00/:15/:30/:45, and a batch that has just arrived reads about 0–3 s ago. **Step 2:** a header shows the band and frequency the radio was on (`20m · 14.074 MHz`). **Step 3:** about 3 s into a slot on 40 m, tap **20m**. The batch for that slot may show under two headers with the same time, 40 m and 20 m; no header reads "Retuned". **Step 4:** Reply on a 40 m decode from that slot is refused with the dialog; Reply on a 20 m one queues. **Step 5:** tap **+1 kHz**: the next slot's header reads `14.075 MHz`. **Step 6:** finish a QSO: its time in the QSO list is logged as before (QSO start and end, not the slot grid). | **owed** |
 | Settings saves reach autoseq, ADV half (the ADV pushes web config into autoseq; the P4 half passed 2026-09-28) | ADV, web app. (1) CQ on. In Settings, change Max retry (e.g. 5 → 8) and tap **Save station** while our TX is on the air. Max retry reads the new value (Settings' Save no longer sends band or frequency, so no VFO refusal appears). (2) Answer a CQ: the new queue row reads `retry 0/<new value>`. (3) Change CQ type to POTA and save: the next CQ is `CQ POTA …` without a reboot. | **owed** |
 | RR73 once (the recently-worked check moved into autoseq) | Beacon on, either board. A station answers and the QSO runs to our RR73; they send 73. We send **one** RR73, the entry leaves the queue, and the next CQ goes out on our next slot. Before the fix, RR73 repeated on every retry (up to 5 more) with the beacon silent. Then, within 10 minutes, that station calls us again: no QSO starts (P4 console: `worked recently, not starting a new QSO`). | **owed** |
 | Parked entries expire after 10 minutes | Answer a station's CQ and finish with our 73. More than 10 minutes later, have the same station call us with their grid. A new QSO starts: our first TX to them is a fresh report (not `73`), and when it completes there is a second log entry for that call. The P4 console shows `Expired parked ctx for <call>`. | **owed** |
@@ -54,6 +53,12 @@ proven, and not counted as owed. Move one into the table when a check is planned
 
 - **QDX.** Neither main board has ever run against one; the operator has no QDX. The ADV's Radio setting and
   the site's QDX mentions are untested.
+- **Port A v2, a slot retuned partway through** (decodes from one slot under two headers, the same time, each
+  under the frequency it was heard on). Not reproduced on the bench (2026-09-28, several tries): a decode lands
+  on the new band only if the switch comes within a second or two of the slot start and the station is strong,
+  or on the old band only if the switch comes after about 11 s and the rest still decodes. Covered by
+  `host_test_dial_history` (a retune 3 s into a slot), the decode-batching test (a retuned slot as two batches
+  that keep every decode) and the preview. No error appeared in the tries.
 - **B27, decode auto-sync persisting to a DS3231** (ADV only). Needs a generic DS3231 breakout (I2C 0x68; not
   M5Stack's Grove RTC Unit, a HYM8563): offset the clock, let auto-sync fire (`SYNC: Applied RTC sync…`),
   power-cycle without re-syncing, and the Time line reads ` R` with the corrected time.
