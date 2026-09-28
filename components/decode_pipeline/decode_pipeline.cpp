@@ -1,3 +1,4 @@
+#include "dial_history.h"
 #include "decode_pipeline.h"
 
 #include <cmath>
@@ -61,7 +62,8 @@ void log_rxtx_line(char dir, int snr, int offset_hz, const std::string& text, in
 void arm_from_autoseq_or_beacon();
 bool ignorelist_matches_normalized_dxcall(const std::string& dxcall_norm);
 void porta_emit_decode(uint32_t decode_id, const char* text, int snr, int offset_hz,
-                       float dt_s, bool is_cq, bool is_to_me, bool is_recent_qso);
+                       float dt_s, bool is_cq, bool is_to_me, bool is_recent_qso,
+                       uint32_t slot_idx, uint8_t slot_len_ds, uint32_t dial_hz);
 void ui_mark_rx_list_stale();
 void ui_set_rx_list_static(const RxDecodeEntry* entries, int count);
 
@@ -527,11 +529,26 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
     // Same list, same moment, same order as the screen gets -- which is what
     // makes the on-screen log a free oracle for the link: if the browser and
     // the R screen disagree, the fault is between here and the browser.
+    //
+    // Each carries the slot its audio was recorded in, and the dial frequency
+    // at the middle of its own signal (Port A v2). A signal only decodes if
+    // most of it was received on one frequency, so when the operator retunes
+    // partway through the slot, this labels each decode with the frequency
+    // it was actually heard on, and none has to be dropped. time_s counts
+    // from the start of the recording, which begins on the slot boundary.
+    const int64_t emit_slot_idx = slot_idx;
+    const int64_t emit_slot_ms = g_protocol->slot_time_ms;
+    const int64_t half_signal_ms =
+        (int64_t)(g_protocol->total_symbols * g_protocol->symbol_period * 500.0f);
     for (int i = 0; i < s_dec_count; ++i) {
       const RxDecodeEntry& e = s_dec[i];
       uint32_t decode_id = remember_decode_for_reply(e);
+      const int64_t mid_ms =
+          emit_slot_idx * emit_slot_ms + (int64_t)(e.time_s * 1000.0f) + half_signal_ms;
       porta_emit_decode(decode_id, e.text, e.snr, e.offset_hz, e.time_s,
-                        e.is_cq, e.is_to_me, e.is_recent_qso);
+                        e.is_cq, e.is_to_me, e.is_recent_qso,
+                        (uint32_t)emit_slot_idx, (uint8_t)(emit_slot_ms / 100),
+                        dial_history_at(mid_ms));
     }
     g_rx_dirty = true;
   } else {

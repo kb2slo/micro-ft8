@@ -53,8 +53,11 @@ void porta_emit_log(const char* text);
 // `decode_id` names this decode for a later PORTA_ACT_QUEUE_REPLY -- assigned
 // by the caller (main.cpp's remember_decode_for_reply()), not here, since
 // only the caller has anywhere to resolve it back to a message.
+// slot_idx/slot_len_ds: the UTC slot the audio was recorded in; dial_hz: the
+// radio's dial at the middle of this decode's signal, 0 if unknown (Port A v2).
 void porta_emit_decode(uint32_t decode_id, const char* text, int snr, int offset_hz,
-                       float dt_s, bool is_cq, bool is_to_me, bool is_recent_qso);
+                       float dt_s, bool is_cq, bool is_to_me, bool is_recent_qso,
+                       uint32_t slot_idx, uint8_t slot_len_ds, uint32_t dial_hz);
 
 // One autoseq queue row (I28d, docs/architecture/webapp.md (Screens)). `state` is the AutoseqState
 // wire value; IDLE (6) is the removal signal, not a separate flag -- callers

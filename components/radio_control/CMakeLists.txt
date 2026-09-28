@@ -10,5 +10,5 @@ idf_component_register(
          "radio_control_qmx.cpp"
          "radio_control_qdx.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES esp_common log
+    REQUIRES esp_common log dial_history rtc_core
 )

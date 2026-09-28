@@ -233,8 +233,9 @@ bool porta_proto_parse_log(const porta_frame_t *f, uint32_t *epoch_secs_out,
     return true;
 }
 
-// subtype | epoch(4) | flags | snr | offset(2) | dt(2) | decode_id(4) | text...
-#define DECODE_BODY_OFFSET (EVENT_HEADER_LEN + 6u + 4u)
+// subtype | epoch(4) | flags | snr | offset(2) | dt(2) | decode_id(4) |
+// slot_idx(4) | slot_len_ds | dial_hz(4) | text...
+#define DECODE_BODY_OFFSET (EVENT_HEADER_LEN + 6u + 4u + 9u)
 
 size_t porta_proto_encode_decode(const porta_decode_event_t *d, uint8_t *out, size_t out_cap)
 {
@@ -253,6 +254,9 @@ size_t porta_proto_encode_decode(const porta_decode_event_t *d, uint8_t *out, si
     payload[9] = (uint8_t)((uint16_t)d->dt_centis & 0xFFu);
     payload[10] = (uint8_t)((uint16_t)d->dt_centis >> 8);
     put_u32(&payload[11], d->decode_id);
+    put_u32(&payload[15], d->slot_idx);
+    payload[19] = d->slot_len_ds;
+    put_u32(&payload[20], d->dial_hz);
 
     size_t n = strnlen(d->text, PORTA_EVENT_TEXT_MAX);
     if (n > 0) {
@@ -277,6 +281,9 @@ bool porta_proto_parse_decode(const porta_frame_t *f, porta_decode_event_t *out)
     out->offset_hz     = (uint16_t)(f->payload[7] | ((uint16_t)f->payload[8] << 8));
     out->dt_centis     = (int16_t)(uint16_t)(f->payload[9] | ((uint16_t)f->payload[10] << 8));
     out->decode_id     = get_u32(&f->payload[11]);
+    out->slot_idx      = get_u32(&f->payload[15]);
+    out->slot_len_ds   = f->payload[19];
+    out->dial_hz       = get_u32(&f->payload[20]);
     event_text_out(f, DECODE_BODY_OFFSET, out->text, sizeof(out->text));
     return true;
 }

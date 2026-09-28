@@ -1,3 +1,5 @@
+#include "dial_history.h"
+#include "rtc_core.h"
 #include "radio_control.h"
 
 #include "radio_control_backend.h"
@@ -63,7 +65,12 @@ esp_err_t radio_control_on_audio_start(void) {
 esp_err_t radio_control_sync_frequency_mode(int freq_hz) {
     const radio_control_ops_t* ops = current_ops();
     if (!ops || !ops->sync_frequency_mode) return ESP_ERR_INVALID_STATE;
-    return ops->sync_frequency_mode(freq_hz);
+    const esp_err_t err = ops->sync_frequency_mode(freq_hz);
+    // Every board tunes through here, so this is where the dial's history is
+    // kept: a decode is labelled with the frequency it was heard on from it
+    // (dial_history.h, Port A DECODE's dial_hz).
+    if (err == ESP_OK && freq_hz > 0) dial_history_note(rtc_now_ms(), (uint32_t)freq_hz);
+    return err;
 }
 
 esp_err_t radio_control_begin_tx(int freq_hz, int tx_base_hz) {

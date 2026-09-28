@@ -351,6 +351,9 @@ static void test_decode_event()
     in.dt_centis = -145;       // negative, likewise
     in.is_cq = true;
     in.is_recent_qso = true;
+    in.slot_idx = 119267489u;  // a real 2026 FT8 slot, above 2^24 to catch a narrow width
+    in.slot_len_ds = 150;
+    in.dial_hz = 14074000u;    // above 2^16, likewise
 
     size_t n = porta_proto_encode_decode(&in, buf, sizeof(buf));
     auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
@@ -365,6 +368,9 @@ static void test_decode_event()
         check(out.dt_centis == -145, "negative dt round-trips");
         check(out.epoch_secs == 1789012345u, "decode timestamp round-trips");
         check(out.is_cq && out.is_recent_qso && !out.is_to_me, "flags round-trip independently");
+        check(out.slot_idx == 119267489u, "slot index round-trips");
+        check(out.slot_len_ds == 150, "slot length round-trips");
+        check(out.dial_hz == 14074000u, "dial frequency round-trips");
 
         char text[PORTA_EVENT_TEXT_MAX + 1] = {};
         check(!porta_proto_parse_log(&got[0], nullptr, text), "a decode event is not a log event");

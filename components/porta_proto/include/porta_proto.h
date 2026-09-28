@@ -64,7 +64,8 @@ extern "C" {
 // pairing applies here too: this is NOT the git build version the beacon
 // carries -- they answer different questions, and conflating them is how a
 // cosmetic rebuild reads as a protocol change.
-#define PORTA_PROTO_VERSION 1u
+// v2 (2026-09-28): DECODE carries its slot and the radio's dial frequency.
+#define PORTA_PROTO_VERSION 2u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -213,6 +214,12 @@ typedef struct {
     bool     is_cq;
     bool     is_to_me;
     bool     is_recent_qso;
+    uint32_t slot_idx;     // the UTC slot the audio was recorded in: it starts at
+                           // slot_idx * slot_len_ds * 100 ms since the epoch; 0 when
+                           // the host's clock is not set
+    uint8_t  slot_len_ds;  // slot length in tenths of a second: 150 FT8, 75 FT4
+    uint32_t dial_hz;      // the radio's dial frequency at the middle of this
+                           // decode's signal; 0 when no tune is on record
 } porta_decode_event_t;
 
 size_t porta_proto_encode_decode(const porta_decode_event_t *d, uint8_t *out, size_t out_cap);

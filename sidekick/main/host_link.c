@@ -85,6 +85,9 @@ typedef struct {
     bool     is_to_me;                        // DECODE
     bool     is_recent_qso;                   // DECODE
     uint32_t decode_id;                       // DECODE -- names it for QUEUE_REPLY
+    uint32_t slot_idx;                        // DECODE: the UTC slot heard in, 0 unknown
+    uint8_t  slot_len_ds;                     // DECODE: slot length, tenths of a second
+    uint32_t dial_hz;                         // DECODE: dial at the signal's middle, 0 unknown
     uint16_t entry_id;                        // QUEUE_ENTRY
     uint8_t  state;                           // QUEUE_ENTRY (AutoseqState wire value)
     uint8_t  retry_count;                     // QUEUE_ENTRY
@@ -171,7 +174,9 @@ static esp_err_t get_events(httpd_req_t *req)
 
     bool first = true;
     char esc[PORTA_EVENT_TEXT_MAX * 6 + 1];
-    char row[PORTA_EVENT_TEXT_MAX * 6 + 160];
+    // Worst case: text fully \u-escaped (6 bytes a char) plus a DECODE's
+    // fixed fields, the largest (~165 bytes with v2's slot and dial).
+    char row[PORTA_EVENT_TEXT_MAX * 6 + 224];
     uint32_t head;
 
     xSemaphoreTake(s_lock, portMAX_DELAY);
@@ -205,10 +210,11 @@ static esp_err_t get_events(httpd_req_t *req)
         case ENTRY_DECODE:
             n = snprintf(row, sizeof(row),
                          "%s{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":1,\"x\":\"%s\","
-                         "\"id\":%" PRIu32 ",\"snr\":%d,\"hz\":%u,\"dt\":%.2f,\"cq\":%d,\"me\":%d,\"rq\":%d}",
+                         "\"id\":%" PRIu32 ",\"snr\":%d,\"hz\":%u,\"dt\":%.2f,\"cq\":%d,\"me\":%d,\"rq\":%d,"
+                         "\"si\":%" PRIu32 ",\"sl\":%u,\"fq\":%" PRIu32 "}",
                          first ? "" : ",", e.seq, e.epoch_secs, esc, e.decode_id, e.snr,
                          e.offset_hz, e.dt_centis / 100.0, e.is_cq ? 1 : 0, e.is_to_me ? 1 : 0,
-                         e.is_recent_qso ? 1 : 0);
+                         e.is_recent_qso ? 1 : 0, e.slot_idx, (unsigned)e.slot_len_ds, e.dial_hz);
             break;
         case ENTRY_QUEUE_ENTRY:
             json_escape(e.dxcall, esc_call, sizeof(esc_call));
@@ -1066,6 +1072,9 @@ static void porta_rx_task(void *arg)
                 e.is_cq = ev.is_cq;
                 e.is_to_me = ev.is_to_me;
                 e.is_recent_qso = ev.is_recent_qso;
+                e.slot_idx = ev.slot_idx;
+                e.slot_len_ds = ev.slot_len_ds;
+                e.dial_hz = ev.dial_hz;
                 ESP_LOGI("adv", "decode %+d dB %4u Hz %+.2f s %s%s%s%s",
                          e.snr, e.offset_hz, e.dt_centis / 100.0,
                          e.is_to_me ? "[me] " : "", e.is_cq ? "[cq] " : "",

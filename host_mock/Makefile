@@ -18,6 +18,7 @@ INCLUDES = -I. -I../main -I../main/radio -I../main/audio -I../main/storage -I../
            -I../components/rtc_core/include \
            -I../components/board_power/include \
            -I../components/decode_pipeline/include \
+           -I../components/dial_history/include \
            -I../components/ft8_lib -I../components/ft8_lib/vendor \
            -I../components/ft8_lib/vendor/ft8 \
            -I../components/board_cardputer_adv/include
@@ -63,6 +64,7 @@ WEB_MANIFEST_TARGET = host_test_web_manifest
 BUNDLE_HOST_TARGET = host_test_bundle_host
 RECENT_QSO_TARGET = host_test_recent_qso
 QUEUE_HEAD_TARGET = host_test_queue_head
+DIAL_HISTORY_TARGET = host_test_dial_history
 
 all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
      $(DECODE_SORT_TARGET) $(POWER_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) $(COPY_BLOCK_TARGET) \
@@ -71,7 +73,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET
      $(USB_C_PRESENCE_TARGET) $(MENU_MODEL_TARGET) $(SCREEN_MODEL_TARGET) \
      $(DATETIME_FIELD_TARGET) $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
      $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(BUNDLE_HOST_TARGET) \
-     $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET)
+     $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(DIAL_HISTORY_TARGET)
 
 $(TARGET): $(OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
@@ -89,6 +91,12 @@ $(RECENT_QSO_TARGET): $(RECENT_QSO_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 QUEUE_HEAD_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_queue_head.o
+DIAL_HISTORY_OBJ = dial_history.o test_dial_history.o
+dial_history.o: ../components/dial_history/dial_history.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+$(DIAL_HISTORY_TARGET): $(DIAL_HISTORY_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
 $(QUEUE_HEAD_TARGET): $(QUEUE_HEAD_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
@@ -254,6 +262,7 @@ clean:
 	      $(PAIRING_TOKEN_OBJ) $(PAIRING_TOKEN_TARGET) \
 	      $(WEB_PAGE_OBJ) $(WEB_PAGE_TARGET) \
 	      $(WEB_MANIFEST_OBJ) $(WEB_MANIFEST_TARGET) \
-	      $(BUNDLE_HOST_OBJ) $(BUNDLE_HOST_TARGET)
+	      $(BUNDLE_HOST_OBJ) $(BUNDLE_HOST_TARGET) \
+	      $(DIAL_HISTORY_OBJ) $(DIAL_HISTORY_TARGET)
 
 .PHONY: all clean

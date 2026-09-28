@@ -1793,7 +1793,6 @@ async function loadConfig(quiet) {
         : (cfg.why || 'config failed'));
     }
     lastCfg = cfg;
-    noteFreq(cfg);
     lastConfigOkMs = Date.now();
     lastCfgAt = lastConfigOkMs;
     saveStateCache();
@@ -1839,7 +1838,6 @@ async function pollLiveStatus() {
       return;
     }
     lastCfg = cfg;
-    noteFreq(cfg);
     lastConfigOkMs = Date.now();
     lastCfgAt = lastConfigOkMs;
     saveStateCache();
@@ -2421,9 +2419,16 @@ function fmtAgo(ts) {
 // freq_khz is a whole-kHz integer on the wire (main.cpp's CONFIG snapshot);
 // MHz display wants the usual 3 decimals (7074 -> "7.074").
 function fmtSlotFreqMHz(khzStr) {
-  var khz = parseInt(khzStr, 10);
+  var khz = parseFloat(khzStr);
   if (!khz) return '';
-  return (khz / 1000).toFixed(3);
+  return khzToMhzLabel(khz);
+}
+// A slot's band: the one the config named when the slot was labelled from it,
+// else the Region 2 band its frequency falls in.
+function slotBandName(slot) {
+  if (slot.band) return slot.band;
+  var b = bandForKhz(parseFloat(slot.freqKhz));
+  return b ? b.name : '';
 }
 
 // Mirrors main/decode_sort.h exactly (decode_sort_group/decode_sort_cmp):
@@ -2474,7 +2479,7 @@ function renderDecodes() {
     // puts band+frequency left, date/time right, with no extra CSS needed.
     var freqMHz = fmtSlotFreqMHz(slot.freqKhz);
     var header = '<div class=day><span>' +
-      (slot.freqChanged ? 'Retuned during this slot' : esc(slot.band || '') + (freqMHz ? ' · ' + freqMHz + ' MHz' : '')) +
+      esc(slotBandName(slot)) + (freqMHz ? ' · ' + freqMHz + ' MHz' : '') +
       '</span><span class=daytime><span>' + fmtSlotDateTime(slot.ts) + '</span>' +
       '<span class=ago data-ts="' + slot.ts + '">' + fmtAgo(slot.ts) + '</span></span></div>';
     return divider + header + slot.map(function (d) {
@@ -2542,13 +2547,10 @@ function replyFrequencyMismatch(decodeId) {
     }
   }
   var who = (decode && extractSenderCall(decode.x)) || 'This station';
-  if (slot && slot.freqChanged) {
-    return who + ' was heard in a slot when the radio changed frequency, so it may not be ' +
-      'listening where the radio is now. Reply to a decode from a later slot.';
-  }
-  var heard = slot ? parseInt(slot.freqKhz, 10) : NaN;
-  var now = parseInt(lastCfg.freq_khz, 10);
-  if (!heard || !now || heard === now) return null;
+  // The decode's own frequency from a v2 host, else its slot's label.
+  var heard = (decode && decode.fq) || (slot ? parseFloat(slot.freqKhz) : NaN);
+  var now = currentDockFreqKhz(lastCfg) || parseFloat(lastCfg.freq_khz);
+  if (!heard || !now || Math.abs(heard - now) < 0.05) return null;
   return who + ' was heard on ' + fmtSlotFreqMHz(heard) + ' MHz, and the radio is on ' +
     fmtSlotFreqMHz(now) + ' MHz now. Tune back to ' + fmtSlotFreqMHz(heard) + ' MHz to reply.';
 }
@@ -2566,63 +2568,42 @@ var pendingDecodes = []; // scratch: this poll's new decodes, sorted then merged
 // separate batches instead of one merged list, which read as the same
 // decode appearing twice with different SNRs (2026-09-26).
 var pendingDecodesSp = null;
-var pendingDecodesT = 0; // main-board epoch seconds (e.t) of the open batch's first decode
-// When the app saw the radio's frequency change (noteFreq()), oldest first:
-// {ms, khz, band}. The first entry stands for "since before this page
-// loaded", so its ms is 0.
-var freqHistory = [];
-
-// Records a change in the radio's frequency (the main board's freq_khz), with
-// the time the app saw it, so a slot of decodes can be labelled with the
-// frequency it was heard on (freqHeardDuring()).
-function noteFreq(cfg) {
-  var khz = parseInt(cfg.freq_khz, 10) || 0;
-  if (!khz) return;
-  var last = freqHistory[freqHistory.length - 1];
-  if (last && last.khz === khz) return;
-  freqHistory.push({ ms: freqHistory.length ? Date.now() : 0, khz: khz, band: cfg.band_name || '' });
-  if (freqHistory.length > 16) freqHistory.shift();
-}
-
-// The frequency the radio held for a whole slot [startMs, endMs): {khz, band},
-// or {changed: true} when the app saw a change inside the slot, or null when
-// there is no history to go on.
-function freqHeardDuring(startMs, endMs) {
-  var at = null;
-  for (var i = 0; i < freqHistory.length; i++) {
-    var h = freqHistory[i];
-    if (h.ms <= startMs) at = h;
-    else if (h.ms < endMs) return { changed: true };
-  }
-  return at;
-}
+var pendingDecodesSi = 0; // the open batch's slot index from a v2 host (e.si), 0 if none
+var pendingDecodesSl = 0; // its slot length in tenths of a second (e.sl)
 
 function flushDecodeBatch() {
   if (!pendingDecodes.length) return;
-  pendingDecodes.sort(decodeSortCmp);
-  pendingDecodes.ts = Date.now();
-  // Labelled with the frequency the slot's audio was recorded on, not the
-  // one current when its decodes arrived: decodes land a second or two after
-  // their slot ends, so a band change in that gap relabelled them, and Reply
-  // then called a station on a band it was not heard on (bench, 2026-09-28).
-  // The slot is the one that ended just before the batch's first decode was
-  // made (its main-board epoch, e.t; the arrival time if that looks wrong).
-  // A change the app saw inside the slot leaves it unlabelled and marked.
-  var slotSec = lastCfg.protocol_mode === 'FT4' ? 7.5 : 15;
-  var t = pendingDecodesT;
-  if (!t || Math.abs(t * 1000 - Date.now()) > 60000) t = Date.now() / 1000;
-  var endSec = Math.floor(t / slotSec) * slotSec;
-  var heard = freqHeardDuring((endSec - slotSec) * 1000, endSec * 1000) ||
-              { khz: lastCfg.freq_khz || '', band: lastCfg.band_name || '' };
-  pendingDecodes.band = heard.changed ? '' : heard.band;
-  pendingDecodes.freqKhz = heard.changed ? '' : String(heard.khz);
-  pendingDecodes.freqChanged = !!heard.changed;
-  decodeSlots.unshift(pendingDecodes);
+  // The slot's end time, on the :00/:15/:30/:45 grid, when the host names the
+  // slot (Port A v2), so a batch that just arrived reads "0 s ago" (operator
+  // decision 2026-09-28); the arrival time otherwise.
+  var endMs = pendingDecodesSi
+    ? (pendingDecodesSi + 1) * (pendingDecodesSl || 150) * 100
+    : Date.now();
+  // One entry per dial frequency the host reports: a slot retuned partway
+  // through reads as two batches with the same time, each decode under the
+  // frequency it was heard on. Nothing is dropped. Without a frequency from
+  // the host, the latest config labels the batch, as before.
+  var byFreq = {};
+  var order = [];
+  pendingDecodes.forEach(function (d) {
+    var k = String(d.fq || 0);
+    if (!byFreq[k]) { byFreq[k] = []; order.push(k); }
+    byFreq[k].push(d);
+  });
+  order.forEach(function (k) {
+    var slot = byFreq[k];
+    slot.sort(decodeSortCmp);
+    slot.ts = endMs;
+    slot.freqKhz = k !== '0' ? k : (lastCfg.freq_khz || '');
+    slot.band = k !== '0' ? '' : (lastCfg.band_name || ''); // '' = named from freqKhz when drawn
+    decodeSlots.unshift(slot);
+  });
   if (decodeSlots.length > DECODE_SLOTS_MAX) decodeSlots.length = DECODE_SLOTS_MAX;
   recordDecodeBatch(pendingDecodes.length);
   pendingDecodes = [];
   pendingDecodesSp = null;
-  pendingDecodesT = 0;
+  pendingDecodesSi = 0;
+  pendingDecodesSl = 0;
 }
 
 // USB_STATUS's `kind` is UsbCKind's own wire value (usb_c_presence.h):
@@ -2640,14 +2621,23 @@ function fmtUsbDevice(kind, vid, pid) {
 
 function applyEvent(e) {
   if (e.d === 1) {
+    // A v2 host names the slot each decode was recorded in (e.si), so a new
+    // slot starts a new batch exactly. Without it, a flip of SLOT_STATE's
+    // parity is the only sign of a new slot.
+    var si = e.si || 0;
     var sp = slotState ? slotState.sp : null;
-    if (pendingDecodes.length && sp !== null && sp !== pendingDecodesSp) {
+    var laterSlot = si ? si !== pendingDecodesSi : (sp !== null && sp !== pendingDecodesSp);
+    if (pendingDecodes.length && laterSlot) {
       flushDecodeBatch(); // this decode is from a later real slot than the open batch
     }
     pendingDecodesSp = sp;
-    if (!pendingDecodes.length) pendingDecodesT = e.t || 0;
+    pendingDecodesSi = si;
+    pendingDecodesSl = e.sl || 0;
+    // fq: the dial, in kHz to 0.1, at the middle of this decode's signal; 0
+    // when the host does not know it.
     pendingDecodes.push({ id: e.id, dt: e.dt, hz: e.hz, snr: e.snr, x: e.x,
-                          me: !!e.me, cq: !!e.cq, rq: !!e.rq });
+                          me: !!e.me, cq: !!e.cq, rq: !!e.rq,
+                          fq: e.fq ? Math.round(e.fq / 100) / 10 : 0 });
     learnCallsignGrid(e.x); // opportunistic, regardless of who this was addressed to
   } else if (e.d === 2) {
     if (e.st === 6) {
@@ -3704,7 +3694,7 @@ function saveStateCache() {
       // this unwrap, every restored slot's header would compute
       // fmtSlotDateTime(undefined) -- an Invalid Date, not the real one.
       decodeSlots: decodeSlots.map(function (slot) {
-        return { ts: slot.ts, band: slot.band, freqKhz: slot.freqKhz, freqChanged: slot.freqChanged, rows: slot };
+        return { ts: slot.ts, band: slot.band, freqKhz: slot.freqKhz, rows: slot };
       }),
       slotState: slotState, txHud: txHud
     }));
@@ -3737,7 +3727,6 @@ function loadStateCache() {
         slot.ts = w.ts;
         slot.band = w.band;
         slot.freqKhz = w.freqKhz;
-        slot.freqChanged = !!w.freqChanged;
         return slot;
       });
     }

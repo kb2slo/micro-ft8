@@ -66,14 +66,13 @@ function extractVarLine(text, name) {
 const extracted = [
   extractVarLine(src, 'pendingDecodes'),
   extractVarLine(src, 'pendingDecodesSp'),
-  extractVarLine(src, 'pendingDecodesT'),
-  extractVarLine(src, 'freqHistory'),
+  extractVarLine(src, 'pendingDecodesSi'),
+  extractVarLine(src, 'pendingDecodesSl'),
   extractVarLine(src, 'slotState'),
   extractVarLine(src, 'decodeSlots'),
   extractVarLine(src, 'DECODE_SLOTS_MAX'),
   extractFunction(src, 'decodeSortGroup'),
   extractFunction(src, 'decodeSortCmp'),
-  extractFunction(src, 'freqHeardDuring'),
   extractFunction(src, 'flushDecodeBatch'),
   extractFunction(src, 'applyEvent'),
 ].join('\n\n');
@@ -182,45 +181,70 @@ check('decodeSlots stays capped at DECODE_SLOTS_MAX after a multi-slot poll', ()
   assert.strictEqual(sb.decodeSlots.length, sb.DECODE_SLOTS_MAX);
 });
 
-// ---- a slot is labelled with the frequency it was heard on ----------------
-// Decodes land a second or two after their slot ends. A band change in that
-// gap must not relabel them with the new band (bench, 2026-09-28: Reply then
-// called a station on a band it was not heard on).
-function slotBoundaries() {
-  const endSec = Math.floor(Date.now() / 1000 / 15) * 15; // the slot that just ended ends here
-  return { startMs: (endSec - 15) * 1000, endMs: endSec * 1000, madeAt: endSec + 1 };
-}
+// ---- Port A v2: the host names each decode's slot and dial frequency -----
+// Decodes land a second or two after their slot ends, so the app cannot tell
+// their slot or frequency from when they arrive (bench, 2026-09-28: a band
+// change in that gap relabelled a slot, and Reply called a station on a band
+// it was not heard on). A v2 host sends both.
+const SLOT = 119267489; // a 2026 FT8 slot index; it ends at (SLOT + 1) * 15 s
 
-check('decodes arriving after a band change keep the band their slot was heard on', () => {
+check('a v2 slot is timed at its end, on the 15 s grid', () => {
   const sb = freshSandbox();
-  const b = slotBoundaries();
-  sb.freqHistory.push({ ms: 0, khz: 7074, band: '40m' });
-  sb.freqHistory.push({ ms: b.endMs + 500, khz: 14074, band: '20m' }); // changed after the slot ended
-  sb.lastCfg = { band_name: '20m', freq_khz: '14074' };
-  sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ K1ABC FN42', { t: b.madeAt }));
+  sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ K1ABC FN42', { si: SLOT, sl: 150, fq: 7074000 }));
+  sb.flushDecodeBatch();
+  assert.strictEqual(sb.decodeSlots[0].ts, (SLOT + 1) * 15000);
+  assert.strictEqual((sb.decodeSlots[0].ts / 1000) % 15, 0);
+  assert.strictEqual(sb.decodeSlots[0].freqKhz, '7074');
+});
+
+check('an FT4 slot ends on its 7.5 s grid', () => {
+  const sb = freshSandbox();
+  sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ K1ABC FN42', { si: 2 * SLOT + 1, sl: 75, fq: 7047500 }));
+  sb.flushDecodeBatch();
+  assert.strictEqual(sb.decodeSlots[0].ts, (2 * SLOT + 2) * 7500);
+  assert.strictEqual(sb.decodeSlots[0].freqKhz, '7047.5');
+});
+
+check('the host\'s frequency labels a slot, not the config current when it arrives', () => {
+  const sb = freshSandbox(); // lastCfg says 15 m / 21074: the radio has moved on since
+  sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ K1ABC FN42', { si: SLOT, sl: 150, fq: 7074000 }));
   sb.flushDecodeBatch();
   assert.strictEqual(sb.decodeSlots[0].freqKhz, '7074');
-  assert.strictEqual(sb.decodeSlots[0].band, '40m');
-  assert.strictEqual(sb.decodeSlots[0].freqChanged, false);
+  assert.strictEqual(sb.decodeSlots[0].band, ''); // named from freqKhz when drawn
 });
 
-check('a slot the radio was retuned during is marked, with no frequency', () => {
+check('a slot retuned partway through becomes two batches with the same time, and keeps every decode', () => {
   const sb = freshSandbox();
-  const b = slotBoundaries();
-  sb.freqHistory.push({ ms: 0, khz: 7074, band: '40m' });
-  sb.freqHistory.push({ ms: b.startMs + 5000, khz: 14074, band: '20m' }); // changed mid-slot
-  sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ K1ABC FN42', { t: b.madeAt }));
+  // Sorted by SNR on the host, so the two frequencies interleave.
+  sb.applyEvent(decodeEvt(1, 0.1, 900, -3, 'CQ K1ABC FN42', { si: SLOT, sl: 150, fq: 14074000 }));
+  sb.applyEvent(decodeEvt(2, 0.2, 1200, -8, 'CQ W2DEF FN20', { si: SLOT, sl: 150, fq: 7074000 }));
+  sb.applyEvent(decodeEvt(3, 0.3, 1500, -12, 'CQ N3GHI FN10', { si: SLOT, sl: 150, fq: 14074000 }));
   sb.flushDecodeBatch();
-  assert.strictEqual(sb.decodeSlots[0].freqChanged, true);
-  assert.strictEqual(sb.decodeSlots[0].freqKhz, '');
+  assert.strictEqual(sb.decodeSlots.length, 2);
+  const byFreq = {};
+  sb.decodeSlots.forEach(slot => { byFreq[slot.freqKhz] = slot; });
+  assert.strictEqual(byFreq['14074'].length, 2);
+  assert.strictEqual(byFreq['7074'].length, 1);
+  assert.strictEqual(byFreq['14074'].ts, byFreq['7074'].ts);
 });
 
-check('with no frequency history, a slot takes the latest config (as before)', () => {
+check('the next v2 slot starts a new batch without any SLOT_STATE parity flip', () => {
   const sb = freshSandbox();
+  sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ K1ABC FN42', { si: SLOT, sl: 150, fq: 7074000 }));
+  sb.applyEvent(decodeEvt(2, 0.1, 900, -5, 'CQ K1ABC FN42', { si: SLOT + 1, sl: 150, fq: 7074000 }));
+  sb.flushDecodeBatch();
+  assert.strictEqual(sb.decodeSlots.length, 2);
+  assert.strictEqual(sb.decodeSlots[0].ts - sb.decodeSlots[1].ts, 15000);
+});
+
+check('without slot fields (a v1 host), a batch takes the latest config and arrival time', () => {
+  const sb = freshSandbox();
+  const before = Date.now();
   sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ K1ABC FN42'));
   sb.flushDecodeBatch();
   assert.strictEqual(sb.decodeSlots[0].freqKhz, '21074');
   assert.strictEqual(sb.decodeSlots[0].band, '15m');
+  assert(sb.decodeSlots[0].ts >= before);
 });
 
 if (failures > 0) {
