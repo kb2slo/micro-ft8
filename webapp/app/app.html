@@ -50,7 +50,7 @@
   --warn:#b45309;          /* #opTxHud.aborted .hd; .dot.stale's glyph */
   --warn-bg:#fef3c7;       /* .qs-1/2/3, #staleBanner */
   --warn-fg:#78350f;       /* .qs-1/2/3, #staleBanner */
-  --good-hot:#007a00;      /* .c-cq -- brighter green, decode text for a fresh CQ; 5.5:1 on white (was #00c800, ~2.3:1, RFC 0009 §6.1) */
+  --good-hot:#007a00;      /* .c-cq -- brighter green, decode text for a fresh CQ; 5.5:1 on white (was #00c800, ~2.3:1; webapp.md, The CQ row) */
   --good-bg:#dcfce7;       /* .pill-beacon-on, .qs-4/5 */
   --good-fg:#14532d;       /* .pill-beacon-on, .qs-4/5 */
   --info-bg:#dbeafe;       /* .qs-0 */
@@ -195,7 +195,9 @@ button:disabled{opacity:.45}
 #opTxCancel{margin-top:.5rem;font-size:.8rem;padding:.35rem .7rem}
 
 /* ---- operate: queue ---- */
-#opQueue{border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent);max-height:11rem;overflow-y:auto}
+#opQueue{border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+/* Only the QSO rows scroll, so the CQ row below them never takes their space. */
+#opQueueRows{max-height:9.5rem;overflow-y:auto}
 #opQueue .hd{padding:.6rem 1rem .2rem;font-size:.7rem;color:GrayText;text-transform:uppercase;letter-spacing:.04em}
 .qrow{display:flex;align-items:center;gap:.5rem;padding:.4rem 1rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
 .qrow .call{font-family:ui-monospace,monospace;font-weight:700;flex:1}
@@ -207,14 +209,14 @@ button:disabled{opacity:.45}
 .qcancel{background:transparent;border:0;color:GrayText;font-size:1rem;padding:0 .2rem}
 #opQueueEmpty{padding:.6rem 1rem;font-size:.8rem;color:GrayText}
 
-/* ---- operate: the CQ row (RFC 0009 §3.3) ---- */
-/* Pinned under the real QSO rows, inside #opQueue's own scroll box, per the
-   RFC's "always last" -- sticky, not just last-in-DOM, so a long queue never
-   scrolls it out of reach. Static markup, not part of #opQueueRows' innerHTML
-   rebuild: that list is re-stringified on every poll tick, which would yank
-   the native Off/Even/Odd <select> out from under an operator mid-pick the
-   same way rebuilding #opBandSel's options would (see renderBeacon()). */
-#opCqRow{position:sticky;bottom:0;background:Canvas;padding:.5rem 1rem .6rem;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+/* ---- operate: the CQ row (webapp.md, The CQ row) ---- */
+/* Always last: below #opQueueRows' scroll box rather than inside it, so a long
+   queue neither scrolls it out of reach nor shrinks to make room for it.
+   Static markup, not part of #opQueueRows' innerHTML rebuild: that list is
+   re-stringified on every poll tick, which would yank the native Off/Even/Odd
+   <select> out from under an operator mid-pick the same way rebuilding
+   #opBandSel's options would (see renderBeacon()). */
+#opCqRow{padding:.5rem 1rem .6rem;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent)}
 .cqline{display:flex;justify-content:space-between;align-items:center;gap:.5rem}
 .cqline+.cqline{margin-top:.3rem;font-size:.75rem;color:GrayText}
 .cqsends{font-family:ui-monospace,monospace;font-weight:700;font-size:.85rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -403,8 +405,8 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
            errant TX, not just the automatic band-change cancel changeBand()
            already fires. Same /api/tx/cancel, gated the same way every
            other write is (enableWrites()). Label is set live by
-           renderTxHud(): "Stop CQ" while this TX is our own CQ (RFC 0009
-           §3.3), which also turns the beacon off; "Stop TX" otherwise,
+           renderTxHud(): "Stop CQ" while this TX is our own CQ (webapp.md,
+           The CQ row), which also turns the beacon off; "Stop TX" otherwise,
            cancelling only this transmission. -->
       <button id=opTxCancel type=button disabled>Stop TX</button>
     </div>
@@ -413,7 +415,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       <div class=hd>Queue</div>
       <div id=opQueueEmpty>No active QSOs</div>
       <div id=opQueueRows></div>
-      <!-- Always present (RFC 0009 §3.3), replacing the old header beacon row
+      <!-- Always present (webapp.md, The CQ row), replacing the old header beacon row
            and the queue's own CQ/CALLING placeholder entry and its x -- Off
            does that job now. See the CSS comment above #opCqRow for why this
            is static markup rather than part of opQueueRows. -->
@@ -1759,15 +1761,15 @@ document.getElementById('opTune').onclick = function () {
   radioPost('/api/radio/tune', next, 'Tune…')
     .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 };
-// Stop during our own CQ turns the beacon off too (RFC 0009 §3.3) --
+// Stop during our own CQ turns the beacon off too (webapp.md, The CQ row) --
 // otherwise Off/Even/Odd stays armed and the next CQ just goes out a cycle
 // later, exactly the surprise the operator asked to fix. The beacon-off
 // POST is quiet (authPostQuiet, same reasoning as changeBand()'s own
 // multi-step sequence above) so the visible message stays "Stopping CQ…
 // ok." from the cancel itself, and only fires once that cancel actually
-// succeeded.
+// succeeded. Decided at the tap, from what is on the air (txIsOurCq()).
 document.getElementById('opTxCancel').onclick = function () {
-  var stoppingCq = queueHasCq();
+  var stoppingCq = txIsOurCq();
   radioPost('/api/tx/cancel', undefined, stoppingCq ? 'Stopping CQ…' : 'Stopping TX…')
     .then(function (ok) {
       if (ok && stoppingCq) return authPostQuiet('/api/beacon', '0').then(function () { loadConfig(true); });
@@ -1838,7 +1840,7 @@ function renderCountdown() {
 }
 setInterval(renderCountdown, 250);
 
-// ===================== Operate: the CQ row (RFC 0009 §3.3) =====================
+// ===================== Operate: the CQ row (webapp.md, The CQ row) =====================
 
 var slotState = null; // last SLOT_STATE event: {sp, bm, hz}
 
@@ -1855,9 +1857,8 @@ function cqSendsText() {
   return parts.join(' ');
 }
 
-// autoseq arms a beacon CQ only when the active queue is otherwise empty
-// (autoseq.md) -- so a real QSO entry's presence is exactly "Waits for the
-// queue" and its absence is exactly "Calling".
+// Every live QSO outranks a CQ (autoseq.md), so a real QSO entry's presence
+// is exactly "Waits for the queue" and its absence is exactly "Calling".
 function cqStatusText(mode) {
   if (!mode) return 'Off';
   var hasQso = Object.keys(queue).some(function (id) { return queue[id].dxcall !== 'CQ'; });
@@ -1949,10 +1950,24 @@ function renderTxHud() {
   document.getElementById('opTxHudMeta').textContent = txHud.aborted
     ? ('TX ABORTED: ' + (txHud.reason || 'unknown reason'))
     : (parts.length ? parts.join(' · ') : '—');
-  // RFC 0009 §3.3: Stop CQ while this transmission is our own CQ (it also
-  // turns the beacon off, see opTxCancel's onclick), Stop TX during a QSO
-  // message (cancels only this transmission).
-  document.getElementById('opTxCancel').textContent = queueHasCq() ? 'Stop CQ' : 'Stop TX';
+  // Stop CQ while this transmission is our own CQ (it also turns the beacon
+  // off, see opTxCancel's onclick), Stop TX during a QSO message (cancels
+  // only this transmission). webapp.md, The CQ row.
+  document.getElementById('opTxCancel').textContent = txIsOurCq() ? 'Stop CQ' : 'Stop TX';
+}
+
+// Whether the transmission on the air is our CQ, from its text: autoseq's CQ
+// text starts with "CQ " (generate_cq_text_into()), and a Free text CQ sends
+// free_text as it stands. Not from the queue: the P4 arms the next beacon CQ
+// during an empty cycle (tx_scheduler_arm_from_autoseq_or_beacon()) and
+// nothing removes it when a station answers, so a CQ entry sits queued behind
+// the QSO that outranks it while our report is the one on the air.
+function txIsOurCq() {
+  if (!txHud || !txHud.active) return false;
+  var x = String(txHud.x || '').trim().toUpperCase();
+  if (x.indexOf('CQ ') === 0) return true;
+  var freeText = String(lastCfg.free_text || '').trim().toUpperCase();
+  return parseInt(lastCfg.cq_type, 10) === 5 && x !== '' && x === freeText;
 }
 
 // ===================== Operate: queue =====================
@@ -1963,15 +1978,6 @@ var queue = {}; // entry_id -> {dxcall, state, retry_count, retry_limit, lastSee
 // poll's QUEUE_ENTRY stream (latest full emit wins). Sorting by state (B64)
 // put a fresh REPLYING below CALLING/CQ.
 var queueOrder = [];
-
-// True while a beacon CQ is armed or on the air. autoseq only ever arms one
-// when the active queue is otherwise empty (autoseq.md), so this placeholder
-// entry's presence already means "our CQ", with no extra wire signal needed
-// by renderTxHud()'s Stop CQ / Stop TX button (RFC 0009 §3.3) or
-// cqStatusText()'s Calling / Waits-for-the-queue line below.
-function queueHasCq() {
-  return Object.keys(queue).some(function (id) { return queue[id].dxcall === 'CQ'; });
-}
 
 // Safety net against a lost IDLE (docs/architecture/webapp.md (Screens)'s removal signal): /api/events
 // is a bounded 64-entry ring shared by every event type (decodes, slot_state,
@@ -2026,7 +2032,7 @@ function rebuildQueueOrderFromEvents(events) {
 
 function renderQueue() {
   // CQ is the beacon placeholder, not a real station -- it gets its own
-  // static row (#opCqRow, RFC 0009 §3.3) instead of one of these, the same
+  // static row (#opCqRow, webapp.md, The CQ row) instead of one of these, the same
   // reasoning changeBand() already uses to leave it out of the per-band
   // queue clear.
   var ids = queueOrder.filter(function (id) { return !!queue[id] && queue[id].dxcall !== 'CQ'; });
@@ -2331,9 +2337,8 @@ async function pollEvents() {
     var queueChanged = sweepStaleQueue();
     if (queueChanged || gotEvents) {
       renderQueue();
-      // Both read `queue` now (the CQ row's status line and the TX HUD's
-      // Stop CQ / Stop TX label, RFC 0009 §3.3), so they need to run after
-      // sweepStaleQueue() too, not only when an event itself arrived.
+      // The CQ row's status line reads `queue` (webapp.md, The CQ row), so it
+      // runs after sweepStaleQueue() too, not only when an event arrived.
       renderBeacon();
       renderTxHud();
     }

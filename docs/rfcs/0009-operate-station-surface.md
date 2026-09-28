@@ -248,7 +248,7 @@ Dock Options canvas: the chosen page's transmitting board. Redesign canvas: `TX 
   - The parity and TX offset (`offset_hz` is already in the event but not shown).
   - A progress bar and the time left, from the slot clock the browser already runs.
   - For Tune, large power and SWR readings.
-  - **Stop CQ / Stop TX** (§3.3).
+  - **Stop CQ / Stop TX**, shipped with O1a ([webapp.md](../architecture/webapp.md), **The CQ row**).
 * **New states:**
   - **Not keyed:** CAT was not ready when the slot started. The message is struck through and "not counted" is shown (row `t7xf`).
   - **Log blocked** replaces "WRITE BLOCKED" with what it means: QSOs completed now will not be saved.
@@ -287,7 +287,7 @@ Redesign canvas: `Reply feedback`, interactive. The feedback is on the Reply but
 
 O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); they are the Now rows. The later slices stay listed here, under row `s6qk`, until each is next. The combined order with RFC 0008 is RFC 0008 §7.
 
-* **O1a: the CQ row** (§3.3). Row `sc6b`.
+* **O1a: the CQ row** ([webapp.md](../architecture/webapp.md), **The CQ row**). Row `sc6b`.
 * **O1b: the dock** (§3.4). Row `q8sm`.
 * **O1c: the Station sheet** (§3.5). Row `cuca`.
 * **O2: radio status replaces Connect, the read-back, and the TX HUD** (§3.7, §3.12).

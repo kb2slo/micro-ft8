@@ -15,12 +15,12 @@ The web app (`webapp/app/`) is the station's only UI on the headless P4, served 
 
 ### The CQ row
 
-The queue's last row, always present (`app.html`, `#opCqRow`), replacing the old header beacon control and the queue's own CQ/CALLING placeholder entry:
+The queue's last row, always present (`app.html`, `#opCqRow`), replacing the old header beacon control and the queue's own CQ/CALLING placeholder entry. It sits below the scrolling QSO rows, not inside them, so a long queue neither hides it nor loses rows to it.
 
 * **Off | Even | Odd** is the beacon (`BeaconMode`, `POST /api/beacon`), labeled "CQ" here because that is what it transmits. Never a single tap-to-cycle button — Off → Even → Odd on one control could key the transmitter on a stray tap.
 * **The Sends text** mirrors autoseq's `generate_cq_text_into()` (`components/autoseq/autoseq.cpp`): the type's prefix (`CQ`, `CQ SOTA`, `CQ POTA`, `CQ QRP`, `CQ FD`) plus the call and the grid's first four characters, or the free-text field verbatim for a Free-text CQ. Tapping it, or **Settings ›**, opens Settings today (**not yet built: row cuca** opens the Station sheet instead).
-* **The status line** reads "Off"; "Calling · Even/Odd slots" when the beacon is on and the queue holds no other station (autoseq arms a beacon CQ only when its own queue is otherwise empty, [autoseq.md](autoseq.md)); or "Waits for the queue · Even/Odd slots" once a real QSO is active.
-* **Stop, during our own CQ, turns the beacon off too.** The TX HUD's cancel button reads **Stop CQ** while the CQ is what's on the air, and posts `/api/tx/cancel` then `/api/beacon 0`; during a QSO message it reads **Stop TX** and only cancels that transmission. Otherwise the beacon stayed armed and the next CQ went out a cycle later regardless of the operator's tap.
+* **The status line** reads "Off"; "Calling · Even/Odd slots" when the beacon is on and the queue holds no other station; or "Waits for the queue · Even/Odd slots" once a real QSO is active, since every live QSO outranks a CQ ([autoseq.md](autoseq.md)).
+* **Stop, during our own CQ, turns the beacon off too.** The TX HUD's cancel button reads **Stop CQ** while the CQ is what's on the air, and posts `/api/tx/cancel` then `/api/beacon 0`; during a QSO message it reads **Stop TX** and only cancels that transmission. Which one is decided from the text on the air (`txIsOurCq()`: it starts with `CQ `, or is a Free text CQ's `free_text`), never from the queue: the P4 arms the next beacon CQ during an empty cycle, and it stays queued behind a QSO that answers, while our report is what transmits. Otherwise the beacon stayed armed and the next CQ went out a cycle later regardless of the operator's tap.
 * **The CQ decode color** (`--good-hot`, `.c-cq`) is `#007a00` in light mode, `#4ade80` in dark. The light value was `#00c800` (about 2.3:1 on white), which fails WCAG's 4.5:1 text-contrast minimum.
 
 ### Decisions a reference app would make differently
