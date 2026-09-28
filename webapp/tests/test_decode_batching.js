@@ -66,11 +66,14 @@ function extractVarLine(text, name) {
 const extracted = [
   extractVarLine(src, 'pendingDecodes'),
   extractVarLine(src, 'pendingDecodesSp'),
+  extractVarLine(src, 'pendingDecodesT'),
+  extractVarLine(src, 'freqHistory'),
   extractVarLine(src, 'slotState'),
   extractVarLine(src, 'decodeSlots'),
   extractVarLine(src, 'DECODE_SLOTS_MAX'),
   extractFunction(src, 'decodeSortGroup'),
   extractFunction(src, 'decodeSortCmp'),
+  extractFunction(src, 'freqHeardDuring'),
   extractFunction(src, 'flushDecodeBatch'),
   extractFunction(src, 'applyEvent'),
 ].join('\n\n');
@@ -177,6 +180,47 @@ check('decodeSlots stays capped at DECODE_SLOTS_MAX after a multi-slot poll', ()
   sb.flushDecodeBatch();
 
   assert.strictEqual(sb.decodeSlots.length, sb.DECODE_SLOTS_MAX);
+});
+
+// ---- a slot is labelled with the frequency it was heard on ----------------
+// Decodes land a second or two after their slot ends. A band change in that
+// gap must not relabel them with the new band (bench, 2026-09-28: Reply then
+// called a station on a band it was not heard on).
+function slotBoundaries() {
+  const endSec = Math.floor(Date.now() / 1000 / 15) * 15; // the slot that just ended ends here
+  return { startMs: (endSec - 15) * 1000, endMs: endSec * 1000, madeAt: endSec + 1 };
+}
+
+check('decodes arriving after a band change keep the band their slot was heard on', () => {
+  const sb = freshSandbox();
+  const b = slotBoundaries();
+  sb.freqHistory.push({ ms: 0, khz: 7074, band: '40m' });
+  sb.freqHistory.push({ ms: b.endMs + 500, khz: 14074, band: '20m' }); // changed after the slot ended
+  sb.lastCfg = { band_name: '20m', freq_khz: '14074' };
+  sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ K1ABC FN42', { t: b.madeAt }));
+  sb.flushDecodeBatch();
+  assert.strictEqual(sb.decodeSlots[0].freqKhz, '7074');
+  assert.strictEqual(sb.decodeSlots[0].band, '40m');
+  assert.strictEqual(sb.decodeSlots[0].freqChanged, false);
+});
+
+check('a slot the radio was retuned during is marked, with no frequency', () => {
+  const sb = freshSandbox();
+  const b = slotBoundaries();
+  sb.freqHistory.push({ ms: 0, khz: 7074, band: '40m' });
+  sb.freqHistory.push({ ms: b.startMs + 5000, khz: 14074, band: '20m' }); // changed mid-slot
+  sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ K1ABC FN42', { t: b.madeAt }));
+  sb.flushDecodeBatch();
+  assert.strictEqual(sb.decodeSlots[0].freqChanged, true);
+  assert.strictEqual(sb.decodeSlots[0].freqKhz, '');
+});
+
+check('with no frequency history, a slot takes the latest config (as before)', () => {
+  const sb = freshSandbox();
+  sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ K1ABC FN42'));
+  sb.flushDecodeBatch();
+  assert.strictEqual(sb.decodeSlots[0].freqKhz, '21074');
+  assert.strictEqual(sb.decodeSlots[0].band, '15m');
 });
 
 if (failures > 0) {
