@@ -267,7 +267,7 @@ check('without a slot length (a v1 host), the header shows the one time it has',
   assert.strictEqual(sb.fmtSlotSpan({ ts: at(19, 3, 47), lenMs: 0 }), '2026-09-28 19:03:47z');
 });
 
-check('Reply stays open for the two most recent slots only', () => {
+check('Reply stays open until two slot lengths after a slot ends, by the clock', () => {
   const sb = freshSandbox();
   const end = at(19, 3, 45);
   assert.strictEqual(sb.slotReplyOpen({ ts: end, lenMs: 15000 }, end + 2000), true);   // just arrived
@@ -275,6 +275,16 @@ check('Reply stays open for the two most recent slots only', () => {
   assert.strictEqual(sb.slotReplyOpen({ ts: end, lenMs: 15000 }, end + 30000), false); // two slots on
   assert.strictEqual(sb.slotReplyOpen({ ts: end, lenMs: 7500 }, end + 14999), true);   // FT4: 15 s
   assert.strictEqual(sb.slotReplyOpen({ ts: end, lenMs: 7500 }, end + 15000), false);
+});
+
+check('coming back after a break, the newest slot shown is not replyable if its time has passed', () => {
+  const sb = freshSandbox();
+  const now = at(19, 10, 3);
+  // The list's newest slot, restored from the cache or caught up from the
+  // sidekick, ended five minutes ago: first in the list, but closed.
+  assert.strictEqual(sb.slotReplyOpen({ ts: at(19, 5, 0), lenMs: 15000 }, now), false);
+  // A slot that ended three seconds ago is open, wherever it sits.
+  assert.strictEqual(sb.slotReplyOpen({ ts: at(19, 10, 0), lenMs: 15000 }, now), true);
 });
 
 if (failures > 0) {

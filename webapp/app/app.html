@@ -2486,12 +2486,14 @@ function decodeColorClass(d) {
 // way), or a closing 73/RR73 (the other party signing -- worth logging a
 // reply to even though the exchange itself is done). Everything in between
 // (signal reports, RRR) has no useful reply target, so no button.
-// Reply is offered only on the two most recent slots, one of each parity
-// (operator decision 2026-09-28): a station still calling reappears in a
-// newer slot with its own button, anything older has usually stopped or
-// gone into a QSO, and the main board remembers only its last 64 decodes
-// for a reply (decode_pipeline.cpp), two or three slots on a busy band.
-// Counted in slots, so FT4's is 15 s where FT8's is 30 s.
+// Reply is offered by the clock, not by position in the list (operator
+// decisions 2026-09-28): only on a slot that ended less than two slot lengths
+// ago, which is the current and the previous slot (30 s on FT8, 15 s on FT4).
+// A decode shown after the app sat idle -- restored from its cache, or caught
+// up from the sidekick's ring -- carries its real slot time, so it is past
+// this however high it sits. A station still calling reappears with its own
+// button, and the main board remembers only its last 64 decodes for a reply
+// (decode_pipeline.cpp), two or three slots on a busy band.
 function slotReplyOpen(slot, nowMs) {
   var len = slot.lenMs || (lastCfg.protocol_mode === 'FT4' ? 7500 : 15000);
   return (nowMs - slot.ts) < 2 * len;
@@ -2565,7 +2567,11 @@ function renderDecodes() {
 }
 
 // A button drawn a moment before its slot aged out can still be tapped; the
-// same rule refuses it (slotReplyOpen()).
+// same rule refuses it (slotReplyOpen()). Coming back to a tab that stayed
+// open redraws at once, so buttons from before the break never show.
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'visible') renderDecodes();
+});
 function replyTooOld(decodeId) {
   for (var i = 0; i < decodeSlots.length; i++) {
     for (var k = 0; k < decodeSlots[i].length; k++) {
