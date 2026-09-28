@@ -1321,11 +1321,19 @@ function gridFormatOk(g) {
   return /^[A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2}([0-9]{2})?)?$/.test(g);
 }
 
+// Same location text as a decode/QSO row's compact badge (callinfo.js,
+// CallInfo.shortLocation() -- "TX·US"), reused here rather than a second
+// grid->place implementation: the operator gets the same "is this where I
+// think it is" check on their own grid that they already get on someone
+// else's. Empty when callinfo.js's geo fetch hasn't landed yet or the grid
+// doesn't resolve (open ocean) -- same as everywhere else that badge shows,
+// this quietly shows nothing rather than a stale or wrong placeholder.
 function updateGridHint() {
   var v = document.getElementById('grid').value.trim();
   var hint = document.getElementById('gridHint');
   if (!v || gridFormatOk(v)) {
-    hint.textContent = 'The CQ carries the first four characters.';
+    var loc = v ? CallInfo.shortLocation(v) : '';
+    hint.textContent = 'The CQ carries the first four characters.' + (loc ? ' ' + loc : '');
     hint.classList.remove('dlink-danger');
   } else {
     hint.textContent = 'Not a valid grid -- 4, 6 or 8 characters, e.g. FN20 or FN20aa.';

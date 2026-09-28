@@ -79,7 +79,7 @@ static void station_seed_adv_defaults(void) {
     s_station.cq_type = 0;
     s_station.cq_freetext = "FreeText";
     s_station.skip_tx1 = false;
-    s_station.free_text = "TNX 73";
+    s_station.free_text = "CQ DX";
     s_station.call = "YOURCALL";
     s_station.grid = "CM97";
     s_station.offset_src = 0;  // RANDOM

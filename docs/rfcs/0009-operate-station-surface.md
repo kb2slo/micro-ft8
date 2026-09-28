@@ -262,7 +262,7 @@ O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); th
 
 * **O1a: the CQ row**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The CQ row**).
 * **O1b: the dock**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The dock**).
-* **O1c: the Station sheet** ([webapp.md](../architecture/webapp.md), **The Station sheet**). Bench check owed ([TEST_PLAN.md](../TEST_PLAN.md) Pending); row `cuca` stays in Now until it passes.
+* **O1c: the Station sheet**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The Station sheet**).
 * **O2: radio status replaces Connect, the read-back, and the TX HUD** (§3.7, §3.12).
   - Web app; the `IF;` read-back operation, its parser test and its Port A message; the ADV's attach-time host start (`ADV-only`).
   - **Field check:** unplug and replug the QMX. The chip walks No radio, Found, Ready, and the VFO lands on the selected band with nothing pressed. Then Tune from the chip's panel shows power and SWR there and in the HUD, and Stop in the HUD ends it.
