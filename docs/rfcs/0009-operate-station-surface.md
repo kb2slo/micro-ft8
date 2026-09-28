@@ -66,7 +66,7 @@ Found while tracing the operator's retries report (5 changed to 8, a new reply s
   - The web app saves every field at once, `band_sel` comes before `autoseq_max_retry`, and the P4 refuses `band_sel` whenever the VFO cannot move ("band saved, VFO not moved (TX active)").
   - So a save made mid-QSO dropped every later key, and the form still showed the typed value.
   - The sidekick now applies every line and reports the first refusal; the web app reloads the form after a failed save.
-  - This is the likely cause of the report. It is unproven until the field check passes.
+  - This was the cause of the report: on the P4 bench (2026-09-28) a save made during TX applied the new limit, and the next QSO used it. The ADV half is still owed in [TEST_PLAN.md](../TEST_PLAN.md) Pending.
 * **The ADV's `porta_host_config_set()` never pushed call, grid, CQ type or retries into autoseq** until a reboot. `sync_autoseq_from_globals()` now runs on every config write. The P4 already did this.
 
 ## 3. Design
@@ -287,7 +287,7 @@ Redesign canvas: `Reply feedback`, interactive. The feedback is on the Reply but
 
 O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); they are the Now rows. The later slices stay listed here, under row `s6qk`, until each is next. The combined order with RFC 0008 is RFC 0008 §7.
 
-* **O1a: the CQ row** ([webapp.md](../architecture/webapp.md), **The CQ row**). Row `sc6b`.
+* **O1a: the CQ row**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The CQ row**).
 * **O1b: the dock** (§3.4). Row `q8sm`.
 * **O1c: the Station sheet** (§3.5). Row `cuca`.
 * **O2: radio status replaces Connect, the read-back, and the TX HUD** (§3.7, §3.12).
