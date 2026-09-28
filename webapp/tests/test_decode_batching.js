@@ -74,6 +74,9 @@ const extracted = [
   extractFunction(src, 'decodeSortGroup'),
   extractFunction(src, 'decodeSortCmp'),
   extractFunction(src, 'flushDecodeBatch'),
+  extractFunction(src, 'fmtSlotDateTime'),
+  extractFunction(src, 'fmtSlotSpan'),
+  extractFunction(src, 'slotReplyOpen'),
   extractFunction(src, 'applyEvent'),
 ].join('\n\n');
 
@@ -245,6 +248,33 @@ check('without slot fields (a v1 host), a batch takes the latest config and arri
   assert.strictEqual(sb.decodeSlots[0].freqKhz, '21074');
   assert.strictEqual(sb.decodeSlots[0].band, '15m');
   assert(sb.decodeSlots[0].ts >= before);
+});
+
+// ---- the slot's span in its header, and the reply window ------------------
+const at = (h, m, sec, ms) => Date.UTC(2026, 8, 28, h, m, sec, ms || 0);
+
+check('a v2 header shows the slot span, dropping what the end shares with the start', () => {
+  const sb = freshSandbox();
+  assert.strictEqual(sb.fmtSlotSpan({ ts: at(19, 3, 45), lenMs: 15000 }), '2026-09-28 19:03:30–45z');
+  assert.strictEqual(sb.fmtSlotSpan({ ts: at(19, 4, 0), lenMs: 15000 }), '2026-09-28 19:03:45–04:00z');
+  assert.strictEqual(sb.fmtSlotSpan({ ts: at(20, 0, 0), lenMs: 15000 }), '2026-09-28 19:59:45–20:00:00z');
+  assert.strictEqual(sb.fmtSlotSpan({ ts: at(19, 3, 15), lenMs: 7500 }), '2026-09-28 19:03:07.5–15z');
+  assert.strictEqual(sb.fmtSlotSpan({ ts: at(19, 3, 22, 500), lenMs: 7500 }), '2026-09-28 19:03:15–22.5z');
+});
+
+check('without a slot length (a v1 host), the header shows the one time it has', () => {
+  const sb = freshSandbox();
+  assert.strictEqual(sb.fmtSlotSpan({ ts: at(19, 3, 47), lenMs: 0 }), '2026-09-28 19:03:47z');
+});
+
+check('Reply stays open for the two most recent slots only', () => {
+  const sb = freshSandbox();
+  const end = at(19, 3, 45);
+  assert.strictEqual(sb.slotReplyOpen({ ts: end, lenMs: 15000 }, end + 2000), true);   // just arrived
+  assert.strictEqual(sb.slotReplyOpen({ ts: end, lenMs: 15000 }, end + 29999), true);  // one slot on
+  assert.strictEqual(sb.slotReplyOpen({ ts: end, lenMs: 15000 }, end + 30000), false); // two slots on
+  assert.strictEqual(sb.slotReplyOpen({ ts: end, lenMs: 7500 }, end + 14999), true);   // FT4: 15 s
+  assert.strictEqual(sb.slotReplyOpen({ ts: end, lenMs: 7500 }, end + 15000), false);
 });
 
 if (failures > 0) {

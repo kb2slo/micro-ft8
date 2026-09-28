@@ -2383,6 +2383,28 @@ function fmtDt(dt) {
 // DECODE event carries no wall-clock field, and the phone's own clock is
 // already this app's source of truth elsewhere (countdown, TX HUD, clock
 // sync). UTC to match ADIF/the Log tab's own day labels.
+// A slot header's time: its span when the host named the slot (Port A v2),
+// "2026-09-28 19:03:30–45z", so a WSJT-X-style start and an "ago" counted
+// from the end both read true (operator decision 2026-09-28). The end drops
+// what it shares with the start: "19:03:45–04:00z" across a minute, FT4's
+// "19:03:07.5–15z". Without a slot length, the one time it has.
+function fmtSlotSpan(slot) {
+  if (!slot.lenMs) return fmtSlotDateTime(slot.ts);
+  var pad = function (n) { return String(n).padStart(2, '0'); };
+  var secs = function (d) {
+    var sec = d.getUTCSeconds() + d.getUTCMilliseconds() / 1000;
+    return pad(Math.floor(sec)) + (sec % 1 ? String((sec % 1).toFixed(1)).slice(1) : '');
+  };
+  var start = new Date(slot.ts - slot.lenMs), end = new Date(slot.ts);
+  var endLabel = end.getUTCHours() !== start.getUTCHours()
+    ? pad(end.getUTCHours()) + ':' + pad(end.getUTCMinutes()) + ':' + secs(end)
+    : end.getUTCMinutes() !== start.getUTCMinutes()
+      ? pad(end.getUTCMinutes()) + ':' + secs(end)
+      : secs(end);
+  return start.getUTCFullYear() + '-' + pad(start.getUTCMonth() + 1) + '-' + pad(start.getUTCDate()) + ' ' +
+    pad(start.getUTCHours()) + ':' + pad(start.getUTCMinutes()) + ':' + secs(start) + '–' + endLabel + 'z';
+}
+
 function fmtSlotDateTime(ts) {
   var d = new Date(ts);
   var pad = function (n) { return String(n).padStart(2, '0'); };
@@ -2464,6 +2486,17 @@ function decodeColorClass(d) {
 // way), or a closing 73/RR73 (the other party signing -- worth logging a
 // reply to even though the exchange itself is done). Everything in between
 // (signal reports, RRR) has no useful reply target, so no button.
+// Reply is offered only on the two most recent slots, one of each parity
+// (operator decision 2026-09-28): a station still calling reappears in a
+// newer slot with its own button, anything older has usually stopped or
+// gone into a QSO, and the main board remembers only its last 64 decodes
+// for a reply (decode_pipeline.cpp), two or three slots on a busy band.
+// Counted in slots, so FT4's is 15 s where FT8's is 30 s.
+function slotReplyOpen(slot, nowMs) {
+  var len = slot.lenMs || (lastCfg.protocol_mode === 'FT4' ? 7500 : 15000);
+  return (nowMs - slot.ts) < 2 * len;
+}
+
 function isReplyableDecode(d) {
   if (d.cq) return true;
   var tokens = (d.x || '').trim().toUpperCase().split(/\s+/);
@@ -2473,14 +2506,16 @@ function isReplyableDecode(d) {
 
 function renderDecodes() {
   var rows = document.getElementById('opDecodeRows');
+  var nowMs = Date.now();
   rows.innerHTML = decodeSlots.map(function (slot, i) {
     var divider = i > 0 ? '<div class=dslotdiv></div>' : '';
+    var replyOpen = slotReplyOpen(slot, nowMs);
     // .day's own flex/space-between (Log's day dividers use the same class)
     // puts band+frequency left, date/time right, with no extra CSS needed.
     var freqMHz = fmtSlotFreqMHz(slot.freqKhz);
     var header = '<div class=day><span>' +
       esc(slotBandName(slot)) + (freqMHz ? ' · ' + freqMHz + ' MHz' : '') +
-      '</span><span class=daytime><span>' + fmtSlotDateTime(slot.ts) + '</span>' +
+      '</span><span class=daytime><span>' + fmtSlotSpan(slot) + '</span>' +
       '<span class=ago data-ts="' + slot.ts + '">' + fmtAgo(slot.ts) + '</span></span></div>';
     return divider + header + slot.map(function (d) {
       // Looked up from the opportunistic callsign->grid cache, not this
@@ -2501,7 +2536,7 @@ function renderDecodes() {
         '<div class=drow-body>' +
           '<div class="txt ' + decodeColorClass(d) + '">' + highlightCallInText(d.x, allCalls) +
           (d.me ? '<span class=me>&rarr; ME</span>' : '') + '</div>' +
-          (isReplyableDecode(d) ? '<button type=button class=replyBtn data-id="' + d.id + '">Reply</button>' : '') +
+          (replyOpen && isReplyableDecode(d) ? '<button type=button class=replyBtn data-id="' + d.id + '">Reply</button>' : '') +
         '</div>' +
         (distBearing ? '<div class=ddist><span>' + CallInfo.gridLink(theirGrid) +
           (shortLoc ? ' · ' + esc(shortLoc) : '') + '</span><span>' + esc(distBearing) + '</span></div>' : '') +
@@ -2517,7 +2552,7 @@ function renderDecodes() {
   rows.querySelectorAll('.replyBtn').forEach(function (el) {
     el.onclick = function (ev) {
       ev.stopPropagation();
-      var why = replyFrequencyMismatch(el.getAttribute('data-id'));
+      var why = replyTooOld(el.getAttribute('data-id')) || replyFrequencyMismatch(el.getAttribute('data-id'));
       if (why) {
         setMsg(why);
         alert(why);
@@ -2527,6 +2562,20 @@ function renderDecodes() {
         .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
     };
   });
+}
+
+// A button drawn a moment before its slot aged out can still be tapped; the
+// same rule refuses it (slotReplyOpen()).
+function replyTooOld(decodeId) {
+  for (var i = 0; i < decodeSlots.length; i++) {
+    for (var k = 0; k < decodeSlots[i].length; k++) {
+      if (String(decodeSlots[i][k].id) === String(decodeId)) {
+        return slotReplyOpen(decodeSlots[i], Date.now()) ? null
+          : 'That decode is from an older slot. Reply to a newer decode from the same station.';
+      }
+    }
+  }
+  return null;
 }
 
 // A reply goes out on the frequency the radio is on now, so a decode heard on
@@ -2594,6 +2643,7 @@ function flushDecodeBatch() {
     var slot = byFreq[k];
     slot.sort(decodeSortCmp);
     slot.ts = endMs;
+    slot.lenMs = pendingDecodesSi ? (pendingDecodesSl || 150) * 100 : 0;
     slot.freqKhz = k !== '0' ? k : (lastCfg.freq_khz || '');
     slot.band = k !== '0' ? '' : (lastCfg.band_name || ''); // '' = named from freqKhz when drawn
     decodeSlots.unshift(slot);
@@ -3694,7 +3744,7 @@ function saveStateCache() {
       // this unwrap, every restored slot's header would compute
       // fmtSlotDateTime(undefined) -- an Invalid Date, not the real one.
       decodeSlots: decodeSlots.map(function (slot) {
-        return { ts: slot.ts, band: slot.band, freqKhz: slot.freqKhz, rows: slot };
+        return { ts: slot.ts, lenMs: slot.lenMs, band: slot.band, freqKhz: slot.freqKhz, rows: slot };
       }),
       slotState: slotState, txHud: txHud
     }));
@@ -3727,6 +3777,7 @@ function loadStateCache() {
         slot.ts = w.ts;
         slot.band = w.band;
         slot.freqKhz = w.freqKhz;
+        slot.lenMs = w.lenMs || 0;
         return slot;
       });
     }
