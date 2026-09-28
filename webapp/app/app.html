@@ -1590,19 +1590,34 @@ function cancelQsosAndTx() {
   return Promise.all(stops);
 }
 
+// The app's standard frequency for a band under the active protocol (BANDS).
+function standardKhz(band) {
+  return lastCfg.protocol_mode === 'FT4' ? band.ft4 : band.ft8;
+}
+
 // Operator-requested: a band change means every queued contact was for the
 // old band, and an in-flight TX on the old frequency should not continue
 // once the operator has already moved on -- so a band change cancels both
-// before writing band_sel itself, the last thing sent once the rest have
-// landed. A "no" leaves everything as it was: unlike the old <select>, the
-// dock's band grid never shows the new band until the write actually lands
-// (see buildDockBandGrid()/syncDockBandGrid()), so there is nothing to
-// revert here.
+// before writing, the last thing sent once the rest have landed. A "no"
+// leaves everything as it was: the dock's band grid never shows the new band
+// until the write actually lands (see buildDockBandGrid()/syncDockBandGrid()),
+// so there is nothing to revert here.
+//
+// A band tap always lands on that band's standard frequency, not the last
+// one typed there (operator decision 2026-09-28): the band's key and band_sel
+// go in one PUT, frequency first. That overwrites whatever the ADV's BAND
+// menu programmed for the band; keeping chosen frequencies is row y9js.
+// Tapping the band already selected, at its standard, changes nothing.
 function changeBand(idx) {
+  var band = BANDS[parseInt(idx, 10)];
+  if (!band) return;
+  var std = standardKhz(band);
+  if (String(band.i) === String(lastCfg.band_sel) && currentDockFreqKhz(lastCfg) === std) return;
   if (!confirmRetune('Change band')) return;
+  var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + band.i;
   setMsg('Changing band…');
   cancelQsosAndTx().then(function () {
-    return putConfigLine('band_sel=' + idx, 'Changing band…', true);
+    return putConfigLine(key + '=' + std + '\nband_sel=' + band.i, 'Changing band…', true);
   }).catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 }
 
@@ -1749,10 +1764,9 @@ function nudgeDockFreq(deltaKhz) {
 document.getElementById('opFreqDown').onclick = function () { nudgeDockFreq(-1); };
 document.getElementById('opFreqUp').onclick = function () { nudgeDockFreq(1); };
 document.getElementById('opFreqStd').onclick = function () {
-  var idx = parseInt(lastCfg.band_sel, 10);
-  var band = BANDS[idx];
+  var band = BANDS[parseInt(lastCfg.band_sel, 10)];
   if (!band) return;
-  setOperatingBandFreq(lastCfg.protocol_mode === 'FT4' ? band.ft4 : band.ft8);
+  setOperatingBandFreq(standardKhz(band));
 };
 
 // quiet: a reload after an action, whose own result message must stay on
