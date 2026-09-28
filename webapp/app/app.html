@@ -134,10 +134,9 @@ button:disabled{opacity:.45}
 /* ---- settings overlay, and the Station sheet (same motion language) ---- */
 /* Bottom-sheet motion language, same as #callInfoModal, but full-screen: a
    destination you navigate to and back from, not a transient popover. The
-   Station sheet (RFC 0009 §3.5, docs/architecture/webapp.md, "The Station
-   sheet") is a second, independent overlay built the same way -- grouped
-   into these same rules rather than duplicated, since the two never need to
-   look different. */
+   Station sheet (webapp.md, "The Station sheet") is a second, independent
+   overlay built the same way -- grouped into these same rules rather than
+   duplicated, since the two never need to look different. */
 #settingsOverlay,#stationSheet{position:fixed;inset:0;z-index:12;background:Canvas;color:CanvasText;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .25s ease}
 #settingsOverlay.open,#stationSheet.open{transform:translateY(0)}
 #settingsOverlayHead,#stationSheetHead{flex:none;display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
@@ -638,7 +637,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 </div>
 
 <!-- ================= STATION SHEET ================= -->
-<!-- RFC 0009 §3.5 / docs/architecture/webapp.md ("The Station sheet"): opened
+<!-- docs/architecture/webapp.md ("The Station sheet"): opened
      from the CQ row's Settings > and the dock's Station >. Each control here
      writes its own key with putConfigLine() the moment it changes -- there is
      no Save button -- which is exactly why Settings' own FIELDS (below) drops
@@ -672,9 +671,10 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       </label>
     </div>
     <!-- Shown only for FD and Free text (onchange of #cq_type toggles this,
-         setStationSheetForm()); both write the one free_text key (RFC 0009
-         §3.5), so switching types leaves the other type's text sitting in
-         the field until a new CQ actually goes out under the new type. -->
+         setStationSheetForm()); both write the one free_text key (webapp.md,
+         The Station sheet), so switching types leaves the other type's text
+         sitting in the field until a new CQ actually goes out under the new
+         type. -->
     <div class=setrow id=freeTextRow hidden>
       <label><span id=freeTextLabel>CQ message</span> <input id=free_text autocomplete=off></label>
     </div>
@@ -780,8 +780,8 @@ var BAND_EDGES_KHZ = {
   12: [24890, 24990], 10: [28000, 29700], 6: [50000, 54000], 2: [144000, 148000]
 };
 // cq_type, free_text, grid, offset, offset_src and autoseq_max_retry left
-// Settings for the Station sheet (RFC 0009 §3.5, docs/architecture/webapp.md,
-// "The Station sheet"): each now writes its own key the moment it changes
+// Settings for the Station sheet (docs/architecture/webapp.md, "The Station
+// sheet"): each now writes its own key the moment it changes
 // (setStationSheetForm()'s onchange handlers), so Settings' own Save must
 // never resend them -- formBody() only walks FIELDS, so removing them here is
 // what stops Save from overwriting a sheet write with a stale value (RFC 0009
@@ -1066,11 +1066,11 @@ document.getElementById('navSettings').onclick = openSettings;
 document.getElementById('settingsOverlayBack').onclick = closeSettings;
 
 // ===================== the Station sheet (webapp.md, The Station sheet) ====
-// Opened from the CQ row's Settings > and the dock's Station > (RFC 0009
-// §3.5). Same overlay mechanics as Settings above -- see that CSS rule --
-// and its own fields are populated by setStationSheetForm() below, called
-// from setForm() alongside the rest so a reload after any write (this
-// sheet's own, or a plain Settings save) refreshes what it shows.
+// Opened from the CQ row's Settings > and the dock's Station >. Same overlay
+// mechanics as Settings above -- see that CSS rule -- and its own fields are
+// populated by setStationSheetForm() below, called from setForm() alongside
+// the rest so a reload after any write (this sheet's own, or a plain
+// Settings save) refreshes what it shows.
 var stationSheet = document.getElementById('stationSheet');
 function openStationSheet() { closeSettings(); stationSheetMsg.textContent = ''; stationSheet.classList.add('open'); }
 function closeStationSheet() { stationSheet.classList.remove('open'); }
@@ -1334,14 +1334,14 @@ function updateGridHint() {
 }
 document.getElementById('grid').addEventListener('input', updateGridHint);
 
-// The Station sheet's own fields (RFC 0009 §3.5): cq_type, free_text, grid,
-// autoseq_max_retry, offset and offset_src left Settings' FIELDS loop above
-// for this sheet, so they need their own population here, called from
-// setForm() alongside it -- same call sites (boot from cache, loadConfig()),
-// same reasoning against rebuilding mid-edit. The two free-typing fields
-// (grid, free_text) skip their own reload while focused, so a write
-// triggered by some *other* sheet control (which reloads the whole config)
-// can't clobber an edit still in progress here.
+// The Station sheet's own fields (webapp.md, The Station sheet): cq_type,
+// free_text, grid, autoseq_max_retry, offset and offset_src left Settings'
+// FIELDS loop above for this sheet, so they need their own population here,
+// called from setForm() alongside it -- same call sites (boot from cache,
+// loadConfig()), same reasoning against rebuilding mid-edit. The two
+// free-typing fields (grid, free_text) skip their own reload while focused,
+// so a write triggered by some *other* sheet control (which reloads the
+// whole config) can't clobber an edit still in progress here.
 function setStationSheetForm(cfg) {
   var type = parseInt(cfg.cq_type, 10) || 0;
   document.getElementById('cq_type').value = String(type);
@@ -1349,9 +1349,10 @@ function setStationSheetForm(cfg) {
   document.getElementById('freeTextRow').hidden = !showFree;
   document.getElementById('freeTextLabel').textContent = type === 5 ? 'CQ message' : 'FD exchange';
   var ftEl = document.getElementById('free_text');
-  // "up to 13 characters" is Free text's own limit (RFC 0009 §3.5), not FD's --
-  // removeAttribute, not maxLength = -1: the setter throws IndexSizeError for
-  // anything below 0, so "no limit" has to be the attribute's absence.
+  // "up to 13 characters" is Free text's own limit (webapp.md, The Station
+  // sheet), not FD's -- removeAttribute, not maxLength = -1: the setter
+  // throws IndexSizeError for anything below 0, so "no limit" has to be the
+  // attribute's absence.
   if (type === 5) ftEl.maxLength = 13; else ftEl.removeAttribute('maxlength');
   if (document.activeElement !== ftEl) ftEl.value = cfg.free_text || '';
   var gridEl = document.getElementById('grid');
@@ -1367,11 +1368,11 @@ function setStationSheetForm(cfg) {
   document.getElementById('sheetCall').textContent = cfg.call || '—';
 }
 
-// Each control below writes its own key the moment it changes (RFC 0009
-// §3.5) -- no Save button for this sheet. putConfigLine() reloads the whole
-// station on success or failure either way, which is what brings every field
-// here (and the CQ row's Sends text, and the dock line) back in sync with
-// what the station actually holds.
+// Each control below writes its own key the moment it changes (webapp.md,
+// The Station sheet) -- no Save button for this sheet. putConfigLine()
+// reloads the whole station on success or failure either way, which is what
+// brings every field here (and the CQ row's Sends text, and the dock line)
+// back in sync with what the station actually holds.
 function sheetPutLine(line, busyMsg) {
   putConfigLine(line, busyMsg, true).catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 }
@@ -1857,9 +1858,9 @@ document.getElementById('opDockFreqBtn').onclick = function () {
   var editor = document.getElementById('opFreqEditor');
   if (editor.hidden) openFreqEditor(); else closeFreqEditor();
 };
-// "Retries N · <offset> · Station ›" opens the Station sheet (RFC 0009
-// §3.5), which is what it previews -- band and frequency are the other half
-// of the dock line, opDockFreqBtn above, not this one.
+// "Retries N · <offset> · Station ›" opens the Station sheet (webapp.md,
+// The Station sheet), which is what it previews -- band and frequency are
+// the other half of the dock line, opDockFreqBtn above, not this one.
 document.getElementById('opDockMetaBtn').onclick = openStationSheet;
 
 // A typed value under 1000 is MHz, otherwise kHz, kept to 0.1 kHz (the
@@ -2329,8 +2330,8 @@ document.getElementById('beaconSel').onchange = function () {
   radioPost('/api/beacon', sel.value, 'Beacon…')
     .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 };
-// The CQ text and Settings > both open the Station sheet (RFC 0009 §3.5),
-// where Calling CQ (Sends preview, type, grid) now lives.
+// The CQ text and Settings > both open the Station sheet (webapp.md, The
+// Station sheet), where Calling CQ (Sends preview, type, grid) now lives.
 document.getElementById('cqSendsText').onclick = openStationSheet;
 document.getElementById('cqSettingsBtn').onclick = openStationSheet;
 
@@ -3864,9 +3865,9 @@ if (MicroFT8Pairing.getToken()) {
 // the Network section; #tools (docs/architecture/webapp.md (Tools)) swipes straight to the Tools
 // tab; #stationsheet (operator-requested 2026-09-23, the geolocation
 // handoff's own return route -- see handleGeoReturn() below) opens the
-// Station sheet, where Grid now lives (RFC 0009 §3.5). All three run once at
-// boot and again on hashchange, so a link clicked while the app is already
-// open (not just a fresh load) still routes.
+// Station sheet, where Grid now lives (webapp.md, The Station sheet). All
+// three run once at boot and again on hashchange, so a link clicked while
+// the app is already open (not just a fresh load) still routes.
 function applyHashRoute() {
   if (location.hash === '#network') {
     openSettings();
