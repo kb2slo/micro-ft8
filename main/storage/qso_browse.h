@@ -25,6 +25,8 @@ struct QsoLogEntry {
     std::string comment;  // <comment>, empty if absent
     std::string mode;     // <mode>, e.g. "FT8"
     std::string station_callsign;  // <station_callsign>, own call at log time
+    std::string my_pota_ref;  // <my_pota_ref>, comma list with no program prefix, empty if absent
+    std::string my_sota_ref;  // <my_sota_ref>, comma list with no program prefix, empty if absent
 };
 
 enum class QsoBrowsePageView { Default, Alternate };

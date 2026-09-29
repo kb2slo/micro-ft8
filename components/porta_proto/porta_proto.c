@@ -874,7 +874,9 @@ bool porta_proto_parse_file_name_row(const porta_frame_t *f, char *name_out)
 
 // data_kind(1)=ENTRY | time_on(5, fixed "HH:MM") | band_len(1) | band... |
 // call_len(1) | call... | rst_sent(1) | rst_rcvd(1) | grid_len(1) | grid... |
-// freq_len(1) | freq... | my_grid_len(1) | my_grid... | comment_len(1) | comment...
+// freq_len(1) | freq... | my_grid_len(1) | my_grid... | comment_len(1) | comment... |
+// mode_len(1) | mode... | station_callsign_len(1) | station_callsign... |
+// my_pota_ref_len(1) | my_pota_ref... | my_sota_ref_len(1) | my_sota_ref...
 size_t porta_proto_encode_file_entry_row(const porta_qso_entry_row_t *e,
                                          uint8_t *out, size_t out_cap)
 {
@@ -893,16 +895,20 @@ size_t porta_proto_encode_file_entry_row(const porta_qso_entry_row_t *e,
     const size_t comment_n = strnlen(e->comment, PORTA_COMMENT_MAX + 1);
     const size_t mode_n = strnlen(e->mode, PORTA_MODE_MAX + 1);
     const size_t station_callsign_n = strnlen(e->station_callsign, PORTA_CALLSIGN_MAX + 1);
+    const size_t my_pota_ref_n = strnlen(e->my_pota_ref, PORTA_POTA_REF_MAX + 1);
+    const size_t my_sota_ref_n = strnlen(e->my_sota_ref, PORTA_SOTA_REF_MAX + 1);
     if (band_n > PORTA_BAND_MAX || call_n > PORTA_CALLSIGN_MAX ||
         grid_n > PORTA_GRID_MAX || freq_n > PORTA_FREQ_MAX ||
         my_grid_n > PORTA_GRID_MAX || comment_n > PORTA_COMMENT_MAX ||
-        mode_n > PORTA_MODE_MAX || station_callsign_n > PORTA_CALLSIGN_MAX) {
+        mode_n > PORTA_MODE_MAX || station_callsign_n > PORTA_CALLSIGN_MAX ||
+        my_pota_ref_n > PORTA_POTA_REF_MAX || my_sota_ref_n > PORTA_SOTA_REF_MAX) {
         return 0;
     }
     uint8_t payload[1 + 5 + 1 + PORTA_BAND_MAX + 1 + PORTA_CALLSIGN_MAX + 1 + 1 +
                     1 + PORTA_GRID_MAX + 1 + PORTA_FREQ_MAX +
                     1 + PORTA_GRID_MAX + 1 + PORTA_COMMENT_MAX +
-                    1 + PORTA_MODE_MAX + 1 + PORTA_CALLSIGN_MAX];
+                    1 + PORTA_MODE_MAX + 1 + PORTA_CALLSIGN_MAX +
+                    1 + PORTA_POTA_REF_MAX + 1 + PORTA_SOTA_REF_MAX];
     size_t p = 0;
     payload[p++] = PORTA_FILE_DATA_ENTRY;
     memcpy(&payload[p], e->time_on, 5);
@@ -933,13 +939,19 @@ size_t porta_proto_encode_file_entry_row(const porta_qso_entry_row_t *e,
     payload[p++] = (uint8_t)station_callsign_n;
     memcpy(&payload[p], e->station_callsign, station_callsign_n);
     p += station_callsign_n;
+    payload[p++] = (uint8_t)my_pota_ref_n;
+    memcpy(&payload[p], e->my_pota_ref, my_pota_ref_n);
+    p += my_pota_ref_n;
+    payload[p++] = (uint8_t)my_sota_ref_n;
+    memcpy(&payload[p], e->my_sota_ref, my_sota_ref_n);
+    p += my_sota_ref_n;
     return porta_proto_encode(PORTA_MSG_FILE_DATA, payload, (uint8_t)p, out, out_cap);
 }
 
 bool porta_proto_parse_file_entry_row(const porta_frame_t *f, porta_qso_entry_row_t *out)
 {
     if (!f || !out || f->type != PORTA_MSG_FILE_DATA ||
-        f->len < 1 + 5 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 ||
+        f->len < 1 + 5 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 ||
         f->payload[0] != PORTA_FILE_DATA_ENTRY) {
         return false;
     }
@@ -1009,12 +1021,28 @@ bool porta_proto_parse_file_entry_row(const porta_frame_t *f, porta_qso_entry_ro
     p += mode_n;
 
     const uint8_t station_callsign_n = f->payload[p++];
-    if (station_callsign_n > PORTA_CALLSIGN_MAX || p + station_callsign_n != f->len) {
+    if (station_callsign_n > PORTA_CALLSIGN_MAX || p + station_callsign_n + 1 + 1 > f->len) {
         return false;
     }
     memcpy(out->station_callsign, &f->payload[p], station_callsign_n);
     out->station_callsign[station_callsign_n] = '\0';
     p += station_callsign_n;
+
+    const uint8_t my_pota_ref_n = f->payload[p++];
+    if (my_pota_ref_n > PORTA_POTA_REF_MAX || p + my_pota_ref_n + 1 > f->len) {
+        return false;
+    }
+    memcpy(out->my_pota_ref, &f->payload[p], my_pota_ref_n);
+    out->my_pota_ref[my_pota_ref_n] = '\0';
+    p += my_pota_ref_n;
+
+    const uint8_t my_sota_ref_n = f->payload[p++];
+    if (my_sota_ref_n > PORTA_SOTA_REF_MAX || p + my_sota_ref_n != f->len) {
+        return false;
+    }
+    memcpy(out->my_sota_ref, &f->payload[p], my_sota_ref_n);
+    out->my_sota_ref[my_sota_ref_n] = '\0';
+    p += my_sota_ref_n;
 
     return true;
 }

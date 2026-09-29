@@ -65,7 +65,10 @@ extern "C" {
 // carries -- they answer different questions, and conflating them is how a
 // cosmetic rebuild reads as a protocol change.
 // v2 (2026-09-28): DECODE carries its slot and the radio's dial frequency.
-#define PORTA_PROTO_VERSION 2u
+// v3 (2026-09-29): the FILE_READ QSO row carries my_pota_ref/my_sota_ref
+// (RFC 0008 §4.5); band now rides the row's own field too, unchanged in
+// shape (still PORTA_BAND_MAX), so only the two new fields are a break.
+#define PORTA_PROTO_VERSION 3u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -471,6 +474,11 @@ typedef enum {
 #define PORTA_FREQ_MAX 12u
 #define PORTA_COMMENT_MAX 48u
 #define PORTA_MODE_MAX 7u  // "FT8"/"FT4" today; room for a longer protocol name
+// RFC 0008 §4.5: comma lists, no program prefix -- room for a handful of
+// references (e.g. "US-1234,US-5678,US-9012" is 23 characters); SOTA is
+// realistically always one summit, but sized the same for simplicity.
+#define PORTA_POTA_REF_MAX 40u
+#define PORTA_SOTA_REF_MAX 40u
 
 size_t porta_proto_encode_file_list_req(uint8_t kind, uint16_t skip, uint8_t take,
                                         uint8_t *out, size_t out_cap);
@@ -502,6 +510,8 @@ typedef struct {
     char    comment[PORTA_COMMENT_MAX + 1];  // <comment>, empty if absent
     char    mode[PORTA_MODE_MAX + 1];              // <mode>, e.g. "FT8"
     char    station_callsign[PORTA_CALLSIGN_MAX + 1]; // <station_callsign>, own call at log time
+    char    my_pota_ref[PORTA_POTA_REF_MAX + 1];   // <my_pota_ref>, empty if absent
+    char    my_sota_ref[PORTA_SOTA_REF_MAX + 1];   // <my_sota_ref>, empty if absent
 } porta_qso_entry_row_t;
 
 size_t porta_proto_encode_file_entry_row(const porta_qso_entry_row_t *e,

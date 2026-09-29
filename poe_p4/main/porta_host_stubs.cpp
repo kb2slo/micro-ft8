@@ -191,6 +191,10 @@ static bool log_adif_entry(const std::string &dxcall, const std::string &dxgrid,
     // station_freq_hz is Hz; ADIF wants MHz (e.g. 14.074).
     snprintf(freq_str, sizeof(freq_str), "%.3f", (double)station_freq_hz() / 1e6);
     station.freq_mhz = freq_str;
+    {
+        const int idx = s_station.band_sel;
+        station.band_name = (idx >= 0 && idx < kStationBandCount) ? kBandNames[idx] : "";
+    }
     station.raw_comment = s_station.comment1;
     // The P4 always drives a QMX today regardless of the Station radio= key
     // (row cgc4), so this is the real value, not a placeholder.
@@ -198,6 +202,7 @@ static bool log_adif_entry(const std::string &dxcall, const std::string &dxgrid,
     // No GPS on the P4 (docs/architecture/main_board.md) -- nothing to
     // override the configured grid with for "/Grid", unlike the ADV.
     station.grid_for_macro = s_station.grid;
+    station.act_refs = s_station.act_refs;
     return adif_log_entry(dxcall, dxgrid, rst_sent, rst_rcvd, station, &s_adif_logger_dedupe);
 }
 
@@ -654,6 +659,8 @@ void porta_p4_file_tick(void) {
         std::snprintf(row.mode, sizeof(row.mode), "%s", e.mode.c_str());
         std::snprintf(row.station_callsign, sizeof(row.station_callsign), "%s",
                       e.station_callsign.c_str());
+        std::snprintf(row.my_pota_ref, sizeof(row.my_pota_ref), "%s", e.my_pota_ref.c_str());
+        std::snprintf(row.my_sota_ref, sizeof(row.my_sota_ref), "%s", e.my_sota_ref.c_str());
         porta_emit_file_entry(row);
     }
     porta_emit_ack(PORTA_MSG_FILE_READ);

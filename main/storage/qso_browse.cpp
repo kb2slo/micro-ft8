@@ -146,8 +146,16 @@ bool parse_record_line(const std::string& line,
     const std::string station_callsign = field_after_tag(line, s_lower, "station_callsign:");
     const std::string rst_rcvd_raw = field_after_tag(line, s_lower, "rst_rcvd:");
     const std::string rst_sent_raw = field_after_tag(line, s_lower, "rst_sent:");
-    std::string band = freq;
-    if (!freq.empty()) {
+    const std::string my_pota_ref = field_after_tag(line, s_lower, "my_pota_ref:");
+    const std::string my_sota_ref = field_after_tag(line, s_lower, "my_sota_ref:");
+    // Prefer the record's own <band:...> tag (written going forward, RFC 0008
+    // §4.5) over deriving it from <freq:...> -- lower-cased to match this
+    // app's own band-name convention ("20m", not ADIF's "20M"). A record
+    // written before this field existed has no tag, so the freq-derived
+    // value (the only thing that has ever existed) stays the fallback.
+    const std::string band_tag = field_after_tag(line, s_lower, "band:");
+    std::string band = !band_tag.empty() ? ascii_lower_copy(band_tag) : freq;
+    if (band_tag.empty() && !freq.empty()) {
         const double mhz = std::atof(freq.c_str());
         const char* mapped = band_name_for_mhz(mhz, bands, band_count);
         if (mapped) {
@@ -179,6 +187,8 @@ bool parse_record_line(const std::string& line,
     out->comment = comment;
     out->mode = mode;
     out->station_callsign = station_callsign;
+    out->my_pota_ref = my_pota_ref;
+    out->my_sota_ref = my_sota_ref;
     return true;
 }
 

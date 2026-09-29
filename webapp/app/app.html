@@ -3622,6 +3622,16 @@ function adifField(tag, value, trailingSpace) {
 function adifFieldIfSet(tag, value) {
   return value ? adifField(tag, value) : '';
 }
+// q.band is qso_browse.cpp's *display* value ("20m", lower-case, matching
+// this app's own convention) -- ADIF wants a unit-bearing upper-case token
+// ("20M"). Only emit one when it's a band BANDS actually knows: qso_browse's
+// own last-resort fallback (an unrecognized frequency, or none at all) puts
+// a raw freq string or "?" in this same field for display purposes, neither
+// of which is a valid ADIF BAND value.
+function adifBandTag(band) {
+  var known = BANDS.some(function (b) { return b.name === band; });
+  return known ? band.toUpperCase() : '';
+}
 function buildAdifRecord(q, dateStr) {
   var out = '';
   out += adifField('call', q.call || '');
@@ -3630,11 +3640,14 @@ function buildAdifRecord(q, dateStr) {
   out += adifField('qso_date', dateStr);
   out += adifField('time_on', (q.time || '').replace(':', ''));
   out += adifField('freq', q.freq || '');
+  out += adifFieldIfSet('band', adifBandTag(q.band));
   out += adifField('station_callsign', q.station_callsign || '');
   out += adifFieldIfSet('my_gridsquare', q.my_grid);
   if (q.rst_sent != null && q.rst_sent !== -99) out += adifField('rst_sent', String(q.rst_sent));
   if (q.rst_rcvd != null && q.rst_rcvd !== -99) out += adifField('rst_rcvd', String(q.rst_rcvd));
   out += adifFieldIfSet('comment', q.comment);
+  out += adifFieldIfSet('my_pota_ref', q.my_pota_ref);
+  out += adifFieldIfSet('my_sota_ref', q.my_sota_ref);
   out += '<eor>\n';
   return out;
 }

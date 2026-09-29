@@ -916,6 +916,8 @@ static void test_file_data_rows()
     std::snprintf(in.comment, sizeof(in.comment), "nice sigs, tnx QSO");
     std::snprintf(in.mode, sizeof(in.mode), "FT8");
     std::snprintf(in.station_callsign, sizeof(in.station_callsign), "KB2SLO");
+    std::snprintf(in.my_pota_ref, sizeof(in.my_pota_ref), "US-1234,US-5678");
+    std::snprintf(in.my_sota_ref, sizeof(in.my_sota_ref), "W7O/CC-001");
 
     porta_decoder_init(&d);
     n = porta_proto_encode_file_entry_row(&in, buf, sizeof(buf));
@@ -934,12 +936,16 @@ static void test_file_data_rows()
         check(std::string(out.comment) == "nice sigs, tnx QSO", "comment round-trips");
         check(std::string(out.mode) == "FT8", "mode round-trips");
         check(std::string(out.station_callsign) == "KB2SLO", "station_callsign round-trips");
+        check(std::string(out.my_pota_ref) == "US-1234,US-5678", "my_pota_ref round-trips");
+        check(std::string(out.my_sota_ref) == "W7O/CC-001", "my_sota_ref round-trips");
     }
 
     // Empty grid/freq/my_grid/comment (not every QSO logs all of these, and
     // legacy .txt logs have none) must round-trip as empty, not crash or
     // desync the frame. mode/station_callsign are required ADIF fields in
     // practice but the wire format itself does not refuse an empty one.
+    // my_pota_ref/my_sota_ref are empty on every non-activation QSO -- the
+    // common case, not an edge case.
     porta_qso_entry_row_t no_grid = in;
     no_grid.grid[0] = '\0';
     no_grid.freq[0] = '\0';
@@ -947,6 +953,8 @@ static void test_file_data_rows()
     no_grid.comment[0] = '\0';
     no_grid.mode[0] = '\0';
     no_grid.station_callsign[0] = '\0';
+    no_grid.my_pota_ref[0] = '\0';
+    no_grid.my_sota_ref[0] = '\0';
     porta_decoder_init(&d);
     n = porta_proto_encode_file_entry_row(&no_grid, buf, sizeof(buf));
     got = run(&d, std::vector<uint8_t>(buf, buf + n));
@@ -955,8 +963,9 @@ static void test_file_data_rows()
         check(porta_proto_parse_file_entry_row(&got[0], &out) &&
               std::string(out.grid).empty() && std::string(out.freq).empty() &&
               std::string(out.my_grid).empty() && std::string(out.comment).empty() &&
-              std::string(out.mode).empty() && std::string(out.station_callsign).empty(),
-              "empty grid/freq/my_grid/comment/mode/station_callsign round-trip");
+              std::string(out.mode).empty() && std::string(out.station_callsign).empty() &&
+              std::string(out.my_pota_ref).empty() && std::string(out.my_sota_ref).empty(),
+              "empty grid/freq/my_grid/comment/mode/station_callsign/my_pota_ref/my_sota_ref round-trip");
     }
 
     // No report uses -99, the same sentinel QsoContext::snr_tx/snr_rx already

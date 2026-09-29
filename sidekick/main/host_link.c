@@ -504,6 +504,8 @@ static void file_entries_json_add(const porta_qso_entry_row_t *e)
     static char esc_comment[PORTA_COMMENT_MAX * 6 + 1];
     static char esc_mode[PORTA_MODE_MAX * 6 + 1];
     static char esc_station_callsign[PORTA_CALLSIGN_MAX * 6 + 1];
+    static char esc_my_pota_ref[PORTA_POTA_REF_MAX * 6 + 1];
+    static char esc_my_sota_ref[PORTA_SOTA_REF_MAX * 6 + 1];
     json_escape(e->band, esc_band, sizeof(esc_band));
     json_escape(e->call, esc_call, sizeof(esc_call));
     json_escape(e->grid, esc_grid, sizeof(esc_grid));
@@ -512,17 +514,21 @@ static void file_entries_json_add(const porta_qso_entry_row_t *e)
     json_escape(e->comment, esc_comment, sizeof(esc_comment));
     json_escape(e->mode, esc_mode, sizeof(esc_mode));
     json_escape(e->station_callsign, esc_station_callsign, sizeof(esc_station_callsign));
+    json_escape(e->my_pota_ref, esc_my_pota_ref, sizeof(esc_my_pota_ref));
+    json_escape(e->my_sota_ref, esc_my_sota_ref, sizeof(esc_my_sota_ref));
     static char piece[sizeof(esc_band) + sizeof(esc_call) + sizeof(esc_grid) + sizeof(esc_freq) +
               sizeof(esc_my_grid) + sizeof(esc_comment) + sizeof(esc_mode) +
-              sizeof(esc_station_callsign) + 160];
+              sizeof(esc_station_callsign) + sizeof(esc_my_pota_ref) + sizeof(esc_my_sota_ref) + 160];
     const int n = snprintf(piece, sizeof(piece),
                            "%s{\"time\":\"%s\",\"band\":\"%s\",\"call\":\"%s\","
                            "\"rst_sent\":%d,\"rst_rcvd\":%d,\"grid\":\"%s\",\"freq\":\"%s\","
                            "\"my_grid\":\"%s\",\"comment\":\"%s\",\"mode\":\"%s\","
-                           "\"station_callsign\":\"%s\"}",
+                           "\"station_callsign\":\"%s\",\"my_pota_ref\":\"%s\","
+                           "\"my_sota_ref\":\"%s\"}",
                            s_file_entries_json_first ? "" : ",", e->time_on, esc_band,
                            esc_call, e->rst_sent, e->rst_rcvd, esc_grid, esc_freq,
-                           esc_my_grid, esc_comment, esc_mode, esc_station_callsign);
+                           esc_my_grid, esc_comment, esc_mode, esc_station_callsign,
+                           esc_my_pota_ref, esc_my_sota_ref);
     if (n <= 0 || s_file_entries_json_len + (size_t)n + 3 >= FILE_ENTRIES_JSON_MAX) {
         return;
     }

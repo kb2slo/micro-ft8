@@ -33,6 +33,54 @@ std::string expand_comment_macros(const std::string& src, const std::string& rad
     return out;
 }
 
+// This app's own band names are lowercase, no unit ("20m"); POTA requires
+// BAND with a unit, upper-case (RFC 0008 §3: "BAND (with unit, 20M)"). ADIF's
+// own band enum is exactly the band name upper-cased plus the trailing unit
+// letter this app's names already carry ("20m" -> "20M", "2m" -> "2M"), so
+// this is a plain case fold, not a lookup table.
+std::string format_adif_band_tag(const std::string& band_name) {
+    std::string out = band_name;
+    for (char& ch : out) {
+        if (ch >= 'a' && ch <= 'z') {
+            ch = static_cast<char>(ch - 'a' + 'A');
+        }
+    }
+    return out;
+}
+
+// station.act_refs is already normalized (station.cpp's normalize_act_refs():
+// upper-cased, malformed tokens dropped) by the time it reaches here, so this
+// only has to split it by program and drop each token's own "POTA:"/"SOTA:"
+// prefix -- ADIF's MY_POTA_REF/MY_SOTA_REF are bare reference lists, the
+// program is a separate field (MY_SIG) the exporter derives at n-fer
+// expansion time, not stored per-QSO on the device.
+void split_act_refs(const std::string& act_refs, std::string* pota_out, std::string* sota_out) {
+    pota_out->clear();
+    sota_out->clear();
+    size_t start = 0;
+    while (start <= act_refs.size()) {
+        const size_t comma = act_refs.find(',', start);
+        const std::string token =
+            comma == std::string::npos ? act_refs.substr(start) : act_refs.substr(start, comma - start);
+        const size_t colon = token.find(':');
+        if (colon != std::string::npos) {
+            const std::string program = token.substr(0, colon);
+            const std::string ref = token.substr(colon + 1);
+            std::string* bucket = (program == "SOTA") ? sota_out : (program == "POTA") ? pota_out : nullptr;
+            if (bucket && !ref.empty()) {
+                if (!bucket->empty()) {
+                    *bucket += ",";
+                }
+                *bucket += ref;
+            }
+        }
+        if (comma == std::string::npos) {
+            break;
+        }
+        start = comma + 1;
+    }
+}
+
 std::string normalize_call_token(std::string s) {
     if (!s.empty() && s.front() == '<') {
         s.erase(s.begin());
@@ -87,11 +135,14 @@ bool adif_log_qso(const AdifLogQsoInput& in, AdifLoggerDedupe* dedupe) {
     fields.qso_date = date;
     fields.time_on = time_on;
     fields.freq = in.freq_mhz;
+    fields.band = in.band;
     fields.station_callsign = in.station_callsign;
     fields.my_gridsquare = in.my_gridsquare;
     fields.rst_sent = in.rst_sent;
     fields.rst_rcvd = in.rst_rcvd;
     fields.comment = in.comment;
+    fields.my_pota_ref = in.my_pota_ref;
+    fields.my_sota_ref = in.my_sota_ref;
     const std::string line = adif_format_log_record(fields);
 
     if (!storage_file_append(path, line, "ADIF EXPORT\n<eoh>\n", true)) {
@@ -116,6 +167,8 @@ bool adif_log_entry(const std::string& dxcall, const std::string& dxgrid, int rs
     in.my_gridsquare = station.my_gridsquare;
     in.mode = station.mode;
     in.freq_mhz = station.freq_mhz;
+    in.band = format_adif_band_tag(station.band_name);
     in.comment = expand_comment_macros(station.raw_comment, station.radio_name, station.grid_for_macro);
+    split_act_refs(station.act_refs, &in.my_pota_ref, &in.my_sota_ref);
     return adif_log_qso(in, dedupe);
 }

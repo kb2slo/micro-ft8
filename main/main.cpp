@@ -332,8 +332,10 @@ static RadioType g_radio = RadioType::QMX;
 static int g_gps_baud = 115200;
 static std::string g_comment1 = "MicroFT8 /Radio";   
 static std::string g_ignore_prefix_text;
-static std::vector<std::string> g_ignore_prefixes;  
+static std::vector<std::string> g_ignore_prefixes;
 static bool g_rxtx_log = true;
+// RFC 0008 §4.2: "POTA:US-1234,SOTA:W7O/CC-001". Empty means no activation.
+static std::string g_act_refs;
 static bool radio_type_uses_display_only(RadioType r);
 void apply_radio_profile_binding();
 static void gps_runtime_tick();
@@ -739,6 +741,8 @@ static void porta_file_read_tick() {
     std::snprintf(row.comment, sizeof(row.comment), "%s", e.comment.c_str());
     std::snprintf(row.mode, sizeof(row.mode), "%s", e.mode.c_str());
     std::snprintf(row.station_callsign, sizeof(row.station_callsign), "%s", e.station_callsign.c_str());
+    std::snprintf(row.my_pota_ref, sizeof(row.my_pota_ref), "%s", e.my_pota_ref.c_str());
+    std::snprintf(row.my_sota_ref, sizeof(row.my_sota_ref), "%s", e.my_sota_ref.c_str());
     porta_emit_file_entry(row);
   }
   porta_emit_ack(PORTA_MSG_FILE_READ);
@@ -900,8 +904,10 @@ static bool log_adif_entry(const std::string& dxcall, const std::string& dxgrid,
   char freq_str[16];
   snprintf(freq_str, sizeof(freq_str), "%.3f", 0.001 * (double)g_bands[g_band_sel].freq);
   station.freq_mhz = freq_str;
+  station.band_name = g_bands[g_band_sel].name;
   station.raw_comment = g_comment1;
   station.radio_name = radio_profile_name(g_radio);
+  station.act_refs = g_act_refs;
   // Same GPS-override rule expand_comment_macros() (below) uses for the menu
   // display -- kept here rather than shared, since the P4 has no GPS input
   // to override with at all (row j4xh's "station model" is a bigger question
@@ -3806,6 +3812,7 @@ static void station_fill_from_globals(StationSettings* s) {
   s->rxtx_log = g_rxtx_log;
   s->active_bands = g_active_band_text;
   s->autoseq_max_retry = g_autoseq_max_retry;
+  s->act_refs = g_act_refs;
 }
 
 static void station_apply_to_globals(const StationSettings& s) {
@@ -3850,6 +3857,7 @@ static void station_apply_to_globals(const StationSettings& s) {
   g_rxtx_log = s.rxtx_log;
   g_active_band_text = s.active_bands;
   g_autoseq_max_retry = s.autoseq_max_retry;
+  g_act_refs = s.act_refs;
 }
 
 static RadioType load_station_radio_type_only() {

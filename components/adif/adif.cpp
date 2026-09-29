@@ -558,11 +558,14 @@ std::string adif_format_log_record(const AdifLogFields& f) {
     append_field(out, "qso_date", f.qso_date);
     append_field(out, "time_on", f.time_on);
     append_field(out, "freq", f.freq);
+    append_field_if_set(out, "band", f.band);
     append_field(out, "station_callsign", f.station_callsign);
     append_field_if_set(out, "my_gridsquare", f.my_gridsquare);
     append_report_if_set(out, "rst_sent", f.rst_sent);
     append_report_if_set(out, "rst_rcvd", f.rst_rcvd);
     append_field_if_set(out, "comment", f.comment);
+    append_field_if_set(out, "my_pota_ref", f.my_pota_ref);
+    append_field_if_set(out, "my_sota_ref", f.my_sota_ref);
     out += "<eor>\n";
     return out;
 }

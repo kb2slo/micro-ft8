@@ -17,7 +17,10 @@ struct AdifLogQsoInput {
     std::string my_gridsquare;
     std::string mode;     // e.g. "FT8"
     std::string freq_mhz; // e.g. "14.074"
+    std::string band;     // ADIF tag value, e.g. "20M" -- already formatted by the caller
     std::string comment;  // already macro-expanded by the caller
+    std::string my_pota_ref; // comma list, no program prefix, e.g. "US-1234,US-5678"
+    std::string my_sota_ref; // comma list, no program prefix, e.g. "W7O/CC-001"
 };
 
 // Appends one record to YYYYMMDD.adi via storage_file_append.
@@ -35,11 +38,15 @@ struct AdifStationSnapshot {
     std::string my_gridsquare;  // already truncated by the caller's own grid_ft8_4()
     std::string mode;           // e.g. "FT8"
     std::string freq_mhz;       // e.g. "14.074"
+    std::string band_name;      // this app's own band name, e.g. "20m" -- formatted to
+                                 // the ADIF tag value ("20M") inside adif_log_entry()
     std::string raw_comment;    // Station's comment1, not yet macro-expanded
     std::string radio_name;     // for the "/Radio" comment macro (radio_profile_name())
     std::string grid_for_macro; // for the "/Grid" comment macro (the ADV's GPS override
                                  // wins here when it applies; the P4 has no GPS, so this
                                  // is just its own grid)
+    std::string act_refs;       // Station's act_refs, e.g. "POTA:US-1234,SOTA:W7O/CC-001",
+                                 // split into my_pota_ref/my_sota_ref inside adif_log_entry()
 };
 
 // Replaces both boards' separate log_adif_entry() (main/main.cpp,
