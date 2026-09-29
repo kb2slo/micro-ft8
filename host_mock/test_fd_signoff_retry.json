@@ -11,7 +11,10 @@
   "periods": [
     {
       "comment": "Period 0 (even): idle",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
     },
     {
       "comment": "Period 1 (odd): DX sends CQ FD — we touch to reply",
@@ -28,11 +31,17 @@
       "touch_event": {
         "time_offset": 14.0,
         "message_index": 0
+      },
+      "expect": {
+        "tx": "N6HAN AG6AQ CM97"
       }
     },
     {
       "comment": "Period 2 (even): we send TX2 (exchange) to DX",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": "N6HAN AG6AQ CM97"
+      }
     },
     {
       "comment": "Period 3 (odd): DX sends R + FD exchange (TX3)",
@@ -44,11 +53,19 @@
           "snr": -6,
           "slot": 1
         }
-      ]
+      ],
+      "expect": {
+        "tx": "N6HAN AG6AQ RR73",
+        "log": "N6HAN CM87 rst_sent=-8 rst_rcvd=-99",
+        "cabrillo": "N6HAN exchange=1A SCV"
+      }
     },
     {
       "comment": "Period 4 (even): we send RR73 (TX4) — QSO logged here",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": "N6HAN AG6AQ RR73"
+      }
     },
     {
       "comment": "Period 5 (odd): DX sends RR73 back (they didn't get our RR73, or just confirming)",
@@ -60,11 +77,17 @@
           "snr": 0,
           "slot": 1
         }
-      ]
+      ],
+      "expect": {
+        "tx": ""
+      }
     },
     {
       "comment": "Period 6 (even): we should be IDLE (ROGERS received TX4 → IDLE), no double log",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
     },
     {
       "comment": "Period 7 (odd): DX sends RR73 yet again (late)",
@@ -76,11 +99,17 @@
           "snr": 0,
           "slot": 1
         }
-      ]
+      ],
+      "expect": {
+        "tx": ""
+      }
     },
     {
       "comment": "Period 8 (even): verify no TX, no extra logging",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
     }
   ]
 }

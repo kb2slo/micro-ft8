@@ -8,3 +8,4 @@
 # listed the binaries to run by hand and had been skipping four of them.
 host_test
 host_test_*
+sim_station

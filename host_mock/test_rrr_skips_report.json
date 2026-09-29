@@ -1,0 +1,64 @@
+{
+  "comment": "RRR is the same signoff as RR73. Here it arrives after our report and before any R+report, so we close with 73 and log no received report.",
+  "config": {
+    "MY_CALLSIGN": "AG6AQ",
+    "MY_GRID": "CM97",
+    "DX_CALLSIGN": "N6HAN",
+    "DX_GRID": "CM87",
+    "TX_ON_EVEN": true
+  },
+  "periods": [
+    {
+      "comment": "Period 0: idle",
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
+    },
+    {
+      "comment": "Period 1 (odd): DX answers with a grid. We send our report.",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "${DX_CALLSIGN}",
+          "locator": "${DX_GRID}",
+          "snr": -5,
+          "slot": 1
+        }
+      ],
+      "expect": {
+        "tx": "N6HAN AG6AQ -5"
+      }
+    },
+    {
+      "comment": "Period 2 (even): resend the report",
+      "messages": [],
+      "expect": {
+        "tx": "N6HAN AG6AQ -5"
+      }
+    },
+    {
+      "comment": "Period 3 (odd): DX sends RRR. Treat it as RR73: send 73 and log. rst_rcvd stays unset.",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "${DX_CALLSIGN}",
+          "locator": "RRR",
+          "snr": 0,
+          "slot": 1
+        }
+      ],
+      "expect": {
+        "tx": "N6HAN AG6AQ 73",
+        "log": "N6HAN CM87 rst_sent=-5 rst_rcvd=-99"
+      }
+    },
+    {
+      "comment": "Period 4 (even): no second log",
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
+    }
+  ]
+}

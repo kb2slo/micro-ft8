@@ -13,15 +13,24 @@
       "beacon_change": {
         "time_offset": 1.0,
         "beacon_on": 1
+      },
+      "expect": {
+        "tx": "CQ AG6AQ CM97"
       }
     },
     {
       "comment": "Period 1 (odd): nothing — our CQ was sent in period 0",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
     },
     {
       "comment": "Period 2 (even): no RX yet, beacon sends another CQ",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": "CQ AG6AQ CM97"
+      }
     },
     {
       "comment": "Period 3 (odd): DX sends TX1 (grid) in response to our CQ",
@@ -33,11 +42,17 @@
           "snr": -10,
           "slot": 1
         }
-      ]
+      ],
+      "expect": {
+        "tx": "N6HAN AG6AQ -10"
+      }
     },
     {
       "comment": "Period 4 (even): we send TX2 (report).  Autoseq should be in REPORT.",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": "N6HAN AG6AQ -10"
+      }
     },
     {
       "comment": "Period 5 (odd): DX sends TX2 (report WITHOUT R prefix) — BUG trigger",
@@ -49,11 +64,17 @@
           "snr": -7,
           "slot": 1
         }
-      ]
+      ],
+      "expect": {
+        "tx": "N6HAN AG6AQ R-10"
+      }
     },
     {
       "comment": "Period 6 (even): we send TX3 (R+report). FIX: should be ROGER_REPORT.",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": "N6HAN AG6AQ R-10"
+      }
     },
     {
       "comment": "Period 7 (odd): DX sends TX4 (RR73)",
@@ -65,11 +86,18 @@
           "snr": 0,
           "slot": 1
         }
-      ]
+      ],
+      "expect": {
+        "tx": "N6HAN AG6AQ 73",
+        "log": "N6HAN CM87 rst_sent=-10 rst_rcvd=-7"
+      }
     },
     {
       "comment": "Period 8 (even): we send TX5 (73), QSO complete",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": "CQ AG6AQ CM97"
+      }
     }
   ]
 }

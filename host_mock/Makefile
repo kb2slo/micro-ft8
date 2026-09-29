@@ -21,10 +21,11 @@ INCLUDES = -I. -I../main -I../main/radio -I../main/audio -I../main/storage -I../
            -I../components/dial_history/include \
            -I../components/ft8_lib -I../components/ft8_lib/vendor \
            -I../components/ft8_lib/vendor/ft8 \
-           -I../components/board_cardputer_adv/include
+           -I../components/board_cardputer_adv/include \
+           -I../components/porta_proto/include
 
 CORE_SRC   = ../components/autoseq/autoseq.cpp
-MOCK_SRC   = host_main.cpp host_mocks.cpp json_parser.cpp
+MOCK_SRC   = host_main.cpp host_mocks.cpp json_parser.cpp scenario.cpp
 # FT8 encode sources (uncomment to link real encoder):
 # FT8_SRC  = ../components/ft8_lib/vendor/ft8/encode.c ../components/ft8_lib/vendor/ft8/message.c \
 #            ../components/ft8_lib/vendor/ft8/crc.c ../components/ft8_lib/vendor/ft8/text.c
@@ -37,6 +38,7 @@ C_OBJ   = $(ALL_C_SRC:.c=.o)
 OBJ     = $(CXX_OBJ) $(C_OBJ)
 
 TARGET = host_test
+SIM_TARGET = sim_station
 UNIQUE_TARGET = host_test_unique_callsign
 CANCEL_TARGET = host_test_beacon_cancel
 ADIF_TARGET = host_test_adif_merge
@@ -74,9 +76,18 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET
      $(USB_C_PRESENCE_TARGET) $(MENU_MODEL_TARGET) $(SCREEN_MODEL_TARGET) \
      $(DATETIME_FIELD_TARGET) $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
      $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(BUNDLE_HOST_TARGET) \
-     $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET)
+     $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
+     $(SIM_TARGET)
 
-$(TARGET): $(OBJ)
+$(TARGET): $(OBJ) porta_event_json.o
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+porta_event_json.o: ../components/porta_proto/porta_event_json.c
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+SIM_OBJ = sim_station.o scenario.o host_mocks.o json_parser.o \
+          ../components/autoseq/autoseq.o porta_event_json.o
+$(SIM_TARGET): $(SIM_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 UNIQUE_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_unique_callsign.o
@@ -153,7 +164,7 @@ screen_model.o: ../main/screen_model.cpp
 $(SCREEN_MODEL_TARGET): $(SCREEN_MODEL_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
-PORTA_PROTO_OBJ = porta_proto.o test_porta_proto.o
+PORTA_PROTO_OBJ = porta_proto.o porta_event_json.o test_porta_proto.o
 porta_proto.o: ../components/porta_proto/porta_proto.c
 	$(CC) $(CFLAGS) -I../components/porta_proto/include -c $< -o $@
 test_porta_proto.o: test_porta_proto.cpp
@@ -254,7 +265,8 @@ $(FILE_LIST_TARGET): $(FILE_LIST_OBJ)
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 clean:
-	rm -f $(OBJ) $(UNIQUE_OBJ) $(CANCEL_OBJ) $(ADIF_OBJ) $(STATION_OBJ) \
+	rm -f $(OBJ) porta_event_json.o sim_station.o $(SIM_TARGET) \
+	      $(UNIQUE_OBJ) $(CANCEL_OBJ) $(ADIF_OBJ) $(STATION_OBJ) \
 	      $(DECODE_SORT_OBJ) $(POWER_OBJ) $(QSO_BROWSE_OBJ) $(ADIF_DELETE_OBJ) $(COPY_BLOCK_OBJ) \
 	      $(STATION_SAVE_OBJ) $(FILE_LIST_OBJ) $(RADIO_PROFILE_OBJ) $(TX_HUD_BANNER_OBJ) \
 	      $(RX_LIST_STALE_OBJ) $(CTS_TIME_OBJ) $(BAND_CONFIG_OBJ) \

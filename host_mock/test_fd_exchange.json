@@ -15,15 +15,24 @@
       "beacon_change": {
         "time_offset": 1.0,
         "beacon_on": 1
+      },
+      "expect": {
+        "tx": "CQ FD AG6AQ CM97"
       }
     },
     {
       "comment": "Period 1 (odd): nothing — CQ FD sent in period 0",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
     },
     {
       "comment": "Period 2 (even): no reply yet, beacon sends another CQ FD",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": "CQ FD AG6AQ CM97"
+      }
     },
     {
       "comment": "Period 3 (odd): DX replies with FD exchange (their TX2: '1B SCV')",
@@ -35,11 +44,17 @@
           "snr": -5,
           "slot": 1
         }
-      ]
+      ],
+      "expect": {
+        "tx": "N6HAN AG6AQ R 1A SCV"
+      }
     },
     {
       "comment": "Period 4 (even): we respond with R + our FD exchange (TX3) — state ROGER_REPORT",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": "N6HAN AG6AQ R 1A SCV"
+      }
     },
     {
       "comment": "Period 5 (odd): DX sends RR73 (TX4) — acknowledging our R+exchange",
@@ -51,11 +66,19 @@
           "snr": -3,
           "slot": 1
         }
-      ]
+      ],
+      "expect": {
+        "tx": "N6HAN AG6AQ 73",
+        "log": "N6HAN  rst_sent=-5 rst_rcvd=-99",
+        "cabrillo": "N6HAN exchange=1B SCV"
+      }
     },
     {
       "comment": "Period 6 (even): we send 73 (TX5) — QSO complete",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": "CQ FD AG6AQ CM97"
+      }
     }
   ]
 }

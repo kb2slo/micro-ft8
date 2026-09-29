@@ -48,6 +48,7 @@ bool load_test_data(const std::string& filename, TestData& out) {
         out.config.cq_type    = c.value("CQ_TYPE", "");
         out.config.free_text  = c.value("FREE_TEXT", "");
         out.config.max_retry  = c.value("MAX_RETRY", 5);
+        out.config.skip_tx1   = c.value("SKIP_TX1", false);
     }
 
     // --- periods ---
@@ -114,6 +115,25 @@ bool load_test_data(const std::string& filename, TestData& out) {
             period.has_freetext_event = true;
             period.freetext_event.time_offset = fe.value("time_offset", 0.0f);
             period.freetext_event.text        = fe.value("text", std::string(""));
+        }
+
+        if (pj.contains("expect")) {
+            auto& ex = pj["expect"];
+            if (ex.contains("tx")) {
+                period.has_expect_tx = true;
+                period.expect_tx = ex.value("tx", std::string(""));
+                substitute(period.expect_tx, out.config);
+            }
+            if (ex.contains("log")) {
+                period.has_expect_log = true;
+                period.expect_log = ex.value("log", std::string(""));
+                substitute(period.expect_log, out.config);
+            }
+            if (ex.contains("cabrillo")) {
+                period.has_expect_cabrillo = true;
+                period.expect_cabrillo = ex.value("cabrillo", std::string(""));
+                substitute(period.expect_cabrillo, out.config);
+            }
         }
 
         out.periods.push_back(std::move(period));

@@ -5,6 +5,6 @@
 # compile the same file (docs/STYLE.md, Structure: "more than one idf.py
 # project compiles it") and what keeps B47's UART-versus-I2C question open.
 idf_component_register(
-    SRCS "porta_proto.c"
+    SRCS "porta_proto.c" "porta_event_json.c"
     INCLUDE_DIRS "include"
 )

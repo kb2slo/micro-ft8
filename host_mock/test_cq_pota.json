@@ -1,0 +1,38 @@
+{
+  "comment": "CQ POTA uses the POTA template.",
+  "config": {
+    "MY_CALLSIGN": "AG6AQ",
+    "MY_GRID": "CM97",
+    "DX_CALLSIGN": "N6HAN",
+    "DX_GRID": "CM87",
+    "TX_ON_EVEN": true,
+    "CQ_TYPE": "POTA"
+  },
+  "periods": [
+    {
+      "comment": "Period 0 (even): beacon on, CQ POTA",
+      "messages": [],
+      "beacon_change": {
+        "time_offset": 1.0,
+        "beacon_on": 1
+      },
+      "expect": {
+        "tx": "CQ POTA AG6AQ CM97"
+      }
+    },
+    {
+      "comment": "Period 1 (odd): CQ was one-shot",
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
+    },
+    {
+      "comment": "Period 2 (even): beacon sends a fresh CQ POTA",
+      "messages": [],
+      "expect": {
+        "tx": "CQ POTA AG6AQ CM97"
+      }
+    }
+  ]
+}

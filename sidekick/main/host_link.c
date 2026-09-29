@@ -173,7 +173,6 @@ static esp_err_t get_events(httpd_req_t *req)
     httpd_resp_sendstr_chunk(req, "{\"events\":[");
 
     bool first = true;
-    char esc[PORTA_EVENT_TEXT_MAX * 6 + 1];
     // Worst case: text fully \u-escaped (6 bytes a char) plus a DECODE's
     // fixed fields, the largest (~165 bytes with v2's slot and dial).
     char row[PORTA_EVENT_TEXT_MAX * 6 + 224];
@@ -203,61 +202,84 @@ static esp_err_t get_events(httpd_req_t *req)
         }
         xSemaphoreGive(s_lock);
 
-        json_escape(e.text, esc, sizeof(esc));
-        char esc_call[sizeof(esc)];
-        int n;
+        size_t n = 0;
         switch (e.kind) {
-        case ENTRY_DECODE:
-            n = snprintf(row, sizeof(row),
-                         "%s{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":1,\"x\":\"%s\","
-                         "\"id\":%" PRIu32 ",\"snr\":%d,\"hz\":%u,\"dt\":%.2f,\"cq\":%d,\"me\":%d,\"rq\":%d,"
-                         "\"si\":%" PRIu32 ",\"sl\":%u,\"fq\":%" PRIu32 "}",
-                         first ? "" : ",", e.seq, e.epoch_secs, esc, e.decode_id, e.snr,
-                         e.offset_hz, e.dt_centis / 100.0, e.is_cq ? 1 : 0, e.is_to_me ? 1 : 0,
-                         e.is_recent_qso ? 1 : 0, e.slot_idx, (unsigned)e.slot_len_ds, e.dial_hz);
-            break;
-        case ENTRY_QUEUE_ENTRY:
-            json_escape(e.dxcall, esc_call, sizeof(esc_call));
-            n = snprintf(row, sizeof(row),
-                         "%s{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":2,\"eid\":%u,"
-                         "\"st\":%u,\"rc\":%u,\"rl\":%u,\"x\":\"%s\"}",
-                         first ? "" : ",", e.seq, e.epoch_secs, e.entry_id, e.state,
-                         e.retry_count, e.retry_limit, esc_call);
-            break;
-        case ENTRY_SLOT_STATE:
-            n = snprintf(row, sizeof(row),
-                         "%s{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":3,"
-                         "\"sp\":%u,\"bm\":%u,\"hz\":%u}",
-                         first ? "" : ",", e.seq, e.epoch_secs, e.slot_parity, e.beacon_mode,
-                         e.offset_hz);
-            break;
-        case ENTRY_TX_HUD: {
-            char esc_reason[PORTA_TX_HUD_REASON_MAX * 6 + 1];
-            json_escape(e.tx_reason, esc_reason, sizeof(esc_reason));
-            n = snprintf(row, sizeof(row),
-                         "%s{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":4,"
-                         "\"active\":%d,\"aborted\":%d,\"wrblk\":%d,"
-                         "\"pw\":%d,\"swr\":%d,\"batt\":%d,\"hz\":%u,\"reason\":\"%s\",\"x\":\"%s\"}",
-                         first ? "" : ",", e.seq, e.epoch_secs,
-                         e.tx_active ? 1 : 0, e.tx_aborted ? 1 : 0, e.tx_writes_blocked ? 1 : 0,
-                         e.tx_power_dw, e.tx_swr_c, e.tx_battery_pct, e.offset_hz, esc_reason, esc);
+        case ENTRY_DECODE: {
+            porta_decode_event_t d;
+            memset(&d, 0, sizeof(d));
+            d.epoch_secs = e.epoch_secs;
+            d.decode_id = e.decode_id;
+            strncpy(d.text, e.text, sizeof(d.text) - 1);
+            d.snr = e.snr;
+            d.offset_hz = e.offset_hz;
+            d.dt_centis = e.dt_centis;
+            d.is_cq = e.is_cq;
+            d.is_to_me = e.is_to_me;
+            d.is_recent_qso = e.is_recent_qso;
+            d.slot_idx = e.slot_idx;
+            d.slot_len_ds = e.slot_len_ds;
+            d.dial_hz = e.dial_hz;
+            n = porta_event_json_decode(row, sizeof(row), e.seq, &d);
             break;
         }
-        case ENTRY_USB_STATUS:
-            n = snprintf(row, sizeof(row),
-                         "%s{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":5,"
-                         "\"present\":%d,\"kind\":%u,\"vid\":%u,\"pid\":%u}",
-                         first ? "" : ",", e.seq, e.epoch_secs,
-                         e.usb_present ? 1 : 0, e.usb_kind, e.usb_vid, e.usb_pid);
+        case ENTRY_QUEUE_ENTRY: {
+            porta_queue_entry_event_t q;
+            memset(&q, 0, sizeof(q));
+            q.epoch_secs = e.epoch_secs;
+            q.entry_id = e.entry_id;
+            q.state = e.state;
+            q.retry_count = e.retry_count;
+            q.retry_limit = e.retry_limit;
+            strncpy(q.dxcall, e.dxcall, sizeof(q.dxcall) - 1);
+            n = porta_event_json_queue(row, sizeof(row), e.seq, &q);
             break;
+        }
+        case ENTRY_SLOT_STATE: {
+            porta_slot_state_event_t ss;
+            memset(&ss, 0, sizeof(ss));
+            ss.epoch_secs = e.epoch_secs;
+            ss.slot_parity = e.slot_parity;
+            ss.beacon_mode = e.beacon_mode;
+            ss.resolved_offset_hz = e.offset_hz;
+            n = porta_event_json_slot(row, sizeof(row), e.seq, &ss);
+            break;
+        }
+        case ENTRY_TX_HUD: {
+            porta_tx_hud_event_t hud;
+            memset(&hud, 0, sizeof(hud));
+            hud.epoch_secs = e.epoch_secs;
+            hud.active = e.tx_active;
+            hud.aborted = e.tx_aborted;
+            hud.writes_blocked = e.tx_writes_blocked;
+            hud.power_dw = e.tx_power_dw;
+            hud.swr_c = e.tx_swr_c;
+            hud.battery_pct = e.tx_battery_pct;
+            hud.offset_hz = e.offset_hz;
+            strncpy(hud.reason, e.tx_reason, sizeof(hud.reason) - 1);
+            strncpy(hud.text, e.text, sizeof(hud.text) - 1);
+            n = porta_event_json_tx_hud(row, sizeof(row), e.seq, &hud);
+            break;
+        }
+        case ENTRY_USB_STATUS: {
+            porta_usb_status_event_t usb;
+            memset(&usb, 0, sizeof(usb));
+            usb.epoch_secs = e.epoch_secs;
+            usb.present = e.usb_present;
+            usb.kind = e.usb_kind;
+            usb.vid = e.usb_vid;
+            usb.pid = e.usb_pid;
+            n = porta_event_json_usb(row, sizeof(row), e.seq, &usb);
+            break;
+        }
         case ENTRY_LOG:
         default:
-            n = snprintf(row, sizeof(row),
-                         "%s{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":0,\"x\":\"%s\"}",
-                         first ? "" : ",", e.seq, e.epoch_secs, esc);
+            n = porta_event_json_log(row, sizeof(row), e.seq, e.epoch_secs, e.text);
             break;
         }
         if (n > 0) {
+            if (!first) {
+                httpd_resp_sendstr_chunk(req, ",");
+            }
             httpd_resp_sendstr_chunk(req, row);
             first = false;
         }

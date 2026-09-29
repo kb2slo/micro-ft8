@@ -12,33 +12,63 @@
     {
       "comment": "Period 0 (even): beacon on → first CQ. Queue should be empty after tick (one-shot).",
       "messages": [],
-      "beacon_change": { "time_offset": 0.0, "beacon_on": 1 }
+      "beacon_change": {
+        "time_offset": 0.0,
+        "beacon_on": 1
+      },
+      "expect": {
+        "tx": "CQ AG6AQ CM97"
+      }
     },
     {
       "comment": "Period 1 (odd): no TX (odd slot). Queue should be empty (CQ was popped by tick).",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
     },
     {
       "comment": "Period 2 (even): beacon still on → fresh CQ (proves first was popped, not retried).",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": "CQ AG6AQ CM97"
+      }
     },
     {
       "comment": "Period 3 (odd): beacon OFF. No stale CQ should remain.",
       "messages": [],
-      "beacon_change": { "time_offset": 0.0, "beacon_on": 0 }
+      "beacon_change": {
+        "time_offset": 0.0,
+        "beacon_on": 0
+      },
+      "expect": {
+        "tx": ""
+      }
     },
     {
       "comment": "Period 4 (even): no CQ (beacon off). Queue empty.",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
     },
     {
       "comment": "Period 5 (odd): still off, still empty.",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
     },
     {
       "comment": "Period 6 (even): beacon ON again → CQ resumes.",
       "messages": [],
-      "beacon_change": { "time_offset": 0.0, "beacon_on": 1 }
+      "beacon_change": {
+        "time_offset": 0.0,
+        "beacon_on": 1
+      },
+      "expect": {
+        "tx": "CQ AG6AQ CM97"
+      }
     },
     {
       "comment": "Period 7 (odd): DX replies with TX1 (grid). CQ was popped by tick; DX creates a new QSO context via on_decode → override. Now active QSO should preempt any future CQ.",
@@ -51,11 +81,17 @@
           "slot": 1,
           "freq_hz": 1200
         }
-      ]
+      ],
+      "expect": {
+        "tx": "N6HAN AG6AQ -5"
+      }
     },
     {
       "comment": "Period 8 (even): should TX to DX (TX2 report), NOT CQ. QSO preempts beacon.",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": "N6HAN AG6AQ -5"
+      }
     },
     {
       "comment": "Period 9 (odd): DX sends TX3 (R+report). QSO advances to ROGERS, logs ADIF.",
@@ -68,11 +104,18 @@
           "slot": 1,
           "freq_hz": 1200
         }
-      ]
+      ],
+      "expect": {
+        "tx": "N6HAN AG6AQ RR73",
+        "log": "N6HAN CM87 rst_sent=-5 rst_rcvd=-12"
+      }
     },
     {
       "comment": "Period 10 (even): should TX RR73 to DX (ROGERS state), not CQ.",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": "N6HAN AG6AQ RR73"
+      }
     },
     {
       "comment": "Period 11 (odd): DX sends TX5 (73). QSO complete → IDLE → pop. Queue empty.",
@@ -85,19 +128,31 @@
           "slot": 1,
           "freq_hz": 1200
         }
-      ]
+      ],
+      "expect": {
+        "tx": ""
+      }
     },
     {
       "comment": "Period 12 (even): QSO done, beacon still on → CQ resumes.",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": "CQ AG6AQ CM97"
+      }
     },
     {
       "comment": "Period 13 (odd): idle.",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
     },
     {
       "comment": "Period 14 (even): another CQ (beacon continues).",
-      "messages": []
+      "messages": [],
+      "expect": {
+        "tx": "CQ AG6AQ CM97"
+      }
     }
   ]
 }

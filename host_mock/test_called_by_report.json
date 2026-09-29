@@ -1,0 +1,86 @@
+{
+  "comment": "DX opens a QSO with a report, not a grid. The report we send is latched from that first SNR; a later report changes what we log as received and must not change what we send.",
+  "config": {
+    "MY_CALLSIGN": "AG6AQ",
+    "MY_GRID": "CM97",
+    "DX_CALLSIGN": "N6HAN",
+    "DX_GRID": "CM87",
+    "TX_ON_EVEN": true
+  },
+  "periods": [
+    {
+      "comment": "Period 0: idle",
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
+    },
+    {
+      "comment": "Period 1 (odd): DX calls us with -14. New QSO goes straight to R-report. snr_tx latches the decode SNR, -8.",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "${DX_CALLSIGN}",
+          "locator": "-14",
+          "snr": -8,
+          "slot": 1
+        }
+      ],
+      "expect": {
+        "tx": "N6HAN AG6AQ R-8"
+      }
+    },
+    {
+      "comment": "Period 2 (even): resend R-8",
+      "messages": [],
+      "expect": {
+        "tx": "N6HAN AG6AQ R-8"
+      }
+    },
+    {
+      "comment": "Period 3 (odd): DX repeats a report at -22. We stay on R-8.",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "${DX_CALLSIGN}",
+          "locator": "-22",
+          "snr": -22,
+          "slot": 1
+        }
+      ],
+      "expect": {
+        "tx": "N6HAN AG6AQ R-8"
+      }
+    },
+    {
+      "comment": "Period 4 (even): still R-8",
+      "messages": [],
+      "expect": {
+        "tx": "N6HAN AG6AQ R-8"
+      }
+    },
+    {
+      "comment": "Period 5 (odd): DX sends RR73. Log rst_sent from the latch and rst_rcvd from the later report. No grid was ever copied.",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "${DX_CALLSIGN}",
+          "locator": "RR73",
+          "snr": 0,
+          "slot": 1
+        }
+      ],
+      "expect": {
+        "tx": "N6HAN AG6AQ 73",
+        "log": "N6HAN  rst_sent=-8 rst_rcvd=-22"
+      }
+    },
+    {
+      "comment": "Period 6 (even): signoff parked, nothing more",
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
+    }
+  ]
+}

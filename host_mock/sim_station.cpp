@@ -1,0 +1,507 @@
+/*
+ * sim_station — live scenario server.
+ *
+ * Plays a host_mock JSON scenario on a slot clock and serves the Operate
+ * and Log routes the web app already polls. USB, CAT, and audio are not
+ * simulated: cat_ready and audio_rx are simply reported up so the page
+ * renders, and one USB-present event names a QMX.
+ *
+ *   ./sim_station [--scale N] [--port N] scenario.json
+ *
+ * --scale divides the 15 s period. 1 is real time. The page's own clock
+ * is not replaced: slot indexes come from the wall clock.
+ */
+
+#include "scenario.h"
+
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <chrono>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <ctime>
+#include <map>
+#include <sstream>
+#include <string>
+#include <vector>
+
+static const char* kToken = "sim-station-token";
+
+static std::map<std::string, std::string> g_cfg;
+static std::string g_log_file;
+static Scenario g_scenario;
+
+static std::string json_escape(const std::string& in)
+{
+    std::string out;
+    for (unsigned char c : in) {
+        if (c == '"' || c == '\\') {
+            out.push_back('\\');
+            out.push_back((char)c);
+        } else if (c < 0x20 || c == 0x7F) {
+            char buf[8];
+            snprintf(buf, sizeof(buf), "\\u%04x", c);
+            out += buf;
+        } else {
+            out.push_back((char)c);
+        }
+    }
+    return out;
+}
+
+static int cq_type_number(const std::string& name)
+{
+    if (name == "SOTA") return 1;
+    if (name == "POTA") return 2;
+    if (name == "QRP") return 3;
+    if (name == "FD") return 4;
+    if (name == "FREETEXT") return 5;
+    return 0;
+}
+
+static void seed_config(const TestData& td)
+{
+    g_cfg["call"] = td.config.my_callsign;
+    g_cfg["grid"] = td.config.my_grid;
+    g_cfg["cq_type"] = std::to_string(cq_type_number(td.config.cq_type));
+    g_cfg["free_text"] = td.config.free_text;
+    g_cfg["autoseq_max_retry"] = std::to_string(td.config.max_retry);
+    g_cfg["offset"] = "1500";
+    g_cfg["offset_src"] = "0";
+    g_cfg["band_sel"] = "5";
+    g_cfg["protocol_mode"] = "FT8";
+    g_cfg["active_bands"] = "40 30 20 17 15 12 10";
+    g_cfg["act_refs"] = "";
+    g_cfg["cat_ready"] = "1";
+    g_cfg["audio_rx"] = "1";
+    g_cfg["tune"] = "0";
+    g_cfg["sk_fw_version"] = "sim";
+    g_cfg["sk_wifi_mode"] = "sim";
+    g_cfg["sk_network_name"] = "simulator";
+    g_cfg["sk_ip"] = "127.0.0.1";
+    g_cfg["sk_uptime"] = "0";
+    g_cfg["sk_crc_errors"] = "0";
+    g_cfg["sk_frames_ok"] = "0";
+    g_cfg["sk_ring_gaps"] = "0";
+    g_cfg["sk_config_retries"] = "0";
+
+    char day[16];
+    const std::time_t now = std::time(nullptr);
+    std::tm tm{};
+    gmtime_r(&now, &tm);
+    snprintf(day, sizeof(day), "%04d%02d%02d.adi", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+    g_log_file = day;
+}
+
+static std::string config_json()
+{
+    std::string body = "{\"ok\":true";
+    for (const auto& kv : g_cfg) {
+        body += ",\"";
+        body += json_escape(kv.first);
+        body += "\":\"";
+        body += json_escape(kv.second);
+        body += "\"";
+    }
+    body += "}";
+    return body;
+}
+
+static std::string events_json(uint32_t since)
+{
+    std::string body = "{\"events\":[";
+    bool first = true;
+    for (size_t i = 0; i < g_scenario.events.size(); ++i) {
+        const uint32_t seq = (uint32_t)i + 1u;
+        if (seq < since) {
+            continue;
+        }
+        if (!first) {
+            body += ",";
+        }
+        first = false;
+        body += g_scenario.events[i];
+    }
+    body += "],\"seq\":";
+    body += std::to_string(g_scenario.next_seq);
+    body += "}";
+    return body;
+}
+
+static std::string log_files_json()
+{
+    if (g_scenario.log.empty()) {
+        return "{\"ok\":true,\"files\":[]}";
+    }
+    return "{\"ok\":true,\"files\":[\"" + g_log_file + "\"]}";
+}
+
+static std::string log_entries_json(const std::string& file, unsigned skip, unsigned take)
+{
+    if (file != g_log_file) {
+        return "{\"ok\":false,\"why\":\"no such file\"}";
+    }
+    std::string body = "{\"ok\":true,\"entries\":[";
+    bool first = true;
+    unsigned seen = 0;
+    unsigned emitted = 0;
+    for (auto it = g_scenario.log.begin(); it != g_scenario.log.end(); ++it) {
+        if (seen++ < skip) {
+            continue;
+        }
+        if (emitted >= take) {
+            break;
+        }
+        if (!first) {
+            body += ",";
+        }
+        first = false;
+        emitted++;
+        const SimLogEntry& e = *it;
+        body += "{\"time\":\"" + json_escape(e.time_on) + "\",\"band\":\"20m\",\"call\":\"";
+        body += json_escape(e.call);
+        body += "\",\"rst_sent\":";
+        body += std::to_string(e.rst_sent);
+        body += ",\"rst_rcvd\":";
+        body += std::to_string(e.rst_rcvd);
+        body += ",\"grid\":\"" + json_escape(e.grid) + "\",\"freq\":\"14.074\",\"my_grid\":\"";
+        body += json_escape(e.my_grid);
+        body += "\",\"comment\":\"\",\"mode\":\"FT8\",\"station_callsign\":\"";
+        body += json_escape(e.station_call);
+        body += "\",\"my_pota_ref\":\"\",\"my_sota_ref\":\"\"}";
+    }
+    body += "]}";
+    return body;
+}
+
+static std::map<std::string, std::string> parse_query(const std::string& q)
+{
+    std::map<std::string, std::string> out;
+    size_t i = 0;
+    while (i < q.size()) {
+        const size_t amp = q.find('&', i);
+        const std::string pair = q.substr(i, amp == std::string::npos ? std::string::npos : amp - i);
+        const size_t eq = pair.find('=');
+        if (eq != std::string::npos) {
+            out[pair.substr(0, eq)] = pair.substr(eq + 1);
+        }
+        if (amp == std::string::npos) {
+            break;
+        }
+        i = amp + 1;
+    }
+    return out;
+}
+
+static void apply_config_body(const std::string& body)
+{
+    std::istringstream in(body);
+    std::string line;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        const size_t eq = line.find('=');
+        if (eq == std::string::npos || eq == 0) {
+            continue;
+        }
+        const std::string key = line.substr(0, eq);
+        const std::string value = line.substr(eq + 1);
+        g_cfg[key] = value;
+    }
+    scenario_set_station(g_scenario, g_cfg["call"], g_cfg["grid"]);
+    scenario_set_cq_type(g_scenario, std::atoi(g_cfg["cq_type"].c_str()), g_cfg["free_text"]);
+    if (!g_cfg["autoseq_max_retry"].empty()) {
+        scenario_set_max_retry(g_scenario, std::atoi(g_cfg["autoseq_max_retry"].c_str()));
+    }
+}
+
+static std::string handle(const std::string& method, const std::string& url,
+                          const std::map<std::string, std::string>& headers,
+                          const std::string& body, int* status)
+{
+    *status = 200;
+    const size_t qpos = url.find('?');
+    const std::string path = url.substr(0, qpos);
+    const auto query = parse_query(qpos == std::string::npos ? "" : url.substr(qpos + 1));
+
+    auto token_ok = [&]() {
+        auto it = headers.find("x-microft8-token");
+        return it != headers.end() && it->second == kToken;
+    };
+    const bool write = method == "POST" || method == "PUT" || method == "DELETE";
+    if (write && path != "/api/pairing-token" && !token_ok()) {
+        *status = 401;
+        return "{\"ok\":false,\"why\":\"unauthorized\"}";
+    }
+
+    if (method == "GET" && path == "/api/events") {
+        const unsigned long since = query.count("since") ? std::strtoul(query.at("since").c_str(), nullptr, 10) : 0;
+        return events_json((uint32_t)since);
+    }
+    if (method == "GET" && path == "/api/config") {
+        return config_json();
+    }
+    if (method == "PUT" && path == "/api/config") {
+        apply_config_body(body);
+        return "{\"ok\":true}";
+    }
+    if (method == "GET" && path == "/api/pairing-token") {
+        return std::string("{\"token\":\"") + kToken + "\"}";
+    }
+    if (method == "POST" && path == "/api/queue/reply") {
+        const unsigned long id = std::strtoul(body.c_str(), nullptr, 10);
+        if (id == 0 || !scenario_reply(g_scenario, (uint32_t)id)) {
+            *status = 400;
+            return "{\"ok\":false,\"why\":\"unknown decode\"}";
+        }
+        return "{\"ok\":true}";
+    }
+    if (method == "POST" && path == "/api/queue/cancel") {
+        const unsigned long id = std::strtoul(body.c_str(), nullptr, 10);
+        if (id == 0 || !scenario_cancel_entry(g_scenario, (uint16_t)id)) {
+            *status = 400;
+            return "{\"ok\":false,\"why\":\"unknown entry\"}";
+        }
+        return "{\"ok\":true}";
+    }
+    if (method == "POST" && path == "/api/beacon") {
+        std::string mode = body;
+        while (!mode.empty() && (mode.back() == '\n' || mode.back() == '\r' || mode.back() == ' ')) {
+            mode.pop_back();
+        }
+        int m = -1;
+        if (mode == "0" || mode == "off") m = 0;
+        else if (mode == "1" || mode == "even") m = 1;
+        else if (mode == "2" || mode == "odd") m = 2;
+        if (m < 0) {
+            *status = 400;
+            return "{\"ok\":false,\"why\":\"want 0/1/2\"}";
+        }
+        scenario_set_beacon(g_scenario, m);
+        return "{\"ok\":true}";
+    }
+    if (method == "POST" && path == "/api/tx/cancel") {
+        scenario_cancel_tx(g_scenario);
+        return "{\"ok\":true}";
+    }
+    if (method == "GET" && path == "/api/log/files") {
+        return log_files_json();
+    }
+    if (method == "GET" && path == "/api/log/entries") {
+        const unsigned skip = query.count("skip") ? (unsigned)std::strtoul(query.at("skip").c_str(), nullptr, 10) : 0;
+        unsigned take = query.count("take") ? (unsigned)std::strtoul(query.at("take").c_str(), nullptr, 10) : 6;
+        if (take == 0) {
+            take = 6;
+        }
+        const std::string file = query.count("file") ? query.at("file") : "";
+        return log_entries_json(file, skip, take);
+    }
+    *status = 404;
+    return "{\"ok\":false,\"why\":\"not found\"}";
+}
+
+static void send_response(int fd, int status, const std::string& body)
+{
+    char head[256];
+    const char* text = "OK";
+    if (status == 400) text = "Bad Request";
+    else if (status == 401) text = "Unauthorized";
+    else if (status == 404) text = "Not Found";
+    const int n = snprintf(head, sizeof(head),
+                           "HTTP/1.1 %d %s\r\n"
+                           "Content-Type: application/json\r\n"
+                           "Cache-Control: no-store\r\n"
+                           "Content-Length: %zu\r\n"
+                           "Connection: close\r\n"
+                           "\r\n",
+                           status, text, body.size());
+    if (n > 0) {
+        send(fd, head, (size_t)n, 0);
+    }
+    send(fd, body.data(), body.size(), 0);
+}
+
+static std::string header_get(const std::map<std::string, std::string>& h, const char* key)
+{
+    auto it = h.find(key);
+    return it == h.end() ? "" : it->second;
+}
+
+static bool serve_client(int fd)
+{
+    std::string data;
+    char buf[1024];
+    while (data.find("\r\n\r\n") == std::string::npos) {
+        const ssize_t n = recv(fd, buf, sizeof(buf), 0);
+        if (n <= 0) {
+            return false;
+        }
+        data.append(buf, (size_t)n);
+        if (data.size() > 65536) {
+            return false;
+        }
+    }
+    const size_t hdr_end = data.find("\r\n\r\n");
+    const std::string head = data.substr(0, hdr_end);
+    std::string body = data.substr(hdr_end + 4);
+
+    std::istringstream lines(head);
+    std::string request;
+    std::getline(lines, request);
+    if (!request.empty() && request.back() == '\r') {
+        request.pop_back();
+    }
+    std::string method, url, version;
+    {
+        std::istringstream rl(request);
+        rl >> method >> url >> version;
+    }
+    std::map<std::string, std::string> headers;
+    std::string line;
+    while (std::getline(lines, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        const size_t colon = line.find(':');
+        if (colon == std::string::npos) {
+            continue;
+        }
+        std::string key = line.substr(0, colon);
+        std::string value = line.substr(colon + 1);
+        while (!value.empty() && value.front() == ' ') {
+            value.erase(value.begin());
+        }
+        for (char& c : key) {
+            if (c >= 'A' && c <= 'Z') {
+                c = (char)(c - 'A' + 'a');
+            }
+        }
+        headers[key] = value;
+    }
+    const unsigned long need = std::strtoul(header_get(headers, "content-length").c_str(), nullptr, 10);
+    while (body.size() < need) {
+        const ssize_t n = recv(fd, buf, sizeof(buf), 0);
+        if (n <= 0) {
+            break;
+        }
+        body.append(buf, (size_t)n);
+    }
+    if (body.size() > need) {
+        body.resize(need);
+    }
+    int status = 200;
+    const std::string response = handle(method, url, headers, body, &status);
+    send_response(fd, status, response);
+    return true;
+}
+
+int main(int argc, char** argv)
+{
+    int scale = 1;
+    int port = 8790;
+    const char* scenario_path = nullptr;
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--scale") == 0 && i + 1 < argc) {
+            scale = std::atoi(argv[++i]);
+        } else if (std::strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
+            port = std::atoi(argv[++i]);
+        } else if (!scenario_path) {
+            scenario_path = argv[i];
+        }
+    }
+    if (!scenario_path) {
+        fprintf(stderr, "usage: sim_station [--scale N] [--port N] scenario.json\n");
+        return 1;
+    }
+    if (scale < 1) {
+        scale = 1;
+    }
+    int interval_ms = 15000 / scale;
+    if (interval_ms < 1) {
+        interval_ms = 1;
+    }
+
+    TestData td;
+    if (!load_test_data(scenario_path, td)) {
+        fprintf(stderr, "failed to load %s\n", scenario_path);
+        return 1;
+    }
+    seed_config(td);
+    scenario_begin(g_scenario, td);
+    g_scenario.wall_slots = true;
+    g_scenario.check_expect = false;
+    scenario_emit_usb(g_scenario, true);
+
+    const int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (listen_fd < 0) {
+        perror("socket");
+        return 1;
+    }
+    int yes = 1;
+    setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+    sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons((uint16_t)port);
+    addr.sin_addr.s_addr = htonl(0x7f000001);
+    if (bind(listen_fd, (sockaddr*)&addr, sizeof(addr)) < 0) {
+        perror("bind");
+        return 1;
+    }
+    if (listen(listen_fd, 8) < 0) {
+        perror("listen");
+        return 1;
+    }
+    printf("sim_station listening on 127.0.0.1:%d  scale=%d  %s\n", port, scale, scenario_path);
+    fflush(stdout);
+
+    using clock = std::chrono::steady_clock;
+    auto next_step = clock::now();
+    auto next_beat = next_step + std::chrono::seconds(1);
+    bool script_done = false;
+
+    while (true) {
+        const auto now = clock::now();
+        if (!script_done && now >= next_step) {
+            if (!scenario_step(g_scenario)) {
+                script_done = true;
+            }
+            next_step = clock::now() + std::chrono::milliseconds(interval_ms);
+        } else if (script_done && g_scenario.hud_active && now >= next_step) {
+            scenario_clear_hud(g_scenario);
+        }
+        if (now >= next_beat) {
+            scenario_emit_status(g_scenario);
+            scenario_emit_hud(g_scenario);
+            next_beat = clock::now() + std::chrono::seconds(1);
+        }
+
+        auto wake = next_beat;
+        if (!script_done || g_scenario.hud_active) {
+            if (next_step < wake) {
+                wake = next_step;
+            }
+        }
+        const auto wait = std::chrono::duration_cast<std::chrono::milliseconds>(wake - clock::now());
+        timeval tv;
+        tv.tv_sec = wait.count() > 0 ? (long)(wait.count() / 1000) : 0;
+        tv.tv_usec = wait.count() > 0 ? (long)((wait.count() % 1000) * 1000) : 0;
+
+        fd_set fds;
+        FD_ZERO(&fds);
+        FD_SET(listen_fd, &fds);
+        const int ready = select(listen_fd + 1, &fds, nullptr, nullptr, &tv);
+        if (ready > 0 && FD_ISSET(listen_fd, &fds)) {
+            const int client = accept(listen_fd, nullptr, nullptr);
+            if (client >= 0) {
+                serve_client(client);
+                close(client);
+            }
+        }
+    }
+}

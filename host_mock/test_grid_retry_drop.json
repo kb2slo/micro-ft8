@@ -1,0 +1,111 @@
+{
+  "comment": "A touch that only exchanges grids is dropped when retries run out, not parked. A later R+report must not revive it, and a later report starts a new QSO at the new SNR.",
+  "config": {
+    "MY_CALLSIGN": "AG6AQ",
+    "MY_GRID": "CM97",
+    "DX_CALLSIGN": "N6HAN",
+    "DX_GRID": "CM87",
+    "TX_ON_EVEN": true,
+    "MAX_RETRY": 1
+  },
+  "periods": [
+    {
+      "comment": "Period 0 (even): beacon on",
+      "messages": [],
+      "beacon_change": {
+        "time_offset": 1.0,
+        "beacon_on": 1
+      },
+      "expect": {
+        "tx": "CQ AG6AQ CM97"
+      }
+    },
+    {
+      "comment": "Period 1 (odd): touch their CQ. First grid. max retry 1.",
+      "messages": [
+        {
+          "call_to": "CQ",
+          "call_from": "${DX_CALLSIGN}",
+          "locator": "${DX_GRID}",
+          "snr": -5,
+          "slot": 1,
+          "freq_hz": 1200
+        }
+      ],
+      "touch_event": {
+        "time_offset": 14.0,
+        "message_index": 0
+      },
+      "expect": {
+        "tx": "N6HAN AG6AQ CM97"
+      }
+    },
+    {
+      "comment": "Period 2 (even): the one retry, then the entry is dropped",
+      "messages": [],
+      "expect": {
+        "tx": "N6HAN AG6AQ CM97"
+      }
+    },
+    {
+      "comment": "Period 3 (odd): their R+report has nothing to revive",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "${DX_CALLSIGN}",
+          "locator": "R-5",
+          "snr": -5,
+          "slot": 1
+        }
+      ],
+      "expect": {
+        "tx": ""
+      }
+    },
+    {
+      "comment": "Period 4 (even): beacon is back. The dropped QSO is not blocking it.",
+      "messages": [],
+      "expect": {
+        "tx": "CQ AG6AQ CM97"
+      }
+    },
+    {
+      "comment": "Period 5 (odd): a fresh report starts a new QSO at -18, not the old -5",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "${DX_CALLSIGN}",
+          "locator": "-18",
+          "snr": -18,
+          "slot": 1
+        }
+      ],
+      "expect": {
+        "tx": "N6HAN AG6AQ R-18"
+      }
+    },
+    {
+      "comment": "Period 6 (even): resend",
+      "messages": [],
+      "expect": {
+        "tx": "N6HAN AG6AQ R-18"
+      }
+    },
+    {
+      "comment": "Period 7 (odd): RR73. Log the new SNR and no grid (the grid died with the dropped entry).",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "${DX_CALLSIGN}",
+          "locator": "RR73",
+          "snr": 0,
+          "slot": 1
+        }
+      ],
+      "expect": {
+        "tx": "N6HAN AG6AQ 73",
+        "log": "N6HAN  rst_sent=-18 rst_rcvd=-18"
+      }
+    }
+  ]
+}

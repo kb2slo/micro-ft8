@@ -1,0 +1,70 @@
+{
+  "comment": "Skip TX1: touching a CQ starts at the report, using the tapped decode's SNR, and still logs their grid.",
+  "config": {
+    "MY_CALLSIGN": "AG6AQ",
+    "MY_GRID": "CM97",
+    "DX_CALLSIGN": "N6HAN",
+    "DX_GRID": "CM87",
+    "TX_ON_EVEN": true,
+    "SKIP_TX1": true
+  },
+  "periods": [
+    {
+      "comment": "Period 0: idle",
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
+    },
+    {
+      "comment": "Period 1 (odd): touch their CQ. The first TX is the report, not our grid.",
+      "messages": [
+        {
+          "call_to": "CQ",
+          "call_from": "${DX_CALLSIGN}",
+          "locator": "${DX_GRID}",
+          "snr": -6,
+          "slot": 1,
+          "freq_hz": 1200
+        }
+      ],
+      "touch_event": {
+        "time_offset": 14.0,
+        "message_index": 0
+      },
+      "expect": {
+        "tx": "N6HAN AG6AQ -6"
+      }
+    },
+    {
+      "comment": "Period 2 (even): resend the report",
+      "messages": [],
+      "expect": {
+        "tx": "N6HAN AG6AQ -6"
+      }
+    },
+    {
+      "comment": "Period 3 (odd): DX sends R-10. We RR73 and log the grid from the tap.",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "${DX_CALLSIGN}",
+          "locator": "R-10",
+          "snr": -10,
+          "slot": 1
+        }
+      ],
+      "expect": {
+        "tx": "N6HAN AG6AQ RR73",
+        "log": "N6HAN CM87 rst_sent=-6 rst_rcvd=-10"
+      }
+    },
+    {
+      "comment": "Period 4 (even): RR73 retry, already logged",
+      "messages": [],
+      "expect": {
+        "tx": "N6HAN AG6AQ RR73"
+      }
+    }
+  ]
+}

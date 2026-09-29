@@ -991,6 +991,98 @@ static void test_file_data_rows()
           "encode refuses a malformed time_on");
 }
 
+static void check_row(const std::string& got, const char* want, const char* what)
+{
+    if (got != want) {
+        std::printf("FAIL: %s\n  got  %s\n  want %s\n", what, got.c_str(), want);
+        g_fail++;
+    }
+}
+
+// The rows GET /api/events sends. host_link.c and the scenario simulator
+// both call this encoder, so a changed field fails here rather than only
+// on a browser.
+static void test_event_json()
+{
+    char row[1024];
+
+    check(porta_event_json_log(row, sizeof(row), 8, 1700000005, "a\"b") > 0,
+          "log row encodes");
+    check_row(row, "{\"s\":8,\"t\":1700000005,\"d\":0,\"x\":\"a\\\"b\"}", "log row");
+
+    porta_decode_event_t dec;
+    std::memset(&dec, 0, sizeof(dec));
+    dec.epoch_secs = 1700000000;
+    dec.decode_id = 7;
+    std::snprintf(dec.text, sizeof(dec.text), "CQ N6HAN CM87");
+    dec.snr = -5;
+    dec.offset_hz = 1200;
+    dec.dt_centis = -15;
+    dec.is_cq = true;
+    dec.is_recent_qso = true;
+    dec.slot_idx = 113333333;
+    dec.slot_len_ds = 150;
+    dec.dial_hz = 14074000;
+    check(porta_event_json_decode(row, sizeof(row), 3, &dec) > 0, "decode row encodes");
+    check_row(row,
+              "{\"s\":3,\"t\":1700000000,\"d\":1,\"x\":\"CQ N6HAN CM87\","
+              "\"id\":7,\"snr\":-5,\"hz\":1200,\"dt\":-0.15,\"cq\":1,\"me\":0,\"rq\":1,"
+              "\"si\":113333333,\"sl\":150,\"fq\":14074000}",
+              "decode row");
+
+    porta_queue_entry_event_t q;
+    std::memset(&q, 0, sizeof(q));
+    q.epoch_secs = 1700000001;
+    q.entry_id = 2;
+    q.state = 1;
+    q.retry_count = 0;
+    q.retry_limit = 5;
+    std::snprintf(q.dxcall, sizeof(q.dxcall), "N6HAN");
+    check(porta_event_json_queue(row, sizeof(row), 4, &q) > 0, "queue row encodes");
+    check_row(row,
+              "{\"s\":4,\"t\":1700000001,\"d\":2,\"eid\":2,\"st\":1,\"rc\":0,\"rl\":5,\"x\":\"N6HAN\"}",
+              "queue row");
+
+    porta_slot_state_event_t slot;
+    std::memset(&slot, 0, sizeof(slot));
+    slot.epoch_secs = 1700000002;
+    slot.slot_parity = 1;
+    slot.beacon_mode = 1;
+    slot.resolved_offset_hz = 1500;
+    check(porta_event_json_slot(row, sizeof(row), 5, &slot) > 0, "slot row encodes");
+    check_row(row, "{\"s\":5,\"t\":1700000002,\"d\":3,\"sp\":1,\"bm\":1,\"hz\":1500}", "slot row");
+
+    porta_tx_hud_event_t hud;
+    std::memset(&hud, 0, sizeof(hud));
+    hud.epoch_secs = 1700000003;
+    hud.active = true;
+    hud.power_dw = -1;
+    hud.swr_c = -1;
+    hud.battery_pct = -1;
+    hud.offset_hz = 1200;
+    std::snprintf(hud.text, sizeof(hud.text), "N6HAN AG6AQ CM97");
+    check(porta_event_json_tx_hud(row, sizeof(row), 6, &hud) > 0, "hud row encodes");
+    check_row(row,
+              "{\"s\":6,\"t\":1700000003,\"d\":4,\"active\":1,\"aborted\":0,\"wrblk\":0,"
+              "\"pw\":-1,\"swr\":-1,\"batt\":-1,\"hz\":1200,\"reason\":\"\",\"x\":\"N6HAN AG6AQ CM97\"}",
+              "hud row");
+
+    porta_usb_status_event_t usb;
+    std::memset(&usb, 0, sizeof(usb));
+    usb.epoch_secs = 1700000004;
+    usb.present = true;
+    usb.kind = 0;
+    usb.vid = 0x0483;
+    usb.pid = 0xA34C;
+    check(porta_event_json_usb(row, sizeof(row), 7, &usb) > 0, "usb row encodes");
+    check_row(row,
+              "{\"s\":7,\"t\":1700000004,\"d\":5,\"present\":1,\"kind\":0,\"vid\":1155,\"pid\":41804}",
+              "usb row");
+
+    check(porta_event_json_log(row, 8, 1, 1, "too long for this buffer") == 0,
+          "a short buffer encodes nothing");
+}
+
 int main()
 {
     test_round_trip();
@@ -1021,6 +1113,7 @@ int main()
     test_config_kv();
     test_file_list_and_read_requests();
     test_file_data_rows();
+    test_event_json();
 
     if (g_fail) {
         std::printf("FAILED: %d check(s)\n", g_fail);

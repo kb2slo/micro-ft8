@@ -162,6 +162,9 @@ jobs:
           fi
           exit "$failed"
 
+      - name: Station simulator HTTP
+        run: node webapp/tests/test_sim_station.js
+
       - name: TX e2e (CTest)
         working-directory: tests/tx_e2e
         run: |

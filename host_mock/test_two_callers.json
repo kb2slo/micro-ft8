@@ -1,0 +1,102 @@
+{
+  "comment": "Two stations call in one period. The one further along transmits first. The other waits, then gets its own report and its own log line.",
+  "config": {
+    "MY_CALLSIGN": "AG6AQ",
+    "MY_GRID": "CM97",
+    "DX_CALLSIGN": "N6HAN",
+    "DX_GRID": "CM87",
+    "TX_ON_EVEN": true
+  },
+  "periods": [
+    {
+      "comment": "Period 0: idle",
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
+    },
+    {
+      "comment": "Period 1 (odd): N6HAN sends a grid (we owe a report). W6ABC sends a report (we owe R+report). R+report is further along.",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "N6HAN",
+          "locator": "CM87",
+          "snr": -5,
+          "slot": 1
+        },
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "W6ABC",
+          "locator": "-9",
+          "snr": -9,
+          "slot": 1
+        }
+      ],
+      "expect": {
+        "tx": "W6ABC AG6AQ R-9"
+      }
+    },
+    {
+      "comment": "Period 2 (even): still W6ABC. N6HAN has not had a turn.",
+      "messages": [],
+      "expect": {
+        "tx": "W6ABC AG6AQ R-9"
+      }
+    },
+    {
+      "comment": "Period 3 (odd): W6ABC sends RR73. We 73 and log them. N6HAN is still queued.",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "W6ABC",
+          "locator": "RR73",
+          "snr": 0,
+          "slot": 1
+        }
+      ],
+      "expect": {
+        "tx": "W6ABC AG6AQ 73",
+        "log": "W6ABC  rst_sent=-9 rst_rcvd=-9"
+      }
+    },
+    {
+      "comment": "Period 4 (even): N6HAN's report goes out now",
+      "messages": [],
+      "expect": {
+        "tx": "N6HAN AG6AQ -5"
+      }
+    },
+    {
+      "comment": "Period 5 (odd): N6HAN sends R-11. We RR73 and log the grid from their first message.",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "N6HAN",
+          "locator": "R-11",
+          "snr": -11,
+          "slot": 1
+        }
+      ],
+      "expect": {
+        "tx": "N6HAN AG6AQ RR73",
+        "log": "N6HAN CM87 rst_sent=-5 rst_rcvd=-11"
+      }
+    },
+    {
+      "comment": "Period 6 (even): N6HAN sends 73. Stop. Do not log again.",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "N6HAN",
+          "locator": "73",
+          "snr": 0,
+          "slot": 0
+        }
+      ],
+      "expect": {
+        "tx": ""
+      }
+    }
+  ]
+}

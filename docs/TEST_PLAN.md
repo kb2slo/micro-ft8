@@ -10,7 +10,8 @@ An agent runs these itself before saying work is done. CI runs them too. No hard
 
 | Check | Command | Covers |
 | --- | --- | --- |
-| `host_mock` | `make -C host_mock`, then run `host_test` over each `test_*.json` and every `host_test_*` binary. CI's **Autoseq host_mock** step is the reference loop | Pure logic: parsers, formatters, policies, the Port A codec, pairing, the page templater, the bundle manifest. What each binary pins is in its own source |
+| `host_mock` | `make -C host_mock`, then run `host_test` over each `test_*.json` and every `host_test_*` binary. CI's **Autoseq host_mock** step is the reference loop | Pure logic: parsers, formatters, policies, the Port A codec, pairing, the page templater, the bundle manifest. Each scenario's `expect.tx` (and `expect.log` / `expect.cabrillo` when a QSO is logged) fails a wrong exchange. `test_qso.events` pins the event JSON that run emits. What each other binary pins is in its own source |
+| Station simulator | `node webapp/tests/test_sim_station.js` (builds `host_mock/sim_station` via the host_mock step) | `sim_station` playing `test_qso.json` serves `/api/events`, and that poll contains the scripted decode and our TX text |
 | `tests/tx_e2e` | `cmake -S tests/tx_e2e -B tests/tx_e2e/build && cmake --build tests/tx_e2e/build -j4 && ctest --test-dir tests/tx_e2e/build --output-on-failure` | Encoder, TX state machine and timing, golden-WAV RX decode. It is a separate CMake project and the easiest one to forget |
 | ADV build | `idf.py build` | `main/` under `-Werror`; must be warning-free |
 | P4 build | `idf.py -C poe_p4 build`; CI job **PoE-P4 (ESP32-P4)** | The P4 image compiles and links |
@@ -29,7 +30,7 @@ A green run is not coverage of these:
 - **The main loop and slot timing.** Slot alignment, decode deadlines, TX start latency.
 - **Decode tuning.** `golden_rx` catches decoder regressions. It uses its own candidate and LDPC limits, not
   the firmware's, so a tuning change moves none of its output. The decode benchmark measures tuning.
-- **Autoseq transcripts.** `host_test` fails a scenario only on a crash, not on a wrong exchange.
+- **The board slot cycle.** The scenario stepper injects decodes and takes whatever autoseq has pending. It does not run the head check before the trigger, IgnoreList, or arming. Those stay board code.
 - **Every hardware path.** USB host and UAC audio, CAT, display, GPS, RTC, SD, flash, WiFi, the sidekick's
   HTTP server and button.
 

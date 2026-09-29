@@ -17,6 +17,7 @@ struct TestConfig {
     std::string cq_type;       // "CQ", "FD", "SOTA", etc.
     std::string free_text;     // FD exchange or freetext (e.g. "1A SCV")
     int         max_retry = 5; // autoseq_set_max_retry (default 5)
+    bool        skip_tx1 = false; // autoseq_set_skip_tx1: a touch starts at the report
 };
 
 struct BeaconChange {
@@ -42,6 +43,14 @@ struct TestPeriod {
     TouchEvent   touch_event;
     bool          has_freetext_event = false;
     FreeTextEvent freetext_event;
+    // expect.tx is required. Empty means this period transmits nothing.
+    // log and cabrillo are optional; absent means that line must not appear.
+    bool        has_expect_tx = false;
+    std::string expect_tx;
+    bool        has_expect_log = false;
+    std::string expect_log;
+    bool        has_expect_cabrillo = false;
+    std::string expect_cabrillo;
 };
 
 struct TestData {

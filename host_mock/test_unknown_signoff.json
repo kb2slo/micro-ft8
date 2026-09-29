@@ -1,0 +1,79 @@
+{
+  "comment": "A signoff or an R+report from a station we are not working must not start a QSO. A grid from someone else still does.",
+  "config": {
+    "MY_CALLSIGN": "AG6AQ",
+    "MY_GRID": "CM97",
+    "DX_CALLSIGN": "N6HAN",
+    "DX_GRID": "CM87",
+    "TX_ON_EVEN": true
+  },
+  "periods": [
+    {
+      "comment": "Period 0: RR73 from a stranger. Accepting it would send 73.",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "W1ABC",
+          "locator": "RR73",
+          "snr": -5,
+          "slot": 0
+        }
+      ],
+      "expect": {
+        "tx": ""
+      }
+    },
+    {
+      "comment": "Period 1: 73 from a stranger",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "W1ABC",
+          "locator": "73",
+          "snr": -5,
+          "slot": 1
+        }
+      ],
+      "expect": {
+        "tx": ""
+      }
+    },
+    {
+      "comment": "Period 2: R+report from a stranger. Accepting it would send RR73 with no sent report.",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "W1ABC",
+          "locator": "R-5",
+          "snr": -5,
+          "slot": 0
+        }
+      ],
+      "expect": {
+        "tx": ""
+      }
+    },
+    {
+      "comment": "Period 3: a real grid still opens a QSO",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "${DX_CALLSIGN}",
+          "locator": "${DX_GRID}",
+          "snr": -5,
+          "slot": 1
+        }
+      ],
+      "expect": {
+        "tx": "N6HAN AG6AQ -5"
+      }
+    },
+    {
+      "comment": "Period 4: that report is resent",
+      "messages": [],
+      "expect": {
+        "tx": "N6HAN AG6AQ -5"
+      }
+    }
+  ]
+}

@@ -520,6 +520,24 @@ size_t porta_proto_encode_file_entry_row(const porta_qso_entry_row_t *e,
                                          uint8_t *out, size_t out_cap);
 bool porta_proto_parse_file_entry_row(const porta_frame_t *f, porta_qso_entry_row_t *out);
 
+// Browser event rows. The sidekick's GET /api/events and the host scenario
+// simulator both call these, so the JSON the page polls has one encoder.
+// Each writes one JSON object, no leading comma. Returns the bytes written,
+// excluding the NUL, or 0 if `out` is too small. `seq` is the ring cursor
+// the poll's `since` compares against.
+size_t porta_event_json_log(char *out, size_t cap, uint32_t seq,
+                            uint32_t epoch_secs, const char *text);
+size_t porta_event_json_decode(char *out, size_t cap, uint32_t seq,
+                               const porta_decode_event_t *ev);
+size_t porta_event_json_queue(char *out, size_t cap, uint32_t seq,
+                              const porta_queue_entry_event_t *ev);
+size_t porta_event_json_slot(char *out, size_t cap, uint32_t seq,
+                             const porta_slot_state_event_t *ev);
+size_t porta_event_json_tx_hud(char *out, size_t cap, uint32_t seq,
+                               const porta_tx_hud_event_t *ev);
+size_t porta_event_json_usb(char *out, size_t cap, uint32_t seq,
+                            const porta_usb_status_event_t *ev);
+
 #ifdef __cplusplus
 }
 #endif
