@@ -98,10 +98,10 @@ Top to bottom:
 
 ### 3.5 The Station sheet: what's still to add
 
-Built as O1c ([webapp.md](../architecture/webapp.md), **The Station sheet**). Still to add:
+Built as O1c and RFC 0008 A1 ([webapp.md](../architecture/webapp.md), **The Station sheet**): the Activation section's typed references, and CQ following them until the type is picked by hand. Still to add:
 
 * **CQ timeout:** turn CQ off if nobody answers for Never / 10 / 30 / 60 minutes (§3.6).
-* **Activation:** the references, each with × and an **unverified** badge where it applies; **Add a park or summit** (§3.9). CQ follows the references until the type is picked by hand: a park gives POTA, and any summit gives SOTA (RFC 0008 §4.4).
+* **An unverified badge** on a reference, and **Add a park or summit** from a list or the map, rather than typing one (§3.9, RFC 0008 A3).
 * **The grid check against the references and the phone's fix** (RFC 0008 §4.3), on top of the sheet's own format check.
 
 ### 3.6 CQ timeout (new)
