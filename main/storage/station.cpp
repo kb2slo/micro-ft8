@@ -91,6 +91,48 @@ std::string normalize_grid_maidenhead(const std::string& src)
     return out;
 }
 
+// RFC 0008 §4.2: "POTA:US-1234,SOTA:W7O/CC-001". Unlike
+// normalize_grid_maidenhead() above (one value, all-or-nothing), this is a
+// list -- a malformed token is dropped on its own rather than rejecting the
+// whole write, so one bad entry can't also cost the good ones. A token
+// needs a non-empty program and a non-empty reference either side of the
+// first ':'; the program is upper-cased to POTA/SOTA and kept only if it
+// matches one of those two, the reference is upper-cased as-is (both
+// programs' own reference formats are already upper-case by convention).
+// Empty input is a valid value (no activation), not a failure.
+std::string normalize_act_refs(const std::string& src)
+{
+    const std::string trimmed = trim_copy(src);
+    if (trimmed.empty()) {
+        return "";
+    }
+    std::string out;
+    size_t start = 0;
+    while (start <= trimmed.size()) {
+        const size_t comma = trimmed.find(',', start);
+        const std::string token = trim_copy(
+            comma == std::string::npos ? trimmed.substr(start) : trimmed.substr(start, comma - start));
+        const size_t colon = token.find(':');
+        if (colon != std::string::npos && colon > 0 && colon + 1 < token.size()) {
+            std::string program = token.substr(0, colon);
+            std::string ref = token.substr(colon + 1);
+            ascii_upper_inplace(program);
+            ascii_upper_inplace(ref);
+            if (program == "POTA" || program == "SOTA") {
+                if (!out.empty()) {
+                    out += ",";
+                }
+                out += program + ":" + ref;
+            }
+        }
+        if (comma == std::string::npos) {
+            break;
+        }
+        start = comma + 1;
+    }
+    return out;
+}
+
 int normalize_gps_baud(int value)
 {
     return (value == 9600 || value == 115200) ? value : 115200;
@@ -157,6 +199,7 @@ enum class StationKey {
     ActiveBands,
     AutoseqMaxRetry,
     ProtocolMode,
+    ActRefs,
     Beacon,
     Unknown,
 };
@@ -181,6 +224,7 @@ StationKey key_from_name(const std::string& name)
     if (name == "active_bands") return StationKey::ActiveBands;
     if (name == "autoseq_max_retry") return StationKey::AutoseqMaxRetry;
     if (name == "protocol_mode") return StationKey::ProtocolMode;
+    if (name == "act_refs") return StationKey::ActRefs;
     if (name == "beacon") return StationKey::Beacon;
     return StationKey::Unknown;
 }
@@ -273,6 +317,9 @@ void apply_key(StationSettings* io, StationKey key, const std::string& value)
             io->protocol_ft4 = (mode == "FT4");
             break;
         }
+        case StationKey::ActRefs:
+            io->act_refs = normalize_act_refs(value);
+            break;
         case StationKey::Beacon:
         case StationKey::Unknown:
             break;
@@ -375,6 +422,7 @@ std::string station_serialize(const StationSettings& in)
     if (in.protocol_ft4) {
         out << "protocol_mode=FT4\n";
     }
+    out << "act_refs=" << in.act_refs << "\n";
     return out.str();
 }
 

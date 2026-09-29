@@ -31,6 +31,11 @@ struct StationSettings {
     int autoseq_max_retry;
     bool protocol_ft4;
     bool serialize_ft4_band_keys;
+    // RFC 0008 §4.2: "POTA:US-1234,SOTA:W7O/CC-001" -- the active
+    // activation's references, entered in the Station sheet. Empty means no
+    // activation. Normalized (program upper-cased, malformed tokens dropped)
+    // by station_parse(); see normalize_act_refs() in station.cpp.
+    std::string act_refs;
 };
 
 void station_settings_init(StationSettings* out);

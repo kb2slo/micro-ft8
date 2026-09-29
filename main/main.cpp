@@ -893,19 +893,25 @@ extern AdifLoggerDedupe s_adif_logger_dedupe;
 
 static bool log_adif_entry(const std::string& dxcall, const std::string& dxgrid, int rst_sent,
                            int rst_rcvd) {
-  AdifLogQsoInput in;
-  in.dxcall = dxcall;
-  in.dxgrid = dxgrid;
-  in.rst_sent = rst_sent;
-  in.rst_rcvd = rst_rcvd;
-  in.station_callsign = g_call;
-  in.my_gridsquare = grid_ft8_4(g_grid);
-  in.mode = g_protocol->name;
+  AdifStationSnapshot station;
+  station.call = g_call;
+  station.my_gridsquare = grid_ft8_4(g_grid);
+  station.mode = g_protocol->name;
   char freq_str[16];
   snprintf(freq_str, sizeof(freq_str), "%.3f", 0.001 * (double)g_bands[g_band_sel].freq);
-  in.freq_mhz = freq_str;
-  in.comment = expand_comment_macros(g_comment1);
-  const bool ok = adif_log_qso(in, &s_adif_logger_dedupe);
+  station.freq_mhz = freq_str;
+  station.raw_comment = g_comment1;
+  station.radio_name = radio_profile_name(g_radio);
+  // Same GPS-override rule expand_comment_macros() (below) uses for the menu
+  // display -- kept here rather than shared, since the P4 has no GPS input
+  // to override with at all (row j4xh's "station model" is a bigger question
+  // than this slice).
+  station.grid_for_macro =
+      (g_time_synced_from_gps && g_grid_from_gps && g_grid_gps_display8.size() == 8)
+          ? g_grid_gps_display8
+          : g_grid;
+  const bool ok =
+      adif_log_entry(dxcall, dxgrid, rst_sent, rst_rcvd, station, &s_adif_logger_dedupe);
   if (!ok) {
     debug_log_line("ADIF fail");
   }

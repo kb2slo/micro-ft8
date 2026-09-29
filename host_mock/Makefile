@@ -65,6 +65,7 @@ BUNDLE_HOST_TARGET = host_test_bundle_host
 RECENT_QSO_TARGET = host_test_recent_qso
 QUEUE_HEAD_TARGET = host_test_queue_head
 DIAL_HISTORY_TARGET = host_test_dial_history
+ADIF_LOGGER_TARGET = host_test_adif_logger
 
 all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
      $(DECODE_SORT_TARGET) $(POWER_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) $(COPY_BLOCK_TARGET) \
@@ -73,7 +74,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET
      $(USB_C_PRESENCE_TARGET) $(MENU_MODEL_TARGET) $(SCREEN_MODEL_TARGET) \
      $(DATETIME_FIELD_TARGET) $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
      $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(BUNDLE_HOST_TARGET) \
-     $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(DIAL_HISTORY_TARGET)
+     $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET)
 
 $(TARGET): $(OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
@@ -232,6 +233,12 @@ station_save_queue.o: ../main/storage/station_save_queue.cpp
 $(STATION_SAVE_TARGET): $(STATION_SAVE_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
+ADIF_LOGGER_OBJ = adif.o adif_logger.o host_mocks.o test_adif_logger.o
+adif_logger.o: ../main/storage/adif_logger.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+$(ADIF_LOGGER_TARGET): $(ADIF_LOGGER_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
 FILE_LIST_OBJ = qso_browse.o file_list.o file_list_queue.o test_file_list.o
 file_list.o: ../main/storage/file_list.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
@@ -263,6 +270,7 @@ clean:
 	      $(WEB_PAGE_OBJ) $(WEB_PAGE_TARGET) \
 	      $(WEB_MANIFEST_OBJ) $(WEB_MANIFEST_TARGET) \
 	      $(BUNDLE_HOST_OBJ) $(BUNDLE_HOST_TARGET) \
-	      $(DIAL_HISTORY_OBJ) $(DIAL_HISTORY_TARGET)
+	      $(DIAL_HISTORY_OBJ) $(DIAL_HISTORY_TARGET) \
+	      $(ADIF_LOGGER_OBJ) $(ADIF_LOGGER_TARGET)
 
 .PHONY: all clean

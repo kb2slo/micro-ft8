@@ -136,6 +136,30 @@ int main()
         expect_str(s.active_bands, "5", "legacy active_band");
     }
 
+    {
+        // act_refs (RFC 0008 §4.2): round-trips, upper-cases both halves of
+        // a token, and drops a malformed token on its own rather than
+        // rejecting the whole write -- a list, unlike normalize_grid_maidenhead()'s
+        // all-or-nothing single value.
+        StationSettings s;
+        station_settings_init(&s);
+        station_parse("act_refs=pota:us-1234,sota:w7o/cc-001\n", &s);
+        expect_str(s.act_refs, "POTA:US-1234,SOTA:W7O/CC-001", "act_refs upper-cased both halves");
+
+        station_parse("act_refs=POTA:US-1234,garbage,SOTA:W7O/CC-001\n", &s);
+        expect_str(s.act_refs, "POTA:US-1234,SOTA:W7O/CC-001", "a malformed token is dropped, not the whole write");
+
+        station_parse("act_refs=DXCC:K1ABC\n", &s);
+        expect_str(s.act_refs, "", "an unknown program is dropped, leaving nothing");
+
+        station_parse("act_refs=POTA:US-9999\n", &s);
+        station_parse("act_refs=\n", &s);
+        expect_str(s.act_refs, "", "an explicit empty value clears the activation");
+
+        const std::string text = station_serialize(s);
+        expect_true(text.find("act_refs=") != std::string::npos, "act_refs is serialized");
+    }
+
     // station_key_names_operating_band (docs/architecture/webapp.md, "The
     // dock"): does this CONFIG key need the VFO already on the operating band
     // to take effect right now.

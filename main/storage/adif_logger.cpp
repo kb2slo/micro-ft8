@@ -12,6 +12,27 @@ namespace {
 
 const char* TAG = "adif_logger";
 
+// The substitution both boards' comment macros need -- previously the ADV's
+// own expand_comment_macros() (main/main.cpp), never ported to the P4. Takes
+// already-resolved replacement values rather than reading globals, since the
+// ADV's own grid-for-"/Grid" value can come from a GPS override the P4 has
+// no equivalent of; each board resolves that one value itself and this just
+// does the substitution.
+std::string expand_comment_macros(const std::string& src, const std::string& radio_name,
+                                  const std::string& grid_for_macro) {
+    std::string out = src;
+    auto repl = [](std::string& s, const std::string& from, const std::string& to) {
+        size_t pos = 0;
+        while ((pos = s.find(from, pos)) != std::string::npos) {
+            s.replace(pos, from.size(), to);
+            pos += to.size();
+        }
+    };
+    repl(out, "/Radio", radio_name);
+    repl(out, "/Grid", grid_for_macro);
+    return out;
+}
+
 std::string normalize_call_token(std::string s) {
     if (!s.empty() && s.front() == '<') {
         s.erase(s.begin());
@@ -82,4 +103,19 @@ bool adif_log_qso(const AdifLogQsoInput& in, AdifLoggerDedupe* dedupe) {
     }
     ESP_LOGI(TAG, "ADIF wrote %s -> %s", call_norm.c_str(), path);
     return true;
+}
+
+bool adif_log_entry(const std::string& dxcall, const std::string& dxgrid, int rst_sent,
+                    int rst_rcvd, const AdifStationSnapshot& station, AdifLoggerDedupe* dedupe) {
+    AdifLogQsoInput in;
+    in.dxcall = dxcall;
+    in.dxgrid = dxgrid;
+    in.rst_sent = rst_sent;
+    in.rst_rcvd = rst_rcvd;
+    in.station_callsign = station.call;
+    in.my_gridsquare = station.my_gridsquare;
+    in.mode = station.mode;
+    in.freq_mhz = station.freq_mhz;
+    in.comment = expand_comment_macros(station.raw_comment, station.radio_name, station.grid_for_macro);
+    return adif_log_qso(in, dedupe);
 }

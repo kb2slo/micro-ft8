@@ -183,21 +183,22 @@ const char *porta_p4_sync_vfo(const char *reason) {
 static bool log_adif_entry(const std::string &dxcall, const std::string &dxgrid, int rst_sent,
                            int rst_rcvd) {
     ensure_seeded();
-    AdifLogQsoInput in;
-    in.dxcall = dxcall;
-    in.dxgrid = dxgrid;
-    in.rst_sent = rst_sent;
-    in.rst_rcvd = rst_rcvd;
-    in.station_callsign = s_station.call;
-    in.my_gridsquare = grid_ft8_4(s_station.grid);
-    in.mode = g_protocol ? g_protocol->name : "FT8";
+    AdifStationSnapshot station;
+    station.call = s_station.call;
+    station.my_gridsquare = grid_ft8_4(s_station.grid);
+    station.mode = g_protocol ? g_protocol->name : "FT8";
     char freq_str[16];
     // station_freq_hz is Hz; ADIF wants MHz (e.g. 14.074).
     snprintf(freq_str, sizeof(freq_str), "%.3f", (double)station_freq_hz() / 1e6);
-    in.freq_mhz = freq_str;
-    // Comment macros (/Radio, /Grid) stay ADV-only for now; raw Station comment.
-    in.comment = s_station.comment1;
-    return adif_log_qso(in, &s_adif_logger_dedupe);
+    station.freq_mhz = freq_str;
+    station.raw_comment = s_station.comment1;
+    // The P4 always drives a QMX today regardless of the Station radio= key
+    // (row cgc4), so this is the real value, not a placeholder.
+    station.radio_name = "QMX";
+    // No GPS on the P4 (docs/architecture/main_board.md) -- nothing to
+    // override the configured grid with for "/Grid", unlike the ADV.
+    station.grid_for_macro = s_station.grid;
+    return adif_log_entry(dxcall, dxgrid, rst_sent, rst_rcvd, station, &s_adif_logger_dedupe);
 }
 
 void porta_p4_adif_register(void) {
@@ -550,7 +551,13 @@ bool p4_reject_active_log_mutation(const char *basename) {
     if (!basename || basename[0] == '\0') {
         return false;
     }
-    if (!decode_tx_state_get_tx_active() && !decode_tx_state_get_decode_in_progress()) {
+    // Same three conditions as the ADV's storage_should_guard_active_logs()
+    // (main/main.cpp) -- audio streaming was missing here, a drift found
+    // while scoping row j4xh: qmx_audio_ready() is this board's equivalent
+    // of audio_source_is_streaming() (both feed the same "streaming"/
+    // "audio_rx" config fields, porta_host_config_snapshot() above).
+    if (!decode_tx_state_get_tx_active() && !decode_tx_state_get_decode_in_progress() &&
+        !qmx_audio_ready()) {
         return false;
     }
     return today_qso_file_name() == basename;
