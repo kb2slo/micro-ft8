@@ -697,6 +697,18 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       </label>
     </div>
 
+    <!-- RFC 0008 §4.3 "Typed references, offline": format-only (a slash means
+         SOTA, otherwise POTA) -- no store, no nearby list, no map and no
+         verified/unverified badge, since nothing to check against exists
+         until A3's reference store ships. renderActRefs() below fills
+         #actRefRows; the Add row always stays last. -->
+    <div class="hd sep">Activation</div>
+    <div id=actRefRows></div>
+    <div class=setrow>
+      <label>Reference <input id=actRefAdd autocomplete=off spellcheck=false placeholder="US-1234 or W7O/CC-001"></label>
+      <button id=actRefAddBtn type=button class=dlink>Add</button>
+    </div>
+
     <div class=setrow><div class=diagrow><span>Call</span><span id=sheetCall>&mdash;</span></div></div>
     <p class=setnote>Changed in Settings.</p>
   </div>
@@ -1374,7 +1386,60 @@ function setStationSheetForm(cfg) {
     (cfg.offset_src !== undefined && cfg.offset_src !== null) ? String(cfg.offset_src) : '0';
   document.getElementById('sheetSendsText').textContent = cqSendsText();
   document.getElementById('sheetCall').textContent = cfg.call || '—';
+  renderActRefs(cfg);
 }
+
+// act_refs (RFC 0008 §4.2): "POTA:US-1234,SOTA:W7O/CC-001". Parsed only for
+// display here -- the firmware (main/storage/station.cpp,
+// normalize_act_refs()) is what actually validates and stores it; this just
+// splits what it already accepted.
+function parseActRefs(cfg) {
+  var raw = (cfg.act_refs || '').trim();
+  if (!raw) return [];
+  return raw.split(',').map(function (token) {
+    var colon = token.indexOf(':');
+    return colon > 0
+      ? { program: token.slice(0, colon), ref: token.slice(colon + 1), token: token }
+      : null;
+  }).filter(Boolean);
+}
+
+function renderActRefs(cfg) {
+  var rows = document.getElementById('actRefRows');
+  var refs = parseActRefs(cfg);
+  rows.innerHTML = refs.map(function (r) {
+    return '<div class=setrow style="display:flex;justify-content:space-between;align-items:center;gap:.5rem">' +
+      '<span>' + esc(r.program) + ' ' + esc(r.ref) + '</span>' +
+      '<button type=button class=qcancel data-ref="' + esc(r.token) + '" aria-label="Remove ' + esc(r.ref) + '">&times;</button>' +
+      '</div>';
+  }).join('');
+  rows.querySelectorAll('.qcancel').forEach(function (b) {
+    b.onclick = function () {
+      var keep = parseActRefs(lastCfg).filter(function (r) { return r.token !== b.getAttribute('data-ref'); });
+      sheetPutLine('act_refs=' + keep.map(function (r) { return r.token; }).join(','), 'Removing reference…');
+    };
+  });
+}
+// A slash means SOTA, otherwise POTA (RFC 0008 §4.3 -- the same rule the
+// eventual add screen's typed-reference path uses, A3). ',' and ':' are our
+// own list/token delimiters (station.cpp's normalize_act_refs()), so a
+// reference containing either can never round-trip and is refused here
+// before it ever reaches the station.
+document.getElementById('actRefAddBtn').onclick = function () {
+  var input = document.getElementById('actRefAdd');
+  var ref = input.value.trim().toUpperCase();
+  if (!ref) return;
+  if (ref.indexOf(',') >= 0 || ref.indexOf(':') >= 0) {
+    alert('A reference can\'t contain "," or ":".');
+    return;
+  }
+  var program = ref.indexOf('/') >= 0 ? 'SOTA' : 'POTA';
+  var token = program + ':' + ref;
+  var existing = parseActRefs(lastCfg).map(function (r) { return r.token; });
+  if (existing.indexOf(token) < 0) existing.push(token);
+  sheetPutLine('act_refs=' + existing.join(','), 'Adding reference…');
+  input.value = '';
+};
 
 // Each control below writes its own key the moment it changes (webapp.md,
 // The Station sheet) -- no Save button for this sheet. putConfigLine()
