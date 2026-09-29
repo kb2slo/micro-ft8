@@ -148,11 +148,12 @@ bool parse_record_line(const std::string& line,
     const std::string rst_sent_raw = field_after_tag(line, s_lower, "rst_sent:");
     const std::string my_pota_ref = field_after_tag(line, s_lower, "my_pota_ref:");
     const std::string my_sota_ref = field_after_tag(line, s_lower, "my_sota_ref:");
-    // Prefer the record's own <band:...> tag (written going forward, RFC 0008
-    // §4.5) over deriving it from <freq:...> -- lower-cased to match this
-    // app's own band-name convention ("20m", not ADIF's "20M"). A record
-    // written before this field existed has no tag, so the freq-derived
-    // value (the only thing that has ever existed) stays the fallback.
+    // Prefer the record's own <band:...> tag (written going forward,
+    // architecture/logging.md) over deriving it from <freq:...> --
+    // lower-cased to match this app's own band-name convention ("20m", not
+    // ADIF's "20M"). A record written before this field existed has no tag,
+    // so the freq-derived value (the only thing that has ever existed)
+    // stays the fallback.
     const std::string band_tag = field_after_tag(line, s_lower, "band:");
     std::string band = !band_tag.empty() ? ascii_lower_copy(band_tag) : freq;
     if (band_tag.empty() && !freq.empty()) {

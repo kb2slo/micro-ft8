@@ -390,11 +390,12 @@ const char *porta_host_config_set(const char *key, const char *value) {
     s_station.serialize_ft4_band_keys = s_station.protocol_ft4;
     g_call = s_station.call;
 
-    // RFC 0008 §4.4: activation start (act_refs empty -> non-empty) picks the
-    // CQ type for the operator -- SOTA if any SOTA reference is present (a
-    // mixed activation defaults to SOTA), else POTA. Only this one
-    // transition derives it: a later add/remove must never clobber a manual
-    // switch made through the Station sheet's own Type control.
+    // Activation start (act_refs empty -> non-empty) picks the CQ type for
+    // the operator -- SOTA if any SOTA reference is present (a mixed
+    // activation defaults to SOTA), else POTA (architecture/logging.md, "CQ
+    // type follows the activation"). Only this one transition derives it: a
+    // later add/remove must never clobber a manual switch made through the
+    // Station sheet's own Type control.
     if (strcmp(key, "act_refs") == 0 && act_refs_was_empty && !s_station.act_refs.empty()) {
         s_station.cq_type = (int)(act_refs_prefer_sota(s_station.act_refs) ? AutoseqCqType::SOTA
                                                                             : AutoseqCqType::POTA);

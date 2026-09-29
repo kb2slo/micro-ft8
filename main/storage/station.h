@@ -31,10 +31,11 @@ struct StationSettings {
     int autoseq_max_retry;
     bool protocol_ft4;
     bool serialize_ft4_band_keys;
-    // RFC 0008 §4.2: "POTA:US-1234,SOTA:W7O/CC-001" -- the active
-    // activation's references, entered in the Station sheet. Empty means no
-    // activation. Normalized (program upper-cased, malformed tokens dropped)
-    // by station_parse(); see normalize_act_refs() in station.cpp.
+    // "POTA:US-1234,SOTA:W7O/CC-001" -- the active activation's references,
+    // entered in the Station sheet (architecture/webapp.md, "Activation").
+    // Empty means no activation. Normalized (program upper-cased, malformed
+    // tokens dropped) by station_parse(); see normalize_act_refs() in
+    // station.cpp.
     std::string act_refs;
 };
 
@@ -51,11 +52,12 @@ std::string station_serialize(const StationSettings& in);
 // clock lines are not included — those are live controls / not persisted here.
 bool station_key_known(const char* name);
 
-// RFC 0008 §4.4: on activation start (act_refs empty -> non-empty), the CQ
-// type is derived from the references themselves -- SOTA if any SOTA
-// reference is present (a mixed activation defaults to SOTA), else POTA.
-// act_refs is already normalize_act_refs()'d ("POTA:"/"SOTA:" upper-case
-// prefixes) by the time a caller has it, on either board.
+// On activation start (act_refs empty -> non-empty), the CQ type is derived
+// from the references themselves -- SOTA if any SOTA reference is present
+// (a mixed activation defaults to SOTA), else POTA (architecture/logging.md,
+// "CQ type follows the activation"). act_refs is already
+// normalize_act_refs()'d ("POTA:"/"SOTA:" upper-case prefixes) by the time
+// a caller has it, on either board.
 bool act_refs_prefer_sota(const std::string& act_refs);
 
 // True when a CONFIG write of this key needs the VFO already on the

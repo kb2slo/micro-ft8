@@ -66,8 +66,9 @@ extern "C" {
 // cosmetic rebuild reads as a protocol change.
 // v2 (2026-09-28): DECODE carries its slot and the radio's dial frequency.
 // v3 (2026-09-29): the FILE_READ QSO row carries my_pota_ref/my_sota_ref
-// (RFC 0008 §4.5); band now rides the row's own field too, unchanged in
-// shape (still PORTA_BAND_MAX), so only the two new fields are a break.
+// (architecture/logging.md); band now rides the row's own field too,
+// unchanged in shape (still PORTA_BAND_MAX), so only the two new fields
+// are a break.
 #define PORTA_PROTO_VERSION 3u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
@@ -474,9 +475,10 @@ typedef enum {
 #define PORTA_FREQ_MAX 12u
 #define PORTA_COMMENT_MAX 48u
 #define PORTA_MODE_MAX 7u  // "FT8"/"FT4" today; room for a longer protocol name
-// RFC 0008 §4.5: comma lists, no program prefix -- room for a handful of
-// references (e.g. "US-1234,US-5678,US-9012" is 23 characters); SOTA is
-// realistically always one summit, but sized the same for simplicity.
+// Comma lists, no program prefix (architecture/logging.md) -- room for a
+// handful of references (e.g. "US-1234,US-5678,US-9012" is 23 characters);
+// SOTA is realistically always one summit, but sized the same for
+// simplicity.
 #define PORTA_POTA_REF_MAX 40u
 #define PORTA_SOTA_REF_MAX 40u
 

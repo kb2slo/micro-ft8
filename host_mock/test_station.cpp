@@ -137,8 +137,9 @@ int main()
     }
 
     {
-        // act_refs (RFC 0008 §4.2): round-trips, upper-cases both halves of
-        // a token, and drops a malformed token on its own rather than
+        // act_refs (architecture/webapp.md, "Activation"): round-trips,
+        // upper-cases both halves of a token, and drops a malformed token
+        // on its own rather than
         // rejecting the whole write -- a list, unlike normalize_grid_maidenhead()'s
         // all-or-nothing single value.
         StationSettings s;
@@ -161,9 +162,10 @@ int main()
     }
 
     {
-        // act_refs_prefer_sota (RFC 0008 §4.4): drives the empty->non-empty
-        // act_refs transition's CQ-type pick in both boards'
-        // porta_host_config_set(). A mixed activation defaults to SOTA.
+        // act_refs_prefer_sota (architecture/logging.md, "CQ type follows
+        // the activation"): drives the empty->non-empty act_refs
+        // transition's CQ-type pick in both boards' porta_host_config_set().
+        // A mixed activation defaults to SOTA.
         expect_true(act_refs_prefer_sota("SOTA:W7O/CC-001"), "a pure SOTA activation prefers SOTA");
         expect_true(!act_refs_prefer_sota("POTA:US-1234"), "a pure POTA activation does not prefer SOTA");
         expect_true(act_refs_prefer_sota("POTA:US-1234,SOTA:W7O/CC-001"),

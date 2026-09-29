@@ -82,7 +82,7 @@ One object, generic across programs so WWFF and hunter mode can reuse it:
 
 The rule: **whatever must work offline lives on a device; the browser only caches.** The browser cannot be the durable store: Safari evicts it, a second phone lacks it, and the phone may be asleep in a pocket while autoseq logs QSOs.
 
-* **The active activation: main-board config.** The main board writes the log and sends the CQ, so it must know the references even with no browser attached. A config key such as `act_refs=POTA:US-1234,SOTA:W7O/CC-001` fits `PORTA_CONFIG_VALUE_MAX` (200 bytes) and uses the existing `CONFIG_*` path and Station file.
+* **The active activation: main-board config.** Built as A1 ([webapp.md](../architecture/webapp.md), **The Station sheet**): `act_refs=POTA:US-1234,SOTA:W7O/CC-001` on the existing `CONFIG_*`/`Station.txt` path (`PORTA_CONFIG_VALUE_MAX`, 200 bytes), shared by both boards.
 * **The reference store: the sidekick** (decided 2026-09-27). It holds saved areas of POTA parks and SOTA summits, each record carrying reference, program, trimmed name, lat/lon, grid and summit points, about 60 bytes.
   - **Why the sidekick.** Every reader is the browser (the map, the nearby list, search), and the sidekick serves the browser directly over WiFi. The main board would force every read through Port A: about 10 KB/s at 115200 baud until [RFC 0007](0007-flash-and-update.md) S0, plus new protocol messages, for data only the browser uses. The main board needs only the active references.
   - **Layout.** A reserved directory in the `web` partition that no bundle ships or touches (for example `data/refs/`). It holds one file per saved area plus an index of name, bounding box, date saved and count. Reads are open; saving and deleting need the pairing token ([system.md](../architecture/system.md), **Who may key the transmitter**).
@@ -118,17 +118,22 @@ In order of preference:
 
 ### 4.4 On the air
 
-* **CQ:** unchanged in shape: `CQ POTA` or `CQ SOTA` from the activation. **A mixed activation defaults to `CQ SOTA`, and the operator can switch while operating** (decided 2026-09-26), so the switch is the Station sheet's Type control ([webapp.md](../architecture/webapp.md), **The Station sheet**), not in Settings. `autoseq_set_cq_type()` re-derives a queued CQ's text at once (`autoseq.cpp:737`); whether a TX the board has already armed for this slot picks up the change is checked in A1.
-* **No `/P` feature** (decided 2026-09-26, §9). The own-call field is free text with no validation found, so an operator can still enter a suffixed call; the log just records it faithfully (§4.5).
-* **The reference stays off the air**, matching POTA practice: hunters get it from spots (§3). See §5 for why.
-* **The other station's reference (P2P, S2S)** reaches the record at log time from a live spot when online (`callinfo.js` already matches spots to callsigns), or from a reference the operator attaches to the queue entry. Adding one *after* logging needs record editing, which waits on I31/I32.
+Built as A1 ([logging.md](../architecture/logging.md), **CQ type follows the activation**; [autoseq.md](../architecture/autoseq.md)): `CQ POTA`/`CQ SOTA` unchanged in shape, derived from `act_refs` on activation start (a mixed activation defaults to `CQ SOTA`, decided 2026-09-26); the Station sheet's Type control switches it live; a TX already armed for the current slot picks up a switch made after arming. **No `/P` feature** (decided 2026-09-26, §9): the own-call field is free text with no validation, so an operator can still enter a suffixed call and the log records it faithfully. **The reference stays off the air**, matching POTA practice: hunters get it from spots (§3); see §5 for why.
+
+Still to add:
+
+* **The other station's reference (P2P, S2S)** reaching the record at log time from a live spot when online (`callinfo.js` already matches spots to callsigns), or from a reference the operator attaches to the queue entry (A5). Adding one *after* logging needs record editing, which waits on I31/I32.
 
 ### 4.5 The log
 
-* **One QSO is one record on the device**, carrying every reference as a comma list: `MY_POTA_REF`, `MY_SOTA_REF`, and `POTA_REF` / `SOTA_REF` for the other station. The device log stays truthful: QSO counts, dedupe, and the ADV's own files are all per QSO.
-* **N-fer expansion happens at export**, not on the device: one POTA file per park per UTC day, named `CALL@PARK-YYYYMMDD.adi`. Each line gets `MY_SIG`/`MY_SIG_INFO` for that file's park and, for P2P, one line per partner park with a distinct `SIG_INFO`, as POTA requires. SOTA gets one file per summit with `MY_SOTA_REF` / `SOTA_REF`. This is PoLo's shape (`adifFieldCombinationsForOneQSO`).
-* **Fields added to every record, activation or not:** `BAND` (POTA requires it, and it is missing today), and `MY_GRIDSQUARE` at the grid's full length. Under an activation: `MY_STATE` when known. `STATION_CALLSIGN` stays exactly what was transmitted, because POTA's P2P matching needs an exact callsign match (§3).
-* **The four-place cost (§2):** new fields ride the Port A row, following the rule `porta_proto.h:441` wrote down. The references need a length-capped field in the ~110 free bytes. A value over the cap is flagged at log time, never silently cut.
+Built as A1 ([logging.md](../architecture/logging.md)): one record per QSO, carrying `MY_POTA_REF`/`MY_SOTA_REF` as comma lists; n-fer expansion at export, not on the device — `MY_SIG`/`MY_SIG_INFO` per POTA file, `MY_SOTA_REF` per SOTA file, named `CALL@PARK-YYYYMMDD.adi` (PoLo's shape, `adifFieldCombinationsForOneQSO`); `BAND` on every record. The four-place cost (§2) and the field budget are in that doc.
+
+Still to add:
+
+* **The other station's reference** (`POTA_REF`/`SOTA_REF` for park-to-park/summit-to-summit) on the QSO record, and a distinct `SIG_INFO` line per partner park in the n-fer split, as POTA requires (A5).
+* **`MY_GRIDSQUARE` at full length** — still cut to 4 characters ([logging.md](../architecture/logging.md)), a leftover from the still-open A0 slice, not part of A1.
+* **`MY_STATE`** when known — no data source until A3's reference store ships.
+* `STATION_CALLSIGN` already stays exactly what was transmitted (needed for POTA's exact-callsign P2P matching, §3) — unchanged, nothing to add.
 
 ### 4.6 Activation status
 
@@ -163,7 +168,7 @@ A later phase (§6). What the design keeps open:
 * **References in `COMMENT`**, the WSJT-X workaround POTA's digital guide describes. No importer reads it; it defeats the top goal.
 * **N-fers as one file with comma lists.** POTA does not read `MY_POTA_REF` (§3), so the per-park files POTA asks for are built at export.
 * **Sending the reference over the air** as free text, whether after 73 or in place of the sign-off. The one written convention for this is being dropped (row `nuvm`). In practice POTA hunters take the park from spots, and a free-text slot costs a 15 s cycle per QSO. Reopen if P2P/S2S capture from spots and queue entries (§4.4) proves not to be enough.
-* **Raw ADIF over Port A for export.** Reverses a recorded decision (`porta_proto.h:441`) for a problem the row's free space covers. Reopen if the row runs out of room.
+* **Raw ADIF over Port A for export.** Reverses a recorded decision (`porta_proto.h:452`) for a problem the row's free space covers. Reopen if the row runs out of room.
 
 ## 6. Later phases
 
@@ -181,10 +186,10 @@ Accepted 2026-09-27. The slices stay listed here, under row I18, until each is n
 
 **Order with RFC 0009** (agreed 2026-09-27): 0009 builds each Operate surface for the home case first, and this RFC then adds references to a surface that already exists, so no activation work ships its own screen. The firmware half of A1 does not wait on O1; only its entry in the sheet does.
 
-1. **A0: log baseline.** `BAND` in records and export; `MY_GRIDSQUARE` at full length. Worth doing with or without the rest, and can start at once. Proof: `host_mock` tests on the writer and parser.
+1. **A0: log baseline.** `BAND` in records and export shipped as part of A1 below; `MY_GRIDSQUARE` at full length is still open (row `I18`).
 2. **O0:** done 2026-09-27; RFC 0009 accepted.
 3. **O1:** the dock layout, home case, in three pieces: the CQ row, the dock, and the Station sheet (RFC 0009 §6).
-4. **A1: the activation and the log.** The `act_refs` config key; references entered in the station sheet; `CQ SOTA`/`CQ POTA` from them with the live switch; the §4.5 fields at log time; per-reference and per-day export with n-fer expansion. **The top goal lands here.** Proof: host tests on record and expansion. Field check: an unedited export uploads to pota.app (a 2-fer) and to the SOTA database.
+4. **A1: the activation and the log**, shipped 2026-09-29 ([logging.md](../architecture/logging.md)). **The top goal lands here.** Proof: `host_mock` and `webapp/tests/test_nfer_export.js` validate a record's fields and the export's n-fer expansion against the POTA/SOTA ADIF spec (§8) — a real pota.app/SOTA-database upload waits for an actual activation, per the operator's 2026-09-28 relaxation of this slice's Done-when (row `r7cy`). Field checks on the shipped mechanics (TX-arm timing, the wire version bump, the sheet's Activation section) are tracked in `TEST_PLAN.md` Pending, not this Done-when.
 5. **A2: activation status** (§4.6), as the dock's progress line.
 6. **A4: offline phone location** (the service-worker `geo.html`) and the ADV GNSS feed (§4.3), then the grid check in the sheet. Field check: on an iPhone with cellular off, the grid fills from GNSS.
 7. **A3: the reference store on the sidekick, filled from the map's fetches** (§4.2). Also the map's Save this area, pick mode and offline layer, and the nearby list, search and unverified typed references in the add screen (§4.3; the UI is [RFC 0009](0009-operate-station-surface.md)'s). After this, **a whole activation works offline**.
@@ -222,7 +227,5 @@ Decided by the operator, 2026-09-26:
 Open, deferred at acceptance (2026-09-27) to the slice that needs each:
 
 * **A0:** whether pota.app accepts `FREQ` without `BAND`. Moot once A0 lands, but it decides whether existing logs need re-export.
-* **A1:** the Port A row's cap on references.
-* **A1:** whether a TX already armed for the current slot picks up a CQ prefix switch (§4.4).
 * **A3:** the store's cap, and whether areas are named and listed for deletion (proposed: yes, with usage shown).
 * **A3:** the measured free space in the sidekick's `web` partition on a device with the current bundle, which sets the cap (§4.2). The web build's 800 KB budget assumes a 256 KB cap ([webapp.md](../architecture/webapp.md), **Build**).

@@ -1389,8 +1389,9 @@ function setStationSheetForm(cfg) {
   renderActRefs(cfg);
 }
 
-// act_refs (RFC 0008 §4.2): "POTA:US-1234,SOTA:W7O/CC-001". Parsed only for
-// display here -- the firmware (main/storage/station.cpp,
+// act_refs ("POTA:US-1234,SOTA:W7O/CC-001", architecture/webapp.md,
+// "Activation"). Parsed only for display here -- the firmware
+// (main/storage/station.cpp,
 // normalize_act_refs()) is what actually validates and stores it; this just
 // splits what it already accepted.
 function parseActRefs(cfg) {
@@ -3665,8 +3666,9 @@ function adifBandTag(band) {
 // `sig`, when given, is one bucket from groupRowsByReference() below: the
 // n-fer export's per-file single reference replaces the device's own
 // comma-list fields with the exact fields each program's importer reads
-// (RFC 0008 §4.5) -- POTA wants MY_SIG/MY_SIG_INFO (confirmed against
-// pota.app's real importer, §3; MY_POTA_REF is not read yet), SOTA wants
+// (architecture/logging.md) -- POTA wants MY_SIG/MY_SIG_INFO (confirmed
+// against pota.app's real importer, RFC 0008 §3; MY_POTA_REF is not read
+// yet), SOTA wants
 // MY_SOTA_REF scoped to the one summit this file is for. Omitted (the plain
 // per-day/full-archive download), the record keeps the raw comma lists
 // exactly as logged -- that download is the truthful superset, not an
@@ -3699,8 +3701,9 @@ function buildAdifRecord(q, dateStr, sig) {
 }
 
 // Distinct POTA/SOTA references logged across a set of rows (each row's
-// my_pota_ref/my_sota_ref is a comma list, RFC 0008 §4.5) -- drives both the
-// day-link's "(N POTA, M SOTA)" count and groupRowsByReference() below.
+// my_pota_ref/my_sota_ref is a comma list, architecture/logging.md) --
+// drives both the day-link's "(N POTA, M SOTA)" count and
+// groupRowsByReference() below.
 function dayActivationRefs(rows) {
   var pota = [], sota = [], seen = {};
   rows.forEach(function (q) {
@@ -3722,7 +3725,8 @@ function dayActivationRefs(rows) {
 // A QSO worked during more than one simultaneous activation (a 2-fer) lands
 // in more than one bucket -- the device's own log is the truthful superset
 // (one record per QSO, every reference as a comma list); this split only
-// happens here, at export time (RFC 0008 §4.5), never on the device.
+// happens here, at export time (architecture/logging.md), never on the
+// device.
 function groupRowsByReference(rows) {
   var buckets = [], byKey = {};
   function bucketFor(program, ref) {
@@ -3750,7 +3754,7 @@ function groupRowsByReference(rows) {
   return buckets;
 }
 
-// RFC 0008 §4.5's filename, CALL@PARK-YYYYMMDD.adi, generalized to SOTA: a
+// CALL@PARK-YYYYMMDD.adi (architecture/logging.md), generalized to SOTA: a
 // summit reference's own "/" (e.g. "W7O/CC-001") can't appear in a filename
 // component, so only the filename gets it swapped for "-"; the ADIF field
 // value itself (my_sig_info / my_sota_ref) keeps the real reference.
@@ -3830,8 +3834,8 @@ async function downloadDayAdif(file, linkEl) {
   }
 }
 
-// The n-fer split (RFC 0008 §4.5): one file per distinct reference logged
-// that day, each with just that reference's own fields (buildAdifRecord()'s
+// The n-fer split (architecture/logging.md): one file per distinct
+// reference logged that day, each with just that reference's own fields (buildAdifRecord()'s
 // `sig` argument) so an upload to pota.app or the SOTA database never mixes
 // two parks'/summits' QSOs in one file. Staggered per the Step 0 Safari
 // de-risk test (multiple Blob downloads from one click, ~150 ms apart, all

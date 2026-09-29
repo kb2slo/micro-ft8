@@ -91,8 +91,8 @@ std::string normalize_grid_maidenhead(const std::string& src)
     return out;
 }
 
-// RFC 0008 §4.2: "POTA:US-1234,SOTA:W7O/CC-001". Unlike
-// normalize_grid_maidenhead() above (one value, all-or-nothing), this is a
+// "POTA:US-1234,SOTA:W7O/CC-001" (architecture/webapp.md, "Activation").
+// Unlike normalize_grid_maidenhead() above (one value, all-or-nothing), this is a
 // list -- a malformed token is dropped on its own rather than rejecting the
 // whole write, so one bad entry can't also cost the good ones. A token
 // needs a non-empty program and a non-empty reference either side of the

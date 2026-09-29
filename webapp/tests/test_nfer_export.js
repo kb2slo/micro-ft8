@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// RFC 0008 §4.5: n-fer expansion happens at export, not on the device -- one
-// POTA file per park per day, one SOTA file per summit, each carrying only
-// that reference's own fields (MY_SIG/MY_SIG_INFO or MY_SOTA_REF), since
-// pota.app's real importer does not read the device's own MY_POTA_REF comma
-// list (confirmed against its importer and PoLo's notes, RFC 0008 §3).
+// architecture/logging.md: n-fer expansion happens at export, not on the
+// device -- one POTA file per park per day, one SOTA file per summit, each
+// carrying only that reference's own fields (MY_SIG/MY_SIG_INFO or
+// MY_SOTA_REF), since pota.app's real importer does not read the device's
+// own MY_POTA_REF comma list (confirmed against its importer and PoLo's
+// notes, RFC 0008 §3).
 //
 // Same approach as test_decode_batching.js: pull the exact function source
 // out of app.html and run it under Node, rather than re-implementing the
@@ -212,7 +213,7 @@ check('a known band gets a unit and upper case; an unrecognized one is omitted',
 
 // ---- exportFileBaseName ---------------------------------------------------
 
-check('a POTA filename is CALL@PARK-YYYYMMDD, RFC 0008 §4.5', () => {
+check('a POTA filename is CALL@PARK-YYYYMMDD (architecture/logging.md)', () => {
   const sb = freshSandbox();
   const name = sb.exportFileBaseName('KB2SLO', { program: 'POTA', ref: 'US-1234' }, '20260929');
   assert.strictEqual(name, 'KB2SLO@US-1234-20260929');

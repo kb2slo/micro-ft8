@@ -84,11 +84,11 @@ struct AdifLogFields {
     int         rst_sent = kAdifNoReport;
     int         rst_rcvd = kAdifNoReport;
     std::string comment;           // omitted when empty
-    // RFC 0008 §4.5: our own activation's references at log time, comma
-    // lists with no program prefix (e.g. "US-1234,US-5678" or
-    // "W7O/CC-001"), omitted when empty. N-fer expansion into one file per
-    // park happens at export (webapp), not here -- one device record still
-    // carries every reference.
+    // Our own activation's references at log time, comma lists with no
+    // program prefix (e.g. "US-1234,US-5678" or "W7O/CC-001"), omitted when
+    // empty. N-fer expansion into one file per park happens at export
+    // (webapp), not here -- one device record still carries every reference
+    // (architecture/logging.md).
     std::string my_pota_ref;
     std::string my_sota_ref;
 };

@@ -334,7 +334,8 @@ static std::string g_comment1 = "MicroFT8 /Radio";
 static std::string g_ignore_prefix_text;
 static std::vector<std::string> g_ignore_prefixes;
 static bool g_rxtx_log = true;
-// RFC 0008 §4.2: "POTA:US-1234,SOTA:W7O/CC-001". Empty means no activation.
+// "POTA:US-1234,SOTA:W7O/CC-001" (architecture/webapp.md, "Activation").
+// Empty means no activation.
 static std::string g_act_refs;
 static bool radio_type_uses_display_only(RadioType r);
 void apply_radio_profile_binding();
@@ -3978,11 +3979,12 @@ const char* porta_host_config_set(const char* key, const char* value) {
   const bool act_refs_was_empty = s.act_refs.empty();
   std::string line = std::string(key) + "=" + value + "\n";
   station_parse(line, &s);
-  // RFC 0008 §4.4: activation start (act_refs empty -> non-empty) picks the
-  // CQ type for the operator -- SOTA if any SOTA reference is present (a
-  // mixed activation defaults to SOTA), else POTA. Only this one transition
-  // derives it: a later add/remove must never clobber a manual switch made
-  // through the Station sheet's own Type control.
+  // Activation start (act_refs empty -> non-empty) picks the CQ type for
+  // the operator -- SOTA if any SOTA reference is present (a mixed
+  // activation defaults to SOTA), else POTA (architecture/logging.md, "CQ
+  // type follows the activation"). Only this one transition derives it: a
+  // later add/remove must never clobber a manual switch made through the
+  // Station sheet's own Type control.
   if (strcmp(key, "act_refs") == 0 && act_refs_was_empty && !s.act_refs.empty()) {
     s.cq_type = (int)(act_refs_prefer_sota(s.act_refs) ? CqType::CQSOTA : CqType::CQPOTA);
   }

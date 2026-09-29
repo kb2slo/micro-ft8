@@ -77,11 +77,12 @@ int main() {
         expect_contains(g_appended[0], "<comment:8>MicroFT8 ", "plain comment unchanged");
     }
 
-    // RFC 0008 §4.5: BAND gets a unit and upper case (POTA requires "20M",
-    // this app's own band names are "20m"); act_refs splits by program into
+    // BAND gets a unit and upper case (POTA requires "20M", this app's own
+    // band names are "20m"); act_refs splits by program into
     // MY_POTA_REF/MY_SOTA_REF, each a bare comma list with the "POTA:"/
     // "SOTA:" prefix stripped -- the program itself is MY_SIG, derived at
-    // n-fer export time (webapp), not stored per-QSO here.
+    // n-fer export time (webapp), not stored per-QSO here
+    // (architecture/logging.md).
     {
         g_appended.clear();
         AdifStationSnapshot station;
