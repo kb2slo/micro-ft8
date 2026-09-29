@@ -8,9 +8,7 @@ Ship on `origin/main`. Talk through changes before a local commit (see [README.m
 
 ## Now
 
-| ID | Item | Why / constraint |
-| --- | --- | --- |
-| r7cy | A1: the activation and the log | [RFC 0008](rfcs/0008-activator-mode.md) §4.1, §4.2, §4.4, §4.5 (Accepted 2026-09-27) — "the top goal" of activator mode, next now that O1 has shipped: `act_refs`, references in the Station sheet, `CQ SOTA`/`CQ POTA` from them (the sheet's Type control already switches `cq_type` live via O1c — confirm an already-armed TX picks it up), per-QSO reference fields, and n-fer export. **Done-when:** host tests validate a record's fields and the export's n-fer expansion against the POTA/SOTA ADIF spec (§8). A real pota.app/SOTA-database upload waits for an actual activation and is not part of this Done-when. |
+_(empty — pick next from Backlog)_
 
 ## Backlog
 
