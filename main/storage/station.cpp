@@ -426,6 +426,11 @@ std::string station_serialize(const StationSettings& in)
     return out.str();
 }
 
+bool act_refs_prefer_sota(const std::string& act_refs)
+{
+    return act_refs.find("SOTA:") != std::string::npos;
+}
+
 bool station_key_known(const char* name)
 {
     if (!name || name[0] == '\0') {

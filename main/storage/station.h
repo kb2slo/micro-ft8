@@ -51,6 +51,13 @@ std::string station_serialize(const StationSettings& in);
 // clock lines are not included — those are live controls / not persisted here.
 bool station_key_known(const char* name);
 
+// RFC 0008 §4.4: on activation start (act_refs empty -> non-empty), the CQ
+// type is derived from the references themselves -- SOTA if any SOTA
+// reference is present (a mixed activation defaults to SOTA), else POTA.
+// act_refs is already normalize_act_refs()'d ("POTA:"/"SOTA:" upper-case
+// prefixes) by the time a caller has it, on either board.
+bool act_refs_prefer_sota(const std::string& act_refs);
+
 // True when a CONFIG write of this key needs the VFO already on the
 // operating band to take effect right now: band_sel itself (it picks the new
 // operating band), or that band's own frequency key under the active

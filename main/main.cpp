@@ -3975,8 +3975,17 @@ const char* porta_host_config_set(const char* key, const char* value) {
   }
   StationSettings s;
   station_fill_from_globals(&s);
+  const bool act_refs_was_empty = s.act_refs.empty();
   std::string line = std::string(key) + "=" + value + "\n";
   station_parse(line, &s);
+  // RFC 0008 §4.4: activation start (act_refs empty -> non-empty) picks the
+  // CQ type for the operator -- SOTA if any SOTA reference is present (a
+  // mixed activation defaults to SOTA), else POTA. Only this one transition
+  // derives it: a later add/remove must never clobber a manual switch made
+  // through the Station sheet's own Type control.
+  if (strcmp(key, "act_refs") == 0 && act_refs_was_empty && !s.act_refs.empty()) {
+    s.cq_type = (int)(act_refs_prefer_sota(s.act_refs) ? CqType::CQSOTA : CqType::CQPOTA);
+  }
   station_apply_to_globals(s);
   sync_autoseq_from_globals();
   // protocol_mode matches MENU: pending until reboot.

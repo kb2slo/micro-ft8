@@ -385,13 +385,25 @@ const char *porta_host_config_set(const char *key, const char *value) {
     }
 
     std::string line = std::string(key) + "=" + value + "\n";
+    const bool act_refs_was_empty = s_station.act_refs.empty();
     station_parse(line, &s_station);
     s_station.serialize_ft4_band_keys = s_station.protocol_ft4;
     g_call = s_station.call;
 
+    // RFC 0008 §4.4: activation start (act_refs empty -> non-empty) picks the
+    // CQ type for the operator -- SOTA if any SOTA reference is present (a
+    // mixed activation defaults to SOTA), else POTA. Only this one
+    // transition derives it: a later add/remove must never clobber a manual
+    // switch made through the Station sheet's own Type control.
+    if (strcmp(key, "act_refs") == 0 && act_refs_was_empty && !s_station.act_refs.empty()) {
+        s_station.cq_type = (int)(act_refs_prefer_sota(s_station.act_refs) ? AutoseqCqType::SOTA
+                                                                            : AutoseqCqType::POTA);
+    }
+
     if (strcmp(key, "call") == 0 || strcmp(key, "grid") == 0 || strcmp(key, "skiptx1") == 0 ||
         strcmp(key, "autoseq_max_retry") == 0 || strcmp(key, "cq_type") == 0 ||
-        strcmp(key, "cq_ft") == 0 || strcmp(key, "free_text") == 0) {
+        strcmp(key, "cq_ft") == 0 || strcmp(key, "free_text") == 0 ||
+        strcmp(key, "act_refs") == 0) {
         sync_autoseq_station();
     }
 

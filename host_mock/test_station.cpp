@@ -160,6 +160,17 @@ int main()
         expect_true(text.find("act_refs=") != std::string::npos, "act_refs is serialized");
     }
 
+    {
+        // act_refs_prefer_sota (RFC 0008 §4.4): drives the empty->non-empty
+        // act_refs transition's CQ-type pick in both boards'
+        // porta_host_config_set(). A mixed activation defaults to SOTA.
+        expect_true(act_refs_prefer_sota("SOTA:W7O/CC-001"), "a pure SOTA activation prefers SOTA");
+        expect_true(!act_refs_prefer_sota("POTA:US-1234"), "a pure POTA activation does not prefer SOTA");
+        expect_true(act_refs_prefer_sota("POTA:US-1234,SOTA:W7O/CC-001"),
+                    "a mixed activation defaults to SOTA");
+        expect_true(!act_refs_prefer_sota(""), "no activation does not prefer SOTA");
+    }
+
     // station_key_names_operating_band (docs/architecture/webapp.md, "The
     // dock"): does this CONFIG key need the VFO already on the operating band
     // to take effect right now.
