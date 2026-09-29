@@ -2446,12 +2446,14 @@ static void check_slot_boundary() {
 
   // The armed TX must still be autoseq's head. A queue change that did not
   // re-arm -- a Port A QUEUE_CANCEL landing between the decode and this slot --
-  // would otherwise key the cancelled message once.
+  // would otherwise key the cancelled message once. Same entry but changed
+  // text (a live cq_type switch) is refreshed in place rather than re-armed,
+  // so a switch made after this slot armed still lands in it.
   // Not while a decode runs: it mutates the queue on the other core, and the
   // trigger below waits for it anyway.
   if (g_qso_xmit && g_pending_tx_valid && !decode_tx_state_get_tx_active() &&
       !decode_tx_state_get_decode_in_progress() &&
-      autoseq_head_entry_id() != g_pending_tx.entry_id) {
+      autoseq_head_changed_or_refresh(&g_pending_tx)) {
     g_qso_xmit = false;
     g_pending_tx_valid = false;
     arm_from_autoseq_or_beacon();

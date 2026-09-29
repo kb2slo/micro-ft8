@@ -608,6 +608,17 @@ uint16_t autoseq_head_entry_id() {
     return s_tx_msg_buffer.empty() ? 0 : s_queue[0].entry_id;
 }
 
+bool autoseq_head_changed_or_refresh(AutoseqTxEntry* pending) {
+    if (autoseq_head_entry_id() != pending->entry_id) {
+        return true;
+    }
+    // Same entry: s_tx_msg_buffer may have been re-derived since arm time
+    // (autoseq_set_cq_type() calls refresh_tx_msg_buffer() without touching
+    // entry_id), so pull the current text rather than trusting the snapshot.
+    pending->text = s_tx_msg_buffer;
+    return false;
+}
+
 uint16_t autoseq_transmitting_entry_id() {
     return s_tx_entry_id;
 }

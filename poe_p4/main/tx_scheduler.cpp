@@ -156,9 +156,17 @@ void tx_scheduler_cancel(void) {
         // then beacon Even was the B68 repro).
         s_pending_tx_valid = false;
         s_tx_cancel_requested = false;
-        return;
+    } else {
+        s_tx_cancel_requested = true;
     }
-    s_tx_cancel_requested = true;
+    // End the radio TX and mark the view dirty now, the same as the ADV's
+    // request_tx_cancel() already does -- this used to defer both to
+    // tx_tick()'s next call noticing s_tx_cancel_requested, a real drift
+    // from the ADV found while scoping row j4xh.
+    if (radio_control_ready()) {
+        radio_control_end_tx();
+    }
+    g_tx_view_dirty = true;
 }
 
 static void tx_send_ta(float tone_hz) {
@@ -324,12 +332,14 @@ static void check_slot_boundary(void) {
 
     // The armed TX must still be autoseq's head. A queue change that did not
     // re-arm -- a Port A QUEUE_CANCEL landing between the decode and this slot
-    // -- would otherwise key the cancelled message once.
+    // -- would otherwise key the cancelled message once. Same entry but
+    // changed text (a live cq_type switch) is refreshed in place rather than
+    // re-armed, so a switch made after this slot armed still lands in it.
     // Not while a decode runs: it mutates the queue on the other task, and
     // the trigger below waits for it anyway.
     if (s_qso_xmit && s_pending_tx_valid && !decode_tx_state_get_tx_active() &&
         !decode_tx_state_get_decode_in_progress() &&
-        autoseq_head_entry_id() != s_pending_tx.entry_id) {
+        autoseq_head_changed_or_refresh(&s_pending_tx)) {
         s_qso_xmit = false;
         s_pending_tx_valid = false;
         tx_scheduler_arm_from_autoseq_or_beacon();

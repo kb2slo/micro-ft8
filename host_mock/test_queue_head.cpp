@@ -170,6 +170,40 @@ static void test_transmitting_id_names_the_on_air_entry() {
     check(autoseq_transmitting_entry_id() == 0, "cleared by the tick after the TX");
 }
 
+// RFC 0009 §4.4 / row j4xh: a board arms our own CQ, then the operator
+// switches cq_type (the Station sheet's Type control, O1c) before that slot
+// fires. The armed entry's identity never changes -- it's still the same
+// CALLING entry -- but its rendered text does, which a bare entry_id
+// comparison alone would miss (main/main.cpp's and poe_p4's
+// check_slot_boundary() used to do exactly that, confirmed as a live
+// defect). autoseq_head_changed_or_refresh() is what both boards now call
+// instead.
+static void test_head_refresh_picks_up_cq_type_switch() {
+    reset();
+    autoseq_start_cq(0);
+    AutoseqTxEntry pending;
+    check(autoseq_fetch_pending_tx(pending), "CQ queued");
+    check(pending.text == "CQ KB2SLO FN30", "plain CQ text before the switch");
+    const uint16_t armed_entry_id = pending.entry_id;
+
+    autoseq_set_cq_type(AutoseqCqType::SOTA);  // the live switch, mid-slot
+
+    check(!autoseq_head_changed_or_refresh(&pending), "same entry, caller should not re-arm");
+    check(pending.entry_id == armed_entry_id, "entry_id left unchanged");
+    check(pending.text == "CQ SOTA KB2SLO FN30", "text refreshed to the new type");
+}
+
+// A genuinely different head (the armed entry dropped or replaced) must
+// still report "re-arm", not attempt a refresh.
+static void test_head_refresh_reports_changed_identity() {
+    reset();
+    decode(to_me("K1ABC", "FN42"));
+    AutoseqTxEntry pending;
+    autoseq_fetch_pending_tx(pending);
+    check(autoseq_drop_by_entry_id(pending.entry_id), "drop the armed entry");
+    check(autoseq_head_changed_or_refresh(&pending), "identity changed, caller must re-arm");
+}
+
 int main() {
     test_head_id_matches_fetch();
     test_transmitting_id_names_the_on_air_entry();
@@ -177,6 +211,8 @@ int main() {
     test_tick_follows_moved_entry();
     test_reactivation_by_unclassified_message_can_transmit();
     test_reactivated_report_resends_report();
+    test_head_refresh_picks_up_cq_type_switch();
+    test_head_refresh_reports_changed_identity();
     if (s_failed) return 1;
     printf("PASS: tick follows the transmitted entry; reactivation can transmit\n");
     return 0;

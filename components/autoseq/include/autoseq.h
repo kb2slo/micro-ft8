@@ -189,6 +189,19 @@ bool autoseq_fetch_pending_tx(AutoseqTxEntry& out);
 // did not re-arm (a cancel, a drop) would otherwise send the old message.
 uint16_t autoseq_head_entry_id();
 
+// Combines the entry_id check above with the text refresh a board's armed
+// snapshot also needs: the *same* queue[0] entry's rendered text can change
+// without its entry_id changing (a live cq_type switch re-derives the CQ
+// template for the entry already at CALLING, RFC 0009 §4.4) — a bare
+// entry_id comparison alone misses that, so a switch made after a board
+// armed a slot but before it fired would silently transmit the old text.
+// Returns true if the head entry's identity changed (the caller must drop
+// this arm and re-arm from scratch, as it already does on the old check);
+// false if it's still the same entry, with `pending->text` refreshed in
+// place from the live buffer (everything else about `*pending`, including
+// the offset resolved at arm time, is left untouched).
+bool autoseq_head_changed_or_refresh(AutoseqTxEntry* pending);
+
 // entry_id of the entry whose TX started last (autoseq_on_tx_starting), until
 // the tick after that TX; 0 if none. Only meaningful while a TX is on the air:
 // a cancelled TX gets no tick, so the board gates this on its own tx_active.
