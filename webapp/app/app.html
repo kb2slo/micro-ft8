@@ -3014,6 +3014,11 @@ var logDone = false;         // every file drained, nothing left anywhere
 var logLoading = false;
 var logRefreshing = false;
 var logRenderedAny = false;
+var dayFullRowsCache = {};  // filename -> Promise<full day's rows> (fetchAllEntries()),
+                             // memoized per file so the activation-count link text and a
+                             // click on it never issue two separate fetches of the same
+                             // day -- appendLogRows() below clears a file's entry whenever
+                             // it gets new rows, so the count stays live without polling.
 
 var LOG_ENTRY_FETCH = 10;    // rows per /api/log/entries call
 var LOG_ENTRY_GOAL = 15;     // rows to append per loadMoreLog() batch
@@ -3603,6 +3608,31 @@ function appendLogRows(file, rows, prependGroup) {
   var dayTextEl = group.querySelector('.daydate');
   var dayCount = group.querySelectorAll('.frow').length;
   dayTextEl.textContent = dayLabel(file) + ' · ' + dayCount + ' QSO' + (dayCount === 1 ? '' : 's');
+  // A brand-new, still-empty day file (checkForNewDayFiles()'s UTC-rollover
+  // case, rows === []) has nothing to count -- skip the fetch, the plain
+  // "Download ADI" text is already correct. Any real batch (first load,
+  // pagination, or a live QSO from refreshLogHead()) can only ever add
+  // references, never remove one, but re-deriving from the full day is
+  // simpler than trying to merge counts incrementally and this is not a
+  // hot path.
+  if (rows.length) {
+    delete dayFullRowsCache[file];
+    refreshDayLinkText(file, group.querySelector('.dlink'));
+  }
+}
+
+// Best-effort: fills in a day's POTA/SOTA reference counts once its full row
+// set is fetched. A failed fetch just leaves the plain "Download ADI" text
+// -- the exact single-file download in downloadDayAdif() below still works
+// either way, it only loses the n-fer split.
+function refreshDayLinkText(file, dlinkEl) {
+  dayFullRows(file).then(function (rows) {
+    var refs = dayActivationRefs(rows);
+    var parts = [];
+    if (refs.pota.length) parts.push(refs.pota.length + ' POTA');
+    if (refs.sota.length) parts.push(refs.sota.length + ' SOTA');
+    dlinkEl.textContent = 'Download ADI' + (parts.length ? ' (' + parts.join(', ') + ')' : '');
+  }).catch(function () {});
 }
 
 // Mirrors adif.cpp's adif_format_log_record() field-for-field: same tag
@@ -3632,7 +3662,16 @@ function adifBandTag(band) {
   var known = BANDS.some(function (b) { return b.name === band; });
   return known ? band.toUpperCase() : '';
 }
-function buildAdifRecord(q, dateStr) {
+// `sig`, when given, is one bucket from groupRowsByReference() below: the
+// n-fer export's per-file single reference replaces the device's own
+// comma-list fields with the exact fields each program's importer reads
+// (RFC 0008 §4.5) -- POTA wants MY_SIG/MY_SIG_INFO (confirmed against
+// pota.app's real importer, §3; MY_POTA_REF is not read yet), SOTA wants
+// MY_SOTA_REF scoped to the one summit this file is for. Omitted (the plain
+// per-day/full-archive download), the record keeps the raw comma lists
+// exactly as logged -- that download is the truthful superset, not an
+// upload-ready file.
+function buildAdifRecord(q, dateStr, sig) {
   var out = '';
   out += adifField('call', q.call || '');
   out += adifFieldIfSet('gridsquare', q.grid);
@@ -3646,10 +3685,78 @@ function buildAdifRecord(q, dateStr) {
   if (q.rst_sent != null && q.rst_sent !== -99) out += adifField('rst_sent', String(q.rst_sent));
   if (q.rst_rcvd != null && q.rst_rcvd !== -99) out += adifField('rst_rcvd', String(q.rst_rcvd));
   out += adifFieldIfSet('comment', q.comment);
-  out += adifFieldIfSet('my_pota_ref', q.my_pota_ref);
-  out += adifFieldIfSet('my_sota_ref', q.my_sota_ref);
+  if (sig && sig.program === 'POTA') {
+    out += adifField('my_sig', 'POTA');
+    out += adifField('my_sig_info', sig.ref);
+  } else if (sig && sig.program === 'SOTA') {
+    out += adifField('my_sota_ref', sig.ref);
+  } else {
+    out += adifFieldIfSet('my_pota_ref', q.my_pota_ref);
+    out += adifFieldIfSet('my_sota_ref', q.my_sota_ref);
+  }
   out += '<eor>\n';
   return out;
+}
+
+// Distinct POTA/SOTA references logged across a set of rows (each row's
+// my_pota_ref/my_sota_ref is a comma list, RFC 0008 §4.5) -- drives both the
+// day-link's "(N POTA, M SOTA)" count and groupRowsByReference() below.
+function dayActivationRefs(rows) {
+  var pota = [], sota = [], seen = {};
+  rows.forEach(function (q) {
+    (q.my_pota_ref || '').split(',').forEach(function (ref) {
+      ref = ref.trim();
+      if (ref && !seen['P:' + ref]) { seen['P:' + ref] = true; pota.push(ref); }
+    });
+    (q.my_sota_ref || '').split(',').forEach(function (ref) {
+      ref = ref.trim();
+      if (ref && !seen['S:' + ref]) { seen['S:' + ref] = true; sota.push(ref); }
+    });
+  });
+  pota.sort();
+  sota.sort();
+  return { pota: pota, sota: sota };
+}
+
+// One bucket per distinct reference, each holding every row logged under it.
+// A QSO worked during more than one simultaneous activation (a 2-fer) lands
+// in more than one bucket -- the device's own log is the truthful superset
+// (one record per QSO, every reference as a comma list); this split only
+// happens here, at export time (RFC 0008 §4.5), never on the device.
+function groupRowsByReference(rows) {
+  var buckets = [], byKey = {};
+  function bucketFor(program, ref) {
+    var key = program + ':' + ref;
+    if (!byKey[key]) {
+      byKey[key] = { program: program, ref: ref, rows: [] };
+      buckets.push(byKey[key]);
+    }
+    return byKey[key];
+  }
+  rows.forEach(function (q) {
+    (q.my_pota_ref || '').split(',').forEach(function (ref) {
+      ref = ref.trim();
+      if (ref) bucketFor('POTA', ref).rows.push(q);
+    });
+    (q.my_sota_ref || '').split(',').forEach(function (ref) {
+      ref = ref.trim();
+      if (ref) bucketFor('SOTA', ref).rows.push(q);
+    });
+  });
+  buckets.sort(function (a, b) {
+    if (a.program !== b.program) return a.program < b.program ? -1 : 1;
+    return a.ref < b.ref ? -1 : (a.ref > b.ref ? 1 : 0);
+  });
+  return buckets;
+}
+
+// RFC 0008 §4.5's filename, CALL@PARK-YYYYMMDD.adi, generalized to SOTA: a
+// summit reference's own "/" (e.g. "W7O/CC-001") can't appear in a filename
+// component, so only the filename gets it swapped for "-"; the ADIF field
+// value itself (my_sig_info / my_sota_ref) keeps the real reference.
+function exportFileBaseName(callsign, bucket, dateStr) {
+  var safeRef = bucket.ref.replace(/\//g, '-');
+  return (callsign || 'NOCALL') + '@' + safeRef + '-' + dateStr;
 }
 
 // Loops /api/log/entries past whatever page size the Log tab itself has
@@ -3692,19 +3799,54 @@ async function fetchAllEntries(file) {
   return rows;
 }
 
+// Memoized wrapper: refreshDayLinkText() (appendLogRows(), above) and a
+// click on the day's own link both need this file's complete row set, and
+// must see the same data rather than racing two separate fetches.
+function dayFullRows(file) {
+  if (!dayFullRowsCache[file]) {
+    dayFullRowsCache[file] = fetchAllEntries(file);
+  }
+  return dayFullRowsCache[file];
+}
+
 async function downloadDayAdif(file, linkEl) {
   var origText = linkEl.textContent;
   linkEl.textContent = 'Preparing…';
   try {
     var dateStr = file.slice(0, 8);
-    var rows = await fetchAllEntries(file);
-    var text = 'ADIF EXPORT\n<eoh>\n' +
-              rows.map(function (q) { return buildAdifRecord(q, dateStr); }).join('');
-    triggerAdifDownload(file, text);
+    var rows = await dayFullRows(file);
+    var refs = dayActivationRefs(rows);
+    if (!refs.pota.length && !refs.sota.length) {
+      var text = 'ADIF EXPORT\n<eoh>\n' +
+                rows.map(function (q) { return buildAdifRecord(q, dateStr); }).join('');
+      triggerAdifDownload(file, text);
+    } else {
+      await downloadDayNfer(rows, dateStr);
+    }
   } catch (e) {
     setMsg(String(e && e.message ? e.message : e));
   } finally {
     linkEl.textContent = origText;
+  }
+}
+
+// The n-fer split (RFC 0008 §4.5): one file per distinct reference logged
+// that day, each with just that reference's own fields (buildAdifRecord()'s
+// `sig` argument) so an upload to pota.app or the SOTA database never mixes
+// two parks'/summits' QSOs in one file. Staggered per the Step 0 Safari
+// de-risk test (multiple Blob downloads from one click, ~150 ms apart, all
+// land without a browser prompt or block).
+async function downloadDayNfer(rows, dateStr) {
+  var buckets = groupRowsByReference(rows);
+  var callsign = (rows[0] && rows[0].station_callsign) || '';
+  for (var i = 0; i < buckets.length; i++) {
+    var bucket = buckets[i];
+    var text = 'ADIF EXPORT\n<eoh>\n' +
+              bucket.rows.map(function (q) { return buildAdifRecord(q, dateStr, bucket); }).join('');
+    triggerAdifDownload(exportFileBaseName(callsign, bucket, dateStr), text);
+    if (i < buckets.length - 1) {
+      await new Promise(function (resolve) { setTimeout(resolve, 150); });
+    }
   }
 }
 
@@ -3777,6 +3919,7 @@ async function clearAllAdif() {
     // worked/new flag or the callsign info modal's QSO history could keep
     // showing pre-clear data as if the clear never happened.
     logEntriesByCall = {};
+    dayFullRowsCache = {};
     document.getElementById('logList').innerHTML =
       '<p style="padding:0 1rem;color:GrayText">Loading…</p>';
     document.getElementById('logMore').hidden = false;
