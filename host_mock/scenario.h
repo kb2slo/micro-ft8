@@ -65,7 +65,7 @@ void scenario_clear_hud(Scenario& s);
 
 void scenario_emit_usb(Scenario& s, bool present);
 
-// One SWR sweep event row (the same JSON the sidekick serves; RFC 0010).
+// One SWR sweep event row (the same JSON the sidekick serves; docs/architecture/radio.md, The SWR sweep).
 void scenario_emit_sweep(Scenario& s, uint8_t kind, uint8_t range_index, uint32_t freq_hz, int swr_c,
                          uint8_t reason);
 

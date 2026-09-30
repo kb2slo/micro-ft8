@@ -130,7 +130,7 @@ jobs:
       - name: Webapp decode-batching test
         run: node webapp/tests/test_decode_batching.js
 
-      # The n-fer export (architecture/logging.md) and the SWR sweep's plan and plot (RFC 0010).
+      # The n-fer export (architecture/logging.md) and the SWR sweep's plan and plot (docs/architecture/webapp.md, The SWR sweep).
       - name: Webapp n-fer export test
         run: node webapp/tests/test_nfer_export.js
 

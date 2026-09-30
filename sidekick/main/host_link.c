@@ -70,7 +70,7 @@ typedef enum {
     ENTRY_SLOT_STATE = 3,
     ENTRY_TX_HUD = 4,       // I28d, docs/architecture/webapp.md (Screens)
     ENTRY_USB_STATUS = 5,   // host's own USB-C host port: device attached/detached
-    ENTRY_SWEEP = 6,        // RFC 0010: SWR sweep progress
+    ENTRY_SWEEP = 6,        // SWR sweep progress (docs/architecture/radio.md)
 } entry_kind_t;
 
 typedef struct {
@@ -775,7 +775,7 @@ static esp_err_t post_radio_tune(httpd_req_t *req)
 }
 
 // POST /api/swr/start  body: "lo-hi-step,lo-hi-step,..." in kHz, at most PORTA_SWEEP_MAX_RANGES
-// (RFC 0010). Token required: it keys the transmitter. Progress arrives as SWEEP events on
+// (docs/architecture/radio.md, The SWR sweep). Token required: it keys the transmitter. Progress arrives as SWEEP events on
 // /api/events; stopping is /api/tx/cancel. The host validates the ranges and its state, so a
 // refusal comes back as {"ok":false,"why":...}.
 static esp_err_t post_swr_start(httpd_req_t *req)

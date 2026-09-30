@@ -1,4 +1,4 @@
-// The SWR sweep's logic, without the page (RFC 0010): which ranges to sweep, how long that takes,
+// The SWR sweep's logic, without the page (docs/architecture/webapp.md, The SWR sweep): which ranges to sweep, how long that takes,
 // what the host's events add up to, and where every mark on the plot goes. swr.html draws what
 // plotModel() returns; webapp/tests/test_swr_core.js runs this file under node.
 //

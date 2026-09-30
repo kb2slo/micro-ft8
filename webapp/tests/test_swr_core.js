@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// swr_core.js (RFC 0010): the sweep plan, the event reducer, the countdown and the plot's geometry,
+// swr_core.js (docs/architecture/webapp.md, The SWR sweep): the sweep plan, the event reducer, the countdown and the plot's geometry,
 // run under node without a page. bands.js is loaded first, as swr.html does.
 'use strict';
 const vm = require('vm');

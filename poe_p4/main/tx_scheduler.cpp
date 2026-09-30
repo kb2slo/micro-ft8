@@ -188,7 +188,7 @@ static void tx_start(int skip_tones) {
         return;
     }
     if (swr_sweep_busy()) {
-        // An SWR sweep has the radio (RFC 0010). It refuses to start over a queued QSO or the
+        // An SWR sweep has the radio (docs/architecture/radio.md, The SWR sweep). It refuses to start over a queued QSO or the
         // beacon, but the operator can arm one after; that slot is skipped.
         return;
     }

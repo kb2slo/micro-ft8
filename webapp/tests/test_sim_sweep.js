@@ -1,4 +1,4 @@
-// Drives sim_station's SWR sweep over HTTP (RFC 0010): the real sweep state machine runs against a
+// Drives sim_station's SWR sweep over HTTP (docs/architecture/radio.md, The SWR sweep): the real sweep state machine runs against a
 // fake QMX, and the page's /api/swr/start and /api/events see the same JSON the sidekick serves.
 // No browser: the page's own rendering is a later slice.
 

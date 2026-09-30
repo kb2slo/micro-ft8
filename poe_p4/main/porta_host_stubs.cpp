@@ -340,7 +340,7 @@ const char *porta_host_set_clock(uint32_t epoch_secs, uint16_t millis) {
 
 void porta_host_tx_cancel(void) {
     tx_scheduler_cancel();
-    // A sweep is a transmission too: the one stop control ends it (RFC 0010 3.4). The ticking
+    // A sweep is a transmission too: the one stop control ends it (docs/architecture/radio.md, The SWR sweep). The ticking
     // task does the de-key on its next tick, at most 10 ms away.
     swr_sweep_request_cancel();
 }

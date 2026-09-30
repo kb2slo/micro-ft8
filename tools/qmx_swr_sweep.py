@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""QMX SWR sweep across the amateur bands: a bench prototype of row I8's field tool.
+"""QMX SWR sweep across the amateur bands: the bench prototype of the page's sweep (docs/architecture/radio.md).
 
 Runs on a computer with the QMX's USB-C plugged straight in. It TRANSMITS (short carriers,
 at the radio's own Tune %, 25% or more reads true -- architecture/radio.md), so pass --transmit.

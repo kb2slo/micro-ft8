@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""QMX SWR-sweep CAT probe (row I8): does MD8; + FA + SW; behave as a sweep needs?
+"""QMX SWR-sweep CAT probe (the SWR sweep, docs/architecture/radio.md): does MD8; + FA + SW; behave as a sweep needs?
 
 Runs on a computer with the QMX's USB-C plugged straight in (it enumerates as a serial
 port). No firmware involved. It TRANSMITS, at the radio's own Tune %, so use a dummy

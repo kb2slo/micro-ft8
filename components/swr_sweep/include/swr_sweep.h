@@ -1,7 +1,7 @@
 #pragma once
 
-// Sweeps SWR over frequency ranges through the QMX's SWR Tune mode (RFC 0010,
-// docs/architecture/radio.md "QMX SWR Tune over CAT"). The caller hands over ranges
+// Sweeps SWR over frequency ranges through the QMX's SWR Tune mode (docs/architecture/radio.md, "The SWR sweep on the
+// main board" and "QMX SWR Tune over CAT"). The caller hands over ranges
 // and calls swr_sweep_tick() often; nothing here blocks, so USB, audio and Port A keep
 // running while a sweep is in progress. Events come back through a callback.
 //

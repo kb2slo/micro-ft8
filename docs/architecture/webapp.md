@@ -116,7 +116,7 @@ What the operator consults *instead of* looking at the radio. **The test for a T
 
 ## The SWR sweep
 
-`swr.html`, reached from Tools ([RFC 0010](../rfcs/0010-swr-sweep.md)): tune an antenna in the field. The bands ticked are swept by the main board through the QMX, one short carrier per point; the page plots what comes back. The CAT sequence and what the radio refuses: [radio.md](radio.md) (**QMX SWR Tune over CAT**); the wire: [sidekick.md](sidekick.md) (**Port A**, v4).
+`swr.html`, reached from Tools ([radio.md](radio.md), **The SWR sweep on the main board**): tune an antenna in the field. The bands ticked are swept by the main board through the QMX, one short carrier per point; the page plots what comes back. The CAT sequence and what the radio refuses: [radio.md](radio.md) (**QMX SWR Tune over CAT**); the wire: [sidekick.md](sidekick.md) (**Port A**, v4).
 
 * **The plan is the page's.** `bands.js` (shared with `app.html`, which used to hold the table inline) gives the band edges; `swr_core.js` turns the ticked bands into `(lo, hi, step)` ranges, about 10 to 20 points a band (the step table is there), **Fine** halves every step. The ranges go to `POST /api/swr/start`. The host's three numbers (800 ms a point, 200 points, 12 ranges) are read from `swr_sweep.h` by `webapp/tests/test_swr_core.js`, so the estimate and the refusal cannot drift from the firmware. 2 m is left out: its edges do not fit the wire's 16-bit kHz.
 * **Bands default to `active_bands`.** The ticked boxes open as Settings has them (`defaultBands()`), and only bands a QMX could have are offered.

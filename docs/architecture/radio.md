@@ -13,13 +13,13 @@ The core (slot loop, TX scheduler, HUD) talks to the radio only through `compone
 ## Rules
 
 * **No `if (QMX)` in the core** — not in `main.cpp`, `poe_p4/main`, or the dispatcher in `radio_control.cpp`. Radio-specific behaviour is an operation or a capability.
-* **QMX-only features go through a capability flag.** The SWR curve (I8) calls `MD8;` only where `can_md8_tune` is set; a CAT power-off (`PS0;`, I10) only where `can_ps0` is set.
+* **QMX-only features go through a capability flag.** The SWR sweep calls `MD8;` only where `can_md8_tune` is set; a CAT power-off (`PS0;`, I10) only where `can_ps0` is set.
 * **Adding a radio** means filling in a new operations table and capabilities, and adding a row to `radio_profile.h` — no edit to the slot loop. This is the design's test; no second radio family has been added yet to prove it.
 * **Why a table, not `class Radio`:** the variants are a closed set, and a C struct of function pointers is what the rest of this ESP-IDF tree already uses. [STYLE.md](../STYLE.md) (**Structure**) allows inheritance only for closed sets like this one, and the table is the lighter form of it.
 
 ## QMX SWR Tune over CAT
 
-Measured on a QMX at firmware 1_04_003 with `tools/qmx_swr_probe.py` (2026-09-30); `tools/qmx_swr_sweep.py` and `tools/qmx_swr_plot.py` are the bench prototype of the sweep and its plot. **Not yet built as a sweep: row I8**; this is what the probe proved, and what the sweep must follow.
+Measured on a QMX at firmware 1_04_003 with `tools/qmx_swr_probe.py` (2026-09-30); `tools/qmx_swr_sweep.py` and `tools/qmx_swr_plot.py` are the bench prototype of the sweep and its plot. The sweep is built on it: see **The SWR sweep on the main board** below.
 
 * **`MD8;` enters SWR Tune and keys the radio by itself** (`KD;`/`TQ;` read `1`; `MD;` then reads `3`). `SW;` returns the SWR in hundredths while keyed, and an empty `SW;` in receive. No `TX;` is needed, and a plain `TX;` does not measure: `KD;` stays `0` and `SW;` returns noisy, meaningless values.
 * **The frequency is taken when SWR Tune is entered.** `FA` while keyed is refused (`?;`), and `MD8;` sent while already in SWR Tune keeps the old frequency. Per point: `RX;`, `MD6;`, `FA<hz>;`, `MD8;`, then read `SW;`. Afterwards `RX;`, `MD6;` and the original `FA`.
@@ -31,3 +31,27 @@ Measured on a QMX at firmware 1_04_003 with `tools/qmx_swr_probe.py` (2026-09-30
 * **The SWR-protection latch (unverified).** `SR;` cannot be read on 1_04_003. The panadapter clears a tripped latch after a burst reading over 4.0 by sending `TX;`, waiting 150 ms, then `RX;`. Not tried here. If a sweep on a badly mismatched band ever leaves the radio refusing to key, that is the thing to try, and it becomes a fix in the sweep's slice.
 * **The radio appends terminal display codes** (`ESC[7m` and similar) after some replies; a parser must strip them and read a reply by pattern.
 
+## The SWR sweep on the main board
+
+A phone page ([webapp.md](webapp.md), **The SWR sweep**) asks the main board to sweep SWR over the bands the operator ticks; the wire is Port A v4 ([sidekick.md](sidekick.md), **Port A**). Built for the P4; the ADV answers "SWR sweep is not built for this board". **Not yet built: rows uqu2 (the ADV), vu8t (reading the Tune %).**
+
+```mermaid
+flowchart LR
+    page["swr.html<br/>band table, steps, plot"] -- "POST /api/swr/start<br/>token-guarded" --> sk["Sidekick"]
+    sk -- "Port A SWEEP_START<br/>(lo, hi, step) ranges" --> main["Main board<br/>swr_sweep state machine"]
+    main -- "CAT: RX; MD6; FA; MD8; SW;" --> qmx["QMX"]
+    main -- "Port A SWEEP event<br/>point / band skipped / done / aborted" --> sk
+    sk -- "/api/events" --> page
+```
+
+* **The state machine** is `components/swr_sweep`: non-blocking, one radio command per `swr_sweep_tick()`, so USB, audio and Port A keep running. It talks to the radio only through `radio_swr_io_t` (`radio_control_swr_io()`, QMX only, behind `can_md8_tune`; a QDX returns none), so `host_mock` tests it against a fake QMX: a refused `FA`, a refused band, cancel at any state, a silent radio, the restore, the caps. The sequence per point and the bench facts behind it are in the section above.
+* **The phone owns the plan.** The firmware takes `(lo, hi, step)` kHz ranges and holds no band table, so there is nothing to keep in agreement between C and JavaScript. The radio's own refusal of a frequency outside its configured bands is the hardware-side limit, and it is not ours to duplicate. A band whose first and last frequency are both refused is reported skipped and never keys; a silent probe is not a refusal.
+* **Caps.** A request is refused above `SWR_SWEEP_MAX_POINTS` (200) points or `SWR_SWEEP_MAX_RANGES` (12) ranges. Every keyed phase is bounded by the reply timeouts and by aborting after three silent queries in a row, so the point cap bounds the keyed time (200 points at about 0.85 s is under three minutes). *Why no keyed-time cap:* it would be a second rule that can never fire.
+* **Threads.** `swr_sweep_start()`, `_tick()` and `_cancel()` belong to one task. Port A handlers use `swr_sweep_request_start()`, `_request_cancel()` and `swr_sweep_busy()`, which hand the work to that task's next tick. The tick runs at least every 100 ms (the P4's main loop: 10 ms); one more than a second late while the radio is keyed, and the next tick un-keys and aborts (STALLED). If ticks stopped altogether, only the radio's own CAT timeout (120 s on the bench unit) would un-key it.
+* **What the P4 refuses over** (`porta_host_sweep_start`, `poe_p4/main/porta_host_stubs.cpp`): CAT not ready, a transmission, the beacon on, a queued QSO, Tune on, no band frequency, a sweep already running. While one runs, `tx_start()` does not key and Tune is refused. The page asks the operator first and ends what is running through the existing endpoints, then starts again.
+* **The restore** goes to the station's band frequency, not a typed dock frequency, through `radio_control_sync_frequency_mode()`'s own steps (`MD6;`, `FR0;`, `FT0;`, `FA`).
+* **Stop is `PORTA_ACT_TX_CANCEL`.** It already means "stop transmitting", so one stop control ends a sweep on every surface: the P4's `porta_host_tx_cancel()` also requests a sweep cancel, and the next tick de-keys.
+* **The main board does not hold the result.** Events are polled and the sidekick's ring holds 64 rows, so a phone that sleeps through a sweep misses points; the page shows them as missing, never as zero, and ends a run itself when the host's end never arrives ([webapp.md](webapp.md)).
+* **Why not a band table in firmware, or a saved plan:** two copies to drift, and a plan the phone can change is the point. **Why not `TX;`:** it does not measure (above).
+* **Decoding stops while it runs:** the radio is keyed and out of digital mode, so the slots a full run spans (two or three) are not decoded.
+* **The simulator** (`host_mock/sim_station.cpp`) runs the real state machine behind `/api/swr/start` against a fake QMX that reads like a 40 m end-fed half-wave, so the page can be built and tested without a radio.

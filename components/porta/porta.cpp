@@ -41,7 +41,7 @@ const char* porta_host_queue_reply(uint32_t decode_id);
 const char* porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take);
 const char* porta_host_file_read_begin(const char* filename, uint16_t skip, uint8_t take);
 const char* porta_host_file_delete(const char* filename);
-// SWR sweep (RFC 0010): nullptr = accepted, progress follows as porta_emit_sweep() events; a
+// SWR sweep (docs/architecture/radio.md, The SWR sweep): nullptr = accepted, progress follows as porta_emit_sweep() events; a
 // non-null return is the refusal's reason and nothing was started.
 const char* porta_host_sweep_start(const porta_sweep_range_t* ranges, size_t count);
 #include "porta_proto.h"

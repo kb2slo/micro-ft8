@@ -69,7 +69,7 @@ extern "C" {
 // (architecture/logging.md); band now rides the row's own field too,
 // unchanged in shape (still PORTA_BAND_MAX), so only the two new fields
 // are a break.
-// v4 (2026-09-30): SWR sweep (RFC 0010): the SWEEP_START action and the SWEEP event. A v3 peer
+// v4 (2026-09-30): SWR sweep (docs/architecture/radio.md, The SWR sweep): the SWEEP_START action and the SWEEP event. A v3 peer
 // would answer the new action "unknown action" and ignore the event, so this is a break only in
 // that the page's sweep cannot work against it; both ends are flashed together as for v3.
 #define PORTA_PROTO_VERSION 4u
@@ -307,7 +307,7 @@ size_t porta_proto_encode_usb_status(const porta_usb_status_event_t *u,
                                      uint8_t *out, size_t out_cap);
 bool porta_proto_parse_usb_status(const porta_frame_t *f, porta_usb_status_event_t *out);
 
-// SWEEP (RFC 0010). One event per measured point, plus one each for a band the radio does not
+// SWEEP (docs/architecture/radio.md, The SWR sweep). One event per measured point, plus one each for a band the radio does not
 // have, the end of a sweep, and an abort. `kind` and `reason` are wire values, below.
 typedef enum {
     PORTA_SWEEP_POINT = 0,         // freq_hz, swr_c
