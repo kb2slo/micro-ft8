@@ -91,6 +91,10 @@
     box-shadow: 0 1px 0 rgba(26, 31, 28, 0.06);
     cursor: zoom-in;
   }
+  .gallery.screens img.uncropped {
+    aspect-ratio: auto;
+    height: auto;
+  }
   .gallery.screens button.shot {
     display: block;
     width: 100%;
@@ -601,7 +605,7 @@
       or camp network instead. Either way: no app-store install, just Safari or
       Chrome on a phone, tablet, or laptop. Three tabs: <strong>Operate</strong> drives
       the radio, <strong>QSOs</strong> is your log, <strong>Tools</strong> is everything
-      about operating that isn’t transmitting.
+      around operating: space weather, the map, and an SWR sweep for tuning an antenna.
     </p>
     <p class="note">
       <strong>The phone is optional once you’re set up.</strong> Open the page again
@@ -668,12 +672,35 @@
         </button>
         <figcaption>Map — QSO paths, POTA/SOTA spots, grayline.</figcaption>
       </figure>
+      <figure>
+        <button type="button" class="shot" data-index="6" aria-label="Enlarge SWR sweep screenshot">
+          <img
+            class="uncropped"
+            src="img/ui-swr.jpeg"
+            alt="SWR sweep page after a run across 40, 30, 20, 17 and 15 m on a 40 m end-fed half-wave: SWR 1.09 to 1.56 on 40, 20 and 15 m, about 2.4 to 2.5 on 30 and 17 m, with band boundaries"
+            width="295"
+            height="504">
+        </button>
+        <figcaption>
+          SWR sweep — tick the bands, run it, and see the whole curve. A 40&nbsp;m
+          end-fed half-wave: low on 40, 20 and 15, high on 30 and 17, as it should be.
+        </figcaption>
+      </figure>
     </div>
   </section>
 
   <section>
     <h2>Also new since Mini-FT8</h2>
     <ul>
+      <li>
+        <strong>An SWR sweep for tuning an antenna in the field.</strong> Tick the bands
+        (the ones you’ve enabled are ticked for you), see how long it will take, and run
+        it: the station sends a short carrier at each point and plots SWR from 1 to 6
+        across every band you chose, with the band edges marked and the lowest point on
+        each band named. Adjust the wire, run it again, and your last run stays faintly
+        behind the new one. Stop ends it at once. Needs the PoE‑P4 and a QMX; set the
+        QMX’s Tune power to 25% or more for a true reading.
+      </li>
       <li>
         <strong>A full browser UI.</strong> Operate, queue, tune, and download logs from
         Safari or Chrome. Tap any callsign to see its grid, bearing and distance, your
@@ -714,6 +741,11 @@
       </li>
       <li>A 22-QSO log on 20&nbsp;m from the Cardputer ADV.</li>
       <li>Real FT8 QSOs on the headless PoE-P4 build.</li>
+      <li>
+        The SWR sweep, on a PoE‑P4 with a QMX and a 40&nbsp;m end-fed half-wave: 40, 20
+        and 15&nbsp;m read 1.1 to 1.6, 30 and 17&nbsp;m read above 2, as that antenna
+        should.
+      </li>
       <li>
         A released build shows a version number only if CI built it from a clean,
         tagged tree. Any other build shows its commit instead.
