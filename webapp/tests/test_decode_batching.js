@@ -71,6 +71,7 @@ const extracted = [
   extractVarLine(src, 'slotState'),
   extractVarLine(src, 'decodeSlots'),
   extractVarLine(src, 'DECODE_SLOTS_MAX'),
+  extractFunction(src, 'isReplyableDecode'),
   extractFunction(src, 'decodeSortGroup'),
   extractFunction(src, 'decodeSortCmp'),
   extractFunction(src, 'flushDecodeBatch'),
@@ -285,6 +286,73 @@ check('coming back after a break, the newest slot shown is not replyable if its 
   assert.strictEqual(sb.slotReplyOpen({ ts: at(19, 5, 0), lenMs: 15000 }, now), false);
   // A slot that ended three seconds ago is open, wherever it sits.
   assert.strictEqual(sb.slotReplyOpen({ ts: at(19, 10, 0), lenMs: 15000 }, now), true);
+});
+
+// ---- decodeSortGroup/decodeSortCmp: replyable outranks non-replyable ------
+// (found 2026-09-30, operator report: "replyable messages should sort at
+// the top, below messages to me" -- the gap was a replyable 73/RR73 not
+// addressed to the operator, which fell into the plain "other" group.)
+
+function decodeObj(over) {
+  return Object.assign({ me: false, cq: false, rq: false, x: 'K1ABC W1AW -09', snr: 0 }, over || {});
+}
+
+check('a message to me sorts first, even with nothing to reply to', () => {
+  const sb = freshSandbox();
+  const toMe = decodeObj({ me: true, x: 'W1AW K1ABC -09' }); // a plain report, no Reply button
+  const cq = decodeObj({ cq: true, x: 'CQ K1ABC FN42' });
+  const sorted = [cq, toMe].sort(sb.decodeSortCmp);
+  assert.strictEqual(sorted[0], toMe, 'to_me outranks a replyable CQ');
+});
+
+check('a CQ outranks a plain, non-replyable line', () => {
+  const sb = freshSandbox();
+  const cq = decodeObj({ cq: true, x: 'CQ K1ABC FN42' });
+  const other = decodeObj({ x: 'K1ABC W1AW -09' }); // a bystander's report, not replyable
+  const sorted = [other, cq].sort(sb.decodeSortCmp);
+  assert.strictEqual(sorted[0], cq);
+});
+
+check('a replyable 73/RR73 not addressed to me now outranks a plain line (the gap this closes)', () => {
+  const sb = freshSandbox();
+  const closing = decodeObj({ x: 'K1ABC W1AW 73' });  // someone else's sign-off -- replyable
+  const other = decodeObj({ x: 'K1ABC W1AW -09' });   // a plain report -- not replyable
+  const sorted = [other, closing].sort(sb.decodeSortCmp);
+  assert.strictEqual(sorted[0], closing, 'a replyable 73 must outrank a non-replyable line');
+});
+
+check('a replyable RR73 not addressed to me outranks a recent-QSO line', () => {
+  const sb = freshSandbox();
+  const closing = decodeObj({ x: 'K1ABC W1AW RR73' });
+  const recent = decodeObj({ rq: true, x: 'K1ABC W1AW -09' });
+  const sorted = [recent, closing].sort(sb.decodeSortCmp);
+  assert.strictEqual(sorted[0], closing);
+});
+
+check('a non-replyable line addressed to me still outranks a replyable CQ', () => {
+  const sb = freshSandbox();
+  const toMeReport = decodeObj({ me: true, x: 'W1AW K1ABC -09' });
+  const cq = decodeObj({ cq: true, x: 'CQ K1ABC FN42' });
+  const sorted = [cq, toMeReport].sort(sb.decodeSortCmp);
+  assert.strictEqual(sorted[0], toMeReport, 'to_me wins outright, even over something replyable');
+});
+
+check('within the replyable tier, CQs still rank by strongest SNR first', () => {
+  const sb = freshSandbox();
+  const weak = decodeObj({ cq: true, x: 'CQ K1ABC FN42', snr: -10 });
+  const strong = decodeObj({ cq: true, x: 'CQ N0CALL EM10', snr: 5 });
+  const sorted = [weak, strong].sort(sb.decodeSortCmp);
+  assert.strictEqual(sorted[0], strong);
+});
+
+check('a CQ from a recently-worked station now sorts with the replyable lines, not last', () => {
+  const sb = freshSandbox();
+  // Just worked K1ABC; they call CQ again -- previously fell into the
+  // recent-QSO group (checked before is_cq) and sorted last.
+  const cqAgain = decodeObj({ cq: true, rq: true, x: 'CQ K1ABC FN42' });
+  const other = decodeObj({ x: 'N0CALL W1AW -09' });
+  const sorted = [other, cqAgain].sort(sb.decodeSortCmp);
+  assert.strictEqual(sorted[0], cqAgain, 'is_cq (replyable) now outranks is_recent_qso');
 });
 
 if (failures > 0) {

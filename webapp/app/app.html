@@ -2689,21 +2689,31 @@ function slotBandName(slot) {
   return b ? b.name : '';
 }
 
-// Mirrors main/decode_sort.h exactly (decode_sort_group/decode_sort_cmp):
-// to_me first, then fresh CQ (strongest SNR first), then other fresh, then
-// recent QSOs last. Applied per poll batch (one FT8 slot's worth of new
-// decodes), not a global re-sort of the whole rolling history -- the
-// firmware itself only ever sorts one slot's batch at a time.
+// Diverges from main/decode_sort.h on purpose (found 2026-09-30): the
+// firmware's own screen only ever shows one slot's fresh decodes at a time,
+// so a replyable CQ is trivially "at the top" there -- nothing stale competes
+// for the position. This app keeps a rolling history across many slots
+// (decodeSlots), where the plain to_me/cq/other/recent_qso grouping let a
+// non-replyable to-me line (a mid-exchange report or RRR, no Reply button)
+// outrank a replyable one -- a CQ, or someone else's closing 73/RR73 (also
+// replyable, isReplyableDecode() below, but previously fell into "other").
+// to_me still sorts first: a message addressed to the operator, even one
+// with nothing to reply to, is still the most relevant thing on the slot.
+// Applied per poll batch (one FT8 slot's worth of new decodes) at flush
+// time, not a global re-sort of the whole rolling history -- a slot is
+// always within its own reply window at the moment it is sorted, so this
+// needs no clock check of its own (slotReplyOpen() is for the button, not
+// the order).
 function decodeSortGroup(d) {
   if (d.me) return 0;
+  if (isReplyableDecode(d)) return 1;
   if (d.rq) return 3;
-  if (d.cq) return 1;
   return 2;
 }
 function decodeSortCmp(a, b) {
   var ga = decodeSortGroup(a), gb = decodeSortGroup(b);
   if (ga !== gb) return ga - gb;
-  if (ga === 1 && a.snr !== b.snr) return b.snr - a.snr;
+  if (ga === 1 && a.cq && b.cq && a.snr !== b.snr) return b.snr - a.snr;
   return 0;
 }
 
