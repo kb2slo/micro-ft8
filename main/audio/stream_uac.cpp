@@ -1,4 +1,5 @@
 #include "stream_uac.h"
+#include "cat_reply_parser.h"
 #include "decode_tx_state.h"
 #include "debug_log.h"
 
@@ -190,65 +191,23 @@ static const char* profile_name(uac_stream_profile_t profile) {
     }
 }
 
-static volatile int s_pc_tenths = -1;
-static volatile int s_sw_hundredths = -1;
-static char s_cat_acc[48];
-static size_t s_cat_acc_len;
-
-static void cat_parse_frame(const char* frame) {
-    if (!frame || frame[0] == 0) {
-        return;
-    }
-    if (frame[0] == 'P' && frame[1] == 'C' && frame[2] >= '0' && frame[2] <= '9') {
-        int v = 0;
-        for (const char* p = frame + 2; *p >= '0' && *p <= '9'; ++p) {
-            v = v * 10 + (*p - '0');
-        }
-        s_pc_tenths = v;
-        return;
-    }
-    if (frame[0] == 'S' && frame[1] == 'W' && frame[2] >= '0' && frame[2] <= '9') {
-        int v = 0;
-        for (const char* p = frame + 2; *p >= '0' && *p <= '9'; ++p) {
-            v = v * 10 + (*p - '0');
-        }
-        s_sw_hundredths = v;
-    }
-}
+static cat_reply_parser_t s_cat_parser = {-1, -1, -1, {0}, 0, 0};
 
 static bool cdc_data_cb(const uint8_t* data, size_t data_len, void* /*user_arg*/) {
     if (!data || data_len == 0) {
         return true;
     }
-    for (size_t i = 0; i < data_len; ++i) {
-        const char c = static_cast<char>(data[i]);
-        if (c == ';') {
-            s_cat_acc[s_cat_acc_len] = 0;
-            cat_parse_frame(s_cat_acc);
-            s_cat_acc_len = 0;
-            continue;
-        }
-        if (c < 32 || c > 126) {
-            continue;
-        }
-        if (s_cat_acc_len + 1 < sizeof(s_cat_acc)) {
-            s_cat_acc[s_cat_acc_len++] = c;
-        } else {
-            s_cat_acc_len = 0;
-        }
-    }
+    cat_reply_parser_feed(&s_cat_parser, data, data_len);
     return true;
 }
 
 void cat_cdc_reset_parsed_meters(void) {
-    s_pc_tenths = -1;
-    s_sw_hundredths = -1;
-    s_cat_acc_len = 0;
+    cat_reply_parser_reset(&s_cat_parser);
 }
 
 bool cat_cdc_get_parsed_meters(int* pc_tenths, int* sw_hundredths) {
-    const int pc = s_pc_tenths;
-    const int sw = s_sw_hundredths;
+    const int pc = s_cat_parser.pc_tenths;
+    const int sw = s_cat_parser.sw_hundredths;
     if (pc < 0 && sw < 0) {
         return false;
     }
@@ -257,6 +216,17 @@ bool cat_cdc_get_parsed_meters(int* pc_tenths, int* sw_hundredths) {
     }
     if (sw_hundredths) {
         *sw_hundredths = sw;
+    }
+    return true;
+}
+
+bool cat_cdc_get_parsed_freq(int* hz) {
+    const int value = s_cat_parser.fa_hz;
+    if (value < 0) {
+        return false;
+    }
+    if (hz) {
+        *hz = value;
     }
     return true;
 }

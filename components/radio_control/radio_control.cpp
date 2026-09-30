@@ -115,6 +115,14 @@ esp_err_t radio_control_begin_cpfsk_tx(float base_hz,
                                samples_per_symbol);
 }
 
+const radio_swr_io_t* radio_control_swr_io(void) {
+    if (!radio_control_get_capabilities()->can_md8_tune) {
+        return nullptr;
+    }
+    const radio_control_ops_t* ops = current_ops();
+    return ops ? ops->swr_io : nullptr;
+}
+
 void radio_control_reset_tx_power_swr(void) {
     const radio_control_ops_t* ops = current_ops();
     if (!ops || !ops->reset_tx_power_swr) return;

@@ -19,6 +19,7 @@ INCLUDES = -I. -I../main -I../main/radio -I../main/audio -I../main/storage -I../
            -I../components/board_power/include \
            -I../components/decode_pipeline/include \
            -I../components/dial_history/include \
+           -I../components/swr_sweep/include \
            -I../components/ft8_lib -I../components/ft8_lib/vendor \
            -I../components/ft8_lib/vendor/ft8 \
            -I../components/board_cardputer_adv/include \
@@ -68,6 +69,8 @@ RECENT_QSO_TARGET = host_test_recent_qso
 QUEUE_HEAD_TARGET = host_test_queue_head
 DIAL_HISTORY_TARGET = host_test_dial_history
 ADIF_LOGGER_TARGET = host_test_adif_logger
+CAT_REPLY_PARSER_TARGET = host_test_cat_reply_parser
+SWR_SWEEP_TARGET = host_test_swr_sweep
 
 all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
      $(DECODE_SORT_TARGET) $(POWER_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) $(COPY_BLOCK_TARGET) \
@@ -77,6 +80,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET
      $(DATETIME_FIELD_TARGET) $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
      $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(BUNDLE_HOST_TARGET) \
      $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
+     $(CAT_REPLY_PARSER_TARGET) $(SWR_SWEEP_TARGET) \
      $(SIM_TARGET)
 
 $(TARGET): $(OBJ) porta_event_json.o
@@ -107,6 +111,18 @@ DIAL_HISTORY_OBJ = dial_history.o test_dial_history.o
 dial_history.o: ../components/dial_history/dial_history.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 $(DIAL_HISTORY_TARGET): $(DIAL_HISTORY_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+CAT_REPLY_PARSER_OBJ = cat_reply_parser.o test_cat_reply_parser.o
+cat_reply_parser.o: ../components/radio_control/cat_reply_parser.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+$(CAT_REPLY_PARSER_TARGET): $(CAT_REPLY_PARSER_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+SWR_SWEEP_OBJ = swr_sweep.o test_swr_sweep.o
+swr_sweep.o: ../components/swr_sweep/swr_sweep.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+$(SWR_SWEEP_TARGET): $(SWR_SWEEP_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 $(QUEUE_HEAD_TARGET): $(QUEUE_HEAD_OBJ)
@@ -283,6 +299,8 @@ clean:
 	      $(WEB_MANIFEST_OBJ) $(WEB_MANIFEST_TARGET) \
 	      $(BUNDLE_HOST_OBJ) $(BUNDLE_HOST_TARGET) \
 	      $(DIAL_HISTORY_OBJ) $(DIAL_HISTORY_TARGET) \
-	      $(ADIF_LOGGER_OBJ) $(ADIF_LOGGER_TARGET)
+	      $(ADIF_LOGGER_OBJ) $(ADIF_LOGGER_TARGET) \
+	      $(CAT_REPLY_PARSER_OBJ) $(CAT_REPLY_PARSER_TARGET) \
+	      $(SWR_SWEEP_OBJ) $(SWR_SWEEP_TARGET)
 
 .PHONY: all clean

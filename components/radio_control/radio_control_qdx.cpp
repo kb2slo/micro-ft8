@@ -128,6 +128,7 @@ static const radio_control_ops_t k_ops = {
     .poll_tx_power_swr = nullptr,
     .get_tx_power_swr = nullptr,
     .begin_cpfsk_tx = qdx_begin_cpfsk_tx,
+    .swr_io = nullptr,  // the SWR sweep is QMX-only (docs/architecture/radio.md)
 };
 
 const radio_control_ops_t* radio_control_qdx_get_ops(void) {

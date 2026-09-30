@@ -161,6 +161,60 @@ static bool qmx_get_tx_power_swr(float* power_w, float* swr) {
     return pc >= 0 || sw >= 0;
 }
 
+static esp_err_t qmx_swr_unkey(void) {
+    return qmx_send_cmd("RX;", 50);
+}
+
+static esp_err_t qmx_swr_mode_digital(void) {
+    return qmx_send_cmd("MD6;", 50);
+}
+
+static esp_err_t qmx_swr_set_frequency(int hz) {
+    char fa[32];
+    snprintf(fa, sizeof(fa), "FA%011d;", hz);
+    return qmx_send_cmd(fa, 50);
+}
+
+static esp_err_t qmx_swr_query_frequency(void) {
+    return qmx_send_cmd("FA;", 50);
+}
+
+static esp_err_t qmx_swr_key(void) {
+    return qmx_send_cmd("MD8;", 50);
+}
+
+static esp_err_t qmx_swr_query_swr(void) {
+    return qmx_send_cmd("SW;", 50);
+}
+
+static bool qmx_swr_frequency_reply(int* hz) {
+    return cat_cdc_get_parsed_freq(hz);
+}
+
+static bool qmx_swr_swr_reply(int* hundredths) {
+    int sw = -1;
+    if (!cat_cdc_get_parsed_meters(nullptr, &sw) || sw < 0) {
+        return false;
+    }
+    if (hundredths) {
+        *hundredths = sw;
+    }
+    return true;
+}
+
+static const radio_swr_io_t k_swr_io = {
+    .unkey = qmx_swr_unkey,
+    .mode_digital = qmx_swr_mode_digital,
+    .set_frequency = qmx_swr_set_frequency,
+    .query_frequency = qmx_swr_query_frequency,
+    .key = qmx_swr_key,
+    .query_swr = qmx_swr_query_swr,
+    .frequency_reply = qmx_swr_frequency_reply,
+    .swr_reply = qmx_swr_swr_reply,
+    .clear_replies = cat_cdc_reset_parsed_meters,
+    .restore = qmx_sync_frequency_mode,
+};
+
 static const radio_control_capabilities_t k_capabilities = {
     .has_wattmeter = true,
     .has_swr = true,
@@ -185,6 +239,7 @@ static const radio_control_ops_t k_ops = {
     .poll_tx_power_swr = qmx_poll_tx_power_swr,
     .get_tx_power_swr = qmx_get_tx_power_swr,
     .begin_cpfsk_tx = nullptr,
+    .swr_io = &k_swr_io,
 };
 
 const radio_control_ops_t* radio_control_qmx_get_ops(void) {

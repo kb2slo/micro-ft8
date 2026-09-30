@@ -20,7 +20,7 @@ idf_component_register(
          "../../main/storage/file_list.cpp"
     INCLUDE_DIRS "."
                  "../../main/storage"
-    REQUIRES usb usb_host_cdc_acm usb_host_uac esp_timer radio_control
+    REQUIRES usb usb_host_cdc_acm usb_host_uac esp_timer radio_control swr_sweep
              autoseq callsign_hashtable protocol ft8_audio_pipeline decode_pipeline
              rtc_core external_rtc board_power resample porta porta_proto debug_log
              storage_service adif fatfs sdmmc joltwallet__littlefs esp_partition

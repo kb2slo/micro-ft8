@@ -7,6 +7,7 @@
 # reasoning porta_proto already uses).
 idf_component_register(
     SRCS "radio_control.cpp"
+         "cat_reply_parser.cpp"
          "radio_control_qmx.cpp"
          "radio_control_qdx.cpp"
     INCLUDE_DIRS "include"

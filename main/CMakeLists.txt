@@ -26,7 +26,7 @@ idf_component_register(
          "time/external_rtc.cpp"
          "storage/storage_service.cpp"
     INCLUDE_DIRS "." "radio" "audio" "storage" "time"
-    REQUIRES ui M5Unified M5GFX M5Cardputer board_cardputer_adv ft8_lib sidekick_flasher porta_proto porta radio_control decode_types
+    REQUIRES ui M5Unified M5GFX M5Cardputer board_cardputer_adv ft8_lib sidekick_flasher porta_proto porta radio_control swr_sweep decode_types
              decode_tx_state callsign_hashtable autoseq protocol debug_log ft8_audio_pipeline
              external_rtc storage_service board_power rtc_core adif decode_pipeline resample
              usb_host_uac usb_host_cdc_acm usb

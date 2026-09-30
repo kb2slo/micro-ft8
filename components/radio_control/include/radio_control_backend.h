@@ -24,6 +24,7 @@ typedef struct {
                                 size_t symbol_count,
                                 float tone_spacing_hz,
                                 uint32_t samples_per_symbol);
+    const radio_swr_io_t* swr_io;  // null = cannot sweep
 } radio_control_ops_t;
 
 const radio_control_ops_t* radio_control_qmx_get_ops(void);

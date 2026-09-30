@@ -24,6 +24,23 @@ typedef struct {
     bool can_ps0;
 } radio_control_capabilities_t;
 
+// What an SWR sweep needs from the radio, one CAT command per call, none of them
+// blocking on a reply (swr_sweep.h owns the timing). Replies come back through
+// freq_reply()/swr_reply(), which hold a value only after the matching query and
+// only until clear_replies(). QMX only; see docs/architecture/radio.md (QMX SWR Tune over CAT).
+typedef struct {
+    esp_err_t (*unkey)(void);            // RX;
+    esp_err_t (*mode_digital)(void);     // MD6;
+    esp_err_t (*set_frequency)(int hz);  // FA<hz>;
+    esp_err_t (*query_frequency)(void);  // FA;
+    esp_err_t (*key)(void);              // MD8; enters SWR Tune, which keys by itself
+    esp_err_t (*query_swr)(void);        // SW;
+    bool (*frequency_reply)(int* hz);
+    bool (*swr_reply)(int* hundredths);
+    void (*clear_replies)(void);
+    esp_err_t (*restore)(int hz);        // MD6, FR0, FT0, FA: the operating dial again
+} radio_swr_io_t;
+
 void radio_control_set_backend(radio_control_backend_t backend);
 radio_control_backend_t radio_control_get_backend(void);
 const char* radio_control_backend_name(radio_control_backend_t backend);
@@ -43,6 +60,10 @@ esp_err_t radio_control_begin_cpfsk_tx(float base_hz,
                                        size_t symbol_count,
                                        float tone_spacing_hz,
                                        uint32_t samples_per_symbol);
+
+// The sweep's radio operations, or NULL when the selected radio cannot sweep
+// (no can_md8_tune). The pointer stays valid for the life of the program.
+const radio_swr_io_t* radio_control_swr_io(void);
 
 void radio_control_reset_tx_power_swr(void);
 void radio_control_poll_tx_power_swr(void);
