@@ -114,6 +114,20 @@ What the operator consults *instead of* looking at the radio. **The test for a T
 * **POTA and SOTA** (`map.html`): `api.pota.app` activator spots and `api-db2.sota.org.uk/api/spots/{n}/all/all`, both CORS-open. SOTA's API terms restrict AI-authored clients without prior approval; the operator chose to build against it anyway (2026-09-21).
 * **Not in Tools:** self-spotting to POTA/SOTA — an authenticated outward write is a different risk class from a read-only card.
 
+## The SWR sweep
+
+`swr.html`, reached from Tools ([RFC 0010](../rfcs/0010-swr-sweep.md)): tune an antenna in the field. The bands ticked are swept by the main board through the QMX, one short carrier per point; the page plots what comes back. The CAT sequence and what the radio refuses: [radio.md](radio.md) (**QMX SWR Tune over CAT**); the wire: [sidekick.md](sidekick.md) (**Port A**, v4).
+
+* **The plan is the page's.** `bands.js` (shared with `app.html`, which used to hold the table inline) gives the band edges; `swr_core.js` turns the ticked bands into `(lo, hi, step)` ranges, about 10 to 20 points a band (the step table is there), **Fine** halves every step. The ranges go to `POST /api/swr/start`. The host's three numbers (800 ms a point, 200 points, 12 ranges) are read from `swr_sweep.h` by `webapp/tests/test_swr_core.js`, so the estimate and the refusal cannot drift from the firmware. 2 m is left out: its edges do not fit the wire's 16-bit kHz.
+* **Bands default to `active_bands`.** The ticked boxes open as Settings has them (`defaultBands()`), and only bands a QMX could have are offered.
+* **The estimate and the countdown.** "About 1:14 (93 points)" before a run; while it runs the page counts the points still to do at the rate measured so far (the estimate until two have arrived), and a band the radio reports it lacks leaves the count.
+* **One plot** (`plotModel()`, drawn as SVG): frequency across the swept bands only, each as wide as its span with a floor so a 50 kHz band is not a sliver, a vertical line at every band boundary; SWR from 1 to 6 with a dashed line at 2. **No point is drawn where there is no measurement, and the line breaks there.** A reading above 6 sits on the top edge as a red triangle. A band the radio does not have is labelled **not swept**, so a missing band never reads as a pass. Each band's minimum is named, and a table under the plot gives each band's lowest SWR, where, and the share of points at or below 2.
+* **The previous run** is kept in `localStorage` (`microft8_swr_prev_v1`, readings only) and drawn faintly behind the next: run, adjust the wire, run again. A per-phone convenience, never the record.
+* **Landscape is recommended, not required.** A page cannot force an orientation (iOS Safari has no `screen.orientation.lock()`), so in portrait a line says "Rotate your phone for a wider plot" and the plot draws at the width it has. Rotating re-lays out the readings already held; it never restarts a sweep (tested).
+* **Starting asks first** when it would end something: the host refuses over a queued QSO, the beacon, a transmission or Tune, and the page then asks in the words of a band change ("A sweep ends your QSO with K9ABC, the beacon. Receive is also interrupted while it runs. Continue?"), ends them through the existing endpoints (`/api/beacon`, `/api/tx/cancel`, `/api/queue/cancel`, `/api/radio/tune`) and starts again. **Stop** is `/api/tx/cancel`.
+* **Events are polled**, so a phone that sleeps through a sweep misses points; they are shown as missing, never as zero. The page polls every 400 ms while a sweep runs.
+* **Run against a simulator:** `python3 tools/serve_webapp_local.py --sim` serves the page with `sim_station` behind it, which runs the real sweep against a fake QMX that reads like a 40 m end-fed half-wave (bands 40 to 10 m; 160, 80, 60 and 6 m refused).
+
 ## The map
 
 `map.html`, reached from Tools: a full-screen map with independent layers (QSOs, decodes, POTA/SOTA spots) over a bundled basemap.

@@ -41,6 +41,9 @@ const char* porta_host_queue_reply(uint32_t decode_id);
 const char* porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take);
 const char* porta_host_file_read_begin(const char* filename, uint16_t skip, uint8_t take);
 const char* porta_host_file_delete(const char* filename);
+// SWR sweep (RFC 0010): nullptr = accepted, progress follows as porta_emit_sweep() events; a
+// non-null return is the refusal's reason and nothing was started.
+const char* porta_host_sweep_start(const porta_sweep_range_t* ranges, size_t count);
 #include "porta_proto.h"
 
 namespace {
@@ -318,6 +321,21 @@ void handle_action(const porta_frame_t& f) {
     }
     return;
   }
+  case PORTA_ACT_SWEEP_START: {
+    porta_sweep_range_t ranges[PORTA_SWEEP_MAX_RANGES];
+    size_t count = 0;
+    if (!porta_proto_parse_sweep_start(&f, ranges, &count)) {
+      enqueue(buf, porta_proto_encode_nak(verb, "malformed", buf, sizeof(buf)));
+      return;
+    }
+    const char* why = porta_host_sweep_start(ranges, count);
+    if (why) {
+      enqueue(buf, porta_proto_encode_nak(verb, why, buf, sizeof(buf)));
+    } else {
+      enqueue(buf, porta_proto_encode_ack(verb, buf, sizeof(buf)));
+    }
+    return;
+  }
   default:
     enqueue(buf, porta_proto_encode_nak(verb, "unknown action", buf, sizeof(buf)));
     return;
@@ -551,6 +569,21 @@ void porta_emit_usb_status(bool present, uint8_t kind, uint16_t vid, uint16_t pi
   u.pid = pid;
   uint8_t buf[PORTA_PROTO_MAX_FRAME];
   const size_t n = porta_proto_encode_usb_status(&u, buf, sizeof(buf));
+  enqueue(buf, n);
+}
+
+void porta_emit_sweep(uint8_t kind, uint8_t range_index, uint32_t freq_hz, int swr_hundredths,
+                      uint8_t reason) {
+  if (!s_running) return;
+  porta_sweep_event_t e = {};
+  e.epoch_secs = host_epoch_secs();
+  e.kind = kind;
+  e.range_index = range_index;
+  e.freq_hz = freq_hz;
+  e.swr_c = (int16_t)(swr_hundredths < -1 ? -1 : (swr_hundredths > 32767 ? 32767 : swr_hundredths));
+  e.reason = reason;
+  uint8_t buf[PORTA_PROTO_MAX_FRAME];
+  const size_t n = porta_proto_encode_sweep_event(&e, buf, sizeof(buf));
   enqueue(buf, n);
 }
 

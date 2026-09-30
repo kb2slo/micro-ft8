@@ -16,6 +16,7 @@
 #include "radio_control.h"
 #include "radio_ta_format.h"
 #include "rtc_core.h"
+#include "swr_sweep.h"
 
 extern const ProtocolConfig *g_protocol;
 extern volatile bool g_tx_view_dirty;
@@ -184,6 +185,11 @@ static void tx_send_ta(float tone_hz) {
 
 static void tx_start(int skip_tones) {
     if (decode_tx_state_get_tx_active()) {
+        return;
+    }
+    if (swr_sweep_busy()) {
+        // An SWR sweep has the radio (RFC 0010). It refuses to start over a queued QSO or the
+        // beacon, but the operator can arm one after; that slot is skipped.
         return;
     }
     if (!s_pending_tx_valid || s_pending_tx.text.empty()) {

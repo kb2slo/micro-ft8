@@ -130,6 +130,13 @@ jobs:
       - name: Webapp decode-batching test
         run: node webapp/tests/test_decode_batching.js
 
+      # The n-fer export (architecture/logging.md) and the SWR sweep's plan and plot (RFC 0010).
+      - name: Webapp n-fer export test
+        run: node webapp/tests/test_nfer_export.js
+
+      - name: Webapp SWR sweep test
+        run: node webapp/tests/test_swr_core.js
+
       - name: Autoseq host_mock
         working-directory: host_mock
         run: |
@@ -164,6 +171,9 @@ jobs:
 
       - name: Station simulator HTTP
         run: node webapp/tests/test_sim_station.js
+
+      - name: Station simulator SWR sweep
+        run: node webapp/tests/test_sim_sweep.js
 
       - name: TX e2e (CTest)
         working-directory: tests/tx_e2e

@@ -1,5 +1,6 @@
 #include "swr_sweep.h"
 
+#include <atomic>
 #include <string.h>
 
 // Waits, from the bench (docs/architecture/radio.md): the QMX answers a query within a few
@@ -12,6 +13,7 @@ static constexpr int kReadsPerPoint = 3;
 static constexpr int kMaxSilentInARow = 3;
 static constexpr uint32_t kMinKhz = 100;
 static constexpr uint32_t kMaxKhz = 60000;
+static constexpr int64_t kStallMs = 1000;
 
 enum class Phase {
     Idle,
@@ -62,6 +64,21 @@ struct Sweep {
 };
 
 Sweep s;
+
+// A request from another task, handed to the ticking one. `pending_state`: 0 none, 1 being
+// written, 2 ready. `busy` covers the wait and the run.
+struct Pending {
+    swr_sweep_range_t ranges[SWR_SWEEP_MAX_RANGES];
+    size_t count;
+    uint32_t restore_hz;
+    const radio_swr_io_t* io;
+    swr_sweep_event_fn on_event;
+    void* user;
+};
+Pending pending;
+std::atomic<int> pending_state{0};
+std::atomic<int> cancel_requested{0};
+std::atomic<int> busy{0};
 
 void emit(swr_sweep_event_kind_t kind, uint32_t freq_hz, int swr, swr_sweep_abort_reason_t reason)
 {
@@ -228,15 +245,11 @@ uint32_t swr_sweep_estimate_ms(const swr_sweep_range_t* ranges, size_t count)
     return swr_sweep_point_count(ranges, count) * SWR_SWEEP_POINT_MS;
 }
 
-swr_sweep_start_result_t swr_sweep_start(const swr_sweep_range_t* ranges, size_t count, uint32_t restore_hz,
-                                         const radio_swr_io_t* io, swr_sweep_event_fn on_event, void* user,
-                                         int64_t now_ms)
+static swr_sweep_start_result_t validate(const swr_sweep_range_t* ranges, size_t count, uint32_t restore_hz,
+                                         const radio_swr_io_t* io)
 {
     if (!io) {
         return SWR_SWEEP_START_UNSUPPORTED;
-    }
-    if (s.phase != Phase::Idle) {
-        return SWR_SWEEP_START_BUSY;
     }
     if (count > SWR_SWEEP_MAX_RANGES) {
         return SWR_SWEEP_START_TOO_MANY;
@@ -248,6 +261,20 @@ swr_sweep_start_result_t swr_sweep_start(const swr_sweep_range_t* ranges, size_t
     if (points > SWR_SWEEP_MAX_POINTS) {
         return SWR_SWEEP_START_TOO_MANY;
     }
+    return SWR_SWEEP_START_OK;
+}
+
+swr_sweep_start_result_t swr_sweep_start(const swr_sweep_range_t* ranges, size_t count, uint32_t restore_hz,
+                                         const radio_swr_io_t* io, swr_sweep_event_fn on_event, void* user,
+                                         int64_t now_ms)
+{
+    const swr_sweep_start_result_t checked = validate(ranges, count, restore_hz, io);
+    if (checked != SWR_SWEEP_START_OK) {
+        return checked;
+    }
+    if (s.phase != Phase::Idle) {
+        return SWR_SWEEP_START_BUSY;
+    }
     memset(&s, 0, sizeof(s));
     memcpy(s.ranges, ranges, count * sizeof(swr_sweep_range_t));
     s.range_count = count;
@@ -256,8 +283,41 @@ swr_sweep_start_result_t swr_sweep_start(const swr_sweep_range_t* ranges, size_t
     s.on_event = on_event;
     s.user = user;
     s.last_now = now_ms;
+    busy.store(1);
     begin_range();
     return SWR_SWEEP_START_OK;
+}
+
+swr_sweep_start_result_t swr_sweep_request_start(const swr_sweep_range_t* ranges, size_t count,
+                                                 uint32_t restore_hz, const radio_swr_io_t* io,
+                                                 swr_sweep_event_fn on_event, void* user)
+{
+    const swr_sweep_start_result_t checked = validate(ranges, count, restore_hz, io);
+    if (checked != SWR_SWEEP_START_OK) {
+        return checked;
+    }
+    int expected = 0;
+    if (!busy.compare_exchange_strong(expected, 1)) {
+        return SWR_SWEEP_START_BUSY;
+    }
+    memcpy(pending.ranges, ranges, count * sizeof(swr_sweep_range_t));
+    pending.count = count;
+    pending.restore_hz = restore_hz;
+    pending.io = io;
+    pending.on_event = on_event;
+    pending.user = user;
+    pending_state.store(2);
+    return SWR_SWEEP_START_OK;
+}
+
+void swr_sweep_request_cancel(void)
+{
+    cancel_requested.store(1);
+}
+
+int swr_sweep_busy(void)
+{
+    return busy.load();
 }
 
 void swr_sweep_cancel(void)
@@ -275,9 +335,52 @@ int swr_sweep_active(void)
     return s.phase != Phase::Idle;
 }
 
+static void report_unstarted(swr_sweep_abort_reason_t reason)
+{
+    if (pending.on_event) {
+        swr_sweep_event_t event = {};
+        event.kind = SWR_SWEEP_EVENT_ABORTED;
+        event.swr_hundredths = -1;
+        event.abort_reason = reason;
+        pending.on_event(&event, pending.user);
+    }
+}
+
+// Work another task asked for: a cancel, then a start. Runs on the ticking task.
+static void take_requests(int64_t now_ms)
+{
+    if (cancel_requested.exchange(0)) {
+        if (s.phase != Phase::Idle) {
+            swr_sweep_cancel();
+        } else if (pending_state.load() == 2) {
+            pending_state.store(0);
+            report_unstarted(SWR_SWEEP_ABORT_CANCELLED);
+            busy.store(0);
+        }
+    }
+    if (s.phase == Phase::Idle && pending_state.load() == 2) {
+        const swr_sweep_start_result_t result = swr_sweep_start(pending.ranges, pending.count, pending.restore_hz,
+                                                                pending.io, pending.on_event, pending.user, now_ms);
+        pending_state.store(0);
+        if (result != SWR_SWEEP_START_OK) {
+            report_unstarted(SWR_SWEEP_ABORT_CAT_LOST);
+            busy.store(0);
+        }
+    }
+}
+
 void swr_sweep_tick(int64_t now_ms)
 {
+    take_requests(now_ms);
     if (s.phase == Phase::Idle) {
+        return;
+    }
+    // The radio is keyed in Read and Verify. A tick that comes late there means whatever runs the
+    // tick was stuck; do not leave the carrier up until the next command.
+    if ((s.phase == Phase::Read || s.phase == Phase::Verify) && now_ms - s.last_now > kStallMs) {
+        s.io->unkey();
+        s.last_now = now_ms;
+        begin_finish(true, SWR_SWEEP_ABORT_STALLED);
         return;
     }
     s.last_now = now_ms;
@@ -435,6 +538,7 @@ void swr_sweep_tick(int64_t now_ms)
             } else {
                 emit(SWR_SWEEP_EVENT_DONE, 0, -1, SWR_SWEEP_ABORT_CANCELLED);
             }
+            busy.store(0);
             return;
     }
 }

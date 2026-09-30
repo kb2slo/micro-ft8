@@ -70,6 +70,7 @@ typedef enum {
     ENTRY_SLOT_STATE = 3,
     ENTRY_TX_HUD = 4,       // I28d, docs/architecture/webapp.md (Screens)
     ENTRY_USB_STATUS = 5,   // host's own USB-C host port: device attached/detached
+    ENTRY_SWEEP = 6,        // RFC 0010: SWR sweep progress
 } entry_kind_t;
 
 typedef struct {
@@ -106,6 +107,11 @@ typedef struct {
     uint8_t  usb_kind;                        // USB_STATUS: UsbCKind wire value
     uint16_t usb_vid;                         // USB_STATUS
     uint16_t usb_pid;                         // USB_STATUS
+    uint8_t  sweep_kind;                      // SWEEP: porta_sweep_kind_t
+    uint8_t  sweep_range;                     // SWEEP: which requested range
+    uint32_t sweep_hz;                        // SWEEP: POINT's frequency
+    int16_t  sweep_swr_c;                     // SWEEP: SWR * 100, -1 none
+    uint8_t  sweep_reason;                    // SWEEP: porta_sweep_reason_t
 } entry_t;
 
 static entry_t s_ring[RING_LEN];
@@ -269,6 +275,18 @@ static esp_err_t get_events(httpd_req_t *req)
             usb.vid = e.usb_vid;
             usb.pid = e.usb_pid;
             n = porta_event_json_usb(row, sizeof(row), e.seq, &usb);
+            break;
+        }
+        case ENTRY_SWEEP: {
+            porta_sweep_event_t sw;
+            memset(&sw, 0, sizeof(sw));
+            sw.epoch_secs = e.epoch_secs;
+            sw.kind = e.sweep_kind;
+            sw.range_index = e.sweep_range;
+            sw.freq_hz = e.sweep_hz;
+            sw.swr_c = e.sweep_swr_c;
+            sw.reason = e.sweep_reason;
+            n = porta_event_json_sweep(row, sizeof(row), e.seq, &sw);
             break;
         }
         case ENTRY_LOG:
@@ -756,6 +774,64 @@ static esp_err_t post_radio_tune(httpd_req_t *req)
     return wait_action_reply(req, PORTA_ACT_TUNE);
 }
 
+// POST /api/swr/start  body: "lo-hi-step,lo-hi-step,..." in kHz, at most PORTA_SWEEP_MAX_RANGES
+// (RFC 0010). Token required: it keys the transmitter. Progress arrives as SWEEP events on
+// /api/events; stopping is /api/tx/cancel. The host validates the ranges and its state, so a
+// refusal comes back as {"ok":false,"why":...}.
+static esp_err_t post_swr_start(httpd_req_t *req)
+{
+    char body[96] = {0};
+    int received = httpd_req_recv(req, body, sizeof(body) - 1);
+    if (received <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "no body");
+        return ESP_FAIL;
+    }
+    porta_sweep_range_t ranges[PORTA_SWEEP_MAX_RANGES];
+    size_t count = 0;
+    const char *p = body;
+    while (*p) {
+        char *end = NULL;
+        const unsigned long lo = strtoul(p, &end, 10);
+        if (end == p || *end != '-') {
+            break;
+        }
+        p = end + 1;
+        const unsigned long hi = strtoul(p, &end, 10);
+        if (end == p || *end != '-') {
+            break;
+        }
+        p = end + 1;
+        const unsigned long step = strtoul(p, &end, 10);
+        if (end == p || count >= PORTA_SWEEP_MAX_RANGES || lo > 0xFFFF || hi > 0xFFFF || step > 0xFFFF) {
+            break;
+        }
+        ranges[count].lo_khz = (uint16_t)lo;
+        ranges[count].hi_khz = (uint16_t)hi;
+        ranges[count].step_khz = (uint16_t)step;
+        ++count;
+        p = end;
+        if (*p == ',') {
+            ++p;
+        } else if (*p != '\0' && *p != '\n' && *p != '\r') {
+            count = 0;
+            break;
+        }
+    }
+    if (count == 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "want lo-hi-step[,lo-hi-step...] in kHz");
+        return ESP_FAIL;
+    }
+
+    uint8_t frame[PORTA_PROTO_MAX_FRAME];
+    const size_t n = porta_proto_encode_sweep_start(ranges, count, frame, sizeof(frame));
+    s_last_reply_verb = 0;
+    if (n == 0 || !porta_send(frame, n)) {
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
+    }
+    return wait_action_reply(req, PORTA_ACT_SWEEP_START);
+}
+
 // POST /api/beacon  body: "0"/"1"/"2" or "off"/"even"/"odd" (case-insensitive)
 // -- BeaconMode's own wire values, matching STATUS key 1's three-way cycle.
 // Token required: this starts/stops transmitting.
@@ -1072,6 +1148,7 @@ static void porta_rx_task(void *arg)
     porta_slot_state_event_t ss;
     porta_tx_hud_event_t hud;
     porta_usb_status_event_t usb;
+    porta_sweep_event_t sweep;
     char file_name[PORTA_FILENAME_MAX + 1];
     porta_qso_entry_row_t qrow;
     uint32_t reported_crc = 0;
@@ -1146,6 +1223,15 @@ static void porta_rx_task(void *arg)
                 e.usb_pid = usb.pid;
                 ESP_LOGI("adv", "USB %s: kind=%u vid=%04x pid=%04x",
                          usb.present ? "attach" : "detach", usb.kind, usb.vid, usb.pid);
+                ring_push(&e);
+            } else if (porta_proto_parse_sweep_event(&frame, &sweep)) {
+                e.kind = ENTRY_SWEEP;
+                e.epoch_secs = sweep.epoch_secs;
+                e.sweep_kind = sweep.kind;
+                e.sweep_range = sweep.range_index;
+                e.sweep_hz = sweep.freq_hz;
+                e.sweep_swr_c = sweep.swr_c;
+                e.sweep_reason = sweep.reason;
                 ring_push(&e);
             } else if (porta_proto_parse_file_name_row(&frame, file_name)) {
                 file_list_json_add(file_name);
@@ -1230,6 +1316,9 @@ void host_link_register_uris(httpd_handle_t server)
     static const httpd_uri_t radio_tune = {
         .uri = "/api/radio/tune", .method = HTTP_POST, .handler = post_radio_tune,
     };
+    static const httpd_uri_t swr_start = {
+        .uri = "/api/swr/start", .method = HTTP_POST, .handler = post_swr_start,
+    };
     static const httpd_uri_t beacon = {
         .uri = "/api/beacon", .method = HTTP_POST, .handler = post_beacon,
     };
@@ -1270,6 +1359,7 @@ void host_link_register_uris(httpd_handle_t server)
         { &radio_connect, PAIRING_REQUIRED },
         { &radio_tune, PAIRING_REQUIRED },
         { &beacon, PAIRING_REQUIRED },
+        { &swr_start, PAIRING_REQUIRED },
         { &queue_cancel, PAIRING_REQUIRED },
         { &queue_reply, PAIRING_REQUIRED },
         { &log_files, PAIRING_OPEN },

@@ -150,11 +150,11 @@ static void reset(Fake fresh)
 // Ticks every 10 ms until the sweep ends; false if it does not within the bound.
 static bool run(int max_ticks = 200000)
 {
-    for (int i = 0; i < max_ticks && swr_sweep_active(); ++i) {
+    for (int i = 0; i < max_ticks && (swr_sweep_active() || swr_sweep_busy()); ++i) {
         g_now += 10;
         swr_sweep_tick(g_now);
     }
-    return !swr_sweep_active();
+    return !swr_sweep_active() && !swr_sweep_busy();
 }
 
 static Fake qmx_with(std::vector<Band> bands)
@@ -367,6 +367,80 @@ int main()
         check(seen.events.size() == 1 && seen.events[0].kind == SWR_SWEEP_EVENT_ABORTED &&
                   seen.events[0].abort_reason == SWR_SWEEP_ABORT_CAT_LOST, "a failed CAT call aborts the sweep");
         check(g.log[g.log.size() - 2] == "RX" && !g.keyed, "after a last RX;");
+    }
+
+    // Another task's requests: handed to the ticking task, which starts, cancels and reports.
+    {
+        Seen seen;
+        reset(qmx_with({{7000, 7300}}));
+        const swr_sweep_range_t r[] = {{7000, 7040, 20}};
+        check(swr_sweep_request_start(r, 1, 14074000, &k_io, on_event, &seen) == SWR_SWEEP_START_OK, "a request is accepted");
+        check(swr_sweep_busy() && !swr_sweep_active() && g.log.empty(), "busy at once, but nothing is sent until a tick");
+        check(swr_sweep_request_start(r, 1, 14074000, &k_io, on_event, &seen) == SWR_SWEEP_START_BUSY,
+              "a second request while one waits is refused");
+        check(run(), "the requested sweep runs to its end");
+        check(count_kind(seen, SWR_SWEEP_EVENT_POINT) == 3 && seen.events.back().kind == SWR_SWEEP_EVENT_DONE,
+              "with its points and a DONE");
+        check(!swr_sweep_busy() && g.restores == 1, "and it is not busy afterwards");
+
+        const swr_sweep_range_t bad[] = {{7000, 7040, 0}};
+        check(swr_sweep_request_start(bad, 1, 14074000, &k_io, on_event, &seen) == SWR_SWEEP_START_BAD_RANGE,
+              "a bad range is refused up front");
+        check(swr_sweep_request_start(r, 1, 14074000, nullptr, on_event, &seen) == SWR_SWEEP_START_UNSUPPORTED,
+              "a radio that cannot sweep is refused up front");
+        check(!swr_sweep_busy(), "and a refused request does not leave it busy");
+    }
+    {
+        // Cancelled before the first tick: nothing is ever sent.
+        Seen seen;
+        reset(qmx_with({{7000, 7300}}));
+        const swr_sweep_range_t r[] = {{7000, 7040, 20}};
+        swr_sweep_request_start(r, 1, 14074000, &k_io, on_event, &seen);
+        swr_sweep_request_cancel();
+        run();
+        check(g.log.empty() && !g.ever_keyed, "a request cancelled before it starts sends nothing");
+        check(seen.events.size() == 1 && seen.events[0].kind == SWR_SWEEP_EVENT_ABORTED &&
+                  seen.events[0].abort_reason == SWR_SWEEP_ABORT_CANCELLED, "and is reported cancelled");
+        check(!swr_sweep_busy(), "and is no longer busy");
+    }
+    {
+        // Cancelled mid-sweep: de-keyed on the next tick.
+        Seen seen;
+        reset(qmx_with({{7000, 7300}}));
+        const swr_sweep_range_t r[] = {{7000, 7300, 20}};
+        swr_sweep_request_start(r, 1, 14074000, &k_io, on_event, &seen);
+        for (int i = 0; i < 100000 && !g.keyed; ++i) {
+            g_now += 10;
+            swr_sweep_tick(g_now);
+        }
+        check(g.keyed, "keyed mid-sweep");
+        swr_sweep_request_cancel();
+        g_now += 10;
+        swr_sweep_tick(g_now);
+        check(!g.keyed, "the tick after a cancel request has de-keyed");
+        run();
+        check(seen.events.back().kind == SWR_SWEEP_EVENT_ABORTED &&
+                  seen.events.back().abort_reason == SWR_SWEEP_ABORT_CANCELLED && g.restores == 1,
+              "reported cancelled, radio restored");
+    }
+    {
+        // The tick stops for two seconds while keyed: the next tick de-keys and aborts.
+        Seen seen;
+        reset(qmx_with({{7000, 7300}}));
+        const swr_sweep_range_t r[] = {{7000, 7300, 20}};
+        swr_sweep_start(r, 1, 14074000, &k_io, on_event, &seen, g_now);
+        for (int i = 0; i < 100000 && !(g.keyed && g.log.back() == "SW?"); ++i) {
+            g_now += 10;
+            swr_sweep_tick(g_now);
+        }
+        check(g.keyed, "keyed and reading");
+        g_now += 2000;
+        swr_sweep_tick(g_now);
+        check(!g.keyed, "a tick two seconds late de-keys at once");
+        run();
+        check(seen.events.back().kind == SWR_SWEEP_EVENT_ABORTED &&
+                  seen.events.back().abort_reason == SWR_SWEEP_ABORT_STALLED && g.restores == 1,
+              "and the sweep is reported stalled, the radio restored");
     }
 
     if (g_fails == 0) {

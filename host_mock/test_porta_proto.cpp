@@ -991,6 +991,105 @@ static void test_file_data_rows()
           "encode refuses a malformed time_on");
 }
 
+static void test_sweep_event()
+{
+    porta_decoder_t d;
+    porta_decoder_init(&d);
+    uint8_t buf[PORTA_PROTO_MAX_FRAME];
+
+    porta_sweep_event_t in = {};
+    in.epoch_secs = 1789012345u;
+    in.kind = PORTA_SWEEP_POINT;
+    in.range_index = 3;
+    in.freq_hz = 14225000u;
+    in.swr_c = 138;
+    size_t n = porta_proto_encode_sweep_event(&in, buf, sizeof(buf));
+    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1, "sweep point event decodes");
+    if (got.size() == 1) {
+        porta_sweep_event_t out;
+        check(porta_proto_parse_sweep_event(&got[0], &out), "sweep point event parses");
+        check(out.kind == PORTA_SWEEP_POINT && out.range_index == 3, "kind and range round-trip");
+        check(out.freq_hz == 14225000u, "a frequency above 16 bits round-trips");
+        check(out.swr_c == 138, "SWR round-trips");
+        check(out.epoch_secs == 1789012345u, "time round-trips");
+        porta_usb_status_event_t usb;
+        check(!porta_proto_parse_usb_status(&got[0], &usb), "a sweep event is not a usb_status event");
+    }
+
+    // Events that carry no reading send -1, which has to survive the unsigned wire field.
+    porta_sweep_event_t aborted = {};
+    aborted.kind = PORTA_SWEEP_ABORTED;
+    aborted.swr_c = -1;
+    aborted.reason = PORTA_SWEEP_REASON_STALLED;
+    n = porta_proto_encode_sweep_event(&aborted, buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1, "sweep aborted event decodes");
+    if (got.size() == 1) {
+        porta_sweep_event_t out;
+        check(porta_proto_parse_sweep_event(&got[0], &out), "sweep aborted event parses");
+        check(out.kind == PORTA_SWEEP_ABORTED && out.reason == PORTA_SWEEP_REASON_STALLED, "reason round-trips");
+        check(out.swr_c == -1, "-1 round-trips as -1");
+    }
+
+    porta_frame_t fake = {};
+    fake.type = PORTA_MSG_EVENT;
+    fake.payload[0] = PORTA_EVT_SWEEP;
+    fake.len = 5;
+    porta_sweep_event_t out;
+    check(!porta_proto_parse_sweep_event(&fake, &out), "a short sweep event is refused");
+    check(porta_proto_encode_sweep_event(nullptr, buf, sizeof(buf)) == 0, "encode refuses null");
+}
+
+static void test_action_sweep_start()
+{
+    porta_decoder_t d;
+    porta_decoder_init(&d);
+    uint8_t buf[PORTA_PROTO_MAX_FRAME];
+
+    const porta_sweep_range_t in[] = {{7000, 7300, 20}, {14000, 14350, 25}, {28000, 29700, 100}};
+    size_t n = porta_proto_encode_sweep_start(in, 3, buf, sizeof(buf));
+    check(n > 0, "sweep start encodes");
+    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1, "sweep start decodes");
+    if (got.size() == 1) {
+        porta_sweep_range_t out[PORTA_SWEEP_MAX_RANGES];
+        size_t count = 0;
+        check(porta_proto_parse_sweep_start(&got[0], out, &count), "sweep start parses");
+        check(count == 3, "three ranges round-trip");
+        check(count == 3 && out[0].lo_khz == 7000 && out[0].hi_khz == 7300 && out[0].step_khz == 20,
+              "first range round-trips");
+        check(count == 3 && out[2].lo_khz == 28000 && out[2].hi_khz == 29700 && out[2].step_khz == 100,
+              "last range round-trips");
+        check(!porta_proto_parse_tune(&got[0], nullptr), "a sweep start is not a tune");
+    }
+
+    porta_sweep_range_t twelve[PORTA_SWEEP_MAX_RANGES];
+    for (auto& r : twelve) {
+        r = {7000, 7010, 10};
+    }
+    check(porta_proto_encode_sweep_start(twelve, PORTA_SWEEP_MAX_RANGES, buf, sizeof(buf)) > 0,
+          "the most ranges a frame holds encodes");
+    check(porta_proto_encode_sweep_start(twelve, PORTA_SWEEP_MAX_RANGES + 1, buf, sizeof(buf)) == 0,
+          "one more range is refused");
+    check(porta_proto_encode_sweep_start(twelve, 0, buf, sizeof(buf)) == 0, "no ranges is refused");
+
+    porta_frame_t fake = {};
+    fake.type = PORTA_MSG_ACTION;
+    fake.payload[0] = PORTA_ACT_SWEEP_START;
+    porta_sweep_range_t out[PORTA_SWEEP_MAX_RANGES];
+    size_t count = 0;
+    fake.payload[1] = 2;
+    fake.len = 2 + 6;  // claims two ranges, carries one
+    check(!porta_proto_parse_sweep_start(&fake, out, &count), "a count that does not match the length is refused");
+    fake.payload[1] = 0;
+    fake.len = 2;
+    check(!porta_proto_parse_sweep_start(&fake, out, &count), "a zero count is refused");
+    fake.payload[1] = PORTA_SWEEP_MAX_RANGES + 1;
+    fake.len = 2 + 6 * (PORTA_SWEEP_MAX_RANGES + 1);
+    check(!porta_proto_parse_sweep_start(&fake, out, &count), "too many ranges are refused");
+}
+
 static void check_row(const std::string& got, const char* want, const char* what)
 {
     if (got != want) {
@@ -1079,6 +1178,26 @@ static void test_event_json()
               "{\"s\":7,\"t\":1700000004,\"d\":5,\"present\":1,\"kind\":0,\"vid\":1155,\"pid\":41804}",
               "usb row");
 
+    porta_sweep_event_t sweep;
+    std::memset(&sweep, 0, sizeof(sweep));
+    sweep.epoch_secs = 1700000005;
+    sweep.kind = PORTA_SWEEP_POINT;
+    sweep.range_index = 2;
+    sweep.freq_hz = 14225000;
+    sweep.swr_c = 138;
+    check(porta_event_json_sweep(row, sizeof(row), 8, &sweep) > 0, "sweep row encodes");
+    check_row(row,
+              "{\"s\":8,\"t\":1700000005,\"d\":6,\"k\":0,\"r\":2,\"hz\":14225000,\"swr\":138,\"why\":0}",
+              "sweep row");
+    sweep.kind = PORTA_SWEEP_ABORTED;
+    sweep.swr_c = -1;
+    sweep.freq_hz = 0;
+    sweep.reason = PORTA_SWEEP_REASON_CAT_LOST;
+    check(porta_event_json_sweep(row, sizeof(row), 9, &sweep) > 0, "sweep abort row encodes");
+    check_row(row,
+              "{\"s\":9,\"t\":1700000005,\"d\":6,\"k\":3,\"r\":2,\"hz\":0,\"swr\":-1,\"why\":1}",
+              "sweep abort row");
+
     check(porta_event_json_log(row, 8, 1, 1, "too long for this buffer") == 0,
           "a short buffer encodes nothing");
 }
@@ -1102,6 +1221,7 @@ int main()
     test_queue_entry_event();
     test_slot_state_event();
     test_usb_status_event();
+    test_sweep_event();
     test_tx_hud_event();
     test_action_set_clock();
     test_action_tx_cancel();
@@ -1109,6 +1229,7 @@ int main()
     test_action_beacon();
     test_action_queue_cancel_and_reply();
     test_action_file_delete();
+    test_action_sweep_start();
     test_ack_and_nak();
     test_config_kv();
     test_file_list_and_read_requests();

@@ -90,7 +90,7 @@ porta_event_json.o: ../components/porta_proto/porta_event_json.c
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 SIM_OBJ = sim_station.o scenario.o host_mocks.o json_parser.o \
-          ../components/autoseq/autoseq.o porta_event_json.o
+          ../components/autoseq/autoseq.o porta_event_json.o swr_sweep.o
 $(SIM_TARGET): $(SIM_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 

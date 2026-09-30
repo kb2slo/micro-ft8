@@ -14,11 +14,15 @@
 
 #include "scenario.h"
 
+#include "porta_proto.h"
+#include "swr_sweep.h"
+
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -220,6 +224,129 @@ static void apply_config_body(const std::string& body)
     }
 }
 
+// A fake QMX for the SWR sweep, so the real state machine (components/swr_sweep) runs behind the
+// page without a radio. It has the bands 40, 30, 20, 17, 15, 12 and 10 m (others are refused, as a
+// real QMX refuses a band it is not configured for), and reads like a 40 m end-fed half-wave:
+// low on 40, 20, 15 and 10 m, high on 30, 17 and 12 m.
+namespace {
+struct SimBand {
+    int lo_khz, hi_khz;
+    double base, bowl;  // SWR at the band's middle, and how much it rises toward the edges
+};
+const SimBand kSimBands[] = {
+    {7000, 7300, 1.15, 0.30},   {10100, 10150, 2.60, 0.10}, {14000, 14350, 1.35, 0.10},
+    {18068, 18168, 2.30, 0.15}, {21000, 21450, 1.55, 0.20}, {24890, 24990, 2.80, 0.10},
+    {28000, 29700, 1.70, 0.25},
+};
+int g_sim_fa = 14074000;
+bool g_sim_keyed = false;
+int g_sim_fa_reply = -1;
+int g_sim_sw_reply = -1;
+
+const SimBand* sim_band_for(int hz)
+{
+    for (const auto& b : kSimBands) {
+        if (hz >= b.lo_khz * 1000 && hz <= b.hi_khz * 1000) {
+            return &b;
+        }
+    }
+    return nullptr;
+}
+
+int sim_swr_hundredths(int hz)
+{
+    const SimBand* b = sim_band_for(hz);
+    if (!b) {
+        return 900;
+    }
+    const double pos = ((double)hz / 1000.0 - b->lo_khz) / (double)(b->hi_khz - b->lo_khz);
+    const double off = pos - 0.5;
+    const unsigned jitter = (unsigned)(hz / 1000) * 2654435761u;  // deterministic wobble, +-0.02
+    return (int)((b->base + b->bowl * 4.0 * off * off + ((int)(jitter >> 28) - 8) * 0.0025) * 100.0);
+}
+
+esp_err_t sim_unkey() { g_sim_keyed = false; return ESP_OK; }
+esp_err_t sim_mode() { g_sim_keyed = false; return ESP_OK; }
+esp_err_t sim_set(int hz)
+{
+    if (!g_sim_keyed && sim_band_for(hz)) {
+        g_sim_fa = hz;
+    }
+    return ESP_OK;
+}
+esp_err_t sim_qfreq() { g_sim_fa_reply = g_sim_fa; return ESP_OK; }
+esp_err_t sim_key() { g_sim_keyed = true; return ESP_OK; }
+esp_err_t sim_qswr()
+{
+    if (g_sim_keyed) {
+        g_sim_sw_reply = sim_swr_hundredths(g_sim_fa);
+    }
+    return ESP_OK;
+}
+bool sim_freply(int* hz)
+{
+    if (g_sim_fa_reply < 0) return false;
+    *hz = g_sim_fa_reply;
+    return true;
+}
+bool sim_sreply(int* v)
+{
+    if (g_sim_sw_reply < 0) return false;
+    *v = g_sim_sw_reply;
+    return true;
+}
+void sim_clear() { g_sim_fa_reply = -1; g_sim_sw_reply = -1; }
+esp_err_t sim_restore(int hz) { g_sim_fa = hz; g_sim_keyed = false; return ESP_OK; }
+
+const radio_swr_io_t kSimIo = {sim_unkey, sim_mode, sim_set, sim_qfreq, sim_key, sim_qswr,
+                               sim_freply, sim_sreply, sim_clear, sim_restore};
+
+void sim_sweep_event(const swr_sweep_event_t* e, void*)
+{
+    uint8_t kind = PORTA_SWEEP_DONE;
+    switch (e->kind) {
+        case SWR_SWEEP_EVENT_POINT: kind = PORTA_SWEEP_POINT; break;
+        case SWR_SWEEP_EVENT_BAND_SKIPPED: kind = PORTA_SWEEP_BAND_SKIPPED; break;
+        case SWR_SWEEP_EVENT_DONE: kind = PORTA_SWEEP_DONE; break;
+        case SWR_SWEEP_EVENT_ABORTED: kind = PORTA_SWEEP_ABORTED; break;
+    }
+    scenario_emit_sweep(g_scenario, kind, e->range_index, e->freq_hz, e->swr_hundredths, (uint8_t)e->abort_reason);
+}
+
+// POST /api/swr/start, body "lo-hi-step,lo-hi-step" in kHz: what the sidekick takes.
+std::string sim_sweep_start(const std::string& body)
+{
+    // What the P4 refuses over (poe_p4/main/porta_host_stubs.cpp), so the page's ask-first flow
+    // has something to ask about.
+    if (g_scenario.beacon != 0) return "{\"ok\":false,\"why\":\"beacon is on\"}";
+    swr_sweep_range_t ranges[SWR_SWEEP_MAX_RANGES + 1];
+    size_t count = 0;
+    const char* p = body.c_str();
+    while (*p && count <= SWR_SWEEP_MAX_RANGES) {
+        char* end = nullptr;
+        const unsigned long lo = std::strtoul(p, &end, 10);
+        if (end == p || *end != '-') return "{\"ok\":false,\"why\":\"malformed\"}";
+        p = end + 1;
+        const unsigned long hi = std::strtoul(p, &end, 10);
+        if (end == p || *end != '-') return "{\"ok\":false,\"why\":\"malformed\"}";
+        p = end + 1;
+        const unsigned long step = std::strtoul(p, &end, 10);
+        if (end == p) return "{\"ok\":false,\"why\":\"malformed\"}";
+        ranges[count++] = {(uint32_t)lo, (uint32_t)hi, (uint32_t)step};
+        p = end;
+        if (*p == ',') ++p;
+    }
+    switch (swr_sweep_request_start(ranges, count, 14074000u, &kSimIo, sim_sweep_event, nullptr)) {
+        case SWR_SWEEP_START_OK: return "{\"ok\":true}";
+        case SWR_SWEEP_START_BAD_RANGE: return "{\"ok\":false,\"why\":\"bad range\"}";
+        case SWR_SWEEP_START_TOO_MANY: return "{\"ok\":false,\"why\":\"too many points\"}";
+        case SWR_SWEEP_START_BUSY: return "{\"ok\":false,\"why\":\"a sweep is already running\"}";
+        case SWR_SWEEP_START_UNSUPPORTED: return "{\"ok\":false,\"why\":\"this radio cannot sweep\"}";
+    }
+    return "{\"ok\":false,\"why\":\"sweep refused\"}";
+}
+}  // namespace
+
 static std::string handle(const std::string& method, const std::string& url,
                           const std::map<std::string, std::string>& headers,
                           const std::string& body, int* status)
@@ -287,7 +414,11 @@ static std::string handle(const std::string& method, const std::string& url,
     }
     if (method == "POST" && path == "/api/tx/cancel") {
         scenario_cancel_tx(g_scenario);
+        swr_sweep_request_cancel();
         return "{\"ok\":true}";
+    }
+    if (method == "POST" && path == "/api/swr/start") {
+        return sim_sweep_start(body);
     }
     if (method == "GET" && path == "/api/log/files") {
         return log_files_json();
@@ -475,6 +606,16 @@ int main(int argc, char** argv)
         } else if (script_done && g_scenario.hud_active && now >= next_step) {
             scenario_clear_hud(g_scenario);
         }
+        {
+            // The sweep's clock: real time times --scale, but at most 100 ms a turn, so the
+            // stall watchdog (a tick over a second late) cannot fire in a fast-forwarded run.
+            static auto last_tick = clock::now();
+            static int64_t sweep_ms = 0;
+            const int64_t real = std::chrono::duration_cast<std::chrono::milliseconds>(clock::now() - last_tick).count();
+            last_tick = clock::now();
+            sweep_ms += std::min<int64_t>(real * scale, 100);
+            swr_sweep_tick(sweep_ms);
+        }
         if (now >= next_beat) {
             scenario_emit_status(g_scenario);
             scenario_emit_hud(g_scenario);
@@ -482,6 +623,9 @@ int main(int argc, char** argv)
         }
 
         auto wake = next_beat;
+        if (swr_sweep_busy()) {
+            wake = clock::now() + std::chrono::milliseconds(5);
+        }
         if (!script_done || g_scenario.hud_active) {
             if (next_step < wake) {
                 wake = next_step;

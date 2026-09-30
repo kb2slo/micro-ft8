@@ -1,6 +1,7 @@
 #include <string>
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -14,6 +15,7 @@
 #include "qmx_transport.h"
 #include "radio_control.h"
 #include "storage_service.h"
+#include "swr_sweep.h"
 #include "tx_scheduler.h"
 
 // docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)): shared radio_control + decode; porta (B67) on Grove
@@ -75,10 +77,16 @@ extern "C" void app_main(void) {
         porta_p4_tx_hud_tick();
         porta_p4_file_tick();
         tx_scheduler_tick();
+        // A sweep request accepted just before a TX started waits for it to end; one already
+        // running is always ticked, so it can de-key.
+        if (!decode_tx_state_get_tx_active() || swr_sweep_active()) {
+            swr_sweep_tick(esp_timer_get_time() / 1000);
+        }
         vTaskDelay(pdMS_TO_TICKS(10));
         // Set by qmx_transport on every CAT open; retried until it lands.
         if (decode_tx_state_get_cdc_initial_sync_pending() && radio_control_ready() &&
-            !decode_tx_state_get_tx_active() && porta_p4_sync_vfo("QMX connect") == nullptr) {
+            !decode_tx_state_get_tx_active() && !swr_sweep_busy() &&
+            porta_p4_sync_vfo("QMX connect") == nullptr) {
             decode_tx_state_set_cdc_initial_sync_pending(false);
         }
         if (++ticks >= 500) {  // ~5 s at 10 ms

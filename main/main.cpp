@@ -886,6 +886,12 @@ const char* porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take
   return nullptr;
 }
 
+// The SWR sweep (RFC 0010) is built for the P4 first; the ADV answers honestly so the phone
+// says why, instead of the verb falling through to "unknown action".
+const char* porta_host_sweep_start(const porta_sweep_range_t* /*ranges*/, size_t /*count*/) {
+  return "SWR sweep is not built for this board";
+}
+
 const char* porta_host_file_delete(const char* filename) {
   return adif_delete_daily(filename, [](const char* basename) {
     return storage_reject_active_log_user_mutation(basename);

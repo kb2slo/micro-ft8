@@ -11,10 +11,12 @@
 // are both refused is reported as skipped and never keys. However a sweep ends (done,
 // cancelled, CAT lost) the radio is unkeyed and returned to the operating frequency.
 //
-// Not thread-safe: start, tick and cancel must be called from one task. A caller on another
-// task (a Port A handler) sets a flag the ticking task turns into swr_sweep_cancel(). The
-// caller must also tick at least every 100 ms while a sweep runs: if ticks stop while the
-// radio is keyed, only the radio's own CAT timeout (120 s on the bench unit) un-keys it.
+// Threads: swr_sweep_start(), swr_sweep_tick() and swr_sweep_cancel() belong to one task, the
+// one that ticks. Any other task (a Port A handler) uses swr_sweep_request_start(),
+// swr_sweep_request_cancel() and swr_sweep_busy(), which hand the work to that task's next
+// tick. Tick at least every 100 ms: if the tick is later than a second while the radio is keyed,
+// the next tick un-keys and aborts (STALLED). If ticks stop entirely, only the radio's own CAT
+// timeout (120 s on the bench unit) un-keys it.
 
 #include <stddef.h>
 #include <stdint.h>
@@ -46,6 +48,7 @@ typedef enum {
 typedef enum {
     SWR_SWEEP_ABORT_CANCELLED,
     SWR_SWEEP_ABORT_CAT_LOST,        // a CAT call failed, or three queries in a row went unanswered
+    SWR_SWEEP_ABORT_STALLED,         // the tick stopped for over a second while the radio was keyed
 } swr_sweep_abort_reason_t;
 
 typedef struct {
@@ -77,6 +80,19 @@ uint32_t swr_sweep_estimate_ms(const swr_sweep_range_t* ranges, size_t count);
 swr_sweep_start_result_t swr_sweep_start(const swr_sweep_range_t* ranges, size_t count, uint32_t restore_hz,
                                          const radio_swr_io_t* io, swr_sweep_event_fn on_event, void* user,
                                          int64_t now_ms);
+
+// Any task: asks the ticking task to start a sweep. The ranges are validated here and the
+// request is refused (BUSY) while another is running or waiting. The sweep itself starts on
+// the next tick; if it cannot (the radio cannot sweep), ABORTED (CAT lost) is reported instead.
+swr_sweep_start_result_t swr_sweep_request_start(const swr_sweep_range_t* ranges, size_t count,
+                                                 uint32_t restore_hz, const radio_swr_io_t* io,
+                                                 swr_sweep_event_fn on_event, void* user);
+
+// Any task: asks the ticking task to cancel a running sweep, or drop one not yet started.
+void swr_sweep_request_cancel(void);
+
+// Any task: a sweep is waiting to start or running. Other transmit paths stay off while true.
+int swr_sweep_busy(void);
 
 // One step of the sweep, at most one radio command per call. Cheap when idle.
 void swr_sweep_tick(int64_t now_ms);

@@ -20,6 +20,7 @@
 #include "rtc_core.h"
 #include "station.h"
 #include "storage_service.h"
+#include "swr_sweep.h"
 #include "tx_scheduler.h"
 
 #include <ctime>
@@ -339,6 +340,90 @@ const char *porta_host_set_clock(uint32_t epoch_secs, uint16_t millis) {
 
 void porta_host_tx_cancel(void) {
     tx_scheduler_cancel();
+    // A sweep is a transmission too: the one stop control ends it (RFC 0010 3.4). The ticking
+    // task does the de-key on its next tick, at most 10 ms away.
+    swr_sweep_request_cancel();
+}
+
+// Sweep events go to the phone as they happen. Runs on the main loop's task (swr_sweep_tick).
+static void sweep_event_to_porta(const swr_sweep_event_t *event, void * /*user*/) {
+    uint8_t kind = PORTA_SWEEP_DONE;
+    uint8_t reason = PORTA_SWEEP_REASON_CANCELLED;
+    switch (event->kind) {
+        case SWR_SWEEP_EVENT_POINT:
+            kind = PORTA_SWEEP_POINT;
+            break;
+        case SWR_SWEEP_EVENT_BAND_SKIPPED:
+            kind = PORTA_SWEEP_BAND_SKIPPED;
+            break;
+        case SWR_SWEEP_EVENT_DONE:
+            kind = PORTA_SWEEP_DONE;
+            break;
+        case SWR_SWEEP_EVENT_ABORTED:
+            kind = PORTA_SWEEP_ABORTED;
+            break;
+    }
+    switch (event->abort_reason) {
+        case SWR_SWEEP_ABORT_CANCELLED:
+            reason = PORTA_SWEEP_REASON_CANCELLED;
+            break;
+        case SWR_SWEEP_ABORT_CAT_LOST:
+            reason = PORTA_SWEEP_REASON_CAT_LOST;
+            break;
+        case SWR_SWEEP_ABORT_STALLED:
+            reason = PORTA_SWEEP_REASON_STALLED;
+            break;
+    }
+    porta_emit_sweep(kind, event->range_index, event->freq_hz, event->swr_hundredths, reason);
+}
+
+const char *porta_host_sweep_start(const porta_sweep_range_t *ranges, size_t count) {
+    ensure_seeded();
+    const radio_swr_io_t *io = radio_control_swr_io();
+    if (!io) {
+        return "this radio cannot sweep";
+    }
+    if (!radio_control_ready()) {
+        return "CAT not ready";
+    }
+    if (decode_tx_state_get_tx_active()) {
+        return "transmitting";
+    }
+    if (tx_scheduler_beacon_mode() != 0) {
+        return "beacon is on";
+    }
+    if (autoseq_queue_size() > 0 || autoseq_has_active_qso()) {
+        return "a QSO is queued";
+    }
+    if (s_tune) {
+        return "tune is on";
+    }
+    const int restore_hz = station_freq_hz();
+    if (restore_hz <= 0) {
+        return "no band frequency";
+    }
+    swr_sweep_range_t plan[SWR_SWEEP_MAX_RANGES];
+    if (count > SWR_SWEEP_MAX_RANGES) {
+        return "too many ranges";
+    }
+    for (size_t i = 0; i < count; ++i) {
+        plan[i].lo_khz = ranges[i].lo_khz;
+        plan[i].hi_khz = ranges[i].hi_khz;
+        plan[i].step_khz = ranges[i].step_khz;
+    }
+    switch (swr_sweep_request_start(plan, count, (uint32_t)restore_hz, io, sweep_event_to_porta, nullptr)) {
+        case SWR_SWEEP_START_OK:
+            return nullptr;
+        case SWR_SWEEP_START_BAD_RANGE:
+            return "bad range";
+        case SWR_SWEEP_START_TOO_MANY:
+            return "too many points";
+        case SWR_SWEEP_START_BUSY:
+            return "a sweep is already running";
+        case SWR_SWEEP_START_UNSUPPORTED:
+            return "this radio cannot sweep";
+    }
+    return "sweep refused";
 }
 
 size_t porta_host_config_snapshot(char *out, size_t out_cap) {
@@ -439,6 +524,9 @@ const char *porta_host_connect(void) {
 
 const char *porta_host_tune(bool on) {
     ensure_seeded();
+    if (on && swr_sweep_busy()) {
+        return "a sweep is running";
+    }
     if (on && !radio_control_ready()) {
         return "CAT not ready";
     }

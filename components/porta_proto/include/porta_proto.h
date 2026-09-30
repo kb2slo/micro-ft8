@@ -69,7 +69,10 @@ extern "C" {
 // (architecture/logging.md); band now rides the row's own field too,
 // unchanged in shape (still PORTA_BAND_MAX), so only the two new fields
 // are a break.
-#define PORTA_PROTO_VERSION 3u
+// v4 (2026-09-30): SWR sweep (RFC 0010): the SWEEP_START action and the SWEEP event. A v3 peer
+// would answer the new action "unknown action" and ignore the event, so this is a break only in
+// that the page's sweep cannot work against it; both ends are flashed together as for v3.
+#define PORTA_PROTO_VERSION 4u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -192,6 +195,7 @@ typedef enum {
     PORTA_EVT_SLOT_STATE  = 0x04,  // small scalars: slot parity, beacon mode, resolved TX offset
     PORTA_EVT_TX_HUD      = 0x05,  // TX HUD banner mirror: message, power/SWR, battery
     PORTA_EVT_USB_STATUS  = 0x06,  // host's own USB-C host port: a device attached or detached
+    PORTA_EVT_SWEEP       = 0x07,  // SWR sweep progress: a point, a skipped band, done, aborted
 } porta_event_subtype_t;
 
 #define PORTA_EVENT_TEXT_MAX 64  // matches RX_TEXT_MAX on the host
@@ -303,6 +307,49 @@ size_t porta_proto_encode_usb_status(const porta_usb_status_event_t *u,
                                      uint8_t *out, size_t out_cap);
 bool porta_proto_parse_usb_status(const porta_frame_t *f, porta_usb_status_event_t *out);
 
+// SWEEP (RFC 0010). One event per measured point, plus one each for a band the radio does not
+// have, the end of a sweep, and an abort. `kind` and `reason` are wire values, below.
+typedef enum {
+    PORTA_SWEEP_POINT = 0,         // freq_hz, swr_c
+    PORTA_SWEEP_BAND_SKIPPED = 1,  // range_index: the radio refused both edges
+    PORTA_SWEEP_DONE = 2,
+    PORTA_SWEEP_ABORTED = 3,       // reason
+} porta_sweep_kind_t;
+
+typedef enum {
+    PORTA_SWEEP_REASON_CANCELLED = 0,
+    PORTA_SWEEP_REASON_CAT_LOST = 1,
+    PORTA_SWEEP_REASON_STALLED = 2,
+} porta_sweep_reason_t;
+
+typedef struct {
+    uint32_t epoch_secs;
+    uint8_t  kind;         // porta_sweep_kind_t
+    uint8_t  range_index;  // which requested range, in request order
+    uint32_t freq_hz;      // POINT
+    int16_t  swr_c;        // POINT: SWR x 100, -1 otherwise
+    uint8_t  reason;       // ABORTED: porta_sweep_reason_t
+} porta_sweep_event_t;
+
+size_t porta_proto_encode_sweep_event(const porta_sweep_event_t *e, uint8_t *out, size_t out_cap);
+bool porta_proto_parse_sweep_event(const porta_frame_t *f, porta_sweep_event_t *out);
+
+// The SWEEP_START action: up to PORTA_SWEEP_MAX_RANGES (lo, hi, step) ranges in kHz. The host
+// validates them (swr_sweep.h); this only frames them.
+#define PORTA_SWEEP_MAX_RANGES 12u
+
+typedef struct {
+    uint16_t lo_khz;
+    uint16_t hi_khz;
+    uint16_t step_khz;
+} porta_sweep_range_t;
+
+size_t porta_proto_encode_sweep_start(const porta_sweep_range_t *ranges, size_t count,
+                                      uint8_t *out, size_t out_cap);
+// `ranges_out` holds PORTA_SWEEP_MAX_RANGES. False if malformed or empty.
+bool porta_proto_parse_sweep_start(const porta_frame_t *f, porta_sweep_range_t *ranges_out,
+                                   size_t *count_out);
+
 // TX_HUD mirrors components/ui/include/tx_hud_banner.h's TxHudBannerInput --
 // same raw fields the on-device banner already computes each ~500 ms while
 // visible, not a re-derivation. power_w/swr travel as fixed-point (x10/x100)
@@ -359,6 +406,7 @@ typedef enum {
     PORTA_ACT_QUEUE_CANCEL = 0x07,  // payload: u16 entry_id (not a list index)
     PORTA_ACT_QUEUE_REPLY  = 0x08,  // payload: u32 decode_id
     PORTA_ACT_FILE_DELETE  = 0x09,  // payload: filename (empty = clear all daily logs)
+    PORTA_ACT_SWEEP_START  = 0x0A,  // payload: u8 count, then count x (lo, hi, step) kHz, each u16 LE
 } porta_action_verb_t;
 
 // The browser is the clock source in a headless build: it is the only device
@@ -537,6 +585,8 @@ size_t porta_event_json_tx_hud(char *out, size_t cap, uint32_t seq,
                                const porta_tx_hud_event_t *ev);
 size_t porta_event_json_usb(char *out, size_t cap, uint32_t seq,
                             const porta_usb_status_event_t *ev);
+size_t porta_event_json_sweep(char *out, size_t cap, uint32_t seq,
+                              const porta_sweep_event_t *ev);
 
 #ifdef __cplusplus
 }

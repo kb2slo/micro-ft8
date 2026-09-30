@@ -495,6 +495,10 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 
     <div class="hd sep">Map</div>
     <a id=toolsMapLink class=dlink href=map.html>Open map &rarr;</a>
+
+    <div class="hd sep">SWR sweep</div>
+    <a id=toolsSwrLink class=dlink href=swr.html>Open SWR sweep &rarr;</a>
+    <div class=toolsnote>Transmits a short carrier at each point, to tune an antenna.</div>
   </section>
 
 </div>
@@ -757,40 +761,13 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 </nav>
 
 <script src=/pairing.js></script>
+<script src=bands.js></script>
 <script src=callinfo.js></script>
 <script>
 var m = document.getElementById('m');
 var settingsMsg = document.getElementById('settingsMsg');
 var stationSheetMsg = document.getElementById('stationSheetMsg');
-// Index order matches ADV g_bands[] (main.cpp); ft8/ft4 mirror that file's two
-// default tables (the compiled-in g_bands initializer and the FT4 reset block
-// in station_apply_to_globals()) byte-for-byte, since CONFIG only ever
-// reports an *override* (bandN=/ft4_bandN=) when one has actually been
-// stored -- an un-set band has no value on the wire at all, and this is the
-// only place that knows what it defaults to.
-var BANDS = [
-  {i: 0, name: '160m', n: 160, ft8: 1840,   ft4: 1843},
-  {i: 1, name: '80m',  n: 80,  ft8: 3573,   ft4: 3575},
-  {i: 2, name: '60m',  n: 60,  ft8: 5357,   ft4: 5357},
-  {i: 3, name: '40m',  n: 40,  ft8: 7074,   ft4: 7047.5},
-  {i: 4, name: '30m',  n: 30,  ft8: 10136,  ft4: 10140},
-  {i: 5, name: '20m',  n: 20,  ft8: 14074,  ft4: 14080},
-  {i: 6, name: '17m',  n: 17,  ft8: 18100,  ft4: 18104},
-  {i: 7, name: '15m',  n: 15,  ft8: 21074,  ft4: 21140},
-  {i: 8, name: '12m',  n: 12,  ft8: 24915,  ft4: 24919},
-  {i: 9, name: '10m',  n: 10,  ft8: 28074,  ft4: 28180},
-  {i: 10, name: '6m',  n: 6,   ft8: 50313,  ft4: 50318},
-  {i: 11, name: '2m',  n: 2,   ft8: 144174, ft4: 144170}
-];
-// Region 2 amateur allocations (ITU RR Article 5), kHz -- a sanity check,
-// not a licence check, applied only here: the main board takes any frequency
-// (webapp.md, The dock). 60m is one range spanning the US channels and the
-// WRC-15 allocation. Keyed by BANDS[].n.
-var BAND_EDGES_KHZ = {
-  160: [1800, 2000], 80: [3500, 4000], 60: [5330, 5407], 40: [7000, 7300],
-  30: [10100, 10150], 20: [14000, 14350], 17: [18068, 18168], 15: [21000, 21450],
-  12: [24890, 24990], 10: [28000, 29700], 6: [50000, 54000], 2: [144000, 148000]
-};
+// BANDS and BAND_EDGES_KHZ live in bands.js (shared with swr.html).
 // cq_type, free_text, grid, offset, offset_src and autoseq_max_retry left
 // Settings for the Station sheet (docs/architecture/webapp.md, "The Station
 // sheet"): each now writes its own key the moment it changes
@@ -1154,21 +1131,7 @@ function bandFreq(cfg, idx) {
   return '';
 }
 
-// Parses active_bands the same lenient way rebuild_active_bands() (main.cpp)
-// does -- whitespace/comma/semicolon/slash separated band numbers, "m" suffix
-// tolerated implicitly since parseInt stops at the first non-digit. Empty or
-// unrecognized text means "no filter" there, which in practice (rebuild_
-// active_bands leaves g_active_band_indices covering every band when nothing
-// matched) means every band is active -- mirrored here as the `any` flag.
-function parseActiveBands(text) {
-  var want = {};
-  var any = false;
-  String(text || '').split(/[\s,;\/]+/).forEach(function (t) {
-    var n = parseInt(t, 10);
-    if (n > 0) { want[n] = true; any = true; }
-  });
-  return { want: want, any: any };
-}
+// parseActiveBands() lives in bands.js (shared with swr.html).
 
 // One row per band: a checkbox for active_bands membership only. Band and
 // frequency (band_sel, band<N>/ft4_band<N>) left Settings for the dock's

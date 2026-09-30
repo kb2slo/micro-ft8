@@ -1,0 +1,453 @@
+<!doctype html>
+<meta name=viewport content='width=device-width,initial-scale=1,viewport-fit=cover'>
+<title>Micro-FT8 SWR sweep</title>
+<!--
+  SWR sweep (RFC 0010, docs/architecture/webapp.md (Tools)): tune an antenna in the field. The bands
+  ticked here are swept by the main board through the QMX, one short carrier per point; this page
+  plots what comes back. All of the logic (the plan, the countdown, the plot's geometry) is in
+  swr_core.js so it can be tested without a page; this file is the markup, the polling and the drawing.
+  Reached from Tools. Same origin as app.html, so it shares the pairing token and the theme.
+-->
+<style>
+:root{
+  color-scheme:light dark;
+  --accent:#1d4ed8;
+  --danger:#b91c1c;
+  --good:#15803d;
+  --warn:#b45309;
+  --grid:rgba(120,120,120,.28);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]){
+    --accent:#7aa2f7;
+    --danger:#f87171;
+    --good:#4ade80;
+    --warn:#fbbf24;
+    --grid:rgba(160,160,160,.3);
+  }
+}
+:root[data-theme="light"]{ color-scheme:light; }
+:root[data-theme="dark"]{ color-scheme:dark; --accent:#7aa2f7; --danger:#f87171; --good:#4ade80; --warn:#fbbf24; --grid:rgba(160,160,160,.3); }
+[hidden]{display:none!important}
+body{font-family:system-ui;background:Canvas;color:CanvasText;margin:0;padding:0 16px calc(24px + env(safe-area-inset-bottom));padding-top:env(safe-area-inset-top)}
+#top{display:flex;align-items:baseline;gap:.8rem;padding:.7rem 0 .2rem}
+#back{color:var(--accent);text-decoration:none;font-size:.9rem;white-space:nowrap}
+h1{font-size:1.1rem;margin:0}
+.note{font-size:.78rem;color:GrayText;margin:.25rem 0}
+#bands{display:flex;flex-wrap:wrap;gap:.4rem;margin:.6rem 0 .3rem}
+#bands label,#fineRow label{display:inline-flex;align-items:center;gap:.3rem;padding:.35rem .65rem;border:1px solid GrayText;border-radius:999px;font-size:.85rem;min-height:1.2rem}
+#bands label.on{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 14%, transparent)}
+#bands input,#fineRow input{margin:0}
+#fineRow{margin:.2rem 0 .4rem}
+#runRow{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin:.6rem 0 .3rem}
+button{font:inherit;padding:.55rem 1rem;border-radius:.5rem;border:1px solid var(--accent);background:var(--accent);color:Canvas;font-weight:700;min-height:44px}
+button:disabled{opacity:.45}
+button#stop{border-color:var(--danger);background:var(--danger)}
+#estimate{font-size:.9rem;color:GrayText}
+#status{font-size:.9rem;min-height:1.3rem;margin:.2rem 0}
+#status.err{color:var(--danger)}
+#rotateHint{display:none;font-size:.78rem;color:GrayText;margin:.2rem 0}
+@media (orientation: portrait) and (max-width: 700px){ #rotateHint{display:block} }
+#plotWrap{margin:.4rem 0;border:1px solid var(--grid);border-radius:.5rem;overflow:hidden}
+svg{display:block;width:100%;height:auto;font-family:system-ui;font-size:11px}
+svg .gridline{stroke:var(--grid);stroke-width:1}
+svg .two{stroke:GrayText;stroke-dasharray:4 3;stroke-width:1}
+svg .edge{stroke:GrayText;stroke-width:1.5}
+svg text{fill:CanvasText}
+svg .muted{fill:GrayText}
+svg .skip{fill:rgba(120,120,120,.12)}
+svg .run{fill:none;stroke:GrayText;stroke-width:1.3}
+svg .good{fill:var(--good)}
+svg .bad{fill:var(--warn)}
+svg .prev{fill:GrayText;opacity:.35}
+svg .over{fill:var(--danger)}
+svg .minlabel{fill:CanvasText;font-weight:700}
+table{border-collapse:collapse;width:100%;font-size:.85rem;margin:.5rem 0}
+th,td{text-align:left;padding:.3rem .4rem;border-bottom:1px solid var(--grid)}
+th{font-weight:600;color:GrayText}
+td.good{color:var(--good);font-weight:600}
+td.bad{color:var(--warn);font-weight:600}
+</style>
+
+<div id=top>
+  <a id=back href=app.html>&larr; Tools</a>
+  <h1>SWR sweep</h1>
+</div>
+<p class=note>Transmits a short carrier at each point, at the QMX's own Tune power. Set the QMX's Tune to 25% or more: below that the reading is biased high and noisy. Reception is interrupted while it runs.</p>
+<div id=bands></div>
+<div id=fineRow><label><input type=checkbox id=fine> Fine (twice the points)</label></div>
+<div id=runRow>
+  <button id=run type=button>Run SWR sweep</button>
+  <button id=stop type=button hidden>Stop</button>
+  <span id=estimate></span>
+</div>
+<div id=status></div>
+<div id=rotateHint>Rotate your phone for a wider plot.</div>
+<div id=plotWrap><svg id=plot></svg></div>
+<table id=summary hidden>
+  <thead><tr><th>Band</th><th>Lowest SWR</th><th>at MHz</th><th>Points &le; 2</th></tr></thead>
+  <tbody></tbody>
+</table>
+<p class=note id=ranNote></p>
+
+<script src=/pairing.js></script>
+<script src=bands.js></script>
+<script src=swr_core.js></script>
+<script>
+'use strict';
+var THEME_KEY = 'microft8_theme_v1';
+(function loadTheme() {
+  try {
+    var v = localStorage.getItem(THEME_KEY);
+    if (v === 'light' || v === 'dark') document.documentElement.setAttribute('data-theme', v);
+  } catch (e) { /* the system theme stands */ }
+})();
+
+var PREV_KEY = 'microft8_swr_prev_v1';
+var NS = 'http://www.w3.org/2000/svg';
+var REFUSALS_ASKED = { 'beacon is on': 1, 'a QSO is queued': 1, 'transmitting': 1, 'tune is on': 1 };
+
+var elBands = document.getElementById('bands');
+var elFine = document.getElementById('fine');
+var elRun = document.getElementById('run');
+var elStop = document.getElementById('stop');
+var elEstimate = document.getElementById('estimate');
+var elStatus = document.getElementById('status');
+var elPlot = document.getElementById('plot');
+var elSummary = document.getElementById('summary');
+var elRanNote = document.getElementById('ranNote');
+
+var state = null;        // the run on screen: running, done or aborted
+var prevRun = null;      // the run before it, drawn faintly behind
+var startSeq = 0;        // events before this belong to an earlier run
+var evSeq = 0;
+var queue = {};          // what a sweep would end, tracked from the same events Operate reads
+var beaconMode = 0;
+var txOnAir = false;
+var tuneOn = false;
+var polling = false;
+var stopAskedAt = 0;     // when Stop was tapped and the host acknowledged it
+var lastSweepRowAt = 0;  // when the host last said anything about this run
+var STOP_GRACE_MS = 3000;   // after Stop, the host's ABORTED should land this fast
+var SILENT_MS = 20000;      // a run that has said nothing for this long is treated as over
+
+function setStatus(text, isError) {
+  elStatus.textContent = text || '';
+  elStatus.className = isError ? 'err' : '';
+}
+
+function selectedBands() {
+  var out = [];
+  elBands.querySelectorAll('input[data-n]').forEach(function (cb) { if (cb.checked) out.push(parseInt(cb.getAttribute('data-n'), 10)); });
+  return out;
+}
+
+function currentPlan() {
+  return SwrCore.planSweep(selectedBands(), elFine.checked);
+}
+
+function renderEstimate() {
+  var plan = currentPlan();
+  if (plan.error) {
+    elEstimate.textContent = plan.error;
+  } else {
+    elEstimate.textContent = 'About ' + SwrCore.fmtDuration(plan.estimateMs) + ' (' + plan.totalPoints + ' points)';
+  }
+  elBands.querySelectorAll('label').forEach(function (l) { l.classList.toggle('on', l.querySelector('input').checked); });
+}
+
+function buildBandBoxes(activeBandsText) {
+  var on = {};
+  SwrCore.defaultBands(activeBandsText).forEach(function (n) { on[n] = true; });
+  elBands.innerHTML = '';
+  SwrCore.sweepableBands().forEach(function (b) {
+    var label = document.createElement('label');
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.setAttribute('data-n', b.n);
+    cb.checked = !!on[b.n];
+    cb.addEventListener('change', renderEstimate);
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(' ' + b.name));
+    elBands.appendChild(label);
+  });
+  renderEstimate();
+}
+
+// ---------------------------------------------------------------- drawing
+
+function svgEl(name, attrs, text) {
+  var e = document.createElementNS(NS, name);
+  Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function mhz(hz) { return (hz / 1e6).toFixed(3); }
+
+function draw() {
+  var width = Math.max(300, elPlot.parentNode.clientWidth || 360);
+  var landscape = window.innerWidth > window.innerHeight;
+  var height = Math.round(Math.min(Math.max(width * (landscape ? 0.42 : 0.72), 220), 460));
+  while (elPlot.firstChild) elPlot.removeChild(elPlot.firstChild);
+  elPlot.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+  if (!state) {
+    elPlot.appendChild(svgEl('text', { x: width / 2, y: height / 2, 'text-anchor': 'middle', class: 'muted' }, 'Pick the bands and run a sweep.'));
+    return;
+  }
+  var m = SwrCore.plotModel(state, width, height, prevRun);
+
+  m.bands.forEach(function (b) {
+    if (b.skipped) elPlot.appendChild(svgEl('rect', { x: b.x0, y: m.plot.y0, width: b.x1 - b.x0, height: m.plot.y1 - m.plot.y0, class: 'skip' }));
+  });
+  m.yTicks.forEach(function (t) {
+    elPlot.appendChild(svgEl('line', { x1: m.plot.x0, x2: m.plot.x1, y1: t.y, y2: t.y, class: t.good ? 'two' : 'gridline' }));
+    elPlot.appendChild(svgEl('text', { x: m.plot.x0 - 6, y: t.y + 4, 'text-anchor': 'end', class: 'muted' }, t.value));
+  });
+  m.boundaries.forEach(function (x) {
+    elPlot.appendChild(svgEl('line', { x1: x, x2: x, y1: m.plot.y0, y2: m.plot.y1, class: 'edge' }));
+  });
+  m.bands.forEach(function (b) {
+    var w = b.x1 - b.x0;
+    elPlot.appendChild(svgEl('text', { x: (b.x0 + b.x1) / 2, y: m.plot.y0 - 7, 'text-anchor': 'middle' }, b.name));
+    if (b.skipped) {
+      elPlot.appendChild(svgEl('text', { x: (b.x0 + b.x1) / 2, y: (m.plot.y0 + m.plot.y1) / 2, 'text-anchor': 'middle', class: 'muted',
+        transform: 'rotate(-90 ' + ((b.x0 + b.x1) / 2) + ' ' + ((m.plot.y0 + m.plot.y1) / 2) + ')' }, 'not swept'));
+    }
+    if (w >= 90) {
+      elPlot.appendChild(svgEl('text', { x: b.x0 + 3, y: m.plot.y1 + 14, class: 'muted' }, (b.lo / 1000).toFixed(3)));
+      elPlot.appendChild(svgEl('text', { x: b.x1 - 3, y: m.plot.y1 + 14, 'text-anchor': 'end', class: 'muted' }, (b.hi / 1000).toFixed(3)));
+    }
+  });
+  elPlot.appendChild(svgEl('text', { x: (m.plot.x0 + m.plot.x1) / 2, y: m.height - 6, 'text-anchor': 'middle', class: 'muted' }, 'MHz'));
+  m.prevDots.forEach(function (d) { elPlot.appendChild(svgEl('circle', { cx: d.x, cy: d.y, r: 2.2, class: 'prev' })); });
+  m.lines.forEach(function (run) {
+    elPlot.appendChild(svgEl('path', { class: 'run', d: run.map(function (p, i) { return (i ? 'L' : 'M') + p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ') }));
+  });
+  m.dots.forEach(function (d) {
+    if (d.over) {
+      elPlot.appendChild(svgEl('path', { class: 'over', d: 'M' + (d.x - 4.5) + ',' + (d.y + 7) + ' L' + (d.x + 4.5) + ',' + (d.y + 7) + ' L' + d.x + ',' + d.y + ' Z' }));
+    } else {
+      elPlot.appendChild(svgEl('circle', { cx: d.x, cy: d.y, r: 3, class: d.good ? 'good' : 'bad' }));
+    }
+  });
+  m.marks.forEach(function (k) {
+    elPlot.appendChild(svgEl('text', { x: k.x, y: Math.max(k.y - 8, m.plot.y0 + 10), 'text-anchor': 'middle', class: 'minlabel' }, k.swr.toFixed(2)));
+  });
+}
+
+function renderSummary() {
+  var body = elSummary.querySelector('tbody');
+  body.innerHTML = '';
+  if (!state) { elSummary.hidden = true; return; }
+  SwrCore.summary(state).forEach(function (r) {
+    var tr = document.createElement('tr');
+    function td(text, cls) { var c = document.createElement('td'); c.textContent = text; if (cls) c.className = cls; tr.appendChild(c); }
+    td(r.name);
+    if (r.swept === true) {
+      td(r.minSwr.toFixed(2), r.minSwr <= SwrCore.GOOD_SWR ? 'good' : 'bad');
+      td(mhz(r.minHz));
+      td(Math.round(r.goodShare * 100) + '% of ' + r.points);
+    } else {
+      td(r.swept === null ? '…' : 'not swept');
+      td('');
+      td('');
+    }
+    body.appendChild(tr);
+  });
+  elSummary.hidden = false;
+}
+
+// ---------------------------------------------------------------- state and countdown
+
+function renderRunState() {
+  var running = !!state && state.phase === 'running';
+  elRun.hidden = running;
+  elStop.hidden = !running;
+  elBands.querySelectorAll('input').forEach(function (cb) { cb.disabled = running; });
+  elFine.disabled = running;
+  if (running) {
+    var left = SwrCore.remainingMs(state, Date.now());
+    setStatus('Sweeping, about ' + SwrCore.fmtDuration(left) + ' left (' + SwrCore.measuredCount(state) + ' of ' + state.plan.totalPoints + ' points).');
+  }
+}
+
+function finishRun() {
+  if (state.phase === 'done') {
+    var secs = Math.round((state.endedAt - state.startedAt) / 1000);
+    setStatus('Done in ' + SwrCore.fmtDuration(secs * 1000) + '.');
+    elRanNote.textContent = 'Reading above 6 is drawn on the top edge as a red triangle. The faint dots are your previous run. Receive was interrupted; decodes during the sweep were not made.';
+  } else if (state.phase === 'aborted') {
+    setStatus(state.reason, true);
+  }
+  try { localStorage.setItem(PREV_KEY, JSON.stringify(SwrCore.saveable(state))); } catch (e) { /* the page works without it */ }
+}
+
+function loadPrev() {
+  try {
+    var v = JSON.parse(localStorage.getItem(PREV_KEY) || 'null');
+    if (v && v.readings) return v;
+  } catch (e) { /* none kept */ }
+  return null;
+}
+
+// True when a row changed the run on screen.
+function applyRows(rows) {
+  var changed = false;
+  rows.forEach(function (e) {
+    if (e.d === 2) {
+      if (e.st === 6) delete queue[e.eid]; else queue[e.eid] = { dxcall: e.x };
+    } else if (e.d === 3) {
+      beaconMode = e.bm;
+    } else if (e.d === 4) {
+      txOnAir = !!e.active;
+    } else if (e.d === 6 && state && state.phase === 'running' && e.s >= startSeq) {
+      var before = state.phase;
+      SwrCore.applyEvent(state, e, Date.now());
+      lastSweepRowAt = Date.now();
+      changed = true;
+      if (before === 'running' && state.phase !== 'running') finishRun();
+    }
+  });
+  return changed;
+}
+
+async function poll() {
+  if (polling) return;
+  polling = true;
+  try {
+    var r = await fetch('/api/events?since=' + evSeq, { cache: 'no-store' });
+    var j = await r.json();
+    var changed = j.events && j.events.length ? applyRows(j.events) : false;
+    evSeq = j.seq;
+    if (changed) { draw(); renderSummary(); renderRunState(); }
+  } catch (e) { /* next tick */ }
+  polling = false;
+}
+
+function schedulePoll() {
+  setTimeout(function () { poll().then(schedulePoll); }, state && state.phase === 'running' ? 400 : 1500);
+}
+
+// ---------------------------------------------------------------- talking to the station
+
+async function post(path, body) {
+  if (!MicroFT8Pairing.getToken()) {
+    MicroFT8Pairing.needsReauth();
+    return { ok: false, why: 'Press the sidekick button to pair first.' };
+  }
+  var opts = { method: 'POST' };
+  if (body !== undefined) opts.body = body;
+  var r;
+  try { r = await MicroFT8Pairing.authFetch(path, opts); } catch (e) { return { ok: false, why: 'No answer from the station.' }; }
+  if (r.status === 401) {
+    MicroFT8Pairing.needsReauth();
+    return { ok: false, why: 'Press the sidekick button to pair.' };
+  }
+  var j = await r.json().catch(function () { return {}; });
+  if (!r.ok && j.ok === undefined) j = { ok: false, why: 'HTTP ' + r.status };
+  return j;
+}
+
+// What a sweep would end, in the words of a band change on Operate.
+function whatItEnds() {
+  var parts = [];
+  var partners = Object.keys(queue).map(function (id) { return queue[id].dxcall; }).filter(function (c) { return c && c !== 'CQ'; });
+  if (partners.length) parts.push('your QSO with ' + partners.join(', '));
+  if (beaconMode !== 0) parts.push('the beacon');
+  if (txOnAir) parts.push('the transmission on the air');
+  if (tuneOn) parts.push('Tune');
+  return parts;
+}
+
+async function endWhatItEnds() {
+  if (beaconMode !== 0) await post('/api/beacon', '0');
+  await post('/api/tx/cancel');
+  var ids = Object.keys(queue);
+  for (var i = 0; i < ids.length; i++) await post('/api/queue/cancel', String(ids[i]));
+  if (tuneOn) await post('/api/radio/tune', '0');
+  await new Promise(function (resolve) { setTimeout(resolve, 900); });
+}
+
+async function startSweep(plan) {
+  startSeq = evSeq;
+  var first = await post('/api/swr/start', SwrCore.requestBody(plan));
+  if (first.ok || !REFUSALS_ASKED[first.why]) return first;
+  var ends = whatItEnds();
+  var question = 'A sweep ends ' + (ends.length ? ends.join(', ') : 'what the station is doing') +
+    '. Receive is also interrupted while it runs. Continue?';
+  if (!window.confirm(question)) return { ok: false, why: 'Not started.', declined: true };
+  setStatus('Stopping what is on the air…');
+  await endWhatItEnds();
+  startSeq = evSeq;
+  return post('/api/swr/start', SwrCore.requestBody(plan));
+}
+
+async function runSweep() {
+  var plan = currentPlan();
+  if (plan.error) { setStatus(plan.error, true); return; }
+  if (state && state.phase !== 'running') prevRun = SwrCore.saveable(state);
+  elRun.disabled = true;
+  setStatus('Starting…');
+  var result = await startSweep(plan);
+  elRun.disabled = false;
+  if (!result.ok) {
+    setStatus(result.declined ? '' : 'Could not start: ' + (result.why || 'refused') + '.', !result.declined);
+    return;
+  }
+  state = SwrCore.newState(plan, Date.now());
+  stopAskedAt = 0;
+  lastSweepRowAt = Date.now();
+  elRanNote.textContent = '';
+  draw();
+  renderSummary();
+  renderRunState();
+}
+
+async function stopSweep() {
+  elStop.disabled = true;
+  var r = await post('/api/tx/cancel');
+  elStop.disabled = false;
+  if (!r.ok) setStatus('Stop failed: ' + (r.why || 'no answer') + '. Try again.', true);
+  else stopAskedAt = Date.now();
+}
+
+// ---------------------------------------------------------------- boot
+
+elRun.addEventListener('click', runSweep);
+elStop.addEventListener('click', stopSweep);
+elFine.addEventListener('change', renderEstimate);
+window.addEventListener('resize', draw);
+window.addEventListener('orientationchange', function () { setTimeout(draw, 250); });
+setInterval(function () {
+  if (!state || state.phase !== 'running') return;
+  var now = Date.now();
+  var why = null;
+  if (stopAskedAt && now - stopAskedAt > STOP_GRACE_MS) why = 'Stopped.';
+  else if (now - lastSweepRowAt > SILENT_MS) why = 'No word from the station; the sweep is treated as over.';
+  if (why) {
+    SwrCore.abortLocally(state, now, why);
+    finishRun();
+    draw();
+    renderSummary();
+  }
+  renderRunState();
+}, 250);
+
+prevRun = loadPrev();
+buildBandBoxes('');
+draw();
+renderSummary();
+
+(async function boot() {
+  try {
+    var r = await fetch('/api/config', { cache: 'no-store' });
+    var j = await r.json();
+    buildBandBoxes(j.active_bands || '');
+    tuneOn = j.tune === '1' || j.tune === 'yes';
+  } catch (e) { setStatus('Could not read the station\'s settings.', true); }
+  MicroFT8Pairing.boot({ status: null, onPaired: function () {} });
+  await poll();
+  schedulePoll();
+})();
+</script>

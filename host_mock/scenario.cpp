@@ -498,3 +498,25 @@ bool scenario_step(Scenario& s)
     s.period++;
     return true;
 }
+
+void scenario_emit_sweep(Scenario& s, uint8_t kind, uint8_t range_index, uint32_t freq_hz, int swr_c,
+                         uint8_t reason)
+{
+    stamp(s);
+    if (!s.wall_slots && s.epoch_secs == 0) {
+        s.epoch_secs = kEpochBase;
+    }
+    porta_sweep_event_t e;
+    memset(&e, 0, sizeof(e));
+    e.epoch_secs = s.epoch_secs;
+    e.kind = kind;
+    e.range_index = range_index;
+    e.freq_hz = freq_hz;
+    e.swr_c = (int16_t)swr_c;
+    e.reason = reason;
+    char row[160];
+    const size_t n = porta_event_json_sweep(row, sizeof(row), s.next_seq, &e);
+    if (n > 0) {
+        push_raw(s, row);
+    }
+}

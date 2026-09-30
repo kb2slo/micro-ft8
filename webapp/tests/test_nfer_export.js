@@ -17,6 +17,8 @@ const assert = require('assert');
 
 const APP_HTML = path.join(__dirname, '..', 'app', 'app.html');
 const src = fs.readFileSync(APP_HTML, 'utf8');
+// BANDS lives in bands.js, shared with swr.html.
+const bandsSrc = fs.readFileSync(path.join(__dirname, '..', 'app', 'bands.js'), 'utf8');
 
 function extractFunction(text, name) {
   const marker = 'function ' + name + '(';
@@ -74,7 +76,7 @@ function extractVarBlock(text, name) {
 }
 
 const extracted = [
-  extractVarBlock(src, 'BANDS'),
+  extractVarBlock(bandsSrc, 'BANDS'),
   extractFunction(src, 'adifField'),
   extractFunction(src, 'adifFieldIfSet'),
   extractFunction(src, 'adifBandTag'),

@@ -131,3 +131,17 @@ size_t porta_event_json_usb(char *out, size_t cap, uint32_t seq,
                            ev->present ? 1 : 0, ev->kind, ev->vid, ev->pid);
     return finish(out, cap, n);
 }
+
+size_t porta_event_json_sweep(char *out, size_t cap, uint32_t seq,
+                              const porta_sweep_event_t *ev)
+{
+    if (!ev) {
+        return 0;
+    }
+    const int n = snprintf(out, cap,
+                           "{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":6,"
+                           "\"k\":%u,\"r\":%u,\"hz\":%" PRIu32 ",\"swr\":%d,\"why\":%u}",
+                           seq, ev->epoch_secs, ev->kind, ev->range_index, ev->freq_hz,
+                           ev->swr_c, ev->reason);
+    return finish(out, cap, n);
+}

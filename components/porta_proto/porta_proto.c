@@ -401,6 +401,40 @@ bool porta_proto_parse_usb_status(const porta_frame_t *f, porta_usb_status_event
     return true;
 }
 
+// subtype | epoch(4) | kind(1) | range_index(1) | freq_hz(4) | swr_c(2) | reason(1)
+#define SWEEP_EVENT_LEN (EVENT_HEADER_LEN + 1u + 1u + 4u + 2u + 1u)
+
+size_t porta_proto_encode_sweep_event(const porta_sweep_event_t *e, uint8_t *out, size_t out_cap)
+{
+    if (!e) {
+        return 0;
+    }
+    uint8_t payload[SWEEP_EVENT_LEN];
+    payload[0] = PORTA_EVT_SWEEP;
+    put_u32(&payload[1], e->epoch_secs);
+    payload[5] = e->kind;
+    payload[6] = e->range_index;
+    put_u32(&payload[7], e->freq_hz);
+    put_u16(&payload[11], (uint16_t)e->swr_c);
+    payload[13] = e->reason;
+    return porta_proto_encode(PORTA_MSG_EVENT, payload, sizeof(payload), out, out_cap);
+}
+
+bool porta_proto_parse_sweep_event(const porta_frame_t *f, porta_sweep_event_t *out)
+{
+    if (!f || !out || f->type != PORTA_MSG_EVENT || f->len != SWEEP_EVENT_LEN ||
+        f->payload[0] != PORTA_EVT_SWEEP) {
+        return false;
+    }
+    out->epoch_secs  = get_u32(&f->payload[1]);
+    out->kind        = f->payload[5];
+    out->range_index = f->payload[6];
+    out->freq_hz     = get_u32(&f->payload[7]);
+    out->swr_c       = (int16_t)get_u16(&f->payload[11]);
+    out->reason      = f->payload[13];
+    return true;
+}
+
 // subtype | epoch(4) | flags | power_dw(2) | swr_c(2) | battery_pct(1) |
 // offset_hz(2) | reason_len(1) | reason... | text...
 // reason is length-prefixed (short, and text still needs to be the trailing
@@ -1044,5 +1078,42 @@ bool porta_proto_parse_file_entry_row(const porta_frame_t *f, porta_qso_entry_ro
     out->my_sota_ref[my_sota_ref_n] = '\0';
     p += my_sota_ref_n;
 
+    return true;
+}
+
+size_t porta_proto_encode_sweep_start(const porta_sweep_range_t *ranges, size_t count,
+                                      uint8_t *out, size_t out_cap)
+{
+    if (!ranges || count == 0 || count > PORTA_SWEEP_MAX_RANGES) {
+        return 0;
+    }
+    uint8_t payload[2 + 6 * PORTA_SWEEP_MAX_RANGES];
+    payload[0] = PORTA_ACT_SWEEP_START;
+    payload[1] = (uint8_t)count;
+    for (size_t i = 0; i < count; ++i) {
+        put_u16(&payload[2 + 6 * i], ranges[i].lo_khz);
+        put_u16(&payload[4 + 6 * i], ranges[i].hi_khz);
+        put_u16(&payload[6 + 6 * i], ranges[i].step_khz);
+    }
+    return porta_proto_encode(PORTA_MSG_ACTION, payload, (uint8_t)(2 + 6 * count), out, out_cap);
+}
+
+bool porta_proto_parse_sweep_start(const porta_frame_t *f, porta_sweep_range_t *ranges_out,
+                                   size_t *count_out)
+{
+    if (!f || !ranges_out || !count_out || f->type != PORTA_MSG_ACTION || f->len < 2 ||
+        f->payload[0] != PORTA_ACT_SWEEP_START) {
+        return false;
+    }
+    const size_t count = f->payload[1];
+    if (count == 0 || count > PORTA_SWEEP_MAX_RANGES || f->len != 2 + 6 * count) {
+        return false;
+    }
+    for (size_t i = 0; i < count; ++i) {
+        ranges_out[i].lo_khz   = get_u16(&f->payload[2 + 6 * i]);
+        ranges_out[i].hi_khz   = get_u16(&f->payload[4 + 6 * i]);
+        ranges_out[i].step_khz = get_u16(&f->payload[6 + 6 * i]);
+    }
+    *count_out = count;
     return true;
 }
