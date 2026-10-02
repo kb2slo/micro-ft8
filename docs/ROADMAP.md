@@ -8,9 +8,7 @@ Ship on `origin/main`. Talk through changes before a local commit (see [README.m
 
 ## Now
 
-| ID | Item | Why / constraint |
-| --- | --- | --- |
-| za6n | Drop ADV (Cardputer) support | Decided 2026-10-02: the operator no longer uses the ADV. The P4 is the only main board. Order: delete the ADV app and its components and host tests; the DS3231 seam in shared code (`components/external_rtc/`, `rtc_core`'s DS3231 source and external-write path, `poe_p4/main/external_rtc_stub.cpp`); move the P4's `main/storage` files into `components/`; CI, release and site; architecture docs, TEST_PLAN, STYLE. **Done-when:** no ADV image is built or published, and nothing that existed only for the ADV remains in shared components. |
+No row. The top of Backlog is next.
 
 ## Backlog
 
