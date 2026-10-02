@@ -32,6 +32,16 @@ esp_err_t web_fs_init(void);
 // True after a successful web_fs_init().
 bool web_fs_ready(void);
 
+// True when `relpath` (e.g. "app.html") is a regular file on the web FS. Used
+// to tell a first-run sidekick, which has only the bootstrap pages, from one
+// that has had the app installed.
+bool web_fs_exists(const char *relpath);
+
+// Erases the whole web filesystem, installed app included, and leaves it empty.
+// The seed pages come back on the next web_fs_init(), which is what a factory
+// reset relies on (it restarts straight after). Mounted or not.
+esp_err_t web_fs_format(void);
+
 // Rewrite every seed file from the firmware embed, even if the on-disk copy
 // already matches. Used for recovery; ordinary boots use web_fs_init()'s
 // compare-and-write.

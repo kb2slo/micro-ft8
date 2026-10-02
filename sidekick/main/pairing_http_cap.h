@@ -12,8 +12,8 @@
 enum {
     PAIRING_ROUTES_DISCLOSURE = 1,  // /api/pairing-token
 
-    PAIRING_ROUTES_WIFI_PROV_AP_CORE = 3,       // /  /rescan  /provision
-    PAIRING_ROUTES_WIFI_PROV_STATION_CORE = 4,  // /  /update  /forget  /ap-mode
+    PAIRING_ROUTES_WIFI_PROV_AP_CORE = 4,       // /  /rescan  /provision  /factory-reset
+    PAIRING_ROUTES_WIFI_PROV_STATION_CORE = 5,  // /  /update  /forget  /ap-mode  /factory-reset
 
     PAIRING_ROUTES_HOST_LINK = 14,  // /log (viewer.html) retired -- app.html covers it; 14th: /api/swr/start
     PAIRING_ROUTES_WEB_BUNDLE = 3,

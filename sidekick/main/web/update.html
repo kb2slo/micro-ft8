@@ -31,6 +31,19 @@ var host = document.getElementById('host').textContent.trim();
 var m = document.getElementById('m');
 var go = document.getElementById('go');
 
+// /update.html is also served as a plain static file, and in AP mode (where
+// /update has no route) nothing expands {{bundle_host}} -- and an AP has no
+// internet to fetch a bundle over anyway. Say so rather than fetch from
+// "{{bundle_host}}/manifest.json".
+var noHost = host.indexOf('{{') === 0;
+function showNoHost() {
+  go.disabled = true;
+  setMsg('Installing needs the internet, which this sidekick\u2019s own WiFi does not provide. ' +
+    'Put the sidekick on your home WiFi (open / and pick your network), join that ' +
+    'WiFi on your phone, then open http://micro-ft8.local/update (no .html).');
+}
+if (noHost) showNoHost();
+
 function setMsg(t) { m.textContent = t; }
 
 function joinUrl(base, rel) {
@@ -40,6 +53,7 @@ function joinUrl(base, rel) {
 }
 
 async function install() {
+  if (noHost) { showNoHost(); return; }
   if (!MicroFT8Pairing.getToken()) {
     setMsg('Press the sidekick button to pair first.');
     MicroFT8Pairing.needsReauth();
@@ -110,7 +124,14 @@ async function install() {
     setMsg('Installed. Opening /' + land + ' …');
     location.href = '/' + land;
   } catch (e) {
-    setMsg(String(e && e.message ? e.message : e));
+    // fetch() rejects with a bare TypeError ("Load failed" / "Failed to fetch")
+    // when the host cannot be reached, which tells a first-time operator
+    // nothing. The usual cause is a phone with no internet.
+    var offline = e instanceof TypeError;
+    setMsg(offline
+      ? 'Could not reach ' + host + '. This phone needs internet to download the app: ' +
+        'join your home WiFi (the same one the sidekick is on), then try again.'
+      : String(e && e.message ? e.message : e));
     go.disabled = false;
   }
 }
@@ -151,11 +172,14 @@ async function rehydrate() {
 MicroFT8Pairing.boot({
   status: m,
   onPaired: function () {
+    if (noHost) { showNoHost(); return; }
     setMsg('Paired — ready to install');
     go.disabled = false;
   }
 });
-if (MicroFT8Pairing.getToken()) {
+if (noHost) {
+  showNoHost();
+} else if (MicroFT8Pairing.getToken()) {
   setMsg('Paired — ready to install');
   go.disabled = false;
 } else {

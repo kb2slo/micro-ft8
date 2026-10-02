@@ -160,6 +160,29 @@ bool web_fs_ready(void)
     return s_ready;
 }
 
+bool web_fs_exists(const char *relpath)
+{
+    if (!s_ready || !relpath_ok(relpath)) {
+        return false;
+    }
+    char path[96];
+    abs_path(path, sizeof(path), relpath);
+    struct stat st;
+    return stat(path, &st) == 0 && S_ISREG(st.st_mode);
+}
+
+esp_err_t web_fs_format(void)
+{
+    // esp_littlefs_format() formats a mounted partition in place. The seeds
+    // are not rewritten here: a restart follows, and web_fs_init() hydrates an
+    // empty filesystem.
+    const esp_err_t err = esp_littlefs_format("web");
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "format failed: %s", esp_err_to_name(err));
+    }
+    return err;
+}
+
 esp_err_t web_fs_rehydrate(void)
 {
     if (!s_ready) {
@@ -336,9 +359,10 @@ static esp_err_t get_static(httpd_req_t *req)
     if (len < 2 || len >= 96) {
         return httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Not found");
     }
-    char rel[96];
-    memcpy(rel, uri + 1, len - 1);
-    rel[len - 1] = '\0';
+    char rel_buf[96];
+    memcpy(rel_buf, uri + 1, len - 1);
+    rel_buf[len - 1] = '\0';
+    const char *rel = rel_buf;
 
     if (!s_ready || !relpath_ok(rel)) {
         return httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Not found");
@@ -346,6 +370,19 @@ static esp_err_t get_static(httpd_req_t *req)
     char path[96];
     abs_path(path, sizeof(path), rel);
     FILE *f = fopen(path, "rb");
+    if (!f && strcmp(rel, "app.html") == 0) {
+        // A fresh flash carries only the bootstrap pages; app.html arrives
+        // through /update (docs/architecture/sidekick.md, Installing the app
+        // bundle). A bare "Not found" there reads as a broken device to a
+        // first-time operator, so answer with the page that says what to do.
+        // 404 stays the status: nothing is installed at this URL.
+        abs_path(path, sizeof(path), "setup.html");
+        f = fopen(path, "rb");
+        if (f) {
+            httpd_resp_set_status(req, "404 Not Found");
+            rel = "setup.html";
+        }
+    }
     if (!f) {
         return httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Not found");
     }

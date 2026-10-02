@@ -548,6 +548,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <div class=setrow style="display:flex;flex-direction:column;gap:.5rem">
       <button id=netForget type=button disabled>Forget WiFi</button>
       <button id=netRehydrate type=button disabled>Restore seed pages</button>
+      <button id=netFactory type=button disabled>Factory reset</button>
     </div>
     <p id=netMsg class=setnote></p>
 
@@ -1696,6 +1697,45 @@ document.getElementById('netRehydrate').onclick = async function () {
   }
 };
 
+// Factory reset: in-page two-tap arm, as above (a native confirm() is often
+// dismissed silently on phones). Unlike Restore it removes the installed app,
+// the saved WiFi and the pairing, so the second tap says exactly that. The
+// sidekick answers first and then restarts, so a failed fetch right after the
+// 200 is the reset happening, not an error.
+var netFactoryArmed = false;
+document.getElementById('netFactory').onclick = async function () {
+  var msg = document.getElementById('netMsg');
+  if (!MicroFT8Pairing.getToken()) {
+    netFactoryArmed = false;
+    msg.textContent = 'Press the sidekick button to pair first.';
+    MicroFT8Pairing.needsReauth();
+    return;
+  }
+  if (!netFactoryArmed) {
+    netFactoryArmed = true;
+    msg.textContent = 'Tap Factory reset again to erase the app, the saved WiFi and the pairing from the sidekick. ' +
+      'Station settings on the main board are kept.';
+    return;
+  }
+  netFactoryArmed = false;
+  msg.textContent = 'Resetting…';
+  try {
+    var r = await MicroFT8Pairing.authFetch('/factory-reset', { method: 'POST' });
+    if (r.status == 401) {
+      MicroFT8Pairing.needsReauth();
+      msg.textContent = 'Press the sidekick button to pair';
+      return;
+    }
+    if (!r.ok) {
+      msg.textContent = 'Reset failed: ' + (await r.text());
+      return;
+    }
+    msg.textContent = 'Reset. The sidekick is restarting as a new unit: join its micro-ft8.local-… network and open http://192.168.4.1/ to set it up again.';
+  } catch (e) {
+    msg.textContent = 'Reset sent; the sidekick is restarting. Join its micro-ft8.local-… network and open http://192.168.4.1/.';
+  }
+};
+
 // Shared by both band dropdowns (Operate + Settings) -- one PUT, one code
 // path, one fix. A single-field PUT rather than the full Settings form, so
 // picking a band applies immediately and never touches any other field.
@@ -2229,6 +2269,7 @@ function enableWrites(on) {
   document.getElementById('netForget').disabled = !on;
   document.getElementById('netModeSwitch').disabled = !on;
   document.getElementById('netRehydrate').disabled = !on;
+  document.getElementById('netFactory').disabled = !on;
 }
 document.getElementById('dist_unit').onchange = function () { setDistUnit(this.value); };
 document.getElementById('theme_pref').onchange = function () { setTheme(this.value); };

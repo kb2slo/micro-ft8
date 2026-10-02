@@ -13,6 +13,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -163,11 +165,48 @@ static void test_abort()
     check(!web_page_expand("x", nullptr, 0, nullptr, nullptr), "a null emit is refused");
 }
 
+// The real provision.html, expanded the way wifi_prov.c get_form() does. A
+// first-run sidekick (no app.html) must hide "Operate in AP mode", which
+// would land on a 404, and show the setup steps; an installed one the reverse.
+static std::string read_file(const char* path)
+{
+    std::ifstream f(path);
+    std::stringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
+}
+
+static void test_provision_first_run()
+{
+    const std::string page = read_file("../sidekick/main/web/provision.html");
+    check(!page.empty(), "provision.html is readable from host_mock/");
+
+    for (int installed = 0; installed <= 1; ++installed) {
+        const std::vector<web_sub_t> subs = {
+            {"failure", "", true},
+            {"networks", "", true},
+            {"operate_hidden", installed ? "" : "hidden", false},
+            {"setup_hidden", installed ? "hidden" : "", false},
+        };
+        const std::string out = expand(page, subs);
+        check(out.find("{{") == std::string::npos, "provision.html leaves no unexpanded placeholder");
+        const bool op_hidden = out.find("<div hidden>\n<a class=cta href=/app.html") != std::string::npos;
+        const bool setup_hidden = out.find("<div hidden>\n<p class=first>") != std::string::npos;
+        check(op_hidden == !installed, "operate button hidden exactly when the app is not installed");
+        check(setup_hidden == !!installed, "first-run steps hidden exactly when the app is installed");
+    }
+
+    const std::string setup = read_file("../sidekick/main/web/setup.html");
+    check(!setup.empty() && setup.find("{{") == std::string::npos,
+          "setup.html is served unchanged, so it has no placeholders");
+}
+
 int main()
 {
     test_escape();
     test_expand();
     test_abort();
+    test_provision_first_run();
 
     if (g_fail == 0) {
         std::printf("web_page: all checks passed\n");
