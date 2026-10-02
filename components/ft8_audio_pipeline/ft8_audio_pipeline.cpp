@@ -115,7 +115,7 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                 slot_blocks++;
                 int64_t now_idx = rtc_now_ms() / slot_ms;
                 if (now_idx != slot_idx) {
-                    ESP_LOGD(tag, "Slot boundary %lld->%lld blocks=%d wf=%d",
+                    ESP_LOGI(tag, "SLOT boundary %lld->%lld blocks=%d wf=%d",
                              (long long)slot_idx, (long long)now_idx,
                              slot_blocks, mon.wf.num_blocks);
                     if (slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
@@ -132,7 +132,7 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                     ESP_LOGD(tag, "Triggering decode at slot %lld blocks=%d wf=%d",
                              (long long)slot_idx, slot_blocks, mon.wf.num_blocks);
                     if (decode_tx_state_get_tx_active() || decode_tx_state_get_was_txing()) {
-                        ESP_LOGD(tag, "Skipping decode on TX slot %lld",
+                        ESP_LOGI(tag, "SLOT skip tx %lld",
                                  (long long)slot_idx);
                         if (slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
                             decode_tx_state_set_decode_applied_slot_idx(slot_idx);
@@ -142,7 +142,7 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                         decode_tx_state_set_decode_in_progress(true);
                         decode_monitor_results(&mon, &mon_cfg);
                     } else {
-                        ESP_LOGD(tag, "Decode paused; skipping");
+                        ESP_LOGI(tag, "SLOT skip paused %lld", (long long)slot_idx);
                         if (slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
                             decode_tx_state_set_decode_applied_slot_idx(slot_idx);
                         }

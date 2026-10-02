@@ -140,6 +140,32 @@ static TxMsgType canonical_next_tx(AutoseqState state) {
     }
 }
 
+static const char* state_name(AutoseqState state) {
+    switch (state) {
+        case AutoseqState::CALLING: return "calling";
+        case AutoseqState::REPLYING: return "replying";
+        case AutoseqState::REPORT: return "report";
+        case AutoseqState::ROGER_REPORT: return "roger";
+        case AutoseqState::ROGERS: return "rogers";
+        case AutoseqState::SIGNOFF: return "signoff";
+        case AutoseqState::IDLE: return "idle";
+    }
+    return "?";
+}
+
+static const char* tx_name(TxMsgType tx) {
+    switch (tx) {
+        case TxMsgType::TX_NONE: return "none";
+        case TxMsgType::TX1: return "tx1";
+        case TxMsgType::TX2: return "tx2";
+        case TxMsgType::TX3: return "tx3";
+        case TxMsgType::TX4: return "tx4";
+        case TxMsgType::TX5: return "tx5";
+        case TxMsgType::TX6: return "tx6";
+    }
+    return "?";
+}
+
 static inline int clamp_retry_limit(int retry) {
     if (retry < 0) return 0;
     return retry;
@@ -496,8 +522,9 @@ void autoseq_on_decodes(const std::vector<UiRxLine>& to_me_messages) {
     sort_and_clean();
     refresh_tx_msg_buffer();
     if (s_active_count > 0) {
-        ESP_LOGI(TAG, "on_decodes done: queue[0] state=%d, next_tx=%d, dxcall=%s",
-                 (int)s_queue[0].state, (int)s_queue[0].next_tx, s_queue[0].dxcall.c_str());
+        ESP_LOGI(TAG, "on_decodes done: queue[0] state=%s next=%s dxcall=%s",
+                 state_name(s_queue[0].state), tx_name(s_queue[0].next_tx),
+                 s_queue[0].dxcall.c_str());
     }
 }
 
@@ -570,9 +597,10 @@ void autoseq_tick(int64_t slot_idx, int slot_parity, int ms_to_boundary) {
     }
     refresh_tx_msg_buffer();
 
-    ESP_LOGI(TAG, "Tick: active=%d, state=%d, next_tx=%d, retry=%d/%d",
-             s_active_count, s_active_count > 0 ? (int)s_queue[0].state : -1,
-             s_active_count > 0 ? (int)s_queue[0].next_tx : -1,
+    ESP_LOGI(TAG, "Tick: active=%d state=%s next=%s retry=%d/%d",
+             s_active_count,
+             s_active_count > 0 ? state_name(s_queue[0].state) : "none",
+             s_active_count > 0 ? tx_name(s_queue[0].next_tx) : "none",
              s_active_count > 0 ? s_queue[0].retry_counter : 0,
              s_active_count > 0 ? s_queue[0].retry_limit : 0);
 }
@@ -599,8 +627,8 @@ bool autoseq_fetch_pending_tx(AutoseqTxEntry& out) {
     out.is_signoff = (ctx->next_tx == TxMsgType::TX4 ||
                       ctx->next_tx == TxMsgType::TX5);
 
-    ESP_LOGI(TAG, "Fetch TX: %s (state=%d, next_tx=%d)",
-             out.text.c_str(), (int)ctx->state, (int)ctx->next_tx);
+    ESP_LOGI(TAG, "Fetch TX: %s (state=%s next=%s)",
+             out.text.c_str(), state_name(ctx->state), tx_name(ctx->next_tx));
     return true;
 }
 
@@ -1024,8 +1052,8 @@ static bool generate_response(QsoContext* ctx, const UiRxLine& msg, bool overrid
 
     TxMsgType rcvd = parse_rcvd_msg(ctx, msg);
 
-    ESP_LOGI(TAG, "generate_response: override=%d, rcvd=%d, ctx->state=%d",
-             override, (int)rcvd, (int)ctx->state);
+    ESP_LOGI(TAG, "generate_response: override=%d rcvd=%s state=%s",
+             override, tx_name(rcvd), state_name(ctx->state));
 
     if (rcvd == TxMsgType::TX_NONE) {
         ESP_LOGW(TAG, "generate_response: rcvd=TX_NONE, returning false");
@@ -1256,11 +1284,11 @@ static void on_decode(const UiRxLine& msg) {
             // This preserves the queue-parity invariant across any edge cases
             // where parity might drift (band switch, external intervention).
             ctx->slot_id = msg.slot_id ^ 1;
-            ESP_LOGI(TAG, "on_decode: found active ctx for %s, state=%d, next_tx=%d",
-                     dxcall.c_str(), (int)ctx->state, (int)ctx->next_tx);
+            ESP_LOGI(TAG, "on_decode: found active ctx for %s, state=%s next=%s",
+                     dxcall.c_str(), state_name(ctx->state), tx_name(ctx->next_tx));
             generate_response(ctx, msg, false);
-            ESP_LOGI(TAG, "on_decode: after response, state=%d, next_tx=%d",
-                     (int)ctx->state, (int)ctx->next_tx);
+            ESP_LOGI(TAG, "on_decode: after response, state=%s next=%s",
+                     state_name(ctx->state), tx_name(ctx->next_tx));
             return;
         }
     }
@@ -1323,8 +1351,8 @@ static void on_decode(const UiRxLine& msg) {
 
     QsoContext* ctx = append_ctx();
     generate_response(ctx, msg, true);
-    ESP_LOGI(TAG, "on_decode: NEW ctx %s, state=%d, next_tx=%d",
-             ctx->dxcall.c_str(), (int)ctx->state, (int)ctx->next_tx);
+    ESP_LOGI(TAG, "on_decode: NEW ctx %s, state=%s next=%s",
+             ctx->dxcall.c_str(), state_name(ctx->state), tx_name(ctx->next_tx));
 }
 
 // Comparison for std::sort: IDLE at top (to be popped), CALLING at bottom

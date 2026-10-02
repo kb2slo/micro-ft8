@@ -11,6 +11,7 @@
 
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -232,11 +233,28 @@ static int dec_sort_cmp(const void* a, const void* b) {
   return decode_sort_cmp(&ea, &eb);
 }
 
+// One line per slot on the UART. dec is esp_timer, not rtc_now_ms: a decode-driven
+// clock step inside this function must not land in the duration. left is the
+// soft clock's time until the slot boundary. The browser debug log still gets
+// the same text on receive slots.
+static void log_slot_summary(int num_candidates, int max_cand, int msg_count, int tome,
+                             int64_t decode_t0_us, bool browser) {
+  const int64_t dec_ms = (esp_timer_get_time() - decode_t0_us) / 1000;
+  const int64_t slot_ms = g_protocol->slot_time_ms;
+  const int64_t slot_idx = decode_tx_state_get_decode_slot_idx();
+  int64_t left_ms = 0;
+  if (slot_idx >= 0 && slot_ms > 0) left_ms = (slot_idx + 1) * slot_ms - rtc_now_ms();
+  char buf[160];
+  snprintf(buf, sizeof(buf),
+           "SLOT slot=%lld cand=%d/%d msg=%d tome=%d dec=%lldms left=%lldms",
+           (long long)slot_idx, num_candidates, max_cand, msg_count, tome,
+           (long long)dec_ms, (long long)left_ms);
+  ESP_LOGI(TAG, "%s", buf);
+  if (browser) debug_log_line(buf);
+}
+
 void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
-  // One operator-log line per slot (B53 shape, slim). ESP_LOGD above is compiled
-  // out at CONFIG_LOG_MAXIMUM_LEVEL=3; debug_log_line reaches P-then-. and the
-  // browser. Cheap: two timestamps and counts already in hand — no extra decode work.
-  const int64_t decode_t0_ms = rtc_now_ms();
+  const int64_t decode_t0_us = esp_timer_get_time();
   const int max_cand = DECODE_MAX_CANDIDATES;
 
   // ---- heap instrumentation ----
@@ -309,11 +327,8 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
     decode_tx_state_set_decode_in_progress(false);
     if (!decode_tx_state_get_was_txing()) {
       arm_from_autoseq_or_beacon();
-      char buf[56];
-      snprintf(buf, sizeof(buf), "SLOT cand=0/%d msg=0 dec=%lldms",
-               max_cand, (long long)(rtc_now_ms() - decode_t0_ms));
-      debug_log_line(buf);
     }
+    log_slot_summary(0, max_cand, 0, 0, decode_t0_us, !decode_tx_state_get_was_txing());
     return;
   }
 
@@ -430,6 +445,9 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
                        adif_logger_dedupe_is_duplicate(&s_adif_logger_dedupe, std::string(dxnorm), now_ms);
 
     log_rxtx_line('R', snr_q, (int)lrintf(freq_hz), std::string(final_text), -1);
+    if (d->is_to_me) {
+      ESP_LOGI(TAG, "TOME snr=%d offset=%dHz: %s", snr_q, d->offset_hz, final_text);
+    }
 
     s_dec_count++;
   }
@@ -534,13 +552,10 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
              (int)heap_exit - (int)heap_entry);
   }
 
-  if (!decode_tx_state_get_was_txing()) {
-    char buf[56];
-    snprintf(buf, sizeof(buf), "SLOT cand=%d/%d msg=%d dec=%lldms",
-             num_candidates, max_cand, s_dec_count,
-             (long long)(rtc_now_ms() - decode_t0_ms));
-    debug_log_line(buf);
-  }
+  int tome = 0;
+  for (int i = 0; i < s_dec_count; ++i) if (s_dec[i].is_to_me) tome++;
+  log_slot_summary(num_candidates, max_cand, s_dec_count, tome, decode_t0_us,
+                   !decode_tx_state_get_was_txing());
 
   // Mark this slot's decode as fully applied BEFORE clearing the in-progress
   // flag. Readers (TX trigger on core 0) must see the applied marker as soon

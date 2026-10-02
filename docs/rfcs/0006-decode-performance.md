@@ -600,8 +600,9 @@ tone-sweep test and a field A/B.
 
 Field-only. B53 is instrumentation; B54 fixes what it finds.
 
-**B53, partly built.** `decode_monitor_results()` already logs `SLOT cand=… msg=… dec=…ms` per slot
-(`cf1bbc3`). Two numbers are missing:
+**B53, partly built.** `decode_monitor_results()` logs `SLOT cand=… msg=… dec=…ms` per slot as
+`ESP_LOGI` under tag `DECODE` (2026-10-02), so a serial capture has it, and copies the same line to the
+browser debug log on receive slots. `dec` is `esp_timer`. Two numbers are missing:
 
 - **`g=`, the surviving guard blocks at the slot boundary.** `slot_blocks` resets at the slot boundary and
   again after a decode, so the count at a boundary is the guard band that survived decode. About 14 is
