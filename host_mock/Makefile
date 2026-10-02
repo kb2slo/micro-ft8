@@ -58,6 +58,7 @@ DIAL_HISTORY_TARGET = host_test_dial_history
 ADIF_LOGGER_TARGET = host_test_adif_logger
 CAT_REPLY_PARSER_TARGET = host_test_cat_reply_parser
 SWR_SWEEP_TARGET = host_test_swr_sweep
+SLOT_DEFICIT_TARGET = host_test_slot_deficit
 
 all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
      $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) \
@@ -66,6 +67,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET
      $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(BUNDLE_HOST_TARGET) \
      $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
      $(CAT_REPLY_PARSER_TARGET) $(SWR_SWEEP_TARGET) \
+     $(SLOT_DEFICIT_TARGET) \
      $(SIM_TARGET)
 
 $(TARGET): $(OBJ) porta_event_json.o
@@ -108,6 +110,14 @@ SWR_SWEEP_OBJ = swr_sweep.o test_swr_sweep.o
 swr_sweep.o: ../components/swr_sweep/swr_sweep.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 $(SWR_SWEEP_TARGET): $(SWR_SWEEP_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+SLOT_DEFICIT_OBJ = ft8_slot_deficit.o test_slot_deficit.o
+ft8_slot_deficit.o: ../components/ft8_audio_pipeline/ft8_slot_deficit.c
+	$(CC) $(CFLAGS) -I../components/ft8_audio_pipeline/include -c $< -o $@
+test_slot_deficit.o: test_slot_deficit.cpp
+	$(CXX) $(CXXFLAGS) -I../components/ft8_audio_pipeline/include -c $< -o $@
+$(SLOT_DEFICIT_TARGET): $(SLOT_DEFICIT_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 $(QUEUE_HEAD_TARGET): $(QUEUE_HEAD_OBJ)

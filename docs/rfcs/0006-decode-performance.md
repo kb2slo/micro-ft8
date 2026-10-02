@@ -605,14 +605,20 @@ Field-only. B53 is instrumentation; B54 fixes what it finds.
 
 **B53, partly built.** `decode_monitor_results()` logs `SLOT cand=… msg=… dec=…ms` per slot as
 `ESP_LOGI` under tag `DECODE` (2026-10-02), so a serial capture has it, and copies the same line to the
-browser debug log on receive slots. `dec` is `esp_timer`. Two numbers are missing:
+browser debug log on receive slots. `dec` is `esp_timer`. The capture task's boundary line carries the
+other two (2026-10-02):
 
 - **`g=`, the surviving guard blocks at the slot boundary.** `slot_blocks` resets at the slot boundary and
   again after a decode, so the count at a boundary is the guard band that survived decode. About 14 is
-  healthy (93 per slot minus 79 consumed). About 0 means decode ate the guard. Fewer than 79 with no decode
-  at all means the audio never arrived.
-- **`lost=`, the sample-arrival deficit.** Accumulate `cfg->read`'s return against 90,000 samples per 15 s
-  slot.
+  healthy (93 per slot minus 79 consumed). About 0 means decode ate the guard.
+- **`lost=`, the sample-arrival deficit.** Samples taken from `cfg->read` against one slot at 6 kHz
+  (90,000 for FT8, 45,000 for FT4), via `ft8_slot_sample_deficit()`. The loop works in blocks of 960
+  samples, so a healthy slot is within one block of that count. A deficit of thousands is the audio
+  dropped while decode holds the capture task. A clock step in the slot moves the boundary, so it
+  shows up here as well as in `left`.
+
+Per-core busy % (FreeRTOS run-time stats) is still missing. It is the precondition for §4.2 lever 2,
+decode on the second core.
 
 Do **not** read these by raising `CONFIG_LOG_MAXIMUM_LEVEL`. That compiles in every `ESP_LOGD` in the tree,
 and the resulting flood is its own starvation source. FT4 is the sharper test: a near-identical guard band

@@ -1,4 +1,5 @@
 #include "ft8_audio_pipeline.h"
+#include "ft8_slot_deficit.h"
 #include "decode_tx_state.h"
 #include "debug_log.h"
 
@@ -80,6 +81,7 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
     int ft8_buffer_idx = 0;
     TickType_t next_wake = xTaskGetTickCount();
     int slot_blocks = 0;
+    int64_t slot_samples = 0;
     int64_t slot_idx = rtc_now_ms() / slot_ms;
     int64_t slot_start_ms = slot_idx * slot_ms;
     (void)slot_start_ms;
@@ -94,6 +96,7 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
 
         for (int i = 0; i < samples_dec && !cfg->should_stop(cfg->ctx); i++) {
             ft8_buffer[ft8_buffer_idx++] = temp_dec[i];
+            slot_samples++;
 
             if (ft8_buffer_idx >= mon.block_size) {
                 double acc = 0.0;
@@ -122,15 +125,19 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                 slot_blocks++;
                 int64_t now_idx = rtc_now_ms() / slot_ms;
                 if (now_idx != slot_idx) {
-                    ESP_LOGI(tag, "SLOT boundary %lld->%lld blocks=%d wf=%d",
+                    const int64_t lost = ft8_slot_sample_deficit(
+                        slot_samples, now_idx - slot_idx, (int)slot_ms, FT8_SAMPLE_RATE);
+                    // g is blocks captured after the decode reset: about 14 is a full guard.
+                    ESP_LOGI(tag, "SLOT boundary %lld->%lld g=%d lost=%lld wf=%d",
                              (long long)slot_idx, (long long)now_idx,
-                             slot_blocks, mon.wf.num_blocks);
+                             slot_blocks, (long long)lost, mon.wf.num_blocks);
                     if (slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
                         decode_tx_state_set_decode_applied_slot_idx(slot_idx);
                     }
                     slot_idx = now_idx;
                     slot_start_ms = slot_idx * slot_ms;
                     slot_blocks = 0;
+                    slot_samples = 0;
                     mon.wf.num_blocks = 0;
                     monitor_reset(&mon);
                     next_wake = xTaskGetTickCount();
