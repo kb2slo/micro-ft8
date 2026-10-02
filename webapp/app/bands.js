@@ -1,11 +1,10 @@
 // The amateur bands the web app knows, shared by app.html (the dock, Settings) and swr.html.
 // Plain globals, like callinfo.js: there is no module system across these pages.
-// Index order matches ADV g_bands[] (main.cpp); ft8/ft4 mirror that file's two
-// default tables (the compiled-in g_bands initializer and the FT4 reset block
-// in station_apply_to_globals()) byte-for-byte, since CONFIG only ever
-// reports an *override* (bandN=/ft4_bandN=) when one has actually been
-// stored -- an un-set band has no value on the wire at all, and this is the
-// only place that knows what it defaults to.
+// Index order matches the Station.txt band keys. ft8 mirrors the P4's seeded
+// table (kFt8DefaultKhz in poe_p4/main/porta_host_stubs.cpp) byte-for-byte,
+// since CONFIG only ever reports an *override* (bandN=/ft4_bandN=) when one
+// has actually been stored -- an un-set band has no value on the wire at all,
+// and this is the only place that knows what it defaults to.
 var BANDS = [
   {i: 0, name: '160m', n: 160, ft8: 1840,   ft4: 1843},
   {i: 1, name: '80m',  n: 80,  ft8: 3573,   ft4: 3575},
@@ -30,12 +29,10 @@ var BAND_EDGES_KHZ = {
   12: [24890, 24990], 10: [28000, 29700], 6: [50000, 54000], 2: [144000, 148000]
 };
 
-// Parses active_bands the same lenient way rebuild_active_bands() (main.cpp)
-// does -- whitespace/comma/semicolon/slash separated band numbers, "m" suffix
-// tolerated implicitly since parseInt stops at the first non-digit. Empty or
-// unrecognized text means "no filter" there, which in practice (rebuild_
-// active_bands leaves g_active_band_indices covering every band when nothing
-// matched) means every band is active -- mirrored here as the `any` flag.
+// Parses active_bands leniently -- whitespace/comma/semicolon/slash separated
+// band numbers, "m" suffix tolerated implicitly since parseInt stops at the
+// first non-digit. Empty or unrecognized text means "no filter", i.e. every
+// band is active -- the `any` flag.
 function parseActiveBands(text) {
   var want = {};
   var any = false;

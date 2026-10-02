@@ -417,7 +417,7 @@
   </p>
   <p class="cta-row">
     <a class="cta" href="downloads.html">Downloads</a>
-    <span class="cta-note">Firmware for ADV, PoE-P4, and Atom, plus source.
+    <span class="cta-note">Firmware for the PoE-P4 and the Atom, plus source.
       Or <a href="#walkthrough">watch the walkthrough</a>.</span>
   </p>
 
@@ -485,9 +485,7 @@
       <div class="card">
         <h3>35 grams, about $29</h3>
         <p>
-          The headless build is two stock M5Stack parts with no screen and no keyboard.
-          Already have a Cardputer ADV? Add a $7.50 AtomS3&nbsp;Lite and keep the
-          keyboard for when you want it.
+          The station is two stock M5Stack parts with no screen and no keyboard.
         </p>
         <p class="proof">34.9&nbsp;g on the scale. Real FT8 QSOs completed.</p>
       </div>
@@ -547,7 +545,7 @@
           <th>What you add</th>
           <td data-label="Phone app">A USB cable</td>
           <td data-label="Built-in">A new radio</td>
-          <td data-label="Micro-FT8" class="us">35&nbsp;g, about $29 (or $7.50 on a Cardputer ADV)</td>
+          <td data-label="Micro-FT8" class="us">35&nbsp;g, about $29</td>
         </tr>
       </tbody>
     </table>
@@ -559,22 +557,14 @@
   </section>
 
   <section>
-    <h2>Two ways to run it</h2>
-    <ol>
-      <li>
-        <strong>Cardputer ADV you already have</strong> — add an
-        <strong>AtomS3&nbsp;Lite</strong> on Grove (Port&nbsp;A). Keep the ADV screen and keys
-        if you want them, or drive the station entirely from a browser.
-      </li>
-      <li>
-        <strong>Full headless</strong> —
-        <strong>M5Stack Unit PoE-P4</strong> as the radio host, the same AtomS3&nbsp;Lite as
-        the Wi‑Fi companion, <strong>no keyboard and no screen</strong>. All of the compute
-        fits in <strong>35&nbsp;grams</strong>. Set up and check in from a phone, tablet, or
-        laptop; no need to keep the page open. This path has
-        completed real FT8 QSOs on the air.
-      </li>
-    </ol>
+    <h2>How it runs</h2>
+    <p>
+      <strong>M5Stack Unit PoE-P4</strong> as the radio host, an
+      <strong>AtomS3&nbsp;Lite</strong> as the Wi‑Fi companion,
+      <strong>no keyboard and no screen</strong>. All of the compute fits in
+      <strong>35&nbsp;grams</strong>. Set up and check in from a phone, tablet, or laptop;
+      no need to keep the page open. It has completed real FT8 QSOs on the air.
+    </p>
     <p class="note">
       <strong>GPS is optional.</strong> Clock comes from the browser over the Atom link —
       open the page, sync once, operate. No GNSS module required for time.
@@ -584,9 +574,6 @@
       <a href="https://github.com/SteffenLav/qmx-panadapter">SteffenLav’s qmx-panadapter</a>
       already ships FT8 on ESP32-P4 (M5Stack Tab5) with a live QMX. That work proved the silicon;
       Micro-FT8’s PoE-P4 build is the headless, browser-UI shape of the same idea.
-    </p>
-    <p>
-      The Cardputer ADV remains a first-class daily driver.
     </p>
   </section>
 
@@ -629,7 +616,6 @@
     <p class="note">
       Prices from <a href="https://shop.m5stack.com/">shop.m5stack.com</a> (USD, checked
       2026-09-18). Does <strong>not</strong> include QMX/QDX, USB-C power bank/cables, or phone.
-      ADV path: Cardputer ADV you already own + AtomS3&nbsp;Lite (~$7.50) on Port&nbsp;A.
     </p>
   </section>
 
@@ -775,16 +761,11 @@
       <li>
         Unattended beacon: 3.6&nbsp;hours, 544 transmit slots, 1,195 receivers.
       </li>
-      <li>A 22-QSO log on 20&nbsp;m from the Cardputer ADV.</li>
       <li>Real FT8 QSOs on the headless PoE-P4 build.</li>
       <li>
         The SWR sweep, on a PoE‑P4 with a QMX and a 40&nbsp;m end-fed half-wave: 40, 20
         and 15&nbsp;m read 1.1 to 1.6, 30 and 17&nbsp;m read above 2, as that antenna
         should.
-      </li>
-      <li>
-        A released build shows a version number only if CI built it from a clean,
-        tagged tree. Any other build shows its commit instead.
       </li>
     </ul>
     <h3 class="sub">Not yet, or not claimed</h3>

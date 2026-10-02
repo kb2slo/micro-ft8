@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Downloads — Micro-FT8</title>
-<meta name="description" content="Continuous prerelease firmware and source for Micro-FT8 (ADV, PoE-P4, AtomS3 Lite).">
+<meta name="description" content="Continuous prerelease firmware and source for Micro-FT8 (PoE-P4, AtomS3 Lite).">
 <style>
   :root {
     --ink: #1a1f1c;
@@ -205,10 +205,9 @@
     <h2>How to set up</h2>
     <ol class="setup">
       <li>
-        <strong>Flash one radio host</strong> — either the
-        <strong>Cardputer ADV</strong> <em>or</em> the <strong>PoE-P4</strong>
-        (not both for one station). Use <strong>Flash in browser</strong> below
-        (Chrome/Edge) or the CLI commands.
+        <strong>Flash the radio host</strong> — the <strong>PoE-P4</strong>.
+        Use <strong>Flash in browser</strong> below (Chrome/Edge) or the CLI
+        commands.
       </li>
       <li>
         <strong>Flash the Atom separately</strong> — the
@@ -217,9 +216,9 @@
         first install.
       </li>
       <li>
-        <strong>Connect with a Grove cable</strong> — Port&nbsp;A on the ADV, or
-        the Grove port on the PoE-P4 (a cable ships with the P4). The Atom takes
-        5&nbsp;V from Grove once the host is powered.
+        <strong>Connect with a Grove cable</strong> — the Grove port on the
+        PoE-P4 (a cable ships with the P4). The Atom takes 5&nbsp;V from Grove
+        once the host is powered.
       </li>
       <li>
         <strong>PoE-P4 USB-C ports</strong> — the board has two, and they are not
@@ -237,11 +236,6 @@
         </ul>
         Do not put the radio on the Ethernet-side port, and do not expect that
         side port to power the board.
-      </li>
-      <li>
-        <strong>Cardputer ADV USB-C</strong> — one port does flash and radio
-        hosting: flash first, then plug the QMX/QDX into the same USB-C when you
-        operate (or use a powered hub if you need both at once on the desk).
       </li>
       <li>
         <strong>Connect to the Atom</strong> — on first boot (or after
@@ -309,8 +303,6 @@
   <section>
     <h2>Flash (CLI)</h2>
     <p class="note">Merged images at <code>0x0</code>. Use a data-capable USB-C cable.</p>
-    <p><strong>Cardputer ADV</strong></p>
-    <pre id="cmd-adv">esptool.py --chip esp32s3 write_flash 0x0 microft8-adv-continuous.bin</pre>
     <p><strong>PoE-P4 (U213)</strong> — flash/power on the USB-C next to RJ45</p>
     <pre id="cmd-p4">esptool.py --chip esp32p4 write_flash 0x0 microft8-poe-p4-continuous.bin</pre>
     <p><strong>AtomS3 Lite</strong></p>
@@ -343,12 +335,6 @@ if (!serialOk) {
 }
 
 const LABELS = {
-  adv: {
-    title: "Cardputer ADV",
-    desc: "Host firmware (esp32s3), merged 8 MB image.",
-    chip: "ESP32-S3",
-    flashSize: "8MB",
-  },
   poe_p4: {
     title: "PoE-P4 (U213)",
     desc: "Headless radio host (esp32p4), merged 16 MB image.",
@@ -370,7 +356,7 @@ const LABELS = {
 let busy = false;
 const flashButtons = [];
 // Each asset card owns its own log <pre> -- one shared terminal for three
-// unrelated targets (ADV/P4/Atom) read as "which one is this even about"
+// unrelated targets (P4/Atom) read as "which one is this even about"
 // once you'd flashed more than one, operator-reported. Keyed by asset key.
 const logEls = {};
 
@@ -391,10 +377,6 @@ function setBusy(on) {
 
 function setCmds(m) {
   const a = m.assets || {};
-  if (a.adv) {
-    document.getElementById("cmd-adv").textContent =
-      "esptool.py --chip esp32s3 write_flash 0x0 " + a.adv.stable;
-  }
   if (a.poe_p4) {
     document.getElementById("cmd-p4").textContent =
       "esptool.py --chip esp32p4 write_flash 0x0 " + a.poe_p4.stable;
@@ -527,7 +509,7 @@ function render(m) {
   flashButtons.length = 0;
   for (const k in logEls) delete logEls[k];
 
-  ["adv", "poe_p4", "sidekick", "source"].forEach((key) => {
+  ["poe_p4", "sidekick", "source"].forEach((key) => {
     const asset = m.assets && m.assets[key];
     const label = LABELS[key];
     if (!label) return;
@@ -579,8 +561,8 @@ function render(m) {
 
     // Own log per card -- one shared terminal for three unrelated targets
     // read as "which one is this even about" once you'd flashed more than
-    // one (operator-reported), especially since flashing the ADV then the
-    // Atom left the ADV's old log sitting there looking current.
+    // one (operator-reported), especially since flashing one board then the
+    // other left the first one's old log sitting there looking current.
     if (label.chip) {
       const log = document.createElement("pre");
       log.className = "log";
@@ -601,7 +583,6 @@ function fallback() {
   // overwritten. Set it after render(), not before.
   render({
     assets: {
-      adv: { stable: "microft8-adv-continuous.bin" },
       poe_p4: { stable: "microft8-poe-p4-continuous.bin" },
       sidekick: { stable: "microft8-sidekick-continuous.bin" },
       source: { stable: "microft8-source-continuous.tar.gz" },

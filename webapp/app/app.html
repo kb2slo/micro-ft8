@@ -3,13 +3,12 @@
 <title>Micro-FT8</title>
 <!--
   Entry asset for the installed app (docs/architecture/webapp.md (Screens)). Three screens behind one
-  bottom tab bar: Operate (default) collapses what the ADV's 240x135 splits
-  across RX/TX/STATUS; Log browses the day files over the async FILE_LIST/
+  bottom tab bar: Operate (default) collapses RX, TX and station status onto one screen; Log browses the day files over the async FILE_LIST/
   FILE_READ relay; Settings is the station-config form this page used to be
   on its own before I28d's screen model landed.
 
   All three share one /api/events poll (docs/architecture/sidekick.md (Port A) -- the same polled shape
-  as the ADV's own Port A link) and one /api/config fetch. Settings' form
+  as the main board's own Port A link) and one /api/config fetch. Settings' form
   fields are only ever written by loadConfig() at boot or right after an
   explicit action (save/connect/tune/clock) -- never by the periodic poll,
   which would stomp on an in-progress edit. Operate's live header is the
@@ -37,10 +36,9 @@
    otherwise ignore an explicit Light/Dark pick that disagrees with the
    real system preference. :root[data-theme=light|dark] pins color-scheme
    so those native colors follow the explicit choice too.
-   The slot bar is deliberately exempt: it mirrors the ADV's own on-screen
-   countdown bar, which is drawn against a fixed dark background regardless
-   of the surrounding page's theme, so its colors stay hardcoded dark in
-   both themes on purpose. */
+   The slot bar is deliberately exempt: its colors are hardcoded dark in both
+   themes on purpose, against a fixed dark background regardless of the
+   surrounding page's theme. */
 :root{
   color-scheme:light dark;
   --accent:#1d4ed8;        /* links, badges: .dlink, .drow .me, .frow .grid, #callInfoQrz; .dot.up's glyph */
@@ -158,7 +156,7 @@ button:disabled{opacity:.45}
 #opHeader{padding:.75rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
 #opHeader .top{display:flex;justify-content:space-between;align-items:flex-end}
 
-/* ---- operate: slot bar (mirrors the ADV's own ui_draw_countdown: fills
+/* ---- operate: slot bar (fills
    left-to-right over the slot period, green=even/red=odd/amber=TX halted,
    small cursor dot at the TX offset frequency) ---- */
 #opSlotBar{position:relative;height:6px;border-radius:3px;overflow:hidden;background:#141428;margin:.35rem 0 0}
@@ -268,7 +266,7 @@ body.on-operate{padding-bottom:calc(var(--tabbar-h,3.375rem) + var(--dock-h,0px)
 .drow-body{display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;margin-top:.1rem}
 .replyBtn{flex:none;font-size:.7rem;padding:.15rem .5rem;background:ButtonFace;color:ButtonText;border:1px solid GrayText;border-radius:.3rem}
 .drow .txt{font-size:.85rem;flex:1;min-width:0}
-/* Same precedence as ui.cpp's draw_rx_line(): to_me red, else recent_qso gray,
+/* Decode-row color precedence: to_me red, else recent_qso gray,
    else cq green, else default text color. */
 .drow .txt.c-me{color:var(--danger-strong);font-weight:700}
 .drow .txt.c-recent{color:var(--muted-strong)}
@@ -520,7 +518,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <!-- Retired from status.html (docs/architecture/system.md (Who may key the transmitter)): the one place this app
          previously split into a second, unstyled page. sk_* keys are
          sidekick-local (host_link.c's config_json_add(), PORTA_MSG_CONFIG_GET
-         case) -- the ADV has no way to know its own companion's WiFi state,
+         case) -- the main board has no way to know its own companion's WiFi state,
          same reasoning as the Link diagnostics counters below. -->
     <div class=hd id=netSection>Network</div>
     <!-- Mode carries its own switch action inline rather than a separate
@@ -810,8 +808,8 @@ var stationSheetMsg = document.getElementById('stationSheetMsg');
 // never resend them -- formBody() only walks FIELDS, so removing them here is
 // what stops Save from overwriting a sheet write with a stale value (RFC 0009
 // §2.1). cq_ft leaves the web app outright: it never reaches the air on
-// either board (main/main.cpp:2621, poe_p4/main/porta_host_stubs.cpp:66 both
-// send free_text instead); row sfwz retires it from the rest of the firmware
+// the main board (poe_p4/main/porta_host_stubs.cpp sends free_text
+// instead); row sfwz retires it from the rest of the firmware
 // later.
 var FIELDS = [
   'call','comment1','ignore_prefixes',
@@ -975,7 +973,7 @@ document.getElementById('linkBannerDismiss').onclick = function () {
   hideLinkBanner();
 };
 
-// Sustained loss: covers both "sidekick can't reach the ADV" and "browser
+// Sustained loss: covers both "sidekick can't reach the main board" and "browser
 // can't reach the sidekick at all" -- lastConfigOkMs stops advancing either
 // way, and from here there's no way to tell which, so the message doesn't
 // guess. Auto-clears the moment a poll succeeds again; a reset banner (see
@@ -1520,15 +1518,15 @@ function cfgNum(cfg, key) {
 }
 
 // ===================== Operate: Link dot (comms-error rate) =====================
-// CAT/Audio answer "is the ADV responding right now"; Link answers a
-// different question -- "is the wire between the ADV and the sidekick
+// CAT/Audio answer "is the main board responding right now"; Link answers a
+// different question -- "is the wire between the main board and the sidekick
 // noisy" -- which can be true even while CAT/Audio read perfectly healthy
 // (a marginal Grove cable drops occasional frames but the polls themselves
 // keep succeeding). Counters are cumulative and never reset except on
 // reboot, so "count > 0" is meaningless on a long session -- only a fresh
 // increase since the last poll means anything. One fault holds the dot bad
 // for LINK_BAD_HOLD_MS rather than clearing on the very next clean poll,
-// same reasoning as the ADV's own kCompanionQuietMs: a single blip nobody
+// same reasoning as the main board's own kCompanionQuietMs: a single blip nobody
 // would call the link's the important thing, a sustained one already went
 // bad. Deliberately excludes sk_ring_gaps and sk_config_retries from the
 // dot -- those are about the *browser* falling behind (a backgrounded tab),
@@ -1620,8 +1618,7 @@ function updateNetInfo(cfg) {
 // *buttons* (that only happens in setForm(), same reasoning as the comment
 // there: rebuilding while the operator has a control open would yank it out
 // from under them). syncDockBandGrid() only re-classes the already-built
-// buttons, which is what makes a band changed on the ADV itself -- MENU, not
-// this page -- show up here without a reload. renderDockLine() reruns for
+// buttons, which is what makes a band changed some other way than this page show up here without a reload. renderDockLine() reruns for
 // the same reason: its Retries/frequency text can change from either side
 // too. One gap this doesn't close: if the device also changed active_bands
 // so the new band isn't among the buttons already built, the highlight
@@ -1630,15 +1627,15 @@ function applyOperateLive(cfg) {
   syncDockBandGrid(cfg);
   renderDockLine(cfg);
   // "bad" (not just "unknown") only once we've had at least one real answer
-  // from the ADV this session -- otherwise a cold boot reading the localStorage
+  // from the main board this session -- otherwise a cold boot reading the localStorage
   // cache before the first live poll would flash every dot red for no reason.
   var haveLiveConfig = lastConfigOkMs > 0;
   var catOk = yn(cfg.cat_ready) === 'yes';
   setDotState('dotCat', catOk, haveLiveConfig && !catOk);
-  // audio_rx is deliberately stricter than "streaming is engaged" -- the ADV
+  // audio_rx is deliberately stricter than "streaming is engaged" -- the main board
   // only sends it true when a real USB audio frame arrived in the last
   // couple of seconds, not merely that the pipe is open (see
-  // porta_host_config_snapshot() in main.cpp).
+  // porta_host_config_snapshot() in poe_p4/main/porta_host_stubs.cpp).
   var audioOk = yn(cfg.audio_rx) === 'yes';
   setDotState('dotAudio', audioOk, haveLiveConfig && !audioOk);
 
@@ -1942,7 +1939,7 @@ function standardKhz(band) {
 //
 // A band tap always lands on that band's standard frequency, not the last
 // one typed there (operator decision 2026-09-28): the band's key and band_sel
-// go in one PUT, frequency first. That overwrites whatever the ADV's BAND
+// go in one PUT, frequency first. That overwrites whatever the main board's BAND
 // menu programmed for the band; keeping chosen frequencies is row y9js.
 // Tapping the band already selected, at its standard, changes nothing. A tap
 // that goes ahead closes the frequency editor (operator feedback 2026-09-28).
@@ -2285,7 +2282,7 @@ function handleGeoReturn() {
 // Clock sync is fully automatic and silent -- no dot, no tap-to-sync
 // (operator-requested removal: decode-ago already gives a version of "is
 // this stale" without a dedicated clock readout). porta_host_set_clock() on
-// the ADV already only acts when the clock is actually off by more than
+// the main board already only acts when the clock is actually off by more than
 // ~2s, so calling this on a cheap timer costs nothing when the clock is
 // already right -- same "always sync, only act when wrong" reasoning
 // viewer.html's own sync() uses. Piggybacks on pollLiveStatus()'s existing
@@ -2402,7 +2399,7 @@ document.getElementById('opTxCancel').onclick = function () {
 // ===================== Operate: countdown + parity (client clock, no wire dependency) =====================
 
 var PROTO_PERIOD_MS = { FT8: 15000, FT4: 7500 };
-var PASSBAND_HZ_MIN = 200, PASSBAND_HZ_MAX = 3000; // ADV's own passband, components/ui/ui.cpp hz_to_x()
+var PASSBAND_HZ_MIN = 200, PASSBAND_HZ_MAX = 3000; // the decoder's passband
 
 function periodMs() {
   return PROTO_PERIOD_MS[(lastCfg.protocol_mode === 'FT4') ? 'FT4' : 'FT8'];
@@ -2410,9 +2407,9 @@ function periodMs() {
 
 // Last time /api/config actually answered with real values (not a cache
 // replay, not a "no reply from host" NAK -- see host_link.c's
-// wait_action_reply(), which is what a dead ADV looks like from here: the
+// wait_action_reply(), which is what a dead main board looks like from here: the
 // sidekick itself is fine and answers within ~5s, just saying no. Both a
-// dead ADV and a dead sidekick end up the same way -- lastConfigOkMs simply
+// dead main board and a dead sidekick end up the same way -- lastConfigOkMs simply
 // stops advancing -- so one timer covers both without needing to tell them
 // apart. Read by radioLive(), applyOperateLive() (to gate the "bad" glyph
 // on having ever heard a real answer) and updateLinkFreshness() below.
@@ -2422,7 +2419,7 @@ var STALE_AFTER_MS = 12000; // >2x pollLiveStatus's 5s cadence before giving up 
 // The countdown only means something once slots are actually being decoded
 // -- CAT ready and real audio flowing (see applyOperateLive()'s audio_rx
 // note) -- and only while that reading is still fresh; a stale reading is
-// exactly the case (radio/ADV went away mid-session) that used to leave the
+// exactly the case (radio/main board went away mid-session) that used to leave the
 // countdown confidently running against nothing.
 function radioLive() {
   if (lastConfigOkMs > 0 && (Date.now() - lastConfigOkMs) > STALE_AFTER_MS) {
@@ -2431,8 +2428,7 @@ function radioLive() {
   return yn(lastCfg.cat_ready) === 'yes' && yn(lastCfg.audio_rx) === 'yes';
 }
 
-// Drives #opSlotBar the same way the ADV's own ui_draw_countdown() drives
-// its on-screen bar: fills left-to-right over the slot period (fraction
+// Drives #opSlotBar: fills left-to-right over the slot period (fraction
 // elapsed, not remaining), green for an even slot and red for odd, amber
 // when TX is halted, plus a small cursor dot at the current TX offset --
 // same fraction/color/cursor logic, just a CSS width/left instead of a
@@ -2513,20 +2509,20 @@ document.getElementById('cqSendsText').onclick = openStationSheet;
 document.getElementById('cqSettingsBtn').onclick = openStationSheet;
 
 // ===================== Operate: TX HUD =====================
-// Mirrors the on-device TX HUD banner (main.cpp's draw_tx_hud() / porta_tx_hud_tick()):
-// same message/power/SWR/battery, one event per ~500 ms while transmitting,
+// The TX HUD (porta_p4_tx_hud_tick() in poe_p4/main/porta_host_stubs.cpp):
+// message/power/SWR, one event per ~500 ms while transmitting,
 // with a final active:false event the instant the banner would come down --
 // no timeout to guess at on this side.
 
 var txHud = null; // last TX_HUD event: {active, aborted, wrblk, pw, swr, batt, reason, x}
 
-// TX_HUD's falling edge (active:false) is sent exactly once by the ADV, not
-// repeated -- see porta_tx_hud_tick()'s comment in main.cpp. That one frame
+// TX_HUD's falling edge (active:false) is sent exactly once by the main board, not
+// repeated -- see porta_p4_tx_hud_tick() in poe_p4/main/porta_host_stubs.cpp. That one frame
 // can be lost same as any other: the sidekick's 64-entry event ring drops
 // the oldest entry once a poll falls far enough behind (a backgrounded phone
 // tab is enough), or the PORTA frame itself fails its CRC. Either way there
 // is no retry, so a lost falling edge used to leave "Transmitting" showing
-// forever. While genuinely active the ADV re-affirms every ~500ms, so
+// forever. While genuinely active the main board re-affirms every ~500ms, so
 // silence for a few seconds is itself the tell -- track the last TX_HUD
 // event of *any* kind and expire the banner if none arrives in time, rather
 // than trusting an "active" flag that can never un-set itself. This also
@@ -2777,7 +2773,7 @@ function fmtAgo(ts) {
   return secs < 1 ? 'just now' : fmtDuration(secs) + ' ago';
 }
 
-// freq_khz is a whole-kHz integer on the wire (main.cpp's CONFIG snapshot);
+// freq_khz is a whole-kHz integer on the wire (the CONFIG snapshot);
 // MHz display wants the usual 3 decimals (7074 -> "7.074").
 function fmtSlotFreqMHz(khzStr) {
   var khz = parseFloat(khzStr);
@@ -2820,7 +2816,7 @@ function decodeSortCmp(a, b) {
   return 0;
 }
 
-// Mirrors ui.cpp's draw_rx_line() color precedence: to_me, else recent_qso,
+// Decode-row color precedence: to_me, else recent_qso,
 // else cq, else default.
 function decodeColorClass(d) {
   if (d.me) return 'c-me';
@@ -3058,7 +3054,7 @@ function applyEvent(e) {
              pw: e.pw, swr: e.swr, batt: e.batt, hz: e.hz, reason: e.reason || '', x: e.x };
     lastTxHudEventMs = Date.now();
   } else if (e.d === 5) {
-    // Pushed the instant the ADV's own USB host sees it -- not inferred from
+    // Pushed the instant the main board's own USB host sees it -- not inferred from
     // cat_ready/audio_rx going stale on the next poll, and not a string match
     // on the on-screen toast's text (see PORTA_EVT_USB_STATUS's own comment
     // in porta_proto.h for why that would have been the wrong call). Shown
@@ -3143,8 +3139,7 @@ var LOG_REFRESH_MS = 8000;   // how often to check today's file for new QSOs whi
 
 function dayLabel(name) {
   // name is "YYYYMMDD.adi" (qso_browse.cpp / file_list.cpp). Always renders
-  // YYYY-MM-DD, matching the ADV's own STATUS screen date field (main.cpp's
-  // "%04d-%02d-%02d") -- "(Today)" is a suffix on that, not a replacement
+  // YYYY-MM-DD, as the station's own date format -- "(Today)" is a suffix on that, not a replacement
   // for it, so the date itself never disappears from the one row it'd be
   // most useful to have handy (e.g. reading it off for a paper log).
   var y = name.slice(0, 4), mo = name.slice(4, 6), d = name.slice(6, 8);
@@ -3752,7 +3747,7 @@ function refreshDayLinkText(file, dlinkEl) {
 // Mirrors adif.cpp's adif_format_log_record() field-for-field: same tag
 // order, same omit rules for empty grid/my_gridsquare/comment and a -99
 // (no-report) rst, same no-trailing-space-after-mode quirk -- so a
-// downloaded file merges cleanly with the ADV's own archives on identical
+// downloaded file merges cleanly with the main board's own archives on identical
 // keys instead of just looking similar. mode/station_callsign came onto the
 // wire (porta_proto.h's porta_qso_entry_row_t) and into /api/log/entries
 // specifically to make this possible without a second, raw-bytes relay path
@@ -3883,7 +3878,7 @@ function exportFileBaseName(callsign, bucket, dateStr) {
 // doesn't recognize, if the Blob's MIME type is text/* -- a generic binary
 // type sidesteps that guess entirely. The name is always forced to
 // lowercase .adi regardless of source casing: this device's own file list
-// reports names like "20260915.ADI" (uppercase -- main.cpp itself always
+// reports names like "20260915.ADI" (uppercase -- the main board always
 // writes lowercase, so something else on the path uppercases it; separate
 // from this bug and not chased here, since forcing the extension makes it
 // moot for the one thing the operator actually sees, the saved filename).
@@ -4049,7 +4044,7 @@ async function clearAllAdif() {
 
 // Fetches the next page of day filenames the first time (or another page
 // once logFileIdx runs off the end of what's been fetched so far). A no-op
-// once every file the ADV has is known.
+// once every file the main board has is known.
 async function ensureLogFiles() {
   if (logFileIdx < logFiles.length || logFilesExhausted) return;
   var r = await fetch('/api/log/files?skip=' + logFilesSkip + '&take=30', { cache: 'no-store' });
@@ -4112,7 +4107,7 @@ document.getElementById('logClearAll').onclick = function (ev) {
   clearAllAdif();
 };
 // ensureLogFiles() only ever looks *past* the end of what it has fetched
-// (older files); a file newer than logFiles[0] -- the ADV's day rollover at
+// (older files); a file newer than logFiles[0] -- the main board's day rollover at
 // UTC midnight -- is otherwise never noticed short of a page reload, since
 // nothing else re-checks the front of the listing. Prepends any such file(s)
 // in newest-first order, ahead of everything already rendered, then leaves
@@ -4308,7 +4303,7 @@ if (Object.keys(lastCfg).length) {
 }
 
 // .catch() before .then(), not after -- handleGeoReturn() must run whether
-// loadConfig() resolved or rejected (a stale/unlinked ADV shouldn't silently
+// loadConfig() resolved or rejected (a stale/unlinked main board shouldn't silently
 // drop a pending GPS handoff), and loadConfig() already called setMsg() with
 // the failure reason before rejecting, so nothing here needs to repeat it.
 loadConfig().catch(function () { /* setMsg already */ }).then(handleGeoReturn);
