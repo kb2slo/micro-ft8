@@ -1,6 +1,6 @@
 #pragma once
 
-// P4-only helpers owned by porta_host_stubs.cpp (station seed + Operate ticks).
+// P4-only helpers owned by porta_host.cpp (station seed + Operate ticks).
 
 void porta_p4_station_boot(void);
 void porta_p4_adif_register(void);

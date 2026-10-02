@@ -808,7 +808,7 @@ var stationSheetMsg = document.getElementById('stationSheetMsg');
 // never resend them -- formBody() only walks FIELDS, so removing them here is
 // what stops Save from overwriting a sheet write with a stale value (RFC 0009
 // §2.1). cq_ft leaves the web app outright: it never reaches the air on
-// the main board (poe_p4/main/porta_host_stubs.cpp sends free_text
+// the main board (poe_p4/main/porta_host.cpp sends free_text
 // instead); row sfwz retires it from the rest of the firmware
 // later.
 var FIELDS = [
@@ -1635,7 +1635,7 @@ function applyOperateLive(cfg) {
   // audio_rx is deliberately stricter than "streaming is engaged" -- the main board
   // only sends it true when a real USB audio frame arrived in the last
   // couple of seconds, not merely that the pipe is open (see
-  // porta_host_config_snapshot() in poe_p4/main/porta_host_stubs.cpp).
+  // porta_host_config_snapshot() in poe_p4/main/porta_host.cpp).
   var audioOk = yn(cfg.audio_rx) === 'yes';
   setDotState('dotAudio', audioOk, haveLiveConfig && !audioOk);
 
@@ -2509,7 +2509,7 @@ document.getElementById('cqSendsText').onclick = openStationSheet;
 document.getElementById('cqSettingsBtn').onclick = openStationSheet;
 
 // ===================== Operate: TX HUD =====================
-// The TX HUD (porta_p4_tx_hud_tick() in poe_p4/main/porta_host_stubs.cpp):
+// The TX HUD (porta_p4_tx_hud_tick() in poe_p4/main/porta_host.cpp):
 // message/power/SWR, one event per ~500 ms while transmitting,
 // with a final active:false event the instant the banner would come down --
 // no timeout to guess at on this side.
@@ -2517,7 +2517,7 @@ document.getElementById('cqSettingsBtn').onclick = openStationSheet;
 var txHud = null; // last TX_HUD event: {active, aborted, wrblk, pw, swr, batt, reason, x}
 
 // TX_HUD's falling edge (active:false) is sent exactly once by the main board, not
-// repeated -- see porta_p4_tx_hud_tick() in poe_p4/main/porta_host_stubs.cpp. That one frame
+// repeated -- see porta_p4_tx_hud_tick() in poe_p4/main/porta_host.cpp. That one frame
 // can be lost same as any other: the sidekick's 64-entry event ring drops
 // the oldest entry once a poll falls far enough behind (a backgrounded phone
 // tab is enough), or the PORTA frame itself fails its CRC. Either way there

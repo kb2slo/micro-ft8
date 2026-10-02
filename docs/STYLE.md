@@ -62,7 +62,7 @@ No formatter on `ft8_lib`. Optional `.clang-format` later, only on new extract d
 
 ## Structure
 
-File size is a ratchet, not a rewrite target. New files stay under about 500 lines of real code. `poe_p4/main/porta_host_stubs.cpp`, the largest, may only shrink. Do not split a file just to game the number.
+File size is a ratchet, not a rewrite target. New files stay under about 500 lines of real code. `poe_p4/main/porta_host.cpp`, the largest, may only shrink. Do not split a file just to game the number.
 
 Require a **module**, not a class. New behavior gets a name and a header API. One tested function is enough. A strategy interface for one implementation is not.
 

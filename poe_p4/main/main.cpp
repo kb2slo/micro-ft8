@@ -10,7 +10,7 @@
 #include "decode_tx_state.h"
 #include "ft8_audio_pipeline.h"
 #include "porta.h"
-#include "porta_p4_host.h"
+#include "porta_host.h"
 #include "protocol.h"
 #include "qmx_transport.h"
 #include "radio_control.h"

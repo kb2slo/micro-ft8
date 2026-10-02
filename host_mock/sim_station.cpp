@@ -316,7 +316,7 @@ void sim_sweep_event(const swr_sweep_event_t* e, void*)
 // POST /api/swr/start, body "lo-hi-step,lo-hi-step" in kHz: what the sidekick takes.
 std::string sim_sweep_start(const std::string& body)
 {
-    // What the P4 refuses over (poe_p4/main/porta_host_stubs.cpp), so the page's ask-first flow
+    // What the P4 refuses over (poe_p4/main/porta_host.cpp), so the page's ask-first flow
     // has something to ask about.
     if (g_scenario.beacon != 0) return "{\"ok\":false,\"why\":\"beacon is on\"}";
     swr_sweep_range_t ranges[SWR_SWEEP_MAX_RANGES + 1];

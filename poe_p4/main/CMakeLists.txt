@@ -3,7 +3,7 @@ idf_component_register(
          "qmx_transport.cpp"
          "decode_seams.cpp"
          "porta_board.cpp"
-         "porta_host_stubs.cpp"
+         "porta_host.cpp"
          "tx_scheduler.cpp"
     INCLUDE_DIRS "."
     REQUIRES usb usb_host_cdc_acm usb_host_uac esp_timer radio_control swr_sweep

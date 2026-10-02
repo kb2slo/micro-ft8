@@ -11,7 +11,7 @@
 #include "ft8/constants.h"
 #include "ft8/encode.h"
 #include "ft8/message.h"
-#include "porta_p4_host.h"
+#include "porta_host.h"
 #include "protocol.h"
 #include "radio_control.h"
 #include "radio_ta_format.h"

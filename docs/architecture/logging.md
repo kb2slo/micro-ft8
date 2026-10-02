@@ -4,7 +4,7 @@ How a QSO becomes an ADIF record, how the record's fields cross Port A, and how 
 
 ## The writer
 
-`adif_log_entry()` (`components/qso_log/adif_logger.cpp`) is the one function that logs a completed QSO — `poe_p4/main/porta_host_stubs.cpp` builds an `AdifStationSnapshot` from `s_station` and hands it over. It:
+`adif_log_entry()` (`components/qso_log/adif_logger.cpp`) is the one function that logs a completed QSO — `poe_p4/main/porta_host.cpp` builds an `AdifStationSnapshot` from `s_station` and hands it over. It:
 
 * Expands `/Radio`/`/Grid` comment macros (`expand_comment_macros()`) against the station's configured radio name and grid.
 * Upper-cases and unit-suffixes the configured band name for the ADIF `BAND` tag (`format_adif_band_tag()` — `"20m"` → `"20M"`), added 2026-09-29 to close the gap RFC 0008 §2 found: `BAND` reached the Port A row (derived from `<freq>`) but was never written by the logger or read back by the export.

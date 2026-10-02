@@ -46,10 +46,10 @@ Each fact is from the code at `3777f3c` plus the working-tree fix in §2.1.
   - decodes, grouped by slot, newest first.
 * **What the operator is sending is scattered.** Call, grid, CQ type, retries and TX offset are in Settings (`FIELDS`, `app.html:647`). The CQ type shows on Operate only as the beacon label.
 * **Connect.**
-  - **P4:** `porta_host_connect()` only pushes the band to the VFO (`poe_p4/main/porta_host_stubs.cpp:411`). USB host starts at boot, and the main loop already re-syncs the VFO whenever CAT opens (`poe_p4/main/main.cpp:79`). So on the P4, Connect is a manual retune and nothing else.
+  - **P4:** `porta_host_connect()` only pushes the band to the VFO (`poe_p4/main/porta_host.cpp:411`). USB host starts at boot, and the main loop already re-syncs the VFO whenever CAT opens (`poe_p4/main/main.cpp:79`). So on the P4, Connect is a manual retune and nothing else.
   - **ADV:** `begin_usb_host_mode()` starts RX audio and syncs CAT (`main/main.cpp:4188`).
 * **Attach and detach are already pushed.** `USB_STATUS` events reach the browser (`applyEvent`, `e.d === 5`) but only drive a banner.
-* **Reply.** The button posts `/api/queue/reply` and does not change. The queue row appears only when a `QUEUE_ENTRY` event is polled, which the P4 emits once a second (`porta_host_stubs.cpp:226`), plus the browser's poll interval. A "Queueing…" message line is the only feedback.
+* **Reply.** The button posts `/api/queue/reply` and does not change. The queue row appears only when a `QUEUE_ENTRY` event is polled, which the P4 emits once a second (`porta_host.cpp:226`), plus the browser's poll interval. A "Queueing…" message line is the only feedback.
 * **The map** (`map.html`):
   - It loads POTA parks per country and SOTA summits per region while online, into memory only.
   - Parks and summits draw identically (hollow green circles), at most 40 spread evenly across the view.
@@ -213,7 +213,7 @@ Dock Options canvas: the chosen page's transmitting board. Redesign canvas: `TX 
   - A red band under the header: "Transmitting", the message, then power and SWR (both boards poll the QMX), battery (the ADV only; the P4 sends -1), and **Cancel TX**.
   - An abort (the ADV's low battery) turns it amber with the reason.
   - On the ADV, "WRITE BLOCKED" replaces the meter when the battery is too low to write storage.
-  - Tune shows as `TUNE` (`porta_host_stubs.cpp:303`).
+  - Tune shows as `TUNE` (`porta_host.cpp:303`).
   - Events arrive every 500 ms while active.
 * **It is a red band added on top of the dock.** Nothing below it moves, so band, frequency and the CQ row stay reachable while a message is on the air. The status strip's slot bar turns red for our slot.
 * **Added to what shows today:**
