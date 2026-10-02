@@ -426,6 +426,19 @@ static void scan_keepfresh_task(void *arg)
     }
 }
 
+// Answers before the reset, as post_forget() does: the format takes the page
+// that asked for it, and the restart takes the network it arrived on. Open
+// to both modes -- an AP-only unit with the app installed is the usual case
+// for wanting it -- and pairing-guarded in both.
+static esp_err_t post_factory_reset(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"ok\":true}");
+    vTaskDelay(pdMS_TO_TICKS(500));
+    wifi_prov_factory_reset_and_restart();
+    return ESP_OK;  // not reached
+}
+
 static esp_err_t get_rescan(httpd_req_t *req)
 {
     scan_refresh();
@@ -477,11 +490,17 @@ static esp_err_t get_form(httpd_req_t *req)
     // Both are markup assembled here, not operator or scan text: the failure
     // reason is escaped just above, and each SSID in the options is escaped as
     // it is rendered.
+    // A sidekick that has never had the app installed has nothing behind
+    // "Operate in AP mode" (the app comes from /update, which needs the
+    // internet), so the page swaps that button for the first-run steps.
+    const bool installed = web_fs_exists("app.html");
     const web_sub_t subs[] = {
         {.key = "failure",  .value = failure,  .already_html = true},
         {.key = "networks", .value = networks, .already_html = true},
+        {.key = "operate_hidden", .value = installed ? "" : "hidden"},
+        {.key = "setup_hidden",   .value = installed ? "hidden" : ""},
     };
-    return web_page_send_file(req, "provision.html", subs, 2);
+    return web_page_send_file(req, "provision.html", subs, 4);
 }
 
 static esp_err_t post_provision(httpd_req_t *req)
@@ -597,6 +616,9 @@ static void httpd_start_provisioning(void)
     static const httpd_uri_t rescan = {
         .uri = "/rescan", .method = HTTP_GET, .handler = get_rescan,
     };
+    static const httpd_uri_t factory_reset = {
+        .uri = "/factory-reset", .method = HTTP_POST, .handler = post_factory_reset,
+    };
     // The form and a rescan are open: they change nothing stored. Saving
     // credentials is a config write, so it needs the token like every other
     // write (docs/architecture/system.md (Who may key the transmitter)). There is no chicken-and-egg:
@@ -612,6 +634,7 @@ static void httpd_start_provisioning(void)
         { &form, PAIRING_OPEN },
         { &rescan, PAIRING_OPEN },
         { &provision, PAIRING_REQUIRED },
+        { &factory_reset, PAIRING_REQUIRED },
     };
     _Static_assert(sizeof(core) / sizeof(core[0]) == PAIRING_ROUTES_WIFI_PROV_AP_CORE,
                    "AP core route count");
@@ -768,6 +791,9 @@ static void httpd_start_status(void)
     static const httpd_uri_t ap_mode = {
         .uri = "/ap-mode", .method = HTTP_POST, .handler = post_ap_mode,
     };
+    static const httpd_uri_t factory_reset = {
+        .uri = "/factory-reset", .method = HTTP_POST, .handler = post_factory_reset,
+    };
     // The redirect is a plain GET, open on principle (it hands off to app.html's
     // own reads, which are open the same way). Forget and ap-mode both tear
     // down the working network the operator is reachable on, so both are the
@@ -780,6 +806,7 @@ static void httpd_start_status(void)
         { &update, PAIRING_OPEN },
         { &forget, PAIRING_REQUIRED },
         { &ap_mode, PAIRING_REQUIRED },
+        { &factory_reset, PAIRING_REQUIRED },
     };
     _Static_assert(sizeof(core) / sizeof(core[0]) == PAIRING_ROUTES_WIFI_PROV_STATION_CORE,
                    "station core route count");
@@ -1032,6 +1059,27 @@ void wifi_prov_forget_and_restart(void)
         ESP_LOGW(TAG, "Credentials forgotten — restarting into provisioning");
     } else {
         ESP_LOGE(TAG, "Could not clear credentials");
+    }
+    vTaskDelay(pdMS_TO_TICKS(200));
+    esp_restart();
+}
+
+void wifi_prov_factory_reset_and_restart(void)
+{
+    // Both halves are attempted whatever the other does: a half-reset unit is
+    // still better off restarted than left running with a stale app or token.
+    nvs_handle_t h;
+    bool nvs_ok = false;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_ok = nvs_erase_all(h) == ESP_OK && nvs_commit(h) == ESP_OK;
+        nvs_close(h);
+    }
+    const bool fs_ok = web_fs_format() == ESP_OK;
+    if (nvs_ok && fs_ok) {
+        ESP_LOGW(TAG, "Factory reset done -- restarting as a fresh unit");
+    } else {
+        ESP_LOGE(TAG, "Factory reset incomplete (settings %s, web files %s) -- restarting anyway",
+                 nvs_ok ? "ok" : "FAILED", fs_ok ? "ok" : "FAILED");
     }
     vTaskDelay(pdMS_TO_TICKS(200));
     esp_restart();

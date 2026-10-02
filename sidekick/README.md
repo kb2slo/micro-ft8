@@ -17,6 +17,19 @@ idf.py flash monitor
 
 Target is pinned to `esp32s3` in `CMakeLists.txt`; no `set-target` step needed. The partition table is `partitions.csv`: two 3 MB OTA slots, no factory ([`sidekick.md`](../docs/architecture/sidekick.md) (**Firmware updates**)). With `otadata` erased the bootloader boots `ota_0`, which is what the ADV's USB-C bootstrap writes. Flash size is pinned to 8 MB in `sdkconfig.defaults` — without it the build takes ESP-IDF's 2 MB default and writes a wrong flash-size field into the bootloader header. `sdkconfig` is gitignored and regenerated, so delete it after changing the defaults or the old value sticks. `PROJECT_VER` is also pinned there — exact git SHA + dirty flag, not ESP-IDF's default `git describe` — so the ADV can compare an exact build identity ([`sidekick.md`](../docs/architecture/sidekick.md) (**Installing the sidekick from the ADV**)), not a fuzzy tag-relative string.
 
+## First-time setup (a newly flashed sidekick)
+
+The firmware carries only the setup pages. The app (`app.html`) is downloaded once, through your phone, so a fresh sidekick needs your home WiFi (2.4 GHz only) for that one step. Its own AP has no internet. Why: [`sidekick.md`](../docs/architecture/sidekick.md) (**Installing the app bundle**).
+
+1. Flash the sidekick ([Build](#build-desk), or the merged image at `0x0`). Join its WiFi network and open `http://192.168.4.1/`. Until the app is installed the page shows the first-time steps instead of "Operate in AP mode".
+2. Press the sidekick's button, pick your home WiFi, enter its password, **Save**. An iPhone Personal Hotspot needs *Maximize Compatibility* on or it will not be listed.
+3. Join the same WiFi on your phone and open `http://micro-ft8.local/update`.
+4. Press the sidekick's button when asked, then tap **Install**. It opens the app when done.
+
+**To start over** (testing, or handing the unit on): Settings > Network > **Factory reset**, tapped twice. It erases the saved WiFi, the installed app and the pairing, and the sidekick restarts as a new unit. If you cannot reach the app, `idf.py erase-flash` then flash again does the same and more. The main board keeps its own settings either way.
+
+After that, the app is on the sidekick: Settings > Network > **Switch to AP mode** runs it with no network at all. Opening `/app.html` before step 4 shows a "not installed yet" page that points back here. If Install says it cannot reach the host, the phone has no internet: check it is on your home WiFi.
+
 ## Field-flash from the ADV
 
 `../tools/stage_nano_firmware.sh` copies a build here's `build/` into `../components/nano_flasher/target_firmware/`, where the ADV build embeds it and the ADV can write it to a factory ("Green") Nano over its own USB-C host port. Proven on real hardware 2026-09-03.

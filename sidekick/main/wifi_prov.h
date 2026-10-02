@@ -77,6 +77,14 @@ const char *wifi_prov_fw_version(void);    // exact git SHA + dirty flag (PROJEC
 // forget.
 void wifi_prov_forget_and_restart(void);
 
+// Returns the sidekick to a fresh-from-flash state and restarts. Does not
+// return. Erases everything stored in the "sidekick" NVS namespace (WiFi
+// credentials, the AP-mode flag, the pairing token, the bundle host) and
+// formats the web filesystem, so the installed app is gone and only the
+// firmware's seed pages come back. Every browser that had paired must pair
+// again. The main board's own settings are not touched.
+void wifi_prov_factory_reset_and_restart(void);
+
 // Deliberately switch into AP mode and restart. Does not return.
 //
 // Unlike wifi_prov_forget_and_restart(), this does not erase the stored

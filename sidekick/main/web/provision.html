@@ -87,6 +87,7 @@ button:disabled{opacity:.45}
 .hint{font-size:.85rem;color:var(--muted);margin:0 0 1.4rem}
 .divider{display:flex;align-items:center;gap:.6rem;margin:1.4rem 0 1rem;color:var(--muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.04em}
 .divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--muted);opacity:.3}
+.first{background:var(--warn-bg);color:var(--warn-fg);padding:.6rem;border-radius:.3rem;font-size:.9rem;margin:.8rem 0 1.2rem}
 .failure{background:var(--warn-bg);color:var(--warn-fg);padding:.6rem;border-radius:.3rem}
 </style>
 
@@ -104,13 +105,23 @@ button:disabled{opacity:.45}
   webview to escape from, and the "new tab" trick was actively misbehaving
   in a normal tab (field-found 2026-09-21) rather than helping.
 -->
+<div {{setup_hidden}}>
+<p class=first><b>First-time setup.</b> The app is not on this sidekick yet, and
+installing it needs the internet. Pick your home WiFi below and save. When the
+sidekick restarts, join the same WiFi on your phone, open
+<b>http://micro-ft8.local/update</b>, press the sidekick's button and tap
+Install. After that it can run on its own, with no network.</p>
+</div>
+
+<div {{operate_hidden}}>
 <a class=cta href=/app.html id=opBtn>Operate in AP mode &rarr;</a>
 <p class=hint>Use this sidekick on its own — no home network needed. This is
 the normal way to run it in the field.</p>
 
 <div class=divider>or</div>
+</div>
 
-<p>Join this device to your WiFi instead. <b>2.4 GHz only</b> — this radio
+<p>Join this device to your WiFi. <b>2.4 GHz only</b> — this radio
 cannot see 5 GHz networks. An iPhone Personal Hotspot needs <i>Maximize
 Compatibility</i> switched on before it will appear.</p>
 

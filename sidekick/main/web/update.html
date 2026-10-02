@@ -31,6 +31,18 @@ var host = document.getElementById('host').textContent.trim();
 var m = document.getElementById('m');
 var go = document.getElementById('go');
 
+// /update.html is also served as a plain static file, and in AP mode (where
+// /update has no route) nothing expands {{bundle_host}} -- and an AP has no
+// internet to fetch a bundle over anyway. Say so rather than fetch from
+// "{{bundle_host}}/manifest.json".
+if (host.indexOf('{{') === 0) {
+  go.disabled = true;
+  document.getElementById('m').textContent =
+    'Installing needs the internet, which this sidekick\u2019s own WiFi does not provide. ' +
+    'Put the sidekick on your home WiFi (open / and pick your network), join that ' +
+    'WiFi on your phone, then open http://micro-ft8.local/update.';
+}
+
 function setMsg(t) { m.textContent = t; }
 
 function joinUrl(base, rel) {
@@ -110,7 +122,14 @@ async function install() {
     setMsg('Installed. Opening /' + land + ' …');
     location.href = '/' + land;
   } catch (e) {
-    setMsg(String(e && e.message ? e.message : e));
+    // fetch() rejects with a bare TypeError ("Load failed" / "Failed to fetch")
+    // when the host cannot be reached, which tells a first-time operator
+    // nothing. The usual cause is a phone with no internet.
+    var offline = e instanceof TypeError;
+    setMsg(offline
+      ? 'Could not reach ' + host + '. This phone needs internet to download the app: ' +
+        'join your home WiFi (the same one the sidekick is on), then try again.'
+      : String(e && e.message ? e.message : e));
     go.disabled = false;
   }
 }
