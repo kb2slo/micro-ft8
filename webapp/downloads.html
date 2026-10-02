@@ -84,6 +84,8 @@
     margin: 0.4rem 0 0;
   }
   ol.setup ul li { margin-bottom: 0.35rem; }
+  ol.setup ol { margin: 0.4rem 0 0 1.1rem; padding: 0; }
+  ol.setup ol li { margin-bottom: 0.35rem; }
   a { color: var(--band); }
   code, pre {
     font-family: "IBM Plex Mono", ui-monospace, monospace;
@@ -246,30 +248,50 @@
         “forget network”), the Atom opens its own access point named
         <code>micro-ft8.local</code> (open, no password) — the name is the
         hint: join it from your phone or computer, then open a browser to
-        <code>http://micro-ft8.local/</code> yourself. No sign-in sheet pops
-        up automatically; navigating there is the whole step. From here you
-        can either:
-        <ul>
-          <li>
-            <strong>Operate right there</strong> — tap “Operate in AP mode”
-            and you’re running, no router needed. This is a first-class way
-            to run the station, not just a setup step — good for SOTA, POTA,
-            or anywhere with no camp router or cell service.
-          </li>
-          <li>
-            <strong>Or join a home/camp network instead</strong> — pick it
-            from the list, enter the password, press the Atom’s user button to
-            pair, and submit. The Atom restarts
-            and joins that network; if it ever can’t reach it, it falls back
-            to its own access point automatically rather than going dark.
-          </li>
-        </ul>
+        <code>http://micro-ft8.local/</code> yourself (or
+        <code>http://192.168.4.1/</code>). No sign-in sheet pops up
+        automatically; navigating there is the whole step.
       </li>
       <li>
-        <strong>Open the UI</strong> — if you joined a home/camp network, browse
-        <code>http://micro-ft8.local/</code> from any device on that same
-        network. Pair with the Atom’s user button
-        when asked (needed for clock sync and other writes).
+        <strong>First time only: put the Atom on your home WiFi, then install
+        the app.</strong> The Atom’s firmware carries just the setup pages. The
+        station app is downloaded once, through your phone, so this step needs
+        the internet, and the Atom’s own access point has none. Until it is done
+        there is nothing for “Operate in AP mode” to open.
+        <ol>
+          <li>
+            On the setup page, pick your home network from the list (<strong>2.4&nbsp;GHz
+            only</strong>; an iPhone Personal Hotspot needs <em>Maximize
+            Compatibility</em> on), enter the password, press the Atom’s user
+            button to pair, and save. The Atom restarts and joins that network.
+          </li>
+          <li>
+            Join the same WiFi on your phone and open
+            <code>http://micro-ft8.local/update</code>. Press the Atom’s button
+            when asked, then tap <strong>Install</strong>. It opens the app when
+            it finishes.
+          </li>
+        </ol>
+      </li>
+      <li>
+        <strong>Open the UI</strong> — on that network, browse
+        <code>http://micro-ft8.local/</code> from any device. Pair with the
+        Atom’s user button when asked (needed for clock sync and other writes).
+        From then on you can either:
+        <ul>
+          <li>
+            <strong>Stay on your network.</strong> If the Atom ever can’t reach
+            it, it falls back to its own access point automatically rather than
+            going dark.
+          </li>
+          <li>
+            <strong>Run on its own, no router needed</strong> — in the app,
+            Settings → Network → <strong>Switch to AP&nbsp;mode</strong>, then
+            join the Atom’s own network. The app stays installed, so this works
+            with no internet. It is a first-class way to run the station — good
+            for SOTA, POTA, or anywhere with no camp router or cell service.
+          </li>
+        </ul>
       </li>
     </ol>
   </section>
