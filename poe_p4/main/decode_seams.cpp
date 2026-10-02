@@ -11,10 +11,6 @@
 
 static const char *TAG = "decode_seams";
 
-void ui_push_waterfall_row(const uint8_t * /*bins*/, int /*len*/) {}
-void ui_mark_rx_list_stale() {}
-void ui_set_rx_list_static(const struct RxDecodeEntry * /*entries*/, int /*count*/) {}
-
 void log_rxtx_line(char dir, int snr, int offset_hz, const std::string &text, int /*repeat_counter*/) {
     ESP_LOGI(TAG, "%c snr=%d offset=%dHz: %s", dir, snr, offset_hz, text.c_str());
 }

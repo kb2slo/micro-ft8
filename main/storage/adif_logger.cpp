@@ -3,7 +3,6 @@
 #include <cstdio>
 #include <ctime>
 
-#include "board_power.h"
 #include "esp_log.h"
 #include "rtc_core.h"
 #include "storage_service.h"
@@ -12,12 +11,8 @@ namespace {
 
 const char* TAG = "adif_logger";
 
-// The substitution both boards' comment macros need -- previously the ADV's
-// own expand_comment_macros() (main/main.cpp), never ported to the P4. Takes
-// already-resolved replacement values rather than reading globals, since the
-// ADV's own grid-for-"/Grid" value can come from a GPS override the P4 has
-// no equivalent of; each board resolves that one value itself and this just
-// does the substitution.
+// The "/Radio" and "/Grid" comment-macro substitution. Takes already-resolved
+// replacement values rather than reading globals.
 std::string expand_comment_macros(const std::string& src, const std::string& radio_name,
                                   const std::string& grid_for_macro) {
     std::string out = src;
@@ -99,10 +94,6 @@ std::string normalize_call_token(std::string s) {
 }  // namespace
 
 bool adif_log_qso(const AdifLogQsoInput& in, AdifLoggerDedupe* dedupe) {
-    if (board_power_writes_blocked()) {
-        ESP_LOGW(TAG, "ADIF write skipped: writes blocked");
-        return false;
-    }
     if (!storage_service_firmware_available()) {
         ESP_LOGW(TAG, "ADIF write skipped: storage not ready");
         return false;

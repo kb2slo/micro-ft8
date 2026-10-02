@@ -14,8 +14,8 @@ static const uint32_t kRates[] = {
     921600u,
     1500000u,
     2000000u,
-    // 80 MHz / 20. The P4 held a 100 KB run (2026-10-01); the sidekick and
-    // the ADV did not. Not the pass.
+    // 80 MHz / 20. The P4 held a 100 KB run (2026-10-01); the sidekick did
+    // not. Not the pass.
     4000000u,
 };
 

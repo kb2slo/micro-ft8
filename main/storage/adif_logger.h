@@ -4,9 +4,9 @@
 
 #include "adif.h"
 
-// Shared live ADIF QSO archive write (ADV + PoE-P4). Callers fill an explicit
-// snapshot — no g_* globals. Dedupe object is owned by decode_pipeline on both
-// boards (same ring used for "already worked" UI).
+// Live ADIF QSO archive write. Callers fill an explicit snapshot — no g_*
+// globals. Dedupe object is owned by decode_pipeline (same ring used for
+// "already worked").
 
 struct AdifLogQsoInput {
     std::string dxcall;
@@ -29,9 +29,7 @@ bool adif_log_qso(const AdifLogQsoInput& in, AdifLoggerDedupe* dedupe);
 
 // The station-side values log_adif_entry() (below) needs, beyond the
 // per-decode dxcall/dxgrid/rst_sent/rst_rcvd every caller already has to
-// hand. Each board fills this from its own state (loose globals on the ADV,
-// a persistent StationSettings on the P4 -- row j4xh) the same way it always
-// has; only the logic that turns these values into an AdifLogQsoInput is
+// hand. The board fills this from its StationSettings; only the logic that turns these values into an AdifLogQsoInput is
 // now shared, not the state itself.
 struct AdifStationSnapshot {
     std::string call;
@@ -42,16 +40,12 @@ struct AdifStationSnapshot {
                                  // the ADIF tag value ("20M") inside adif_log_entry()
     std::string raw_comment;    // Station's comment1, not yet macro-expanded
     std::string radio_name;     // for the "/Radio" comment macro (radio_profile_name())
-    std::string grid_for_macro; // for the "/Grid" comment macro (the ADV's GPS override
-                                 // wins here when it applies; the P4 has no GPS, so this
-                                 // is just its own grid)
+    std::string grid_for_macro; // for the "/Grid" comment macro (the station grid)
     std::string act_refs;       // Station's act_refs, e.g. "POTA:US-1234,SOTA:W7O/CC-001",
                                  // split into my_pota_ref/my_sota_ref inside adif_log_entry()
 };
 
-// Replaces both boards' separate log_adif_entry() (main/main.cpp,
-// poe_p4/main/porta_host_stubs.cpp): expands "/Radio"/"/Grid" in the comment
-// (previously ADV-only -- the P4 skipped it entirely, a confirmed drift) and
-// calls adif_log_qso() above. Returns the same as adif_log_qso().
+// Expands "/Radio"/"/Grid" in the comment
+// and calls adif_log_qso() above. Returns the same as adif_log_qso().
 bool adif_log_entry(const std::string& dxcall, const std::string& dxgrid, int rst_sent,
                     int rst_rcvd, const AdifStationSnapshot& station, AdifLoggerDedupe* dedupe);

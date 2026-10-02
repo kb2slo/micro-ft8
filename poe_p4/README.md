@@ -2,9 +2,9 @@
 
 M5Stack Unit PoE-P4 (SKU U213, ESP32-P4) firmware: the headless main board, and the daily station. Board facts, ports and power: [`docs/architecture/main_board.md`](../docs/architecture/main_board.md) (**P4**). Planned work: [`docs/ROADMAP.md`](../docs/ROADMAP.md).
 
-Decodes, transmits, runs autoseq and keeps the log, with the QMX on the Host USB-C port and the sidekick on Grove; the phone is the only UI. Nearly all of that is shared code in `components/`, compiled by both this project and the ADV's ([`docs/STYLE.md`](../docs/STYLE.md), **Two boards, one source**). `poe_p4/main/` holds only what is this board's alone: the headless entry point, the QMX USB transport, the TX scheduler, and stubs for hardware it lacks (RTC chip, battery gauge).
+Decodes, transmits, runs autoseq and keeps the log, with the QMX on the Host USB-C port and the sidekick on Grove; the phone is the only UI. Most of that is shared code in `components/`. `poe_p4/main/` holds the headless entry point, the QMX USB transport, the TX scheduler, and the Port A host actions.
 
-Separate `idf.py` project from the ADV app and `sidekick`: ESP-IDF locks target *and* sdkconfig per project, and this is a different chip (ESP32-P4).
+Separate `idf.py` project from `sidekick`: ESP-IDF locks target *and* sdkconfig per project, and this is a different chip (ESP32-P4).
 
 ## Build (desk)
 

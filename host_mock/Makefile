@@ -15,7 +15,6 @@ INCLUDES = -I. -I../main -I../main/storage \
            -I../components/adif/include \
            -I../components/storage_service/include \
            -I../components/rtc_core/include \
-           -I../components/board_power/include \
            -I../components/decode_pipeline/include \
            -I../components/dial_history/include \
            -I../components/swr_sweep/include \

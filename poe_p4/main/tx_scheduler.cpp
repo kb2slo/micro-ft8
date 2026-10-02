@@ -19,7 +19,6 @@
 #include "swr_sweep.h"
 
 extern const ProtocolConfig *g_protocol;
-extern volatile bool g_tx_view_dirty;
 
 void log_rxtx_line(char dir, int snr, int offset_hz, const std::string &text, int repeat_counter);
 
@@ -76,7 +75,6 @@ void arm_pending_tx(const AutoseqTxEntry &pending) {
 static void enqueue_beacon_cq(void) {
     const int target_parity = (s_beacon == BeaconMode::EVEN) ? 0 : 1;
     autoseq_start_cq(target_parity);
-    g_tx_view_dirty = true;
 }
 
 void tx_scheduler_arm_from_autoseq_or_beacon(void) {
@@ -99,7 +97,7 @@ void tx_scheduler_arm_from_autoseq_or_beacon(void) {
     }
 }
 
-// Same three cases as the ADV's apply_beacon_mode(): Off re-arms whatever
+// Three cases: Off re-arms whatever
 // autoseq still has queued rather than dropping it, and Even <-> Odd drops the
 // old-parity CQ before queueing the new one.
 void tx_scheduler_set_beacon(uint8_t mode) {
@@ -160,14 +158,11 @@ void tx_scheduler_cancel(void) {
     } else {
         s_tx_cancel_requested = true;
     }
-    // End the radio TX and mark the view dirty now, the same as the ADV's
-    // request_tx_cancel() already does -- this used to defer both to
-    // tx_tick()'s next call noticing s_tx_cancel_requested, a real drift
-    // from the ADV found while scoping row j4xh.
+    // End the radio TX now, not on tx_tick()'s next call noticing
+    // s_tx_cancel_requested.
     if (radio_control_ready()) {
         radio_control_end_tx();
     }
-    g_tx_view_dirty = true;
 }
 
 static void tx_send_ta(float tone_hz) {
@@ -281,7 +276,6 @@ static void tx_tick(void) {
         s_pending_tx_valid = false;
         s_tx_cancel_requested = false;
         decode_tx_state_set_was_txing(false);
-        g_tx_view_dirty = true;
         return;
     }
 
@@ -298,7 +292,6 @@ static void tx_tick(void) {
         decode_tx_state_set_tx_active(false);
         s_pending_tx_valid = false;
         s_tx_cancel_requested = false;
-        g_tx_view_dirty = true;
         return;
     }
 
@@ -328,7 +321,6 @@ static void check_slot_boundary(void) {
                  slot_parity);
         autoseq_tick(slot_idx, slot_parity, 0);
         decode_tx_state_set_was_txing(false);
-        g_tx_view_dirty = true;
     }
 
     if (!decode_tx_state_get_was_txing() && !decode_tx_state_get_tx_active() &&

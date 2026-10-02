@@ -14,7 +14,6 @@
 #include "freertos/task.h"
 
 #include "autoseq.h"
-#include "board_power.h"
 #include "callsign_hashtable.h"
 #include "decode_sort.h"
 #include "decode_tx_state.h"
@@ -32,40 +31,24 @@ extern "C" {
 
 static const char* TAG = "DECODE";
 
-// Bare forward declarations for the per-board seams this pipeline needs but
-// doesn't own -- same reasoning as ft8_audio_pipeline.cpp's ui_push_waterfall_row:
-// each board supplies its own definition rather than this shared file
-// REQUIRES-ing a board-only component.
+// Bare forward declarations for the seams this pipeline needs but doesn't
+// own: the main board's own file (poe_p4/main) defines each.
 //
-//   g_call/g_tx_view_dirty/g_last_reply_text/g_rx_dirty: owned by whichever
-//     board's main.cpp/app orchestrates the UI dispatch loop (ADV) or, on a
-//     headless board, a small always-present definition nothing else reads
-//     yet.
-//   log_rxtx_line: ADV's storage-backed RX/TX log; a board with no storage
-//     (P4, by design -- see docs/architecture/main_board.md) gets a no-op.
+//   g_call: the station callsign.
+//   log_rxtx_line: the RX/TX log line sink (row j4xh gives the P4 the real
+//     storage-backed log; until then it only logs to the console).
 //   arm_from_autoseq_or_beacon/ignorelist_matches_normalized_dxcall: the
-//     TX-arming trigger and its ignorelist filter. TX itself (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213))
-//     "headless decode/TX core") is a separate milestone from RX decode; a
-//     board with no TX pipeline wired yet gets a no-op/pass-through.
-//   porta_emit_decode: the sidekick link (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)) / B67). Safe to
-//     call unconditionally — no-op until porta_start() has run; on P4 the
-//     decode task and porta_tick() share the same image so emits reach the
-//     phone once UAC is streaming.
-//   ui_mark_rx_list_stale/ui_set_rx_list_static: components/ui's real
-//     implementation REQUIRES the M5 display stack a headless board can't
-//     link; each board defines these two directly instead.
+//     TX-arming trigger and its ignorelist filter (the P4 has no ignorelist
+//     yet, row j4xh).
+//   porta_emit_decode: the sidekick link. Safe to call unconditionally --
+//     no-op until porta_start() has run.
 extern std::string g_call;
-extern volatile bool g_tx_view_dirty;
-extern std::string g_last_reply_text;
-extern bool g_rx_dirty;
 void log_rxtx_line(char dir, int snr, int offset_hz, const std::string& text, int repeat_counter);
 void arm_from_autoseq_or_beacon();
 bool ignorelist_matches_normalized_dxcall(const std::string& dxcall_norm);
 void porta_emit_decode(uint32_t decode_id, const char* text, int snr, int offset_hz,
                        float dt_s, bool is_cq, bool is_to_me, bool is_recent_qso,
                        uint32_t slot_idx, uint8_t slot_len_ds, uint32_t dial_hz);
-void ui_mark_rx_list_stale();
-void ui_set_rx_list_static(const RxDecodeEntry* entries, int count);
 
 AdifLoggerDedupe s_adif_logger_dedupe;
 
@@ -162,7 +145,7 @@ static bool rewrite_dxpedition_for_mycall(const std::string& raw_text,
 
 // ---- Static decode workspace (zero heap allocation) ----
 // Use the shared RxDecodeEntry type from decode_types.h so we can hand it
-// directly to ui_set_rx_list_static without any conversion.
+// directly to porta_emit_decode without any conversion.
 #define DEC_MAX       RX_MAX_DECODES       // 32
 #define DEC_TEXT_MAX  RX_TEXT_MAX          // 64
 #define DEC_FIELD_MAX RX_FIELD_MAX         // 20
@@ -248,14 +231,6 @@ static int dec_sort_cmp(const void* a, const void* b) {
   return decode_sort_cmp(&ea, &eb);
 }
 
-// Marks the RX list stale in the UI component and flags core 0's dispatch
-// loop to redraw it. Decode logic never draws directly -- drawing is the
-// UI-consumer's job, triggered by the dirty flag it already polls.
-static void keep_rx_list_stale() {
-  ui_mark_rx_list_stale();
-  g_rx_dirty = true;
-}
-
 void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
   // One operator-log line per slot (B53 shape, slim). ESP_LOGD above is compiled
   // out at CONFIG_LOG_MAXIMUM_LEVEL=3; debug_log_line reaches P-then-. and the
@@ -325,7 +300,6 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
 
   if (num_candidates <= 0) {
     ESP_LOGD(TAG, "No candidates found; keeping RX list");
-    keep_rx_list_stale();
     // No candidates means we processed the slot's audio but found nothing —
     // still counts as "applied" for the TX-trigger guard.
     if (decode_tx_state_get_decode_slot_idx() > decode_tx_state_get_decode_applied_slot_idx()) {
@@ -487,7 +461,7 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
   qsort(s_dec, s_dec_count, sizeof(DecodeMsg), dec_sort_cmp);
 
   // ---- Autoseq: build small to_me vector at boundary (only to_me entries) ----
-  if (!decode_tx_state_get_was_txing() && !board_power_halted()) {
+  if (!decode_tx_state_get_was_txing()) {
     std::vector<UiRxLine> to_me_auto;
     for (int i = 0; i < s_dec_count; ++i) {
       if (!s_dec[i].is_to_me) break;  // sorted, so once we pass to_me we're done
@@ -516,21 +490,14 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
 
     if (!to_me_auto.empty()) {
       autoseq_on_decodes(to_me_auto);
-      g_tx_view_dirty = true;
-      g_last_reply_text = to_me_auto.front().text;
     }
 
     arm_from_autoseq_or_beacon();
   }
 
-  // ---- Zero-heap handoff: static s_dec[] → ui.cpp's static rx_lines[] ----
+  // ---- Hand the sorted list to the sidekick link ----
   if (s_dec_count > 0) {
-    ui_set_rx_list_static(s_dec, s_dec_count);
-    // Same list, same moment, same order as the screen gets -- which is what
-    // makes the on-screen log a free oracle for the link: if the browser and
-    // the R screen disagree, the fault is between here and the browser.
-    //
-    // Each carries the slot its audio was recorded in, and the dial frequency
+    // Each decode carries the slot its audio was recorded in, and the dial frequency
     // at the middle of its own signal (Port A v2). A signal only decodes if
     // most of it was received on one frequency, so when the operator retunes
     // partway through the slot, this labels each decode with the frequency
@@ -550,10 +517,8 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
                         (uint32_t)emit_slot_idx, (uint8_t)(emit_slot_ms / 100),
                         dial_history_at(mid_ms));
     }
-    g_rx_dirty = true;
   } else {
     ESP_LOGD(TAG, "No messages decoded; keeping RX list");
-    keep_rx_list_stale();
   }
 
   // ---- heap instrumentation (exit) ----

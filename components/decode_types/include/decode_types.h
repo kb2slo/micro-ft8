@@ -1,16 +1,8 @@
 #pragma once
 #include <string>
 
-// Decode-result data types, split out of components/ui/include/ui.h (RFC
-// 0005 Phase 2). These are plain data -- no display, no drawing, no
-// dependency beyond <string> -- and lived in ui.h only because that is
-// where the decode pipeline's output happened to be consumed first. Moved
-// here so main/autoseq.h (and, later, the decode pipeline itself) can use
-// them without requiring the ADV's M5GFX/M5Unified/M5Cardputer display
-// stack -- ui's own CMakeLists.txt
-// REQUIRES all three directly, which a headless board like poe_p4 neither
-// has nor wants. ui.h now includes this header rather than redeclaring the
-// types itself.
+// Decode-result data types shared by autoseq and the decode pipeline. Plain
+// data, no dependency beyond <string>.
 
 // A lightweight RX line format you can fill from your decoder
 struct UiRxLine {

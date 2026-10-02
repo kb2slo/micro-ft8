@@ -4,7 +4,7 @@
 
 #include "autoseq.h"
 
-// B68: headless CAT tone TX scheduler for PoE-P4 (ADV main.cpp SM, no UI).
+// B68: headless CAT tone TX scheduler for PoE-P4 (no UI).
 
 void tx_scheduler_set_beacon(uint8_t mode);  // 0=OFF, 1=EVEN, 2=ODD
 uint8_t tx_scheduler_beacon_mode(void);

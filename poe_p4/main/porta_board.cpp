@@ -14,9 +14,3 @@ void porta_board_uart_pins(gpio_num_t *tx, gpio_num_t *rx) {
         *rx = GPIO_NUM_54;  // white
     }
 }
-
-bool porta_board_embedded_sidekick_version(char * /*out*/, size_t /*out_size*/) {
-    // P4 does not embed a sidekick image (no USB-C flasher path like the ADV).
-    // HELLO still works; version-match UI stays false until a later choice.
-    return false;
-}

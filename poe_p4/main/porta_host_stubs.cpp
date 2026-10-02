@@ -36,10 +36,9 @@ static bool s_seeded = false;
 static bool s_tune = false;
 
 extern const ProtocolConfig *g_protocol;
-extern volatile bool g_tx_view_dirty;
 extern AdifLoggerDedupe s_adif_logger_dedupe;
 
-// Same FT8 table as ADV main.cpp's g_bands initializer.
+// FT8 band names, in Station.txt band-index order.
 static const char *kBandNames[kStationBandCount] = {
     "160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m", "2m",
 };
@@ -161,7 +160,7 @@ static const char *sync_vfo(const char *reason) {
         ESP_LOGW(TAG, "VFO sync skipped (%s): TX active", reason ? reason : "");
         return "TX active";
     }
-    radio_control_end_tx();  // RX mode first, as the ADV does (idempotent)
+    radio_control_end_tx();  // RX mode first (idempotent)
     const esp_err_t err = radio_control_sync_frequency_mode(freq_hz);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "VFO sync failed (%s) freq=%d: %s", reason ? reason : "", freq_hz,
@@ -201,7 +200,7 @@ static bool log_adif_entry(const std::string &dxcall, const std::string &dxgrid,
     // (row cgc4), so this is the real value, not a placeholder.
     station.radio_name = "QMX";
     // No GPS on the P4 (docs/architecture/main_board.md) -- nothing to
-    // override the configured grid with for "/Grid", unlike the ADV.
+    // override the configured grid with for "/Grid".
     station.grid_for_macro = s_station.grid;
     station.act_refs = s_station.act_refs;
     return adif_log_entry(dxcall, dxgrid, rst_sent, rst_rcvd, station, &s_adif_logger_dedupe);
@@ -228,7 +227,7 @@ int porta_p4_station_offset_src(void) {
     return s_station.offset_src;
 }
 
-// ADV's porta_queue_state_tick sibling: once a second, push SLOT_STATE and
+// Once a second, push SLOT_STATE and
 // active QUEUE_ENTRY rows so Operate stays current without a snapshot call.
 void porta_p4_companion_status_tick(void) {
     ensure_seeded();
@@ -243,7 +242,7 @@ void porta_p4_companion_status_tick(void) {
     }
     s_last_ms = now_ms;
 
-    // Same fields as the ADV's porta_queue_state_tick(): the armed TX's slot
+    // The armed TX's slot
     // parity and its resolved offset, 0 when nothing is armed. The app shows
     // that offset as "TX: … Hz" and places the passband cursor with it.
     int armed_offset_hz = 0;
@@ -279,9 +278,9 @@ void porta_p4_companion_status_tick(void) {
     s_last_active_count = filled;
 }
 
-// ADV main.cpp porta_tx_hud_tick sibling — phone Operate panel.
-// B72: poll PC;/SW; so power/SWR are real (ADV draw_tx_hud polls; this board
-// has no on-device banner, so the Port A tick owns the poll).
+// Phone Operate panel TX HUD.
+// B72: poll PC;/SW; so power/SWR are real (this board has no on-device
+// banner, so the Port A tick owns the poll).
 void porta_p4_tx_hud_tick(void) {
     static uint32_t s_last_ms = 0;
     static bool s_last_active = false;
@@ -326,14 +325,10 @@ const char *porta_host_set_clock(uint32_t epoch_secs, uint16_t millis) {
     const time_t now = rtc_current_epoch_seconds();
     const long drift = (long)((time_t)epoch_secs - now);
     if (rtc_valid && drift > -2 && drift < 2) {
-        rtc_update_strings();
-        g_rtc_time_source = RtcTimeSource::BROWSER;
         return nullptr;
     }
-    rtc_seed_epoch((time_t)epoch_secs, esp_timer_get_time() / 1000 - (int64_t)millis,
-                   RtcTimeSource::BROWSER);
+    rtc_seed_epoch((time_t)epoch_secs, esp_timer_get_time() / 1000 - (int64_t)millis);
     rtc_sync_to_esp_rtc();
-    (void)rtc_write_external_from_soft("browser");
     ESP_LOGI(TAG, "clock set epoch=%lu (%+ld s)", (unsigned long)epoch_secs, drift);
     return nullptr;
 }
@@ -498,7 +493,7 @@ const char *porta_host_config_set(const char *key, const char *value) {
     if (strcmp(key, "band_sel") == 0 || strcmp(key, "active_bands") == 0 ||
         strncmp(key, "band", 4) == 0 || strncmp(key, "ft4_band", 8) == 0) {
         const char *why = sync_vfo("porta config");
-        // Match ADV: a write that names the band actually being operated
+        // A write that names the band actually being operated
         // needs the VFO to have moved to mean what it says. Other band-ish
         // keys stay silent on a sync miss.
         if (why && station_key_names_operating_band(key, s_station.band_sel,
@@ -581,7 +576,6 @@ static const char *apply_reply_touch(const UiRxLine &msg) {
     const AutoseqTouchResult touch =
         autoseq_on_touch(msg, decode_tx_state_get_tx_active());
     if (touch == AutoseqTouchResult::IgnoredInProgress) {
-        g_tx_view_dirty = true;
         return "QSO in progress";
     }
     if (touch == AutoseqTouchResult::NoRoom) {
@@ -591,7 +585,6 @@ static const char *apply_reply_touch(const UiRxLine &msg) {
     if (!decode_tx_state_get_tx_active() && autoseq_fetch_pending_tx(pending)) {
         arm_pending_tx(pending);
     }
-    g_tx_view_dirty = true;
     return nullptr;
 }
 
@@ -606,7 +599,6 @@ const char *porta_host_queue_cancel(uint16_t entry_id) {
     if (on_air) {
         tx_scheduler_cancel();
     }
-    g_tx_view_dirty = true;
     ESP_LOGI(TAG, "queue cancel entry_id=%u", (unsigned)entry_id);
     return nullptr;
 }
@@ -635,8 +627,8 @@ const char *porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take
     if (take == 0) {
         return "take must be > 0";
     }
-    // Sync list: P4 has no on-device Q/Delete drain to race, and LittleFS
-    // day-file counts stay small. Burst-then-ACK matches ADV's Port A shape.
+    // Sync list: LittleFS day-file counts stay small, so burst the whole list
+    // and then ACK.
     std::vector<std::string> all_names;
     if (!storage_file_list(all_names)) {
         FileListFail fail = FileListFail::Failed;
@@ -681,11 +673,9 @@ bool p4_reject_active_log_mutation(const char *basename) {
     if (!basename || basename[0] == '\0') {
         return false;
     }
-    // Same three conditions as the ADV's storage_should_guard_active_logs()
-    // (main/main.cpp) -- audio streaming was missing here, a drift found
-    // while scoping row j4xh: qmx_audio_ready() is this board's equivalent
-    // of audio_source_is_streaming() (both feed the same "streaming"/
-    // "audio_rx" config fields, porta_host_config_snapshot() above).
+    // Refuse while transmitting, decoding or streaming audio: qmx_audio_ready()
+    // feeds the same "streaming"/"audio_rx" config fields as
+    // porta_host_config_snapshot() above.
     if (!decode_tx_state_get_tx_active() && !decode_tx_state_get_decode_in_progress() &&
         !qmx_audio_ready()) {
         return false;

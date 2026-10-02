@@ -9,8 +9,7 @@
 // `filename` empty → clear every daily file that `is_locked` does not protect.
 // Non-empty → delete that one basename (must be a daily log name).
 //
-// `is_locked` matches on-device D-screen LOCK: during TX/decode/streaming the
-// active day file (and RT log / fieldday on ADV) must not be removed.
+// `is_locked` protects the active day file during TX, decode and streaming.
 // Returns nullptr on success, else a short static reason for ACK/NAK.
 
 using AdifDeleteIsLockedFn = bool (*)(const char* basename);

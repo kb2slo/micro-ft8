@@ -4,16 +4,14 @@
 #include <vector>
 
 #include "adif_logger.h"
-#include "board_power.h"  // extern "C" linkage -- included so the stub below matches it
 
-// adif_logger.cpp also calls board_power_writes_blocked(), storage_service_
+// adif_logger.cpp also calls storage_service_
 // firmware_available() and storage_file_append() (ESP-IDF storage), and
 // rtc_now_ms() (host_mocks.o, linked below) -- same stubbing pattern
 // test_adif_delete.cpp already uses, so this host binary links without
 // ESP-IDF. storage_file_append() records what it was asked to write so the
 // test can inspect the actual record line.
 static std::vector<std::string> g_appended;
-bool board_power_writes_blocked() { return false; }
 bool storage_service_firmware_available() { return true; }
 bool storage_file_append(const std::string&, const std::string& content, const std::string&,
                          bool) {

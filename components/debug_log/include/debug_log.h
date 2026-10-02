@@ -10,7 +10,7 @@
 // of main.cpp so a headless board's decode pipeline can log through the same
 // funnel without linking main.cpp itself). No board/UI coupling of its own:
 // g_debug_lines/debug_page are plain data a screen *may* choose to render
-// (ADV's D screen does); a headless board can leave them unread.
+// (the board has no screen, so nothing reads them today).
 //
 // Relaying lines to the sidekick (porta_emit_log) used to be hardwired here,
 // but that made this component depend on porta and porta depend on this one
@@ -41,5 +41,5 @@ extern const size_t DEBUG_HUD_LINES;  // slots 0-1 reserved for live HUD
 
 // Ensures the HUD-reserved slots (0..DEBUG_HUD_LINES-1) exist. Called by
 // debug_log_line() itself and by whoever fills the HUD slots (main.cpp's
-// core-0 stack sampler on ADV); a no-op on a board that never touches them.
+// anything that samples the stack); a no-op if nothing does.
 void debug_ensure_hud_lines();

@@ -24,5 +24,5 @@ target_compile_options(${COMPONENT_LIB} PRIVATE
 )
 
 # B89: the decoder runs at -O2 while the rest of the image stays at -Og and debuggable. Measured by
-# test_apps/decode_bench (docs/architecture/decode.md): ~1.9x on the P4 and ~1.6x on the ADV, output identical on every slot.
+# test_apps/decode_bench (docs/architecture/decode.md): ~1.9x on the P4, output identical on every slot.
 target_compile_options(${COMPONENT_LIB} PRIVATE -O2)

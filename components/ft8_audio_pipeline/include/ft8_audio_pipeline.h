@@ -3,8 +3,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define FT8_AUDIO_WATERFALL_ROW_WIDTH 240
-
 typedef int (*ft8_audio_read_cb_t)(void* ctx, float* out, int max_samples);
 typedef bool (*ft8_audio_should_stop_cb_t)(void* ctx);
 typedef void (*ft8_audio_block_cb_t)(void* ctx);

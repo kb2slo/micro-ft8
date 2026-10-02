@@ -66,19 +66,10 @@ constexpr int kTxBufBytes = 4096;
 // 12.8 kB/s, enough for 115200 and not for 230400 (measured on the P4,
 // 2026-10-01). A reader task now decodes the byte stream itself. Link-test
 // bulk frames are checked there. Every other frame is queued for porta_tick,
-// which still owns autoseq and the radio. On the P4 the task is not pinned.
-// On the ADV it is pinned to core 1, and the UART driver is installed from
-// that core, so the interrupt follows it. The display and the USB host stay
-// on core 0; their interrupt-off time was longer than the 128-byte FIFO above
-// 460800 (measured 2026-10-01). The task sits above the USB host tasks
-// (priority 5) so a short parse preempts them, then blocks in the read. The
-// ADV driver buffer stays 2048 bytes: that block is DMA RAM, which the radio
-// already presses.
-#if CONFIG_IDF_TARGET_ESP32P4
+// which still owns autoseq and the radio. The task is not pinned. It sits
+// above the USB host tasks (priority 5) so a short parse preempts them, then
+// blocks in the read.
 constexpr int kUartRxBytes = 4096;
-#else
-constexpr int kUartRxBytes = 2048;
-#endif
 constexpr UBaseType_t kRxTaskPrio = 6;
 constexpr int kRxFrameQueueLen = 8;
 
@@ -91,10 +82,9 @@ std::atomic<bool> s_rx_hold{false};
 std::atomic<bool> s_rx_paused{false};
 std::atomic<bool> s_rx_exited{false};
 std::atomic<uint32_t> s_rx_overrun{0};
-// A mutex, not a spinlock. The UART interrupt and porta_rx share core 1 on
-// the ADV. portENTER_CRITICAL masks that core's interrupts while the reader
-// waits, and at 1.5 Mbit/s the 128-byte FIFO is under 1 ms (failed 2026-10-01,
-// ok 141, drop 9, crc 7). A mutex leaves the interrupt enabled.
+// A mutex, not a spinlock. portENTER_CRITICAL masks interrupts while the
+// reader waits, and at 1.5 Mbit/s the 128-byte FIFO is under 1 ms (failed
+// 2026-10-01, ok 141, drop 9, crc 7). A mutex leaves the interrupt enabled.
 SemaphoreHandle_t s_link_lock = nullptr;
 
 void link_lock() {
@@ -110,13 +100,6 @@ int s_rx_frame_tail = 0;
 int s_rx_frame_count = 0;
 porta_decoder_t s_dec;
 char s_version[PORTA_HELLO_VERSION_LEN + 1] = {};
-
-// Enough to miss two HELLOs at the 5 s cadence before concluding anything, so
-// one dropped frame or a moment of noise does not raise a prompt.
-constexpr uint32_t kCompanionQuietMs = 15000;
-uint32_t s_last_byte_ms = 0;    // anything at all arrived
-uint32_t s_last_frame_ms = 0;   // a valid frame arrived
-bool s_version_matches = false;
 
 inline uint32_t now_ms() {
   return (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
@@ -147,8 +130,6 @@ bool configure_uart() {
   return true;
 }
 
-// uart_driver_install allocates the interrupt on the core that calls it.
-// The ADV's screen and USB host run on core 0, so the install runs on core 1.
 bool install_uart() {
   esp_err_t err = uart_driver_install(kPortaUart, kUartRxBytes, kTxBufBytes, 0, nullptr, 0);
   if (err == ESP_ERR_INVALID_STATE) {
@@ -167,18 +148,7 @@ bool install_uart() {
   return true;
 }
 
-#if !CONFIG_IDF_TARGET_ESP32P4
-void uart_boot_task(void* arg) {
-  auto* result = static_cast<std::atomic<int>*>(arg);
-  result->store(install_uart() ? 1 : -1);
-  vTaskDelete(nullptr);
-}
-#endif
-
-// Outbound queue. Sized for a busy slot (~30 decodes) without chewing ADV
-// internal DRAM — field-found 2026-09-18: bumping this to 64 (~10 KiB more
-// .bss) left CAT working but UAC/decode dead on the Cardputer after the
-// porta extract. CONFIG_GET-all bursts (~38 VALUE+ACK frames) are handled by
+// Outbound queue. Sized for a busy slot (~30 decodes). CONFIG_GET-all bursts (~38 VALUE+ACK frames) are handled by
 // drain_out() inside handle_config_get(), which pushes into the 4 KiB UART
 // TX ring as it enqueues so a 24-deep software queue is enough.
 constexpr size_t kOutQueueLen = 24;
@@ -237,10 +207,8 @@ void drain_out() {
 }
 
 // HELLO replaces the ad-hoc beacon. Same purpose -- report the companion's
-// build so the operator learns, without a USB-C session, whether it matches the
-// image this ADV carries (docs/architecture/sidekick.md (Installing the sidekick from the ADV)) -- but it now arrives framed
-// and CRC-checked like everything else, and carries a protocol version the old
-// beacon had no room for.
+// build, now framed and CRC-checked like everything else, and carrying a
+// protocol version the old beacon had no room for.
 void handle_hello(const porta_frame_t& f) {
   uint8_t proto = 0;
   char remote[PORTA_HELLO_VERSION_LEN + 1] = {};
@@ -258,28 +226,7 @@ void handle_hello(const porta_frame_t& f) {
   }
   strncpy(s_version, remote, sizeof(s_version) - 1);
 
-  char local_version[PORTA_HELLO_VERSION_LEN + 1] = {};
-  const bool have_local =
-      porta_board_embedded_sidekick_version(local_version, sizeof(local_version));
-  const bool matches =
-      have_local && strncmp(remote, local_version, PORTA_HELLO_VERSION_LEN) == 0;
-
-  s_version_matches = matches;
-  if (matches) {
-    ESP_LOGI(kTag, "Companion version matches: %s", remote);
-    // One line, not two -- the log viewer jumps to whichever page the newest
-    // line landed on, so two related lines can straddle a page boundary and
-    // only the second is ever seen. Bench-confirmed 2026-09-04.
-    debug_log_line_public(std::string("OK ") + remote);
-  } else if (!have_local) {
-    // PoE-P4 (and any board without an embedded sidekick image): nothing to
-    // compare; HELLO still runs. Do not shout MISMATCH with an empty local=.
-    ESP_LOGI(kTag, "Companion version %s (no embedded sidekick image on this board)", remote);
-  } else {
-    ESP_LOGW(kTag, "Companion version MISMATCH: remote=%s local=%s", remote, local_version);
-    debug_log_line_public(std::string("X R:") + remote);
-    debug_log_line_public(std::string("X L:") + local_version);
-  }
+  ESP_LOGI(kTag, "Companion version %s", remote);
 }
 
 // The control direction. Answered with ACK or NAK carrying the same verb, so
@@ -343,7 +290,7 @@ void consume_rx(const uint8_t* buf, int len, bool queue_control);
 // pdMS_TO_TICKS(5) is 0 at a 10 ms tick, and vTaskDelay(0) does not wait. The
 // reader was still inside uart_read_bytes, the baud change ran anyway, and
 // porta_rx then spun until the task watchdog fired (2026-10-01). The wait is
-// 40 ms so a 1 ms tick (the ADV) still covers the 20 ms read timeout.
+// 40 ms so a 1 ms tick still covers the 20 ms read timeout.
 bool rx_hold_enter() {
   if (s_rx_task == nullptr) return true;
   s_rx_hold.store(true);
@@ -730,7 +677,7 @@ void handle_config_get(const porta_frame_t& f) {
     return;
   }
 
-  // Static: ADV station snapshot can be ~1–2 KiB; keeping this on the
+  // Static: the station snapshot can be ~1–2 KiB; keeping this on the
   // caller's stack blew the P4's default 3584-byte main task (B67 bench).
   static char snap[2048];
   size_t n = porta_host_config_snapshot(snap, sizeof(snap));
@@ -778,7 +725,7 @@ void handle_config_get(const porta_frame_t& f) {
         if (wn > 0) {
           enqueue(buf, wn);
           // Kick the UART TX ring now so a full Station.txt snapshot does
-          // not need a 64-deep software queue (ADV DIRAM cannot spare that).
+          // not need a 64-deep software queue.
           drain_out();
           found = true;
         }
@@ -872,7 +819,6 @@ void handle_frame(const porta_frame_t& f) {
 
 void consume_rx(const uint8_t* buf, int len, bool queue_control) {
   if (len <= 0) return;
-  s_last_byte_ms = now_ms();
   link_lock();
   if (porta_link_run_active(&s_link)) {
     s_link_rx_bytes += (uint32_t)len;
@@ -883,11 +829,10 @@ void consume_rx(const uint8_t* buf, int len, bool queue_control) {
     if (!porta_decoder_push(&s_dec, buf[i], &frame)) {
       continue;
     }
-    s_last_frame_ms = now_ms();
     const bool link = frame.type == PORTA_MSG_LINK_TEST || frame.type == PORTA_MSG_LINK_DATA;
     if (link) {
       // The reader checks bulk frames in order. Waiting for porta_tick dropped
-      // the tail of a 2.5 Mbit/s run on the ADV (2026-10-01, ok 284 of 400).
+      // the tail of a 2.5 Mbit/s run (2026-10-01, ok 284 of 400).
       link_on_frame(frame, !queue_control);
     } else if (queue_control) {
       rx_queue_frame(frame);
@@ -1052,18 +997,6 @@ uint32_t porta_dropped_events() { return s_dropped; }
 uint32_t porta_crc_errors() { return s_dec.crc_errors; }
 uint32_t porta_frames_ok() { return s_dec.frames_ok; }
 
-PortaCompanion porta_companion_state() {
-  if (!s_running || s_last_byte_ms == 0) return PortaCompanion::kAbsent;
-  const uint32_t now = now_ms();
-  if (now - s_last_byte_ms > kCompanionQuietMs) return PortaCompanion::kAbsent;
-  // Something is talking and we cannot read it. That is the flag-day case: a
-  // sidekick on the previous wire format, which cannot tell us so itself.
-  if (s_last_frame_ms == 0 || now - s_last_frame_ms > kCompanionQuietMs) {
-    return PortaCompanion::kUnintelligible;
-  }
-  return s_version_matches ? PortaCompanion::kCurrent : PortaCompanion::kOutOfDate;
-}
-
 void porta_start() {
   if (s_running) return;
 
@@ -1085,26 +1018,7 @@ void porta_start() {
   // A TX ring buffer is not optional now that this port transmits. With a
   // tx_buffer_size of 0, uart_write_bytes() blocks until every byte has left
   // the FIFO -- about 22 ms for a full frame at 115200, inside the slot loop.
-#if CONFIG_IDF_TARGET_ESP32P4
   if (!install_uart()) return;
-#else
-  // The allocator pins the UART interrupt to the core it runs on. Core 0 is
-  // the screen and the USB host, so this install runs on core 1.
-  std::atomic<int> boot{0};
-  if (xTaskCreatePinnedToCore(uart_boot_task, "porta_uart", 3072, &boot,
-                              kRxTaskPrio, nullptr, 1) != pdPASS) {
-    ESP_LOGW(kTag, "UART install task failed");
-    return;
-  }
-  for (;;) {
-    if (boot.load() != 0) break;
-    vTaskDelay(1);
-  }
-  if (boot.load() != 1) {
-    ESP_LOGW(kTag, "UART install on core 1 failed");
-    return;
-  }
-#endif
 
   porta_decoder_init(&s_dec);
   porta_link_run_init(&s_link);
@@ -1120,22 +1034,12 @@ void porta_start() {
   s_rx_frame_head = 0;
   s_rx_frame_tail = 0;
   s_rx_frame_count = 0;
-#if CONFIG_IDF_TARGET_ESP32P4
   if (xTaskCreate(porta_rx_task, "porta_rx", 4096, nullptr, kRxTaskPrio, &s_rx_task) == pdPASS) {
     ESP_LOGI(kTag, "porta_rx task");
   } else {
     s_rx_task = nullptr;
     ESP_LOGW(kTag, "porta_rx task failed; polling the UART");
   }
-#else
-  if (xTaskCreatePinnedToCore(porta_rx_task, "porta_rx", 4096, nullptr, kRxTaskPrio,
-                              &s_rx_task, 1) == pdPASS) {
-    ESP_LOGI(kTag, "porta_rx task core 1");
-  } else {
-    s_rx_task = nullptr;
-    ESP_LOGW(kTag, "porta_rx task failed; polling the UART");
-  }
-#endif
   debug_log_set_relay(porta_emit_log);
   ESP_LOGI(kTag, "Started on UART%d TX=G%d RX=G%d baud=%d",
            (int)kPortaUart, (int)tx_pin, (int)rx_pin, kBaud);

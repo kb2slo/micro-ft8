@@ -5,7 +5,7 @@
 //
 // Pure codec: no UART, no I2C, no globals, no ESP-IDF. Host-tested
 // (host_test_porta_proto). It lives in components/ rather than main/ because
-// two idf.py projects compile it -- the ADV and the sidekick -- which is
+// two idf.py projects compile it -- the P4 and the sidekick -- which is
 // prong 1 of docs/STYLE.md's module-placement rule.
 //
 // WIRE FORMAT

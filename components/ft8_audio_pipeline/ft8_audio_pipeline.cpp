@@ -19,53 +19,12 @@ extern "C" {
 #include "ft8/decode.h"
 }
 
-// Bare forward declarations, not #include "ui.h": that header's real
-// implementation (components/ui) REQUIRES M5Unified/M5GFX/M5Cardputer, which
-// a headless board can't link. Each board provides its own definition of
-// this one function -- real on ADV (ui.cpp), a no-op where there's no
-// display to push a waterfall row to.
-void ui_push_waterfall_row(const uint8_t* bins, int len);
-
 void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg);
 int64_t rtc_now_ms();
 
 #ifndef FT8_SAMPLE_RATE
 #define FT8_SAMPLE_RATE 6000
 #endif
-
-static void push_waterfall_latest(const monitor_t& mon)
-{
-    if (mon.wf.num_blocks <= 0 || mon.wf.mag == nullptr) return;
-    const int block = mon.wf.num_blocks - 1;
-    const int num_bins = mon.wf.num_bins;
-    const int freq_osr = mon.wf.freq_osr;
-    const uint8_t* base = mon.wf.mag + block * mon.wf.block_stride;
-
-    static uint8_t collapsed[480];
-    memset(collapsed, 0, num_bins);
-    for (int b = 0; b < num_bins; ++b) {
-        uint8_t v = 0;
-        for (int fs = 0; fs < freq_osr; ++fs) {
-            uint8_t val = base[fs * num_bins + b];
-            if (val > v) v = val;
-        }
-        collapsed[b] = v;
-    }
-
-    static uint8_t scaled[FT8_AUDIO_WATERFALL_ROW_WIDTH];
-    for (int x = 0; x < FT8_AUDIO_WATERFALL_ROW_WIDTH; ++x) {
-        int start = (int)((int64_t)x * num_bins / FT8_AUDIO_WATERFALL_ROW_WIDTH);
-        int end = (int)((int64_t)(x + 1) * num_bins / FT8_AUDIO_WATERFALL_ROW_WIDTH);
-        if (end <= start) end = start + 1;
-        uint8_t maxv = 0;
-        for (int s = start; s < end && s < num_bins; ++s) {
-            if (collapsed[s] > maxv) maxv = collapsed[s];
-        }
-        scaled[x] = maxv;
-    }
-
-    ui_push_waterfall_row(scaled, FT8_AUDIO_WATERFALL_ROW_WIDTH);
-}
 
 void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
 {
@@ -144,7 +103,6 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
 
                 if (mon.wf.num_blocks < target_blocks) {
                     monitor_process(&mon, ft8_buffer);
-                    push_waterfall_latest(mon);
                 }
 
                 if (cfg->on_block_processed) {

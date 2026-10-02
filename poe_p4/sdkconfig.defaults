@@ -26,17 +26,14 @@ CONFIG_ESP32P4_REV_MIN_100=y
 # config descriptor of an ordinary USB device (flash drive), which fails
 # enumeration with "Configuration descriptor larger than control transfer
 # max length" -- the console kept running through the error, so this is not
-# a two-port/power problem, just an undersized default. Carried over from
-# the ADV's own sdkconfig, which already proved 2048 works for a QMX (a much
-# larger composite descriptor than a plain flash drive) rather than guessing
-# a smaller number blind.
+# a two-port/power problem, just an undersized default. 2048 is proven to work for a QMX (a much larger composite descriptor than a
+# plain flash drive) rather than guessing a smaller number blind.
 CONFIG_USB_HOST_CONTROL_TRANSFER_MAX_SIZE=2048
 
 # Bench-found 2026-09-18 (B67): IDF default main stack (3584) overflows on
 # CONFIG_GET — porta handle_config_get keeps a 2 KiB snapshot buffer plus a
 # frame, and snprintf hits the stack canary ("Stack protection fault" in
-# _svfprintf_r / main). ADV already runs 16384 for the same porta pump;
-# match that so phone Settings load does not reboot the P4.
+# _svfprintf_r / main). 16384 so phone Settings load does not reboot the P4.
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
 
 # I29: custom table with LittleFS `storage` partition (Station.txt).

@@ -17,19 +17,17 @@
 
 // docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)): this board's implementation of the radio_transport.h
 // seam components/radio_control needs (docs/STYLE.md (Two boards, one source)) --
-// USB host, CDC-ACM, and UAC lifecycle are board-specific (the ADV shares a
-// port with a UAC audio pipeline and its own presence-detection client; this
-// board has neither the presence client nor TX audio yet), so that part
+// USB host, CDC-ACM, and UAC lifecycle are board-specific (this
+// board has no presence-detection client or TX audio yet), so that part
 // stays here while everything CAT-protocol-shaped lives in the shared
 // component instead of being duplicated. Only the QMX backend is wired up
 // (main.cpp selects RADIO_CONTROL_QMX); the QDX-only uac_tx_* functions
 // below are honestly unimplemented, not silently faked -- see the comment
 // on them. qmx_audio_* (RX only -- decode audio) is this file's other half,
-// feeding components/ft8_audio_pipeline the same way ADV's stream_uac.cpp
-// does, minus that file's TX-audio-out and hot-plug presence-detection
-// pieces this board doesn't have yet.
+// feeding components/ft8_audio_pipeline. There is no TX audio out or hot-plug
+// presence detection yet.
 //
-// Task split mirrors ADV's stream_uac.cpp: usb_lib_task owns
+// Task split: usb_lib_task owns
 // usb_host_lib_handle_events() + CDC and must never block; uac_lib_task
 // owns the UAC open/settle/start sequence (safe to block) and is woken by
 // a queue from uac_driver_event_cb. Field-found 2026-09-18: running
@@ -41,9 +39,8 @@ static const char *TAG = "qmx_transport";
 static constexpr uint16_t kQmxVid = 0x0483;
 static constexpr uint16_t kQmxPid = 0xA34C;
 
-// QMX's fixed UAC format -- same constants ADV's stream_uac.cpp uses for
-// UAC_PROFILE_QMX (this board only ever talks to a QMX, so there's no
-// generic-USB candidate list to try).
+// QMX's fixed UAC format -- this board only ever talks to a QMX, so
+// there's no generic-USB candidate list to try.
 static constexpr uint32_t kUacSampleRate = 48000;
 static constexpr uint8_t kUacBitResolution = 24;
 static constexpr uint8_t kUacChannels = 2;
@@ -72,7 +69,7 @@ static uac_host_device_handle_t s_uac_handle = nullptr;
 // QMX can fire DISCONNECTED once per UAC logic iface; only queue one close.
 static uac_host_device_handle_t s_uac_close_queued = nullptr;
 
-// Same shape as ADV's stream_uac.cpp uac_event_t — driver events arrive on
+// UAC driver events arrive on
 // the UAC driver's background task and must not do blocking open/start /
 // close work there either; the queue hands them to uac_lib_task.
 typedef enum {
@@ -119,10 +116,8 @@ static void cdc_event_cb(const cdc_acm_host_dev_event_data_t *event, void * /*us
         // CDC only, not UAC too: they drop within the same real unplug event
         // (a few hundred ms apart, per bench log), and firing on both would
         // just double the banner for one physical event. kind is always 0
-        // (QmxQdx) -- unlike the ADV, this board's USB-C port has exactly
-        // one occupant, ever (porta_board.cpp: "P4 does not embed a sidekick
-        // image (no USB-C flasher path like the ADV)"), so there is nothing
-        // to classify.
+        // (QmxQdx) -- this board's USB-C port has exactly one occupant, ever,
+        // so there is nothing to classify.
         porta_emit_usb_status(false, 0, kQmxVid, kQmxPid);
         // Field-found 2026-09-17: cdc_acm_host_close() must be called even
         // though the device is already gone, or the driver's interface/
@@ -130,8 +125,7 @@ static void cdc_event_cb(const cdc_acm_host_dev_event_data_t *event, void * /*us
         // then fails to claim the interface (EP alloc / claim errors), and
         // repeated retries against that leaked state eventually hang
         // usb_lib_task inside descriptor parsing (watchdog reboot loop).
-        // Matches the ADV's own cdc_close() in main/audio/stream_uac.cpp,
-        // which already does this unconditionally. Null first so
+        // Null first so
         // cat_cdc_send() on another task cannot race into the same handle.
         cdc_acm_dev_hdl_t h = s_cdc_handle;
         s_cdc_handle = nullptr;
@@ -290,7 +284,7 @@ static void uac_device_event_cb(uac_host_device_handle_t handle,
 // to try_open()'s CDC polling style, but its iface_num isn't a wildcard --
 // the library rejects 0 outright ("Invalid interface number"), so it still
 // needs the real interface number, which only the driver's own enumeration
-// knows. Same event-driven open ADV's stream_uac.cpp already uses.
+// knows.
 static void uac_driver_event_cb(uint8_t addr, uint8_t iface_num,
                                 const uac_host_driver_event_t event, void * /*arg*/) {
     ESP_LOGI(TAG, "UAC driver event %d addr=%d iface=%d", (int)event, addr, iface_num);
@@ -418,8 +412,7 @@ static void usb_lib_task(void * /*arg*/) {
     host_config.skip_phy_setup = false;
     host_config.intr_flags = ESP_INTR_FLAG_LEVEL1;
 
-    // Same "QMX ISO split" FIFO tuning as ADV's stream_uac.cpp usb_lib_task:
-    // this composite device (CDC CAT + UAC audio) needs both a CDC bulk-OUT
+    // "QMX ISO split" FIFO tuning: this composite device (CDC CAT + UAC audio) needs both a CDC bulk-OUT
     // allowance and UAC isochronous IN bandwidth from one usb_host_install(),
     // not two.
     host_config.fifo_settings_custom.rx_fifo_lines   = 91;

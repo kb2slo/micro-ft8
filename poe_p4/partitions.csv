@@ -1,5 +1,4 @@
-# PoE-P4 (U213) 16 MB flash — I29 LittleFS internal store (same role as ADV
-# `storage` partition). App slot sized generously; storage ~3 MB for Station.txt
+# PoE-P4 (U213) 16 MB flash — I29 LittleFS internal store (`storage` partition). App slot sized generously; storage ~3 MB for Station.txt
 # and future .adi. No SD on this board.
 #
 # Name,     Type, SubType, Offset,   Size,     Flags

@@ -20,10 +20,8 @@
 // not exist -- and in a headless build (I28) that would have removed the only
 // UI, along with the only control capable of putting it back.
 //
-// What remains is the companion beacon (docs/architecture/sidekick.md (Port A: the link to the main board)): the sidekick sends
-// sync + version[32] + XOR checksum once a second, and the ADV reports whether
-// that version matches the sidekick image it carries. I28a replaces this with
-// a real bidirectional protocol; until then it is the whole conversation.
+// What the link carries now: docs/architecture/sidekick.md (Port A: the link
+// to the main board).
 // ============================================================================
 
 // Brings up UART1 on G1/G2 at PORTA_BAUD (porta_proto.h) and starts listening
@@ -104,20 +102,6 @@ void porta_emit_usb_status(bool present, uint8_t kind, uint16_t vid, uint16_t pi
 // porta_sweep_reason_t wire values. `swr_hundredths` is -1 where there is no reading.
 void porta_emit_sweep(uint8_t kind, uint8_t range_index, uint32_t freq_hz, int swr_hundredths,
                       uint8_t reason);
-
-// What the companion looks like from here. Three failure states rather than
-// one, because they need different words: a sidekick that is merely behind can
-// be updated, one speaking an older protocol *also* needs updating but cannot
-// say so itself, and nothing plugged in must produce no prompt at all -- a
-// nag on every boot with no companion attached would be worse than silence.
-enum class PortaCompanion : uint8_t {
-    kAbsent,          // no bytes on the wire at all
-    kCurrent,         // HELLO matches the image this ADV carries
-    kOutOfDate,       // HELLO decodes, versions differ
-    kUnintelligible,  // bytes arriving, nothing decodes -- an older protocol
-};
-
-PortaCompanion porta_companion_state();
 
 // Frames dropped because the queue was full — the number that matters when the
 // browser's view looks thinner than the screen's.

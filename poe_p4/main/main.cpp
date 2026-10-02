@@ -25,11 +25,8 @@ static const char *TAG = "poe_p4";
 
 const ProtocolConfig* g_protocol = &kProtocolFT8;
 
-// Seeded to ADV's Station.txt default; porta_host overwrites on CONFIG_SET.
+// Default until Station.txt loads; porta_host overwrites on CONFIG_SET.
 std::string g_call = "YOURCALL";
-volatile bool g_tx_view_dirty = false;
-std::string g_last_reply_text;
-bool g_rx_dirty = false;
 
 static void decode_audio_task(void * /*arg*/) {
     ft8_audio_pipeline_config_t pipe_cfg = {
