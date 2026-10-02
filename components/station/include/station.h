@@ -3,7 +3,7 @@
 #include <string>
 
 // Station.txt parse/serialize. No ESP-IDF. Host tests and firmware both link this.
-// Radio integers match main/station_types.h RadioType values.
+// Radio integers: 0 none, 1 truSDX, 2 QMX, 5 QDX (the values older Station.txt files saved).
 
 static constexpr int kStationBandCount = 12;
 

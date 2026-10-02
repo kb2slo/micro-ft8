@@ -504,7 +504,7 @@ bool porta_proto_parse_config_value(const porta_frame_t *f, char *key_out, char 
 
 // --- FILE_LIST / FILE_READ / FILE_DATA payloads ---------------------------
 // FILE_LIST and FILE_READ (sidekick -> host) request one page -- skip/take,
-// the same shape main/storage/qso_browse.h's QsoBrowsePager already uses --
+// the same shape components/qso_log/include/qso_browse.h's QsoBrowsePager already uses --
 // reusing that pager instead of inventing wire-level pagination a second
 // time. The reply is zero or more FILE_DATA frames, one row each (so a short
 // buffer can never leave a row half-written), followed by ACK/NAK carrying

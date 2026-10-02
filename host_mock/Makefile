@@ -4,7 +4,9 @@ CXXFLAGS = -DHOST_MOCK -std=c++17 -g -Wall -Wno-unused-variable
 CFLAGS   = -DHOST_MOCK -g -Wall
 
 # host_mock first so mock esp_log.h shadows the real one
-INCLUDES = -I. -I../main -I../main/storage \
+INCLUDES = -I. \
+           -I../components/station/include \
+           -I../components/qso_log/include \
            -I../components/decode_types/include \
            -I../components/radio_control/include \
            -I../components/autoseq/include \
@@ -118,7 +120,7 @@ $(ADIF_TARGET): $(ADIF_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 STATION_OBJ = station.o test_station.o
-station.o: ../main/storage/station.cpp
+station.o: ../components/station/station.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 $(STATION_TARGET): $(STATION_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
@@ -170,25 +172,25 @@ $(BUNDLE_HOST_TARGET): $(BUNDLE_HOST_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 QSO_BROWSE_OBJ = qso_browse.o test_qso_browse.o
-qso_browse.o: ../main/storage/qso_browse.cpp
+qso_browse.o: ../components/qso_log/qso_browse.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 $(QSO_BROWSE_TARGET): $(QSO_BROWSE_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 ADIF_DELETE_OBJ = qso_browse.o adif_delete.o test_adif_delete.o
-adif_delete.o: ../main/storage/adif_delete.cpp
+adif_delete.o: ../components/qso_log/adif_delete.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -I../components/storage_service/include -c $< -o $@
 $(ADIF_DELETE_TARGET): $(ADIF_DELETE_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 ADIF_LOGGER_OBJ = adif.o adif_logger.o host_mocks.o test_adif_logger.o
-adif_logger.o: ../main/storage/adif_logger.cpp
+adif_logger.o: ../components/qso_log/adif_logger.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 $(ADIF_LOGGER_TARGET): $(ADIF_LOGGER_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 FILE_LIST_OBJ = qso_browse.o file_list.o test_file_list.o
-file_list.o: ../main/storage/file_list.cpp
+file_list.o: ../components/qso_log/file_list.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 $(FILE_LIST_TARGET): $(FILE_LIST_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^

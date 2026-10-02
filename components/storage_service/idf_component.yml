@@ -1,0 +1,4 @@
+dependencies:
+  # I29: internal Station.txt / .adi on LittleFS (same component version the
+  # sidekick web root pins).
+  joltwallet/littlefs: "1.22.3"

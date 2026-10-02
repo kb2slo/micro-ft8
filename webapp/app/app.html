@@ -1319,7 +1319,7 @@ function setForm(cfg) {
   });
 }
 
-// A Maidenhead locator exactly as main/storage/station.cpp's
+// A Maidenhead locator exactly as components/station/station.cpp's
 // normalize_grid_maidenhead() accepts one (verified against that function,
 // station.cpp:39-91, shared by both boards): 4, 6 or 8 characters -- field
 // A-R, square 0-9, and (6 or 8 characters) subsquare A-X, extension 0-9.
@@ -1389,7 +1389,7 @@ function setStationSheetForm(cfg) {
 
 // act_refs ("POTA:US-1234,SOTA:W7O/CC-001", architecture/webapp.md,
 // "Activation"). Parsed only for display here -- the firmware
-// (main/storage/station.cpp,
+// (components/station/station.cpp,
 // normalize_act_refs()) is what actually validates and stores it; this just
 // splits what it already accepted.
 function parseActRefs(cfg) {
@@ -1457,7 +1457,7 @@ document.getElementById('free_text').onchange = function () {
 // Malformed input is refused client-side, in a dialog, same as the dock's
 // frequency editor (webapp.md, The dock) -- station_parse() would otherwise
 // just silently keep the old grid (StationKey::Grid in
-// main/storage/station.cpp) and report the write as ok anyway.
+// components/station/station.cpp) and report the write as ok anyway.
 document.getElementById('grid').onchange = function () {
   var v = this.value.trim();
   if (v && !gridFormatOk(v)) {

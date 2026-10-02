@@ -845,7 +845,7 @@ static void test_config_kv()
           "set refuses null value");
 }
 
-// FILE_LIST / FILE_READ page like main/storage/qso_browse.h's QsoBrowsePager
+// FILE_LIST / FILE_READ page like components/qso_log/include/qso_browse.h's QsoBrowsePager
 // (skip/take), and FILE_DATA carries one row per frame -- a NAME row for
 // FILE_LIST, an ENTRY row for FILE_READ, discriminated by the same
 // first-payload-byte pattern EVENT and ACTION already use.
