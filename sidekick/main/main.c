@@ -19,16 +19,16 @@
 
 static const char *TAG = "sidekick";
 
-// PORTA companion beacon — docs/architecture/sidekick.md (Port A: the link to the main board). One-way, sidekick -> ADV: sync
-// byte (never collides with NMEA's '$'-prefixed sentences, so the ADV can
+// PORTA companion beacon — docs/architecture/sidekick.md (Port A: the link to the main board). One-way, sidekick -> main board: sync
+// byte (never collides with NMEA's '$'-prefixed sentences, so the main board can
 // tell GPS and companion apart by listening) + this build's version string
 // (from esp_app_desc_t, the same git-SHA+dirty value tools/git_version.cmake
-// computes for both sidekick and the ADV, so an exact string match is
-// meaningful) + a simple checksum so the ADV isn't locking onto a single
+// computes for both sidekick and the main board, so an exact string match is
+// meaningful) + a simple checksum so the main board isn't locking onto a single
 // stray byte of line noise as "companion present".
 //
-// Grove pin roles mirror the ADV's PORTA wiring: a Grove cable is
-// straight-through (G1-to-G1, G2-to-G2), and the ADV receives on its G1 /
+// Grove pin roles mirror the main board's PORTA wiring: a Grove cable is
+// straight-through (G1-to-G1, G2-to-G2), and the main board receives on its G1 /
 // transmits on its G2, so sidekick must transmit on G1 / receive on G2 for
 // the two ends to actually reach each other over the same two wires.
 #define PORTA_UART UART_NUM_1
@@ -98,13 +98,13 @@ static void porta_beacon_send(void) {
 // its own flash-receiver instead of the app — sidesteps ROM strap-sampling
 // entirely, needs no wiring, but is real bootloader-level engineering
 // (higher stakes: bugs there affect every boot, not just updates) — see
-// docs/architecture/sidekick.md (Installing the sidekick from the ADV)'s "Future phase" note. USB-C stays the only flash path
+// docs/architecture/sidekick.md (Installing the sidekick from the main board)'s "Future phase" note. USB-C stays the only flash path
 // until that's built.
 
 // With CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE an image installed by OTA boots
 // in PENDING_VERIFY and is rolled back on the next restart unless it declares
 // itself good. "Good" here means the companion link works — an image that
-// boots but cannot beacon is useless to the ADV, so the beacon is the check
+// boots but cannot beacon is useless to the main board, so the beacon is the check
 // rather than merely reaching app_main(). Images written over USB-C are not
 // pending and this is a no-op for them.
 static void mark_valid_once_beaconing(uint32_t beacons_sent)
@@ -182,7 +182,7 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "Micro-FT8 sidekick booting (IDF %s)", esp_get_idf_version());
 
-    // Beacon first, WiFi second. The PORTA companion link is what the ADV
+    // Beacon first, WiFi second. The PORTA companion link is what the main board
     // depends on; a sidekick that cannot reach WiFi is degraded, not broken,
     // so nothing about network bring-up is allowed to delay or block it.
     porta_beacon_init();

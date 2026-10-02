@@ -1,9 +1,0 @@
-# Cardputer ADV (Stamp-S3A, ESP32-S3FN8): 8 MB flash, no PSRAM, 240 MHz as the firmware runs.
-CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
-CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
-# The firmware's console is the G4/G5 UART because USB-C is the radio's USB host. The bench has no USB host,
-# so it prints over USB-Serial-JTAG and needs no adapter.
-CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
-# Same table as the firmware's native layout (repo partitions.csv), so flashing only the app slot leaves nvs
-# and the storage partition alone. Launcher units use OTA slots instead: see tools/flash_keep_launcher.py.
-CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="../../partitions.csv"

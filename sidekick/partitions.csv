@@ -2,8 +2,7 @@
 #
 # Two OTA slots, no factory. Firmware updates are phone-relayed into an OTA
 # slot (docs/architecture/sidekick.md (Installing the app bundle)); the ROM/USB-C path remains first install and hard
-# recovery. With otadata erased the bootloader boots ota_0, which is what the
-# ADV's USB-C bootstrap writes.
+# recovery. With otadata erased the bootloader boots ota_0.
 #
 # 3 MB slots on an 8 MB part. Measured 2026-09-09 on esp32s3: IDF's
 # simple_ota_example (WiFi + HTTPS + CA) is 911 KB; a sidekick without a TLS

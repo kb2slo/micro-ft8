@@ -5,13 +5,11 @@
 #
 # Bootloader 0x0, partition table 0x8000, app in ota_0 at 0x20000, so the
 # sidekick's esp_app_desc_t is at absolute 0x20020 (sidekick/README.md,
-# Version identity). The ADV derives that from the partition table it embeds
-# rather than hardcoding it.
+# Version identity).
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
 
 # Two OTA slots (partitions.csv) — docs/architecture/sidekick.md (Firmware updates). No factory partition: with
-# otadata erased the bootloader boots ota_0, which is what the ADV's USB-C
-# bootstrap writes.
+# otadata erased the bootloader boots ota_0.
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
@@ -28,5 +26,5 @@ CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 CONFIG_LWIP_MAX_SOCKETS=16
 
 # Port A. A WiFi flash access otherwise stalls the UART interrupt longer than
-# the 128-byte FIFO. The ADV build sets the same option.
+# the 128-byte FIFO.
 CONFIG_UART_ISR_IN_IRAM=y

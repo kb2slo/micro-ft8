@@ -22,7 +22,7 @@
 static const char *TAG = "host";
 
 // Copy a frame onto the Port A UART without blocking the httpd task forever.
-// If the ADV is unplugged or not draining RX, uart_write_bytes() can stall
+// If the main board is unplugged or not draining RX, uart_write_bytes() can stall
 // indefinitely once the TX ring fills — that hung GET /api/config with no body.
 static bool porta_send(const uint8_t *frame, size_t n)
 {
@@ -742,7 +742,7 @@ static esp_err_t wait_action_reply(httpd_req_t *req, uint8_t verb)
     // background listing/read), so resending would restart that from
     // scratch rather than just re-ask for a lost ACK. Halfway through the
     // wait, not at the end: a lost request or a lost ACK/VALUE frame (CRC
-    // failure, or the ADV's outbound queue dropping it under load -- exactly
+    // failure, or the main board's outbound queue dropping it under load -- exactly
     // what the link-health counters below exist to measure) then costs one
     // extra round-trip instead of the whole timeout.
     const int retry_at = tries / 2;

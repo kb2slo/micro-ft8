@@ -870,7 +870,7 @@ static void start_ap(void)
     // Modem sleep (the default) is a known trigger for CCMP replay-detection
     // and block-ack churn on some APs/clients -- the radio goes quiet between
     // beacons, and the wake transition can desync replay-counter tracking.
-    // This board has no battery reason to sleep the radio (USB/ADV powered),
+    // This board has no battery reason to sleep the radio (USB powered),
     // so there is no cost to paying for reliability instead. Must come after
     // esp_wifi_start(), not esp_wifi_init() -- the driver requires it.
     ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));

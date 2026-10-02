@@ -11,7 +11,7 @@
 // viewer cannot key a transmitter.
 //
 // It also gives the link a free correctness oracle: the same lines appear on
-// the ADV's own screen (`P` then `.`), so if the two disagree the fault is
+// the main board's own screen (`P` then `.`), so if the two disagree the fault is
 // between them.
 // ============================================================================
 
@@ -19,7 +19,7 @@
 
 // Starts the PORTA receive task. Independent of WiFi -- events are printed on
 // this device's USB-C whether or not anything is serving them, because that
-// console is the point when the ADV's own USB-C is busy hosting the radio.
+// console is the point when the main board's own USB-C is busy hosting the radio.
 void host_link_start(void);
 
 // Adds the viewer and its polling endpoint to an already-started server.

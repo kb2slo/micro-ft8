@@ -2,18 +2,15 @@
 # CMakeLists in this exact order for cmake to work correctly
 cmake_minimum_required(VERSION 3.16)
 
-# Separate idf.py project from the ADV app (micro_ft8). ESP-IDF locks target
-# and sdkconfig per project, so the ADV app and this one cannot share a
-# configure even though both are esp32s3 now —
-# see docs/architecture/sidekick.md (Installing the sidekick from the ADV). Pinned here so `idf.py build` works without a manual
-# `set-target` step.
+# Separate idf.py project from poe_p4: ESP-IDF locks target and sdkconfig per
+# project. Pinned here so `idf.py build` works without a manual `set-target`
+# step.
 set(IDF_TARGET esp32s3)
 
 # Exact git SHA + dirty flag, not ESP-IDF's default `git describe` (tag-
-# relative, fuzzy) — via the same shared, override-aware logic
-# tools/gen_build_identity.cmake uses for the ADV, not a second copy that
-# can drift. Same repo, same commit, so "does the embedded sidekick.bin
-# match what's on the Nano" is an exact string comparison (docs/architecture/sidekick.md (Port A: the link to the main board)/
+# relative, fuzzy) — via the shared, override-aware logic in
+# tools/git_version.cmake. Same repo, same commit, so "does this sidekick
+# match the build" is an exact string comparison (docs/architecture/sidekick.md (Port A: the link to the main board)/
 # §5.2c) — including under CI's MICROFT8_GIT_SHA pin, which a bare
 # `git rev-parse HEAD` here would not otherwise honor. Must be set before
 # project() — that's the only hook ESP-IDF's build system gives PROJECT_VER
@@ -25,7 +22,7 @@ if(DIRTY)
     set(PROJECT_VER "${PROJECT_VER}-dirty")
 endif()
 
-# The frame codec is shared with the ADV rather than duplicated: two idf.py
+# The frame codec is shared with the P4 rather than duplicated: two idf.py
 # projects compiling one file is prong 1 of docs/STYLE.md's
 # module-placement rule, and a second copy of a wire format is how the two ends drift.
 set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/../components/porta_proto")

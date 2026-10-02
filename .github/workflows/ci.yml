@@ -1,6 +1,6 @@
 # Production firmware + host tests.
-# Merged image is the same POST_BUILD output as a local `idf.py build`:
-#   build/MicroFT8_Merged_Auto.bin  — flash at 0x0 (8 MB, custom partitions).
+# The P4's merged image is the same POST_BUILD output as a local `idf.py build`:
+#   poe_p4/build/poe_p4_merged.bin  — flash at 0x0.
 #
 # Firmware + the rolling `continuous` release run only when sources that can
 # change the binary (or this workflow) change. Docs/roadmap-only commits skip
@@ -36,76 +36,12 @@ jobs:
         with:
           filters: |
             firmware:
-              - 'main/**'
               - 'components/**'
               - 'sidekick/**'
               - 'poe_p4/**'
-              - 'CMakeLists.txt'
-              - 'sdkconfig'
-              - 'sdkconfig.defaults'
-              - 'partitions.csv'
-              - 'dependencies.lock'
               - '**/idf_component.yml'
               - 'tools/**/*.cmake'
               - '.github/workflows/ci.yml'
-
-  readme-audit:
-    name: README audit
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      # docs/README.md "Fork README stays current": operator-visible work must
-      # audit the fork section of README.md in the same change. Removal is the
-      # easy case to miss -- a README documenting a key that now does nothing is
-      # worse than one that never mentioned it. This checks the mechanical
-      # signals only; judgement still belongs to the author.
-      - name: Operator-visible change must touch README.md
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-        run: |
-          set -euo pipefail
-          diff=$(git diff "$BASE...$HEAD" -- main/ || true)
-
-          # A UIMode enumerator or case disappearing, or a key-dispatch line
-          # being added/removed/changed, is operator-visible by definition.
-          hits=""
-          if printf '%s\n' "$diff" | grep -qE "^-.*UIMode::[A-Z_]+"; then
-            hits="${hits}  - a UIMode enumerator or case was removed\n"
-          fi
-          if printf '%s\n' "$diff" | grep -qE "^[-+].*c == '[a-zA-Z]' \|\| c == '[a-zA-Z]'"; then
-            hits="${hits}  - a key binding was added, removed or changed\n"
-          fi
-
-          if [ -z "$hits" ]; then
-            echo "No operator-visible signals in main/. Nothing to audit."
-            exit 0
-          fi
-
-          if git diff --name-only "$BASE...$HEAD" | grep -qx "README.md"; then
-            echo "Operator-visible change and README.md was updated. OK."
-            exit 0
-          fi
-
-          # Mirrors the chat rule: saying "no README change needed" out loud is
-          # what makes a skipped audit distinguishable from a performed one.
-          if printf '%s' "$PR_BODY" | grep -qiE "README-audit:[[:space:]]*(none|not needed)"; then
-            echo "README audit explicitly waived in the PR body. OK."
-            exit 0
-          fi
-
-          echo "::error::Operator-visible change without a README.md update."
-          printf "Signals found:\n$hits"
-          echo ""
-          echo "Either update the fork section of README.md (above the Wei delimiter"
-          echo "-- do not rewrite Wei's original below it), or state in the PR body:"
-          echo ""
-          echo "    README-audit: none - <why this is not operator-visible>"
-          exit 1
 
   host-tests:
     name: Host tests
@@ -188,12 +124,9 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') || needs.changes.outputs.firmware == 'true'
     runs-on: ubuntu-latest
     env:
-      # Same pin the ADV firmware job uses, and for the same reason: CI
-      # checks out a synthesized merge commit for a PR, not
+      # CI checks out a synthesized merge commit for a PR, not
       # github.event.pull_request.head.sha, so a bare `git rev-parse HEAD`
-      # in sidekick/CMakeLists.txt would disagree with the ADV's pinned
-      # version — defeating the exact-match comparison docs/architecture/sidekick.md (Port A: the link to the main board)
-      # relies on. Must match the firmware job's value exactly.
+      # in sidekick/CMakeLists.txt would report a SHA nobody can find.
       MICROFT8_GIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v5
@@ -211,13 +144,13 @@ jobs:
           extra_docker_args: -e MICROFT8_GIT_SHA=${{ env.MICROFT8_GIT_SHA }}
           command: idf.py build
 
-      # Use the script rather than re-listing the files here. This step used
-      # to copy three files by hand and went stale the moment the OTA
-      # partition change added ota_data_initial.bin (I3c) -- the ADV build
-      # then failed on a missing EMBED_FILES source. One definition, in
-      # tools/stage_sidekick_firmware.sh.
-      - name: Stage sidekick outputs
-        run: ./tools/stage_sidekick_firmware.sh
+      # One 0x0 image for desk esptool, merged from the build's four pieces
+      # by the same script a local flash uses.
+      - name: Merge sidekick image
+        run: |
+          python3 -m pip install --upgrade 'esptool>=4'
+          mkdir -p sidekick-out
+          ./tools/merge_sidekick_bin.sh sidekick/build sidekick-out/sidekick_merged.bin
 
       - name: Upload sidekick firmware
         uses: actions/upload-artifact@v6
@@ -225,7 +158,7 @@ jobs:
           name: sidekick-firmware
           if-no-files-found: error
           retention-days: 30
-          path: components/sidekick_flasher/target_firmware/
+          path: sidekick-out/sidekick_merged.bin
 
   poe_p4-firmware:
     name: PoE-P4 (ESP32-P4)
@@ -237,12 +170,8 @@ jobs:
         with:
           submodules: true
 
-      # docs/STYLE.md (Two boards, one source): every build produces both the ADV (esp32s3) and
-      # PoE-P4 (esp32p4) binaries, not one-or-the-other -- this job is that
-      # requirement, not an opt-in target. Separate
-      # idf.py project from both main/ and sidekick/ (poe_p4/CMakeLists.txt
-      # pins esp32p4), so it needs no MICROFT8_GIT_SHA/build-identity plumbing
-      # of its own yet. No radio, no UI: boot-only skeleton for now.
+      # Separate idf.py project from sidekick/ (poe_p4/CMakeLists.txt pins
+      # esp32p4).
       - name: Build poe_p4 with ESP-IDF 5.5.5
         uses: espressif/esp-idf-ci-action@v1
         with:
@@ -263,181 +192,14 @@ jobs:
             poe_p4/build/bootloader/bootloader.bin
             poe_p4/build/partition_table/partition-table.bin
 
-  firmware:
-    name: Firmware (ESP32-S3)
-    needs: [changes, sidekick-firmware]
-    if: startsWith(github.ref, 'refs/tags/v') || needs.changes.outputs.firmware == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    env:
-      MICROFT8_GIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: true
-
-      # A tag build is the only thing that may claim to be a release, and the
-      # version comes from the tag rather than a file someone had to remember
-      # to edit. github.ref_name is already exactly the tag here, so this needs
-      # no tags fetched -- `git describe` inside the build container would,
-      # and checkout above fetches none.
-      - name: Decide build kind
-        run: |
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            echo "MICROFT8_BUILD_KIND=rel" >> "$GITHUB_ENV"
-            echo "MICROFT8_RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
-          else
-            echo "MICROFT8_BUILD_KIND=dev" >> "$GITHUB_ENV"
-            echo "MICROFT8_RELEASE_VERSION=" >> "$GITHUB_ENV"
-          fi
-
-      - name: Download sidekick firmware
-        uses: actions/download-artifact@v7
-        with:
-          name: sidekick-firmware
-          path: components/sidekick_flasher/target_firmware
-
-      # Globbed, not listed: the previous hand-maintained list here would have
-      # passed a staging step that had silently stopped producing a file.
-      - name: Verify sidekick firmware staged
-        run: |
-          dir=components/sidekick_flasher/target_firmware
-          count=0
-          for f in "$dir"/*.bin; do
-            test -s "$f" || {
-              echo "::error::empty $f — the published ADV image would ship a broken sidekick payload"
-              exit 1
-            }
-            count=$((count + 1))
-          done
-          echo "staged $count sidekick images"
-          # bootloader, partition table, app, otadata. Fewer means the staging
-          # script stopped producing something and nothing else would notice.
-          if [ "$count" -lt 4 ]; then
-            echo "::error::expected at least 4 staged images, found $count — the ADV would ship without working sidekick field-flash"
-            exit 1
-          fi
-
-      # CI=true is passed explicitly: the build refuses a `rel` build without
-      # it, and the container does not inherit the runner's environment.
-      - name: Build with ESP-IDF 5.5.5
-        uses: espressif/esp-idf-ci-action@v1
-        with:
-          esp_idf_version: v5.5.5
-          target: esp32s3
-          extra_docker_args: >-
-            -e MICROFT8_GIT_SHA=${{ env.MICROFT8_GIT_SHA }}
-            -e MICROFT8_BUILD_KIND=${{ env.MICROFT8_BUILD_KIND }}
-            -e MICROFT8_RELEASE_VERSION=${{ env.MICROFT8_RELEASE_VERSION }}
-            -e CI=true
-          command: idf.py build
-
-      - name: Stage hash-first merged image
-        run: |
-          mkdir -p dist
-          name="$(tr -d '[:space:]' < build/generated/merged_bin_name.txt)"
-          test -n "$name"
-          test -f "build/${name}"
-          cp "build/${name}" "dist/${name}"
-          sha256sum "dist/${name}" | tee "dist/${name}.sha256"
-          {
-            echo "ref=${GITHUB_REF}"
-            echo "sha=${GITHUB_SHA}"
-            echo "head=${MICROFT8_GIT_SHA:0:7}"
-            echo "idf=v5.5.5"
-            echo "target=esp32s3"
-            echo "bin=${name}"
-            echo "sidekick_fw=embedded"
-            echo "flash=esptool.py --chip esp32s3 write_flash 0x0 ${name}"
-          } > dist/BUILD.txt
-          echo "BIN_FILE=${name}" >> "$GITHUB_ENV"
-
-      - name: Upload merged binary
-        id: bin
-        uses: actions/upload-artifact@v6
-        with:
-          name: MicroFT8-Cardputer-ADV
-          if-no-files-found: error
-          retention-days: 30
-          path: |
-            dist/${{ env.BIN_FILE }}
-            dist/${{ env.BIN_FILE }}.sha256
-            dist/BUILD.txt
-
-      - name: Job summary
-        run: |
-          {
-            echo "## Firmware artifact"
-            echo
-            echo "- Image: \`${BIN_FILE}\`"
-            echo "- [MicroFT8-Cardputer-ADV](${{ steps.bin.outputs.artifact-url }})"
-            echo "- [This run](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
-            echo
-            echo '```'
-            echo "esptool.py --chip esp32s3 write_flash 0x0 ${BIN_FILE}"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Sticky PR comment
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: actions/github-script@v8
-        env:
-          ARTIFACT_URL: ${{ steps.bin.outputs.artifact-url }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          BIN_FILE: ${{ env.BIN_FILE }}
-        with:
-          script: |
-            const marker = '<!-- microft8-ci-firmware -->';
-            const sha = process.env.HEAD_SHA;
-            const short = sha.slice(0, 7);
-            const bin = process.env.BIN_FILE;
-            const artifactUrl = process.env.ARTIFACT_URL;
-            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
-            const commitUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/commit/${sha}`;
-            const body = [
-              marker,
-              '## Firmware (Cardputer ADV)',
-              '',
-              'Latest CI image for this PR (this comment is replaced on each push).',
-              '',
-              `- Commit: [\`${short}\`](${commitUrl})`,
-              `- File: \`${bin}\` (hash first, for M5Launcher)`,
-              `- Download: [MicroFT8-Cardputer-ADV](${artifactUrl})`,
-              `- [Workflow run](${runUrl})`,
-              '',
-              '```',
-              `esptool.py --chip esp32s3 write_flash 0x0 ${bin}`,
-              '```',
-              '',
-              'First boot may format FATFS. Artifact expires in 30 days.',
-            ].join('\n');
-            const { owner, repo } = context.repo;
-            const issue_number = context.issue.number;
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner, repo, issue_number, per_page: 100,
-            });
-            const existing = comments.find((c) => c.body && c.body.includes(marker));
-            if (existing) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number, body });
-            }
-
   release:
     name: GitHub Release (tag)
-    needs: [host-tests, firmware, poe_p4-firmware]
+    needs: [host-tests, poe_p4-firmware]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v7
-        with:
-          name: MicroFT8-Cardputer-ADV
-          path: dist
-
       - uses: actions/download-artifact@v7
         with:
           name: poe_p4-firmware
@@ -446,12 +208,7 @@ jobs:
       - name: Name tagged binaries
         run: |
           tag="${GITHUB_REF_NAME}"
-          bin="$(awk -F= '/^bin=/{print $2}' dist/BUILD.txt)"
-          test -n "$bin"
-          test -f "dist/${bin}"
-          cp "dist/${bin}" "dist/MicroFT8-${tag}-Merged.bin"
-          sha256sum "dist/MicroFT8-${tag}-Merged.bin" | tee "dist/MicroFT8-${tag}-Merged.bin.sha256"
-
+          mkdir -p dist
           test -f "dist-poe-p4/poe_p4_merged.bin"
           cp "dist-poe-p4/poe_p4_merged.bin" "dist/MicroFT8-PoE-P4-${tag}-Merged.bin"
           sha256sum "dist/MicroFT8-PoE-P4-${tag}-Merged.bin" | tee "dist/MicroFT8-PoE-P4-${tag}-Merged.bin.sha256"
@@ -460,19 +217,9 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            dist/MicroFT8-${{ github.ref_name }}-Merged.bin
-            dist/MicroFT8-${{ github.ref_name }}-Merged.bin.sha256
             dist/MicroFT8-PoE-P4-${{ github.ref_name }}-Merged.bin
             dist/MicroFT8-PoE-P4-${{ github.ref_name }}-Merged.bin.sha256
           body: |
-            Cardputer ADV: flash the merged image at `0x0` (full 8 MB image, custom FATFS partition table).
-
-            ```
-            esptool.py --chip esp32s3 write_flash 0x0 MicroFT8-${{ github.ref_name }}-Merged.bin
-            ```
-
-            First boot may format the FATFS partition.
-
             M5Stack Unit PoE-P4 (U213): the headless main board -- pair it with a sidekick, whose web app is the only UI. Flash at `0x0` over the USB-C port next to the RJ45 (labeled `USB-C PROG & OTG`).
 
             ```
@@ -481,7 +228,7 @@ jobs:
 
   release-main:
     name: GitHub Release (main)
-    needs: [host-tests, firmware, poe_p4-firmware, sidekick-firmware]
+    needs: [host-tests, poe_p4-firmware, sidekick-firmware]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -502,21 +249,13 @@ jobs:
 
       - uses: actions/download-artifact@v7
         with:
-          name: MicroFT8-Cardputer-ADV
-          path: dist
-
-      - uses: actions/download-artifact@v7
-        with:
           name: poe_p4-firmware
           path: dist-poe-p4
 
       - uses: actions/download-artifact@v7
         with:
           name: sidekick-firmware
-          path: components/sidekick_flasher/target_firmware
-
-      - name: Install esptool (sidekick merge)
-        run: python3 -m pip install --upgrade 'esptool>=4'
+          path: dist-sidekick
 
       # Self-identifying on disk: several of these land in one Downloads folder
       # during a bench session, where a fixed name plus "(3)" says nothing.
@@ -525,18 +264,11 @@ jobs:
       # project rename would have to change (docs/RELEASE_PROCESS.md).
       - name: Name rolling main binary
         run: |
-          bin="$(awk -F= '/^bin=/{print $2}' dist/BUILD.txt)"
-          test -n "$bin"
-          test -f "dist/${bin}"
+          mkdir -p dist
           short="${GITHUB_SHA:0:7}"
           day="$(TZ=UTC git show -s --format=%cd --date=format-local:%Y%m%d "${GITHUB_SHA}")"
-          asset="${day}-microft8-${short}.bin"
-          cp "dist/${bin}" "dist/${asset}"
-          sha256sum "dist/${asset}" | tee "dist/${asset}.sha256"
           echo "SHORT_SHA=${short}" >> "$GITHUB_ENV"
           echo "DAY=${day}" >> "$GITHUB_ENV"
-          echo "HASH_BIN=${bin}" >> "$GITHUB_ENV"
-          echo "ASSET=${asset}" >> "$GITHUB_ENV"
 
           test -f "dist-poe-p4/poe_p4_merged.bin"
           asset_p4="${day}-microft8-poe-p4-${short}.bin"
@@ -544,14 +276,13 @@ jobs:
           sha256sum "dist/${asset_p4}" | tee "dist/${asset_p4}.sha256"
           echo "ASSET_P4=${asset_p4}" >> "$GITHUB_ENV"
 
-      - name: Merge sidekick + source archive
+      - name: Name sidekick image + source archive
         run: |
           short="${SHORT_SHA}"
           day="${DAY}"
-          ./tools/merge_sidekick_bin.sh \
-            components/sidekick_flasher/target_firmware \
-            "dist/${day}-microft8-sidekick-${short}.bin"
           asset_sk="${day}-microft8-sidekick-${short}.bin"
+          test -s dist-sidekick/sidekick_merged.bin
+          cp dist-sidekick/sidekick_merged.bin "dist/${asset_sk}"
           sha256sum "dist/${asset_sk}" | tee "dist/${asset_sk}.sha256"
           echo "ASSET_SK=${asset_sk}" >> "$GITHUB_ENV"
 
@@ -585,15 +316,12 @@ jobs:
           prerelease: true
           make_latest: false
           files: |
-            dist/${{ env.ASSET }}
-            dist/${{ env.ASSET }}.sha256
             dist/${{ env.ASSET_P4 }}
             dist/${{ env.ASSET_P4 }}.sha256
             dist/${{ env.ASSET_SK }}
             dist/${{ env.ASSET_SK }}.sha256
             dist/${{ env.ASSET_SRC }}
             dist/${{ env.ASSET_SRC }}.sha256
-            dist/BUILD.txt
           body: |
             Rolling firmware from `main`, rebuilt on every merge that can change the binary. Not a versioned release — see `docs/RELEASE_PROCESS.md`.
 
@@ -601,21 +329,13 @@ jobs:
 
             - Commit: `${{ github.sha }}`
 
-            **Cardputer ADV** — build image: `${{ env.HASH_BIN }}`, download: `${{ env.ASSET }}`. Flash at `0x0` (full 8 MB image, custom LittleFS partition table).
-
-            ```
-            esptool.py --chip esp32s3 write_flash 0x0 ${{ env.ASSET }}
-            ```
-
-            First boot may format the LittleFS partition.
-
             **M5Stack Unit PoE-P4 (U213)** — download: `${{ env.ASSET_P4 }}`. Flash at `0x0` over the USB-C port next to the RJ45 (labeled `USB-C PROG & OTG`).
 
             ```
             esptool.py --chip esp32p4 write_flash 0x0 ${{ env.ASSET_P4 }}
             ```
 
-            **AtomS3 Lite sidekick** — download: `${{ env.ASSET_SK }}` (merged 0x0 image). Standalone desk flash; ADV Port A flash embeds the same build.
+            **AtomS3 Lite sidekick** — download: `${{ env.ASSET_SK }}` (merged 0x0 image). Desk flash.
 
             ```
             esptool.py --chip esp32s3 write_flash 0x0 ${{ env.ASSET_SK }}
@@ -633,12 +353,10 @@ jobs:
 
           sha256_of() { awk '{print $1}' "$1"; }
 
-          ADV_SHA="$(sha256_of "dist/${ASSET}.sha256")"
           P4_SHA="$(sha256_of "dist/${ASSET_P4}.sha256")"
           SK_SHA="$(sha256_of "dist/${ASSET_SK}.sha256")"
           SRC_SHA="$(sha256_of "dist/${ASSET_SRC}.sha256")"
 
-          cp "dist/${ASSET}" dist/microft8-adv-continuous.bin
           cp "dist/${ASSET_P4}" dist/microft8-poe-p4-continuous.bin
           cp "dist/${ASSET_SK}" dist/microft8-sidekick-continuous.bin
           cp "dist/${ASSET_SRC}" dist/microft8-source-continuous.tar.gz
@@ -650,13 +368,6 @@ jobs:
             "date": "${DAY}",
             "generated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "assets": {
-              "adv": {
-                "stable": "microft8-adv-continuous.bin",
-                "filename": "${ASSET}",
-                "sha256": "${ADV_SHA}",
-                "chip": "esp32s3",
-                "flash_offset": "0x0"
-              },
               "poe_p4": {
                 "stable": "microft8-poe-p4-continuous.bin",
                 "filename": "${ASSET_P4}",
@@ -688,7 +399,6 @@ jobs:
               --remote
           }
 
-          put microft8-adv-continuous.bin dist/microft8-adv-continuous.bin application/octet-stream
           put microft8-poe-p4-continuous.bin dist/microft8-poe-p4-continuous.bin application/octet-stream
           put microft8-sidekick-continuous.bin dist/microft8-sidekick-continuous.bin application/octet-stream
           put microft8-source-continuous.tar.gz dist/microft8-source-continuous.tar.gz application/gzip

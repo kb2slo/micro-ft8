@@ -2,17 +2,13 @@
 """Cut a versioned Micro-FT8 release.
 
 Creates and pushes an annotated `v<version>` tag. CI does the rest: the
-firmware job sees a tag build, builds with MICROFT8_BUILD_KIND=rel and the
-version taken from the tag, and the release job publishes the binary.
+P4 firmware job builds on the tag and the release job publishes the binary
+under the tag's name.
 
-This script edits no source file. The version the device displays is derived
-from the tag by tools/gen_build_identity.cmake, so there is no number to bump
-and no bump commit for the tag to land on the wrong side of.
+This script edits no source file, so there is no number to bump and no bump
+commit for the tag to land on the wrong side of.
 
-Everything here is a precondition check. The guarantee that a `rel` build is
-clean, versioned and from CI lives in the build, not in this script -- see
-docs/RELEASE_PROCESS.md. Skipping this script cannot forge a release; it can
-only produce a tag that CI then refuses to build.
+Everything here is a precondition check -- see docs/RELEASE_PROCESS.md.
 """
 
 from __future__ import annotations

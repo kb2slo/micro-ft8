@@ -5,7 +5,7 @@
 //
 // The sidekick joins a network so the phone can reach it, and so it can
 // download its own firmware (docs/architecture/sidekick.md, Firmware updates:
-// plain HTTP, hash-checked, not yet built). A factory part has no credentials and the ADV cannot supply them
+// plain HTTP, hash-checked, not yet built). A factory part has no credentials and the main board cannot supply them
 // (that would need Station.txt fields and menu space that does not exist), so
 // the sidekick provisions itself through the browser UI it has to serve
 // anyway.

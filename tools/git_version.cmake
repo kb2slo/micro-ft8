@@ -5,10 +5,7 @@
 # different SHA than github.event.pull_request.head.sha, so a bare
 # rev-parse there would silently disagree with the pinned value.
 #
-# Used by both tools/gen_build_identity.cmake (ADV) and
-# sidekick/CMakeLists.txt: docs/architecture/sidekick.md (Port A: the link to the main board) need the two independently-
-# built firmwares' version strings to be exactly comparable — one shared
-# implementation, not two copies that can drift apart.
+# Used by sidekick/CMakeLists.txt.
 #
 # Input:  GIT_DIR (required), MICROFT8_GIT_SHA (optional override)
 # Output: SHA, DIRTY (0 or 1) — set in the caller's scope

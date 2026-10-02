@@ -128,7 +128,7 @@ esp_err_t pairing_http_init(void)
     }
     if (token_mint_and_store()) {
         // Deliberately not logged. The sidekick's USB-C console is where the
-        // ADV's log lands (I28a), so anything printed here is visible to
+        // the main board's log lands (I28a), so anything printed here is visible to
         // whoever is watching that stream -- and the token is the one value
         // whose disclosure is supposed to cost a button press.
         ESP_LOGI(TAG, "Pairing token minted; press the button to read it");

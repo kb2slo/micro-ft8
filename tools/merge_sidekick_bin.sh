@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Merge staged sidekick flash pieces into one 0x0 image for desk esptool.
-# Offsets match components/sidekick_flasher (bootloader 0x0, table 0x8000,
-# otadata 0xF000, app/ota_0 0x20000) and sidekick/partitions.csv.
+# Merge a built sidekick's flash pieces into one 0x0 image for desk esptool.
+# Offsets match sidekick/partitions.csv (bootloader 0x0, table 0x8000,
+# otadata 0xF000, app/ota_0 0x20000).
 #
-# Usage: tools/merge_sidekick_bin.sh [stagedir] [outfile]
-# Defaults: components/sidekick_flasher/target_firmware/{,sidekick_merged.bin}
+# Usage: tools/merge_sidekick_bin.sh [builddir] [outfile]
+# Defaults: sidekick/build/{,sidekick_merged.bin}
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DIR="${1:-$ROOT/components/sidekick_flasher/target_firmware}"
+DIR="${1:-$ROOT/sidekick/build}"
 OUT="${2:-$DIR/sidekick_merged.bin}"
 
-for f in bootloader.bin partition-table.bin ota_data_initial.bin sidekick.bin; do
+for f in bootloader/bootloader.bin partition_table/partition-table.bin ota_data_initial.bin sidekick.bin; do
   test -s "$DIR/$f" || {
-    echo "error: missing or empty $DIR/$f — run tools/stage_sidekick_firmware.sh first" >&2
+    echo "error: missing or empty $DIR/$f — build it first: (cd sidekick && idf.py build)" >&2
     exit 1
   }
 done
@@ -29,8 +29,8 @@ else
 fi
 
 "${ESPTOOL[@]}" --chip esp32s3 merge_bin -o "$OUT" \
-  0x0 "$DIR/bootloader.bin" \
-  0x8000 "$DIR/partition-table.bin" \
+  0x0 "$DIR/bootloader/bootloader.bin" \
+  0x8000 "$DIR/partition_table/partition-table.bin" \
   0xf000 "$DIR/ota_data_initial.bin" \
   0x20000 "$DIR/sidekick.bin"
 

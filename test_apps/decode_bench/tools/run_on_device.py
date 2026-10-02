@@ -6,7 +6,7 @@ storage untouched. That is safe on a board that also runs the firmware, because 
 partition table (see sdkconfig.defaults.<target>).
 
 --full: write the whole build (bootloader, partition table, app) from the build directory's flash_args, like
-`idf.py flash`. nvs and storage are still not written. Only for boards without Launcher.
+`idf.py flash`. nvs and storage are still not written.
 
   python tools/run_on_device.py PORT build_dir/decode_bench.bin LOGFILE [--chip esp32s3] [--full]
 Run inside the ESP-IDF environment (needs esptool and pyserial).
