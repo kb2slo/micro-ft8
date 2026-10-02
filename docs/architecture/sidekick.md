@@ -112,5 +112,5 @@ Nothing of ours is pinned to a core: FreeRTOS places our tasks, and ESP-IDF pins
 | WiFi driver, mDNS, `esp_timer` | ESP-IDF | IDF defaults (mDNS 1) | CPU0 | — | |
 | lwIP `tcpip` | ESP-IDF | 18 | any | — | |
 
-* **Known defect, row hvz8:** the reply state `porta_rx` writes and HTTP handlers read is not fully under `s_lock`, so a handler can read the previous reply's result.
-* **Not yet built: row wgjx** — pin the latency-sensitive work (main loop, `porta_rx`) to one core and the bursty work (HTTP, DNS, scanning) to the other. After hvz8, since pinning would make that race certain.
+* **The action reply** (verb, OK, reason) is one slot under `s_lock`, the same mutex as the event ring. `porta_rx` stores OK and the reason before the verb, and a CONFIG_GET retry resets its gather buffer under that lock, so a handler that sees its verb has this reply's OK and reason.
+* **Not yet built: row wgjx** — pin the latency-sensitive work (main loop, `porta_rx`) to one core and the bursty work (HTTP, DNS, scanning) to the other. Its bench compares timeout rates against the 2026-10-02 sidekick session (no wrong-result replies and no new timeouts).

@@ -126,8 +126,21 @@ static SemaphoreHandle_t s_lock;
 // more than "check the serial log."
 static volatile uint32_t s_ring_gap_events;
 
-// The receive task writes and an httpd handler reads, on different tasks. The
-// critical sections are a memcpy each, so a plain mutex is the right weight.
+// The receive task writes and an httpd handler reads, on different tasks.
+// s_lock covers the ring and the action-reply slot below. It is not recursive:
+// ring_push and the reply helpers take it themselves, so neither may be called
+// while it is already held. Critical sections stay a memcpy, or storing OK,
+// the reason, then the verb.
+static void lock_take(void)
+{
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+}
+
+static void lock_give(void)
+{
+    xSemaphoreGive(s_lock);
+}
+
 static void ring_push(const entry_t *e)
 {
     xSemaphoreTake(s_lock, portMAX_DELAY);
@@ -317,8 +330,11 @@ static esp_err_t get_events(httpd_req_t *req)
 // clock actually landed. One outstanding action at a time is all the polled
 // design allows, so a single slot is enough and a verb is enough to match it.
 // CONFIG_GET/SET reuse the same slot with verb = PORTA_MSG_CONFIG_*.
-static volatile uint8_t s_last_reply_verb;
-static volatile bool s_last_reply_ok;
+// porta_rx publishes; httpd reads and resets. Every access takes s_lock.
+// OK and the reason are stored before the verb (reply_publish_locked), so a
+// handler that sees its verb is looking at this reply, not the previous one.
+static uint8_t s_last_reply_verb;
+static bool s_last_reply_ok;
 static char s_last_reply_reason[PORTA_EVENT_TEXT_MAX + 1];
 
 // How many times wait_action_reply() has had to resend a CONFIG_GET because
@@ -338,9 +354,11 @@ static porta_decoder_t s_rx_dec;
 static char s_config_json[CONFIG_JSON_MAX];
 static size_t s_config_json_len;
 static bool s_config_json_first;
-static volatile bool s_config_gathering;
+static bool s_config_gathering;
 
-static void config_json_begin(void)
+// Caller holds s_lock. The CONFIG_GET retry and the RX task both touch this
+// buffer; the reset and an append must not interleave.
+static void config_json_begin_locked(void)
 {
     s_config_gathering = true;
     s_config_json_first = true;
@@ -349,32 +367,46 @@ static void config_json_begin(void)
     s_config_json_len = 1;
 }
 
+static void config_json_begin(void)
+{
+    lock_take();
+    config_json_begin_locked();
+    lock_give();
+}
+
 static void config_json_add(const char *key, const char *value)
 {
-    if (!s_config_gathering || !key || !value) {
+    if (!key || !value) {
         return;
     }
     // Static scratch: this runs on the porta_rx task (4 KB stack). Escaping
     // both key and value on the stack overflowed when the host replied.
+    // Escaping stays outside the lock; the append is the shared part.
     static char esc_k[PORTA_CONFIG_KEY_MAX * 6 + 1];
     static char esc_v[PORTA_CONFIG_VALUE_MAX * 6 + 1];
     static char piece[sizeof(esc_k) + sizeof(esc_v) + 8];
     json_escape(key, esc_k, sizeof(esc_k));
     json_escape(value, esc_v, sizeof(esc_v));
-    const int n = snprintf(piece, sizeof(piece), "%s\"%s\":\"%s\"",
-                           s_config_json_first ? "" : ",", esc_k, esc_v);
-    if (n <= 0 || s_config_json_len + (size_t)n + 2 >= CONFIG_JSON_MAX) {
+    lock_take();
+    if (!s_config_gathering) {
+        lock_give();
         return;
     }
-    memcpy(s_config_json + s_config_json_len, piece, (size_t)n + 1);
-    s_config_json_len += (size_t)n;
-    s_config_json_first = false;
+    const int n = snprintf(piece, sizeof(piece), "%s\"%s\":\"%s\"",
+                           s_config_json_first ? "" : ",", esc_k, esc_v);
+    if (n > 0 && s_config_json_len + (size_t)n + 2 < CONFIG_JSON_MAX) {
+        memcpy(s_config_json + s_config_json_len, piece, (size_t)n + 1);
+        s_config_json_len += (size_t)n;
+        s_config_json_first = false;
+    }
+    lock_give();
 }
 
-// Ends gathering when the ACK arrives. The object is left open: the reply
-// closes it after appending the sidekick's own facts (send_config_reply()),
-// so nothing here is still writing the buffer once the ACK is visible.
-static void config_json_stop(void)
+// Ends gathering when the ACK arrives. Caller holds s_lock, and the verb is
+// published before that hold ends, so a reader that sees the verb also sees
+// a buffer nobody is still writing. The object is left open: the reply closes
+// it after appending the sidekick's own facts (send_config_reply()).
+static void config_json_stop_locked(void)
 {
     s_config_gathering = false;
 }
@@ -434,6 +466,18 @@ static esp_err_t send_config_reply(httpd_req_t *req, const char *why)
     static char facts[1024];
     static char esc[PORTA_EVENT_TEXT_MAX * 6 + 1];
     static char head[sizeof(esc) + 32];
+    static char body[CONFIG_JSON_MAX];
+    size_t body_len = 0;
+    if (!why) {
+        lock_take();
+        body_len = s_config_json_len;
+        if (body_len >= sizeof(body)) {
+            body_len = sizeof(body) - 1;
+        }
+        memcpy(body, s_config_json, body_len);
+        body[body_len] = '\0';
+        lock_give();
+    }
     const size_t facts_len = sidekick_facts_json(facts, sizeof(facts));
     httpd_resp_set_type(req, "application/json");
     if (why) {
@@ -441,8 +485,8 @@ static esp_err_t send_config_reply(httpd_req_t *req, const char *why)
         snprintf(head, sizeof(head), "{\"ok\":false,\"why\":\"%s\"%s", esc, facts_len ? "," : "");
         httpd_resp_sendstr_chunk(req, head);
     } else {
-        httpd_resp_send_chunk(req, s_config_json, s_config_json_len);
-        if (s_config_json_len > 1 && facts_len) {
+        httpd_resp_send_chunk(req, body, body_len);
+        if (body_len > 1 && facts_len) {
             httpd_resp_sendstr_chunk(req, ",");
         }
     }
@@ -464,39 +508,48 @@ static esp_err_t send_config_reply(httpd_req_t *req, const char *why)
 static char s_file_list_json[FILE_LIST_JSON_MAX];
 static size_t s_file_list_json_len;
 static bool s_file_list_json_first;
-static volatile bool s_file_list_gathering;
+static bool s_file_list_gathering;
 
 static void file_list_json_begin(void)
 {
+    lock_take();
     s_file_list_gathering = true;
     s_file_list_json_first = true;
     strcpy(s_file_list_json, "{\"ok\":true,\"files\":[");
     s_file_list_json_len = strlen(s_file_list_json);
+    lock_give();
 }
 
 static void file_list_json_add(const char *name)
 {
-    if (!s_file_list_gathering || !name) {
+    if (!name) {
         return;
     }
     // Static scratch, same reasoning as file_entries_json_add() below and
     // config_json_add() above: porta_rx task, 4 KB stack. Smaller than
     // either of those today (~400 B), but the same shape of landmine --
     // fixed alongside them rather than left for the next field to grow.
+    // Escaping stays outside the lock; the append is the shared part.
     static char esc[PORTA_FILENAME_MAX * 6 + 1];
     json_escape(name, esc, sizeof(esc));
     static char piece[sizeof(esc) + 8];
-    const int n = snprintf(piece, sizeof(piece), "%s\"%s\"",
-                           s_file_list_json_first ? "" : ",", esc);
-    if (n <= 0 || s_file_list_json_len + (size_t)n + 3 >= FILE_LIST_JSON_MAX) {
+    lock_take();
+    if (!s_file_list_gathering) {
+        lock_give();
         return;
     }
-    memcpy(s_file_list_json + s_file_list_json_len, piece, (size_t)n + 1);
-    s_file_list_json_len += (size_t)n;
-    s_file_list_json_first = false;
+    const int n = snprintf(piece, sizeof(piece), "%s\"%s\"",
+                           s_file_list_json_first ? "" : ",", esc);
+    if (n > 0 && s_file_list_json_len + (size_t)n + 3 < FILE_LIST_JSON_MAX) {
+        memcpy(s_file_list_json + s_file_list_json_len, piece, (size_t)n + 1);
+        s_file_list_json_len += (size_t)n;
+        s_file_list_json_first = false;
+    }
+    lock_give();
 }
 
-static void file_list_json_end(void)
+// Caller holds s_lock. The verb is published before that hold ends.
+static void file_list_json_end_locked(void)
 {
     if (!s_file_list_gathering) {
         return;
@@ -513,21 +566,23 @@ static void file_list_json_end(void)
 static char s_file_entries_json[FILE_ENTRIES_JSON_MAX];
 static size_t s_file_entries_json_len;
 static bool s_file_entries_json_first;
-static volatile bool s_file_entries_gathering;
+static bool s_file_entries_gathering;
 
 static void file_entries_json_begin(void)
 {
+    lock_take();
     s_file_entries_gathering = true;
     s_file_entries_json_first = true;
     strcpy(s_file_entries_json, "{\"ok\":true,\"entries\":[");
     s_file_entries_json_len = strlen(s_file_entries_json);
+    lock_give();
 }
 
 // rst_sent/rst_rcvd pass through -99 (no report) as-is -- the same sentinel
 // the wire carries, decoded by the browser rather than reinterpreted here.
 static void file_entries_json_add(const porta_qso_entry_row_t *e)
 {
-    if (!s_file_entries_gathering || !e) {
+    if (!e) {
         return;
     }
     // Static scratch: this runs on the porta_rx task (4 KB stack), same as
@@ -560,6 +615,11 @@ static void file_entries_json_add(const porta_qso_entry_row_t *e)
     static char piece[sizeof(esc_band) + sizeof(esc_call) + sizeof(esc_grid) + sizeof(esc_freq) +
               sizeof(esc_my_grid) + sizeof(esc_comment) + sizeof(esc_mode) +
               sizeof(esc_station_callsign) + sizeof(esc_my_pota_ref) + sizeof(esc_my_sota_ref) + 160];
+    lock_take();
+    if (!s_file_entries_gathering) {
+        lock_give();
+        return;
+    }
     const int n = snprintf(piece, sizeof(piece),
                            "%s{\"time\":\"%s\",\"band\":\"%s\",\"call\":\"%s\","
                            "\"rst_sent\":%d,\"rst_rcvd\":%d,\"grid\":\"%s\",\"freq\":\"%s\","
@@ -570,15 +630,16 @@ static void file_entries_json_add(const porta_qso_entry_row_t *e)
                            esc_call, e->rst_sent, e->rst_rcvd, esc_grid, esc_freq,
                            esc_my_grid, esc_comment, esc_mode, esc_station_callsign,
                            esc_my_pota_ref, esc_my_sota_ref);
-    if (n <= 0 || s_file_entries_json_len + (size_t)n + 3 >= FILE_ENTRIES_JSON_MAX) {
-        return;
+    if (n > 0 && s_file_entries_json_len + (size_t)n + 3 < FILE_ENTRIES_JSON_MAX) {
+        memcpy(s_file_entries_json + s_file_entries_json_len, piece, (size_t)n + 1);
+        s_file_entries_json_len += (size_t)n;
+        s_file_entries_json_first = false;
     }
-    memcpy(s_file_entries_json + s_file_entries_json_len, piece, (size_t)n + 1);
-    s_file_entries_json_len += (size_t)n;
-    s_file_entries_json_first = false;
+    lock_give();
 }
 
-static void file_entries_json_end(void)
+// Caller holds s_lock. The verb is published before that hold ends.
+static void file_entries_json_end_locked(void)
 {
     if (!s_file_entries_gathering) {
         return;
@@ -591,7 +652,64 @@ static void file_entries_json_end(void)
     s_file_entries_gathering = false;
 }
 
-// Wait briefly for the host's ACK/NAK. One frame over a 115200 link answered
+// One read of the reply slot. reason is only filled when ready, and it is a
+// copy: the caller uses it after releasing s_lock.
+struct reply_view {
+    bool ready;
+    bool ok;
+    char reason[PORTA_EVENT_TEXT_MAX + 1];
+};
+
+// Caller holds s_lock.
+static void reply_capture_locked(uint8_t verb, struct reply_view *out)
+{
+    out->ready = s_last_reply_verb == verb;
+    if (!out->ready) {
+        return;
+    }
+    out->ok = s_last_reply_ok;
+    memcpy(out->reason, s_last_reply_reason, sizeof(out->reason));
+}
+
+static void reply_read(uint8_t verb, struct reply_view *out)
+{
+    lock_take();
+    reply_capture_locked(verb, out);
+    lock_give();
+}
+
+// Caller holds s_lock. OK and the reason are stored before the verb.
+static void reply_publish_locked(uint8_t verb, bool ok, const char *reason)
+{
+    s_last_reply_ok = ok;
+    if (reason && reason[0] != '\0') {
+        strncpy(s_last_reply_reason, reason, sizeof(s_last_reply_reason) - 1);
+        s_last_reply_reason[sizeof(s_last_reply_reason) - 1] = '\0';
+    } else {
+        s_last_reply_reason[0] = '\0';
+    }
+    s_last_reply_verb = verb;
+}
+
+static void reply_reset(void)
+{
+    lock_take();
+    s_last_reply_verb = 0;
+    lock_give();
+}
+
+// Drops every in-progress gather. One action is outstanding, so clearing all
+// three is the same as clearing the one this request started.
+static void gather_abandon(void)
+{
+    lock_take();
+    s_config_gathering = false;
+    s_file_list_gathering = false;
+    s_file_entries_gathering = false;
+    lock_give();
+}
+
+// Wait briefly for the host's ACK/NAK. One frame at PORTA_BAUD, answered
 // from the main loop, so this is milliseconds -- but the browser should be
 // told what happened rather than assuming success.
 static esp_err_t wait_action_reply(httpd_req_t *req, uint8_t verb)
@@ -628,45 +746,76 @@ static esp_err_t wait_action_reply(httpd_req_t *req, uint8_t verb)
     // what the link-health counters below exist to measure) then costs one
     // extra round-trip instead of the whole timeout.
     const int retry_at = tries / 2;
-    for (int i = 0; i < tries && s_last_reply_verb != verb; ++i) {
+    struct reply_view got = {0};
+    for (int i = 0; i < tries && !got.ready; ++i) {
         if (i == retry_at && verb == PORTA_MSG_CONFIG_GET) {
-            s_config_get_retries++;
-            config_json_begin();  // discard whatever the first attempt gathered
-            uint8_t frame[PORTA_PROTO_MAX_FRAME];
-            const size_t n = porta_proto_encode_config_get("", frame, sizeof(frame));
-            porta_send(frame, n);
+            // Same hold as the ready check: an ACK that landed since the last
+            // poll is kept, and the buffer reset cannot tear an append.
+            bool resend = false;
+            lock_take();
+            reply_capture_locked(verb, &got);
+            if (!got.ready) {
+                s_config_get_retries++;
+                config_json_begin_locked();
+                resend = true;
+            }
+            lock_give();
+            if (resend) {
+                uint8_t frame[PORTA_PROTO_MAX_FRAME];
+                const size_t n = porta_proto_encode_config_get("", frame, sizeof(frame));
+                porta_send(frame, n);
+            }
+        } else {
+            reply_read(verb, &got);
         }
-        vTaskDelay(pdMS_TO_TICKS(25));
+        if (!got.ready) {
+            vTaskDelay(pdMS_TO_TICKS(25));
+        }
+    }
+    if (!got.ready) {
+        lock_take();
+        reply_capture_locked(verb, &got);
+        if (!got.ready) {
+            s_config_gathering = false;
+            s_file_list_gathering = false;
+            s_file_entries_gathering = false;
+        }
+        lock_give();
     }
 
     httpd_resp_set_type(req, "application/json");
-    if (s_last_reply_verb != verb) {
-        s_config_gathering = false;
-        s_file_list_gathering = false;
-        s_file_entries_gathering = false;
+    if (!got.ready) {
         ESP_LOGW(TAG, "no ACK for verb 0x%02x", verb);
         if (verb == PORTA_MSG_CONFIG_GET) {
             return send_config_reply(req, "no reply from host");
         }
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"no reply from host\"}");
     }
-    if (s_last_reply_ok) {
+    if (got.ok) {
         if (verb == PORTA_MSG_CONFIG_GET) {
             return send_config_reply(req, NULL);
         }
-        if (verb == PORTA_MSG_FILE_LIST) {
-            return httpd_resp_send(req, s_file_list_json, s_file_list_json_len);
-        }
-        if (verb == PORTA_MSG_FILE_READ) {
-            return httpd_resp_send(req, s_file_entries_json, s_file_entries_json_len);
+        if (verb == PORTA_MSG_FILE_LIST || verb == PORTA_MSG_FILE_READ) {
+            static char body[FILE_ENTRIES_JSON_MAX];
+            const bool list = verb == PORTA_MSG_FILE_LIST;
+            const char *src = list ? s_file_list_json : s_file_entries_json;
+            const size_t cap = list ? FILE_LIST_JSON_MAX : FILE_ENTRIES_JSON_MAX;
+            lock_take();
+            size_t n = list ? s_file_list_json_len : s_file_entries_json_len;
+            if (n >= cap) {
+                n = cap - 1;
+            }
+            memcpy(body, src, n);
+            lock_give();
+            return httpd_resp_send(req, body, n);
         }
         return httpd_resp_sendstr(req, "{\"ok\":true}");
     }
     if (verb == PORTA_MSG_CONFIG_GET) {
-        return send_config_reply(req, s_last_reply_reason);
+        return send_config_reply(req, got.reason);
     }
     char out[PORTA_EVENT_TEXT_MAX + 32];
-    snprintf(out, sizeof(out), "{\"ok\":false,\"why\":\"%s\"}", s_last_reply_reason);
+    snprintf(out, sizeof(out), "{\"ok\":false,\"why\":\"%s\"}", got.reason);
     return httpd_resp_sendstr(req, out);
 }
 
@@ -696,7 +845,7 @@ static esp_err_t post_time(httpd_req_t *req)
     const size_t n = porta_proto_encode_set_clock((uint32_t)(epoch_ms / 1000),
                                                   (uint16_t)(epoch_ms % 1000),
                                                   frame, sizeof(frame));
-    s_last_reply_verb = 0;
+    reply_reset();
     if (!porta_send(frame, n)) {
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
     }
@@ -714,7 +863,7 @@ static esp_err_t post_tx_cancel(httpd_req_t *req)
 
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
     const size_t n = porta_proto_encode_tx_cancel(frame, sizeof(frame));
-    s_last_reply_verb = 0;
+    reply_reset();
     if (!porta_send(frame, n)) {
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
     }
@@ -730,7 +879,7 @@ static esp_err_t post_radio_connect(httpd_req_t *req)
 
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
     const size_t n = porta_proto_encode_connect(frame, sizeof(frame));
-    s_last_reply_verb = 0;
+    reply_reset();
     if (!porta_send(frame, n)) {
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
@@ -767,7 +916,7 @@ static esp_err_t post_radio_tune(httpd_req_t *req)
 
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
     const size_t n = porta_proto_encode_tune(on, frame, sizeof(frame));
-    s_last_reply_verb = 0;
+    reply_reset();
     if (!porta_send(frame, n)) {
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
@@ -825,7 +974,7 @@ static esp_err_t post_swr_start(httpd_req_t *req)
 
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
     const size_t n = porta_proto_encode_sweep_start(ranges, count, frame, sizeof(frame));
-    s_last_reply_verb = 0;
+    reply_reset();
     if (n == 0 || !porta_send(frame, n)) {
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
@@ -865,7 +1014,7 @@ static esp_err_t post_beacon(httpd_req_t *req)
 
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
     const size_t n = porta_proto_encode_beacon(mode, frame, sizeof(frame));
-    s_last_reply_verb = 0;
+    reply_reset();
     if (!porta_send(frame, n)) {
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
@@ -892,7 +1041,7 @@ static esp_err_t post_queue_cancel(httpd_req_t *req)
 
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
     const size_t n = porta_proto_encode_queue_cancel((uint16_t)id, frame, sizeof(frame));
-    s_last_reply_verb = 0;
+    reply_reset();
     if (!porta_send(frame, n)) {
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
@@ -920,7 +1069,7 @@ static esp_err_t post_queue_reply(httpd_req_t *req)
 
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
     const size_t n = porta_proto_encode_queue_reply((uint32_t)id, frame, sizeof(frame));
-    s_last_reply_verb = 0;
+    reply_reset();
     if (!porta_send(frame, n)) {
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
@@ -957,13 +1106,13 @@ static esp_err_t get_log_files(httpd_req_t *req)
     }
 
     file_list_json_begin();
-    s_last_reply_verb = 0;
+    reply_reset();
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
     const size_t n = porta_proto_encode_file_list_req(PORTA_FILE_LIST_QSO_DAILY,
                                                        (uint16_t)skip, (uint8_t)take,
                                                        frame, sizeof(frame));
     if (!porta_send(frame, n)) {
-        s_file_list_gathering = false;
+        gather_abandon();
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
     }
@@ -992,17 +1141,17 @@ static esp_err_t get_log_entries(httpd_req_t *req)
     }
 
     file_entries_json_begin();
-    s_last_reply_verb = 0;
+    reply_reset();
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
     const size_t n = porta_proto_encode_file_read_req(filename, (uint16_t)skip, (uint8_t)take,
                                                        frame, sizeof(frame));
     if (n == 0) {
-        s_file_entries_gathering = false;
+        gather_abandon();
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad filename");
         return ESP_FAIL;
     }
     if (!porta_send(frame, n)) {
-        s_file_entries_gathering = false;
+        gather_abandon();
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
     }
@@ -1021,7 +1170,7 @@ static esp_err_t delete_log_files(httpd_req_t *req)
         httpd_query_key_value(query, "file", filename, sizeof(filename));
     }
 
-    s_last_reply_verb = 0;
+    reply_reset();
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
     const size_t n = porta_proto_encode_file_delete(filename, frame, sizeof(frame));
     if (n == 0) {
@@ -1041,11 +1190,11 @@ static esp_err_t delete_log_files(httpd_req_t *req)
 static esp_err_t get_config(httpd_req_t *req)
 {
     config_json_begin();
-    s_last_reply_verb = 0;
+    reply_reset();
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
     const size_t n = porta_proto_encode_config_get("", frame, sizeof(frame));
     if (!porta_send(frame, n)) {
-        s_config_gathering = false;
+        gather_abandon();
         return send_config_reply(req, "host link busy");
     }
     return wait_action_reply(req, PORTA_MSG_CONFIG_GET);
@@ -1097,21 +1246,25 @@ static esp_err_t put_config(httpd_req_t *req)
                 httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad key/value");
                 return ESP_FAIL;
             }
-            s_last_reply_verb = 0;
+            reply_reset();
             if (!porta_send(frame, n)) {
                 httpd_resp_set_type(req, "application/json");
                 return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
             }
-            for (int i = 0; i < 40 && s_last_reply_verb != PORTA_MSG_CONFIG_SET; ++i) {
-                vTaskDelay(pdMS_TO_TICKS(25));
+            struct reply_view got = {0};
+            for (int i = 0; i < 40 && !got.ready; ++i) {
+                reply_read(PORTA_MSG_CONFIG_SET, &got);
+                if (!got.ready) {
+                    vTaskDelay(pdMS_TO_TICKS(25));
+                }
             }
-            if (s_last_reply_verb != PORTA_MSG_CONFIG_SET) {
+            if (!got.ready) {
                 httpd_resp_set_type(req, "application/json");
                 return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"no reply from host\"}");
             }
-            if (!s_last_reply_ok) {
+            if (!got.ok) {
                 if (refused++ == 0) {
-                    memcpy(first_why, s_last_reply_reason, sizeof(first_why));
+                    memcpy(first_why, got.reason, sizeof(first_why));
                 }
             } else {
                 ++applied;
@@ -1389,34 +1542,38 @@ static void porta_rx_task(void *arg)
             } else {
                 char cfg_key[PORTA_CONFIG_KEY_MAX + 1];
                 char cfg_val[PORTA_CONFIG_VALUE_MAX + 1];
+                uint8_t reply_verb = 0;
+                char reply_reason[PORTA_EVENT_TEXT_MAX + 1];
+                reply_reason[0] = '\0';
                 if (porta_proto_parse_config_value(&frame, cfg_key, cfg_val)) {
                     config_json_add(cfg_key, cfg_val);
-                } else if (porta_proto_parse_ack(&frame, (uint8_t *)&s_last_reply_verb)) {
-                    switch (s_last_reply_verb) {
+                } else if (porta_proto_parse_ack(&frame, &reply_verb)) {
+                    lock_take();
+                    switch (reply_verb) {
                     case PORTA_MSG_CONFIG_GET:
                         // The sidekick's own facts are added by the HTTP side
                         // at reply time (send_config_reply()), not here.
-                        config_json_stop();
+                        config_json_stop_locked();
                         break;
                     case PORTA_MSG_FILE_LIST:
-                        file_list_json_end();
+                        file_list_json_end_locked();
                         break;
                     case PORTA_MSG_FILE_READ:
-                        file_entries_json_end();
+                        file_entries_json_end_locked();
                         break;
                     default:
                         break;
                     }
-                    s_last_reply_ok = true;
-                    s_last_reply_reason[0] = '\0';
-                } else if (porta_proto_parse_nak(&frame, (uint8_t *)&s_last_reply_verb,
-                                                 s_last_reply_reason)) {
+                    reply_publish_locked(reply_verb, true, NULL);
+                    lock_give();
+                } else if (porta_proto_parse_nak(&frame, &reply_verb, reply_reason)) {
+                    lock_take();
                     s_config_gathering = false;
                     s_file_list_gathering = false;
                     s_file_entries_gathering = false;
-                    s_last_reply_ok = false;
-                    ESP_LOGW("adv", "refused action 0x%02x: %s",
-                             s_last_reply_verb, s_last_reply_reason);
+                    reply_publish_locked(reply_verb, false, reply_reason);
+                    lock_give();
+                    ESP_LOGW("adv", "refused action 0x%02x: %s", reply_verb, reply_reason);
                 } else {
                     ESP_LOGW(TAG, "frame type 0x%02x len %u (no handler yet)",
                              frame.type, frame.len);
