@@ -626,25 +626,22 @@ but 105 symbols to decode, and a 16 KB decode stack against FT8's 8 KB. `cand=` 
 band fills the 256-candidate list. On the corpora no slot filled the 32-decode list at 256 candidates, so a
 field `cand=` stuck far below 256 means the air is quieter than those files.
 
-**B54, two coupled defects, desk-audited 2026-09-12 and unmeasured.**
+**B54, two coupled defects.** The FT8 field read on 20 m (2026-10-02) was sick: `g` 2–4 and `lost` tracking `dec`, about 2 s of audio. The fix is an ingest task filling a static 16,384-sample ring (2.7 s at 6 kHz) while decode still runs in the capture task. The ring is static because the largest free block after the 161 KB waterfall is about 51 KB. The same afternoon, four busy slots read `g` 15–17, `lost` 0, `drop` 0, `dec` about 1.8 s, `left` 450–800 ms. The ring covered the gap, so decode stays in the capture task.
 
-- **(a) No app-side buffer between USB and the decoder.** `uac_read_ft8_samples()` reads the driver
-  directly. Total queue depth is `UAC_BUFFER_SIZE` 4000 B = 13.9 ms at 48 kHz / 24-bit / stereo. On
-  ring-full, the vendored driver (`managed_components/espressif__usb_host_uac/uac_host.c`) drops the
-  transfer with an `ESP_LOGD` our build compiles out. Its `RX_DONE` event is never consumed and fires
-  constantly anyway. There is no countable overflow signal, which is why B53 measures the deficit app-side.
-- **(b) Single-buffered capture, decode in the capture task.** `ft8_audio_pipeline_run()` decodes inline.
-  Whatever decode takes is audio dropped at the wire. Decode on our own TX slot is skipped deliberately, and
-  that is not this defect.
+- **(a) The driver queue is 13.9 ms.** `qmx_audio_read_ft8_samples()` reads the driver directly.
+  Total queue depth is `UAC_BUFFER_SIZE` 4000 B at 48 kHz / 24-bit / stereo. On ring-full, the vendored
+  driver drops the transfer with an `ESP_LOGD` our build compiles out. The app ring above is what keeps a
+  read outstanding during decode; `drop=` counts what that ring could not hold. The driver's own overflow
+  is still invisible, which is why `lost=` stays the measurement.
+- **(b) Decode still runs in the capture task.** On FT8 the ring covered that. Moving the search
+  off this task is for a later pass that must run past the boundary, not for this drop. Decode on our
+  own TX slot is skipped deliberately, and that is not this defect.
 
 A constraint on the obvious fix: `uac_read_ft8_samples()` ignores `max_samples` and writes into a
 512-float temp buffer. At 6 B/frame and 8:1 decimation, the implicit ceiling is
 `UAC_READ_BUFFER_SIZE` ≤ 24,576 B, and growing past it overruns silently.
 
-**Done-when:** B53's line from a busy-band field run, FT8 and FT4, reads healthy (`lost`≈0, `g`≈14, `dec`
-well under the guard) or sick (`lost` tracking `dec`, `g` collapsing on high-`cand` slots). If sick, fix
-with an app-side ring deep enough to cover decode, then move decode off the capture task — one at a time,
-measured per [decode.md](../architecture/decode.md) (**Measuring decode yield on the air**).
+**Done-when:** FT8 on 20 m (2026-10-02) is recorded above. FT4 is still unread: a near-identical guard and 105 symbols, so the same boundary line is the check.
 
 ### P5 — Algorithm changes ([I26](../ROADMAP.md))
 
