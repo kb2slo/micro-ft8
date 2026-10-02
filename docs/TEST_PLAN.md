@@ -20,6 +20,7 @@ An agent runs these itself before saying work is done. CI runs them too. No hard
 | Web bundle build | `npm ci --prefix webapp/tools` once, then `python3 webapp/tools/build.py`; CI's **Web bundle build** step | Every page minifies and every script, inline or not, still compiles; no file over the sidekick's 512 KB limit; the bundle within its 800 KB budget. It does not run the pages: a minifier that changes behaviour without breaking syntax gets past it, so a local `--dist` preview (architecture/webapp.md, **Build**) is the check for that |
 | Webapp decode batching | `node webapp/tests/test_decode_batching.js` | Extracts and runs `app.html`'s own `applyEvent`/`flushDecodeBatch`/`decodeSortCmp` — a poll response spanning more than one real FT8 slot renders as separate batches, not merged into one; with Port A v2 fields, a slot is timed at its end on the slot grid, labelled with the host's frequency, and a slot retuned partway through becomes two batches that keep every decode |
 | Decode benchmark | `test_apps/decode_bench/README.md`. Local only; the device half needs a board on USB | Decode time per configuration against the 2.36 s guard; host and device decode the same messages |
+| Decode recall | `python3 tools/decode_recall/report.py`. CI's **Decode recall** step | Today's firmware settings against committed `jt9` truth (in-tree and `20m_busy`) and the synthetic AWGN grid. Fails if recall drops under the floors in `tools/decode_recall/baseline/today.txt`, or a synthetic signal at −6 dB or stronger is missed. It does not see USB audio or the stride decimator |
 
 ## What automation cannot see
 
@@ -28,8 +29,7 @@ A green run is not coverage of these:
 - **What any screen paints.** No test runs a `draw_*` function. Screen and MENU *navigation* are host-tested;
   whether a MENU row's label matches what it does is checked only by eye.
 - **The main loop and slot timing.** Slot alignment, decode deadlines, TX start latency.
-- **Decode tuning.** `golden_rx` catches decoder regressions. It uses its own candidate and LDPC limits, not
-  the firmware's, so a tuning change moves none of its output. The decode benchmark measures tuning.
+- **Decode tuning on the air.** The recall harness pins the firmware's settings given a WAV. `golden_rx` uses its own candidate and LDPC limits, so a tuning change moves none of its output. Whether a busier candidate list still finishes inside the guard is the decode benchmark, on a board.
 - **The board slot cycle.** The scenario stepper injects decodes and takes whatever autoseq has pending. It does not run the head check before the trigger, IgnoreList, or arming. Those stay board code.
 - **Every hardware path.** USB host and UAC audio, CAT, display, GPS, RTC, SD, flash, WiFi, the sidekick's
   HTTP server and button.
@@ -41,6 +41,7 @@ field-only path, naming the change and the exact check. **Drop it when the check
 
 | From | Check | Status |
 | --- | --- | --- |
+| 256 candidates (`DECODE_MAX_CANDIDATES`, was 50) | Flash the P4: `idf.py -C poe_p4 build flash` on the PROG port. Step 1: FT8 on 20 m at a busy hour, about 10 slots, serial console open. Each `DECODE: SLOT cand=… msg=… dec=…ms` has `dec` under 2000. Expected: decode finishes inside the 2.36 s guard, so the next slot's audio is not eaten. Step 2: answer a station, or let a QSO start, on the slot after one of those decodes. Expected: TX starts at the boundary. The HUD shows transmitting then, and the other station copies the start of the message. | **owed** |
 | RR73 once (the recently-worked check moved into autoseq) | Beacon on. A station answers and the QSO runs to our RR73; they send 73. We send **one** RR73, the entry leaves the queue, and the next CQ goes out on our next slot. Before the fix, RR73 repeated on every retry (up to 5 more) with the beacon silent. Then, within 10 minutes, that station calls us again: no QSO starts (P4 console: `worked recently, not starting a new QSO`). | **owed** |
 | Parked entries expire after 10 minutes | Answer a station's CQ and finish with our 73. More than 10 minutes later, have the same station call us with their grid. A new QSO starts: our first TX to them is a fresh report (not `73`), and when it completes there is a second log entry for that call. The P4 console shows `Expired parked ctx for <call>`. | **owed** |
 | A queue cancel disarms (the head check before the TX trigger) | P4, web app. Queue a reply to a station and wait for our TX to be armed: the decode has landed and our slot has not started. Tap that queue row's ×. Nothing goes out in our slot; with the beacon on, a CQ goes out instead. Before the fix, the cancelled message went out once, and the next queued QSO lost a retry. Then tap × on a QSO row **while it is transmitting**: the transmission stops at once (the TX HUD ends), and nothing else keys in that slot. | **owed** |

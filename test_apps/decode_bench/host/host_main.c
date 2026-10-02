@@ -21,8 +21,9 @@ static int64_t bench_clock_us(void)
     return (int64_t)now.tv_sec * 1000000 + now.tv_nsec / 1000;
 }
 
-static void print_message(void* context, const char* text, float freq_hz, float time_s)
+static void print_message(void* context, const char* text, float freq_hz, float time_s, int snr)
 {
+    (void)snr;
     const MessageContext* where = (const MessageContext*)context;
     printf("MSG %s %d %4.0f %+5.2f %s\n", where->config, where->slot, freq_hz, time_s, text);
 }

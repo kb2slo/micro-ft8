@@ -118,6 +118,11 @@ jobs:
           cmake --build build -j"$(nproc)"
           ctest --test-dir build --output-on-failure
 
+      # RFC 0006 P1. Truth is committed; this does not run jt9. It clones
+      # howard0su/ft8_lib at the pinned SHA for the 20m_busy WAVs.
+      - name: Decode recall
+        run: python3 tools/decode_recall/report.py
+
   sidekick-firmware:
     name: Sidekick (ESP32-S3)
     needs: changes

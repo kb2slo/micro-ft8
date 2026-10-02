@@ -104,19 +104,19 @@ cannot compare boards, because no two slots carry the same traffic.
 
 ## 4. What is tunable, per board
 
-Current values, by symbol (verified 2026-09-23; cite by symbol, line numbers rot):
+Current values, by symbol (verified 2026-09-23; candidates raised 2026-10-02; cite by symbol, line numbers rot):
 
 | Parameter | Ours | kgoba demo default | Where |
 |---|---|---|---|
 | `time_osr` | 2 | 2 | `s_time_osr` in `components/decode_tx_state/decode_tx_state.cpp` |
 | `freq_osr` | **1** | 2 | `s_freq_osr`, same file |
-| candidates | **50** | 140 | `max_cand` in `decode_monitor_results()`, `components/decode_pipeline/decode_pipeline.cpp` |
+| candidates | **256** | 140 | `DECODE_MAX_CANDIDATES` in `components/decode_pipeline/include/decode_limits.h` |
 | `min_score` | 5 | 10 | literal on the `ftx_find_candidates()` call, same function |
 | LDPC iterations | 25 | 25 | literal on the `ftx_decode_candidate()` call, same function |
 | max decodes kept | **32** | 50 | `DEC_MAX` = `RX_MAX_DECODES`, `components/decode_types/include/decode_types.h` |
 
 kgoba's values are the `k*` constants at the top of `components/ft8_lib/vendor/demo/decode_ft8.c`. We are
-below him on three of six. Our `min_score` is already *more* permissive than his.
+below him on two of six (`freq_osr`, `DEC_MAX`). Candidates are above his 140. Our `min_score` is already *more* permissive than his.
 
 **`DEC_MAX` is the cheapest item and is not a DSP limit.** The candidate loop stops at
 `s_dec_count < DEC_MAX`, so a busy slot is truncated by the size of the RX list, not by the decoder.
@@ -426,7 +426,7 @@ we transmit in N+1 there is no capture at all, so the full decode of N has rough
 error (DT), so a typical signal ends ~13.1–13.6 s. Measured on the host (parity with both boards is exact,
 [decode.md](../architecture/decode.md)), decodes summed over the five busiest slots:
 
-| Decode starts at | today (50 candidates) | 256 candidates | t2/f2, 256 candidates |
+| Decode starts at | 50 candidates | 256 candidates | t2/f2, 256 candidates |
 |---|---|---|---|
 | 12.00 s (75 blocks) | 69 | 79 | 93 |
 | **12.64 s (79, today)** | **70** | **82** | **95** |
@@ -454,59 +454,18 @@ ones. So **the trigger and the candidate cap must be measured together**, and on
 
 ## 5. Phases
 
-Each phase is a slice with its own done-when. P0 and P1 are the candidates for Now. P2 is blocked on both;
+Each phase is a slice with its own done-when. P0 and P1 are done. P2 is the next measurement round;
 the others are independent of each other unless stated.
 
 ### P0 — Device decode benchmark
 
 **Done 2026-09-24** on both boards (row B87). The tool, the measured timings, and what they settle: [decode.md](../architecture/decode.md). The results change P2's ADV arm from "256 candidates" to "the largest count that fits".
 
-### P1 — Host harness on the existing corpora ([B25](../ROADMAP.md))
+### P1 — Host harness
 
-`tests/tx_e2e`'s `decode_pcm()` (`tests/tx_e2e/decode_helper.cpp`) already runs `monitor_process` →
-`ftx_find_candidates` → `ftx_decode_candidate` over WAVs in CI. So this is a generalisation, not a new
-build. As it stands it cannot falsify a single parameter:
+Shipped 2026-10-02. The command, the corpora, and what CI checks: [decode.md](../architecture/decode.md) (**Recall against jt9**).
 
-- it hardcodes its own values (`max_cand` 20, `min_score` 0, LDPC iterations 4, literal osr values) instead
-  of the firmware's;
-- it `break`s on the first decode, so it cannot count yield;
-- each WAV is one clean synthesised signal;
-- it skips the firmware's per-block AGC.
-
-Scope:
-
-1. A host CLI that runs the firmware's decode with every §4 parameter as a flag, including the per-block
-   AGC in `ft8_audio_pipeline_run()` (on/off) and the waterfall's quantisation (levels per cell, for §4's
-   fewer-bits experiment). It prints one line per decode in `jt9`'s format.
-2. Truth regeneration: pinned `jt9` over the corpus, with version and depth recorded.
-3. A scorer: recall, SNR-bucketed recall, extras, discordant counts between two runs.
-4. Synthetic tier 1: GFSK at calibrated SNR, for the absolute curve.
-
-   **`ft8sim` as a local cross-check, not a CI dependency.** WSJT-X's `ft8sim` (`lib/ft8/ft8sim.f90`, CMake
-   target `ft8sim`; built from source, not in a standard install, though `ft8code` and `ft4sim` are) writes
-   12 kHz WAVs from a message at a chosen frequency, DT and SNR, with Watterson fading presets (`LQ`/`LM`/`LD`/
-   `MQ`/`MM`/`MD`/`HQ`/`HM`/`HD`) or explicit spread/delay. CI keeps the vendored synthesiser: deterministic and
-   in-tree. Locally, `ft8sim` (a) checks that our synthetic recall-vs-SNR curve matches the reference signal model
-   at a few SNRs, which retires the "trust our own synth" risk, and (b) generates tier 2 (fading), which nothing
-   in-tree can. Generated WAVs are data, not code, so using the tool offline to make test inputs puts nothing
-   GPL into the firmware (the usual reading, not legal advice).
-
-**Two corpora:** the in-tree set and `howard0su/ft8_lib`'s `test/wav/20m_busy` (38 busy 20 m slots), both
-with truth regenerated by pinned `jt9`. The busy set is the one that exercises the candidate cap. **Its WAVs
-are not committed here:** the harness fetches them from `howard0su/ft8_lib` at the pinned SHA `55ccf01`, the
-way `tools/decode_bench/build_variants.sh` already does. That settles P1's corpus without deciding P6's
-storage question.
-
-The corpus WAVs are 12 kHz. The ADV decodes at 6 kHz, and P3 recommends 12 kHz for the P4. For 6 kHz
-configurations the harness decimates 12 → 6 with a proper filter, **not** the firmware's stride decimator;
-12 kHz configurations take the WAVs unchanged. That keeps P1 answering decoder questions only; the
-decimator is P3's question.
-
-**Done-when:** one command produces the §2 report for a named configuration against the corpora and the
-synthetic set, and a CI job runs it on today's settings as a regression baseline. **CI never runs `jt9`:**
-truth is generated locally with pinned `jt9` and committed as `.txt` files in our tree (not in the
-submodule), each recording the WSJT-X version and decode depth that produced it. CI runs only our decoder
-against that committed truth, fetching `20m_busy` at the pinned SHA.
+**`ft8sim` is still a local cross-check, not a CI dependency, and not yet used.** WSJT-X's `ft8sim` (`lib/ft8/ft8sim.f90`, CMake target `ft8sim`; built from source, not in a standard install, though `ft8code` and `ft4sim` are) writes 12 kHz WAVs from a message at a chosen frequency, DT and SNR, with Watterson fading presets (`LQ`/`LM`/`LD`/`MQ`/`MM`/`MD`/`HQ`/`HM`/`HD`) or explicit spread/delay. The shipped synthetic tier uses the vendored GFSK synthesiser. Locally, `ft8sim` (a) checks that curve against the reference signal model at a few SNRs, and (b) generates tier 2 (fading), which nothing in-tree can. Generated WAVs are data, not code, so using the tool offline to make test inputs puts nothing GPL into the firmware (the usual reading, not legal advice).
 
 ### P2 — Round 1: ADV configuration against P4 configurations ([B25](../ROADMAP.md))
 
@@ -514,22 +473,41 @@ A small number of large moves, not a grid search. With two small corpora there i
 and a grid over hundreds of points would find a chance winner. Every configuration is scored on both corpora
 (§4.1's disagreement over the swap is the reason).
 
-- today (t2/f1, 50 candidates, `DEC_MAX` 32);
-- **candidates 256, both boards.** §4.1 shows the 50 cap losing ~5 points on busy slots for CPU only. This
-  is the first change to ship, and it needs no memory;
-- **subtraction (fixed, fraction tuned) + 3 passes, both boards.** No memory;
-- the S3-reachable swap (t1/f2). §4.1's two corpora disagree on it (+2.8 and −0.2 points), so it stays in;
-- **S3, equal memory: t2/f2 with values quantised to 16 levels** (simulated, one value per byte; §4's
-  fewer-bits section), scored against 8-bit t2/f2. §4.1 puts `freq_osr` 2 at +10 points, so this is the
-  ADV's deciding experiment. If the gap is within the discordant-count noise, packing is worth building;
-- P4: t2/f2; t4/f2; `DEC_MAX` 50; the combination.
+- today, as of 2026-10-02: t2/f1, **256 candidates** (shipped), `DEC_MAX` 32;
+- **subtraction (fixed, fraction tuned) + 3 passes.** No memory. Not scored; the harness has no flag for it;
+- t2/f2 and t4/f2, scored below and not shipped. t2/f2 needs a larger waterfall arena than the firmware
+  allocates. t4/f2 failed to allocate on the P4 bench.
+
+The S3 rows (the t1/f2 swap, 16-level t2/f2) left with the ADV (row za6n).
+
+**Host recall, 2026-10-02.** `python3 tools/decode_recall/report.py` against the committed `jt9 -8 -d 3` truth. Discordant counts are true `jt9` messages gained and lost versus the 50-candidate firmware this replaced. No configuration filled `DEC_MAX` 32 on any file, and raising it to 50 copied the row above it exactly. Device times are the P0 bench ([decode.md](../architecture/decode.md)), five busy slots, not re-run for this table.
+
+| Config | In-tree | Busy | Discordant vs 50 cand | P4 find+decode |
+|---|---|---|---|---|
+| t2/f1, 50 cand | 209/428 | 505/1041 | — | 315 ms |
+| **t2/f1, 256 cand (shipped)** | **229/428** | **569/1041** | **+20/−0, +64/−0** | **1,870 ms** |
+| t2/f2, 50 cand | 255/428 | 628/1041 | +47/−1, +129/−6 | — |
+| t2/f2, 256 cand | 274/428 | 674/1041 | +65/−0, +169/−0 | 1,747 ms |
+| t4/f2, 256 cand | 287/428 | 686/1041 | +78/−0, +181/−0 | allocation failed |
+
+Busy-set recall by `jt9` SNR. In-tree moves the same way, including one ≤ −20 dB message that t2/f2 at 50 candidates drops and 256 candidates restores.
+
+| SNR | 50 cand | 256 cand | t2/f2 | t2/f2, 256 | t4/f2, 256 |
+|---|---|---|---|---|---|
+| ≤ −20 | 6/63 | 14/63 | 21/63 | 26/63 | 26/63 |
+| −19..−16 | 19/72 | 27/72 | 26/72 | 30/72 | 31/72 |
+| −15..−12 | 21/67 | 28/67 | 35/67 | 40/67 | 41/67 |
+| −11..−8 | 36/93 | 42/93 | 53/93 | 57/93 | 57/93 |
+| −7..−4 | 47/137 | 54/137 | 64/137 | 66/137 | 67/137 |
+| −3..0 | 57/132 | 62/132 | 66/132 | 72/132 | 73/132 |
+| ≥ 1 | 319/477 | 342/477 | 363/477 | 383/477 | 391/477 |
+
+**Shipped 2026-10-02:** 256 candidates only. It loses nothing the 50-cap found, costs no memory, and the P4 bench fits it in the guard with about half a second to spare on the busiest slots, without USB audio. t2/f2 is the larger gain and gives nothing back once candidates are 256, but the firmware waterfall is sized for `freq_osr` 1.
 
 **Caveat:** the in-tree corpus is the one kgoba developed `ft8_lib` against, and `20m_busy` is the one
 howard0su tuned his fork on. Each favours its author's settings. A win for them is expected, not proof.
 
-**Done-when:** a table in this RFC with recall, SNR-bucketed recall, and discordant counts per
-configuration; P0's device benchmark run on both boards for every configuration, against the guard band;
-and the host/device parity check passing on each board.
+**Done-when, what remains:** t2/f2 either runs in the firmware and the P4 bench times it inside the guard, or the heap check records that it does not fit; subtraction has a discordant count on these corpora. Host/device parity for the decoder itself already passed (decode.md).
 
 ### P3 — Decimation and the 48 kHz question ([B85](../ROADMAP.md))
 
@@ -634,9 +612,9 @@ Field-only. B53 is instrumentation; B54 fixes what it finds.
 
 Do **not** read these by raising `CONFIG_LOG_MAXIMUM_LEVEL`. That compiles in every `ESP_LOGD` in the tree,
 and the resulting flood is its own starvation source. FT4 is the sharper test: a near-identical guard band
-but 105 symbols to decode, and a 16 KB decode stack against FT8's 8 KB. `cand=` also answers whether a busy
-band ever reaches 50 candidates. If it never does, raising candidates buys nothing on real bands, whatever
-P2 says.
+but 105 symbols to decode, and a 16 KB decode stack against FT8's 8 KB. `cand=` shows whether a busy
+band fills the 256-candidate list. On the corpora no slot filled the 32-decode list at 256 candidates, so a
+field `cand=` stuck far below 256 means the air is quieter than those files.
 
 **B54, two coupled defects, desk-audited 2026-09-12 and unmeasured.**
 

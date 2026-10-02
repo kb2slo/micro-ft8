@@ -1,5 +1,6 @@
 #include "dial_history.h"
 #include "decode_pipeline.h"
+#include "decode_limits.h"
 
 #include <cmath>
 #include <cstdio>
@@ -236,7 +237,7 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
   // out at CONFIG_LOG_MAXIMUM_LEVEL=3; debug_log_line reaches P-then-. and the
   // browser. Cheap: two timestamps and counts already in hand — no extra decode work.
   const int64_t decode_t0_ms = rtc_now_ms();
-  const int max_cand = 50;
+  const int max_cand = DECODE_MAX_CANDIDATES;
 
   // ---- heap instrumentation ----
   size_t heap_entry = heap_caps_get_free_size(MALLOC_CAP_8BIT);

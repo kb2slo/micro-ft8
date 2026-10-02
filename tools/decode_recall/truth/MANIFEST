@@ -1,0 +1,5 @@
+generator: jt9 -8 -d 3
+wsjt-x: 3.0.1
+match: normalised message text; hashed calls collapsed to <...>
+in_tree: 24 12 kHz WAVs under components/ft8_lib/vendor/test/wav
+busy: howard0su/ft8_lib 55ccf01 test/wav/20m_busy (38 WAVs)

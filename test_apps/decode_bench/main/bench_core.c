@@ -2,6 +2,8 @@
 
 #include <math.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "common/monitor.h"
@@ -9,7 +11,6 @@
 #include "ft8/decode.h"
 #include "ft8/message.h"
 
-#define BENCH_MAX_CANDIDATES 256
 #define BENCH_HASH_SLOTS     128
 
 static ftx_candidate_t s_candidates[BENCH_MAX_CANDIDATES];
@@ -35,6 +36,77 @@ static ftx_callsign_hash_interface_t s_hash_interface = {
     .lookup_hash = bench_lookup_hash,
     .save_hash = bench_save_hash,
 };
+
+// 25th-percentile cell, the firmware's noise-floor estimate in decode_monitor_results().
+static int mag_percentile(const monitor_t* monitor, int percent)
+{
+    const size_t total = (size_t)monitor->wf.num_blocks * (size_t)monitor->wf.block_stride;
+    uint32_t hist[256];
+    memset(hist, 0, sizeof(hist));
+    if (monitor->wf.mag == NULL || total == 0) return 0;
+    for (size_t i = 0; i < total; ++i) hist[monitor->wf.mag[i]]++;
+    uint64_t target = total * (uint64_t)percent / 100;
+    uint64_t accum = 0;
+    for (int v = 0; v < 256; ++v) {
+        accum += hist[v];
+        if (accum >= target) return v;
+    }
+    return 0;
+}
+
+// RFC 0006 §4, fewer-bits simulation: `levels` codes across a 32 dB window (64 counts at
+// 0.5 dB), with the noise floor two steps above the bottom. One value per byte; no packing.
+// levels <= 1 or >= 256 leaves the 8-bit cells alone.
+static void quantise_waterfall(monitor_t* monitor, int levels)
+{
+    if (levels <= 1 || levels >= 256 || monitor->wf.mag == NULL) return;
+    const size_t total = (size_t)monitor->wf.num_blocks * (size_t)monitor->wf.block_stride;
+    int noise = mag_percentile(monitor, 25);
+    int step = 64 / levels;
+    if (step < 1) step = 1;
+    int bottom = noise - 2 * step;
+    for (size_t i = 0; i < total; ++i) {
+        int level = ((int)monitor->wf.mag[i] - bottom) / step;
+        if (level < 0) level = 0;
+        if (level >= levels) level = levels - 1;
+        int stored = bottom + level * step;
+        if (stored < 0) stored = 0;
+        if (stored > 255) stored = 255;
+        monitor->wf.mag[i] = (uint8_t)stored;
+    }
+}
+
+// Same cell read as decode_monitor_results(), then cand_db - noise_db, clamped to [-30, 99].
+static int candidate_snr(const monitor_t* monitor, const ftx_candidate_t* candidate, int noise_scaled)
+{
+    float noise_db = 0.5f * ((float)noise_scaled - 240.0f);
+    float cand_db = noise_db;
+    int t_index = candidate->time_offset * monitor->wf.time_osr + candidate->time_sub;
+    const int t_count = monitor->wf.num_blocks * monitor->wf.time_osr;
+    if (t_count > 0) {
+        if (t_index < 0) t_index = 0;
+        if (t_index >= t_count) t_index = t_count - 1;
+    } else {
+        t_index = 0;
+    }
+    int f_index = candidate->freq_sub * monitor->wf.num_bins + candidate->freq_offset;
+    const int f_count = monitor->wf.freq_osr * monitor->wf.num_bins;
+    if (f_count > 0) {
+        if (f_index < 0) f_index = 0;
+        if (f_index >= f_count) f_index = f_count - 1;
+    } else {
+        f_index = 0;
+    }
+    size_t offset = (size_t)t_index * (size_t)f_count + (size_t)f_index;
+    size_t total = (size_t)monitor->wf.num_blocks * (size_t)monitor->wf.block_stride;
+    if (monitor->wf.mag != NULL && offset < total) {
+        cand_db = 0.5f * ((float)monitor->wf.mag[offset] - 240.0f);
+    }
+    int snr_q = (int)lrintf(cand_db - noise_db);
+    if (snr_q < -30) snr_q = -30;
+    if (snr_q > 99) snr_q = 99;
+    return snr_q;
+}
 
 // Same normalisation as ft8_audio_pipeline_run(): scale each block to a mean |x| of 0.1, gain in [0.1, 10].
 static void bench_block_agc(float* block, int size)
@@ -77,10 +149,13 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
 {
     memset(result, 0, sizeof(*result));
 
+    const int sample_rate = config->sample_rate > 0 ? config->sample_rate : BENCH_SAMPLE_RATE;
+    const int agc_on = config->agc != 2;
+    const int mag_levels = config->mag_levels > 0 ? config->mag_levels : 256;
     monitor_config_t monitor_config = {
         .f_min = 200.0f,
         .f_max = 2900.0f,
-        .sample_rate = BENCH_SAMPLE_RATE,
+        .sample_rate = sample_rate,
         .time_osr = config->time_osr,
         .freq_osr = config->freq_osr,
         .protocol = FTX_PROTOCOL_FT8,
@@ -97,8 +172,12 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
     // ft8_audio_pipeline_run() triggers decode once FT8_NN (79) blocks are in the waterfall, i.e. 12.64 s after
     // the slot boundary; its FT8_NN + 1 fill limit is never reached before the trigger.
     const int target_blocks = FT8_NN;
-    static float block[1920];
     const int block_size = monitor.block_size;
+    float* block = (float*)malloc(sizeof(float) * (size_t)block_size);
+    if (block == NULL) {
+        monitor_free(&monitor);
+        return;
+    }
 
     int64_t t0 = clock_us();
     for (size_t offset = 0; offset + (size_t)block_size <= sample_count; offset += (size_t)block_size) {
@@ -106,9 +185,11 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
         for (int j = 0; j < block_size; ++j) {
             block[j] = samples[offset + (size_t)j] / 32768.0f;
         }
-        bench_block_agc(block, block_size);
+        if (agc_on) bench_block_agc(block, block_size);
         monitor_process(&monitor, block);
     }
+    free(block);
+    quantise_waterfall(&monitor, mag_levels);
     int64_t t1 = clock_us();
 
     int max_candidates = config->max_candidates;
@@ -116,6 +197,7 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
     int candidate_count = ftx_find_candidates(&monitor.wf, max_candidates, s_candidates, config->min_score);
     int64_t t2 = clock_us();
 
+    const int noise_scaled = mag_percentile(&monitor, 25);
     for (int i = 0; i < BENCH_HASH_SLOTS; ++i) {
         s_decoded_table[i] = NULL;
     }
@@ -142,7 +224,7 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
                              s_candidates[i].freq_sub / (float)config->freq_osr) / monitor.symbol_period;
             float time_s = (s_candidates[i].time_offset +
                             s_candidates[i].time_sub / (float)config->time_osr) * monitor.symbol_period;
-            on_message(context, text, freq_hz, time_s);
+            on_message(context, text, freq_hz, time_s, candidate_snr(&monitor, &s_candidates[i], noise_scaled));
         }
     }
     int64_t t3 = clock_us();

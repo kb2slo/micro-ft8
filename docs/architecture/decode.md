@@ -18,8 +18,8 @@ Find + decode, mean over the five busiest corpus slots (27–33 `jt9` decodes ea
 
 | Configuration | Decodes (5 slots) | P4 `-O2` | Host `-O2` (Apple M4) |
 |---|---|---|---|
-| Shipped (t2/f1, 50 candidates) | 72 | **315 ms** (335) | 6.4 ms |
-| 256 candidates | 83 | 1,870 ms (1,880) | 18.3 ms |
+| 50 candidates (the previous cap) | 72 | 315 ms (335) | 6.4 ms |
+| Shipped (t2/f1, 256 candidates) | 83 | **1,870 ms** (1,880) | 18.3 ms |
 | t2/f2, 256 candidates | 96 | 1,747 ms (1,790) | 16.3 ms |
 | t4/f2, 256 candidates | 100 on host | allocation failed | 14.5 ms |
 
@@ -27,9 +27,21 @@ What these settle:
 
 * **Host and device decode identically.** Every configuration and slot that ran, at both optimisation levels, produced exactly the host's messages, including frequency and DT. Sweeping decoder settings on the host is therefore sound for this decoder.
 * **A desktop core is ~50× a P4 core on light work and ~100× on the LDPC-heavy candidate loop**. So `jt9`-class decoders do not fit on the P4 (RFC 0006 §4.1).
-* **The P4 fits 256 candidates and t2/f2 inside the guard on one core**, with ~0.5 s to spare on the busiest slots.
+* **The P4 fits the shipped 256-candidate decode inside the guard on one core**, with ~0.5 s to spare on the busiest slots. That is what the firmware runs (`DECODE_MAX_CANDIDATES`). t2/f2 also fits in this bench image; it is not what the firmware runs.
 * **Failing candidates are the cost.** Nearly all the time added by 256 candidates is LDPC spent on candidates that never decode.
 * **Large waterfalls are a contiguous-RAM question.** t4/f2's 322 KB waterfall cannot allocate; it would need PSRAM, which the build leaves off ([main_board.md](main_board.md), **P4**). t2/f2's 161 KB fit in the bench images but must be re-checked inside the firmware, which has far less free heap.
+
+## Recall against jt9
+
+`python3 tools/decode_recall/report.py` scores the firmware's decode (the same steps as `ft8_audio_pipeline_run()` and `decode_monitor_results()`, via `test_apps/decode_bench` `bench_run_slot`) against pinned `jt9 -8 -d 3` truth from WSJT-X 3.0.1. Truth is committed under `tools/decode_recall/truth/`; CI does not run `jt9`. The match key is normalised message text. The report is recall, recall by `jt9`'s SNR, and the discordant counts (missed, and extras listed for review). Host wall time is printed and is not device time.
+
+Two off-air corpora, both 12 kHz. The in-tree set is the 24 WAVs in `components/ft8_lib/vendor/test/wav` (428 messages). `20m_busy` is 38 slots (1,041 messages) fetched from `howard0su/ft8_lib` at `55ccf01` into a gitignored cache, not committed. A 6 kHz configuration — today's firmware — is fed a low-pass then 2:1 decimation in the harness, not the firmware's stride decimator. That aliasing question stays [RFC 0006](../rfcs/0006-decode-performance.md) P3. A 12 kHz configuration takes the WAVs as they are.
+
+Flags select every shipped tunable: `time_osr`, `freq_osr`, candidates, `DEC_MAX`, `min_score`, LDPC iterations, sample rate, per-block AGC, and waterfall levels. Levels below 256 quantise each cell onto that many codes across a 32 dB window anchored at the noise floor, one value per byte. That is the fewer-bits simulation, not packed storage.
+
+The synthetic tier encodes two messages with the vendored GFSK synthesiser, adds white noise at a known SNR in a 2500 Hz bandwidth, and scores whether that message comes back. It is an absolute curve for this decoder. It is not a capture-path test: USB audio, the stride decimator, and whether a full slot arrived stay on the device (RFC 0006 §3).
+
+CI runs the command on today's settings and fails if either corpus drops more than a few messages under the recorded hits (`tools/decode_recall/baseline/today.txt`), or if a synthetic signal at −6 dB or stronger does not decode. The slack is there because a marginal candidate can fall either way under a different libm. On the host that wrote the baseline, 256 candidates recalled 229/428 and 569/1041, and the synthetic signals were solid from −16 dB up. The full table, including the unscored-in-firmware t2/f2 and t4/f2 rows, is in [RFC 0006](../rfcs/0006-decode-performance.md) §5 P2.
 
 ## Measuring decode yield on the air
 
