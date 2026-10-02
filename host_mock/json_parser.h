@@ -4,7 +4,7 @@
 
 #include <string>
 #include <vector>
-#include "ui.h"              // UiRxLine
+#include "decode_types.h"    // UiRxLine
 
 // ---------- Test data structures ----------
 

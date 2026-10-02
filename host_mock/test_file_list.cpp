@@ -3,7 +3,6 @@
 #include <vector>
 
 #include "file_list.h"
-#include "file_list_queue.h"
 
 static int g_fails = 0;
 
@@ -94,54 +93,6 @@ int main()
         expect_str(files[1], "a.adi", "delete older last");
         expect_str(lines[0], "DEL b.adi", "delete prefix");
         expect_str(lines[1], "DEL a.adi", "delete prefix 2");
-    }
-
-    {
-        FileListQueue q;
-        file_list_queue_init(&q);
-        expect_true(!file_list_queue_busy(&q), "fresh idle");
-
-        uint32_t gen = 0;
-        FileListKind start = FileListKind::Delete;
-        expect_true(file_list_queue_submit(&q, FileListKind::QsoDaily, &gen, &start),
-                    "idle starts");
-        expect_int(static_cast<int>(gen), 1, "first gen");
-        expect_true(start == FileListKind::QsoDaily, "start kind");
-        expect_true(file_list_queue_busy(&q), "in flight is busy");
-        expect_true(!q.has_pending, "no pending on first");
-    }
-
-    {
-        FileListQueue q;
-        file_list_queue_init(&q);
-        uint32_t gen = 0;
-        FileListKind start = FileListKind::QsoDaily;
-        file_list_queue_submit(&q, FileListKind::QsoDaily, &gen, &start);
-
-        FileListKind untouched = FileListKind::QsoDaily;
-        uint32_t gen_b = 0;
-        expect_true(!file_list_queue_submit(&q, FileListKind::Delete, &gen_b, &untouched),
-                    "second is pending");
-        expect_true(untouched == FileListKind::QsoDaily, "out_start unchanged");
-        expect_int(static_cast<int>(gen_b), 2, "pending gen");
-        expect_true(q.pending_kind == FileListKind::Delete, "pending is delete");
-
-        uint32_t gen_c = 0;
-        expect_true(!file_list_queue_submit(&q, FileListKind::QsoDaily, &gen_c, &untouched),
-                    "third replaces pending");
-        expect_true(q.pending_kind == FileListKind::QsoDaily, "last request wins");
-        expect_int(static_cast<int>(gen_c), 3, "third gen");
-
-        FileListKind next = FileListKind::Delete;
-        uint32_t next_gen = 0;
-        expect_true(file_list_queue_complete(&q, &next, &next_gen), "complete starts pending");
-        expect_true(next == FileListKind::QsoDaily, "next is last pending");
-        expect_int(static_cast<int>(next_gen), 3, "next gen is third");
-        expect_true(file_list_queue_busy(&q), "second list in flight");
-        expect_true(!q.has_pending, "pending consumed");
-
-        expect_true(!file_list_queue_complete(&q, &next, &next_gen), "complete goes idle");
-        expect_true(!file_list_queue_busy(&q), "idle after last complete");
     }
 
     if (g_fails != 0) {

@@ -4,8 +4,7 @@ CXXFLAGS = -DHOST_MOCK -std=c++17 -g -Wall -Wno-unused-variable
 CFLAGS   = -DHOST_MOCK -g -Wall
 
 # host_mock first so mock esp_log.h shadows the real one
-INCLUDES = -I. -I../main -I../main/radio -I../main/audio -I../main/storage -I../main/time \
-           -I../components/ui/include \
+INCLUDES = -I. -I../main -I../main/storage \
            -I../components/decode_types/include \
            -I../components/radio_control/include \
            -I../components/autoseq/include \
@@ -22,7 +21,6 @@ INCLUDES = -I. -I../main -I../main/radio -I../main/audio -I../main/storage -I../
            -I../components/swr_sweep/include \
            -I../components/ft8_lib -I../components/ft8_lib/vendor \
            -I../components/ft8_lib/vendor/ft8 \
-           -I../components/board_cardputer_adv/include \
            -I../components/porta_proto/include
 
 CORE_SRC   = ../components/autoseq/autoseq.cpp
@@ -45,21 +43,9 @@ CANCEL_TARGET = host_test_beacon_cancel
 ADIF_TARGET = host_test_adif_merge
 STATION_TARGET = host_test_station
 DECODE_SORT_TARGET = host_test_decode_sort
-POWER_TARGET = host_test_power_hysteresis
 QSO_BROWSE_TARGET = host_test_qso_browse
 ADIF_DELETE_TARGET = host_test_adif_delete
-COPY_BLOCK_TARGET = host_test_copy_block
-STATION_SAVE_TARGET = host_test_station_save_queue
 FILE_LIST_TARGET = host_test_file_list
-RADIO_PROFILE_TARGET = host_test_radio_profile
-TX_HUD_BANNER_TARGET = host_test_tx_hud_banner
-RX_LIST_STALE_TARGET = host_test_rx_list_stale
-CTS_TIME_TARGET = host_test_cts_time
-BAND_CONFIG_TARGET = host_test_band_config
-USB_C_PRESENCE_TARGET = host_test_usb_c_presence
-MENU_MODEL_TARGET = host_test_menu_model
-SCREEN_MODEL_TARGET = host_test_screen_model
-DATETIME_FIELD_TARGET = host_test_datetime_field
 PORTA_PROTO_TARGET = host_test_porta_proto
 PAIRING_TOKEN_TARGET = host_test_pairing_token
 WEB_PAGE_TARGET = host_test_web_page
@@ -73,11 +59,9 @@ CAT_REPLY_PARSER_TARGET = host_test_cat_reply_parser
 SWR_SWEEP_TARGET = host_test_swr_sweep
 
 all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
-     $(DECODE_SORT_TARGET) $(POWER_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) $(COPY_BLOCK_TARGET) \
-     $(STATION_SAVE_TARGET) $(FILE_LIST_TARGET) $(RADIO_PROFILE_TARGET) $(TX_HUD_BANNER_TARGET) \
-     $(RX_LIST_STALE_TARGET) $(CTS_TIME_TARGET) $(BAND_CONFIG_TARGET) \
-     $(USB_C_PRESENCE_TARGET) $(MENU_MODEL_TARGET) $(SCREEN_MODEL_TARGET) \
-     $(DATETIME_FIELD_TARGET) $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
+     $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) \
+     $(FILE_LIST_TARGET) \
+     $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
      $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(BUNDLE_HOST_TARGET) \
      $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
      $(CAT_REPLY_PARSER_TARGET) $(SWR_SWEEP_TARGET) \
@@ -144,42 +128,6 @@ DECODE_SORT_OBJ = test_decode_sort.o
 $(DECODE_SORT_TARGET): $(DECODE_SORT_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
-RADIO_PROFILE_OBJ = test_radio_profile.o
-$(RADIO_PROFILE_TARGET): $(RADIO_PROFILE_OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^
-
-TX_HUD_BANNER_OBJ = test_tx_hud_banner.o
-$(TX_HUD_BANNER_TARGET): $(TX_HUD_BANNER_OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^
-
-RX_LIST_STALE_OBJ = test_rx_list_stale.o
-$(RX_LIST_STALE_TARGET): $(RX_LIST_STALE_OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^
-
-CTS_TIME_OBJ = cts_time.o test_cts_time.o
-cts_time.o: ../main/time/cts_time.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-$(CTS_TIME_TARGET): $(CTS_TIME_OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^
-
-BAND_CONFIG_OBJ = band_config.o test_band_config.o
-band_config.o: ../main/band_config.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-$(BAND_CONFIG_TARGET): $(BAND_CONFIG_OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^
-
-MENU_MODEL_OBJ = menu_model.o test_menu_model.o
-menu_model.o: ../main/menu_model.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-$(MENU_MODEL_TARGET): $(MENU_MODEL_OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^
-
-SCREEN_MODEL_OBJ = screen_model.o test_screen_model.o
-screen_model.o: ../main/screen_model.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-$(SCREEN_MODEL_TARGET): $(SCREEN_MODEL_OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^
-
 PORTA_PROTO_OBJ = porta_proto.o porta_event_json.o porta_link_test.o test_porta_proto.o
 porta_proto.o: ../components/porta_proto/porta_proto.c
 	$(CC) $(CFLAGS) -I../components/porta_proto/include -c $< -o $@
@@ -222,24 +170,6 @@ test_bundle_host.o: test_bundle_host.cpp
 $(BUNDLE_HOST_TARGET): $(BUNDLE_HOST_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
-DATETIME_FIELD_OBJ = datetime_field.o test_datetime_field.o
-datetime_field.o: ../main/datetime_field.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-$(DATETIME_FIELD_TARGET): $(DATETIME_FIELD_OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^
-
-USB_C_PRESENCE_OBJ = usb_c_presence.o test_usb_c_presence.o
-usb_c_presence.o: ../main/usb_c_presence.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-$(USB_C_PRESENCE_TARGET): $(USB_C_PRESENCE_OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^
-
-POWER_OBJ = power_hysteresis.o test_power_hysteresis.o
-power_hysteresis.o: ../components/board_cardputer_adv/power_hysteresis.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-$(POWER_TARGET): $(POWER_OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^
-
 QSO_BROWSE_OBJ = qso_browse.o test_qso_browse.o
 qso_browse.o: ../main/storage/qso_browse.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
@@ -252,26 +182,14 @@ adif_delete.o: ../main/storage/adif_delete.cpp
 $(ADIF_DELETE_TARGET): $(ADIF_DELETE_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
-COPY_BLOCK_OBJ = test_copy_block.o
-$(COPY_BLOCK_TARGET): $(COPY_BLOCK_OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^
-
-STATION_SAVE_OBJ = station_save_queue.o test_station_save_queue.o
-station_save_queue.o: ../main/storage/station_save_queue.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-$(STATION_SAVE_TARGET): $(STATION_SAVE_OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^
-
 ADIF_LOGGER_OBJ = adif.o adif_logger.o host_mocks.o test_adif_logger.o
 adif_logger.o: ../main/storage/adif_logger.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 $(ADIF_LOGGER_TARGET): $(ADIF_LOGGER_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
-FILE_LIST_OBJ = qso_browse.o file_list.o file_list_queue.o test_file_list.o
+FILE_LIST_OBJ = qso_browse.o file_list.o test_file_list.o
 file_list.o: ../main/storage/file_list.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-file_list_queue.o: ../main/storage/file_list_queue.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 $(FILE_LIST_TARGET): $(FILE_LIST_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
@@ -285,17 +203,11 @@ $(FILE_LIST_TARGET): $(FILE_LIST_OBJ)
 clean:
 	rm -f $(OBJ) porta_event_json.o sim_station.o $(SIM_TARGET) \
 	      $(UNIQUE_OBJ) $(CANCEL_OBJ) $(ADIF_OBJ) $(STATION_OBJ) \
-	      $(DECODE_SORT_OBJ) $(POWER_OBJ) $(QSO_BROWSE_OBJ) $(ADIF_DELETE_OBJ) $(COPY_BLOCK_OBJ) \
-	      $(STATION_SAVE_OBJ) $(FILE_LIST_OBJ) $(RADIO_PROFILE_OBJ) $(TX_HUD_BANNER_OBJ) \
-	      $(RX_LIST_STALE_OBJ) $(CTS_TIME_OBJ) $(BAND_CONFIG_OBJ) \
-	      $(USB_C_PRESENCE_OBJ) \
+	      $(DECODE_SORT_OBJ) $(QSO_BROWSE_OBJ) $(ADIF_DELETE_OBJ) \
+	      $(FILE_LIST_OBJ) \
 	      $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
-	      $(DECODE_SORT_TARGET) $(POWER_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) $(COPY_BLOCK_TARGET) \
-	      $(STATION_SAVE_TARGET) $(FILE_LIST_TARGET) $(RADIO_PROFILE_TARGET) $(TX_HUD_BANNER_TARGET) \
-	      $(RX_LIST_STALE_TARGET) $(CTS_TIME_TARGET) $(BAND_CONFIG_TARGET) \
-	      $(USB_C_PRESENCE_TARGET) $(MENU_MODEL_OBJ) $(MENU_MODEL_TARGET) \
-	      $(SCREEN_MODEL_OBJ) $(SCREEN_MODEL_TARGET) \
-	      $(DATETIME_FIELD_OBJ) $(DATETIME_FIELD_TARGET) \
+	      $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) \
+	      $(FILE_LIST_TARGET) \
 	      $(PAIRING_TOKEN_OBJ) $(PAIRING_TOKEN_TARGET) \
 	      $(WEB_PAGE_OBJ) $(WEB_PAGE_TARGET) \
 	      $(WEB_MANIFEST_OBJ) $(WEB_MANIFEST_TARGET) \

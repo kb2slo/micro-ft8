@@ -1,8 +1,0 @@
-# Name,     Type, SubType, Offset,   Size,     Flags
-# I29 2026-09-18: internal operator files (Station.txt, .adi) moved from FAT
-# (subtype fat, label fatfs) + TinyUSB-MSC mount to LittleFS. Same offset/size;
-# flashing reformats — old FAT contents are not migrated. SD card stays FAT.
-nvs,        data, nvs,     0x9000,   0x6000,
-phy_init,   data, phy,     0xf000,   0x1000,
-factory,    app,  factory, 0x10000,  0x4F0000,
-storage,    data, littlefs,0x500000, 0x300000,
