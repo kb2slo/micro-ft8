@@ -21,3 +21,7 @@ CONFIG_BT_NIMBLE_DIS_SERVICE=n
 
 # nano_flasher (I3): field-flash a Green Nano over USB-C CDC-ACM host.
 CONFIG_SERIAL_FLASHER_PORT_USB_CDC_ACM=y
+
+# Port A. A flash read (the decode screen) otherwise stalls the UART interrupt
+# longer than the 128-byte FIFO. The P4 build leaves this off.
+CONFIG_UART_ISR_IN_IRAM=y

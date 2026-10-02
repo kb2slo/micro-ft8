@@ -1875,6 +1875,9 @@ static bool charge_mode_set_cpu_mhz(uint32_t mhz) {
 // success or a short reason a caller can log or NAK with. Shared by the
 // on-device R-tap (below) and Port A's QUEUE_REPLY action.
 static const char* apply_reply_touch(const UiRxLine& msg) {
+  if (porta_link_test_active()) {
+    return "link test";
+  }
   const AutoseqTouchResult touch = autoseq_on_touch(msg, decode_tx_state_get_tx_active());
   if (touch == AutoseqTouchResult::IgnoredInProgress) {
     g_tx_view_dirty = true;
@@ -4027,6 +4030,9 @@ const char* porta_host_connect(void) {
 }
 
 const char* porta_host_tune(bool on) {
+  if (porta_link_test_active()) {
+    return "link test";
+  }
   if (on && !radio_control_ready()) {
     return "CAT not ready";
   }
@@ -4093,6 +4099,9 @@ static void apply_beacon_mode(BeaconMode new_mode) {
 }
 
 const char* porta_host_beacon(uint8_t mode) {
+  if (mode != (uint8_t)BeaconMode::OFF && porta_link_test_active()) {
+    return "link test";
+  }
   if (mode > (uint8_t)BeaconMode::ODD) {
     return "unknown beacon mode";
   }
@@ -4122,7 +4131,25 @@ const char* porta_host_queue_cancel(uint16_t entry_id) {
   return nullptr;
 }
 
+void porta_host_link_test(bool active, bool tune) {
+  if (!active) {
+    if (g_tune) {
+      porta_host_tune(false);
+    }
+    return;
+  }
+  request_tx_cancel();
+  porta_host_beacon(0);
+  autoseq_clear();
+  if (tune) {
+    porta_host_tune(true);
+  }
+}
+
 const char* porta_host_queue_reply(uint32_t decode_id) {
+  if (porta_link_test_active()) {
+    return "link test";
+  }
   UiRxLine msg;
   if (!find_decode_for_reply(decode_id, &msg)) {
     return "unknown decode";
@@ -4965,6 +4992,9 @@ autoseq_set_recent_qso_callback(decode_pipeline_recently_logged);
         case UIMode::STATUS: {
         if (status_edit_idx == -1) {
           if (c == '1') {
+            if (porta_link_test_active()) {
+              break;
+            }
             if (board_power_halted()) {
               g_status_beacon_temp = BeaconMode::OFF;
             } else {
@@ -4997,6 +5027,9 @@ autoseq_set_recent_qso_callback(decode_pipeline_recently_logged);
             // Why deferred: avoid pushing CAT on every S->3 press.
           }
               else if (c == '4') {
+                if (porta_link_test_active()) {
+                  break;
+                }
                 g_tune = !g_tune;
                 if (radio_control_ready()) {
                   int freq_hz = (int)(g_bands[g_band_sel].freq * 1000.0f);

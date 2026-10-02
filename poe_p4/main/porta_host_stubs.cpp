@@ -523,6 +523,9 @@ const char *porta_host_connect(void) {
 }
 
 const char *porta_host_tune(bool on) {
+    if (porta_link_test_active()) {
+        return "link test";
+    }
     ensure_seeded();
     if (on && swr_sweep_busy()) {
         return "a sweep is running";
@@ -549,11 +552,29 @@ const char *porta_host_tune(bool on) {
 }
 
 const char *porta_host_beacon(uint8_t mode) {
+    if (mode != 0 && porta_link_test_active()) {
+        return "link test";
+    }
     if (mode > 2) {
         return "unknown beacon mode";
     }
     tx_scheduler_set_beacon(mode);
     return nullptr;
+}
+
+void porta_host_link_test(bool active, bool tune) {
+    if (!active) {
+        if (s_tune) {
+            porta_host_tune(false);
+        }
+        return;
+    }
+    porta_host_tx_cancel();
+    porta_host_beacon(0);
+    autoseq_clear();
+    if (tune) {
+        porta_host_tune(true);
+    }
 }
 
 static const char *apply_reply_touch(const UiRxLine &msg) {
@@ -591,6 +612,9 @@ const char *porta_host_queue_cancel(uint16_t entry_id) {
 }
 
 const char *porta_host_queue_reply(uint32_t decode_id) {
+    if (porta_link_test_active()) {
+        return "link test";
+    }
     UiRxLine msg;
     if (!find_decode_for_reply(decode_id, &msg)) {
         return "unknown decode";

@@ -53,6 +53,15 @@ void porta_decoder_init(porta_decoder_t *d)
     d->state = ST_IDLE;
 }
 
+void porta_decoder_resync(porta_decoder_t *d)
+{
+    if (!d) {
+        return;
+    }
+    d->state = ST_IDLE;
+    d->got = 0;
+}
+
 bool porta_decoder_push(porta_decoder_t *d, uint8_t byte, porta_frame_t *out)
 {
     if (!d || !out) {

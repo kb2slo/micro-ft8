@@ -180,8 +180,10 @@ screen_model.o: ../main/screen_model.cpp
 $(SCREEN_MODEL_TARGET): $(SCREEN_MODEL_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
-PORTA_PROTO_OBJ = porta_proto.o porta_event_json.o test_porta_proto.o
+PORTA_PROTO_OBJ = porta_proto.o porta_event_json.o porta_link_test.o test_porta_proto.o
 porta_proto.o: ../components/porta_proto/porta_proto.c
+	$(CC) $(CFLAGS) -I../components/porta_proto/include -c $< -o $@
+porta_link_test.o: ../components/porta_proto/porta_link_test.c
 	$(CC) $(CFLAGS) -I../components/porta_proto/include -c $< -o $@
 test_porta_proto.o: test_porta_proto.cpp
 	$(CXX) $(CXXFLAGS) -I../components/porta_proto/include -c $< -o $@
@@ -301,6 +303,7 @@ clean:
 	      $(DIAL_HISTORY_OBJ) $(DIAL_HISTORY_TARGET) \
 	      $(ADIF_LOGGER_OBJ) $(ADIF_LOGGER_TARGET) \
 	      $(CAT_REPLY_PARSER_OBJ) $(CAT_REPLY_PARSER_TARGET) \
-	      $(SWR_SWEEP_OBJ) $(SWR_SWEEP_TARGET)
+	      $(SWR_SWEEP_OBJ) $(SWR_SWEEP_TARGET) \
+	      $(PORTA_PROTO_OBJ) $(PORTA_PROTO_TARGET)
 
 .PHONY: all clean

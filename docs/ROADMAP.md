@@ -8,8 +8,7 @@ Ship on `origin/main`. Talk through changes before a local commit (see [README.m
 
 ## Now
 
-| ID | Item | Why / constraint |
-| --- | --- | --- |
+No row. The top of Backlog is next.
 
 ## Backlog
 
@@ -28,7 +27,6 @@ Ship on `origin/main`. Talk through changes before a local commit (see [README.m
 | u4dw | TX watchdog: stop a runaway transmitter | **Safety, both boards.** Nothing bounds continuous transmit or TX without QSO progress on any path. Cap both, and stop through each board's existing halt path (`board_power_halted()` on the ADV). The policy is one `host_mock`-tested function shared by ADV and P4; a fixed cap needs no UI. **Done-when:** host tests cover the cap and the no-progress rule; on each board a forced runaway TX stops at the cap (field). |
 | swsu | Test-plan debt: close owed field checks (**standing**) | `TEST_PLAN.md` Pending holds field checks only the operator can run; unrun ones hide regressions and keep "built" from becoming "done". Worked as bench sessions against Pending, plus dropping rows that pass or no longer apply. Never dropped. **Done-when (state):** `tools/roadmap_rows.sh health` shows owed field checks within budget. |
 | hfea | Split user and developer docs: the site for users, `README.md` for developers | The repo is private, so the operator-facing fork section of `README.md` has no outside readers. **Change:** move each still-true operator claim to the site (`webapp/`), checking it against current behaviour and dropping stale ones; cut `README.md` to a developer landing (what, clone, build, test, link to `docs/`); point "Fork README stays current" and CI's `readme-audit` at `webapp/`, same triggers; fix `docs/README.md`'s "this repo is public". **Open:** does Wei's original below the delimiter stay (attribution belongs in `LICENSE`)? **Done-when:** `README.md` has no operator feature list, the site carries every true claim, and `readme-audit` fails a key-binding change that doesn't touch `webapp/`. |
-| v3hh | Port A: stress-test and raise the link speed | Updates move megabytes over a 115200-baud link; everything on Port A benefits. First slice of [RFC 0007](rfcs/0007-flash-and-update.md) (§3.11). **Done-when:** one shared rate constant; the directed stress test ships as a Settings diagnostic (codec and payload checker `host_mock`-tested); it passes at the chosen rate on both main boards under RX and TX load (field). |
 | wanw | CI: publish app-only OTA images | OTA writes app images, not the merged `0x0` images CI publishes today. [RFC 0007](rfcs/0007-flash-and-update.md) §3.1. **Done-when:** `/download/manifest.json` carries a per-board `ota` entry (file, size, SHA-256, version, protocol version) and the files are served. |
 | v697 | Sidekick: update itself from the release host | The sidekick downloads its own image over plain HTTP, checked against a SHA-256 the webapp fetched over HTTPS. [RFC 0007](rfcs/0007-flash-and-update.md) §3.2–3.4. **Done-when:** a sidekick updates from the webapp; a forced bad image rolls back (field). |
 | hstv | Main boards: OTA over Port A, P4 first | A build version for the P4 (it has none today), main-board HELLO with version, update mode (radio stopped, TX refused), `FW_*` transfer with resume, shared receiver in `components/porta`; P4 A/B partitions and rollback. [RFC 0007](rfcs/0007-flash-and-update.md) §3.5–3.7. **Done-when:** receiver `host_mock`-tested; a P4 updates from the webapp with transfer time measured, and a forced bad image rolls back (field). |

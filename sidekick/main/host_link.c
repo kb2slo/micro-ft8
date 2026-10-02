@@ -7,6 +7,7 @@
 
 #include "driver/uart.h"
 #include "esp_log.h"
+#include "esp_random.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -1132,6 +1133,149 @@ static esp_err_t put_config(httpd_req_t *req)
     return httpd_resp_sendstr(req, "{\"ok\":true}");
 }
 
+// Link stress test. The run struct is touched only by porta_rx_task. HTTP
+// posts a command and reads the snapshot below.
+static porta_link_run_t s_link;
+static porta_link_status_t s_link_pub;
+static porta_link_status_t s_link_peer;
+static bool s_link_peer_valid;
+static int s_link_cmd;  // 1 rx, 3 stop
+static uint32_t s_link_pass;
+static uint32_t s_link_last_baud;
+
+static uint32_t link_now_ms(void)
+{
+    return (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+}
+
+static void link_publish(uint32_t crc_errors)
+{
+    if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(20)) != pdTRUE) {
+        return;
+    }
+    porta_link_run_status(&s_link, crc_errors, &s_link_pub);
+    s_link_peer_valid = s_link.peer_valid;
+    if (s_link.peer_valid) {
+        s_link_peer = s_link.peer;
+    }
+    xSemaphoreGive(s_lock);
+}
+
+static uint32_t s_link_hw_baud = PORTA_BAUD;
+static uint32_t s_link_pending_baud;
+
+static void link_set_uart_baud(porta_decoder_t *dec, uint32_t baud)
+{
+    uart_set_baudrate(PORTA_UART, baud);
+    uart_flush_input(PORTA_UART);
+    porta_decoder_resync(dec);
+    s_link_hw_baud = baud;
+}
+
+static void link_apply_baud(porta_decoder_t *dec, uint32_t baud)
+{
+    link_set_uart_baud(dec, baud);
+    porta_link_run_applied(&s_link, link_now_ms());
+}
+
+// The TX ring holds 4096 bytes. A 50 ms wait returns while that ring, and the
+// set-rate frame behind it, are still queued, and the baud change clocks the
+// rest out at the new rate. Poll until the ring is empty, and keep reading
+// between polls.
+static void link_flush_pending_baud(porta_decoder_t *dec)
+{
+    if (s_link_pending_baud == 0) {
+        return;
+    }
+    if (uart_wait_tx_done(PORTA_UART, pdMS_TO_TICKS(5)) != ESP_OK) {
+        return;
+    }
+    const uint32_t baud = s_link_pending_baud;
+    s_link_pending_baud = 0;
+    link_apply_baud(dec, baud);
+    ESP_LOGI(TAG, "link baud %" PRIu32, baud);
+}
+
+static void link_restore_resting(porta_decoder_t *dec)
+{
+    if (porta_link_run_active(&s_link) || s_link_pending_baud != 0 ||
+        s_link_hw_baud == PORTA_BAUD) {
+        return;
+    }
+    if (uart_wait_tx_done(PORTA_UART, pdMS_TO_TICKS(5)) != ESP_OK) {
+        return;
+    }
+    link_set_uart_baud(dec, PORTA_BAUD);
+    ESP_LOGI(TAG, "link baud %" PRIu32, (uint32_t)PORTA_BAUD);
+}
+
+static void link_take_cmd(porta_decoder_t *dec)
+{
+    int cmd = 0;
+    uint32_t pass = 0;
+    uint32_t baud = 0;
+    if (s_lock && xSemaphoreTake(s_lock, pdMS_TO_TICKS(20)) == pdTRUE) {
+        cmd = s_link_cmd;
+        pass = s_link_pass;
+        baud = s_link_last_baud;
+        s_link_cmd = 0;
+        xSemaphoreGive(s_lock);
+    }
+    if (cmd == 3) {
+        porta_link_run_stop(&s_link);
+    } else if (cmd == 1 && !porta_link_run_active(&s_link)) {
+        unsigned last = 0;
+        for (unsigned i = 0; i < porta_link_rate_count(); ++i) {
+            if (porta_link_rate_at(i) == baud) {
+                last = i;
+            }
+        }
+        // The UART test does not key the radio (operator, 2026-10-01).
+        porta_link_run_begin(&s_link, esp_random(), pass, true, false, last, link_now_ms());
+        (void)dec;
+    }
+}
+
+static void link_pump(porta_decoder_t *dec)
+{
+    link_take_cmd(dec);
+    uint8_t frame[PORTA_PROTO_MAX_FRAME];
+    for (int i = 0; i < 16; ++i) {
+        size_t free_sz = 0;
+        if (uart_get_tx_buffer_free_size(PORTA_UART, &free_sz) != ESP_OK ||
+            free_sz < PORTA_PROTO_MAX_FRAME) {
+            break;
+        }
+        uint32_t apply = 0;
+        const size_t n = porta_link_run_next(&s_link, link_now_ms(), dec->crc_errors, frame,
+                                             sizeof(frame), &apply);
+        if (n == 0) {
+            break;
+        }
+        uart_write_bytes(PORTA_UART, (const char *)frame, n);
+        if (apply != 0) {
+            s_link_pending_baud = apply;
+            break;
+        }
+    }
+    link_flush_pending_baud(dec);
+    link_restore_resting(dec);
+    char note[PORTA_EVENT_TEXT_MAX + 1];
+    if (porta_link_run_take_note(&s_link, note, sizeof(note)) > 0) {
+        ESP_LOGI(TAG, "%s", note);
+    }
+    link_publish(dec->crc_errors);
+}
+
+static void link_on_frame(porta_decoder_t *dec, const porta_frame_t *frame)
+{
+    uint32_t switch_baud = 0;
+    porta_link_run_on_frame(&s_link, frame, link_now_ms(), dec->crc_errors, &switch_baud);
+    if (switch_baud != 0) {
+        s_link_pending_baud = switch_baud;
+    }
+}
+
 // Its own task rather than a poll in the beacon loop: events arrive
 // continuously, and a second of latency would make a live viewer useless quite
 // apart from overrunning the RX buffer.
@@ -1154,9 +1298,14 @@ static void porta_rx_task(void *arg)
     uint32_t reported_crc = 0;
 
     while (1) {
-        const int n = uart_read_bytes(PORTA_UART, buf, sizeof(buf), pdMS_TO_TICKS(50));
+        const int wait_ms = porta_link_run_active(&s_link) ? 2 : 50;
+        const int n = uart_read_bytes(PORTA_UART, buf, sizeof(buf), pdMS_TO_TICKS(wait_ms));
         for (int i = 0; i < n; ++i) {
             if (!porta_decoder_push(&s_rx_dec, buf[i], &frame)) {
+                continue;
+            }
+            if (frame.type == PORTA_MSG_LINK_TEST || frame.type == PORTA_MSG_LINK_DATA) {
+                link_on_frame(&s_rx_dec, &frame);
                 continue;
             }
             entry_t e = {0};
@@ -1279,7 +1428,136 @@ static void porta_rx_task(void *arg)
             ESP_LOGW(TAG, "link: %" PRIu32 " CRC errors, %" PRIu32 " frames ok",
                      s_rx_dec.crc_errors, s_rx_dec.frames_ok);
         }
+        link_pump(&s_rx_dec);
     }
+}
+
+static esp_err_t get_link_test(httpd_req_t *req)
+{
+    porta_link_status_t st;
+    porta_link_status_t peer;
+    bool peer_ok = false;
+    memset(&st, 0, sizeof(st));
+    memset(&peer, 0, sizeof(peer));
+    if (s_lock && xSemaphoreTake(s_lock, pdMS_TO_TICKS(50)) == pdTRUE) {
+        st = s_link_pub;
+        peer = s_link_peer;
+        peer_ok = s_link_peer_valid;
+        xSemaphoreGive(s_lock);
+    }
+    char body[400];
+    snprintf(body, sizeof(body),
+             "{\"running\":%s,\"tune\":%s,\"passed\":%s,\"failed\":%s,"
+             "\"baud\":%lu,\"tx\":%lu,\"ok\":%lu,\"drop\":%lu,\"dup\":%lu,\"bad\":%lu,\"crc\":%lu,"
+             "\"peer\":%s}",
+             st.running ? "true" : "false", st.tune ? "true" : "false",
+             st.passed ? "true" : "false", st.failed ? "true" : "false",
+             (unsigned long)st.baud, (unsigned long)st.tx_bytes, (unsigned long)st.frames_ok,
+             (unsigned long)st.drops, (unsigned long)st.duplicates, (unsigned long)st.mismatches,
+             (unsigned long)st.crc_errors,
+             peer_ok ? "{\"baud\":0}" : "null");
+    if (peer_ok) {
+        snprintf(body, sizeof(body),
+                 "{\"running\":%s,\"tune\":%s,\"passed\":%s,\"failed\":%s,"
+                 "\"baud\":%lu,\"tx\":%lu,\"ok\":%lu,\"drop\":%lu,\"dup\":%lu,\"bad\":%lu,\"crc\":%lu,"
+                 "\"peer\":{\"baud\":%lu,\"tx\":%lu,\"ok\":%lu,\"drop\":%lu,\"dup\":%lu,\"bad\":%lu,\"crc\":%lu}}",
+                 st.running ? "true" : "false", st.tune ? "true" : "false",
+                 st.passed ? "true" : "false", st.failed ? "true" : "false",
+                 (unsigned long)st.baud, (unsigned long)st.tx_bytes, (unsigned long)st.frames_ok,
+                 (unsigned long)st.drops, (unsigned long)st.duplicates,
+                 (unsigned long)st.mismatches, (unsigned long)st.crc_errors,
+                 (unsigned long)peer.baud, (unsigned long)peer.tx_bytes, (unsigned long)peer.frames_ok,
+                 (unsigned long)peer.drops, (unsigned long)peer.duplicates,
+                 (unsigned long)peer.mismatches, (unsigned long)peer.crc_errors);
+    }
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, body);
+}
+
+// "rx" is the final pass: 14 MB at PORTA_BAUD. "rx <bytes> <baud>" runs that
+// one rate. bytes must be a porta_link_pass_at() value, and baud one
+// porta_link_rate_at() value. The quota is not repeated at the rates below it.
+// A newer candidate at the end of the list does not move this pass.
+static bool link_parse_u32(const char **pp, uint32_t *out)
+{
+    const char *p = *pp;
+    if (*p < '0' || *p > '9') {
+        return false;
+    }
+    uint32_t v = 0;
+    while (*p >= '0' && *p <= '9') {
+        const uint32_t digit = (uint32_t)(*p - '0');
+        if (v > (UINT32_MAX - digit) / 10u) {
+            return false;
+        }
+        v = v * 10u + digit;
+        p++;
+    }
+    *out = v;
+    *pp = p;
+    return true;
+}
+
+static bool link_parse_rx(const char *body, uint32_t *bytes, uint32_t *baud)
+{
+    if (body[0] == '\0' || strcmp(body, "rx") == 0) {
+        *bytes = PORTA_LINK_PASS_BYTES;
+        *baud = PORTA_BAUD;
+        return true;
+    }
+    if (strncmp(body, "rx ", 3) != 0) {
+        return false;
+    }
+    const char *p = body + 3;
+    uint32_t got_bytes = 0;
+    uint32_t got_baud = 0;
+    if (!link_parse_u32(&p, &got_bytes) || *p != ' ') {
+        return false;
+    }
+    p++;
+    if (!link_parse_u32(&p, &got_baud) || *p != '\0') {
+        return false;
+    }
+    if (!porta_link_pass_allowed(got_bytes) || !porta_link_rate_allowed(got_baud)) {
+        return false;
+    }
+    *bytes = got_bytes;
+    *baud = got_baud;
+    return true;
+}
+
+static esp_err_t post_link_test(httpd_req_t *req)
+{
+    char body[40] = {0};
+    int received = httpd_req_recv(req, body, sizeof(body) - 1);
+    if (received < 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "no body");
+        return ESP_FAIL;
+    }
+    int cmd = 1;
+    uint32_t pass = PORTA_LINK_PASS_BYTES;
+    uint32_t baud = porta_link_rate_at(porta_link_rate_count() - 1u);
+    if (strcmp(body, "stop") == 0) {
+        cmd = 3;
+    } else if (!link_parse_rx(body, &pass, &baud)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "want rx or stop");
+        return ESP_FAIL;
+    }
+    bool busy = false;
+    if (s_lock && xSemaphoreTake(s_lock, pdMS_TO_TICKS(50)) == pdTRUE) {
+        busy = s_link_pub.running && cmd != 3;
+        if (!busy) {
+            s_link_cmd = cmd;
+            s_link_pass = pass;
+            s_link_last_baud = baud;
+        }
+        xSemaphoreGive(s_lock);
+    }
+    httpd_resp_set_type(req, "application/json");
+    if (busy) {
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"already running\"}");
+    }
+    return httpd_resp_sendstr(req, "{\"ok\":true}");
 }
 
 void host_link_start(void)
@@ -1287,7 +1565,8 @@ void host_link_start(void)
     if (!s_lock) {
         s_lock = xSemaphoreCreateMutex();
     }
-    xTaskCreate(porta_rx_task, "porta_rx", 4096, NULL, 5, NULL);
+    porta_link_run_init(&s_link);
+    xTaskCreate(porta_rx_task, "porta_rx", 6144, NULL, 5, NULL);
 }
 
 void host_link_register_uris(httpd_handle_t server)
@@ -1318,6 +1597,12 @@ void host_link_register_uris(httpd_handle_t server)
     };
     static const httpd_uri_t swr_start = {
         .uri = "/api/swr/start", .method = HTTP_POST, .handler = post_swr_start,
+    };
+    static const httpd_uri_t link_test_get = {
+        .uri = "/api/link-test", .method = HTTP_GET, .handler = get_link_test,
+    };
+    static const httpd_uri_t link_test_post = {
+        .uri = "/api/link-test", .method = HTTP_POST, .handler = post_link_test,
     };
     static const httpd_uri_t beacon = {
         .uri = "/api/beacon", .method = HTTP_POST, .handler = post_beacon,
@@ -1360,6 +1645,8 @@ void host_link_register_uris(httpd_handle_t server)
         { &radio_tune, PAIRING_REQUIRED },
         { &beacon, PAIRING_REQUIRED },
         { &swr_start, PAIRING_REQUIRED },
+        { &link_test_get, PAIRING_OPEN },
+        { &link_test_post, PAIRING_REQUIRED },
         { &queue_cancel, PAIRING_REQUIRED },
         { &queue_reply, PAIRING_REQUIRED },
         { &log_files, PAIRING_OPEN },

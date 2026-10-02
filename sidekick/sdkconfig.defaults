@@ -26,3 +26,7 @@ CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 # rest. Picked blind, without an on-device heap reading -- TEST_PLAN.md
 # Pending.
 CONFIG_LWIP_MAX_SOCKETS=16
+
+# Port A. A WiFi flash access otherwise stalls the UART interrupt longer than
+# the 128-byte FIFO. The ADV build sets the same option.
+CONFIG_UART_ISR_IN_IRAM=y

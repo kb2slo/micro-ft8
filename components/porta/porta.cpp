@@ -1,6 +1,7 @@
 #include "porta.h"
 #include "porta_board.h"
 
+#include <atomic>
 #include <cinttypes>
 #include <cstdio>
 #include <cstring>
@@ -10,6 +11,7 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "debug_log.h"
 
@@ -30,6 +32,9 @@ const char* porta_host_connect(void);
 const char* porta_host_tune(bool on);
 // STATUS key-1's three-way cycle, applied immediately rather than staged.
 const char* porta_host_beacon(uint8_t mode);
+// active: cancel TX, beacon off, clear the queue, and key Tune when asked.
+// !active: unkey Tune if this test turned it on.
+void porta_host_link_test(bool active, bool tune);
 // Cancel/reply by the stable ids QUEUE_ENTRY and EVENT DECODE hand out.
 const char* porta_host_queue_cancel(uint16_t entry_id);
 const char* porta_host_queue_reply(uint32_t decode_id);
@@ -50,16 +55,59 @@ namespace {
 
 constexpr uart_port_t kPortaUart = UART_NUM_1;
 
-// Fixed. The sidekick only ever speaks 115200 (sidekick/main/main.c), and with
-// GPS off this port there is nothing else on the wire to probe for.
-constexpr int kBaud = 115200;
+// Shared with the sidekick (PORTA_BAUD in porta_proto.h). The UART opens at
+// this rate; the link-test diagnostic is what may change it (row v3hh).
+constexpr int kBaud = PORTA_BAUD;
 
 // Big enough that one frame per tick never finds it full; see drain_out().
 constexpr int kTxBufBytes = 4096;
 
+// Both main loops sleep 10 ms and used to read 128 bytes per wake: about
+// 12.8 kB/s, enough for 115200 and not for 230400 (measured on the P4,
+// 2026-10-01). A reader task now decodes the byte stream itself. Link-test
+// bulk frames are checked there. Every other frame is queued for porta_tick,
+// which still owns autoseq and the radio. On the P4 the task is not pinned.
+// On the ADV it is pinned to core 1, and the UART driver is installed from
+// that core, so the interrupt follows it. The display and the USB host stay
+// on core 0; their interrupt-off time was longer than the 128-byte FIFO above
+// 460800 (measured 2026-10-01). The task sits above the USB host tasks
+// (priority 5) so a short parse preempts them, then blocks in the read. The
+// ADV driver buffer stays 2048 bytes: that block is DMA RAM, which the radio
+// already presses.
+#if CONFIG_IDF_TARGET_ESP32P4
+constexpr int kUartRxBytes = 4096;
+#else
+constexpr int kUartRxBytes = 2048;
+#endif
+constexpr UBaseType_t kRxTaskPrio = 6;
+constexpr int kRxFrameQueueLen = 8;
+
 const char* kTag = "PORTA";
 
 bool s_running = false;
+TaskHandle_t s_rx_task = nullptr;
+std::atomic<bool> s_rx_stop{false};
+std::atomic<bool> s_rx_hold{false};
+std::atomic<bool> s_rx_paused{false};
+std::atomic<bool> s_rx_exited{false};
+std::atomic<uint32_t> s_rx_overrun{0};
+// A mutex, not a spinlock. The UART interrupt and porta_rx share core 1 on
+// the ADV. portENTER_CRITICAL masks that core's interrupts while the reader
+// waits, and at 1.5 Mbit/s the 128-byte FIFO is under 1 ms (failed 2026-10-01,
+// ok 141, drop 9, crc 7). A mutex leaves the interrupt enabled.
+SemaphoreHandle_t s_link_lock = nullptr;
+
+void link_lock() {
+  xSemaphoreTake(s_link_lock, portMAX_DELAY);
+}
+
+void link_unlock() {
+  xSemaphoreGive(s_link_lock);
+}
+porta_frame_t s_rx_frames[kRxFrameQueueLen];
+int s_rx_frame_head = 0;
+int s_rx_frame_tail = 0;
+int s_rx_frame_count = 0;
 porta_decoder_t s_dec;
 char s_version[PORTA_HELLO_VERSION_LEN + 1] = {};
 
@@ -98,6 +146,34 @@ bool configure_uart() {
   uart_flush_input(kPortaUart);
   return true;
 }
+
+// uart_driver_install allocates the interrupt on the core that calls it.
+// The ADV's screen and USB host run on core 0, so the install runs on core 1.
+bool install_uart() {
+  esp_err_t err = uart_driver_install(kPortaUart, kUartRxBytes, kTxBufBytes, 0, nullptr, 0);
+  if (err == ESP_ERR_INVALID_STATE) {
+    uart_driver_delete(kPortaUart);
+    err = uart_driver_install(kPortaUart, kUartRxBytes, kTxBufBytes, 0, nullptr, 0);
+  }
+  if (err != ESP_OK) {
+    ESP_LOGW(kTag, "UART driver install failed: %d", (int)err);
+    return false;
+  }
+  if (!configure_uart()) {
+    ESP_LOGW(kTag, "UART config failed");
+    uart_driver_delete(kPortaUart);
+    return false;
+  }
+  return true;
+}
+
+#if !CONFIG_IDF_TARGET_ESP32P4
+void uart_boot_task(void* arg) {
+  auto* result = static_cast<std::atomic<int>*>(arg);
+  result->store(install_uart() ? 1 : -1);
+  vTaskDelete(nullptr);
+}
+#endif
 
 // Outbound queue. Sized for a busy slot (~30 decodes) without chewing ADV
 // internal DRAM — field-found 2026-09-18: bumping this to 64 (~10 KiB more
@@ -208,10 +284,314 @@ void handle_hello(const porta_frame_t& f) {
 
 // The control direction. Answered with ACK or NAK carrying the same verb, so
 // the sidekick can match a reply to its request without a sequence number.
+porta_link_run_t s_link;
+bool s_link_radio = false;
+uint32_t s_link_rx_bytes = 0;
+uint32_t s_link_data_frames = 0;
+uint32_t s_link_log_ms = 0;
+bool s_link_logging = false;
+
+void link_log(const char* why) {
+  porta_link_status_t st;
+  unsigned phase = 0;
+  uint32_t data_frames = 0;
+  uint32_t rxb = 0;
+  const uint32_t crc = s_dec.crc_errors;
+  link_lock();
+  porta_link_run_status(&s_link, crc, &st);
+  phase = (unsigned)s_link.phase;
+  data_frames = s_link_data_frames;
+  rxb = s_link_rx_bytes;
+  link_unlock();
+  uint32_t hw = 0;
+  uart_get_baudrate(kPortaUart, &hw);
+  ESP_LOGI(kTag,
+           "link %s phase %u hw %" PRIu32 " tx %" PRIu32 " ok %" PRIu32
+           " drop %" PRIu32 " dup %" PRIu32 " bad %" PRIu32 " crc %" PRIu32
+           " data %" PRIu32 " rxb %" PRIu32,
+           why, phase, hw, st.tx_bytes, st.frames_ok, st.drops,
+           st.duplicates, st.mismatches, st.crc_errors, data_frames, rxb);
+}
+
+void link_log_tick() {
+  link_lock();
+  const bool active = porta_link_run_active(&s_link);
+  link_unlock();
+  const uint32_t now = now_ms();
+  if (active) {
+    if (!s_link_logging || (now - s_link_log_ms) >= 1000u) {
+      link_log("run");
+      s_link_log_ms = now;
+      s_link_logging = true;
+    }
+    return;
+  }
+  if (s_link_logging) {
+    link_log("done");
+    s_link_logging = false;
+  }
+}
+
+uint32_t s_link_hw_baud = PORTA_BAUD;
+uint32_t s_link_pending_baud = 0;
+
+void consume_rx(const uint8_t* buf, int len, bool queue_control);
+
+// uart_flush_input while porta_rx is blocked in uart_read_bytes races the
+// driver ring. Hold the task out of the read across a baud change. Bytes it
+// already pulled are parsed first: they were clocked at the old rate.
+// pdMS_TO_TICKS(5) is 0 at a 10 ms tick, and vTaskDelay(0) does not wait. The
+// reader was still inside uart_read_bytes, the baud change ran anyway, and
+// porta_rx then spun until the task watchdog fired (2026-10-01). The wait is
+// 40 ms so a 1 ms tick (the ADV) still covers the 20 ms read timeout.
+bool rx_hold_enter() {
+  if (s_rx_task == nullptr) return true;
+  s_rx_hold.store(true);
+  const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(40);
+  while (!s_rx_paused.load()) {
+    if ((int32_t)(deadline - xTaskGetTickCount()) <= 0) {
+      s_rx_hold.store(false);
+      ESP_LOGW(kTag, "porta_rx did not pause for baud change");
+      return false;
+    }
+    vTaskDelay(1);
+  }
+  return true;
+}
+
+void rx_hold_leave() {
+  s_rx_hold.store(false);
+}
+
+void rx_queue_frame(const porta_frame_t& frame) {
+  link_lock();
+  if (s_rx_frame_count >= kRxFrameQueueLen) {
+    s_rx_overrun.fetch_add(1);
+    link_unlock();
+    return;
+  }
+  s_rx_frames[s_rx_frame_tail] = frame;
+  s_rx_frame_tail = (s_rx_frame_tail + 1) % kRxFrameQueueLen;
+  s_rx_frame_count++;
+  link_unlock();
+}
+
+bool rx_take_frame(porta_frame_t* frame) {
+  link_lock();
+  if (s_rx_frame_count == 0) {
+    link_unlock();
+    return false;
+  }
+  *frame = s_rx_frames[s_rx_frame_head];
+  s_rx_frame_head = (s_rx_frame_head + 1) % kRxFrameQueueLen;
+  s_rx_frame_count--;
+  link_unlock();
+  return true;
+}
+
+void porta_rx_task(void* /*arg*/) {
+  uint8_t buf[512];
+  while (!s_rx_stop.load()) {
+    if (s_rx_hold.load()) {
+      s_rx_paused.store(true);
+      while (s_rx_hold.load() && !s_rx_stop.load()) {
+        vTaskDelay(1);
+      }
+      s_rx_paused.store(false);
+      continue;
+    }
+    // Returns as soon as 512 bytes are waiting. The timeout only matters when
+    // the wire is idle, so a stop or a baud change is noticed within 20 ms.
+    const int n = uart_read_bytes(kPortaUart, buf, sizeof(buf), pdMS_TO_TICKS(20));
+    if (n <= 0) {
+      // A driver that returns at once must not spin: this task is above idle.
+      vTaskDelay(1);
+      continue;
+    }
+    consume_rx(buf, n, true);
+  }
+  s_rx_exited.store(true);
+  vTaskDelete(nullptr);
+}
+
+bool link_set_uart_baud(uint32_t baud) {
+  if (!rx_hold_enter()) return false;
+  uart_set_baudrate(kPortaUart, baud);
+  uart_flush_input(kPortaUart);
+  porta_decoder_resync(&s_dec);
+  link_lock();
+  s_link_hw_baud = baud;
+  link_unlock();
+  rx_hold_leave();
+  return true;
+}
+
+void link_apply_baud(uint32_t baud) {
+  if (!link_set_uart_baud(baud)) return;
+  const uint32_t now = now_ms();
+  link_lock();
+  porta_link_run_applied(&s_link, now);
+  link_unlock();
+}
+
+// See the sidekick copy: a short wait returns with the TX ring still full,
+// and the baud change then clocks the set-rate frame out at the new rate.
+void link_flush_pending_baud() {
+  link_lock();
+  const uint32_t baud = s_link_pending_baud;
+  link_unlock();
+  if (baud == 0) return;
+  if (uart_wait_tx_done(kPortaUart, pdMS_TO_TICKS(5)) != ESP_OK) return;
+  link_apply_baud(baud);
+  link_lock();
+  const bool applied = s_link_hw_baud == baud && s_link_pending_baud == baud;
+  if (applied) {
+    s_link_pending_baud = 0;
+  }
+  link_unlock();
+  if (applied) {
+    link_log("baud");
+  }
+}
+
+void link_restore_resting() {
+  link_lock();
+  const bool busy = porta_link_run_active(&s_link) || s_link_pending_baud != 0 ||
+                    s_link_hw_baud == PORTA_BAUD;
+  link_unlock();
+  if (busy) {
+    return;
+  }
+  if (uart_wait_tx_done(kPortaUart, pdMS_TO_TICKS(5)) != ESP_OK) return;
+  if (!link_set_uart_baud(PORTA_BAUD)) return;
+  ESP_LOGI(kTag, "link baud %" PRIu32, (uint32_t)PORTA_BAUD);
+}
+
+void link_sync_radio() {
+  link_lock();
+  const bool active = porta_link_run_active(&s_link);
+  const bool tune = s_link.tune;
+  link_unlock();
+  if (active == s_link_radio) {
+    return;
+  }
+  if (active) {
+    porta_host_link_test(true, tune);
+    s_link_radio = true;
+  } else {
+    s_link_radio = false;
+    porta_host_link_test(false, false);
+  }
+}
+
+void link_note() {
+  char note[PORTA_EVENT_TEXT_MAX + 1];
+  link_lock();
+  const size_t n = porta_link_run_take_note(&s_link, note, sizeof(note));
+  link_unlock();
+  if (n > 0) {
+    debug_log_line_public(note);
+  }
+}
+
+void link_on_frame(const porta_frame_t& f, bool host_side) {
+  uint32_t seed = 0;
+  uint32_t pass = 0;
+  bool tune = false;
+  const bool start = porta_proto_parse_link_start(&f, &seed, &tune, &pass);
+  uint32_t set_baud = 0;
+  const bool set_rate = porta_proto_parse_link_set_rate(&f, &set_baud);
+  const bool stop = porta_proto_parse_link_stop(&f);
+  unsigned phase_before = 0;
+  unsigned phase_after = 0;
+  uint32_t switch_baud = 0;
+  const uint32_t now = now_ms();
+  const uint32_t crc = s_dec.crc_errors;
+  link_lock();
+  phase_before = (unsigned)s_link.phase;
+  porta_link_run_on_frame(&s_link, &f, now, crc, &switch_baud);
+  if (f.type == PORTA_MSG_LINK_DATA) {
+    s_link_data_frames++;
+  }
+  if (start) {
+    s_link_rx_bytes = 0;
+    s_link_data_frames = 0;
+  }
+  if (switch_baud != 0) {
+    s_link_pending_baud = switch_baud;
+  }
+  phase_after = (unsigned)s_link.phase;
+  link_unlock();
+  if (start) {
+    ESP_LOGI(kTag, "link start before %u after %u pass %" PRIu32, phase_before,
+             phase_after, pass);
+  } else if (f.type == PORTA_MSG_LINK_TEST) {
+    if (set_rate) {
+      ESP_LOGI(kTag, "link set-rate %" PRIu32 " phase %u", set_baud, phase_after);
+    } else if (stop) {
+      link_log("stop");
+    } else if (f.len > 0) {
+      ESP_LOGI(kTag, "link cmd %u len %u phase %u", f.payload[0], f.len, phase_after);
+    }
+  }
+  if (host_side) {
+    link_note();
+    link_sync_radio();
+  }
+}
+
+void link_pump() {
+  uint8_t frame[PORTA_PROTO_MAX_FRAME];
+  for (int n = 0; n < 16; ++n) {
+    size_t free_bytes = 0;
+    if (uart_get_tx_buffer_free_size(kPortaUart, &free_bytes) != ESP_OK ||
+        free_bytes < PORTA_PROTO_MAX_FRAME) {
+      break;
+    }
+    uint32_t apply = 0;
+    const uint32_t now = now_ms();
+    const uint32_t crc = s_dec.crc_errors;
+    link_lock();
+    const size_t wrote = porta_link_run_next(&s_link, now, crc, frame, sizeof(frame), &apply);
+    if (apply != 0) {
+      s_link_pending_baud = apply;
+    }
+    link_unlock();
+    if (wrote == 0) {
+      break;
+    }
+    uart_write_bytes(kPortaUart, (const char*)frame, wrote);
+    if (apply != 0) {
+      break;
+    }
+  }
+  link_flush_pending_baud();
+  link_restore_resting();
+  link_log_tick();
+  link_note();
+  link_sync_radio();
+}
+
 void handle_action(const porta_frame_t& f) {
   if (f.len < 1) return;
   uint8_t buf[PORTA_PROTO_MAX_FRAME];
   const uint8_t verb = f.payload[0];
+
+  link_lock();
+  const bool testing = porta_link_run_active(&s_link);
+  link_unlock();
+  if (testing) {
+    switch (verb) {
+    case PORTA_ACT_TUNE:
+    case PORTA_ACT_BEACON:
+    case PORTA_ACT_QUEUE_REPLY:
+    case PORTA_ACT_SWEEP_START:
+      enqueue(buf, porta_proto_encode_nak(verb, "link test", buf, sizeof(buf)));
+      return;
+    default:
+      break;
+    }
+  }
 
   switch (verb) {
   case PORTA_ACT_SET_CLOCK: {
@@ -480,9 +860,40 @@ void handle_frame(const porta_frame_t& f) {
   case PORTA_MSG_CONFIG_SET:  handle_config_set(f);  break;
   case PORTA_MSG_FILE_LIST:   handle_file_list(f);   break;
   case PORTA_MSG_FILE_READ:   handle_file_read(f);   break;
+  case PORTA_MSG_LINK_TEST:
+  case PORTA_MSG_LINK_DATA:
+    link_on_frame(f, true);
+    break;
   default:
     ESP_LOGD(kTag, "Unhandled frame type 0x%02x len %u", f.type, f.len);
     break;
+  }
+}
+
+void consume_rx(const uint8_t* buf, int len, bool queue_control) {
+  if (len <= 0) return;
+  s_last_byte_ms = now_ms();
+  link_lock();
+  if (porta_link_run_active(&s_link)) {
+    s_link_rx_bytes += (uint32_t)len;
+  }
+  link_unlock();
+  porta_frame_t frame;
+  for (int i = 0; i < len; ++i) {
+    if (!porta_decoder_push(&s_dec, buf[i], &frame)) {
+      continue;
+    }
+    s_last_frame_ms = now_ms();
+    const bool link = frame.type == PORTA_MSG_LINK_TEST || frame.type == PORTA_MSG_LINK_DATA;
+    if (link) {
+      // The reader checks bulk frames in order. Waiting for porta_tick dropped
+      // the tail of a 2.5 Mbit/s run on the ADV (2026-10-01, ok 284 of 400).
+      link_on_frame(frame, !queue_control);
+    } else if (queue_control) {
+      rx_queue_frame(frame);
+    } else {
+      handle_frame(frame);
+    }
   }
 }
 
@@ -656,6 +1067,14 @@ PortaCompanion porta_companion_state() {
 void porta_start() {
   if (s_running) return;
 
+  if (s_link_lock == nullptr) {
+    s_link_lock = xSemaphoreCreateMutex();
+    if (s_link_lock == nullptr) {
+      ESP_LOGW(kTag, "link lock failed");
+      return;
+    }
+  }
+
   gpio_num_t tx_pin = GPIO_NUM_NC;
   gpio_num_t rx_pin = GPIO_NUM_NC;
   porta_board_uart_pins(&tx_pin, &rx_pin);
@@ -666,24 +1085,57 @@ void porta_start() {
   // A TX ring buffer is not optional now that this port transmits. With a
   // tx_buffer_size of 0, uart_write_bytes() blocks until every byte has left
   // the FIFO -- about 22 ms for a full frame at 115200, inside the slot loop.
-  esp_err_t err = uart_driver_install(kPortaUart, 2048, kTxBufBytes, 0, nullptr, 0);
-  if (err == ESP_ERR_INVALID_STATE) {
-    uart_driver_delete(kPortaUart);
-    err = uart_driver_install(kPortaUart, 2048, kTxBufBytes, 0, nullptr, 0);
-  }
-  if (err != ESP_OK) {
-    ESP_LOGW(kTag, "UART driver install failed: %d", (int)err);
+#if CONFIG_IDF_TARGET_ESP32P4
+  if (!install_uart()) return;
+#else
+  // The allocator pins the UART interrupt to the core it runs on. Core 0 is
+  // the screen and the USB host, so this install runs on core 1.
+  std::atomic<int> boot{0};
+  if (xTaskCreatePinnedToCore(uart_boot_task, "porta_uart", 3072, &boot,
+                              kRxTaskPrio, nullptr, 1) != pdPASS) {
+    ESP_LOGW(kTag, "UART install task failed");
     return;
   }
-  if (!configure_uart()) {
-    ESP_LOGW(kTag, "UART config failed");
-    uart_driver_delete(kPortaUart);
+  for (;;) {
+    if (boot.load() != 0) break;
+    vTaskDelay(1);
+  }
+  if (boot.load() != 1) {
+    ESP_LOGW(kTag, "UART install on core 1 failed");
     return;
   }
+#endif
 
   porta_decoder_init(&s_dec);
+  porta_link_run_init(&s_link);
+  s_link_radio = false;
   s_version[0] = '\0';
   s_running = true;
+  s_rx_stop.store(false);
+  s_rx_hold.store(false);
+  s_rx_paused.store(false);
+  s_rx_exited.store(false);
+  s_rx_overrun.store(0);
+  s_rx_task = nullptr;
+  s_rx_frame_head = 0;
+  s_rx_frame_tail = 0;
+  s_rx_frame_count = 0;
+#if CONFIG_IDF_TARGET_ESP32P4
+  if (xTaskCreate(porta_rx_task, "porta_rx", 4096, nullptr, kRxTaskPrio, &s_rx_task) == pdPASS) {
+    ESP_LOGI(kTag, "porta_rx task");
+  } else {
+    s_rx_task = nullptr;
+    ESP_LOGW(kTag, "porta_rx task failed; polling the UART");
+  }
+#else
+  if (xTaskCreatePinnedToCore(porta_rx_task, "porta_rx", 4096, nullptr, kRxTaskPrio,
+                              &s_rx_task, 1) == pdPASS) {
+    ESP_LOGI(kTag, "porta_rx task core 1");
+  } else {
+    s_rx_task = nullptr;
+    ESP_LOGW(kTag, "porta_rx task failed; polling the UART");
+  }
+#endif
   debug_log_set_relay(porta_emit_log);
   ESP_LOGI(kTag, "Started on UART%d TX=G%d RX=G%d baud=%d",
            (int)kPortaUart, (int)tx_pin, (int)rx_pin, kBaud);
@@ -691,6 +1143,14 @@ void porta_start() {
 
 void porta_stop() {
   if (!s_running) return;
+  s_rx_stop.store(true);
+  s_rx_hold.store(false);
+  if (s_rx_task != nullptr) {
+    for (int i = 0; i < 10 && !s_rx_exited.load(); ++i) {
+      vTaskDelay(pdMS_TO_TICKS(5));
+    }
+    s_rx_task = nullptr;
+  }
   uart_driver_delete(kPortaUart);
   porta_decoder_init(&s_dec);
   s_running = false;
@@ -698,23 +1158,26 @@ void porta_stop() {
   ESP_LOGI(kTag, "Stopped");
 }
 
+bool porta_link_test_active() {
+  return s_link_radio;
+}
+
 void porta_tick() {
   if (!s_running) return;
 
-  uint8_t buf[128];
-  const int len = uart_read_bytes(kPortaUart, buf, sizeof(buf), 0);
-  porta_frame_t frame;
-  if (len > 0) {
-    s_last_byte_ms = now_ms();
-  }
-  for (int i = 0; i < len; ++i) {
-    if (porta_decoder_push(&s_dec, buf[i], &frame)) {
-      s_last_frame_ms = now_ms();
+  if (s_rx_task != nullptr) {
+    porta_frame_t frame;
+    while (rx_take_frame(&frame)) {
       handle_frame(frame);
     }
+  } else {
+    uint8_t buf[128];
+    const int len = uart_read_bytes(kPortaUart, buf, sizeof(buf), 0);
+    consume_rx(buf, len, false);
   }
 
   drain_out();
+  link_pump();
 
   // Report drops when the count moves. Without this the queue silently eats
   // events and the browser's view just looks thinner than the screen's, with
@@ -733,5 +1196,12 @@ void porta_tick() {
     s_reported_crc = s_dec.crc_errors;
     ESP_LOGW(kTag, "Link: %" PRIu32 " CRC errors, %" PRIu32 " frames ok",
              s_dec.crc_errors, s_dec.frames_ok);
+  }
+
+  static uint32_t s_reported_overrun = 0;
+  const uint32_t overrun = s_rx_overrun.load();
+  if (overrun != s_reported_overrun) {
+    s_reported_overrun = overrun;
+    ESP_LOGW(kTag, "porta control queue dropped %" PRIu32 " frames", overrun);
   }
 }

@@ -26,7 +26,7 @@
 // a real bidirectional protocol; until then it is the whole conversation.
 // ============================================================================
 
-// Brings up UART1 on G1/G2 at the sidekick's fixed 115200 and starts listening
+// Brings up UART1 on G1/G2 at PORTA_BAUD (porta_proto.h) and starts listening
 // for beacons. A no-op if already running.
 void porta_start();
 
@@ -36,6 +36,10 @@ void porta_stop();
 // Periodic pump — call every main-loop tick. Drains the outbound queue as well
 // as reading beacons.
 void porta_tick();
+
+// True while a link stress test is exchanging frames. Transmit actions are
+// refused for the duration; the test's own Tune pass is not one of them.
+bool porta_link_test_active();
 
 // ---------------------------------------------------------------------------
 // Outbound events (I28a). Queued, never sent inline: the callers are the slot

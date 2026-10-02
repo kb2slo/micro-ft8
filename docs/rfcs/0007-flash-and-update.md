@@ -26,7 +26,7 @@ Decided by the operator, 2026-09-25: **the sidekick downloads images itself** (�
 
 The release host already publishes, per board, a merged `0x0` image and its SHA-256 (`/download/manifest.json`, mirrored to R2 by `ci.yml`). It serves over **plain HTTP as well as HTTPS**: `curl -sI http://micro-ft8.kalikstein.com/download/manifest.json` returns 200 with no redirect (checked 2026-09-25). Each build's version string is the git SHA (`PROJECT_VER`).
 
-Neither main board has a network stack. Any firmware for them reaches them over Port A (`components/porta`, `porta_proto`: 255-byte payloads at 115200 baud), and both boards already link that code.
+Neither main board has a network stack. Any firmware for them reaches them over Port A (`components/porta`, `porta_proto`: 255-byte payloads at `PORTA_BAUD`, 2500000), and both boards already link that code.
 
 ## 3. Design
 
@@ -79,7 +79,7 @@ The main board writes the chunks into its inactive slot (`esp_ota_begin/write/en
 * while in update mode it refuses every transmit action, from any phone and from the ADV's own keys. The ADV shows "Updating — do not unplug"; the P4 has no screen;
 * it leaves update mode only by restarting into the new image, or by an explicit resume action if the update fails or is cancelled. After a restart the radio comes up stopped, as after every restart today (operator, 2026-09-25); nothing new is needed for that.
 
-**Time:** an estimate, not measured. At today's 115200 baud with acknowledged chunks, roughly 1–2 min for the P4 and 3–5 min for the ADV (1.4 MB once §3.10 lands, so nearer 2). §3.11 raises the rate first.
+**Time:** an estimate, not measured. At 115200 baud with acknowledged chunks, roughly 1–2 min for the P4 and 3–5 min for the ADV (1.4 MB once §3.10 lands, so nearer 2). The link now rests at 2500000 ([sidekick.md](../architecture/sidekick.md), **Port A**); this estimate is still the stop-and-wait time, until `FW_CHUNK` has a window.
 
 ### 3.6 Version pairing
 
@@ -130,16 +130,7 @@ Decided 2026-09-25. Once the sidekick updates itself (§3.4), the ADV no longer 
 
 ### 3.11 Port A speed
 
-Folded in by the operator, 2026-09-25: a faster link has been discussed before but never tuned, and updates are what make it worth doing. The rate is defined twice today (`kBaud` in `components/porta/porta.cpp:51`, `PORTA_BAUD` in `sidekick/main/main.c:37`); it moves to one constant in `porta_proto.h` that both ends use. Everything on Port A benefits, not only updates.
-
-**The rate is chosen by a directed stress test**, not by watching the link-health counters during normal use (operator, 2026-09-25). Normal traffic is small and bursty, and would pass rates that fail under a firmware transfer.
-
-* **Traffic:** back-to-back 255-byte frames, in both directions at once. Payloads cycle through patterns that stress the framing and the UART: the sync byte `0xC6` repeated, all zeros, all ones, alternating bits, and pseudo-random bytes.
-* **Checked independently of the CRC:** each payload carries a sequence number and is generated from a known seed. The receiver regenerates it and compares every byte, so a dropped frame, a duplicate, or corruption the CRC happens to pass is counted separately from CRC errors.
-* **Load on the main board:** decoding running and USB audio streaming from a real radio in RX, because interrupt load from USB is what makes a UART drop bytes. A second pass adds TX (Tune into a dummy load).
-* **Rate sweep without reflashing:** a test-only message switches both ends to a candidate rate. Both revert to 115200 on their own if no test traffic arrives within a few seconds, so a rate that fails outright cannot strand the link.
-* **Pass:** zero CRC errors, drops, duplicates and mismatched bytes over at least 10× the largest image (about 14 MB), on each main board, with the operator's own Grove cable. The chosen rate is the highest that passes, and it must pass again under the TX load.
-* **Started from the webapp** (a Settings diagnostic). Unlike update mode (§3.5), RX and decoding keep running, because they are the load; every transmit action is refused except the test's own Tune pass, and the beacon and autoseq queue are stopped first, with the same review-screen warning as an update (§3.9). The result, per rate and per counter, is shown on screen and also written to the log, so the pass is recorded rather than read off a screen. It stays in the product as a diagnostic for a suspect cable.
+Shipped 2026-10-01. The resting rate, what held it, and the hidden stress-test controls are in [sidekick.md](../architecture/sidekick.md) (**Port A**). The frame stays 255. A faster update is a window on `FW_CHUNK` (S3), not a wider frame.
 
 ## 4. Rejected alternatives
 
@@ -162,7 +153,7 @@ Not part of this design; each gets its own row or RFC when wanted.
 
 Each is a `ROADMAP.md` Backlog row.
 
-* **S0** (`v3hh`) — Port A speed (§3.11): the stress test, its message types (frame codec and payload checker `host_mock`-tested), then the rate change. Field check: the stress test passes at the chosen rate on both main boards, under RX and TX load.
+* **S0** (`v3hh`) — shipped 2026-10-01. Port A rests at 2500000 ([sidekick.md](../architecture/sidekick.md), **Port A**).
 * **S1** (`wanw`) — CI publishes app-only images and the manifest's `ota` entries (§3.1).
 * **S2** (`v697`) — Sidekick self-update (§3.2, §3.4). Field check: update from the webapp, then a forced bad image rolls back.
 * **S3** (`hstv`) — Main-board HELLO (§3.6), update mode, the `FW_*` messages with resume, and the shared receiver, with `host_mock` tests; P4 partition table and rollback enabled (§3.5, §3.7). Field check: P4 updated from the webapp, transfer time measured, a forced bad image rolls back.

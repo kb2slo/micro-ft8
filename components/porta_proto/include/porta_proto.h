@@ -72,10 +72,20 @@ extern "C" {
 // v4 (2026-09-30): SWR sweep (docs/architecture/radio.md, The SWR sweep): the SWEEP_START action and the SWEEP event. A v3 peer
 // would answer the new action "unknown action" and ignore the event, so this is a break only in
 // that the page's sweep cannot work against it; both ends are flashed together as for v3.
-#define PORTA_PROTO_VERSION 4u
+// v5 (2026-10-01): link stress test (RFC 0007 §3.11). A v4 peer logs LINK_TEST / LINK_DATA and
+// does not run the test. Both ends are flashed together.
+// v6 (2026-10-01): the link-test start frame carries the byte quota. A v5 peer
+// ignores that start and does not run the test. Both ends are flashed together.
+#define PORTA_PROTO_VERSION 6u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
+
+// Resting baud for both ends of Port A. The UART opens here; the link-test
+// diagnostic may leave it and come back (porta_link_baud_now). 2500000 is the
+// highest rate both main boards held for 14 MB (2026-10-01). 4000000 did not.
+// Both ends flash together: a mixed pair never links.
+#define PORTA_BAUD 2500000u
 
 // v1 message types, derived by walking the host's existing UI surface rather
 // than sketched: ~16 of its affordances are config values, ~13 are actions, and
@@ -110,6 +120,10 @@ typedef enum {
     PORTA_MSG_FW_BEGIN     = 0x10,
     PORTA_MSG_FW_CHUNK     = 0x11,
     PORTA_MSG_FW_END       = 0x12,
+    // Link stress test (RFC 0007 §3.11). Bulk, and both directions, so these
+    // are their own types: ACTION is sidekick -> host only.
+    PORTA_MSG_LINK_TEST    = 0x13,  // start / set-rate / stop / result
+    PORTA_MSG_LINK_DATA    = 0x14,  // one max-length stress payload
 } porta_msg_type_t;
 
 typedef struct {
@@ -142,10 +156,12 @@ typedef struct {
     uint32_t crc_errors;
 } porta_decoder_t;
 
-// Zeroes everything, counters included. There is no separate "resync" call:
-// the decoder returns itself to idle after a bad frame without losing its
-// counters, so the only reason to call this is to start a new link.
+// Zeroes everything, counters included. Call this to start a new link.
 void porta_decoder_init(porta_decoder_t *d);
+
+// Back to hunting for sync, counters kept. A baud change leaves bytes in the
+// UART that were clocked at the old rate; those must not finish a frame.
+void porta_decoder_resync(porta_decoder_t *d);
 
 // Feeds one byte. Returns true exactly when `out` has been filled with a
 // complete, CRC-valid frame.
@@ -567,6 +583,179 @@ typedef struct {
 size_t porta_proto_encode_file_entry_row(const porta_qso_entry_row_t *e,
                                          uint8_t *out, size_t out_cap);
 bool porta_proto_parse_file_entry_row(const porta_frame_t *f, porta_qso_entry_row_t *out);
+
+// --- Link stress test (RFC 0007 §3.11) ------------------------------------
+// One direction's payloads. The sequence starts at 0 when that direction
+// starts; both directions share the seed from LINK_TEST start and keep
+// their own sequences. Pattern is seq % 5, in this order: 0xC6, 0x00, 0xFF,
+// alternating 0xAA/0x55, then a per-byte mix of (seed, seq, index) so a gap
+// does not desync the checker. Bytes 0..3 are the sequence, little-endian;
+// the checker regenerates the whole payload and compares every byte.
+// CRC failures stay on porta_decoder_t. This checker only sees a frame the
+// decoder already accepted, and counts a drop, a duplicate, or a mismatch.
+
+typedef enum {
+    PORTA_LINK_PAT_SYNC = 0,
+    PORTA_LINK_PAT_ZERO = 1,
+    PORTA_LINK_PAT_ONES = 2,
+    PORTA_LINK_PAT_ALT  = 3,
+    PORTA_LINK_PAT_PRNG = 4,
+    PORTA_LINK_PAT_COUNT = 5,
+} porta_link_pattern_t;
+
+typedef enum {
+    PORTA_LINK_START    = 1,  // + u32 seed + u8 tune + u32 pass_bytes
+    PORTA_LINK_SET_RATE = 2,  // + u32 baud, one of porta_link_rate_at()
+    PORTA_LINK_STOP     = 3,
+    PORTA_LINK_RESULT   = 4,  // this end's counters for the rate in progress
+} porta_link_cmd_t;
+
+// No LINK_DATA for this long and the rate falls back to PORTA_BAUD.
+// Also how long a sender waits after its own quota for the other direction.
+#define PORTA_LINK_IDLE_MS 3000u
+
+// Payload bytes one direction must exchange, clean, before that rate passes.
+// This is the final pass: about 10x the largest image (RFC 0007 §3.11).
+// Settings may start a shorter run; the quota has to be one porta_link_pass_at()
+// returns, and the start frame carries it so both ends use the same number.
+#define PORTA_LINK_PASS_BYTES 14000000u
+
+// After the set-rate frame has left the wire, wait this long before the next
+// data frame. The peer may still be shifting out a full TX ring (4096 bytes,
+// about 360 ms at 115200) before it can change baud.
+#define PORTA_LINK_SETTLE_MS 800u
+
+typedef struct {
+    uint32_t seed;
+    uint32_t next_seq;
+    uint32_t frames_ok;
+    uint32_t drops;
+    uint32_t duplicates;
+    uint32_t mismatches;
+} porta_link_checker_t;
+
+void porta_link_data_fill(uint8_t payload[PORTA_PROTO_MAX_PAYLOAD],
+                          uint32_t seed, uint32_t seq);
+void porta_link_checker_init(porta_link_checker_t *c, uint32_t seed);
+// False if `payload` is not one max-length stress payload. Counters unchanged.
+bool porta_link_checker_push(porta_link_checker_t *c, const uint8_t *payload,
+                             uint8_t len);
+
+// Index 0 is PORTA_BAUD. The other entries are the rates the diagnostic can
+// switch to. A baud not in the list is refused by encode and by parse.
+unsigned porta_link_rate_count(void);
+uint32_t porta_link_rate_at(unsigned index);
+bool porta_link_rate_allowed(uint32_t baud);
+
+// Quotas Settings may ask for, shortest first. The last is PORTA_LINK_PASS_BYTES.
+unsigned porta_link_pass_count(void);
+uint32_t porta_link_pass_at(unsigned index);
+bool porta_link_pass_allowed(uint32_t bytes);
+
+// Baud to run at `now_ms`. `last_data_ms` is the last LINK_DATA on this
+// rate (set it to `now_ms` when the rate is applied). An idle gap of
+// PORTA_LINK_IDLE_MS, or a baud that is not allowed, returns PORTA_BAUD.
+uint32_t porta_link_baud_now(uint32_t requested_baud, uint32_t now_ms,
+                            uint32_t last_data_ms);
+
+size_t porta_proto_encode_link_start(uint32_t seed, bool tune, uint32_t pass_bytes,
+                                     uint8_t *out, size_t out_cap);
+size_t porta_proto_encode_link_set_rate(uint32_t baud, uint8_t *out, size_t out_cap);
+size_t porta_proto_encode_link_stop(uint8_t *out, size_t out_cap);
+size_t porta_proto_encode_link_data(uint32_t seed, uint32_t seq,
+                                   uint8_t *out, size_t out_cap);
+bool porta_proto_parse_link_start(const porta_frame_t *f, uint32_t *seed_out,
+                                  bool *tune_out, uint32_t *pass_bytes_out);
+bool porta_proto_parse_link_set_rate(const porta_frame_t *f, uint32_t *baud_out);
+bool porta_proto_parse_link_stop(const porta_frame_t *f);
+
+// One end's view of the rate in progress. crc_errors is the delta since the
+// rate started, not the decoder's lifetime total.
+typedef struct {
+    uint32_t baud;
+    uint32_t frames_ok;
+    uint32_t drops;
+    uint32_t duplicates;
+    uint32_t mismatches;
+    uint32_t crc_errors;
+    uint32_t tx_bytes;
+    bool running;
+    bool failed;
+    bool passed;
+    bool tune;
+} porta_link_status_t;
+
+size_t porta_proto_encode_link_result(const porta_link_status_t *status,
+                                     uint8_t *out, size_t out_cap);
+bool porta_proto_parse_link_result(const porta_frame_t *f, porta_link_status_t *out);
+
+typedef enum {
+    PORTA_LINK_PHASE_IDLE = 0,
+    PORTA_LINK_PHASE_RUN = 1,
+    PORTA_LINK_PHASE_SETTLE = 2,
+    PORTA_LINK_PHASE_DONE = 3,
+} porta_link_phase_t;
+
+// Coordinator (the sidekick) sends start, advances the rate, and sends stop.
+// The peer (a main board) starts when it sees start, and follows set-rate.
+typedef struct {
+    porta_link_phase_t phase;
+    bool coordinator;
+    bool tune;
+    bool hold_tx;
+    bool stop_requested;
+    bool stop_sent;
+    bool need_start;
+    // Coordinator only. After START, switch once to rate_last before any
+    // quota. The run does not visit the rates in between.
+    bool need_rate;
+    bool rate_failed;
+    bool sweep_passed;
+    bool note_ready;
+    bool crc_latched;
+    uint32_t seed;
+    uint32_t pass_bytes;
+    uint32_t tx_seq;
+    uint32_t tx_bytes;
+    uint32_t baud;
+    uint32_t pending_baud;
+    uint32_t settle_at_ms;
+    uint32_t last_data_ms;
+    uint32_t last_rx_ms;
+    uint32_t last_result_ms;
+    uint32_t crc_base;
+    unsigned rate_index;
+    unsigned rate_last;  // the one rate to run, as an index; the peer does not use it
+    porta_link_checker_t rx;
+    porta_link_status_t peer;
+    bool peer_valid;
+    // After a rate switch the peer stays quiet until the coordinator's first
+    // frame on the new rate, so the two settles cannot eat a sequence number.
+    bool await_coord;
+    char note[PORTA_EVENT_TEXT_MAX + 1];
+} porta_link_run_t;
+
+void porta_link_run_init(porta_link_run_t *r);
+void porta_link_run_begin(porta_link_run_t *r, uint32_t seed, uint32_t pass_bytes,
+                          bool coordinator, bool tune, unsigned last_rate,
+                          uint32_t now_ms);
+void porta_link_run_stop(porta_link_run_t *r);
+bool porta_link_run_active(const porta_link_run_t *r);
+
+// `apply_baud` is set when this frame must leave the UART before the baud
+// changes (a set-rate). Zero means no change. Call porta_link_run_applied
+// after that frame has been flushed and the UART is on `apply_baud`.
+size_t porta_link_run_next(porta_link_run_t *r, uint32_t now_ms, uint32_t crc_errors,
+                           uint8_t *out, size_t out_cap, uint32_t *apply_baud);
+
+// `switch_baud` is set when the peer must change baud before reading further.
+void porta_link_run_on_frame(porta_link_run_t *r, const porta_frame_t *f,
+                             uint32_t now_ms, uint32_t crc_errors, uint32_t *switch_baud);
+void porta_link_run_applied(porta_link_run_t *r, uint32_t now_ms);
+void porta_link_run_status(const porta_link_run_t *r, uint32_t crc_errors,
+                           porta_link_status_t *out);
+// A one-line note when a rate finishes, or 0 if nothing new. Fits the log.
+size_t porta_link_run_take_note(porta_link_run_t *r, char *out, size_t cap);
 
 // Browser event rows. The sidekick's GET /api/events and the host scenario
 // simulator both call these, so the JSON the page polls has one encoder.

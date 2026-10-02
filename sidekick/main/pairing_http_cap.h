@@ -15,7 +15,7 @@ enum {
     PAIRING_ROUTES_WIFI_PROV_AP_CORE = 4,       // /  /rescan  /provision  /factory-reset
     PAIRING_ROUTES_WIFI_PROV_STATION_CORE = 5,  // /  /update  /forget  /ap-mode  /factory-reset
 
-    PAIRING_ROUTES_HOST_LINK = 14,  // /log (viewer.html) retired -- app.html covers it; 14th: /api/swr/start
+    PAIRING_ROUTES_HOST_LINK = 16,  // 15th/16th: GET and POST /api/link-test
     PAIRING_ROUTES_WEB_BUNDLE = 3,
     PAIRING_ROUTES_BUNDLE_HOST = 2,
     // B55 (docs/architecture/system.md (Constraints)): AP mode now serves the full application, the same as

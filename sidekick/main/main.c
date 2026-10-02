@@ -34,7 +34,6 @@ static const char *TAG = "sidekick";
 #define PORTA_UART UART_NUM_1
 #define PORTA_TX_PIN GPIO_NUM_1  // G1
 #define PORTA_RX_PIN GPIO_NUM_2  // G2
-#define PORTA_BAUD 115200
 // 1 Hz made sense when the beacon was the entire conversation. It now shares
 // the wire with the host's event stream, where it is noise -- and nothing needs
 // a sub-5-second answer to "what version is the companion running".
@@ -43,24 +42,25 @@ static const char *TAG = "sidekick";
 // keep their cadence; only the beacon is slowed.
 #define LOOP_TICK_MS 1000
 #define BEACON_EVERY (PORTA_BEACON_INTERVAL_MS / LOOP_TICK_MS)
-#define PORTA_RX_BUF 2048
+// One fill of the peer's TX ring is 4096 bytes. 2048 was about 10 ms at
+// 2 Mbps: 100 KB passed, and 14 MB lost frames (2026-10-01, drops 227, crc 155).
+#define PORTA_RX_BUF 8192
 
 static void porta_beacon_init(void) {
     gpio_reset_pin(PORTA_TX_PIN);
     gpio_reset_pin(PORTA_RX_PIN);
 
     uart_config_t cfg = {
-        .baud_rate = PORTA_BAUD,
+        .baud_rate = PORTA_BAUD,  // porta_proto.h, shared with the main board
         .data_bits = UART_DATA_8_BITS,
         .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .source_clk = UART_SCLK_DEFAULT,
     };
-    // RX was 256, which is smaller than one maximum frame (259 bytes) -- a
-    // single full decode event could not fit, let alone a burst. The host sends
-    // at most one frame per tick, but bursts arrive while this task is asleep.
-    ESP_ERROR_CHECK(uart_driver_install(PORTA_UART, PORTA_RX_BUF, 256, 0, NULL, 0));
+    // RX was 256, smaller than one maximum frame (259). TX holds several of
+    // those: the link test sends them back to back.
+    ESP_ERROR_CHECK(uart_driver_install(PORTA_UART, PORTA_RX_BUF, 4096, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_param_config(PORTA_UART, &cfg));
     ESP_ERROR_CHECK(uart_set_pin(PORTA_UART, PORTA_TX_PIN, PORTA_RX_PIN,
                                   UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));

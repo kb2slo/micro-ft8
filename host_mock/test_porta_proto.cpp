@@ -1202,6 +1202,321 @@ static void test_event_json()
           "a short buffer encodes nothing");
 }
 
+static porta_frame_t decode_one(const uint8_t* wire, size_t n, porta_decoder_t* d)
+{
+    porta_frame_t got;
+    std::memset(&got, 0, sizeof(got));
+    porta_decoder_init(d);
+    for (size_t i = 0; i < n; ++i) {
+        if (porta_decoder_push(d, wire[i], &got)) {
+            return got;
+        }
+    }
+    got.len = 0xFF;
+    return got;
+}
+
+static void test_link_patterns()
+{
+    uint8_t payload[PORTA_PROTO_MAX_PAYLOAD];
+    uint8_t again[PORTA_PROTO_MAX_PAYLOAD];
+
+    porta_link_data_fill(payload, 0x12345678u, 0);
+    check(payload[0] == 0 && payload[3] == 0, "seq 0 is little-endian in the first four bytes");
+    bool all_sync = true;
+    for (unsigned i = 4; i < PORTA_PROTO_MAX_PAYLOAD; ++i) {
+        if (payload[i] != PORTA_PROTO_SYNC) {
+            all_sync = false;
+        }
+    }
+    check(all_sync, "seq 0 repeats the sync byte");
+
+    porta_link_data_fill(payload, 1u, 1);
+    check(payload[0] == 1 && payload[4] == 0x00, "seq 1 is the zero pattern after the sequence");
+    porta_link_data_fill(payload, 1u, 2);
+    check(payload[4] == 0xFF, "seq 2 is all ones");
+    porta_link_data_fill(payload, 1u, 3);
+    check(payload[4] == 0xAA && payload[5] == 0x55, "seq 3 alternates bits");
+    porta_link_data_fill(payload, 0u, 4);
+    bool flat = true;
+    bool all_zero = true;
+    for (unsigned i = 5; i < PORTA_PROTO_MAX_PAYLOAD; ++i) {
+        if (payload[i] != payload[4]) {
+            flat = false;
+        }
+        if (payload[i] != 0) {
+            all_zero = false;
+        }
+    }
+    check(!flat && !all_zero, "seq 4 is a pseudo-random pattern, including seed 0");
+    porta_link_data_fill(again, 0u, 4);
+    check(std::memcmp(payload, again, sizeof(payload)) == 0, "the same seed and seq fill the same bytes");
+    porta_link_data_fill(again, 1u, 4);
+    check(std::memcmp(payload, again, sizeof(payload)) != 0, "a different seed changes the pseudo-random frame");
+    porta_link_data_fill(payload, 1u, 5);
+    check(payload[4] == PORTA_PROTO_SYNC, "the five patterns cycle");
+}
+
+static void test_link_checker()
+{
+    const uint32_t seed = 0xA5A5u;
+    porta_link_checker_t c;
+    porta_link_checker_init(&c, seed);
+
+    uint8_t payload[PORTA_PROTO_MAX_PAYLOAD];
+    for (uint32_t seq = 0; seq < 10; ++seq) {
+        porta_link_data_fill(payload, seed, seq);
+        check(porta_link_checker_push(&c, payload, PORTA_PROTO_MAX_PAYLOAD), "a full payload is accepted");
+    }
+    check(c.frames_ok == 10 && c.drops == 0 && c.duplicates == 0 && c.mismatches == 0,
+          "ten frames in order count as ten good frames");
+
+    porta_link_checker_init(&c, seed);
+    porta_link_data_fill(payload, seed, 0);
+    porta_link_checker_push(&c, payload, PORTA_PROTO_MAX_PAYLOAD);
+    porta_link_data_fill(payload, seed, 3);
+    porta_link_checker_push(&c, payload, PORTA_PROTO_MAX_PAYLOAD);
+    check(c.drops == 2 && c.frames_ok == 2 && c.next_seq == 4, "a gap counts the missing sequences as drops");
+
+    porta_link_data_fill(payload, seed, 0);
+    porta_link_checker_push(&c, payload, PORTA_PROTO_MAX_PAYLOAD);
+    check(c.duplicates == 1 && c.next_seq == 4, "a sequence already passed is a duplicate");
+    porta_link_data_fill(payload, seed, 4);
+    porta_link_checker_push(&c, payload, PORTA_PROTO_MAX_PAYLOAD);
+    check(c.frames_ok == 3 && c.next_seq == 5, "a duplicate does not stall the next sequence");
+
+    porta_link_checker_init(&c, seed);
+    porta_link_data_fill(payload, seed, 0);
+    payload[10] ^= 0x01;
+    porta_link_checker_push(&c, payload, PORTA_PROTO_MAX_PAYLOAD);
+    porta_link_data_fill(payload, seed, 1);
+    porta_link_checker_push(&c, payload, PORTA_PROTO_MAX_PAYLOAD);
+    check(c.mismatches == 1 && c.frames_ok == 1 && c.next_seq == 2,
+          "a wrong byte is a mismatch and the next sequence still counts");
+
+    check(!porta_link_checker_push(&c, payload, 4), "a short payload is refused");
+    check(c.frames_ok == 1, "a refused payload does not move the counters");
+}
+
+// The checker and the CRC count different failures. A payload the CRC accepts
+// but that was not generated from the seed is a mismatch. A bit flipped on
+// the wire never reaches the checker.
+static void test_link_mismatch_is_not_a_crc_error()
+{
+    const uint32_t seed = 7;
+    uint8_t wire[PORTA_PROTO_MAX_FRAME];
+    size_t n = porta_proto_encode_link_data(seed, 0, wire, sizeof(wire));
+    check(n == PORTA_PROTO_MAX_FRAME, "a stress frame is a max-length frame");
+    wire[3 + 10] ^= 0x01;
+    // Re-seal the CRC over the damaged payload so the decoder accepts it.
+    wire[n - 1] = porta_proto_crc8(&wire[1], n - 2);
+
+    porta_decoder_t d;
+    porta_frame_t got = decode_one(wire, n, &d);
+    check(d.crc_errors == 0 && d.frames_ok == 1, "a re-sealed payload passes the CRC");
+    porta_link_checker_t c;
+    porta_link_checker_init(&c, seed);
+    check(porta_link_checker_push(&c, got.payload, got.len), "the checker sees the frame");
+    check(c.mismatches == 1 && c.frames_ok == 0, "the checker counts the byte the CRC let through");
+
+    n = porta_proto_encode_link_data(seed, 0, wire, sizeof(wire));
+    wire[10] ^= 0x01;
+    got = decode_one(wire, n, &d);
+    check(d.crc_errors == 1 && d.frames_ok == 0, "a bit flipped on the wire is a CRC error");
+    check(got.len == 0xFF, "a CRC error yields no frame for the checker");
+}
+
+static void test_link_control_frames()
+{
+    uint8_t wire[PORTA_PROTO_MAX_FRAME];
+    porta_decoder_t d;
+
+    size_t n = porta_proto_encode_link_start(0x01020304u, true, 10200u, wire, sizeof(wire));
+    porta_frame_t got = decode_one(wire, n, &d);
+    uint32_t seed = 0;
+    bool tune = false;
+    uint32_t bytes = 0;
+    check(porta_proto_parse_link_start(&got, &seed, &tune, &bytes) && seed == 0x01020304u && tune &&
+              bytes == 10200u,
+          "start carries the seed, the tune flag, and the byte quota");
+    check(porta_proto_encode_link_start(1u, false, 1000u, wire, sizeof(wire)) == 0,
+          "encode refuses a byte quota that is not on the list");
+    check(!porta_proto_parse_link_stop(&got), "start is not a stop");
+
+    n = porta_proto_encode_link_set_rate(460800u, wire, sizeof(wire));
+    got = decode_one(wire, n, &d);
+    uint32_t baud = 0;
+    check(porta_proto_parse_link_set_rate(&got, &baud) && baud == 460800u, "set-rate carries an allowed baud");
+    check(porta_proto_encode_link_set_rate(12345u, wire, sizeof(wire)) == 0, "encode refuses a baud not on the list");
+
+    uint8_t bad[5] = {PORTA_LINK_SET_RATE, 0x80, 0x25, 0x00, 0x00};  // 9600
+    n = porta_proto_encode(PORTA_MSG_LINK_TEST, bad, 5, wire, sizeof(wire));
+    got = decode_one(wire, n, &d);
+    check(!porta_proto_parse_link_set_rate(&got, &baud), "parse refuses a baud not on the list");
+
+    n = porta_proto_encode_link_stop(wire, sizeof(wire));
+    got = decode_one(wire, n, &d);
+    check(porta_proto_parse_link_stop(&got), "stop round-trips");
+    check(porta_proto_encode_link_stop(wire, 2) == 0, "a short buffer encodes no control frame");
+
+    check(porta_link_rate_at(0) == PORTA_BAUD, "the sweep starts at the resting rate");
+    check(porta_link_rate_at(0) == 2500000u, "the resting rate is 2500000");
+    check(porta_link_rate_count() == 8, "the sweep has eight candidate rates");
+    check(porta_link_rate_at(1) == 115200u, "115200 stays on the list");
+    check(porta_link_rate_at(6) == 2000000u, "2000000 is still on the list");
+    check(porta_link_rate_at(7) == 4000000u, "the sweep ends at 4000000");
+    bool all_allowed = true;
+    for (unsigned i = 0; i < porta_link_rate_count(); ++i) {
+        if (!porta_link_rate_allowed(porta_link_rate_at(i))) {
+            all_allowed = false;
+        }
+    }
+    check(all_allowed && !porta_link_rate_allowed(115201u), "only the sweep list is allowed");
+
+    check(porta_link_baud_now(460800u, 5000, 5000 - 2999) == 460800u, "traffic inside the idle window holds the rate");
+    check(porta_link_baud_now(460800u, 5000, 5000 - 3000) == PORTA_BAUD, "three seconds without traffic reverts");
+    check(porta_link_baud_now(PORTA_BAUD, 99999, 0) == PORTA_BAUD, "the resting rate stays");
+    check(porta_link_baud_now(9600u, 10, 10) == PORTA_BAUD, "a baud that is not allowed reverts");
+    check(porta_link_baud_now(460800u, 0x10u, 0xFFFFFFF0u) == 460800u, "the idle window handles a timer wrap");
+    check(porta_link_baud_now(460800u, 0x1000u, 0xFFFFF000u) == PORTA_BAUD, "a wrapped gap past the window reverts");
+
+    porta_link_status_t st;
+    std::memset(&st, 0, sizeof(st));
+    st.baud = 460800;
+    st.frames_ok = 3;
+    st.tx_bytes = 765;
+    st.running = true;
+    n = porta_proto_encode_link_result(&st, wire, sizeof(wire));
+    got = decode_one(wire, n, &d);
+    porta_link_status_t back;
+    check(porta_proto_parse_link_result(&got, &back) && back.baud == 460800 && back.frames_ok == 3 &&
+              back.tx_bytes == 765 && back.running && !back.failed,
+          "a result frame round-trips the counters");
+}
+
+// Two ends exchange whatever porta_link_run_next produces, including a baud
+// switch. `now` advances by step_ms each round.
+static void exchange(porta_link_run_t* coord, porta_link_run_t* peer, uint32_t* now,
+                     uint32_t step_ms, int rounds)
+{
+    for (int i = 0; i < rounds; ++i) {
+        uint8_t wire[PORTA_PROTO_MAX_FRAME];
+        uint32_t apply = 0;
+        size_t n = porta_link_run_next(coord, *now, 0, wire, sizeof(wire), &apply);
+        if (n > 0) {
+            porta_decoder_t d;
+            porta_frame_t got = decode_one(wire, n, &d);
+            uint32_t sw = 0;
+            porta_link_run_on_frame(peer, &got, *now, 0, &sw);
+            if (sw != 0) {
+                porta_link_run_applied(peer, *now);
+            }
+        }
+        if (apply != 0) {
+            porta_link_run_applied(coord, *now);
+        }
+        apply = 0;
+        n = porta_link_run_next(peer, *now, 0, wire, sizeof(wire), &apply);
+        if (n > 0) {
+            porta_decoder_t d;
+            porta_frame_t got = decode_one(wire, n, &d);
+            uint32_t sw = 0;
+            porta_link_run_on_frame(coord, &got, *now, 0, &sw);
+        }
+        *now += step_ms;
+    }
+}
+
+static void test_link_run()
+{
+    const uint32_t pass = 10200u;
+    unsigned target = 0;
+    for (unsigned i = 0; i < porta_link_rate_count(); ++i) {
+        if (porta_link_rate_at(i) == 460800u) {
+            target = i;
+        }
+    }
+    porta_link_run_t coord;
+    porta_link_run_t peer;
+    porta_link_run_init(&peer);
+    porta_link_run_begin(&coord, 0x42u, pass, true, false, target, 0);
+    uint32_t now = 0;
+    for (int i = 0; i < 400 && coord.baud == PORTA_BAUD; ++i) {
+        exchange(&coord, &peer, &now, 10, 1);
+    }
+    check(porta_link_run_active(&peer), "start wakes the peer");
+    check(coord.baud == 460800u && coord.tx_bytes == 0,
+          "the coordinator switches to the selected rate before the quota");
+    for (int i = 0; i < 800 && porta_link_run_active(&coord); ++i) {
+        exchange(&coord, &peer, &now, 10, 1);
+    }
+    check(!porta_link_run_active(&coord) && coord.baud == 460800u,
+          "a clean quota finishes at the selected rate and does not climb");
+
+    char note[PORTA_EVENT_TEXT_MAX + 1];
+    check(porta_link_run_take_note(&coord, note, sizeof(note)) > 0, "a finished rate leaves a log line");
+
+    // Index 0 is the resting rate, so that choice never switches.
+    porta_link_run_init(&peer);
+    porta_link_run_begin(&coord, 0x42u, pass, true, false, 0, 0);
+    now = 0;
+    for (int i = 0; i < 400 && porta_link_run_active(&coord); ++i) {
+        exchange(&coord, &peer, &now, 10, 1);
+    }
+    check(!porta_link_run_active(&coord) && coord.baud == PORTA_BAUD,
+          "the resting rate runs there and finishes there");
+    check(!porta_link_run_active(&peer), "the peer is finished after stop");
+
+    // The peer must accept another start after it has finished. Otherwise the
+    // next Run sends a full quota and receives nothing.
+    porta_link_run_begin(&coord, 0x99u, pass, true, false, 0, now);
+    uint8_t again[PORTA_PROTO_MAX_FRAME];
+    uint32_t again_apply = 0;
+    size_t again_n = porta_link_run_next(&coord, now, 0, again, sizeof(again), &again_apply);
+    porta_decoder_t again_dec;
+    porta_frame_t again_got = decode_one(again, again_n, &again_dec);
+    uint32_t again_sw = 0;
+    porta_link_run_on_frame(&peer, &again_got, now, 0, &again_sw);
+    check(porta_link_run_active(&peer), "a later start wakes the peer again");
+
+    // A corrupted payload fails the rate and stops the run.
+    porta_link_run_init(&peer);
+    porta_link_run_begin(&coord, 0x42u, pass, true, true, 0, 0);
+    now = 0;
+    uint8_t wire[PORTA_PROTO_MAX_FRAME];
+    uint32_t apply = 0;
+    size_t n = porta_link_run_next(&coord, now, 0, wire, sizeof(wire), &apply);
+    porta_decoder_t d;
+    porta_frame_t got = decode_one(wire, n, &d);
+    uint32_t sw = 0;
+    porta_link_run_on_frame(&peer, &got, now, 0, &sw);
+    n = porta_link_run_next(&coord, now, 0, wire, sizeof(wire), &apply);
+    wire[3 + 10] ^= 0x01u;
+    wire[n - 1] = porta_proto_crc8(&wire[1], n - 2);
+    got = decode_one(wire, n, &d);
+    porta_link_run_on_frame(&peer, &got, now, 0, &sw);
+    n = porta_link_run_next(&coord, now, 0, wire, sizeof(wire), &apply);
+    got = decode_one(wire, n, &d);
+    porta_link_run_on_frame(&peer, &got, now, 0, &sw);
+    // Peer has sent nothing. Send until this end's quota is met, then the idle wait.
+    for (int i = 0; i < 80 && coord.tx_bytes < pass; ++i) {
+        n = porta_link_run_next(&coord, now, 0, wire, sizeof(wire), &apply);
+        now += 10;
+    }
+    now += PORTA_LINK_IDLE_MS;
+    n = porta_link_run_next(&coord, now, 0, wire, sizeof(wire), &apply);
+    got = decode_one(wire, n, &d);
+    check(porta_proto_parse_link_stop(&got), "a bad payload ends the run with stop");
+    check(!porta_link_run_active(&coord), "the coordinator is done after a failure");
+
+    porta_decoder_init(&d);
+    porta_decoder_push(&d, PORTA_PROTO_SYNC, &got);
+    porta_decoder_push(&d, 0x01, &got);
+    porta_decoder_resync(&d);
+    auto recovered = run(&d, encode(PORTA_MSG_POLL, {}));
+    check(d.frames_ok == 1 && recovered.size() == 1, "resync drops a partial frame and keeps going");
+}
+
 int main()
 {
     test_round_trip();
@@ -1235,6 +1550,11 @@ int main()
     test_file_list_and_read_requests();
     test_file_data_rows();
     test_event_json();
+    test_link_patterns();
+    test_link_checker();
+    test_link_mismatch_is_not_a_crc_error();
+    test_link_control_frames();
+    test_link_run();
 
     if (g_fail) {
         std::printf("FAILED: %d check(s)\n", g_fail);

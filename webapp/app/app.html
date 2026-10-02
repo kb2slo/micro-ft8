@@ -631,6 +631,40 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <div class=setrow><div class=diagrow><span>Sidekick: CRC errors / frames OK</span><span id=diagSk>—</span></div></div>
     <div class=setrow><div class=diagrow><span>Sidekick: browser-missed events</span><span id=diagSkRingGaps>—</span></div></div>
     <div class=setrow><div class=diagrow><span>Sidekick: config re-requests</span><span id=diagSkRetries>—</span></div></div>
+    <!-- Stress test, hidden after the 2026-10-01 rate choice (sidekick.md, Port A).
+         The markup and the /api/link-test handlers stay. Remove hidden to show it. -->
+    <div id=linkTest hidden>
+    <p class=setnote>Full frames both ways on the Grove link, at the one rate selected below. No radio. Beacon turns off and the queue is cleared. The link rests at 2500000. Another rate is one switch, and Stop or the end of the run returns it to 2500000. The final pass is 14 MB at 2500000.</p>
+    <div class=setrow>
+      <label>Bytes
+        <select id=linkTestBytes>
+          <option value=10200>10 KB</option>
+          <option value=102000 selected>100 KB</option>
+          <option value=1020000>1 MB</option>
+          <option value=14000000>14 MB, final pass</option>
+        </select>
+      </label>
+    </div>
+    <div class=setrow>
+      <label>Baud
+        <select id=linkTestBaud>
+          <option value=115200>115200</option>
+          <option value=230400>230400</option>
+          <option value=460800>460800</option>
+          <option value=921600>921600</option>
+          <option value=1500000>1500000</option>
+          <option value=2000000>2000000</option>
+          <option value=2500000 selected>2500000</option>
+          <option value=4000000>4000000</option>
+        </select>
+      </label>
+    </div>
+    <div class=setrow>
+      <button id=linkTestRun type=button>Run</button>
+      <button id=linkTestStop type=button>Stop</button>
+    </div>
+    <p id=linkTestMsg class=setnote></p>
+    </div>
 
     <nav style="font-size:.85rem;padding:0 1rem 1rem">
       <a href=/update>Install / update</a> ·
@@ -1620,6 +1654,71 @@ function applyOperateLive(cfg) {
   renderTxHud();
   renderBeacon();
 }
+
+// ===================== Settings > link test =====================
+var linkTestTimer = null;
+
+function linkTestLine(label, s) {
+  if (!s) return label + ': —';
+  return label + ': ' + s.baud + ' baud, tx ' + s.tx + ', ok ' + s.ok +
+    ', drop ' + s.drop + ', dup ' + s.dup + ', bad ' + s.bad + ', crc ' + s.crc;
+}
+
+async function linkTestRefresh() {
+  var msg = document.getElementById('linkTestMsg');
+  try {
+    var r = await fetch('/api/link-test');
+    if (!r.ok) return;
+    var s = await r.json();
+    var text = linkTestLine('Sidekick', s);
+    if (s.peer) text += ' | ' + linkTestLine('Main board', s.peer);
+    if (s.passed) text += ' Passed.';
+    else if (s.failed) text += ' Failed.';
+    else if (!s.running) text += ' Idle.';
+    msg.textContent = text;
+    if (!s.running && linkTestTimer) {
+      clearInterval(linkTestTimer);
+      linkTestTimer = null;
+    }
+  } catch (e) {
+    msg.textContent = 'Link test status unavailable.';
+  }
+}
+
+async function linkTestPost(body) {
+  var msg = document.getElementById('linkTestMsg');
+  if (!MicroFT8Pairing.getToken()) {
+    msg.textContent = 'Press the sidekick button to pair first.';
+    MicroFT8Pairing.needsReauth();
+    return;
+  }
+  try {
+    var r = await MicroFT8Pairing.authFetch('/api/link-test', { method: 'POST', body: body });
+    if (r.status == 401) {
+      MicroFT8Pairing.needsReauth();
+      msg.textContent = 'Press the sidekick button to pair';
+      return;
+    }
+    var s = await r.json();
+    if (s && s.ok === false) {
+      msg.textContent = s.why || 'Refused';
+      return;
+    }
+    if (body != 'stop' && !linkTestTimer) {
+      linkTestTimer = setInterval(linkTestRefresh, 1000);
+    }
+    linkTestRefresh();
+  } catch (e) {
+    msg.textContent = 'Link test request failed.';
+  }
+}
+
+document.getElementById('linkTestRun').onclick = function () {
+  var bytes = document.getElementById('linkTestBytes').value;
+  var baud = document.getElementById('linkTestBaud').value;
+  linkTestPost('rx ' + bytes + ' ' + baud);
+};
+document.getElementById('linkTestStop').onclick = function () { linkTestPost('stop'); };
 
 // ===================== Settings > Network actions =====================
 // Ported from status.html (now retired): same endpoints, same confirm/token/
