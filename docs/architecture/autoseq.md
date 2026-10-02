@@ -1,6 +1,6 @@
 # Autoseq: the QSO queue and the slot cycle
 
-Autoseq decides what the station transmits next. It covers replying to stations that call us, working the stations the operator picks, the beacon CQ, and logging each QSO. The engine is `components/autoseq/` (`autoseq.h` is the API), shared by both main boards. The slot cycle that drives it has one copy per board: `check_slot_boundary()`, `tx_start()` and `tx_tick()` in `main/main.cpp` for the ADV, and `poe_p4/main/tx_scheduler.cpp` for the P4 (**not yet merged: row j4xh**). Clock and slot timing: [time.md](time.md).
+Autoseq decides what the station transmits next. It covers replying to stations that call us, working the stations the operator picks, the beacon CQ, and logging each QSO. The engine is `components/autoseq/` (`autoseq.h` is the API), The slot cycle that drives it is `poe_p4/main/tx_scheduler.cpp`. Clock and slot timing: [time.md](time.md).
 
 The engine is a port of the DX-FT8 transceiver's `autoseq_engine.c`, and that lineage is where the two ordering rules under **The slot cycle** come from.
 
@@ -53,20 +53,20 @@ A contact's state is **what we last sent**. `next_tx` is what we send next.
 
 ## Where entries come from
 
-* **Decodes addressed to us.** After each RX decode, `decode_pipeline.cpp` builds the list of decodes whose first field is our call and calls `autoseq_on_decodes()`. It skips this while transmitting and while battery-halted. The ADV's IgnoreList drops decodes before autoseq sees them (the P4 has none yet, row j4xh). `on_decode()` then:
+* **Decodes addressed to us.** After each RX decode, `decode_pipeline.cpp` builds the list of decodes whose first field is our call and calls `autoseq_on_decodes()`. It skips this while transmitting. The P4 has no IgnoreList yet (row j4xh). `on_decode()` then:
   1. finds an active entry for the sender and applies the table, re-anchoring its slot parity to the decode;
   2. else finds an inactive one, reactivates it with fresh retries, and applies the table. Parked entries past their 10 minutes are expired before any lookup, so a stale one is never found;
   3. else creates a new entry, **except** for `RR73`/`RRR`/`73` (a late signoff for a QSO we no longer hold), `R±NN` (**Inactive zone** below says why), and a station logged in the last 10 minutes. A grid, a report or an FD exchange starts a QSO.
 
-  **The recently-worked check sits only at step 3**: `autoseq_set_recent_qso_callback()`, which each board sets to `decode_pipeline_recently_logged()`, the ADIF dedupe window (`kAdifLoggerDedupeWindowMs`). It must never filter before steps 1 and 2. A QSO is logged when we send RR73, so the station's 73, or an `R±NN` resent because they missed our RR73, arrives after the call is already "recent" and must still reach its entry. Filtering in the decode pipeline did exactly that, and the ROGERS entry resent RR73 on every retry (`host_mock/test_recent_qso.cpp`). The decode list still shows recent calls grey and sorts them last, and a touch is never filtered.
-* **A touch** (the ADV's R-screen tap, Port A `QUEUE_REPLY`) calls `autoseq_on_touch()`:
+  **The recently-worked check sits only at step 3**: `autoseq_set_recent_qso_callback()`, which the P4 sets to `decode_pipeline_recently_logged()`, the ADIF dedupe window (`kAdifLoggerDedupeWindowMs`). It must never filter before steps 1 and 2. A QSO is logged when we send RR73, so the station's 73, or an `R±NN` resent because they missed our RR73, arrives after the call is already "recent" and must still reach its entry. Filtering in the decode pipeline did exactly that, and the ROGERS entry resent RR73 on every retry (`host_mock/test_recent_qso.cpp`). The decode list still shows recent calls grey and sorts them last, and a touch is never filtered.
+* **A touch** (Port A `QUEUE_REPLY`) calls `autoseq_on_touch()`:
   * If that call is `queue[0]` in a live state, the touch is ignored ("QSO in progress").
   * Otherwise every entry for that call, active or inactive, is removed and a fresh one is created.
   * A decode addressed to us enters through the table. Anything else (a CQ, or tail-ending someone's RR73 or 73) starts in REPLYING sending TX1, or REPORT sending TX2 with Skip TX1 on.
   * The new entry is moved to the front, or behind `queue[0]` while a TX is on the air, so the transmission in flight is not displaced.
 * **The beacon.** When the queue is empty, `arm_from_autoseq_or_beacon()` adds a one-shot CQ on the beacon's parity (Even is slot parity 0, Odd is 1). Only one CQ is ever queued. Turning the beacon off or changing its parity cancels queued CQs, but leaves `queue[0]` alone while it is on the air (`autoseq_cancel_cq(skip_head)`). The CQ's text is rendered from the template at refresh time (`CQ`, `CQ SOTA`, `CQ POTA`, `CQ QRP`, `CQ FD`, or a free-text CQ), so a station or CQ-type change applies to a CQ already queued.
-* **Dropping an entry** (the ADV's TX screen, Port A `QUEUE_CANCEL`) removes a CQ outright and moves a QSO to the inactive zone, so a late reply still finds its metadata. Dropping the entry that is on the air also stops the transmission (**The slot cycle**).
-* **Rotate** (the ADV's TX screen, `autoseq_rotate_same_parity()`) moves `queue[0]` behind the other entries of the same parity at the front of the queue.
+* **Dropping an entry** (Port A `QUEUE_CANCEL`) removes a CQ outright and moves a QSO to the inactive zone, so a late reply still finds its metadata. Dropping the entry that is on the air also stops the transmission (**The slot cycle**).
+* **Rotate** (`autoseq_rotate_same_parity()`) moves `queue[0]` behind the other entries of the same parity at the front of the queue.
 
 ## The slot cycle
 
@@ -96,9 +96,9 @@ Each board runs `check_slot_boundary()` on every pass of its main loop. It does 
 * REPLYING through ROGERS: resend with `retry_counter` + 1 while under `retry_limit` (the Station.txt max-retry setting, default `AUTOSEQ_MAX_RETRY` = 5). Once exhausted, REPLYING is evicted and REPORT or later moves to the inactive zone.
 * SIGNOFF → inactive zone, always, so a late RR73 within the next 10 minutes can still be answered with another 73.
 
-**A TX cancel** (the ADV's backtick, Port A `TX_CANCEL`) stops the TX and leaves autoseq untouched. The cancelled TX does not count as sent, so no tick runs and no retry is used. The entry re-arms, but the trigger refuses the slot the cancel landed in, so one press stops it for the rest of that slot (row B21 is the bench check). Ending the radio and marking the UI dirty happen synchronously in the cancel call itself, on both boards (fixed 2026-09-28, row `j4xh`) — the P4's `tx_scheduler_cancel()` used to leave both for the next `tx_tick()`, a tick later than the ADV's `request_tx_cancel()`.
+**A TX cancel** (Port A `TX_CANCEL`) stops the TX and leaves autoseq untouched. The cancelled TX does not count as sent, so no tick runs and no retry is used. The entry re-arms, but the trigger refuses the slot the cancel landed in, so one press stops it for the rest of that slot (row B21 is the bench check). Ending the radio happens synchronously in the cancel call itself (`tx_scheduler_cancel()`), not on the next `tx_tick()`.
 
-**A queue cancel** (the web app's row ×, Port A `QUEUE_CANCEL`) removes a CQ, or parks a QSO. If that entry is armed but not yet on the air, the head check before the trigger drops the armed TX and re-arms. If it is on the air (`autoseq_transmitting_entry_id()` names it and a TX is active), the cancel also stops the transmission, as a TX cancel does, so no retry is spent and the rest of that slot stays quiet. The ADV's TX-screen drop keys do the same (`drop_qso()`). A band change sends a TX cancel as well as a queue cancel for every QSO. Cancelling a QSO that has already exchanged a report (any state past `REPLYING`) does not evict it — `autoseq_drop_index()` parks it in the inactive zone the same way retry-exhaustion does, so a decode from the same call within the 10-minute inactive window reactivates it (`on_decode()`, `reactivate()`) with a fresh retry count rather than starting cold. This is deliberate: cancel means "pause," not "give up on this station."
+**A queue cancel** (the web app's row ×, Port A `QUEUE_CANCEL`) removes a CQ, or parks a QSO. If that entry is armed but not yet on the air, the head check before the trigger drops the armed TX and re-arms. If it is on the air (`autoseq_transmitting_entry_id()` names it and a TX is active), the cancel also stops the transmission, as a TX cancel does, so no retry is spent and the rest of that slot stays quiet. A band change sends a TX cancel as well as a queue cancel for every QSO. Cancelling a QSO that has already exchanged a report (any state past `REPLYING`) does not evict it — `autoseq_drop_index()` parks it in the inactive zone the same way retry-exhaustion does, so a decode from the same call within the 10-minute inactive window reactivates it (`on_decode()`, `reactivate()`) with a fresh retry count rather than starting cold. This is deliberate: cancel means "pause," not "give up on this station."
 
 **TX offset** is resolved when the TX is armed (`resolve_tx_offset()`):
 

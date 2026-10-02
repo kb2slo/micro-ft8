@@ -1,6 +1,6 @@
 # RFC 0007: Flashing and updating Micro-FT8
 
-* **Status:** Accepted 2026-09-25
+* **Status:** Accepted 2026-09-25. Amended 2026-10-02: the ADV was dropped (row za6n), so its table column, §3.10, slices S5 and S6, the Launcher row and the M5Launcher rejection are removed; `git show d9a12f9~1:docs/rfcs/0007-flash-and-update.md` has the earlier text.
 
 ## 1. Goal
 
@@ -8,25 +8,23 @@ Stated by the operator, 2026-09-25:
 
 * **First install is done from the public site.** The Web Serial flasher on `downloads.html` writes a full merged image. Recovery uses the same path.
 * **After that, every update is OTA**, for all boards. Noticing an update, the prompt, the download, and the install all happen in the sidekick webapp.
-* **M5Launcher is dropped** as a supported install path.
-* **The P4 comes first**, then the ADV. Row `za6n` may still drop the ADV altogether.
 
-Decided by the operator, 2026-09-25: **the sidekick downloads images itself** (§3.2), and **the ADV stops carrying and flashing a sidekick image** (§3.10), which frees the flash its A/B layout needs.
+Decided by the operator, 2026-09-25: **the sidekick downloads images itself** (§3.2).
 
 ## 2. What exists
 
-| | Sidekick (AtomS3 Lite) | P4 (PoE-P4) | ADV (Cardputer) |
-|---|---|---|---|
-| Flash | 8 MB | 16 MB | 8 MB |
-| App image (local build, 2026-09-25) | 955 KB | 725 KB | 2.36 MB, of which ~0.95 MB is the embedded sidekick image (`components/sidekick_flasher`) |
-| Partitions | `ota_0`/`ota_1` 3 MB each, `web` 1.9 MB | one `factory` 4 MB, `storage` 3 MB | one `factory` 4.9 MB, `storage` 3 MB |
-| Rollback | `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`; marked valid after three Port A heartbeats (`sidekick/main/main.c:110`) | none | none |
-| Network | WiFi | none (Ethernet PHY present but unused, [main_board.md](../architecture/main_board.md)) | none |
-| Update today | USB-C, or field-flashed from the ADV ([sidekick.md](../architecture/sidekick.md) (**Installing the sidekick from the ADV**)) | USB-C | USB-C, M5Launcher, `tools/flash_keep_launcher.py` |
+| | Sidekick (AtomS3 Lite) | P4 (PoE-P4) |
+|---|---|---|
+| Flash | 8 MB | 16 MB |
+| App image (local build, 2026-09-25) | 955 KB | 725 KB |
+| Partitions | `ota_0`/`ota_1` 3 MB each, `web` 1.9 MB | one `factory` 4 MB, `storage` 3 MB |
+| Rollback | `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`; marked valid after three Port A heartbeats (`sidekick/main/main.c:110`) | none |
+| Network | WiFi | none (Ethernet PHY present but unused, [main_board.md](../architecture/main_board.md)) |
+| Update today | USB-C | USB-C |
 
 The release host already publishes, per board, a merged `0x0` image and its SHA-256 (`/download/manifest.json`, mirrored to R2 by `ci.yml`). It serves over **plain HTTP as well as HTTPS**: `curl -sI http://micro-ft8.kalikstein.com/download/manifest.json` returns 200 with no redirect (checked 2026-09-25). Each build's version string is the git SHA (`PROJECT_VER`).
 
-Neither main board has a network stack. Any firmware for them reaches them over Port A (`components/porta`, `porta_proto`: 255-byte payloads at `PORTA_BAUD`, 2500000), and both boards already link that code.
+The main board has no network stack. Any firmware for it reaches it over Port A (`components/porta`, `porta_proto`: 255-byte payloads at `PORTA_BAUD`, 2500000), and the P4 already links that code.
 
 ## 3. Design
 
@@ -50,7 +48,7 @@ The web-page bundle relay (`/update`, [architecture/sidekick.md](../architecture
 
 ### 3.3 Staging on the sidekick
 
-The AtomS3 Lite has no PSRAM, so a whole image never fits in RAM; it is staged in flash. The sidekick's **inactive OTA slot** (3 MB) holds either its own next image or a main-board image. The `web` partition (1.9 MB) is too small for the ADV's. So only one image is staged at a time, and a sidekick update and a main-board update run one after the other.
+The AtomS3 Lite has no PSRAM, so a whole image never fits in RAM; it is staged in flash. The sidekick's **inactive OTA slot** (3 MB) holds either its own next image or a main-board image. The `web` partition (1.9 MB) is too small for a main-board image. So only one image is staged at a time, and a sidekick update and a main-board update run one after the other.
 
 ### 3.4 Sidekick self-update
 
@@ -76,21 +74,20 @@ The main board writes the chunks into its inactive slot (`esp_ota_begin/write/en
 
 * it cancels any transmission, and the flow waits for the TX status the board already sends to report that TX has stopped;
 * it turns the beacon off, clears the autoseq queue, and stops decoding, CAT and USB audio;
-* while in update mode it refuses every transmit action, from any phone and from the ADV's own keys. The ADV shows "Updating — do not unplug"; the P4 has no screen;
+* while in update mode it refuses every transmit action, from any phone;
 * it leaves update mode only by restarting into the new image, or by an explicit resume action if the update fails or is cancelled. After a restart the radio comes up stopped, as after every restart today (operator, 2026-09-25); nothing new is needed for that.
 
-**Time:** an estimate, not measured. At 115200 baud with acknowledged chunks, roughly 1–2 min for the P4 and 3–5 min for the ADV (1.4 MB once §3.10 lands, so nearer 2). The link now rests at 2500000 ([sidekick.md](../architecture/sidekick.md), **Port A**); this estimate is still the stop-and-wait time, until `FW_CHUNK` has a window.
+**Time:** an estimate, not measured. At 115200 baud with acknowledged chunks, roughly 1–2 min for the P4. The link now rests at 2500000 ([sidekick.md](../architecture/sidekick.md), **Port A**); this estimate is still the stop-and-wait time, until `FW_CHUNK` has a window.
 
 ### 3.6 Version pairing
 
-**Each main board reports its version** (required by §3.5's done check). Today only the sidekick sends HELLO (`sidekick/main/main.c:77`); the main board only receives it (`components/porta/porta.cpp:164`), and the webapp shows just the sidekick's version (`sk_fw_version`). The main board sends HELLO too, with its `PORTA_PROTO_VERSION` and build version, on the same cadence. **Found 2026-09-25:** the P4 build has no build version yet (`poe_p4/` uses neither `git_version.cmake` nor `gen_build_identity.cmake`), so it gains one first; the sidekick adds both to its config JSON, and Settings shows them beside the sidekick's.
+**Each main board reports its version** (required by §3.5's done check). Today only the sidekick sends HELLO (`sidekick/main/main.c:77`); the main board only receives it (`components/porta/porta.cpp:164`), and the webapp shows just the sidekick's version (`sk_fw_version`). The main board sends HELLO too, with its `PORTA_PROTO_VERSION` and build version, on the same cadence. **Found 2026-09-25:** the P4 build has no build version yet (`poe_p4/` does not use `git_version.cmake`), so it gains one first; the sidekick adds both to its config JSON, and Settings shows them beside the sidekick's.
 
 The webapp compares each board's running version against the manifest and offers an update per board. It refuses a combination whose `PORTA_PROTO_VERSION`s differ, because a board that can no longer talk to the sidekick can only be recovered over USB. When both boards need updating, **the main board goes first**, while the sidekick still speaks its protocol; the frozen OTA messages are what make this safe.
 
 ### 3.7 Partition tables
 
 * **P4:** `nvs`, `otadata`, `phy_init`, `ota_0` and `ota_1` (4 MB each), `storage` 3 MB. This fits in 16 MB with room to spare.
-* **ADV:** fits once the embedded sidekick image goes (§3.10), bringing the app to ~1.4 MB. For example: two 2.25 MB slots from `0x20000`, then `storage` 3 MB, ending at `0x7A0000` of 8 MB. With the image still in, it would not fit: two 2.5 MB slots plus 3 MB storage exceeds the ~7.9 MB available.
 
 A new partition table can only be written over USB, so each board gets it once, from the Web Serial flasher, as part of the merged image. Existing data on `storage` is lost (pre-alpha).
 
@@ -115,18 +112,9 @@ Decided with the operator, 2026-09-25. An update never starts by itself, and the
 
 While an update is running, the webapp suppresses its lost-contact banner (30 s without a poll) and its device-reset banner (a link counter dropping). Both would fire on a planned restart.
 
-### 3.10 The ADV stops flashing sidekicks
+### 3.10 (Removed)
 
-Decided 2026-09-25. Once the sidekick updates itself (§3.4), the ADV no longer needs to carry and flash a sidekick image. The code goes, not just the image:
-
-* `components/sidekick_flasher`, including `target_firmware/`, and its `esp-serial-flasher` dependency (`main/idf_component.yml`).
-* The ADV's probe and flash paths in `main/main.cpp`, and the flasher references in `main/usb_c_presence.h`.
-* `porta_board_embedded_sidekick_version()` (both boards' `porta_board.cpp`, `porta_board.h`, the `-u` link flag in `main/CMakeLists.txt`) and the HELLO version-match check in `components/porta/porta.cpp` that uses it. Version pairing moves to the webapp (§3.6).
-* `tools/stage_sidekick_firmware.sh`, and the CI steps that stage the sidekick into the ADV build.
-* **Kept, and moved:** CI builds the sidekick's public merged image from that same staging folder (`ci.yml`, `tools/merge_sidekick_bin.sh`). That step moves into the sidekick's own build job, so `/download/` still publishes it.
-* [sidekick.md](../architecture/sidekick.md) (**Installing the sidekick from the ADV**)'s field-flash design, and the docs and README text that describe it.
-
-**What this gives up:** installing or recovering a sidekick in the field from the ADV. Both now need a computer (Web Serial or `esptool.py`), which is where the P4 already is.
+The ADV's sidekick flashing went with the ADV (row za6n, 2026-10-02).
 
 ### 3.11 Port A speed
 
@@ -140,7 +128,6 @@ Shipped 2026-10-01. The resting rate, what held it, and the hidden stress-test c
 * **P4 on its own Ethernet.** [main_board.md](../architecture/main_board.md) records that PoE and Ethernet are not a path this project uses.
 * **Signing.** Unchanged from [architecture/system.md](../architecture/system.md) (**Why not signing**): the manifest's hash reaches the device over the owner's HTTPS-authenticated browser, and updates are started by the operator. Its reopen trigger stands.
 * **TLS on the sidekick.** Not needed while the host serves plain HTTP. Reopen if the host ever forces HTTPS; measure the handshake's heap cost first, since the board has no PSRAM.
-* **M5Launcher.** It owns the ADV's factory slot, which an A/B layout needs. Dropped by the operator, 2026-09-25.
 
 ## 5. Later phases
 
@@ -158,6 +145,3 @@ Each is a `ROADMAP.md` Backlog row.
 * **S2** (`v697`) — Sidekick self-update (§3.2, §3.4). Field check: update from the webapp, then a forced bad image rolls back.
 * **S3** (`hstv`) — Main-board HELLO (§3.6), update mode, the `FW_*` messages with resume, and the shared receiver, with `host_mock` tests; P4 partition table and rollback enabled (§3.5, §3.7). Field check: P4 updated from the webapp, transfer time measured, a forced bad image rolls back.
 * **S4** (`yme5`) — Webapp update UX and version pairing (§3.6, §3.9). Field check: walk §3.9's steps 1–6 with a QSO in progress, with the phone locked mid-transfer, and with a second phone open.
-* **S5** (`u8zt`) — Remove the ADV's sidekick flashing (§3.10), after S2 has shipped so the sidekick can still be updated without a computer. Proof: `idf.py build` for the ADV, with the image size drop checked; the sidekick's public merged image is still published; README audit, because a documented workflow goes.
-* **S6** (`gujg`) — ADV partition table and rollback, reusing S3's receiver (§3.7). Field check as S3, on the ADV.
-* (`ve47`) Remove M5Launcher support: `tools/flash_keep_launcher.py` and the docs that describe it.

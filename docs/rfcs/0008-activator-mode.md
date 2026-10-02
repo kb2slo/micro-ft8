@@ -1,6 +1,6 @@
 # RFC 0008: Activator mode — POTA and SOTA from the field
 
-* **Status:** Accepted 2026-09-27 (drafted 2026-09-26). Slices: §7. Decisions and deferred questions: §9.
+* **Status:** Accepted 2026-09-27 (drafted 2026-09-26). Slices: §7. Decisions and deferred questions: §9. **Amended 2026-10-02:** the ADV was dropped (row za6n). Where this RFC discusses the ADV, its measurements, its screens or its `ADV-only` work, it is history and no longer applies.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** the activation as an object the station knows about; where it lives so an activation runs with no internet; what goes on the air; what the log records and how it is exported for pota.app and the SOTA database; choosing a nearby reference and checking the grid offline; planning activations while online; where spotting fits.
 * **Does not cover:** how any of it looks on Operate ([RFC 0009](0009-operate-station-surface.md): this RFC supplies the data, 0009 the surface), hunter mode (§6), programs other than POTA and SOTA (§6), log editing and the on-device storage format ([ROADMAP.md](../ROADMAP.md) I31, I32).

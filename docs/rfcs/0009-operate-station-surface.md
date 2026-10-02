@@ -1,6 +1,6 @@
 # RFC 0009: Operate — one station surface, home or activation
 
-* **Status:** Accepted 2026-09-27. Decisions: §7. Build order and the O1 build notes: §6.
+* **Status:** Accepted 2026-09-27. Decisions: §7. Build order and the O1 build notes: §6. **Amended 2026-10-02:** the ADV was dropped (row za6n). Where this RFC discusses the ADV, its measurements, its screens or its `ADV-only` work, it is history and no longer applies.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:**
   - the Operate view's layout, and a CQ row in the queue;

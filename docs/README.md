@@ -73,8 +73,6 @@ An RFC is warranted when a row's design will not fit in the row (**Row size** be
 
 **Declined is the last section.** A rejected row moves there as one line — ID, name, why — so the idea is not re-proposed. Git keeps the full row.
 
-**`ADV-only` rows.** A row that only matters for the Cardputer ADV carries `` `ADV-only` `` at the start of its name and sits at the bottom of Backlog (or in Ideas); if ADV support is dropped (row `za6n`), they go with it — `git grep -n ADV-only docs/ROADMAP.md` finds them.
-
 **IDs are opaque.** New rows get a random ID from `tools/roadmap_rows.sh new`, which checks it has never appeared in git history. Existing `B`/`I` IDs stay. Section is stage, position is priority; the ID encodes neither. Lineage — split from, merged into, replaced by — goes in the commit message that made the change, not in the row; `git log -S'<id>' --reverse -- docs/ROADMAP.md` finds where a row came from.
 
 **Row size.** `tools/roadmap_rows.sh` lists rows over its `LIMIT` (the only place the number lives). Flag any such row in chat — in the turn that writes it, before proposing the commit, and at grooming. Route the overflow by kind:
@@ -136,13 +134,13 @@ State which of these you did in the turn you report the work. **"No test-plan ch
 
 **Architecture docs match the code too.** A `docs/architecture/<area>.md` describes how things work now, so a change that alters behaviour one of them describes updates it in the **same commit**. As with the README audit, say it out loud when nothing needs changing: "no architecture-doc change needed". An RFC slice does this through graduation (**RFC lifecycle** above); this rule covers changes that come through no RFC. A doc may describe a decided but unbuilt design only under a label naming the roadmap rows that build it — "**not yet built: rows v697, hstv**" — so that when those rows ship and are dropped, `tools/roadmap_rows.sh dangling` flags the stale label.
 
-**Never report a field check as passed.** An agent runs `host_mock`, `tx_e2e`, and `idf.py build` and reports those honestly. Anything needing a Cardputer, a radio, or an antenna is the operator's to run: propose it, put it in **Pending**, and wait. A green build is evidence about linkage, not about whether the radio transmitted.
+**Never report a field check as passed.** An agent runs `host_mock`, `tx_e2e`, and `idf.py build` and reports those honestly. Anything needing the P4, a radio, or an antenna is the operator's to run: propose it, put it in **Pending**, and wait. A green build is evidence about linkage, not about whether the radio transmitted.
 
-**Fork README stays current.** The top of [`README.md`](../README.md) (above the Wei delimiter) is the public “why this fork” copy. When work is operator-visible (TX UX, meters, logging, flash/Launcher, Charge Mode, CQ/beacon, radios, …), audit that section in the **same turn**: propose the add, change, or drop in chat with the test plan and commit message. Include the accepted edit in the same commit and push as the feature. Do not rewrite Wei’s original below the delimiter. Skip agent, RFC, extract-only, or other work operators cannot feel on the radio.
+**Fork README stays current.** The top of [`README.md`](../README.md) (above the Wei delimiter) is the public “why this fork” copy. When work is operator-visible (TX UX, meters, logging, flashing, CQ/beacon, radios, …), audit that section in the **same turn**: propose the add, change, or drop in chat with the test plan and commit message. Include the accepted edit in the same commit and push as the feature. Do not rewrite Wei’s original below the delimiter. Skip agent, RFC, extract-only, or other work operators cannot feel on the radio.
 
-**Triggers, stated so they cannot be missed.** Audit that section when a change adds, alters, or **removes** any of: a key binding or screen; an on-screen string the README quotes; a documented workflow (log offload, flash/Launcher, charge, time sync); or a supported radio/board. **Removal counts, and is the easy one to miss** — a README documenting a key that now does nothing is worse than one that never mentioned it. If Wei’s original below the delimiter documents the same thing, do **not** edit it: put the correction in the fork note and let the delimiter rule (“use the fork notes above where they disagree”) carry it. When it genuinely does not apply, say so explicitly in that turn, as above. CI enforces the mechanical half of this (`readme-audit` in `.github/workflows/ci.yml`): a PR that removes a `UIMode` enumerator or changes a key binding under `main/` without touching `README.md` fails, unless the PR body says `README-audit: none - <why>`. The check catches signals, not judgement — it will not notice a behaviour change that alters no enum and no key.
+**Triggers, stated so they cannot be missed.** Audit that section when a change adds, alters, or **removes** any of: a web-app screen or control; an on-screen string the README quotes; a documented workflow (log offload, flashing, time sync); or a supported radio/board. **Removal counts, and is the easy one to miss** — a README documenting a key that now does nothing is worse than one that never mentioned it. If Wei’s original below the delimiter documents the same thing, do **not** edit it: put the correction in the fork note and let the delimiter rule (“use the fork notes above where they disagree”) carry it. When it genuinely does not apply, say so explicitly in that turn, as above.
 
-Do not expand `main.cpp` without extracting a tested function ([STYLE.md](STYLE.md)). Radio and `ft8_lib` boundaries: [architecture/radio.md](architecture/radio.md), [architecture/ft8_lib.md](architecture/ft8_lib.md). Read the current Now from `ROADMAP.md` rather than trusting a name written here — this line has gone stale before.
+Keep new logic out of `poe_p4/main/` ([STYLE.md](STYLE.md)). Radio and `ft8_lib` boundaries: [architecture/radio.md](architecture/radio.md), [architecture/ft8_lib.md](architecture/ft8_lib.md). Read the current Now from `ROADMAP.md` rather than trusting a name written here — this line has gone stale before.
 
 This project ships on **`origin/main`** (`kb2slo/micro-ft8`, private). De-forked 2026-09-15 from `kb2slo/Micro-FT8` (now archived, public) — there is no `upstream` git remote. Wei's `wcheng95/Micro-FT8` is watched for portable fixes (**Upstream watches** below), not tracked as a fork; never push or open a PR there unless the operator explicitly asks.
 
@@ -219,8 +217,7 @@ every agent and every operator can see them — see "Memory lives in this repo" 
   (and whether `-dirty`), or the asset name.
 
 - **Before patching a vendored library, diff a working reference.** When a bug traces into vendored or managed
-  code (e.g. `usb_host_uac`), first compare how our other board already drives it successfully (ADV
-  `main/audio/stream_uac.cpp` vs. P4 `poe_p4/main/qmx_transport.cpp`) and any cited reference project
+  code (e.g. `usb_host_uac`), first compare how a working reference drives it (`poe_p4/main/qmx_transport.cpp` against the cited project
   (`SteffenLav/qmx-panadapter`). Patch the library only if those comparisons still point at it. The P4 UAC crash
   (2026-09-18) looked like a library bug but was our port running UAC open/start on the same task as the USB
   event pump. Stated 2026-09-18.
@@ -392,32 +389,17 @@ If the date above is more than **7 days** old, look at what changed since the la
 
 ### Local IDF build / flash
 
-**Local build first. CI is not an iteration loop.** Iterate with local `idf.py build` — roughly 15–40 s incremental — and hand the operator the merged image straight from `build/` (`POST_BUILD` writes `<sha>-microft8-dev.bin` beside `MicroFT8_Merged_Auto.bin`). Do **not** push a branch and wait on a CI artifact merely to produce a test binary: the firmware job alone is ~4–5 minutes, and during bench debugging that latency dominates the session. CI is for **pre-merge verification** — it builds the PR *merge commit* (what actually lands, not the branch tip) and runs the sidekick and host-test jobs that a local ADV build does not. Pushing is also gated by **Chat gates** below: it waits until the operator asks. Do not push in order to get a build.
+**Local build first. CI is not an iteration loop.** Iterate with a local `idf.py build` in `poe_p4/` and hand the operator the merged image straight from `poe_p4/build/poe_p4_merged.bin`. Do **not** push a branch and wait on a CI artifact merely to produce a test binary: during bench debugging that latency dominates the session. CI is for **pre-merge verification** (see the bullet above).
 
-Clone with submodules first (see **Clone (submodules)** above).
-
-After `source` of the idf5.5 venv and `esp-idf/export.sh`. Radio unplugged from Cardputer USB-C. Leave Launcher **USB** (MSC) first so `/dev/cu.usbmodem*` exists.
-
-**Keep Launcher** (daily iterate once Micro-FT8 has been installed from Launcher once):
+Clone with submodules first (see **Clone (submodules)** above). After `source` of `esp-idf/export.sh` (v5.5.5):
 
 ```bash
-python tools/flash_keep_launcher.py
-```
-
-Reads the *device* partition table and writes `build/micro_ft8.bin` into an OTA slot only. Never factory (Launcher), bootloader, or the table. `--dry-run` prints the layout. `--no-build` skips `idf.py build`.
-
-This Cardputer’s Micro-FT8 slot is **`bt4000`** (Launcher PMan name). The helper prefers that partition when it exists; `--partition NAME` overrides.
-
-Do **not** use `idf.py flash` or `idf.py app-flash` on a Launcher unit: both write `0x10000` / factory and replace Launcher.
-
-**No Launcher** (factory-only Micro-FT8 layout):
-
-```bash
+cd poe_p4
 idf.py build flash
 ```
 
-Do not split into separate `build` then `flash` unless the user asks.
+Do not split into separate `build` then `flash` unless the user asks. Flash over the **PROG** USB-C port next to the RJ45; the QMX stays on the Host port, so `idf.py monitor` works with the radio attached ([architecture/main_board.md](architecture/main_board.md), **Two USB-C ports**).
 
-**`monitor`:** The Cardputer USB-C is either ESP USB Serial/JTAG (Mac ↔ firmware logs) **or** USB host for the radio (QMX / QDX) — not both. So `idf.py … flash monitor` works with the **radio unplugged** from USB-C. Live logs while the radio is connected need the console UART on **G4 (TX) / G5 (RX)** (USB–TTL adapter), not PORTA/Grove (`G1`/`G2`, GPS/CAT). That G4/G5 path is off when `GNSS_LoRa:ON`.
+The sidekick is its own project: `cd sidekick && idf.py build flash`. `tools/merge_sidekick_bin.sh` merges its build into one `0x0` image.
 
 Loader stubs (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, and similar) exist only so a given tool loads this agreement. They point here. Do not duplicate the plan in those files. `AGENTS.md` states the rule; adding a tool means adding a stub, never moving rules into it.

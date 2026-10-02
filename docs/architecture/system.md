@@ -4,13 +4,13 @@ How the boards, the phone and the internet divide the work, and who may key the 
 
 ## The station
 
-The daily station is headless: a **P4 main board** (decode, TX, autoseq, log, the radio over USB host), an **AtomS3 Lite sidekick** (WiFi, HTTP server, web root), and a **phone browser as the only UI**. The ADV (Cardputer) runs the same protocol and still has its own screen and keyboard; nothing here depends on them. Updates: [RFC 0007](../rfcs/0007-flash-and-update.md).
+The daily station is headless: a **P4 main board** (decode, TX, autoseq, log, the radio over USB host), an **AtomS3 Lite sidekick** (WiFi, HTTP server, web root), and a **phone browser as the only UI**. Updates: [RFC 0007](../rfcs/0007-flash-and-update.md).
 
 ## Constraints
 
 1. **Offline field operation is a requirement.** Summits have no cell service and no router, so the only path from phone to sidekick there is the sidekick's own access point. **The whole application runs over AP mode**; station mode (home WiFi, the phone's hotspot) is the convenience case. Nothing may treat AP mode as a transient setup state.
 2. **Internet may be required for setup and for updates, never for operating.** This is what lets the firmware carry only a small bootstrap instead of the full UI (see [sidekick.md](sidekick.md), **Web root**), and why an update may require the sidekick to be on a network with internet.
-3. **No dependency on a board's keyboard or screen.** The sidekick-to-main protocol is specified against the application (decode, transmit, autoseq, config, log), never against board hardware, so the ADV and the P4 present the same surface.
+3. **No dependency on a board's keyboard or screen.** The sidekick-to-main protocol is specified against the application (decode, transmit, autoseq, config, log), never against board hardware.
 
 ## The inversion: the browser is the internet device
 
@@ -32,7 +32,7 @@ flowchart TB
         http["HTTP server<br/>control API, pairing token"]
         web["web partition · LittleFS<br/>the only served origin"]
     end
-    subgraph main["Main board — P4, or the ADV"]
+    subgraph main["Main board — P4"]
         radio["Decode · TX · autoseq · log"]
         qmx["QMX over USB host"]
     end

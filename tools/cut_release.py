@@ -143,8 +143,7 @@ def main() -> int:
     print(f"  tag     {tag}")
     print(f"  commit  {sha[:7]}  {subject}")
     print(f"  branch  {branch}")
-    print(f"  builds  MICROFT8_BUILD_KIND=rel, version {version} from the tag")
-    print(f"  device  will display 'Micro-FT8 {version}'")
+    print(f"  CI      builds the P4 image and publishes MicroFT8-PoE-P4-v{version}-Merged.bin")
 
     if not args.yes:
         if input("\npush this tag? [y/N] ").strip().lower() not in ("y", "yes"):

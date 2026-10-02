@@ -22,7 +22,7 @@ import serial
 
 
 def resolve(path):
-    """'auto' means the first /dev/cu.usbmodem*: a replug can change the name (1101 -> 101 seen on the ADV)."""
+    """'auto' means the first /dev/cu.usbmodem*: a replug can change the name (1101 -> 101 seen once)."""
     if path != "auto":
         return path
     found = sorted(glob.glob("/dev/cu.usbmodem*"))
@@ -72,7 +72,7 @@ def main():
         return 1
     if not args.capture_only:
         # Hard reset into the app (USB-Serial-JTAG: RTS pulse). On a board strapped into download mode by hand
-        # (the ADV's G0) this lands back in download mode; use --capture-only and reset by hand instead.
+        # (the BOOT button held) this lands back in download mode; use --capture-only and reset by hand instead.
         port.setDTR(False)
         port.setRTS(True)
         time.sleep(0.1)

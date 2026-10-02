@@ -1,6 +1,6 @@
 # RFC 0006: Decode performance — measure, then tune
 
-* **Status:** Accepted 2026-09-25, phase order in §5 as written. Rows [B25](../ROADMAP.md), [B53](../ROADMAP.md),
+* **Status:** Accepted 2026-09-25, phase order in §5 as written. Rows [B25](../ROADMAP.md), [B53](../ROADMAP.md), **Amended 2026-10-02:** the ADV was dropped (row za6n). Where this RFC discusses the ADV, its measurements, its screens or its `ADV-only` work, it is history and no longer applies.
   [B54](../ROADMAP.md), [I26](../ROADMAP.md), [B85](../ROADMAP.md) and [B86](../ROADMAP.md) carry an ID, a name and a link
   here; the reasoning lives in this file.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO

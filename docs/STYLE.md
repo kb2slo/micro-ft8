@@ -34,17 +34,17 @@ bool is_space(char c) {
 
 ## Naming
 
-Document the mix. Do not rename `main.cpp` to match a purer scheme.
+Document the mix. Do not rename existing files to match a purer scheme.
 
-- `g_` — process-lifetime app state in `main`
+- `g_` — process-lifetime app state in `poe_p4/main`
 - `s_` — file-static
 - `snake_case` functions
 - `CamelCase` types and enums
 - Component prefix on exported symbols (`adif_`, `storage_`, `autoseq_`, `radio_control_`)
 
-Prefer a full word over an unexplained abbreviation in new and extracted names (`capabilities` not `caps`). Documented prefixes (`g_`, `s_`) stay. Do not restyle `main.cpp` or vendored `M5*` / `ft8_lib` to match.
+Prefer a full word over an unexplained abbreviation in new and extracted names (`capabilities` not `caps`). Documented prefixes (`g_`, `s_`) stay. Do not restyle vendored `ft8_lib` to match.
 
-New extracts follow this on day one. Old names in `main.cpp` change only when that function moves out.
+New extracts follow this on day one. Old names change only when that function moves.
 
 ## Headers and includes
 
@@ -58,43 +58,21 @@ New files: function opening brace on its own line; `if` / `switch` / `for` brace
 
 C++17. No exceptions, no RTTI. `std::string` / `std::vector` are fine in host-linkable units. Four spaces, LF, ~120 columns. No drive-by wrap of old lines.
 
-No formatter on `main.cpp`, `M5*`, or `ft8_lib`. Optional `.clang-format` later, only on new extract directories.
+No formatter on `ft8_lib`. Optional `.clang-format` later, only on new extract directories.
 
 ## Structure
 
-File size is a ratchet, not a rewrite target. New files stay under about 500 lines of real code. `main.cpp` may only shrink. Do not split a file just to game the number.
+File size is a ratchet, not a rewrite target. New files stay under about 500 lines of real code. `poe_p4/main/porta_host_stubs.cpp`, the largest, may only shrink. Do not split a file just to game the number.
 
 Require a **module**, not a class. New behavior gets a name and a header API. One tested function is enough. A strategy interface for one implementation is not.
 
 Inheritance only when there is a closed set of variants that already exists or is about to (radio backends, later modes). Radio uses `radio_control_ops_t`, not `class Radio`. A station/mode object model is I6 and needs its own RFC.
 
-No new logic in `main.cpp`. Call sites, wiring, and UI only. If it can be host-tested, it is not written in `main.cpp`.
+No new host-testable logic in `poe_p4/main/`: wiring and board-only code only.
 
-**Where an extracted module lives** (2026-09-04). Default is a plain `.cpp` / `.h` pair in `main/`, next to `gps.cpp`, `porta.cpp`, `decode_sort.h`, `radio_profile.h`. A module earns its own `components/<name>/` directory only one of two ways:
+**Where a module lives.** A `components/<name>/` directory with a `CMakeLists.txt` and an `include/` level. `host_mock/Makefile` compiles sources by path, so a component is host-tested directly. Board-only code (the entry point, the QMX USB transport, the TX scheduler, the Port A host actions) stays in `poe_p4/main/`. `ft8_lib` is vendored third-party: [architecture/ft8_lib.md](architecture/ft8_lib.md) vendor boundary — do not format, do not restructure.
 
-**1. The build forces it.** Another component names it in `REQUIRES` / `PRIV_REQUIRES`, or more than one `idf.py` project compiles it (the ADV tree, `sidekick/`, `test_apps/`).
-
-**2. It is a boundary we are deliberately holding.** This is a closed list, and adding to it means saying why here:
-
-| Component | Why it stays |
-|---|---|
-| `M5Cardputer`, `M5GFX`, `M5Unified`, `ft8_lib` | Vendored third-party. [architecture/ft8_lib.md](architecture/ft8_lib.md) vendor boundary — do not format, do not restructure. |
-| `board_cardputer_adv` | Also forced (prong 1): `test_apps/cardputer_adv_audio_keyboard` requires it. The board/HAL seam a headless host would need. |
-| `ui` | The display seam I24 needs to run headless. Demoting it would remove the abstraction that work depends on. 4200+ lines, 8 files. |
-| `sidekick_flasher` | `EMBED_FILES` packaging of the `sidekick` image, a generated header, and conditional compile defines. That machinery is about shipping a payload, not about source layout. |
-
-Anything not covered by prong 1 or listed above is a plain file in `main/`.
-
-Host-testability does **not** force a component. `host_mock/Makefile` compiles sources by path and already carries `-I../main`, so a plain file in `main/` is host-tested exactly like a component is (`decode_sort.h` and `radio_profile.h`, for example).
-
-Being a component is a cost: a directory, a `CMakeLists.txt`, an `include/` level, a possible `idf_component.yml`, and an entry in someone's `REQUIRES`. Pay it for one of the two reasons above, not by default.
-
-**Two boards, one source** (2026-09-16). The ADV and the P4 share their logic; the same logic must never exist twice with each board carrying its own copy.
-
-* Where the boards differ inside otherwise shared logic, guard the differing lines with `#if` in the shared file. A file that is 90% shared with a 10% board-specific tail is a guard, not a fork.
-* A board-only file is right only when the **whole file** is board-specific: the ADV's display driver, the P4's headless entry point (`poe_p4/main/`).
-* Shared logic lives in `components/`, which prong 1 of the placement rule above already forces once both projects compile it.
-* **CI builds both targets on every change**, so neither silently rots. This holds until row za6n decides whether the ADV is retired.
+**One main board** (2026-10-02, after row za6n dropped the ADV). Logic that is not specific to this board's hardware goes in a component, so a host test can reach it, rather than in `poe_p4/main/`. `porta_proto` is also compiled by the sidekick, so it is a component for that reason too.
 
 **No HTML, CSS or JavaScript inside C or C++ source** (2026-09-12). A page is a `.html` file under `<project>/main/web/`. On the sidekick, CMake globs that directory into `EMBED_TXTFILES` and a generated seed table — drop a file in `web/` and it is embedded, hydrated onto LittleFS, and served at `/<filename>` (templated URLs like `/` and `/log` still need handlers). Values are interpolated with `{{name}}` placeholders, not `printf`. After `web_fs_init()` the LittleFS `web` partition is the sole HTTP origin ([architecture/sidekick.md](architecture/sidekick.md) (**Web root**)).
 

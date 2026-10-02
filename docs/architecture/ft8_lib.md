@@ -23,4 +23,3 @@
 5. Push the fork, then move the pin: `git add components/ft8_lib/vendor`.
 6. **The goldens gate the pin.** `tx_e2e` golden RX and encode must be green before the pin moves. Goldens fail → no bump.
 
-The M5 components (`M5Cardputer`, `M5GFX`, `M5Unified`) are vendored too, under the same "do not format, do not fork unless we must", but have no bump procedure here.

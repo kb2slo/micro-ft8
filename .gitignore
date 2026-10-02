@@ -5,10 +5,7 @@
 *.elf
 *.map
 idf_py_*
-main/*.o
-# host_mock compiles some components/ sources in place too (autoseq, adif) --
-# same stray-.o pattern main/*.o above already covers, now in two more spots
-# since the P4 port moved those files out of main/ into components/.
+# host_mock compiles some components/ sources in place too (autoseq, adif).
 components/autoseq/*.o
 components/adif/*.o
 
@@ -54,7 +51,7 @@ Testing/
 *.diff
 *.patch
 
-# sidekick: separate idf.py project (docs/architecture/sidekick.md (Installing the sidekick from the ADV))
+# sidekick: separate idf.py project (docs/architecture/sidekick.md)
 sidekick/build/
 sidekick/managed_components/
 sidekick/sdkconfig

@@ -7,14 +7,14 @@ The core (slot loop, TX scheduler, HUD) talks to the radio only through `compone
 * **One table of operations per radio**, `radio_control_ops_t` (`components/radio_control/include/radio_control_backend.h`): `ready`, `on_audio_start`, `sync_frequency_mode`, `begin_tx`, `set_tone_hz`, `end_tx`, `set_tune`, `set_time`, the TX power/SWR trio `reset_tx_power_swr` / `poll_tx_power_swr` / `get_tx_power_swr`, and `begin_cpfsk_tx`. A null pointer means "not supported", never a crash.
 * **Capabilities** (`radio_control_capabilities_t`, `radio_control.h`) are what the core and HUD ask instead of the radio's name: `has_wattmeter`, `has_swr`, `can_set_time`, `audio_is_uac`, `can_md8_tune`, `can_ps0`.
 * **One `.cpp` per radio**: `radio_control_qmx.cpp`, `radio_control_qdx.cpp`. QMX and QMX+ are one backend until their CAT differs.
-* **CAT replies are read by one parser**, `cat_reply_parser` (`components/radio_control`, host-tested), fed from each board's CDC callback (`poe_p4/main/qmx_transport.cpp`, `main/audio/stream_uac.cpp`). It keeps the last `PC`, `SW` and `FA` reply, and drops the terminal display codes (`ESC[7m` ...) the radio appends to some replies, which would otherwise glue onto the next reply and hide its prefix. `FA` exists so a sweep can tell a frequency the radio refused (it answers `?;` and `FA;` still reads the old one) from one that took.
-* **The product picker** is the table in `main/radio/radio_profile.h`: one row per radio, binding its name, audio source and backend.
+* **CAT replies are read by one parser**, `cat_reply_parser` (`components/radio_control`, host-tested), fed from the CDC callback (`poe_p4/main/qmx_transport.cpp`). It keeps the last `PC`, `SW` and `FA` reply, and drops the terminal display codes (`ESC[7m` ...) the radio appends to some replies, which would otherwise glue onto the next reply and hide its prefix. `FA` exists so a sweep can tell a frequency the radio refused (it answers `?;` and `FA;` still reads the old one) from one that took.
+* **The radio is fixed to the QMX** (`radio_control_set_backend(RADIO_CONTROL_QMX)` in `poe_p4/main/main.cpp`). Following the Station `radio` setting is row cgc4.
 
 ## Rules
 
-* **No `if (QMX)` in the core** — not in `main.cpp`, `poe_p4/main`, or the dispatcher in `radio_control.cpp`. Radio-specific behaviour is an operation or a capability.
-* **QMX-only features go through a capability flag.** The SWR sweep calls `MD8;` only where `can_md8_tune` is set; a CAT power-off (`PS0;`, I10) only where `can_ps0` is set.
-* **Adding a radio** means filling in a new operations table and capabilities, and adding a row to `radio_profile.h` — no edit to the slot loop. This is the design's test; no second radio family has been added yet to prove it.
+* **No `if (QMX)` in the core** — not in `poe_p4/main` or the dispatcher in `radio_control.cpp`. Radio-specific behaviour is an operation or a capability.
+* **QMX-only features go through a capability flag.** The SWR sweep calls `MD8;` only where `can_md8_tune` is set; a CAT power-off (`PS0;`) only where `can_ps0` is set.
+* **Adding a radio** means filling in a new operations table and capabilities, — no edit to the slot loop. This is the design's test; no second radio family has been added yet to prove it.
 * **Why a table, not `class Radio`:** the variants are a closed set, and a C struct of function pointers is what the rest of this ESP-IDF tree already uses. [STYLE.md](../STYLE.md) (**Structure**) allows inheritance only for closed sets like this one, and the table is the lighter form of it.
 
 ## QMX SWR Tune over CAT
@@ -33,7 +33,7 @@ Measured on a QMX at firmware 1_04_003 with `tools/qmx_swr_probe.py` (2026-09-30
 
 ## The SWR sweep on the main board
 
-A phone page ([webapp.md](webapp.md), **The SWR sweep**) asks the main board to sweep SWR over the bands the operator ticks; the wire is Port A v4 ([sidekick.md](sidekick.md), **Port A**). Built for the P4; the ADV answers "SWR sweep is not built for this board". **Not yet built: rows uqu2 (the ADV), vu8t (reading the Tune %).**
+A phone page ([webapp.md](webapp.md), **The SWR sweep**) asks the main board to sweep SWR over the bands the operator ticks; the wire is Port A v4 ([sidekick.md](sidekick.md), **Port A**). **Not yet built: row vu8t (reading the Tune %).**
 
 ```mermaid
 flowchart LR

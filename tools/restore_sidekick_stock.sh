@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Writes a full-flash backup back onto a sidekick, so a device can be re-used
-# for repeated field-flash testing (docs/architecture/sidekick.md (Installing the sidekick from the ADV)) instead of being a one-shot
+# for repeated first-flash testing instead of being a one-shot
 # part. Takes it back to exactly the state it was in when the backup was
 # captured -- bootloader, partition table, app, NVS, all of it.
 #
@@ -13,7 +13,7 @@
 #
 #   * no /dev/cu.usbmodem* appears, and esptool's autodetect silently falls
 #     through to some other serial device on the machine
-#   * plugging it into the ADV shows nothing at all, because two USB hosts
+#   * plugging it into the main board shows nothing at all, because two USB hosts
 #     cannot enumerate each other
 #
 # It is NOT bricked -- the S3's ROM bootloader is in mask ROM and no flash
