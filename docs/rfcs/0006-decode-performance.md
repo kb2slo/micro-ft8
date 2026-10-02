@@ -104,19 +104,19 @@ cannot compare boards, because no two slots carry the same traffic.
 
 ## 4. What is tunable, per board
 
-Current values, by symbol (verified 2026-09-23; candidates raised 2026-10-02; cite by symbol, line numbers rot):
+Current values, by symbol (verified 2026-09-23; candidates and `freq_osr` raised 2026-10-02; cite by symbol, line numbers rot):
 
 | Parameter | Ours | kgoba demo default | Where |
 |---|---|---|---|
 | `time_osr` | 2 | 2 | `s_time_osr` in `components/decode_tx_state/decode_tx_state.cpp` |
-| `freq_osr` | **1** | 2 | `s_freq_osr`, same file |
+| `freq_osr` | **2** | 2 | `s_freq_osr`, same file |
 | candidates | **256** | 140 | `DECODE_MAX_CANDIDATES` in `components/decode_pipeline/include/decode_limits.h` |
 | `min_score` | 5 | 10 | literal on the `ftx_find_candidates()` call, same function |
 | LDPC iterations | 25 | 25 | literal on the `ftx_decode_candidate()` call, same function |
 | max decodes kept | **32** | 50 | `DEC_MAX` = `RX_MAX_DECODES`, `components/decode_types/include/decode_types.h` |
 
 kgoba's values are the `k*` constants at the top of `components/ft8_lib/vendor/demo/decode_ft8.c`. We are
-below him on two of six (`freq_osr`, `DEC_MAX`). Candidates are above his 140. Our `min_score` is already *more* permissive than his.
+below him on one of six (`DEC_MAX`). Candidates are above his 140. Our `min_score` is already *more* permissive than his.
 
 **`DEC_MAX` is the cheapest item and is not a DSP limit.** The candidate loop stops at
 `s_dec_count < DEC_MAX`, so a busy slot is truncated by the size of the RX list, not by the decoder.
@@ -136,10 +136,13 @@ settings: 93 × 2 × 1 × 433 = **80,538 B**. The kiss_fftr arena beside it is 1
   resolution for frequency resolution. `nfft` doubles to 1920, which pushes kiss_fftr past its 12,288 B
   arena into a ~20 KB `malloc`, so that arena needs ~8 KB more BSS to stay static. **More than that, found
   2026-09-23:** `components/ft8_lib/common/monitor.c` also sizes `window_static`, `last_frame_static`,
-  `timedata` and `freqdata` by `MONITOR_NFFT_MAX` = 960, and `monitor_init()` refuses any larger `nfft`.
-  **Any `freq_osr` = 2 configuration fails at start-up today, on either board.** Doubling those four buffers
-  costs ~15 KB more static, so the swap's real cost is ~23 KB, not ~8 KB. The cap is now `#ifndef`-overridable;
-  `test_apps/decode_bench` builds with 1920, and the firmware keeps 960 (preprocessed source identical).
+  `timedata` and `freqdata` by `MONITOR_NFFT_MAX`, and `monitor_init()` refuses any larger `nfft`.
+  Doubling those four buffers costs ~15 KB more static, so the swap's real cost is ~23 KB, not ~8 KB. The cap
+  is `#ifndef`-overridable. **As of 2026-10-02 the P4 build sets it to 1920** (`poe_p4/CMakeLists.txt`) and
+  `s_freq_osr` to 2. The static waterfall stays 80,538 B, so the 161,076 B waterfall takes the `malloc` in
+  `monitor_init()`; the P4 heap check is the field step in TEST_PLAN. The source default stays 960 so the
+  sidekick, which links `ft8_lib` and does not decode, does not grow those buffers. Before this, any
+  `freq_osr` = 2 configuration failed at start-up.
 - **Candidates are cheap on memory** (a stack array) and cost CPU only.
 - **Neither ADV board has PSRAM** (confirmed with `esptool.py flash_id`, 2026-09-04; [main_board.md](../architecture/main_board.md) (**No BLE and no WiFi on the ADV**)). The
   waterfall is CPU-swept data, never a DMA target, so it *would* be a legitimate PSRAM candidate on a board
@@ -186,9 +189,10 @@ building.
 ### ESP32-P4 (PoE-P4): what opens up
 
 32 MB PSRAM and a faster core make t2/f2, candidates ≥ 140, `DEC_MAX` 50+, and more LDPC iterations
-memory-feasible. The static arena in `monitor.c` is sized for today's settings and must become
-board-dependent before any of them run on the P4. The P4 build has PSRAM switched off today, and t2/f2
-still fits in its internal RAM (§4.2), so PSRAM latency only matters for configurations larger than that. An independent `ft8_lib`-based decoder already runs `freq_osr` = 2 in production on a
+memory-feasible. The P4 image sets `MONITOR_NFFT_MAX` to 1920 and `freq_osr` to 2. The static waterfall
+stays sized for `freq_osr` 1; the 161 KB `t2/f2` waterfall takes the `malloc`, and the heap check is still
+owed. The P4 build has PSRAM switched off today, and t2/f2 still fits in its internal RAM (§4.2), so PSRAM
+latency only matters for configurations larger than that. An independent `ft8_lib`-based decoder already runs `freq_osr` = 2 in production on a
 P4-class part (SteffenLav's `qmx-panadapter`), which makes the S3 ceiling a practical loss rather than a
 theoretical one.
 
@@ -473,10 +477,9 @@ A small number of large moves, not a grid search. With two small corpora there i
 and a grid over hundreds of points would find a chance winner. Every configuration is scored on both corpora
 (§4.1's disagreement over the swap is the reason).
 
-- today, as of 2026-10-02: t2/f1, **256 candidates** (shipped), `DEC_MAX` 32;
+- today, as of 2026-10-02: **t2/f2, 256 candidates**, in the firmware, heap check owed, `DEC_MAX` 32;
 - **subtraction (fixed, fraction tuned) + 3 passes.** No memory. Not scored; the harness has no flag for it;
-- t2/f2 and t4/f2, scored below and not shipped. t2/f2 needs a larger waterfall arena than the firmware
-  allocates. t4/f2 failed to allocate on the P4 bench.
+- t4/f2, scored below and not shipped. It failed to allocate on the P4 bench. t2/f2 is the row above.
 
 The S3 rows (the t1/f2 swap, 16-level t2/f2) left with the ADV (row za6n).
 
@@ -485,9 +488,9 @@ The S3 rows (the t1/f2 swap, 16-level t2/f2) left with the ADV (row za6n).
 | Config | In-tree | Busy | Discordant vs 50 cand | P4 find+decode |
 |---|---|---|---|---|
 | t2/f1, 50 cand | 209/428 | 505/1041 | — | 315 ms |
-| **t2/f1, 256 cand (shipped)** | **229/428** | **569/1041** | **+20/−0, +64/−0** | **1,870 ms** |
+| t2/f1, 256 cand | 229/428 | 569/1041 | +20/−0, +64/−0 | 1,870 ms |
 | t2/f2, 50 cand | 255/428 | 628/1041 | +47/−1, +129/−6 | — |
-| t2/f2, 256 cand | 274/428 | 674/1041 | +65/−0, +169/−0 | 1,747 ms |
+| **t2/f2, 256 cand (in the firmware)** | **274/428** | **674/1041** | **+65/−0, +169/−0** | **1,747 ms** |
 | t4/f2, 256 cand | 287/428 | 686/1041 | +78/−0, +181/−0 | allocation failed |
 
 Busy-set recall by `jt9` SNR. In-tree moves the same way, including one ≤ −20 dB message that t2/f2 at 50 candidates drops and 256 candidates restores.
@@ -502,12 +505,12 @@ Busy-set recall by `jt9` SNR. In-tree moves the same way, including one ≤ −2
 | −3..0 | 57/132 | 62/132 | 66/132 | 72/132 | 73/132 |
 | ≥ 1 | 319/477 | 342/477 | 363/477 | 383/477 | 391/477 |
 
-**Shipped 2026-10-02:** 256 candidates only. It loses nothing the 50-cap found, costs no memory, and the P4 bench fits it in the guard with about half a second to spare on the busiest slots, without USB audio. t2/f2 is the larger gain and gives nothing back once candidates are 256, but the firmware waterfall is sized for `freq_osr` 1.
+**In the firmware 2026-10-02, heap check owed:** `freq_osr` 2 at 256 candidates. It loses nothing the 50-cap found. The P4 bench fits the search in the guard (1,747 ms) without USB audio. The 161 KB waterfall is a malloc on top of the 80,538 B static arena; TEST_PLAN is the check that the firmware heap takes it. Subtraction is still unscored.
 
 **Caveat:** the in-tree corpus is the one kgoba developed `ft8_lib` against, and `20m_busy` is the one
 howard0su tuned his fork on. Each favours its author's settings. A win for them is expected, not proof.
 
-**Done-when, what remains:** t2/f2 either runs in the firmware and the P4 bench times it inside the guard, or the heap check records that it does not fit; subtraction has a discordant count on these corpora. Host/device parity for the decoder itself already passed (decode.md).
+**Done-when, what remains:** the P4 heap check shows the 161 KB waterfall allocated and `DECODE: SLOT` still returns before the boundary, or it records that the malloc failed; subtraction has a discordant count on these corpora. Host/device parity for the decoder itself already passed (decode.md). The bench time for this search is already 1,747 ms.
 
 ### P3 — Decimation and the 48 kHz question ([B85](../ROADMAP.md))
 

@@ -42,8 +42,15 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
 
     log_heap("AUDIO_PIPE_BEFORE_MONITOR_INIT");
     monitor_t mon;
+    memset(&mon, 0, sizeof(mon));
     monitor_init(&mon, &mon_cfg);
     log_heap("AUDIO_PIPE_AFTER_MONITOR_INIT");
+    if (mon.wf.mag == nullptr) {
+        ESP_LOGE(tag, "monitor init failed nfft=%d freq_osr=%d", mon.nfft, mon_cfg.freq_osr);
+        return;
+    }
+    ESP_LOGI(tag, "monitor nfft=%d freq_osr=%d waterfall=%d bytes",
+             mon.nfft, mon.wf.freq_osr, mon.wf.max_blocks * mon.wf.block_stride);
 
     monitor_reset(&mon);
 

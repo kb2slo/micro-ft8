@@ -8,8 +8,10 @@
 #include <string.h>
 
 // Maximum nfft for static buffer sizing.
-// FT8 at 6kHz, freq_osr=1: nfft = 6000 * 0.160 * 1 = 960
-// Overridable so test_apps/decode_bench can build freq_osr=2 (nfft 1920); the firmware keeps 960.
+// FT8 at 6 kHz, freq_osr=1: nfft = 6000 * 0.160 * 1 = 960
+// freq_osr=2 needs 1920. The P4 build sets that (poe_p4/CMakeLists.txt). This
+// default stays 960 so the sidekick, which links ft8_lib and does not decode,
+// does not grow the four analysis buffers.
 #ifndef MONITOR_NFFT_MAX
 #define MONITOR_NFFT_MAX 960
 #endif

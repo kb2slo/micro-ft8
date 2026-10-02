@@ -257,7 +257,7 @@ static void usage(const char* argv0)
     fprintf(stderr,
             "usage: %s [options] wav...\n"
             "       %s --synth DIR\n"
-            "defaults are the firmware's: time-osr 2, freq-osr 1, candidates %d, decodes 32,\n"
+            "defaults are the firmware's: time-osr 2, freq-osr 2, candidates %d, decodes 32,\n"
             "min-score 5, ldpc 25, sample-rate 6000, agc on, levels 256\n",
             argv0, argv0, DECODE_MAX_CANDIDATES);
 }
@@ -267,7 +267,7 @@ int main(int argc, char** argv)
     BenchConfig config = {
         .name = "recall",
         .time_osr = 2,
-        .freq_osr = 1,
+        .freq_osr = 2,
         .max_candidates = DECODE_MAX_CANDIDATES,
         .max_decodes = 32,
         .min_score = 5,

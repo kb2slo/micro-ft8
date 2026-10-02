@@ -10,7 +10,7 @@ Ship on `origin/main`. Talk through changes before a local commit (see [README.m
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| B25 | t2/f2 in the firmware, then subtraction | Host table for the flag rows is in [RFC 0006](rfcs/0006-decode-performance.md) §5 **P2** (2026-10-02). 256 candidates shipped (`DECODE_MAX_CANDIDATES`). **Left:** t2/f2 needs the waterfall arena grown past `MONITOR_NFFT_MAX` 960 and a P4 heap check; subtraction and extra passes are unscored. **Done-when:** t2/f2 runs in the firmware and the P4 bench times it inside the guard, or the heap check records that it does not fit; subtraction has a discordant count on the corpora. |
+| B25 | t2/f2 in the firmware, then subtraction | Host table for the flag rows is in [RFC 0006](rfcs/0006-decode-performance.md) §5 **P2** (2026-10-02). 256 candidates and `freq_osr` 2 are in the firmware (`DECODE_MAX_CANDIDATES`, `s_freq_osr`; the P4 build sets `MONITOR_NFFT_MAX` 1920). The 161 KB waterfall is a malloc; the static arena stays 80,538 B. **Left:** the P4 heap check (TEST_PLAN), then subtraction, which is unscored. **Done-when:** the heap check shows the waterfall allocated and `DECODE: SLOT` still returns before the boundary, or it records that the malloc failed; subtraction has a discordant count on the corpora. |
 
 ## Backlog
 

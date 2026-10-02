@@ -47,7 +47,7 @@ def firmware_candidates():
 # Firmware as shipped. A zero-slack change to these is a different configuration.
 TODAY = {
     "time_osr": 2,
-    "freq_osr": 1,
+    "freq_osr": 2,
     "candidates": firmware_candidates(),
     "decodes": 32,
     "min_score": 5,

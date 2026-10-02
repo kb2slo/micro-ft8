@@ -19,15 +19,15 @@ Find + decode, mean over the five busiest corpus slots (27–33 `jt9` decodes ea
 | Configuration | Decodes (5 slots) | P4 `-O2` | Host `-O2` (Apple M4) |
 |---|---|---|---|
 | 50 candidates (the previous cap) | 72 | 315 ms (335) | 6.4 ms |
-| Shipped (t2/f1, 256 candidates) | 83 | **1,870 ms** (1,880) | 18.3 ms |
-| t2/f2, 256 candidates | 96 | 1,747 ms (1,790) | 16.3 ms |
+| freq_osr 1, 256 candidates | 83 | 1,870 ms (1,880) | 18.3 ms |
+| Shipped (t2/f2, 256 candidates) | 96 | **1,747 ms** (1,790) | 16.3 ms |
 | t4/f2, 256 candidates | 100 on host | allocation failed | 14.5 ms |
 
 What these settle:
 
 * **Host and device decode identically.** Every configuration and slot that ran, at both optimisation levels, produced exactly the host's messages, including frequency and DT. Sweeping decoder settings on the host is therefore sound for this decoder.
 * **A desktop core is ~50× a P4 core on light work and ~100× on the LDPC-heavy candidate loop**. So `jt9`-class decoders do not fit on the P4 (RFC 0006 §4.1).
-* **The P4 fits the shipped 256-candidate decode inside the guard on one core**, with ~0.5 s to spare on the busiest slots. That is what the firmware runs (`DECODE_MAX_CANDIDATES`). t2/f2 also fits in this bench image; it is not what the firmware runs.
+* **The P4 bench fits the shipped t2/f2 decode inside the guard on one core**, at 1,747 ms on the busiest slots. That is what the firmware runs (`s_freq_osr` 2, `MONITOR_NFFT_MAX` 1920 on the P4). The 161 KB waterfall is a malloc; the static arena stays 80,538 B. Whether that malloc succeeds in the firmware image is the field check in [TEST_PLAN.md](../TEST_PLAN.md).
 * **Failing candidates are the cost.** Nearly all the time added by 256 candidates is LDPC spent on candidates that never decode.
 * **Large waterfalls are a contiguous-RAM question.** t4/f2's 322 KB waterfall cannot allocate; it would need PSRAM, which the build leaves off ([main_board.md](main_board.md), **P4**). t2/f2's 161 KB fit in the bench images but must be re-checked inside the firmware, which has far less free heap.
 
@@ -41,7 +41,7 @@ Flags select every shipped tunable: `time_osr`, `freq_osr`, candidates, `DEC_MAX
 
 The synthetic tier encodes two messages with the vendored GFSK synthesiser, adds white noise at a known SNR in a 2500 Hz bandwidth, and scores whether that message comes back. It is an absolute curve for this decoder. It is not a capture-path test: USB audio, the stride decimator, and whether a full slot arrived stay on the device (RFC 0006 §3).
 
-CI runs the command on today's settings and fails if either corpus drops more than a few messages under the recorded hits (`tools/decode_recall/baseline/today.txt`), or if a synthetic signal at −6 dB or stronger does not decode. The slack is there because a marginal candidate can fall either way under a different libm. On the host that wrote the baseline, 256 candidates recalled 229/428 and 569/1041, and the synthetic signals were solid from −16 dB up. The full table, including the unscored-in-firmware t2/f2 and t4/f2 rows, is in [RFC 0006](../rfcs/0006-decode-performance.md) §5 P2.
+CI runs the command on today's settings and fails if either corpus drops more than a few messages under the recorded hits (`tools/decode_recall/baseline/today.txt`), or if a synthetic signal at −6 dB or stronger does not decode. The slack is there because a marginal candidate can fall either way under a different libm. On the host that wrote the baseline, t2/f2 at 256 candidates recalled 274/428 and 674/1041, and the synthetic signals were solid from −18 dB up. The full table, including t4/f2, is in [RFC 0006](../rfcs/0006-decode-performance.md) §5 P2.
 
 ## Measuring decode yield on the air
 

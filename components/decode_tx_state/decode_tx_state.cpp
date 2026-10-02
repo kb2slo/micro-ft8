@@ -8,7 +8,7 @@
 
 static bool    s_decode_enabled = true;
 static int     s_time_osr = 2;
-static int     s_freq_osr = 1;
+static int     s_freq_osr = 2;
 
 static int64_t          s_decode_slot_idx = -1;
 static volatile int64_t s_decode_applied_slot_idx = -1;
