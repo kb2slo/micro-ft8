@@ -509,9 +509,6 @@ AutoseqTouchResult autoseq_on_touch(const UiRxLine& msg, bool hold_queue_head) {
 }
 
 void autoseq_on_decodes(const std::vector<UiRxLine>& to_me_messages) {
-    ESP_LOGI(TAG, "on_decodes: %d messages, active=%d inactive=%d",
-             (int)to_me_messages.size(), s_active_count,
-             AUTOSEQ_MAX_QUEUE - s_inactive_start);
     // Before any lookup: a stale parked entry must not be found and revived.
     expire_inactive();
     for (const auto& msg : to_me_messages) {

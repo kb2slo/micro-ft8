@@ -44,12 +44,18 @@ bool    decode_tx_state_get_decode_in_progress(void);
 void    decode_tx_state_set_decode_in_progress(bool in_progress);
 
 // --- TX state (written by the slot loop, read by the pipeline) --------------
-// was_txing latches across the TX->RX transition so the pipeline can discard
-// the audio captured while the radio was keyed.
+// was_txing stays set from TX start until the slot loop has ticked autoseq
+// after the tones end. That clear is ~10 ms after 12.64 s, the same moment
+// the 79th block arrives, so the pipeline does not skip on this flag alone.
 bool decode_tx_state_get_tx_active(void);
 void decode_tx_state_set_tx_active(bool active);
 bool decode_tx_state_get_was_txing(void);
 void decode_tx_state_set_was_txing(bool was_txing);
+// Slot a transmission started in. The pipeline skips that slot's decode and
+// clears it. -1 means none. Stored as 32 bits: a slot index fits, and a
+// 32-bit store is one write on the P4.
+int64_t decode_tx_state_get_tx_slot_idx(void);
+void    decode_tx_state_set_tx_slot_idx(int64_t slot_idx);
 
 // --- Stream state (set by stream_uac.cpp, read by the slot loop) -----------
 bool decode_tx_state_get_streaming(void);

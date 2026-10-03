@@ -1,9 +1,9 @@
 # CI floors for today's firmware settings. Hits may sit this many messages
 # under the recorded count before the job fails (libm can move a marginal candidate).
-in_tree_hits 274
+in_tree_hits 285
 in_tree_truth 428
-in_tree_min 270
-busy_hits 674
+in_tree_min 281
+busy_hits 699
 busy_truth 1041
-busy_min 666
+busy_min 691
 synth_strong_misses 0

@@ -55,6 +55,9 @@ TODAY = {
     "sample_rate": 6000,
     "agc": "on",
     "levels": 256,
+    "subtract_passes": 2,
+    "subtract_neighbors": 1,
+    "subtract_fraction": 0.5,
 }
 
 # CI fails if recall falls more than this many messages under the recorded hits.

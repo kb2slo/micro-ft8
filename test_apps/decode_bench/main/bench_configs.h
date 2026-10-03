@@ -6,6 +6,8 @@
 #include "bench_core.h"
 #include "decode_limits.h"
 
+// subtract_passes stays 0 in every row: these time the search without subtraction.
+// The firmware searches twice (DECODE_SUBTRACT_PASSES in decode_subtract.h).
 static const BenchConfig k_bench_configs[] = {
     // name            t  f  candidates              decodes score iterations
     { "today",         2, 1,  DECODE_MAX_CANDIDATES, 32,     5,    25 },   // firmware as shipped

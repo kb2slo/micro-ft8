@@ -13,6 +13,7 @@
 
 #include "bench_core.h"
 #include "decode_limits.h"
+#include "decode_subtract.h"
 #include "common/wave.h"
 #include "ft8/constants.h"
 #include "ft8/encode.h"
@@ -169,7 +170,9 @@ static int decode_file(const char* path, const BenchConfig* config)
         printf("FAIL %s\n", path);
         return 1;
     }
-    printf("END cand=%d dec=%d wall_ms=%lld\n", result.candidates, result.decoded, (long long)wall_ms);
+    printf("END cand=%d dec=%d wall_ms=%lld find_ms=%lld decode_ms=%lld\n",
+           result.candidates, result.decoded, (long long)wall_ms,
+           (long long)(result.find_us / 1000), (long long)(result.decode_us / 1000));
     return 0;
 }
 
@@ -258,8 +261,9 @@ static void usage(const char* argv0)
             "usage: %s [options] wav...\n"
             "       %s --synth DIR\n"
             "defaults are the firmware's: time-osr 2, freq-osr 2, candidates %d, decodes 32,\n"
-            "min-score 5, ldpc 25, sample-rate 6000, agc on, levels 256\n",
-            argv0, argv0, DECODE_MAX_CANDIDATES);
+            "min-score 5, ldpc 25, sample-rate 6000, agc on, levels 256,\n"
+            "subtract-passes %d, subtract-neighbors %d, subtract-fraction 0.5\n",
+            argv0, argv0, DECODE_MAX_CANDIDATES, DECODE_SUBTRACT_PASSES, DECODE_SUBTRACT_NEIGHBORS);
 }
 
 int main(int argc, char** argv)
@@ -275,6 +279,9 @@ int main(int argc, char** argv)
         .sample_rate = 6000,
         .agc = 0,
         .mag_levels = 256,
+        .subtract_passes = DECODE_SUBTRACT_PASSES,
+        .subtract_neighbors = DECODE_SUBTRACT_NEIGHBORS,
+        .subtract_fraction = DECODE_SUBTRACT_FRACTION,
     };
     const char* synth_dir = NULL;
     static const struct option options[] = {
@@ -287,6 +294,9 @@ int main(int argc, char** argv)
         { "sample-rate", required_argument, NULL, 'r' },
         { "agc", required_argument, NULL, 'a' },
         { "levels", required_argument, NULL, 'q' },
+        { "subtract-passes", required_argument, NULL, 'p' },
+        { "subtract-neighbors", required_argument, NULL, 'n' },
+        { "subtract-fraction", required_argument, NULL, 'F' },
         { "synth", required_argument, NULL, 'y' },
         { "help", no_argument, NULL, 'h' },
         { NULL, 0, NULL, 0 },
@@ -310,6 +320,9 @@ int main(int argc, char** argv)
                 }
                 break;
             case 'q': config.mag_levels = atoi(optarg); break;
+            case 'p': config.subtract_passes = atoi(optarg); break;
+            case 'n': config.subtract_neighbors = atoi(optarg); break;
+            case 'F': config.subtract_fraction = (float)atof(optarg); break;
             case 'y': synth_dir = optarg; break;
             default:
                 usage(argv[0]);
@@ -317,8 +330,14 @@ int main(int argc, char** argv)
         }
     }
     if (config.max_candidates < 1 || config.max_candidates > BENCH_MAX_CANDIDATES ||
-        config.max_decodes < 1 || config.time_osr < 1 || config.freq_osr < 1) {
-        fprintf(stderr, "candidates must be 1..%d; osr and decodes must be >= 1\n", BENCH_MAX_CANDIDATES);
+        config.max_decodes < 1 || config.time_osr < 1 || config.freq_osr < 1 ||
+        config.subtract_passes < 0 || config.subtract_passes > 3 ||
+        (config.subtract_neighbors != 0 && config.subtract_neighbors != 1) ||
+        config.subtract_fraction < 0.0f || config.subtract_fraction > 1.0f) {
+        fprintf(stderr, "candidates must be 1..%d; osr and decodes must be >= 1; "
+                        "subtract-passes is 0..3; subtract-neighbors is 0 or 1; "
+                        "subtract-fraction is 0 (half) or (0, 1]\n",
+                BENCH_MAX_CANDIDATES);
         return 2;
     }
     if (synth_dir != NULL) return synth_grid(synth_dir);

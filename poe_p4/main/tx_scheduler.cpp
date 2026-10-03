@@ -258,6 +258,7 @@ static void tx_start(int skip_tones) {
     }
 
     decode_tx_state_set_tx_active(true);
+    decode_tx_state_set_tx_slot_idx(s_tx_slot_idx);
 }
 
 static void tx_tick(void) {

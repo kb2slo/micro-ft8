@@ -29,6 +29,9 @@ typedef struct {
     int sample_rate;      // 0 = 6000, the firmware's FT8_SAMPLE_RATE
     int agc;              // 0 = on, 2 = off. Any other value is on
     int mag_levels;       // 0 or >= 256 = stored 8-bit cells. Else quantise onto this many levels
+    int subtract_passes;  // 0 = one search, no subtraction. 1..3 re-search that many times
+    int subtract_neighbors; // 0 = the decoded time_sub only. 1 = that and the neighbouring time_sub
+    float subtract_fraction; // 0 = half the estimated SNR. Otherwise the fraction removed, in (0, 1]
 } BenchConfig;
 
 typedef struct {

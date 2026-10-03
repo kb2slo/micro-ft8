@@ -1,6 +1,6 @@
 # RFC 0006: Decode performance — measure, then tune
 
-* **Status:** Accepted 2026-09-25, phase order in §5 as written. Rows [B25](../ROADMAP.md), [B53](../ROADMAP.md), **Amended 2026-10-02:** the ADV was dropped (row za6n). Where this RFC discusses the ADV, its measurements, its screens or its `ADV-only` work, it is history and no longer applies.
+* **Status:** Accepted 2026-09-25, phase order in §5 as written. Rows [B53](../ROADMAP.md), **Amended 2026-10-02:** the ADV was dropped (row za6n). Where this RFC discusses the ADV, its measurements, its screens or its `ADV-only` work, it is history and no longer applies.
   [B54](../ROADMAP.md), [I26](../ROADMAP.md), [B85](../ROADMAP.md) and [B86](../ROADMAP.md) carry an ID, a name and a link
   here; the reasoning lives in this file.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
@@ -190,8 +190,8 @@ building.
 
 32 MB PSRAM and a faster core make t2/f2, candidates ≥ 140, `DEC_MAX` 50+, and more LDPC iterations
 memory-feasible. The P4 image sets `MONITOR_NFFT_MAX` to 1920 and `freq_osr` to 2. The static waterfall
-stays sized for `freq_osr` 1; the 161 KB `t2/f2` waterfall takes the `malloc`, and the heap check is still
-owed. The P4 build has PSRAM switched off today, and t2/f2 still fits in its internal RAM (§4.2), so PSRAM
+stays sized for `freq_osr` 1; the 161 KB `t2/f2` waterfall takes the `malloc`, and the firmware
+heap took it (`waterfall=161076`, [decode.md](../architecture/decode.md)). The P4 build has PSRAM switched off today, and t2/f2 still fits in its internal RAM (§4.2), so PSRAM
 latency only matters for configurations larger than that. An independent `ft8_lib`-based decoder already runs `freq_osr` = 2 in production on a
 P4-class part (SteffenLav's `qmx-panadapter`), which makes the S3 ceiling a practical loss rather than a
 theoretical one.
@@ -458,8 +458,8 @@ ones. So **the trigger and the candidate cap must be measured together**, and on
 
 ## 5. Phases
 
-Each phase is a slice with its own done-when. P0 and P1 are done. P2 is the next measurement round;
-the others are independent of each other unless stated.
+Each phase is a slice with its own done-when. P0, P1 and P2 are done.
+The others are independent of each other unless stated.
 
 ### P0 — Device decode benchmark
 
@@ -471,15 +471,11 @@ Shipped 2026-10-02. The command, the corpora, and what CI checks: [decode.md](..
 
 **`ft8sim` is still a local cross-check, not a CI dependency, and not yet used.** WSJT-X's `ft8sim` (`lib/ft8/ft8sim.f90`, CMake target `ft8sim`; built from source, not in a standard install, though `ft8code` and `ft4sim` are) writes 12 kHz WAVs from a message at a chosen frequency, DT and SNR, with Watterson fading presets (`LQ`/`LM`/`LD`/`MQ`/`MM`/`MD`/`HQ`/`HM`/`HD`) or explicit spread/delay. The shipped synthetic tier uses the vendored GFSK synthesiser. Locally, `ft8sim` (a) checks that curve against the reference signal model at a few SNRs, and (b) generates tier 2 (fading), which nothing in-tree can. Generated WAVs are data, not code, so using the tool offline to make test inputs puts nothing GPL into the firmware (the usual reading, not legal advice).
 
-### P2 — Round 1: ADV configuration against P4 configurations ([B25](../ROADMAP.md))
+### P2 — Configuration round
 
-A small number of large moves, not a grid search. With two small corpora there is no honest held-out set,
-and a grid over hundreds of points would find a chance winner. Every configuration is scored on both corpora
-(§4.1's disagreement over the swap is the reason).
-
-- today, as of 2026-10-02: **t2/f2, 256 candidates**, in the firmware, heap check owed, `DEC_MAX` 32;
-- **subtraction (fixed, fraction tuned) + 3 passes.** No memory. Not scored; the harness has no flag for it;
-- t4/f2, scored below and not shipped. It failed to allocate on the P4 bench. t2/f2 is the row above.
+Graduated 2026-10-02 → [decode.md](../architecture/decode.md) (**Subtraction**). `freq_osr` 2 at 256
+candidates, then two-pass subtraction, are in the firmware. t4/f2 did not allocate. The table below is the
+candidate round that chose t2/f2; subtraction's discordant counts are in decode.md.
 
 The S3 rows (the t1/f2 swap, 16-level t2/f2) left with the ADV (row za6n).
 
@@ -490,7 +486,7 @@ The S3 rows (the t1/f2 swap, 16-level t2/f2) left with the ADV (row za6n).
 | t2/f1, 50 cand | 209/428 | 505/1041 | — | 315 ms |
 | t2/f1, 256 cand | 229/428 | 569/1041 | +20/−0, +64/−0 | 1,870 ms |
 | t2/f2, 50 cand | 255/428 | 628/1041 | +47/−1, +129/−6 | — |
-| **t2/f2, 256 cand (in the firmware)** | **274/428** | **674/1041** | **+65/−0, +169/−0** | **1,747 ms** |
+| **t2/f2, 256 cand (before subtraction)** | **274/428** | **674/1041** | **+65/−0, +169/−0** | **1,747 ms** |
 | t4/f2, 256 cand | 287/428 | 686/1041 | +78/−0, +181/−0 | allocation failed |
 
 Busy-set recall by `jt9` SNR. In-tree moves the same way, including one ≤ −20 dB message that t2/f2 at 50 candidates drops and 256 candidates restores.
@@ -505,12 +501,10 @@ Busy-set recall by `jt9` SNR. In-tree moves the same way, including one ≤ −2
 | −3..0 | 57/132 | 62/132 | 66/132 | 72/132 | 73/132 |
 | ≥ 1 | 319/477 | 342/477 | 363/477 | 383/477 | 391/477 |
 
-**In the firmware 2026-10-02, heap check owed:** `freq_osr` 2 at 256 candidates. It loses nothing the 50-cap found. The P4 bench fits the search in the guard (1,747 ms) without USB audio. The 161 KB waterfall is a malloc on top of the 80,538 B static arena; TEST_PLAN is the check that the firmware heap takes it. Subtraction is still unscored.
+t2/f2 at 256 candidates loses nothing the 50-cap found. The P4 bench fits that search in the guard (1,747 ms) without USB audio. The firmware heap took the 161 KB waterfall. Subtraction's result is in decode.md.
 
 **Caveat:** the in-tree corpus is the one kgoba developed `ft8_lib` against, and `20m_busy` is the one
 howard0su tuned his fork on. Each favours its author's settings. A win for them is expected, not proof.
-
-**Done-when, what remains:** the P4 heap check shows the 161 KB waterfall allocated and `DECODE: SLOT` still returns before the boundary, or it records that the malloc failed; subtraction has a discordant count on these corpora. Host/device parity for the decoder itself already passed (decode.md). The bench time for this search is already 1,747 ms.
 
 ### P3 — Decimation and the 48 kHz question ([B85](../ROADMAP.md))
 
@@ -603,9 +597,10 @@ tone-sweep test and a field A/B.
 
 Field-only. B53 is instrumentation; B54 fixes what it finds.
 
-**B53, partly built.** `decode_monitor_results()` logs `SLOT cand=… msg=… dec=…ms` per slot as
-`ESP_LOGI` under tag `DECODE` (2026-10-02), so a serial capture has it, and copies the same line to the
-browser debug log on receive slots. `dec` is `esp_timer`. The capture task's boundary line carries the
+**B53, partly built.** `decode_monitor_results()` sends one Port A log per receive slot,
+`SLOT <idx> c<found>/<cap> m<n> t<n> dec<ms> left<ms> y<ms>` (2026-10-02). The sidekick prints it; the
+capture task does not write it to the console UART, because a line per message there was inside `dec`.
+The same text is the browser debug log. `dec` is `esp_timer`. The capture task's `BDRY` line carries the
 other two (2026-10-02):
 
 - **`g=`, the surviving guard blocks at the slot boundary.** `slot_blocks` resets at the slot boundary and
@@ -645,11 +640,12 @@ A constraint on the obvious fix: `uac_read_ft8_samples()` ignores `max_samples` 
 
 ### P5 — Algorithm changes ([I26](../ROADMAP.md))
 
-Per §4.1, this is a feature list taken from `howard0su/ft8_lib`, not a library swap. Candidates, subtraction
-and passes land in P2 because they are cheap on both boards. What remains, in order:
+Per §4.1, this is a feature list taken from `howard0su/ft8_lib`, not a library swap. Candidates and
+subtraction shipped ([decode.md](../architecture/decode.md), **Subtraction**). What remains, in order:
 
-1. **Better subtraction.** The fork lowers only the decoded tone's bin at one `time_sub`. Clearing the same
-   signal's energy in neighbouring `time_sub` positions is the obvious next step, scored on the harness.
+1. **Neighbouring `time_sub`.** Shipped with the two-pass subtract. Against lowering only the decoded
+   `time_sub` it was +1/−0 and +4/−0, and the host time did not move. The device time is the field check
+   decode.md names; the host-scaled estimate is about +0.3 s for the two passes together.
 2. **`time_osr` 4 on the P4**, if P0 says the CPU fits.
 3. **AP decoding written from the QEX paper**, scored separately, because the corpora have no QSO context and
    AP's gain shows only when the decoder is told what to expect. That needs its own test: synthetic QSO

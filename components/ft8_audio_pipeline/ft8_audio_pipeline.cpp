@@ -7,6 +7,7 @@
 #include "protocol.h"
 
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 
 #include "esp_heap_caps.h"
@@ -185,11 +186,18 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                     const unsigned drop = dropped - dropped_at_boundary;
                     dropped_at_boundary = dropped;
                     // g is blocks captured after the decode reset: about 14 is a full guard.
-                    ESP_LOGI(tag, "SLOT boundary %lld->%lld g=%d lost=%lld drop=%u wf=%d",
-                             (long long)slot_idx, (long long)now_idx,
-                             slot_blocks, (long long)lost, drop, mon.wf.num_blocks);
+                    // Port A log, not the console UART: the sidekick prints it.
+                    {
+                        char buf[64];
+                        snprintf(buf, sizeof(buf), "BDRY %lld g%d lost%lld drop%u",
+                                 (long long)slot_idx, slot_blocks, (long long)lost, drop);
+                        debug_log_line(buf);
+                    }
                     if (slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
                         decode_tx_state_set_decode_applied_slot_idx(slot_idx);
+                    }
+                    if (slot_idx == decode_tx_state_get_tx_slot_idx()) {
+                        decode_tx_state_set_tx_slot_idx(-1);
                     }
                     slot_idx = now_idx;
                     slot_start_ms = slot_idx * slot_ms;
@@ -202,18 +210,28 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                            mon.wf.num_blocks >= g_protocol->total_symbols) {
                     ESP_LOGD(tag, "Triggering decode at slot %lld blocks=%d wf=%d",
                              (long long)slot_idx, slot_blocks, mon.wf.num_blocks);
-                    if (decode_tx_state_get_tx_active() || decode_tx_state_get_was_txing()) {
-                        ESP_LOGI(tag, "SLOT skip tx %lld",
-                                 (long long)slot_idx);
+                    // tx_slot_idx outlives was_txing. The slot loop clears that
+                    // flag ~10 ms after the tones end, and the tones end at the
+                    // 79th block, so the flag is often already false here.
+                    if (decode_tx_state_get_tx_active() || decode_tx_state_get_was_txing() ||
+                        slot_idx == decode_tx_state_get_tx_slot_idx()) {
+                        char buf[32];
+                        snprintf(buf, sizeof(buf), "SKIP %lld", (long long)slot_idx);
+                        debug_log_line(buf);
                         if (slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
                             decode_tx_state_set_decode_applied_slot_idx(slot_idx);
+                        }
+                        if (slot_idx == decode_tx_state_get_tx_slot_idx()) {
+                            decode_tx_state_set_tx_slot_idx(-1);
                         }
                     } else if (decode_tx_state_get_decode_enabled()) {
                         decode_tx_state_set_decode_slot_idx(slot_idx);
                         decode_tx_state_set_decode_in_progress(true);
                         decode_monitor_results(&mon, &mon_cfg);
                     } else {
-                        ESP_LOGI(tag, "SLOT skip paused %lld", (long long)slot_idx);
+                        char buf[32];
+                        snprintf(buf, sizeof(buf), "PAUSED %lld", (long long)slot_idx);
+                        debug_log_line(buf);
                         if (slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
                             decode_tx_state_set_decode_applied_slot_idx(slot_idx);
                         }

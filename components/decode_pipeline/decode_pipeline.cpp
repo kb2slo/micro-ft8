@@ -27,6 +27,7 @@ extern "C" {
 #include "ft8/constants.h"
 #include "ft8/decode.h"
 #include "ft8/message.h"
+#include "decode_subtract.h"
 }
 
 #include "adif.h"
@@ -37,15 +38,12 @@ static const char* TAG = "DECODE";
 // own: the main board's own file (poe_p4/main) defines each.
 //
 //   g_call: the station callsign.
-//   log_rxtx_line: the RX/TX log line sink (row j4xh gives the P4 the real
-//     storage-backed log; until then it only logs to the console).
 //   arm_from_autoseq_or_beacon/ignorelist_matches_normalized_dxcall: the
 //     TX-arming trigger and its ignorelist filter (the P4 has no ignorelist
 //     yet, row j4xh).
 //   porta_emit_decode: the sidekick link. Safe to call unconditionally --
 //     no-op until porta_start() has run.
 extern std::string g_call;
-void log_rxtx_line(char dir, int snr, int offset_hz, const std::string& text, int repeat_counter);
 void arm_from_autoseq_or_beacon();
 bool ignorelist_matches_normalized_dxcall(const std::string& dxcall_norm);
 void porta_emit_decode(uint32_t decode_id, const char* text, int snr, int offset_hz,
@@ -233,24 +231,33 @@ static int dec_sort_cmp(const void* a, const void* b) {
   return decode_sort_cmp(&ea, &eb);
 }
 
-// One line per slot on the UART. dec is esp_timer, not rtc_now_ms: a decode-driven
-// clock step inside this function must not land in the duration. left is the
-// soft clock's time until the slot boundary. The browser debug log still gets
-// the same text on receive slots.
+// Sync step applied during this decode, in ms. Folded into the slot line and
+// cleared there. The console UART is not written: a line per message at 115200
+// was inside this function's timer, on the capture task.
+static int s_sync_delta_ms = 0;
+
+// One line per receive slot, sent as a Port A log (the sidekick prints it).
+// dec is esp_timer, sampled before that send: a clock step in this function
+// must not land in the duration. left is the soft clock's time until the
+// boundary. y is the sync step this slot, 0 if none. The text fits
+// PORTA_EVENT_TEXT_MAX (64).
 static void log_slot_summary(int num_candidates, int max_cand, int msg_count, int tome,
-                             int64_t decode_t0_us, bool browser) {
+                             int64_t decode_t0_us) {
   const int64_t dec_ms = (esp_timer_get_time() - decode_t0_us) / 1000;
   const int64_t slot_ms = g_protocol->slot_time_ms;
   const int64_t slot_idx = decode_tx_state_get_decode_slot_idx();
   int64_t left_ms = 0;
   if (slot_idx >= 0 && slot_ms > 0) left_ms = (slot_idx + 1) * slot_ms - rtc_now_ms();
-  char buf[160];
+  const int sync_ms = s_sync_delta_ms;
+  s_sync_delta_ms = 0;
+  // 128 covers a full int64 print. A real slot line is about 55 characters,
+  // under PORTA_EVENT_TEXT_MAX (64); the encoder truncates anything longer.
+  char buf[128];
   snprintf(buf, sizeof(buf),
-           "SLOT slot=%lld cand=%d/%d msg=%d tome=%d dec=%lldms left=%lldms",
+           "SLOT %lld c%d/%d m%d t%d dec%lld left%lld y%d",
            (long long)slot_idx, num_candidates, max_cand, msg_count, tome,
-           (long long)dec_ms, (long long)left_ms);
-  ESP_LOGI(TAG, "%s", buf);
-  if (browser) debug_log_line(buf);
+           (long long)dec_ms, (long long)left_ms, sync_ms);
+  debug_log_line(buf);
 }
 
 void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
@@ -270,8 +277,8 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
 
   const int64_t now_ms = rtc_now_ms();
   static ftx_candidate_t candidates[max_cand];
-  int num_candidates = ftx_find_candidates(&mon->wf, max_cand, candidates, 5);
-  ESP_LOGD(TAG, "Candidates found: %d", num_candidates);
+  static float seen_hz[DECODE_MAX_CANDIDATES];
+  int num_candidates = 0;
 
   // ---- slot index + once-per-slot hashtable maintenance ----
   int64_t slot_idx = (decode_tx_state_get_decode_slot_idx() >= 0) ? decode_tx_state_get_decode_slot_idx() : rtc_now_ms() / g_protocol->slot_time_ms;
@@ -317,22 +324,40 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
   for (int i = 0; i < kMaxDecoded; ++i) decoded_hashtable[i] = nullptr;
   int num_decoded = 0;
 
-  if (num_candidates <= 0) {
-    ESP_LOGD(TAG, "No candidates found; keeping RX list");
-    // No candidates means we processed the slot's audio but found nothing —
-    // still counts as "applied" for the TX-trigger guard.
-    if (decode_tx_state_get_decode_slot_idx() > decode_tx_state_get_decode_applied_slot_idx()) {
-      decode_tx_state_set_decode_applied_slot_idx(decode_tx_state_get_decode_slot_idx());
+  // Two searches. Each decode lowers its tones; the second search reads what that uncovered.
+  // Half the estimated SNR, including the neighbouring time subdivision (decode.md).
+  for (int pass = 0; pass < DECODE_SUBTRACT_PASSES && s_dec_count < DEC_MAX; ++pass) {
+    int want = max_cand / (pass + 1);
+    if (want < 1) want = 1;
+    int found = ftx_find_candidates(&mon->wf, want, candidates, 5);
+    if (pass == 0) {
+      num_candidates = found;
+      ESP_LOGD(TAG, "Candidates found: %d", num_candidates);
     }
-    decode_tx_state_set_decode_in_progress(false);
-    if (!decode_tx_state_get_was_txing()) {
-      arm_from_autoseq_or_beacon();
+    if (pass == 0 && found <= 0) {
+      ESP_LOGD(TAG, "No candidates found; keeping RX list");
+      // No candidates means we processed the slot's audio but found nothing —
+      // still counts as "applied" for the TX-trigger guard.
+      if (decode_tx_state_get_decode_slot_idx() > decode_tx_state_get_decode_applied_slot_idx()) {
+        decode_tx_state_set_decode_applied_slot_idx(decode_tx_state_get_decode_slot_idx());
+      }
+      decode_tx_state_set_decode_in_progress(false);
+      if (!decode_tx_state_get_was_txing()) {
+        arm_from_autoseq_or_beacon();
+      }
+      log_slot_summary(0, max_cand, 0, 0, decode_t0_us);
+      return;
     }
-    log_slot_summary(0, max_cand, 0, 0, decode_t0_us, !decode_tx_state_get_was_txing());
-    return;
-  }
 
-  for (int i = 0; i < num_candidates && s_dec_count < DEC_MAX; ++i) {
+    int seen = 0;
+    for (int i = 0; i < found && s_dec_count < DEC_MAX; ++i) {
+    float freq_hz = (mon->min_bin + candidates[i].freq_offset +
+                    candidates[i].freq_sub / (float)cfg->freq_osr) / mon->symbol_period;
+    float time_s = (candidates[i].time_offset +
+                   candidates[i].time_sub / (float)cfg->time_osr) * mon->symbol_period;
+    // The other freq_osr subdivision of a signal we just decoded is the same station.
+    if (decode_subtract_already(seen_hz, seen, freq_hz)) continue;
+
     ftx_message_t message;
     ftx_decode_status_t status;
     memset(&message, 0, sizeof(message));
@@ -353,23 +378,19 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
       }
       idx_hash = (idx_hash + 1) % kMaxDecoded;
     }
-    if (found_dup || !found_empty) continue;
-
-    memcpy(&decoded[idx_hash], &message, sizeof(message));
-    decoded_hashtable[idx_hash] = &decoded[idx_hash];
-    ++num_decoded;
+    // A duplicate payload is the same station again. Still subtract it, but do not list it twice.
+    if (!found_dup && !found_empty) continue;
+    if (!found_dup) {
+      memcpy(&decoded[idx_hash], &message, sizeof(message));
+      decoded_hashtable[idx_hash] = &decoded[idx_hash];
+      ++num_decoded;
+    }
 
     // decode to human text
     char text[FTX_MAX_MESSAGE_LENGTH] = {0};
     ftx_message_offsets_t offsets;
     ftx_message_rc_t urc = ftx_message_decode(&message, &hash_if, text, &offsets);
     if (urc != FTX_MESSAGE_RC_OK || text[0] == '\0') continue;
-
-    // freq / time / SNR
-    float freq_hz = (mon->min_bin + candidates[i].freq_offset +
-                    candidates[i].freq_sub / (float)cfg->freq_osr) / mon->symbol_period;
-    float time_s = (candidates[i].time_offset +
-                   candidates[i].time_sub / (float)cfg->time_osr) * mon->symbol_period;
 
     float cand_db = noise_db;
     {
@@ -391,6 +412,11 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
     int snr_q = (int)lrintf(cand_db - noise_db);
     if (snr_q < -30) snr_q = -30;
     if (snr_q >  99) snr_q = 99;
+
+    if (seen < DECODE_MAX_CANDIDATES) seen_hz[seen++] = freq_hz;
+    decode_subtract_message(&mon->wf, &candidates[i], message.payload,
+                            DECODE_SUBTRACT_NEIGHBORS, DECODE_SUBTRACT_FRACTION);
+    if (found_dup) continue;
 
     // DXpedition rewrite (uses heap briefly via std::string — bounded, rare path)
     char final_text[DEC_TEXT_MAX];
@@ -444,12 +470,8 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
     d->is_recent_qso = (dxnorm[0] != '\0') &&
                        adif_logger_dedupe_is_duplicate(&s_adif_logger_dedupe, std::string(dxnorm), now_ms);
 
-    log_rxtx_line('R', snr_q, (int)lrintf(freq_hz), std::string(final_text), -1);
-    if (d->is_to_me) {
-      ESP_LOGI(TAG, "TOME snr=%d offset=%dHz: %s", snr_q, d->offset_hz, final_text);
-    }
-
     s_dec_count++;
+    }
   }
 
   ESP_LOGD(TAG, "Decoded %d unique messages", s_dec_count);
@@ -472,7 +494,7 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
       if (delta_ms > 320) delta_ms = 320;
       if (delta_ms < -320) delta_ms = -320;
       rtc_apply_decode_sync(delta_ms);
-      ESP_LOGI("SYNC", "Applied RTC sync: median=%.2fs delta=%dms", median, delta_ms);
+      s_sync_delta_ms = delta_ms;
     }
   }
 
@@ -554,8 +576,7 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
 
   int tome = 0;
   for (int i = 0; i < s_dec_count; ++i) if (s_dec[i].is_to_me) tome++;
-  log_slot_summary(num_candidates, max_cand, s_dec_count, tome, decode_t0_us,
-                   !decode_tx_state_get_was_txing());
+  log_slot_summary(num_candidates, max_cand, s_dec_count, tome, decode_t0_us);
 
   // Mark this slot's decode as fully applied BEFORE clearing the in-progress
   // flag. Readers (TX trigger on core 0) must see the applied marker as soon
