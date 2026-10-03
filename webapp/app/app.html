@@ -91,20 +91,22 @@
   --good-fg:#86efac;
   --muted-strong:#a3a3a3;
 }
-body{font-family:system-ui;margin:0;padding:0 0 3.75rem;line-height:1.35;background:Canvas;color:CanvasText}
+/* padding-bottom reserves the fixed tab bar. border-box so the column ends
+   at the bar instead of running underneath it. The dock is Operate-only, so
+   its clearance is on #view-operate, not here. */
+body{font-family:system-ui;margin:0;height:100dvh;overflow:hidden;display:flex;flex-direction:column;box-sizing:border-box;padding-bottom:var(--tabbar-h,3.75rem);line-height:1.35;background:Canvas;color:CanvasText}
 h1{font-size:1.15rem;margin:0}
 label{display:block;font-size:.7rem;color:GrayText;text-transform:uppercase;letter-spacing:.04em;margin-top:0}
 input,select{width:100%;box-sizing:border-box;padding:.45rem;font-size:1rem;margin-top:.15rem;background:Field;color:FieldText}
 button{padding:.6rem;font-size:.95rem;background:ButtonFace;color:ButtonText;border:1px solid GrayText;border-radius:.4rem}
 button:disabled{opacity:.45}
-.wrap{max-width:26rem;margin:0 auto;padding:0 1rem;box-sizing:border-box;display:flex;flex-direction:column;min-height:calc(100dvh - 3.75rem)}
+/* Fills the screen under #bannerArea. align-self + max-width centers it;
+   min-height:0 lets #viewport shrink instead of the page growing. */
+.wrap{width:100%;max-width:26rem;margin:0 auto;align-self:center;padding:0 1rem;box-sizing:border-box;display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
 
 /* ---- header: title, pairing badge, settings gear ---- */
-/* Sticky (not the tab bar's fixed) so it scrolls out only as far as .wrap's
-   own top padding, then sticks -- mirrors #tabbar's always-reachable
-   convention at the other end without a second layer of fixed-position
-   layout math. */
-#appHeader{position:sticky;top:0;z-index:6;background:Canvas;display:flex;align-items:center;gap:.5rem;padding:.6rem 0 .4rem}
+/* Above the scrolling tabs, so the title stays put. */
+#appHeader{background:Canvas;display:flex;align-items:center;gap:.5rem;padding:.6rem 0 .4rem}
 #appHeader h1{flex:1}
 .badge{font-size:.7rem;font-weight:700;padding:.25rem .6rem;border-radius:999px;border:1px solid var(--accent-border);background:transparent;color:var(--accent)}
 .badge.paired{border-color:transparent;background:var(--good-bg);color:var(--good-fg)}
@@ -114,16 +116,21 @@ button:disabled{opacity:.45}
 #m{color:GrayText;font-size:.85rem;min-height:1.2em;margin:0 0 .5rem}
 
 /* ---- swipeable tab track ---- */
-/* min-height:0 is load-bearing: without it a flex child won't shrink below
-   its content size, so #viewport would grow to fit the tallest panel
-   (Log's infinite-scroll list, unbounded) instead of scrolling within a
-   fixed strip. Three panels now (Operate/Log/Tools, docs/architecture/webapp.md (Screens)) --
-   Settings is still its own overlay (#settingsOverlay below), reached from
-   the header gear rather than swiped to, since it isn't a screen you flip
-   to mid-QSO the way Operate/Log/Tools are. */
+/* The page does not scroll. #viewport is a fixed strip, and each tab scrolls
+   inside it, so Operate's decode list cannot leave QSOs or Tools parked
+   below their own content. min-height:0 is load-bearing: without it a flex
+   child won't shrink below its content, and the tallest panel would grow
+   the strip. Three panels (Operate/QSOs/Tools, docs/architecture/webapp.md
+   (Screens)). Settings is an overlay (#settingsOverlay below), reached from
+   the header gear rather than swiped to. */
 #viewport{flex:1 1 auto;min-height:0;overflow:hidden;position:relative}
-#viewTrack{display:flex;height:100%;width:300%}
-#viewTrack>section{flex:0 0 33.3333%;width:33.3333%;height:100%;overflow-y:auto;box-sizing:border-box;-webkit-overflow-scrolling:touch}
+#viewTrack{display:flex;height:100%;min-height:0;width:300%}
+#viewTrack>section{flex:0 0 33.3333%;width:33.3333%;height:100%;min-height:0;max-height:100%;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;-webkit-overflow-scrolling:touch}
+/* The dock covers the bottom of this strip only. Shorten the panel by
+   --dock-h (kept while the dock is hidden, so leaving Operate does not
+   resize it and clamp the decode scroll) instead of letting rows slide
+   under the dock. */
+#viewTrack>#view-operate{height:calc(100% - var(--dock-h,0px));max-height:calc(100% - var(--dock-h,0px))}
 .row{display:flex;gap:.5rem}
 .row>*{flex:1}
 .row button{margin-top:.5rem}
@@ -223,12 +230,11 @@ button:disabled{opacity:.45}
 /* ---- operate: the dock (webapp.md, The dock) ---- */
 /* Fixed above the tab bar and shown only on Operate (body.on-operate), so band
    is one tap however long the decode list gets. layoutDock() keeps --tabbar-h
-   and --dock-h current; Operate's bottom padding makes room for both, so the
-   last decode is never hidden behind the dock. */
+   and --dock-h current; #view-operate is shortened by --dock-h, so the last
+   decode is never hidden behind the dock. */
 #opDock{position:fixed;left:0;right:0;bottom:var(--tabbar-h,3.375rem);z-index:5;background:Canvas;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent)}
 #opDock .dockinner{max-width:26rem;margin:0 auto;padding:.6rem 2rem .7rem;box-sizing:border-box}
 body:not(.on-operate) #opDock{display:none}
-body.on-operate{padding-bottom:calc(var(--tabbar-h,3.375rem) + var(--dock-h,0px))}
 /* Columns == band count up to 7; buildDockBandGrid() sets grid-template-columns
    to min(count,7) so an 8th+ band wraps to a second row on its own, no manual
    row-splitting logic needed. */
@@ -239,7 +245,7 @@ body.on-operate{padding-bottom:calc(var(--tabbar-h,3.375rem) + var(--dock-h,0px)
 .dockfreq{font-family:ui-monospace,monospace;font-weight:700;font-size:.9rem}
 .dockmeta{color:GrayText;font-size:.75rem;text-align:right}
 /* Above the band grid, inside the dock: opening it grows the dock upward, and
-   Operate's bottom padding grows with it (layoutDock()). */
+   #view-operate shortens to match (layoutDock()). */
 #opFreqEditor{margin-bottom:.6rem}
 #opFreqEditor .row{display:flex;gap:.4rem;align-items:center;margin-top:0}
 #opFreqEditor .row+.row{margin-top:.4rem}
@@ -753,9 +759,9 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 
 <!-- The dock (webapp.md, The dock): band grid and frequency, pinned above the
      tab bar and shown only on Operate. Outside #viewTrack on purpose: the track
-     slides with a transform, and a fixed child of a transformed element scrolls
-     with the page instead of staying put. Connect and Tune stay in Operate's
-     header until O2 (RFC 0009 §6). -->
+     slides with a transform, which would be the containing block for a fixed
+     descendant, so the dock would slide away with the panel. Connect and Tune
+     stay in Operate's header until O2 (RFC 0009 §6). -->
 <div id=opDock>
   <div class=dockinner>
     <div id=opFreqEditor hidden>
@@ -1250,13 +1256,16 @@ function syncDockBandGrid(cfg) {
     btn.classList.toggle('on', btn.dataset.i === cur);
   });
 }
-// The dock is fixed above the tab bar (see its CSS); keep Operate's bottom
-// padding equal to the tab bar plus the dock, whose height changes with a
-// second band row or the open frequency editor.
+// The dock is fixed above the tab bar (see its CSS). --tabbar-h shortens the
+// page column; --dock-h shortens #view-operate. A hidden dock reports 0; keep
+// the last real height so leaving Operate does not resize that panel and
+// clamp the decode list's scroll position. The height changes with a second
+// band row or the open frequency editor.
 function layoutDock() {
   var root = document.documentElement.style;
   root.setProperty('--tabbar-h', document.getElementById('tabbar').offsetHeight + 'px');
-  root.setProperty('--dock-h', document.getElementById('opDock').offsetHeight + 'px');
+  var dockH = document.getElementById('opDock').offsetHeight;
+  if (dockH) root.setProperty('--dock-h', dockH + 'px');
 }
 if (window.ResizeObserver) {
   var dockResize = new ResizeObserver(layoutDock);
