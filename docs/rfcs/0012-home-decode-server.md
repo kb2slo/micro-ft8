@@ -23,7 +23,7 @@ Two goals, in order:
 
 Facts are from the working tree at `f24182a`.
 
-* **Time budget.** Decode starts after 79 blocks (12.64 s) inside the capture task and must finish by the 15.0 s boundary: a 2.36 s guard ([decode.md](../architecture/decode.md); trigger point is row B90). A no-message slot can overrun it by about 1 s, and the ingest ring then drops samples (row f5qa).
+* **Time budget.** Decode starts after 79 blocks (12.64 s) inside the capture task and must finish by the 15.0 s boundary: a 2.36 s guard ([decode.md](../architecture/decode.md); trigger point is row B90). At that commit a no-message slot overran it by about 1 s and dropped samples. The fix is in [decode.md](../architecture/decode.md) (**Subtraction**), not yet confirmed on the air.
 * **Receive path.** The QMX delivers 48 kHz, 24-bit stereo over UAC (`poe_p4/main/qmx_transport.cpp:44`). `components/resample` decimates 48 kHz mono to 6 kHz by taking every eighth sample, with no filter (`resample.h:22`; `FT8_SAMPLE_RATE` 6000, `ft8_audio_pipeline.cpp:29`). The ingest task writes into a 16,384-float ring, about 2.7 s at 6 kHz (`ft8_audio_pipeline.cpp:36`).
 * **Tasks and cores.**
   - Core 1: `decode_audio`, priority 4 (`poe_p4/main/main.cpp:68`), and `audio_ingest`, priority 5, pinned to the same core (`ft8_audio_pipeline.cpp:119`).
@@ -87,7 +87,7 @@ flowchart LR
 
 **What each gap means:**
 
-* **A vs B is what real time costs us:** samples dropped and boundaries overrun (f5qa, B90). The algorithm is held fixed.
+* **A vs B is what real time costs us:** samples dropped and boundaries overrun (B90). The algorithm is held fixed.
 * **B vs C is the algorithm plus the front end.** An optional B′, our decoder on the filtered 12 kHz audio, splits the two. That measures RFC 0006's "48 → 12 kHz, filtered" option on live audio.
 
 **Scoring** follows `decode_recall`: normalised message text, discordant counts, extras listed and not scored false, and recall bucketed by `jt9`'s SNR.

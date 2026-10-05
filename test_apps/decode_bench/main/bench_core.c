@@ -257,6 +257,8 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
         }
         decode_us += clock_us() - decode_t0;
         if (!do_subtract) break;
+        // As the firmware: nothing subtracted, so another search would only retry failures.
+        if (seen == 0) break;
     }
     int64_t t2 = t1 + find_us;
     int64_t t3 = t2 + decode_us;

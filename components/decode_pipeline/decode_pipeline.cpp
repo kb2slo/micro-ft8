@@ -499,6 +499,9 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
 
     s_dec_count++;
     }
+    // Nothing subtracted leaves the waterfall as it was, so another search
+    // would only retry candidates that just failed.
+    if (seen == 0) break;
   }
 
   ESP_LOGD(TAG, "Decoded %d unique messages", s_dec_count);
