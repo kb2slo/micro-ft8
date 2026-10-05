@@ -102,7 +102,6 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
 
     const int64_t slot_ms      = g_protocol->slot_time_ms;
     const int     target_blocks = g_protocol->total_symbols + 1;
-    const uint32_t sym_delay_ms = (uint32_t)(g_protocol->symbol_period * 1000.0f + 0.5f);
 
     int64_t now_ms = rtc_now_ms();
     int64_t rem = now_ms % slot_ms;
@@ -127,10 +126,11 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
     ESP_LOGI(tag, "audio ingest ring=%u samples", kIngestRingSamples);
 
     int ft8_buffer_idx = 0;
-    TickType_t next_wake = xTaskGetTickCount();
     int slot_blocks = 0;
     int64_t slot_samples = 0;
     unsigned dropped_at_boundary = 0;
+    // The first slot has no boundary behind it to vouch for its start.
+    bool slot_clean = false;
     int64_t slot_idx = rtc_now_ms() / slot_ms;
     int64_t slot_start_ms = slot_idx * slot_ms;
     (void)slot_start_ms;
@@ -138,7 +138,9 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
     while (!cfg->should_stop(cfg->ctx)) {
         int samples_dec = (int)ft8_sample_ring_read(&ring, temp_dec, 512);
         if (samples_dec <= 0) {
-            vTaskDelay(pdMS_TO_TICKS(1));
+            // One tick, 10 ms at the P4's 100 Hz. pdMS_TO_TICKS(1) is 0 there: a
+            // yield, which would spin this task and starve core 1's idle task.
+            vTaskDelay(1);
             continue;
         }
         if (samples_dec > 512) samples_dec = 512;
@@ -168,23 +170,28 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                     cfg->on_block_processed(cfg->ctx);
                 }
 
+                // No pacing: a block is processed as soon as its last sample is in
+                // the ring, so decode starts within a tick of its 79th block's audio.
+                // Pacing to a 160 ms grid held each block up to a grid step, and
+                // with blocks dated by their audio that lag came off the guard.
                 ft8_buffer_idx = 0;
-                // A backlog is audio captured while decode ran. Process it now;
-                // pacing it out would hold it past the boundary.
-                if (ft8_sample_ring_count(&ring) < (unsigned)mon.block_size) {
-                    vTaskDelayUntil(&next_wake, pdMS_TO_TICKS(sym_delay_ms));
-                } else {
-                    next_wake = xTaskGetTickCount();
-                }
 
                 slot_blocks++;
-                int64_t now_idx = rtc_now_ms() / slot_ms;
+                // Date the block by its audio, not by when it is processed.
+                const int64_t queued =
+                    (int64_t)ft8_sample_ring_count(&ring) + (samples_dec - i - 1);
+                int64_t now_idx =
+                    ft8_block_slot_idx(rtc_now_ms(), queued, (int)slot_ms, FT8_SAMPLE_RATE);
                 if (now_idx != slot_idx) {
                     const int64_t lost = ft8_slot_sample_deficit(
                         slot_samples, now_idx - slot_idx, (int)slot_ms, FT8_SAMPLE_RATE);
                     const unsigned dropped = ft8_sample_ring_dropped(&ring);
                     const unsigned drop = dropped - dropped_at_boundary;
                     dropped_at_boundary = dropped;
+                    // The next slot starts on its audio only if one boundary was crossed,
+                    // the slot just ended was whole, and the ring kept every sample. A
+                    // clock set or step cuts the slot short; a drop misdates the queue.
+                    slot_clean = now_idx == slot_idx + 1 && lost <= mon.block_size && drop == 0;
                     // g is blocks captured after the decode reset: about 14 is a full guard.
                     // Port A log, not the console UART: the sidekick prints it.
                     {
@@ -205,7 +212,6 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                     slot_samples = 0;
                     mon.wf.num_blocks = 0;
                     monitor_reset(&mon);
-                    next_wake = xTaskGetTickCount();
                 } else if (slot_blocks >= g_protocol->total_symbols &&
                            mon.wf.num_blocks >= g_protocol->total_symbols) {
                     ESP_LOGD(tag, "Triggering decode at slot %lld blocks=%d wf=%d",
@@ -226,6 +232,8 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                         }
                     } else if (decode_tx_state_get_decode_enabled()) {
                         decode_tx_state_set_decode_slot_idx(slot_idx);
+                        decode_tx_state_set_capture_clean(
+                            slot_clean && ft8_sample_ring_dropped(&ring) == dropped_at_boundary);
                         decode_tx_state_set_decode_in_progress(true);
                         decode_monitor_results(&mon, &mon_cfg);
                     } else {
@@ -239,7 +247,6 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                     monitor_reset(&mon);
                     mon.wf.num_blocks = 0;
                     slot_blocks = 0;
-                    next_wake = xTaskGetTickCount();
                 }
             }
         }

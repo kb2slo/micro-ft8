@@ -2,6 +2,7 @@
 #include "decode_pipeline.h"
 #include "decode_limits.h"
 #include "decode_core_busy.h"
+#include "decode_sync.h"
 
 #include <cmath>
 #include <cstdio>
@@ -516,22 +517,12 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
   ESP_LOGD(TAG, "Decoded %d unique messages", s_dec_count);
 
   // ---- Auto sync soft RTC from decode timing ----
-  if (s_dec_count > 3) {
-    // Simple insertion sort to find median of time_s values
-    float sorted_t[DEC_MAX];
-    int nt = 0;
-    for (int i = 0; i < s_dec_count; ++i) sorted_t[nt++] = s_dec[i].time_s;
-    for (int i = 1; i < nt; ++i) {
-      float key = sorted_t[i];
-      int j = i - 1;
-      while (j >= 0 && sorted_t[j] > key) { sorted_t[j + 1] = sorted_t[j]; --j; }
-      sorted_t[j + 1] = key;
-    }
-    float median = sorted_t[nt / 2];
-    if (fabsf(median) > 0.3f) {
-      int delta_ms = (int)lrintf(-median * 1000.0f);
-      if (delta_ms > 320) delta_ms = 320;
-      if (delta_ms < -320) delta_ms = -320;
+  {
+    float times_s[DEC_MAX];
+    for (int i = 0; i < s_dec_count; ++i) times_s[i] = s_dec[i].time_s;
+    const int delta_ms =
+        decode_sync_step_ms(times_s, s_dec_count, decode_tx_state_get_capture_clean() ? 1 : 0);
+    if (delta_ms != 0) {
       rtc_apply_decode_sync(delta_ms);
       s_sync_delta_ms = delta_ms;
     }

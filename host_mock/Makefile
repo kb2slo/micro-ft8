@@ -62,6 +62,7 @@ SLOT_DEFICIT_TARGET = host_test_slot_deficit
 SAMPLE_RING_TARGET = host_test_sample_ring
 CORE_BUSY_TARGET = host_test_core_busy
 DECODE_RETRY_TARGET = host_test_decode_retry
+DECODE_SYNC_TARGET = host_test_decode_sync
 
 all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
      $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) \
@@ -71,7 +72,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET
      $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
      $(CAT_REPLY_PARSER_TARGET) $(SWR_SWEEP_TARGET) \
      $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(CORE_BUSY_TARGET) \
-     $(DECODE_RETRY_TARGET) \
+     $(DECODE_RETRY_TARGET) $(DECODE_SYNC_TARGET) \
      $(SIM_TARGET)
 
 $(TARGET): $(OBJ) porta_event_json.o
@@ -148,6 +149,14 @@ test_decode_retry.o: test_decode_retry.cpp
 	$(CXX) $(CXXFLAGS) $(DECODE_RETRY_INC) -c $< -o $@
 $(DECODE_RETRY_TARGET): $(DECODE_RETRY_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
+
+DECODE_SYNC_OBJ = decode_sync.o test_decode_sync.o
+decode_sync.o: ../components/decode_pipeline/decode_sync.c
+	$(CC) $(CFLAGS) -I../components/decode_pipeline/include -c $< -o $@
+test_decode_sync.o: test_decode_sync.cpp
+	$(CXX) $(CXXFLAGS) -I../components/decode_pipeline/include -c $< -o $@
+$(DECODE_SYNC_TARGET): $(DECODE_SYNC_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^ -lm
 
 $(QUEUE_HEAD_TARGET): $(QUEUE_HEAD_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
@@ -257,6 +266,7 @@ clean:
 	      $(CAT_REPLY_PARSER_OBJ) $(CAT_REPLY_PARSER_TARGET) \
 	      $(SWR_SWEEP_OBJ) $(SWR_SWEEP_TARGET) \
 	      $(PORTA_PROTO_OBJ) $(PORTA_PROTO_TARGET) \
-	      $(DECODE_RETRY_OBJ) $(DECODE_RETRY_TARGET)
+	      $(DECODE_RETRY_OBJ) $(DECODE_RETRY_TARGET) \
+	      $(DECODE_SYNC_OBJ) $(DECODE_SYNC_TARGET)
 
 .PHONY: all clean

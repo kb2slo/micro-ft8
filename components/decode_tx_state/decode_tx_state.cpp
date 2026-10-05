@@ -11,6 +11,7 @@ static int     s_time_osr = 2;
 static int     s_freq_osr = 2;
 
 static int64_t          s_decode_slot_idx = -1;
+static bool             s_capture_clean = false;
 static volatile int64_t s_decode_applied_slot_idx = -1;
 static volatile bool    s_decode_in_progress = false;
 
@@ -31,6 +32,8 @@ void decode_tx_state_set_freq_osr(int osr) { s_freq_osr = osr; }
 
 int64_t decode_tx_state_get_decode_slot_idx(void) { return s_decode_slot_idx; }
 void    decode_tx_state_set_decode_slot_idx(int64_t slot_idx) { s_decode_slot_idx = slot_idx; }
+bool    decode_tx_state_get_capture_clean(void) { return s_capture_clean; }
+void    decode_tx_state_set_capture_clean(bool clean) { s_capture_clean = clean; }
 int64_t decode_tx_state_get_decode_applied_slot_idx(void) { return s_decode_applied_slot_idx; }
 void    decode_tx_state_set_decode_applied_slot_idx(int64_t slot_idx) { s_decode_applied_slot_idx = slot_idx; }
 bool    decode_tx_state_get_decode_in_progress(void) { return s_decode_in_progress; }

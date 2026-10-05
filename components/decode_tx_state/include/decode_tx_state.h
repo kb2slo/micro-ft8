@@ -38,6 +38,11 @@ void decode_tx_state_set_freq_osr(int osr);
 // N is blocked until the decode for slot N-1 has been applied."
 int64_t decode_tx_state_get_decode_slot_idx(void);
 void    decode_tx_state_set_decode_slot_idx(int64_t slot_idx);
+// capture_clean is set with decode_slot_idx, on the same task: the slot began one
+// boundary after a whole slot, and the ingest ring dropped nothing from the start of
+// that slot to this decode. Only such a slot may step the clock (decode_sync.h).
+bool    decode_tx_state_get_capture_clean(void);
+void    decode_tx_state_set_capture_clean(bool clean);
 int64_t decode_tx_state_get_decode_applied_slot_idx(void);
 void    decode_tx_state_set_decode_applied_slot_idx(int64_t slot_idx);
 bool    decode_tx_state_get_decode_in_progress(void);
