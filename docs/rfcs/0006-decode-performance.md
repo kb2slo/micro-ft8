@@ -378,7 +378,7 @@ where the gap is usually larger. How much larger is a device measurement.
 2. **The second core.** Both chips are dual-core and decode runs on one. Per-candidate LDPC is independent
    per candidate, so the loop splits across cores naturally. That could approach 2× on exactly the window
    that decides how much of §4.1's feature list fits. The constraint is what already runs on the other core (the
-   UI on the ADV, USB host on both). Measure that core's load before assuming it is free. That measurement is the SLOT line's `b` field ([decode.md](../architecture/decode.md)).
+   UI on the ADV, USB host on both). Measure that core's load before assuming it is free. That measurement is the SLOT line's `b` field ([decode.md](../architecture/decode.md)). Row [bnhj](../ROADMAP.md) builds this lever.
 3. **Placement.** Code runs from flash through a cache on both chips, and an in-order core pays for every
    miss. `IRAM_ATTR` on the candidate search and LDPC loops, and on the P4 the waterfall in internal RAM
    (above), and possibly the hottest loop in the 8 KB TCM.
@@ -643,7 +643,7 @@ subtraction shipped ([decode.md](../architecture/decode.md), **Subtraction**). W
    below 30 MHz (checked 2026-09-23 against the `WSJTX/wsjtx` GitHub mirror). Types 1–2 ("CQ ???", "MyCall
    ???") run everywhere. With most of a message pre-filled, a decoder searching the whole band can turn noise
    into a plausible "RR73", so ours applies strong AP only within a few Hz of the partner's known offset. The
-   synthetic test scores false decodes as well as recall for that reason.
+   synthetic test scores false decodes as well as recall for that reason. Row [qauk](../ROADMAP.md).
 4. **OSD, last and optional**, only bit-packed (not the fork's ~40 KB of byte-per-bit stack), and only if
    its ~1.3 points survive P0's timing and its extra false decodes are acceptable.
 
