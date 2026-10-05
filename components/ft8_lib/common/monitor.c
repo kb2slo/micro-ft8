@@ -97,12 +97,17 @@ void monitor_init(monitor_t* me, const monitor_config_t* cfg)
     LOG(LOG_INFO, "Block size = %d\n", me->block_size);
     LOG(LOG_INFO, "Subblock size = %d\n", me->subblock_size);
 
-    // FFT work buffer — use a static buffer in BSS to avoid heap
-    // fragmentation. For nfft=960 (6 kHz, freq_osr=1), kiss_fftr needs
-    // ~10 KB contiguous; the heap may not provide that after USB-host and
-    // audio-pipeline setup. A static 12 KB arena is
-    // plenty and adds 12 KB to BSS (was coming out of heap anyway).
-    static uint8_t fft_work_static[12288];
+    // FFT work buffer in BSS, not the heap. The P4's one heap hole big enough
+    // for the 161 KB waterfall is only a little larger than that. A heap plan
+    // for nfft=1920 is ~19 KB and was splitting that hole, so the waterfall
+    // malloc then failed (largest 172032, need 161076). kiss_fftr_alloc's
+    // size, 32-bit float: 3 pointers + kiss_fft_state (272) + (nfft/2-1)
+    // twiddles + (nfft/2)*3/2 super-twiddles, each cpx 8 bytes. +32 for slack.
+    // Sized from MONITOR_NFFT_MAX so the sidekick (960) does not grow.
+#define KISS_FFTR_PLAN_BYTES(nfft) \
+    (12 + (272 + 8 * ((nfft) / 2 - 1)) + 8 * (((nfft) / 2) * 3 / 2) + 32)
+    static uint8_t fft_work_static[KISS_FFTR_PLAN_BYTES(MONITOR_NFFT_MAX)]
+        __attribute__((aligned(16)));
     size_t fft_needed = 0;
     kiss_fftr_alloc(me->nfft, 0, NULL, &fft_needed);
     if (fft_needed <= sizeof(fft_work_static))

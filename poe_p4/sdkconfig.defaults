@@ -39,3 +39,9 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
 # I29: custom table with LittleFS `storage` partition (Station.txt).
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Per-core busy percent on the SLOT line. The idle-task run-time counter needs
+# this. esp_timer is the clock (1 µs, the same counter on both cores). The CPU
+# cycle counter is a different clock per core, so it is not the source.
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+CONFIG_FREERTOS_RUN_TIME_STATS_USING_ESP_TIMER=y

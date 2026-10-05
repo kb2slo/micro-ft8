@@ -1,6 +1,6 @@
 # RFC 0006: Decode performance — measure, then tune
 
-* **Status:** Accepted 2026-09-25, phase order in §5 as written. Rows [B53](../ROADMAP.md), **Amended 2026-10-02:** the ADV was dropped (row za6n). Where this RFC discusses the ADV, its measurements, its screens or its `ADV-only` work, it is history and no longer applies.
+* **Status:** Accepted 2026-09-25, phase order in §5 as written. **Amended 2026-10-02:** the ADV was dropped (row za6n). Where this RFC discusses the ADV, its measurements, its screens or its `ADV-only` work, it is history and no longer applies.
   [B54](../ROADMAP.md), [I26](../ROADMAP.md), [B85](../ROADMAP.md) and [B86](../ROADMAP.md) carry an ID, a name and a link
   here; the reasoning lives in this file.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
@@ -299,7 +299,7 @@ up, host CPU on the 1,041 set:
 Three conclusions:
 
 1. **The 50-candidate cap binds and is the cheapest fix we have**, on both boards: +4.2 / +5.1 points for
-   CPU only. B53's `cand=` field would show it in the field, but the host already does.
+   CPU only. The SLOT line's `c` field ([decode.md](../architecture/decode.md)) would show it on the air, but the host already does.
 2. **`freq_osr` 2 is the largest single lever (+12.6 / +10.3 points).** That makes the 4-bit waterfall (§4) the
    deciding question for the ADV, not a nice-to-have.
 3. **For the P4, subtraction + passes + t4/f2 without OSD reaches ~71%** at ~2× kgoba's host CPU. OSD is
@@ -378,7 +378,7 @@ where the gap is usually larger. How much larger is a device measurement.
 2. **The second core.** Both chips are dual-core and decode runs on one. Per-candidate LDPC is independent
    per candidate, so the loop splits across cores naturally. That could approach 2× on exactly the window
    that decides how much of §4.1's feature list fits. The constraint is what already runs on the other core (the
-   UI on the ADV, USB host on both). Measure that core's load before assuming it is free.
+   UI on the ADV, USB host on both). Measure that core's load before assuming it is free. That measurement is the SLOT line's `b` field ([decode.md](../architecture/decode.md)).
 3. **Placement.** Code runs from flash through a cache on both chips, and an in-order core pays for every
    miss. `IRAM_ATTR` on the candidate search and LDPC loops, and on the P4 the waterfall in internal RAM
    (above), and possibly the hottest loop in the 8 KB TCM.
@@ -593,15 +593,9 @@ both rates on the P4 before this is final.
 question is closed, or the filtered decimator ships on both boards (12 kHz on the P4) with its host
 tone-sweep test and a field A/B.
 
-### P4 — Capture-path health on hardware ([B53](../ROADMAP.md), then [B54](../ROADMAP.md))
+### P4 — Capture-path health on hardware
 
-Field-only. B53 is instrumentation; B54 fixes what it finds.
-
-**B53, partly built.** `decode_monitor_results()` sends one Port A log per receive slot,
-`SLOT <idx> c<found>/<cap> m<n> t<n> dec<ms> left<ms> y<ms>` (2026-10-02). The sidekick prints it; the
-capture task does not write it to the console UART, because a line per message there was inside `dec`.
-The same text is the browser debug log. `dec` is `esp_timer`. The capture task's `BDRY` line carries the
-other two (2026-10-02):
+Field-only. The SLOT and BDRY lines, including `b`, are in [decode.md](../architecture/decode.md) (**The time budget**). `b` is each core's busy percent over the decode, which is the load §4.2 lever 2 asked for. The FT4 boundary read was not taken (operator, 2026-10-03). On 20 m, 2026-10-05, a local build of `481e486` read `b` 2/100 on busy slots (`dec` 1.6–2.0 s, `left` positive, `g` 14–16, `drop` 0, `lost` 0 or 720 samples). WB4CTX copied the opening transmission on 15 m. What the boundary fields meant on the FT8 read:
 
 - **`g=`, the surviving guard blocks at the slot boundary.** `slot_blocks` resets at the slot boundary and
   again after a decode, so the count at a boundary is the guard band that survived decode. About 14 is
@@ -612,14 +606,7 @@ other two (2026-10-02):
   dropped while decode holds the capture task. A clock step in the slot moves the boundary, so it
   shows up here as well as in `left`.
 
-Per-core busy % (FreeRTOS run-time stats) is still missing. It is the precondition for §4.2 lever 2,
-decode on the second core.
-
-Do **not** read these by raising `CONFIG_LOG_MAXIMUM_LEVEL`. That compiles in every `ESP_LOGD` in the tree,
-and the resulting flood is its own starvation source. FT4 is the sharper test: a near-identical guard band
-but 105 symbols to decode, and a 16 KB decode stack against FT8's 8 KB. `cand=` shows whether a busy
-band fills the 256-candidate list. On the corpora no slot filled the 32-decode list at 256 candidates, so a
-field `cand=` stuck far below 256 means the air is quieter than those files.
+On the corpora no slot filled the 32-decode list at 256 candidates, so a field `c` stuck far below 256 means the air is quieter than those files.
 
 **B54, two coupled defects.** The FT8 field read on 20 m (2026-10-02) was sick: `g` 2–4 and `lost` tracking `dec`, about 2 s of audio. The fix is an ingest task filling a static 16,384-sample ring (2.7 s at 6 kHz) while decode still runs in the capture task. The ring is static because the largest free block after the 161 KB waterfall is about 51 KB. The same afternoon, four busy slots read `g` 15–17, `lost` 0, `drop` 0, `dec` about 1.8 s, `left` 450–800 ms. The ring covered the gap, so decode stays in the capture task.
 
@@ -636,7 +623,7 @@ A constraint on the obvious fix: `uac_read_ft8_samples()` ignores `max_samples` 
 512-float temp buffer. At 6 B/frame and 8:1 decimation, the implicit ceiling is
 `UAC_READ_BUFFER_SIZE` ≤ 24,576 B, and growing past it overruns silently.
 
-**Done-when:** FT8 on 20 m (2026-10-02) is recorded above. FT4 is still unread: a near-identical guard and 105 symbols, so the same boundary line is the check.
+**Done-when:** FT8 on 20 m (2026-10-02) is recorded above. The FT4 read was not taken (operator, 2026-10-03).
 
 ### P5 — Algorithm changes ([I26](../ROADMAP.md))
 

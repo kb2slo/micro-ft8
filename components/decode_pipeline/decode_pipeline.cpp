@@ -1,6 +1,7 @@
 #include "dial_history.h"
 #include "decode_pipeline.h"
 #include "decode_limits.h"
+#include "decode_core_busy.h"
 
 #include <cmath>
 #include <cstdio>
@@ -14,6 +15,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/idf_additions.h"
 
 #include "autoseq.h"
 #include "callsign_hashtable.h"
@@ -236,11 +238,25 @@ static int dec_sort_cmp(const void* a, const void* b) {
 // was inside this function's timer, on the capture task.
 static int s_sync_delta_ms = 0;
 
+// FreeRTOS run-time counter at the start of this decode, and each core's idle
+// task counter then. The P4 is dual-core; core 1's idle task exists.
+// portGET_RUN_TIME_COUNTER_VALUE is esp_timer microseconds, uint32.
+static uint32_t s_rt_at_decode = 0;
+static uint32_t s_idle_at_decode[2] = {0, 0};
+
+static void sample_decode_cores(void) {
+  s_rt_at_decode = (uint32_t)portGET_RUN_TIME_COUNTER_VALUE();
+  s_idle_at_decode[0] = (uint32_t)ulTaskGetIdleRunTimeCounterForCore(0);
+  s_idle_at_decode[1] = (uint32_t)ulTaskGetIdleRunTimeCounterForCore(1);
+}
+
 // One line per receive slot, sent as a Port A log (the sidekick prints it).
 // dec is esp_timer, sampled before that send: a clock step in this function
 // must not land in the duration. left is the soft clock's time until the
-// boundary. y is the sync step this slot, 0 if none. The text fits
-// PORTA_EVENT_TEXT_MAX (64).
+// boundary. y is the sync step this slot, 0 if none. b is each core's busy
+// percent over this decode (core 0, then core 1). The text fits
+// PORTA_EVENT_TEXT_MAX (64). A line that does not is resent without y, so a
+// truncated event cannot clip b into a different number.
 static void log_slot_summary(int num_candidates, int max_cand, int msg_count, int tome,
                              int64_t decode_t0_us) {
   const int64_t dec_ms = (esp_timer_get_time() - decode_t0_us) / 1000;
@@ -250,18 +266,29 @@ static void log_slot_summary(int num_candidates, int max_cand, int msg_count, in
   if (slot_idx >= 0 && slot_ms > 0) left_ms = (slot_idx + 1) * slot_ms - rtc_now_ms();
   const int sync_ms = s_sync_delta_ms;
   s_sync_delta_ms = 0;
-  // 128 covers a full int64 print. A real slot line is about 55 characters,
-  // under PORTA_EVENT_TEXT_MAX (64); the encoder truncates anything longer.
+  const uint32_t elapsed = (uint32_t)portGET_RUN_TIME_COUNTER_VALUE() - s_rt_at_decode;
+  const int busy0 = decode_core_busy_pct(
+      (uint32_t)ulTaskGetIdleRunTimeCounterForCore(0) - s_idle_at_decode[0], elapsed);
+  const int busy1 = decode_core_busy_pct(
+      (uint32_t)ulTaskGetIdleRunTimeCounterForCore(1) - s_idle_at_decode[1], elapsed);
+  // 128 covers a full int64 print. The event field keeps 64 characters.
   char buf[128];
-  snprintf(buf, sizeof(buf),
-           "SLOT %lld c%d/%d m%d t%d dec%lld left%lld y%d",
-           (long long)slot_idx, num_candidates, max_cand, msg_count, tome,
-           (long long)dec_ms, (long long)left_ms, sync_ms);
+  int n = snprintf(buf, sizeof(buf),
+                   "SLOT %lld c%d/%d m%d t%d dec%lld left%lld y%d b%d/%d",
+                   (long long)slot_idx, num_candidates, max_cand, msg_count, tome,
+                   (long long)dec_ms, (long long)left_ms, sync_ms, busy0, busy1);
+  if (n > 64) {
+    snprintf(buf, sizeof(buf),
+             "SLOT %lld c%d/%d m%d t%d dec%lld left%lld b%d/%d",
+             (long long)slot_idx, num_candidates, max_cand, msg_count, tome,
+             (long long)dec_ms, (long long)left_ms, busy0, busy1);
+  }
   debug_log_line(buf);
 }
 
 void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
   const int64_t decode_t0_us = esp_timer_get_time();
+  sample_decode_cores();
   const int max_cand = DECODE_MAX_CANDIDATES;
 
   // ---- heap instrumentation ----
