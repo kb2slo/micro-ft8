@@ -1,5 +1,6 @@
 idf_component_register(SRCS "bench_main.c" "bench_core.c"
                             "../../../components/decode_pipeline/decode_subtract.c"
+                            "../../../components/decode_pipeline/decode_retry.c"
                        INCLUDE_DIRS "."
                        REQUIRES ft8_lib esp_timer)
 

@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "common/monitor.h"
+#include "decode_retry.h"
 #include "decode_subtract.h"
 #include "ft8/constants.h"
 #include "ft8/decode.h"
@@ -209,6 +210,9 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
     int decoded = 0;
     int64_t find_us = 0;
     int64_t decode_us = 0;
+    static decode_retry_t retry;
+    decode_retry_reset(&retry);
+    const int n_tones = (monitor.wf.protocol == FTX_PROTOCOL_FT4) ? 4 : 8;
     for (int pass = 0; pass < passes && decoded < config->max_decodes; ++pass) {
         int want = max_candidates;
         if (do_subtract) {
@@ -231,12 +235,15 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
             // Both freq_osr subdivisions of one signal land within DECODE_SUBTRACT_FREQ_SKIP_HZ.
             // Subtracting the second would dig the hole twice in this pass.
             if (do_subtract && decode_subtract_already(seen_hz, seen, freq_hz)) continue;
+            // As the firmware: a failure no subtraction has touched would fail again.
+            if (do_subtract && decode_retry_unchanged(&retry, &s_candidates[i], n_tones)) continue;
 
             ftx_message_t message;
             ftx_decode_status_t status;
             memset(&message, 0, sizeof(message));
             memset(&status, 0, sizeof(status));
             if (!ftx_decode_candidate(&monitor.wf, &s_candidates[i], config->ldpc_iterations, &message, &status)) {
+                decode_retry_note_failed(&retry, &s_candidates[i]);
                 continue;
             }
             bool fresh = bench_remember(&message);
@@ -250,6 +257,7 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
                 if (seen < BENCH_MAX_CANDIDATES) seen_hz[seen++] = freq_hz;
                 decode_subtract_message(&monitor.wf, &s_candidates[i], message.payload,
                                         config->subtract_neighbors, fraction);
+                decode_retry_note_subtracted(&retry, &s_candidates[i]);
             }
             if (!fresh) continue;
             ++decoded;

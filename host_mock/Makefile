@@ -61,6 +61,7 @@ SWR_SWEEP_TARGET = host_test_swr_sweep
 SLOT_DEFICIT_TARGET = host_test_slot_deficit
 SAMPLE_RING_TARGET = host_test_sample_ring
 CORE_BUSY_TARGET = host_test_core_busy
+DECODE_RETRY_TARGET = host_test_decode_retry
 
 all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
      $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) \
@@ -70,6 +71,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET
      $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
      $(CAT_REPLY_PARSER_TARGET) $(SWR_SWEEP_TARGET) \
      $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(CORE_BUSY_TARGET) \
+     $(DECODE_RETRY_TARGET) \
      $(SIM_TARGET)
 
 $(TARGET): $(OBJ) porta_event_json.o
@@ -136,6 +138,15 @@ decode_core_busy.o: ../components/decode_pipeline/decode_core_busy.c
 test_core_busy.o: test_core_busy.cpp
 	$(CXX) $(CXXFLAGS) -I../components/decode_pipeline/include -c $< -o $@
 $(CORE_BUSY_TARGET): $(CORE_BUSY_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+DECODE_RETRY_OBJ = decode_retry.o test_decode_retry.o
+DECODE_RETRY_INC = -I../components/decode_pipeline/include -I../components/ft8_lib/vendor
+decode_retry.o: ../components/decode_pipeline/decode_retry.c
+	$(CC) $(CFLAGS) $(DECODE_RETRY_INC) -c $< -o $@
+test_decode_retry.o: test_decode_retry.cpp
+	$(CXX) $(CXXFLAGS) $(DECODE_RETRY_INC) -c $< -o $@
+$(DECODE_RETRY_TARGET): $(DECODE_RETRY_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 $(QUEUE_HEAD_TARGET): $(QUEUE_HEAD_OBJ)
@@ -245,6 +256,7 @@ clean:
 	      $(ADIF_LOGGER_OBJ) $(ADIF_LOGGER_TARGET) \
 	      $(CAT_REPLY_PARSER_OBJ) $(CAT_REPLY_PARSER_TARGET) \
 	      $(SWR_SWEEP_OBJ) $(SWR_SWEEP_TARGET) \
-	      $(PORTA_PROTO_OBJ) $(PORTA_PROTO_TARGET)
+	      $(PORTA_PROTO_OBJ) $(PORTA_PROTO_TARGET) \
+	      $(DECODE_RETRY_OBJ) $(DECODE_RETRY_TARGET)
 
 .PHONY: all clean

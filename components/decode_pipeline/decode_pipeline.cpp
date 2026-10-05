@@ -29,6 +29,7 @@ extern "C" {
 #include "ft8/constants.h"
 #include "ft8/decode.h"
 #include "ft8/message.h"
+#include "decode_retry.h"
 #include "decode_subtract.h"
 }
 
@@ -305,6 +306,9 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
   const int64_t now_ms = rtc_now_ms();
   static ftx_candidate_t candidates[max_cand];
   static float seen_hz[DECODE_MAX_CANDIDATES];
+  static decode_retry_t retry;
+  decode_retry_reset(&retry);
+  const int n_tones = (mon->wf.protocol == FTX_PROTOCOL_FT4) ? 4 : 8;
   int num_candidates = 0;
 
   // ---- slot index + once-per-slot hashtable maintenance ----
@@ -384,14 +388,18 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
                    candidates[i].time_sub / (float)cfg->time_osr) * mon->symbol_period;
     // The other freq_osr subdivision of a signal we just decoded is the same station.
     if (decode_subtract_already(seen_hz, seen, freq_hz)) continue;
+    // Failed before, and no subtraction has touched its bins: it would fail again.
+    if (decode_retry_unchanged(&retry, &candidates[i], n_tones)) continue;
 
     ftx_message_t message;
     ftx_decode_status_t status;
     memset(&message, 0, sizeof(message));
     memset(&status, 0, sizeof(status));
 
-    if (!ftx_decode_candidate(&mon->wf, &candidates[i], 25, &message, &status))
+    if (!ftx_decode_candidate(&mon->wf, &candidates[i], 25, &message, &status)) {
+      decode_retry_note_failed(&retry, &candidates[i]);
       continue;
+    }
 
     // payload/hash dedupe (open addressing)
     int idx_hash = (int)(message.hash % kMaxDecoded);
@@ -443,6 +451,7 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
     if (seen < DECODE_MAX_CANDIDATES) seen_hz[seen++] = freq_hz;
     decode_subtract_message(&mon->wf, &candidates[i], message.payload,
                             DECODE_SUBTRACT_NEIGHBORS, DECODE_SUBTRACT_FRACTION);
+    decode_retry_note_subtracted(&retry, &candidates[i]);
     if (found_dup) continue;
 
     // DXpedition rewrite (uses heap briefly via std::string — bounded, rare path)
