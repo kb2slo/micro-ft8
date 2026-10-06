@@ -1855,11 +1855,49 @@ document.getElementById('netFactory').onclick = async function () {
       msg.textContent = 'Nothing was reset (' + (j.why || 'refused') + ').';
       return;
     }
-    msg.textContent = 'Reset. The sidekick is restarting as a new unit: join its micro-ft8.local-… network and open http://192.168.4.1/ to set it up again.';
+    waitForSetupPage();
   } catch (e) {
-    msg.textContent = 'Reset sent; the sidekick is restarting. Join its micro-ft8.local-… network and open http://192.168.4.1/.';
+    waitForSetupPage();
   }
 };
+
+// After a factory reset the sidekick restarts as a new unit on its own network at 192.168.4.1.
+// A phone already on that network (AP mode) reconnects by itself; one that was on the home WiFi
+// has to join the sidekick's network first. Either way, poll that address and go there as soon
+// as it answers, rather than leave the operator on a dead page. no-cors: only "something
+// answered" matters, and the setup page is a different origin from this one.
+function waitForSetupPage() {
+  var msg = document.getElementById('netMsg');
+  var SETUP = 'http://192.168.4.1/';
+  var startedAt = Date.now();
+  var GIVE_UP_MS = 90000;
+  msg.textContent = 'Reset. The sidekick is restarting as a new unit\u2026';
+  function tick() {
+    var secs = Math.round((Date.now() - startedAt) / 1000);
+    if (Date.now() - startedAt > GIVE_UP_MS) {
+      msg.textContent = 'The sidekick did not come back on its own. Join its micro-ft8.local-\u2026 network, ' +
+        'then open http://192.168.4.1/ to set it up again.';
+      return;
+    }
+    var ctl = new AbortController();
+    var t = setTimeout(function () { ctl.abort(); }, 1500);
+    // The first few seconds are the old server still finishing its reply, which would answer too.
+    var ready = secs >= 5;
+    var probe = ready ? fetch(SETUP, { mode: 'no-cors', cache: 'no-store', signal: ctl.signal }) : Promise.reject();
+    probe.then(function () {
+      clearTimeout(t);
+      msg.textContent = 'Back up. Opening setup\u2026';
+      location.href = SETUP;
+    }, function () {
+      clearTimeout(t);
+      msg.textContent = 'Reset. Waiting for the sidekick to restart (' + secs + ' s). ' +
+        'If your phone is on your home WiFi, join the sidekick\u2019s micro-ft8.local-\u2026 network; ' +
+        'this page opens setup once it can reach it.';
+      setTimeout(tick, 2000);
+    });
+  }
+  tick();
+}
 
 // Shared by both band dropdowns (Operate + Settings) -- one PUT, one code
 // path, one fix. A single-field PUT rather than the full Settings form, so
