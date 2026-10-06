@@ -153,6 +153,16 @@ button:disabled{opacity:.45}
 #settingsMsg,#stationSheetMsg{flex:none;margin:0;padding:.45rem 1rem;font-size:.85rem;background:color-mix(in srgb, var(--accent) 12%, transparent)}
 #settingsMsg:empty,#stationSheetMsg:empty{display:none}
 
+/* Full-screen blocker while a factory-reset restart is awaited (waitForSetupPage()): the sidekick
+   is going away, so nothing behind it can work. No close control; it ends in a redirect. */
+#resetWait{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:color-mix(in srgb, Canvas 88%, transparent);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+#resetWaitCard{max-width:22rem;width:100%;background:Canvas;color:CanvasText;border:1px solid color-mix(in srgb, GrayText 40%, transparent);border-radius:.8rem;padding:1.25rem;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+#resetWaitCard h2{font-size:1.05rem;margin:.6rem 0 .4rem}
+#resetWaitText{font-size:.9rem;margin:0;line-height:1.45}
+#resetWaitSpin{width:28px;height:28px;margin:0 auto;border:3px solid color-mix(in srgb, GrayText 30%, transparent);border-top-color:var(--accent);border-radius:50%;animation:resetspin 1s linear infinite}
+#resetWait.done #resetWaitSpin{display:none}
+@keyframes resetspin{to{transform:rotate(360deg)}}
+
 /* ---- tab bar ---- */
 #tabbar{position:fixed;left:0;right:0;bottom:0;display:flex;border-top:1px solid GrayText;background:Canvas}
 #tabbar button{flex:1;border:0;border-radius:0;background:transparent;padding:.5rem 0 .6rem;font-size:.7rem;display:flex;flex-direction:column;align-items:center;gap:.15rem;color:GrayText}
@@ -801,6 +811,14 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     Tools
   </button>
 </nav>
+
+<div id=resetWait role=alertdialog aria-modal=true aria-labelledby=resetWaitTitle hidden>
+  <div id=resetWaitCard>
+    <div id=resetWaitSpin></div>
+    <h2 id=resetWaitTitle>Resetting the sidekick</h2>
+    <p id=resetWaitText></p>
+  </div>
+</div>
 
 <script src=/pairing.js></script>
 <script src=bands.js></script>
@@ -1867,30 +1885,36 @@ document.getElementById('netFactory').onclick = async function () {
 // as it answers, rather than leave the operator on a dead page. no-cors: only "something
 // answered" matters, and the setup page is a different origin from this one.
 function waitForSetupPage() {
-  var msg = document.getElementById('netMsg');
+  var box = document.getElementById('resetWait');
+  var text = document.getElementById('resetWaitText');
+  var title = document.getElementById('resetWaitTitle');
   var SETUP = 'http://192.168.4.1/';
   var startedAt = Date.now();
   var GIVE_UP_MS = 90000;
-  msg.textContent = 'Reset. The sidekick is restarting as a new unit\u2026';
+  document.getElementById('netMsg').textContent = '';
+  box.classList.remove('done');
+  title.textContent = 'Resetting the sidekick';
+  box.hidden = false;
   function tick() {
     var secs = Math.round((Date.now() - startedAt) / 1000);
     if (Date.now() - startedAt > GIVE_UP_MS) {
-      msg.textContent = 'The sidekick did not come back on its own. Join its micro-ft8.local-\u2026 network, ' +
-        'then open http://192.168.4.1/ to set it up again.';
+      box.classList.add('done');
+      title.textContent = 'The sidekick did not come back on its own';
+      text.textContent = 'Join its micro-ft8.local-\u2026 network, then open http://192.168.4.1/ to set it up again.';
       return;
     }
     var ctl = new AbortController();
     var t = setTimeout(function () { ctl.abort(); }, 1500);
     // The first few seconds are the old server still finishing its reply, which would answer too.
-    var ready = secs >= 5;
-    var probe = ready ? fetch(SETUP, { mode: 'no-cors', cache: 'no-store', signal: ctl.signal }) : Promise.reject();
+    var probe = secs >= 5 ? fetch(SETUP, { mode: 'no-cors', cache: 'no-store', signal: ctl.signal }) : Promise.reject();
     probe.then(function () {
       clearTimeout(t);
-      msg.textContent = 'Back up. Opening setup\u2026';
+      title.textContent = 'Back up';
+      text.textContent = 'Opening setup\u2026';
       location.href = SETUP;
     }, function () {
       clearTimeout(t);
-      msg.textContent = 'Reset. Waiting for the sidekick to restart (' + secs + ' s). ' +
+      text.textContent = 'Waiting for the sidekick to restart (' + secs + ' s). ' +
         'If your phone is on your home WiFi, join the sidekick\u2019s micro-ft8.local-\u2026 network; ' +
         'this page opens setup once it can reach it.';
       setTimeout(tick, 2000);
