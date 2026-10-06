@@ -19,14 +19,13 @@ Target is pinned to `esp32s3` in `CMakeLists.txt`; no `set-target` step needed. 
 
 ## First-time setup (a newly flashed sidekick)
 
-The firmware carries only the setup pages. The app (`app.html`) is downloaded once, through your phone, so a fresh sidekick needs your home WiFi (2.4 GHz only) for that one step. Its own AP has no internet. Why: [`sidekick.md`](../docs/architecture/sidekick.md) (**Installing the app bundle**).
+The firmware carries only the setup pages. The app (`app.html`) is downloaded once, through your phone, which needs the internet for that one step. The sidekick's own AP has none, so either the phone uses its cellular data while joined to the AP (quickest; an iPhone does this by itself), or the sidekick joins your home WiFi (2.4 GHz only). Why: [`sidekick.md`](../docs/architecture/sidekick.md) (**Installing the app bundle**).
 
 1. Flash the sidekick ([Build](#build-desk), or the merged image at `0x0`). Join its WiFi network and open `http://192.168.4.1/`. Until the app is installed the page shows the first-time steps instead of "Operate in AP mode".
-2. Press the sidekick's button, pick your home WiFi, enter its password, **Save**. An iPhone Personal Hotspot needs *Maximize Compatibility* on or it will not be listed.
-3. Join the same WiFi on your phone and open `http://micro-ft8.local/update`.
-4. Press the sidekick's button when asked, then tap **Install**. It opens the app when done.
+2. **Over cellular:** stay on the sidekick's network and open `http://192.168.4.1/update`. Press the sidekick's button when asked, then tap **Install**. It opens the app when done.
+   **Or over home WiFi:** press the sidekick's button, pick your home WiFi, enter its password, **Save** (an iPhone Personal Hotspot needs *Maximize Compatibility* on or it will not be listed). Join the same WiFi on your phone and open `http://micro-ft8.local/update`, press the button when asked, then tap **Install**.
 
-**To start over** (testing, or handing the unit on): Settings > Network > **Factory reset**, tapped twice. It erases the saved WiFi, the installed app and the pairing, and the sidekick restarts as a new unit. If you cannot reach the app, `idf.py erase-flash` then flash again does the same and more. The main board keeps its own settings either way.
+**To start over** (testing, or handing the unit on): Settings > Network > **Factory reset**, then confirm. It erases the saved WiFi, the installed app, the pairing, the bundle host override and the AP-mode flag, and the sidekick restarts as a new unit. If you cannot reach the app, `idf.py erase-flash` then flash again does the same and more. The main board keeps its own settings either way.
 
 After that, the app is on the sidekick: Settings > Network > **Switch to AP mode** runs it with no network at all. Opening `/app.html` before step 4 shows a "not installed yet" page that points back here. If Install says it cannot reach the host, the phone has no internet: check it is on your home WiFi.
 

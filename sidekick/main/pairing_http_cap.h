@@ -12,7 +12,7 @@
 enum {
     PAIRING_ROUTES_DISCLOSURE = 1,  // /api/pairing-token
 
-    PAIRING_ROUTES_WIFI_PROV_AP_CORE = 4,       // /  /rescan  /provision  /factory-reset
+    PAIRING_ROUTES_WIFI_PROV_AP_CORE = 5,       // /  /rescan  /update  /provision  /factory-reset
     PAIRING_ROUTES_WIFI_PROV_STATION_CORE = 5,  // /  /update  /forget  /ap-mode  /factory-reset
 
     PAIRING_ROUTES_HOST_LINK = 16,  // 15th/16th: GET and POST /api/link-test

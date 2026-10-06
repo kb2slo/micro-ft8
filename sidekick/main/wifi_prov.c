@@ -447,6 +447,8 @@ static esp_err_t get_rescan(httpd_req_t *req)
     return httpd_resp_send(req, NULL, 0);
 }
 
+static esp_err_t get_update(httpd_req_t *req);
+
 static esp_err_t get_form(httpd_req_t *req)
 {
     // Static rather than automatic: the options alone are SCAN_BUF_LEN, and
@@ -616,10 +618,16 @@ static void httpd_start_provisioning(void)
     static const httpd_uri_t rescan = {
         .uri = "/rescan", .method = HTTP_GET, .handler = get_rescan,
     };
+    static const httpd_uri_t update = {
+        .uri = "/update", .method = HTTP_GET, .handler = get_update,
+    };
     static const httpd_uri_t factory_reset = {
         .uri = "/factory-reset", .method = HTTP_POST, .handler = post_factory_reset,
     };
-    // The form and a rescan are open: they change nothing stored. Saving
+    // The form, a rescan and /update are open: they change nothing stored
+    // (/update only serves the install page; its writes go through the
+    // token-guarded /api/bundle/* routes). /update is here so a phone on this
+    // AP can install the app over its own cellular data, with no home WiFi. Saving
     // credentials is a config write, so it needs the token like every other
     // write (docs/architecture/system.md (Who may key the transmitter)). There is no chicken-and-egg:
     // pairing_http_init() mints the token on first boot, before any route is
@@ -633,6 +641,7 @@ static void httpd_start_provisioning(void)
     } core[] = {
         { &form, PAIRING_OPEN },
         { &rescan, PAIRING_OPEN },
+        { &update, PAIRING_OPEN },
         { &provision, PAIRING_REQUIRED },
         { &factory_reset, PAIRING_REQUIRED },
     };

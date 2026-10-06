@@ -31,20 +31,26 @@ var host = document.getElementById('host').textContent.trim();
 var m = document.getElementById('m');
 var go = document.getElementById('go');
 
-// /update.html is also served as a plain static file, and in AP mode (where
-// /update has no route) nothing expands {{bundle_host}} -- and an AP has no
-// internet to fetch a bundle over anyway. Say so rather than fetch from
-// "{{bundle_host}}/manifest.json".
+// /update.html is also served as a plain static file, and then nothing expands
+// {{bundle_host}}. Send the operator to /update, which does (in both modes).
+// Say so rather than fetch from "{{bundle_host}}/manifest.json".
 var noHost = host.indexOf('{{') === 0;
 function showNoHost() {
   go.disabled = true;
-  setMsg('Installing needs the internet, which this sidekick\u2019s own WiFi does not provide. ' +
-    'Put the sidekick on your home WiFi (open / and pick your network), join that ' +
-    'WiFi on your phone, then open http://micro-ft8.local/update (no .html).');
+  setMsg('Open this page as /update (no .html) so it knows where to download the app from.');
 }
 if (noHost) showNoHost();
 
 function setMsg(t) { m.textContent = t; }
+
+// fetch() has no timeout: on a network that is up but routes nowhere (a phone
+// that keeps to a WiFi with no internet) the request just hangs, and the page
+// sits on "Fetching ..." forever. Abort it so the catch below can explain.
+function fetchTimeout(url, ms) {
+  var ctl = new AbortController();
+  var t = setTimeout(function () { ctl.abort(); }, ms);
+  return fetch(url, { signal: ctl.signal }).finally(function () { clearTimeout(t); });
+}
 
 function joinUrl(base, rel) {
   if (base.slice(-1) === '/') base = base.slice(0, -1);
@@ -63,7 +69,7 @@ async function install() {
   try {
     var manUrl = joinUrl(host, 'manifest.json');
     setMsg('Fetching ' + manUrl);
-    var mr = await fetch(manUrl);
+    var mr = await fetchTimeout(manUrl, 15000);
     if (!mr.ok) throw new Error('manifest HTTP ' + mr.status);
     var manifestText = await mr.text();
     var manifest = JSON.parse(manifestText);
@@ -87,7 +93,7 @@ async function install() {
       var a = manifest.assets[i];
       var assetUrl = new URL(a.path, manUrl).href;
       setMsg('Fetching ' + a.path + ' (' + (i + 1) + '/' + manifest.assets.length + ')');
-      var ar = await fetch(assetUrl);
+      var ar = await fetchTimeout(assetUrl, 60000);
       if (!ar.ok) throw new Error(a.path + ' HTTP ' + ar.status);
       var buf = await ar.arrayBuffer();
       if (buf.byteLength !== a.size) {
@@ -127,10 +133,12 @@ async function install() {
     // fetch() rejects with a bare TypeError ("Load failed" / "Failed to fetch")
     // when the host cannot be reached, which tells a first-time operator
     // nothing. The usual cause is a phone with no internet.
-    var offline = e instanceof TypeError;
+    var offline = e instanceof TypeError || (e && e.name === 'AbortError');
     setMsg(offline
-      ? 'Could not reach ' + host + '. This phone needs internet to download the app: ' +
-        'join your home WiFi (the same one the sidekick is on), then try again.'
+      ? 'Could not reach ' + host + '. This phone needs internet to download the app. ' +
+        'On the sidekick\u2019s own network, check mobile data is on; if the phone has not switched to it, ' +
+        'disconnect from this WiFi and join it again; ' +
+        'or join your home WiFi (the same one the sidekick is on) and try again.'
       : String(e && e.message ? e.message : e));
     go.disabled = false;
   }
