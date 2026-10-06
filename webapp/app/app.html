@@ -1802,27 +1802,20 @@ document.getElementById('netRehydrate').onclick = async function () {
   }
 };
 
-// Factory reset: in-page two-tap arm, as above (a native confirm() is often
-// dismissed silently on phones). Unlike Restore it removes the installed app,
-// the saved WiFi and the pairing, so the second tap says exactly that. The
-// sidekick answers first and then restarts, so a failed fetch right after the
-// 200 is the reset happening, not an error.
-var netFactoryArmed = false;
+// Factory reset: one native confirm(), as Forget, AP mode and the retune
+// prompt use. Unlike Restore it removes the installed app, the saved WiFi and
+// the pairing, so the prompt says exactly that. The sidekick answers first and
+// then restarts, so a failed fetch right after the 200 is the reset happening,
+// not an error.
 document.getElementById('netFactory').onclick = async function () {
   var msg = document.getElementById('netMsg');
   if (!MicroFT8Pairing.getToken()) {
-    netFactoryArmed = false;
     msg.textContent = 'Press the sidekick button to pair first.';
     MicroFT8Pairing.needsReauth();
     return;
   }
-  if (!netFactoryArmed) {
-    netFactoryArmed = true;
-    msg.textContent = 'Tap Factory reset again to erase the app, the saved WiFi and the pairing from the sidekick. ' +
-      'Station settings on the main board are kept.';
-    return;
-  }
-  netFactoryArmed = false;
+  if (!confirm('Factory reset the sidekick? This erases the app, the saved WiFi and the pairing. ' +
+               'Station settings on the main board are kept.')) return;
   msg.textContent = 'Resetting…';
   try {
     var r = await MicroFT8Pairing.authFetch('/factory-reset', { method: 'POST' });
