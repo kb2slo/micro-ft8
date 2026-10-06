@@ -16,6 +16,9 @@ Usage:
   python3 webapp/tools/desk_push.py --token HEX…   # skip cache + button
   python3 webapp/tools/desk_push.py --forget-token # clear cache, re-pair
   python3 webapp/tools/desk_push.py --no-build     # push webapp/dist/app as it is
+  python3 webapp/tools/desk_push.py --usb [--port /dev/cu.usbmodemXXX]
+      # no network: write the build to the sidekick's web partition over USB-C
+      # (usb_push.py; replaces the whole web filesystem, keeps WiFi and pairing)
 """
 
 from __future__ import annotations
@@ -125,7 +128,19 @@ def main() -> int:
     ap.add_argument("--wait", type=float, default=WAIT_S, help=f"seconds to wait for the button (default {int(WAIT_S)})")
     ap.add_argument("--no-build", action="store_true", help="push webapp/dist/app as it is, without rebuilding")
     ap.add_argument("--forget-token", action="store_true", help="clear the cached token before running (forces the button)")
+    ap.add_argument("--usb", action="store_true", help="write the build over USB-C instead of the network (see usb_push.py)")
+    ap.add_argument("--port", default="", help="serial port for --usb (default: esptool auto-detects)")
     args = ap.parse_args()
+
+    if args.usb:
+        import usb_push
+
+        if not args.no_build:
+            build_bundle()
+        elif not MANIFEST.is_file():
+            die(f"missing {MANIFEST}; run without --no-build")
+        usb_push.push(args.port)
+        return 0
 
     if args.forget_token:
         clear_token()
