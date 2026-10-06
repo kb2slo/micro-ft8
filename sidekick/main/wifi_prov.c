@@ -426,12 +426,26 @@ static void scan_keepfresh_task(void *arg)
     }
 }
 
-// Answers before the reset, as post_forget() does: the format takes the page
-// that asked for it, and the restart takes the network it arrived on. Open
-// to both modes -- an AP-only unit with the app installed is the usual case
-// for wanting it -- and pairing-guarded in both.
+// Resets the main board first and wipes this device only if the board did, so a refusal (no
+// link, transmitting) leaves both units as they were. `?logs=1` also deletes the board's QSO
+// logs. Then it answers before the reset, as post_forget() does: the format takes the page that
+// asked for it, and the restart takes the network it arrived on. Open to both modes -- an
+// AP-only unit with the app installed is the usual case for wanting it -- and pairing-guarded
+// in both.
 static esp_err_t post_factory_reset(httpd_req_t *req)
 {
+    char query[32];
+    char logs_val[4] = {0};
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        httpd_query_key_value(query, "logs", logs_val, sizeof(logs_val));
+    }
+    char why[48];
+    if (!host_link_factory_reset(logs_val[0] == '1', why, sizeof(why))) {
+        char out[96];
+        snprintf(out, sizeof(out), "{\"ok\":false,\"why\":\"main board: %s\"}", why);
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, out);
+    }
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"ok\":true}");
     vTaskDelay(pdMS_TO_TICKS(500));

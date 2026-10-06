@@ -76,7 +76,10 @@ extern "C" {
 // does not run the test. Both ends are flashed together.
 // v6 (2026-10-01): the link-test start frame carries the byte quota. A v5 peer
 // ignores that start and does not run the test. Both ends are flashed together.
-#define PORTA_PROTO_VERSION 6u
+// v7 (2026-10-06): the FACTORY_RESET action (the sidekick's factory reset also resets the main
+// board). A v6 host would NAK it as "unknown action", so a v7 sidekick refuses the reset rather
+// than half doing it; both ends are flashed together as before.
+#define PORTA_PROTO_VERSION 7u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -423,7 +426,12 @@ typedef enum {
     PORTA_ACT_QUEUE_REPLY  = 0x08,  // payload: u32 decode_id
     PORTA_ACT_FILE_DELETE  = 0x09,  // payload: filename (empty = clear all daily logs)
     PORTA_ACT_SWEEP_START  = 0x0A,  // payload: u8 count, then count x (lo, hi, step) kHz, each u16 LE
+    PORTA_ACT_FACTORY_RESET = 0x0B, // payload: u8 flags (PORTA_FACTORY_RESET_LOGS)
 } porta_action_verb_t;
+
+// FACTORY_RESET flags. Station settings are always reset; the QSO logs only when asked,
+// because they cannot be recreated.
+#define PORTA_FACTORY_RESET_LOGS 0x01u
 
 // The browser is the clock source in a headless build: it is the only device
 // present that reliably knows the time, and unlike NTP it knows it without
@@ -461,6 +469,13 @@ bool porta_proto_parse_queue_cancel(const porta_frame_t *f, uint16_t *entry_id_o
 // rather than re-sending its text.
 size_t porta_proto_encode_queue_reply(uint32_t decode_id, uint8_t *out, size_t out_cap);
 bool porta_proto_parse_queue_reply(const porta_frame_t *f, uint32_t *decode_id_out);
+
+// Factory reset: verb + u8 flags (PORTA_FACTORY_RESET_*). The host resets its Station settings
+// to their defaults without restarting (a P4 reset can leave the QMX unenumerated, row qdcm), and
+// deletes the daily QSO logs too when the LOGS flag is set. ACK once done, NAK with a reason when
+// it refused (transmitting) or failed.
+size_t porta_proto_encode_factory_reset(uint8_t flags, uint8_t *out, size_t out_cap);
+bool porta_proto_parse_factory_reset(const porta_frame_t *f, uint8_t *flags_out);
 
 // File delete: verb + basename (0..PORTA_FILENAME_MAX). Empty = clear all
 // daily QSO logs (FILE_LIST set / phone "Clear all ADI files"). Active-day

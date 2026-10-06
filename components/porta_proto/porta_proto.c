@@ -582,6 +582,24 @@ bool porta_proto_parse_tune(const porta_frame_t *f, bool *on_out)
     return true;
 }
 
+size_t porta_proto_encode_factory_reset(uint8_t flags, uint8_t *out, size_t out_cap)
+{
+    uint8_t payload[2] = {PORTA_ACT_FACTORY_RESET, flags};
+    return porta_proto_encode(PORTA_MSG_ACTION, payload, 2, out, out_cap);
+}
+
+bool porta_proto_parse_factory_reset(const porta_frame_t *f, uint8_t *flags_out)
+{
+    if (!f || f->type != PORTA_MSG_ACTION || f->len != 2 ||
+        f->payload[0] != PORTA_ACT_FACTORY_RESET) {
+        return false;
+    }
+    if (flags_out) {
+        *flags_out = f->payload[1];
+    }
+    return true;
+}
+
 size_t porta_proto_encode_beacon(uint8_t mode, uint8_t *out, size_t out_cap)
 {
     uint8_t payload[2] = {PORTA_ACT_BEACON, mode};

@@ -50,3 +50,7 @@ bool storage_stream_sync(StorageStream* stream);
 void storage_stream_close(StorageStream* stream);
 
 bool storage_service_flush_all();
+
+// Size of the storage partition and how much of it is in use, in bytes. False when firmware
+// does not own storage right now (USB mass storage has it) or the filesystem will not say.
+bool storage_service_info(size_t* total_out, size_t* used_out);

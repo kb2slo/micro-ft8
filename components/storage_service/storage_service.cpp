@@ -323,6 +323,20 @@ bool storage_service_firmware_available() {
     return guard.held() && firmware_owns_storage_locked();
 }
 
+bool storage_service_info(size_t* total_out, size_t* used_out) {
+    StorageGuard guard;
+    if (!guard.held() || !firmware_owns_storage_locked()) {
+        return false;
+    }
+    size_t total = 0, used = 0;
+    if (esp_littlefs_info(kPartitionLabel, &total, &used) != ESP_OK) {
+        return false;
+    }
+    if (total_out) *total_out = total;
+    if (used_out) *used_out = used;
+    return true;
+}
+
 size_t storage_service_open_stream_count() {
     StorageGuard guard;
     return guard.held() ? s_open_streams : 0;

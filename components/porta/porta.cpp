@@ -46,6 +46,9 @@ const char* porta_host_queue_reply(uint32_t decode_id);
 const char* porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take);
 const char* porta_host_file_read_begin(const char* filename, uint16_t skip, uint8_t take);
 const char* porta_host_file_delete(const char* filename);
+// Reset the main board's Station settings (and, with PORTA_FACTORY_RESET_LOGS, delete the QSO
+// logs). nullptr on success, else why not; nothing is restarted.
+const char* porta_host_factory_reset(uint8_t flags);
 // SWR sweep (docs/architecture/radio.md, The SWR sweep): nullptr = accepted, progress follows as porta_emit_sweep() events; a
 // non-null return is the refusal's reason and nothing was started.
 const char* porta_host_sweep_start(const porta_sweep_range_t* ranges, size_t count);
@@ -533,6 +536,7 @@ void handle_action(const porta_frame_t& f) {
     case PORTA_ACT_BEACON:
     case PORTA_ACT_QUEUE_REPLY:
     case PORTA_ACT_SWEEP_START:
+    case PORTA_ACT_FACTORY_RESET:
       enqueue(buf, porta_proto_encode_nak(verb, "link test", buf, sizeof(buf)));
       return;
     default:
@@ -641,6 +645,20 @@ void handle_action(const porta_frame_t& f) {
       return;
     }
     const char* why = porta_host_file_delete(filename);
+    if (why) {
+      enqueue(buf, porta_proto_encode_nak(verb, why, buf, sizeof(buf)));
+    } else {
+      enqueue(buf, porta_proto_encode_ack(verb, buf, sizeof(buf)));
+    }
+    return;
+  }
+  case PORTA_ACT_FACTORY_RESET: {
+    uint8_t flags = 0;
+    if (!porta_proto_parse_factory_reset(&f, &flags)) {
+      enqueue(buf, porta_proto_encode_nak(verb, "malformed", buf, sizeof(buf)));
+      return;
+    }
+    const char* why = porta_host_factory_reset(flags);
     if (why) {
       enqueue(buf, porta_proto_encode_nak(verb, why, buf, sizeof(buf)));
     } else {

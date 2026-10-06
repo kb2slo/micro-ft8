@@ -437,13 +437,23 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
             ? (int)(s_station.band_freq[idx] + 0.5f)
             : 0;
 
-    char live[192];
+    char live[256];
     snprintf(live, sizeof(live),
              "streaming=%d\ncat_ready=%d\ntune=%d\nband_name=%s\nfreq_khz=%d\n"
              "audio_rx=%d\nclock_set=%d\n",
              qmx_audio_ready() ? 1 : 0, radio_control_ready() ? 1 : 0, s_tune ? 1 : 0, band_name,
              freq_khz, qmx_audio_ready() ? 1 : 0, rtc_valid ? 1 : 0);
     text += live;
+
+    // GET-only like the other live lines. Absent while firmware does not own storage, which the
+    // app shows as unknown rather than as zero.
+    size_t st_total = 0, st_used = 0;
+    if (storage_service_info(&st_total, &st_used)) {
+        char sbuf[64];
+        snprintf(sbuf, sizeof(sbuf), "storage_total_kb=%u\nstorage_used_kb=%u\n",
+                 (unsigned)(st_total / 1024), (unsigned)((st_used + 1023) / 1024));
+        text += sbuf;
+    }
 
     if (text.size() + 1 > out_cap) {
         return 0;
@@ -687,6 +697,36 @@ bool p4_reject_active_log_mutation(const char *basename) {
 
 const char *porta_host_file_delete(const char *filename) {
     return adif_delete_daily(filename, p4_reject_active_log_mutation);
+}
+
+// The host half of the sidekick's factory reset. No restart: a P4 reset can leave the QMX
+// unenumerated until it is replugged (row qdcm), and everything a reset has to change is the
+// Station settings, which are reseeded in place. The radio is left where it is; the next band or
+// frequency write moves it. Refuses before changing anything it can: transmitting, or no storage.
+const char *porta_host_factory_reset(uint8_t flags) {
+    if (decode_tx_state_get_tx_active()) {
+        return "transmitting";
+    }
+    if (!storage_service_firmware_available()) {
+        return "storage unavailable";
+    }
+    if (flags & PORTA_FACTORY_RESET_LOGS) {
+        // An empty name is "every daily log", which the lock callback never refuses.
+        if (const char *why = adif_delete_daily("", p4_reject_active_log_mutation)) {
+            return why;
+        }
+    }
+    if (storage_file_exists("Station.txt") && !storage_file_remove("Station.txt")) {
+        return "settings delete failed";
+    }
+    // Nothing queued under the old callsign or frequency should go out.
+    porta_host_beacon(0);
+    porta_host_tx_cancel();
+    autoseq_clear();
+    station_seed_adv_defaults();
+    ESP_LOGW(TAG, "factory reset: Station settings back to defaults%s",
+             (flags & PORTA_FACTORY_RESET_LOGS) ? ", QSO logs deleted" : "");
+    return nullptr;
 }
 
 namespace {

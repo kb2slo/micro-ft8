@@ -24,3 +24,8 @@ void host_link_start(void);
 
 // Adds the viewer and its polling endpoint to an already-started server.
 void host_link_register_uris(httpd_handle_t server);
+
+// Asks the main board to reset its Station settings (and, when `logs`, delete its QSO logs).
+// Blocks for the answer. true = the host did it; false = it did not, with the reason in `why`
+// ("host link busy", "no reply from host", or the host's own refusal such as "transmitting").
+bool host_link_factory_reset(bool logs, char *why, size_t why_len);

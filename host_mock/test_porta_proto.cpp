@@ -666,6 +666,37 @@ static void test_action_connect_and_tune()
     }
 }
 
+static void test_action_factory_reset()
+{
+    porta_decoder_t d;
+    porta_decoder_init(&d);
+    uint8_t buf[PORTA_PROTO_MAX_FRAME];
+
+    size_t n = porta_proto_encode_factory_reset(PORTA_FACTORY_RESET_LOGS, buf, sizeof(buf));
+    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1 && got[0].len == 2, "factory reset is verb + flags");
+    if (got.size() == 1) {
+        uint8_t flags = 0;
+        check(porta_proto_parse_factory_reset(&got[0], &flags), "factory reset parses");
+        check(flags == PORTA_FACTORY_RESET_LOGS, "factory reset carries the logs flag");
+        check(!porta_proto_parse_tune(&got[0], nullptr), "factory reset is not tune");
+    }
+
+    porta_decoder_init(&d);
+    n = porta_proto_encode_factory_reset(0, buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    uint8_t flags = 0xFF;
+    check(got.size() == 1 && porta_proto_parse_factory_reset(&got[0], &flags) && flags == 0,
+          "factory reset without logs has no flags");
+
+    // Verb-only (a malformed sender) and another verb do not parse.
+    porta_decoder_init(&d);
+    n = porta_proto_encode_connect(buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1 && !porta_proto_parse_factory_reset(&got[0], &flags),
+          "connect is not factory reset");
+}
+
 static void test_action_beacon()
 {
     porta_decoder_t d;
@@ -1541,6 +1572,7 @@ int main()
     test_action_set_clock();
     test_action_tx_cancel();
     test_action_connect_and_tune();
+    test_action_factory_reset();
     test_action_beacon();
     test_action_queue_cancel_and_reply();
     test_action_file_delete();

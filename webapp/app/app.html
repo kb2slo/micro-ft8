@@ -311,6 +311,8 @@ body:not(.on-operate) #opDock{display:none}
    .dlink's own color/weight rather than adding a second visual language
    for one control. */
 button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:pointer}
+#logFree{padding:.35rem 1rem;font-size:.8rem;color:GrayText}
+#logFree.low{color:#b91c1c}
 #logToolbar{display:flex;justify-content:space-between;align-items:center;padding:.6rem 1rem;font-size:.85rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
 .dlink-danger{color:var(--danger)}
 .frow{padding:.5rem 1rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
@@ -483,6 +485,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       <a id=logDownloadAll class=dlink href=#>Download full ADI</a>
       <a id=logClearAll class="dlink dlink-danger" href=#>Clear all ADI files</a>
     </div>
+    <div id=logFree hidden></div>
     <div id=logList></div>
     <div id=logMore hidden><button id=logMoreBtn type=button>Load older QSOs</button></div>
   </section>
@@ -1632,7 +1635,22 @@ function updateNetInfo(cfg) {
 // too. One gap this doesn't close: if the device also changed active_bands
 // so the new band isn't among the buttons already built, the highlight
 // silently fails to apply until the next full setForm().
+// Space left on the main board's log storage, from the live storage_*_kb lines. Hidden while the
+// main board has not said (not answering, or USB mass storage has the filesystem). Turns red
+// under 10% free, when the daily logs are close to filling it.
+function updateLogFree(cfg) {
+  var el = document.getElementById('logFree');
+  var total = parseInt(cfg.storage_total_kb, 10), used = parseInt(cfg.storage_used_kb, 10);
+  if (!(total > 0) || !(used >= 0)) { el.hidden = true; return; }
+  var free = Math.max(0, total - used);
+  var mb = function (kb) { return kb >= 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb + ' KB'; };
+  el.textContent = mb(free) + ' free of ' + mb(total);
+  el.classList.toggle('low', free * 10 < total);
+  el.hidden = false;
+}
+
 function applyOperateLive(cfg) {
+  updateLogFree(cfg);
   syncDockBandGrid(cfg);
   renderDockLine(cfg);
   // "bad" (not just "unknown") only once we've had at least one real answer
@@ -1802,11 +1820,12 @@ document.getElementById('netRehydrate').onclick = async function () {
   }
 };
 
-// Factory reset: one native confirm(), as Forget, AP mode and the retune
-// prompt use. Unlike Restore it removes the installed app, the saved WiFi and
-// the pairing, so the prompt says exactly that. The sidekick answers first and
-// then restarts, so a failed fetch right after the 200 is the reset happening,
-// not an error.
+// Factory reset: native confirm()s, as Forget, AP mode and the retune prompt use. It resets the
+// main board's settings and this sidekick's app, saved WiFi and pairing; the QSO logs on the main
+// board go only when the second prompt says so, since they cannot be recreated. The sidekick
+// asks the main board first and answers {ok:false, why} if it refuses (not linked, transmitting),
+// leaving both units as they were. On success it answers and then restarts, so a failed fetch
+// right after the 200 is the reset happening, not an error.
 document.getElementById('netFactory').onclick = async function () {
   var msg = document.getElementById('netMsg');
   if (!MicroFT8Pairing.getToken()) {
@@ -1814,11 +1833,13 @@ document.getElementById('netFactory').onclick = async function () {
     MicroFT8Pairing.needsReauth();
     return;
   }
-  if (!confirm('Factory reset the sidekick? This erases the app, the saved WiFi and the pairing. ' +
-               'Station settings on the main board are kept.')) return;
+  if (!confirm('Factory reset? This erases the app, the saved WiFi and the pairing from the sidekick, ' +
+               'and resets the main board\u2019s station settings (callsign, grid, bands) to defaults.')) return;
+  var logs = confirm('Also delete all QSO logs on the main board? OK deletes them for good; ' +
+                     'Cancel keeps them.');
   msg.textContent = 'Resetting…';
   try {
-    var r = await MicroFT8Pairing.authFetch('/factory-reset', { method: 'POST' });
+    var r = await MicroFT8Pairing.authFetch('/factory-reset' + (logs ? '?logs=1' : ''), { method: 'POST' });
     if (r.status == 401) {
       MicroFT8Pairing.needsReauth();
       msg.textContent = 'Press the sidekick button to pair';
@@ -1826,6 +1847,12 @@ document.getElementById('netFactory').onclick = async function () {
     }
     if (!r.ok) {
       msg.textContent = 'Reset failed: ' + (await r.text());
+      return;
+    }
+    var j = null;
+    try { j = await r.json(); } catch (e) { /* the reset can cut the body short */ }
+    if (j && j.ok === false) {
+      msg.textContent = 'Nothing was reset (' + (j.why || 'refused') + ').';
       return;
     }
     msg.textContent = 'Reset. The sidekick is restarting as a new unit: join its micro-ft8.local-… network and open http://192.168.4.1/ to set it up again.';

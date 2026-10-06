@@ -1184,6 +1184,41 @@ static esp_err_t delete_log_files(httpd_req_t *req)
     return wait_action_reply(req, PORTA_ACT_FILE_DELETE);
 }
 
+// Asks the main board to reset its own settings (and, with `logs`, delete its QSO logs) as the
+// first half of a sidekick factory reset (wifi_prov.c). Waits for the host's ACK/NAK itself
+// rather than answering a request, because the caller wipes this device only if the host did.
+// Longer than a plain action's wait: deleting many daily logs is a run of file removals.
+bool host_link_factory_reset(bool logs, char *why, size_t why_len)
+{
+    const char *fail = NULL;
+    uint8_t frame[PORTA_PROTO_MAX_FRAME];
+    const size_t n = porta_proto_encode_factory_reset(logs ? PORTA_FACTORY_RESET_LOGS : 0,
+                                                      frame, sizeof(frame));
+    reply_reset();
+    if (n == 0 || !porta_send(frame, n)) {
+        fail = "host link busy";
+    } else {
+        struct reply_view got = {0};
+        for (int i = 0; i < 160 && !got.ready; ++i) {
+            reply_read(PORTA_ACT_FACTORY_RESET, &got);
+            if (!got.ready) {
+                vTaskDelay(pdMS_TO_TICKS(25));
+            }
+        }
+        if (!got.ready) {
+            fail = "no reply from host";
+        } else if (!got.ok) {
+            snprintf(why, why_len, "%s", got.reason[0] ? got.reason : "host refused");
+            return false;
+        }
+    }
+    if (fail) {
+        snprintf(why, why_len, "%s", fail);
+        return false;
+    }
+    return true;
+}
+
 // GET /api/config — Station.txt surface as JSON, plus the sidekick's own
 // facts on every reply (send_config_reply()). Open read: call/grid are on
 // the air; WiFi secrets are not in this object.
