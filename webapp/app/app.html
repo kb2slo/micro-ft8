@@ -161,6 +161,7 @@ button:disabled{opacity:.45}
 #resetWaitText{font-size:.9rem;margin:0;line-height:1.45}
 #resetWaitSpin{width:28px;height:28px;margin:0 auto;border:3px solid color-mix(in srgb, GrayText 30%, transparent);border-top-color:var(--accent);border-radius:50%;animation:resetspin 1s linear infinite}
 #resetWait.done #resetWaitSpin{display:none}
+#resetWaitOk{margin-top:1rem;width:100%}
 @keyframes resetspin{to{transform:rotate(360deg)}}
 
 /* ---- tab bar ---- */
@@ -817,6 +818,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <div id=resetWaitSpin></div>
     <h2 id=resetWaitTitle>Resetting the sidekick</h2>
     <p id=resetWaitText></p>
+    <button id=resetWaitOk type=button hidden>OK</button>
   </div>
 </div>
 
@@ -1855,22 +1857,23 @@ document.getElementById('netFactory').onclick = async function () {
                'and resets the main board\u2019s station settings (callsign, grid, bands) to defaults.')) return;
   var logs = confirm('Also delete all QSO logs on the main board? OK deletes them for good; ' +
                      'Cancel keeps them.');
-  msg.textContent = 'Resetting…';
+  openResetWait('Resetting the main board and the sidekick\u2026');
   try {
     var r = await MicroFT8Pairing.authFetch('/factory-reset' + (logs ? '?logs=1' : ''), { method: 'POST' });
     if (r.status == 401) {
+      document.getElementById('resetWait').hidden = true;
       MicroFT8Pairing.needsReauth();
       msg.textContent = 'Press the sidekick button to pair';
       return;
     }
     if (!r.ok) {
-      msg.textContent = 'Reset failed: ' + (await r.text());
+      showResetError('The sidekick answered: ' + (await r.text()));
       return;
     }
     var j = null;
     try { j = await r.json(); } catch (e) { /* the reset can cut the body short */ }
     if (j && j.ok === false) {
-      msg.textContent = 'Nothing was reset (' + (j.why || 'refused') + ').';
+      showResetError('Nothing was reset. ' + (j.why || 'The sidekick refused.'));
       return;
     }
     waitForSetupPage();
@@ -1884,6 +1887,31 @@ document.getElementById('netFactory').onclick = async function () {
 // has to join the sidekick's network first. Either way, poll that address and go there as soon
 // as it answers, rather than leave the operator on a dead page. no-cors: only "something
 // answered" matters, and the setup page is a different origin from this one.
+// The request itself can take a few seconds (the sidekick asks the main board first), so the
+// blocker goes up before it is sent, not after it succeeds.
+function openResetWait(text) {
+  var box = document.getElementById('resetWait');
+  box.classList.remove('done');
+  document.getElementById('resetWaitOk').hidden = true;
+  document.getElementById('resetWaitTitle').textContent = 'Resetting the sidekick';
+  document.getElementById('resetWaitText').textContent = text;
+  box.hidden = false;
+}
+
+// The same card as the wait, with the reason and an OK that must be pressed: the operator has to
+// see that nothing was reset before anything behind it can be used again.
+function showResetError(why) {
+  var box = document.getElementById('resetWait');
+  var ok = document.getElementById('resetWaitOk');
+  box.classList.add('done');
+  document.getElementById('resetWaitTitle').textContent = 'Factory reset did not happen';
+  document.getElementById('resetWaitText').textContent = why;
+  ok.hidden = false;
+  ok.onclick = function () { box.hidden = true; ok.hidden = true; };
+  box.hidden = false;
+  ok.focus();
+}
+
 function waitForSetupPage() {
   var box = document.getElementById('resetWait');
   var text = document.getElementById('resetWaitText');
@@ -1892,6 +1920,7 @@ function waitForSetupPage() {
   var startedAt = Date.now();
   var GIVE_UP_MS = 90000;
   document.getElementById('netMsg').textContent = '';
+  document.getElementById('resetWaitOk').hidden = true;
   box.classList.remove('done');
   title.textContent = 'Resetting the sidekick';
   box.hidden = false;
