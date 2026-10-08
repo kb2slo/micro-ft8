@@ -8,3 +8,6 @@ wrangler.jsonc
 worker.js
 .assetsignore
 .wrangler
+# Build scripts and their tests run before the deploy; no page loads them.
+tools
+tests
