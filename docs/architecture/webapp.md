@@ -114,6 +114,41 @@ What the operator consults *instead of* looking at the radio. **The test for a T
 * **POTA and SOTA** (`map.html`): `api.pota.app` activator spots and `api-db2.sota.org.uk/api/spots/{n}/all/all`, both CORS-open. SOTA's API terms restrict AI-authored clients without prior approval; the operator chose to build against it anyway (2026-09-21).
 * **Not in Tools:** self-spotting to POTA/SOTA — an authenticated outward write is a different risk class from a read-only card.
 
+### Who hears me
+
+Stations that reported hearing our call, from PSKReporter's live MQTT feed. Online-required. **The map is the main view** (operator, 2026-10-08): a PSKReporter layer on `map.html` (**The map**, below). Tools has a card with a status, a count, **Open list** and **Show on map** (`map.html?layer=psk`, which opens with the layer on). The design, and the history query still to come for gaps, is [RFC 0013](../rfcs/0013-pskreporter.md).
+
+* **Three files.**
+  - `pskr_core.js` holds the logic: packets, spots, gaps. Host-tested by `webapp/tests/test_pskr_core.js`.
+  - `pskr_live.js` is the listener `app.html` and `map.html` share: the socket, reconnects and the stored copy. Tested with a fake socket and clock by `webapp/tests/test_pskr_live.js`.
+  - Each page names the call, says when it wants to listen, and draws.
+* **The browser subscribes to our own call only:** `wss://mqtt.pskreporter.info:1886`, topic `pskr/filter/v2/+/+/<CALL>/#`, never the whole feed (operator, 2026-10-07). WebSockets are not subject to CORS, so no Worker route is involved.
+  - The feed writes a `/` in a call as `.` (`F5OYA/P` is `F5OYA.P`, seen 2026-10-08).
+  - A spot whose sender is not our call is dropped even when the topic matched.
+* **A hand-written MQTT 3.1.1 client.** It connects, subscribes at QoS 0, receives, and pings every 30 s.
+  - The broker drops a client that is silent for about 90 s (keepalive 60).
+  - A socket that has heard nothing for 75 s is treated as gone. That is how a phone that locked notices on waking.
+  - A refused or dropped connection backs off from 15 s to 5 minutes.
+* **When it listens:**
+  - For 15 minutes after any transmission `app.html` saw (a TX HUD event on the air), on whichever page is open.
+  - While Tools or the list is on screen, or while the map's layer is on.
+  - Why 15 minutes: a transmission's spots reached the feed up to 561 s after it (median 92 s; 2026-10-07, 20 m FT8). The map sees no TX events, so a transmission made while only the map is open is not recorded.
+* **The feed keeps no history.** It publishes at QoS 0, so even a persistent session holds nothing for a client that is away (measured 2026-10-07). A spot that arrives while no page is listening is lost.
+* **One stored copy, both pages.** `localStorage` key `microft8_pskr_v1` holds one call's newest 5,000 spots for 24 hours, plus the listening and transmitting ranges.
+  - A page loads it on start and saves it every couple of seconds while listening, and on leaving.
+  - Two tabs open at once each take the other's new spots when it saves (the `storage` event).
+  - A different call in Settings starts fresh. A per-phone convenience, never the record.
+* **Gaps are shown, not hidden.** Where a spot of ours could have arrived (a transmission through 15 minutes after it) and no page was subscribed for a minute or more, an italic **Not listening 14:10–14:25z** row sits in the list. A quiet stretch never reads as nobody hearing us.
+* **The summary** (the Tools card and the list) covers the last hour: how many distinct stations, the bands they heard us on, and the farthest of them with its distance. The farthest call is tappable.
+* **The list** is a full-screen sub-page over Tools (`#pskrList`, the same overlay mechanics as Settings). Its rows are built only while it is open.
+  - **One row per receiver and band:** its newest report (SNR, age) and how many it sent (×3). One row per report would let a single far station fill the top of a distance sort.
+  - **Filter by band** (chips for the bands in the stored spots, and All).
+  - **Sort by Time** (newest first), **Distance** (farthest first) or **dB** (loudest first). A row with no grid or no SNR sorts last. The field sorted by is shown in bold.
+  - **Not listening** rows show only in the Time sort, since they are about time.
+  - Up to 200 rows. The band and sort are kept on the phone (`microft8_pskr_list_v1`).
+* **Tapping a receiver,** in the list or on the map, opens its call card, after adding the receiver's grid from the spot to the shared callsign-grid cache (`learnGrid()`, `callinfo.js`).
+* **Every call card shows what PSKReporter has of that station hearing us** (`callinfo.js`, `opts.heardUs`, from `PskrCore.heardBy()`): a **PSKReporter: heard you** section, a line per band with its newest SNR, age and report count. It appears only when there are such reports, on any card: a decode, a QSO, a map pin. A station with no cached grid gets the locator from its report.
+
 ## The SWR sweep
 
 `swr.html`, reached from Tools ([radio.md](radio.md), **The SWR sweep on the main board**): tune an antenna in the field. The bands ticked are swept by the main board through the QMX, one short carrier per point; the page plots what comes back. The CAT sequence and what the radio refuses: [radio.md](radio.md) (**QMX SWR Tune over CAT**); the wire: [sidekick.md](sidekick.md) (**Port A**, v4).
@@ -131,6 +166,8 @@ What the operator consults *instead of* looking at the radio. **The test for a T
 ## The map
 
 `map.html`, reached from Tools: a full-screen map with independent layers (QSOs, decodes, POTA/SOTA spots) over a bundled basemap. **Only QSOs is on when the map opens**; every other layer starts off, and a layer that starts off fetches nothing until it is tapped on (operator decision 2026-10-08).
+
+* **The PSKReporter layer** (**Who hears me**, above) puts one pink diamond on each receiver's newest spot within the "Over the last" window, with a path from our grid. While the layer is on, the page listens too. The note counts the stations and says when PSKReporter is unreachable.
 
 * **A vector basemap, not tiles.** Natural Earth 110m files (land, countries, lakes, US states, places; public domain) are bundled in `webapp/app/` and served by the sidekick, so the map works offline. Tiles cannot be cached on this origin, so a tile map would be blank exactly where the radio must work; and what the map shows (grid squares, station pins, great-circle paths) gains nothing from roads or imagery. Coordinates are rounded to 2 decimal places (~1 km), and each file stays under the 512 KB per-file limit.
 * **Hand-rolled canvas, no framework.** Equirectangular projection with **one scale for both axes, cropping rather than distorting**: the base scale is `max(w/360, h/180)`, so the view always fills the canvas, like CSS `background-size: cover`, and never zooms out past it. Pan by drag, zoom by pinch (anchored at the midpoint) or wheel; longitude wraps at the antimeridian. Great-circle paths use spherical interpolation and split where they cross the antimeridian.

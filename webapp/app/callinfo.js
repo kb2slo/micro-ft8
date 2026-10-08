@@ -427,12 +427,21 @@ function hide() { document.getElementById('callInfoModal').hidden = true; }
 //   myGrid            operator's own grid (string)
 //   qsoHistory(call)  -> [{when, band, freq, rstSent, rstRcvd}] | null
 //   heardThisSession(call) -> [{when, band, snr, text}] | null
+//   heardUs(call)     -> [{band, snr, t, count, grid}]: PSKReporter reports of this station hearing us
+//                        (PskrCore.heardBy(), docs/architecture/webapp.md, Who hears me); the section shows only
+//                        when there are some
 async function show(call, opts) {
   if (!call) return;
   call = call.toUpperCase();
   opts = opts || {};
 
+  var heardUs = typeof opts.heardUs === 'function' ? (opts.heardUs(call) || []) : [];
   var grid = cachedGrid(call);
+  // A station that reported hearing us sent its own locator with the report: a reliable pairing for the cache.
+  if (!grid) {
+    var reported = heardUs.filter(function (h) { return h.grid; })[0];
+    if (reported) { learnGrid(call, reported.grid); grid = cachedGrid(call); }
+  }
   var distBearing = (grid && opts.myGrid) ? (function () {
     var a = gridToLatLon(opts.myGrid), b = gridToLatLon(grid);
     if (!a || !b) return '';
@@ -473,6 +482,16 @@ async function show(call, opts) {
           }).join('')
         : 'No decodes from this callsign in the current decode history') +
       '</div>';
+  }
+
+  if (heardUs.length) {
+    body += '<div class=ci-row><div class=ci-label>PSKReporter: heard you</div>' +
+      heardUs.map(function (h) {
+        return '<div class=ci-heard>' + esc(h.band) +
+          (h.snr == null ? '' : ' · ' + (h.snr > 0 ? '+' : '') + h.snr + ' dB') +
+          ' · <span class=ago data-ts="' + h.t + '">' + esc(fmtAgo(h.t)) + '</span>' +
+          (h.count > 1 ? ' · ' + h.count + ' reports' : '') + '</div>';
+      }).join('') + '</div>';
   }
 
   // Country/state/place row: placeholder immediately when a grid is cached
@@ -532,14 +551,14 @@ async function show(call, opts) {
   });
 }
 
-// Keeps the POTA/SOTA spot's "X ago" counting while the card is open --
-// cheap (at most one element) and only does anything while the modal is
-// actually visible, so it costs nothing the rest of the time.
+// Keeps the card's "X ago"s counting while it is open (the POTA/SOTA spot, PSKReporter's reports) -- cheap (a few
+// elements) and only does anything while the modal is actually visible, so it costs nothing the rest of the time.
 setInterval(function () {
   var modal = document.getElementById('callInfoModal');
   if (!modal || modal.hidden) return;
-  var el = modal.querySelector('.ci-heard .ago[data-ts]');
-  if (el) el.textContent = fmtAgo(parseInt(el.getAttribute('data-ts'), 10));
+  modal.querySelectorAll('.ci-heard .ago[data-ts]').forEach(function (el) {
+    el.textContent = fmtAgo(parseInt(el.getAttribute('data-ts'), 10));
+  });
 }, 5000);
 
 // Injected at load, not lazily on first show() -- map.html's own lighter

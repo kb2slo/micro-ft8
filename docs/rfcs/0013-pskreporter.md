@@ -47,13 +47,7 @@ Facts are from the working tree at `f4618e6` and from measurements made on 2026-
   - **Required fields:** `informationSource` must be 1. `decodingSoftware` should name the program and its version.
   - **The clock check compares the message header's send time with its arrival.** More than a minute apart means the sender's clock is wrong, and every time in the message is shifted. Each report carries its own time (`flowStartSeconds`, when the call was decoded), so this check alone does not rule out sending reports late. **Whether hours-old reports are accepted is not documented** (Ask 1.3).
 
-**Measured on the MQTT feed, 2026-10-07.** A minimal MQTT 3.1.1 client on port 1883, run from a Mac, listened to 20 m FT8:
-* **The broker publishes at QoS 0 and keeps no retained messages.**
-* **A persistent session does not fill gaps.** With clean-session off, the broker kept the subscription across a 30 s disconnect but delivered nothing from it: about 1,300 matching spots were lost, and the rate on reconnect was the normal ~40 a second.
-* **The broker drops a client that is silent for about 90 s** (keepalive 60 s), so a client must ping.
-* **Lag from the transmission to arrival** (11,411 spots over 5 min): median 92 s, 90th percentile 242 s, 99th 356 s, longest 561 s.
-* **Spots per transmission** (642 transmissions): median 1, 75th percentile 3, 90th 5, 99th 15, most 77. These undercount a little, since the run stopped before the slowest spots arrived.
-* **Port 1884's certificate** is a Let's Encrypt certificate for `mqtt.pskreporter.info`.
+**Measured on the MQTT feed, 2026-10-07.** QoS 0, no retained messages, no persistent-session backfill, a ping needed inside about 90 s, and the lag from transmission to arrival are in [webapp.md](../architecture/webapp.md) (**Who hears me**), which depends on them. Also measured: **spots per transmission** on 20 m FT8 (642 transmissions) were median 1, 75th percentile 3, 90th 5, 99th 15, most 77, a slight undercount since the run stopped before the slowest arrived. **Port 1884's certificate** is a Let's Encrypt certificate for `mqtt.pskreporter.info`.
 
 **Philip Gladstone's reply (2026-09-24):** his concern is load. When many people use a service, its queries can overwhelm the query backend, which he is working to speed up. He points people at the MQTT feed, which is built to scale. The reply neither allows nor rules out the capped gap-fill in §3.2. A follow-up email, sent 2026-10-08, asks him directly (Ask 1).
 
@@ -61,16 +55,13 @@ Facts are from the working tree at `f4618e6` and from measurements made on 2026-
 
 ### 3.1 Who hears me: live feed in the browser
 
-* **The browser subscribes, and only to our own call** (§8): `pskr/filter/v2/+/+/<CALL>/#`, where `<CALL>` is the station call from Settings, over `wss://mqtt.pskreporter.info:1886`.
-* **A hand-written MQTT client, not a library.** It needs connect, subscribe, receive at QoS 0, and a ping every 60 s at most: about a hundred lines, like the 2026-10-07 test client. The packet code lives in a pure module the host tests exercise, as `swr_core.js` does for the sweep. The bundle budget is 800 KB (`BUNDLE_MAX`, `webapp/tools/build.py:45`).
-* **When it connects** is Ask 7.
-* **Spots are kept in `localStorage`** per call for 24 hours and pruned on load. This is a per-phone convenience, never the record, as with the SWR sweep's previous run.
+**Built 2026-10-08** (S1's live half): [webapp.md](../architecture/webapp.md), **Who hears me**. It listens from a transmission until 15 minutes after the last one, and while Tools is on screen, as Ask 7 recommended.
 
 ### 3.2 Gaps: one history query each
 
 **A gap is any time the app should have been listening and was not:** the page hidden, the phone locked, no network, or the socket dropped. Gaps are the normal case: spots arrive up to nine minutes after a transmission, and the app cannot keep the screen on (§2).
 
-* **The app tracks gaps.** It records when the socket was connected, so it knows each gap's start and end.
+* **The app tracks gaps, and shows them** (built with S1's live half, [webapp.md](../architecture/webapp.md), **Who hears me**). Filling them, below, is not built.
 * **It fills each gap once the gap ends.** It asks the Worker route for our call's reports covering the gap, waiting until five minutes after the last transmission inside it.
 * **It also fills on load.** When the page loads, one query covers the history window, so opening the app after an activation shows it.
 * **History and live spots merge into one list,** keyed on receiver call, band and slot.
@@ -89,9 +80,7 @@ The route stays. I37's Done-when deletes it; this reverses that.
 
 ### 3.4 The card and the layer
 
-* **The card is online-required** ([webapp.md](../architecture/webapp.md), **Tools**). It shows receiver call, grid, distance and bearing from our grid (offline arithmetic the app already has), band, SNR, and age, newest first, under a line like "Listening since 14:02 · 23 stations in the last hour".
-* **Offline, it says so:** "Offline: can't reach PSKReporter. Spots will be fetched when you're back online, up to 6 hours back." Every value carries its age.
-* **The map's PSKReporter layer** shows the same spots as pins at receiver grids, with great-circle paths from our grid.
+**Built 2026-10-08** (S1's live half and S2): [webapp.md](../architecture/webapp.md), **Who hears me** and **The map**. The map is the main view; the list is a Tools sub-page (§8).
 
 ### 3.5 After an activation, without the sidekick
 
@@ -156,7 +145,7 @@ Each slice states which verifiability category from [README.md](../README.md) ap
 1. **S1 (I37): the card, the live feed, gap-fill, and the route changes.**
    - Verification: host tests for the MQTT packet code and the gap and merge logic (category 1). Field: a CQ from the station, with the phone locked through it (category 2).
    - **Done-when:** a CQ shows its receiving stations with band, SNR and distance within minutes; a ten-minute lock is filled after unlocking; offline, the card says so.
-2. **S2: the map layer.** Category 1 for the drawing logic; the operator looks at it.
+2. **S2: the map layer.** Built 2026-10-08 with S1's live half. Category 1 for the listener (`test_pskr_live.js`); the operator looks at the drawing.
 3. **S3: `heard.html` on the release host,** if Ask 3 is yes. Graduates in the next commit, once the Pages and Worker deploy is green ([README.md](../README.md), **RFC lifecycle**).
 4. **S4 (f4kb): batches from the browser, and the Worker's TCP sender, opt-in.** No firmware.
    - Verification: a host test of the Worker's encoder against the golden message, and of the browser's batching and pacing (category 1). Field: with the option on, a session's decodes appear on pskreporter.info with our call as the receiver (category 2). The Worker half graduates once its deploy is green.
@@ -187,9 +176,12 @@ Each slice states which verifiability category from [README.md](../README.md) ap
 4. **f4kb: who sends.** Recommended: the browser through the Worker over TCP (S4), which keeps the inversion and reports what the page sees. Or add the sidekick over UDP (S5) as well: it also reports while the phone is locked, but needs firmware and a second exception to the inversion.
 5. **Keep our own recorder (§4) as the fallback** if 1.1 is no or the window proves too short?
 6. **`appcontact`:** which address?
-7. **When the browser connects.** Either whenever the page is open with a call set (simplest; an idle connection costs a ping a minute), or from the first transmission of the session (fewer connections to M0LTE's broker). Recommended: from the first transmission, or when the card or layer opens.
+7. **When the browser connects.** Either whenever the page is open with a call set (simplest; an idle connection costs a ping a minute), or from the first transmission of the session (fewer connections to M0LTE's broker). Recommended: from the first transmission, or when the card or layer opens. Built that way on 2026-10-08, pending your answer.
 
 ## 8. Decisions
 
 * **2026-10-07:** subscribe to the station's own call only, never the whole feed (operator).
 * **2026-10-07:** a persistent MQTT session is not a gap-fill: measured, §2.
+* **2026-10-08:** build S1's live half now; the gap-fill waits on Philip's answer (operator).
+* **2026-10-08:** the map is the main view of who hears us; the list moves off the Tools card to its own sub-page, built only when opened (operator).
+* **2026-10-08:** the summary names the bands heard on and the farthest station; the list filters by band and sorts by time, distance or dB; every call card shows what PSKReporter has of that station hearing us (operator).

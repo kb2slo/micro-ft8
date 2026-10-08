@@ -142,12 +142,12 @@ button:disabled{opacity:.45}
    Station sheet (webapp.md, "The Station sheet") is a second, independent
    overlay built the same way -- grouped into these same rules rather than
    duplicated, since the two never need to look different. */
-#settingsOverlay,#stationSheet{position:fixed;inset:0;z-index:12;background:Canvas;color:CanvasText;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .25s ease}
-#settingsOverlay.open,#stationSheet.open{transform:translateY(0)}
-#settingsOverlayHead,#stationSheetHead{flex:none;display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
-#settingsOverlayHead h2,#stationSheetHead h2{flex:1;font-size:1.05rem;margin:0}
-#settingsOverlayBack,#stationSheetBack{border:0;background:transparent;color:var(--accent);font-size:.95rem;padding:.3rem .2rem .3rem 0}
-#settingsOverlayBody,#stationSheetBody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+#settingsOverlay,#stationSheet,#pskrList{position:fixed;inset:0;z-index:12;background:Canvas;color:CanvasText;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .25s ease}
+#settingsOverlay.open,#stationSheet.open,#pskrList.open{transform:translateY(0)}
+#settingsOverlayHead,#stationSheetHead,#pskrListHead{flex:none;display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+#settingsOverlayHead h2,#stationSheetHead h2,#pskrListHead h2{flex:1;font-size:1.05rem;margin:0}
+#settingsOverlayBack,#stationSheetBack,#pskrListBack{border:0;background:transparent;color:var(--accent);font-size:.95rem;padding:.3rem .2rem .3rem 0}
+#settingsOverlayBody,#stationSheetBody,#pskrListBody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
 /* #m sits under the page header, which either overlay covers, so the same
    text also shows here, outside the scrolling body (setMsg()). */
 #settingsMsg,#stationSheetMsg{flex:none;margin:0;padding:.45rem 1rem;font-size:.85rem;background:color-mix(in srgb, var(--accent) 12%, transparent)}
@@ -357,6 +357,20 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 #toolsEmptyNote{padding:.5rem 1rem;font-size:.8rem;color:GrayText}
 .swrow{padding:.5rem 1rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent);display:flex;justify-content:space-between;font-size:.85rem}
 .swrow .v{font-family:ui-monospace,monospace;font-weight:700}
+.pskrow{padding:.45rem 1rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent);display:grid;grid-template-columns:1fr auto;column-gap:.75rem;font-size:.85rem}
+.pskrow .snr{font-family:ui-monospace,monospace;font-weight:700;text-align:right}
+.pskrow .sub{font-size:.7rem;color:GrayText}
+.pskrow .r{text-align:right}
+.pskrow.pskgap{font-style:italic;color:GrayText}
+.pskrsum{padding:.1rem 1rem .5rem;font-size:.75rem;color:GrayText}
+.pskrlinks{display:flex;gap:1.25rem;padding:0 1rem .6rem;font-size:.9rem}
+#pskrListBody .pskrsum{padding-top:.6rem}
+#pskrListTools{position:sticky;top:0;z-index:1;background:Canvas;padding:.35rem 1rem .5rem;display:flex;flex-direction:column;gap:.4rem;border-bottom:1px solid color-mix(in srgb, GrayText 25%, transparent)}
+.pskchips{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem}
+.pskchiplabel{width:2.6rem;font-size:.7rem;color:GrayText;text-transform:uppercase;letter-spacing:.04em}
+.pskchip{min-height:36px;padding:.25rem .75rem;font-size:.8rem;border:1px solid GrayText;border-radius:999px;background:transparent;color:GrayText}
+.pskchip.on{background:var(--accent);border-color:var(--accent);color:Canvas;font-weight:700}
+#pskrListRows[data-sort=distance] .k-dist,#pskrListRows[data-sort=time] .k-age{color:CanvasText;font-weight:600}
 .spotrow{padding:.5rem 1rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
 .spotrow-main{display:flex;justify-content:space-between;align-items:center;gap:.5rem}
 .spotrow .call{font-family:ui-monospace,monospace;font-weight:700}
@@ -508,7 +522,14 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
        Every card names its own tier and degrades visibly --
        never a stale value rendered as a current one. -->
   <section id=view-tools>
-    <div class=hd>Space weather &middot; online <span id=spaceWxNote class=toolsnote></span></div>
+    <div class=hd>Who hears me &middot; online <span id=pskrNote class=toolsnote></span></div>
+    <div id=pskrSummary class=pskrsum></div>
+    <div class=pskrlinks>
+      <button id=pskrOpenList class=dlink type=button>Open list &rarr;</button>
+      <a id=pskrMapLink class=dlink href="map.html?layer=psk">Show on map &rarr;</a>
+    </div>
+
+    <div class="hd sep">Space weather &middot; online <span id=spaceWxNote class=toolsnote></span></div>
     <div id=spaceWxRow></div>
 
     <div class="hd sep">Map</div>
@@ -822,9 +843,34 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
   </div>
 </div>
 
+<!-- Who hears me's list (docs/architecture/webapp.md, Who hears me), opened from its Tools card. Same overlay
+     mechanics as #settingsOverlay; its rows are built only while it is open, and each open closes the others. -->
+<div id=pskrList>
+  <div id=pskrListHead>
+    <button id=pskrListBack type=button aria-label=Back>&larr;</button>
+    <h2>Who hears me</h2>
+    <span id=pskrListNote class=toolsnote></span>
+  </div>
+  <div id=pskrListBody>
+    <div id=pskrListSummary class=pskrsum></div>
+    <div id=pskrListTools>
+      <div id=pskrBandChips class=pskchips></div>
+      <div id=pskrSort class=pskchips role=group aria-label="Sort by">
+        <span class=pskchiplabel>Sort</span>
+        <button type=button class=pskchip data-sort=time>Time</button>
+        <button type=button class=pskchip data-sort=distance>Distance</button>
+        <button type=button class=pskchip data-sort=snr>dB</button>
+      </div>
+    </div>
+    <div id=pskrListRows></div>
+  </div>
+</div>
+
 <script src=/pairing.js></script>
 <script src=bands.js></script>
 <script src=callinfo.js></script>
+<script src=pskr_core.js></script>
+<script src=pskr_live.js></script>
 <script>
 var m = document.getElementById('m');
 var settingsMsg = document.getElementById('settingsMsg');
@@ -1101,6 +1147,7 @@ function showView(name, animate) {
     fetchSpaceWx();
     setInterval(fetchSpaceWx, SPACE_WX_REFRESH_MS);
   }
+  if (name === 'tools') PskrLive.tick();
 }
 document.querySelectorAll('#tabbar button').forEach(function (b) {
   b.onclick = function () { showView(b.getAttribute('data-view')); };
@@ -1111,7 +1158,7 @@ document.querySelectorAll('#tabbar button').forEach(function (b) {
 var settingsOverlay = document.getElementById('settingsOverlay');
 // Never both open: the Station sheet is a second overlay of its own (below),
 // and each open closes the other first, so the two never stack.
-function openSettings() { closeStationSheet(); settingsMsg.textContent = ''; settingsOverlay.classList.add('open'); }
+function openSettings() { closeStationSheet(); closePskrList(); settingsMsg.textContent = ''; settingsOverlay.classList.add('open'); }
 function closeSettings() { settingsOverlay.classList.remove('open'); }
 document.getElementById('navSettings').onclick = openSettings;
 document.getElementById('settingsOverlayBack').onclick = closeSettings;
@@ -1123,7 +1170,7 @@ document.getElementById('settingsOverlayBack').onclick = closeSettings;
 // the rest so a reload after any write (this sheet's own, or a plain
 // Settings save) refreshes what it shows.
 var stationSheet = document.getElementById('stationSheet');
-function openStationSheet() { closeSettings(); stationSheetMsg.textContent = ''; stationSheet.classList.add('open'); }
+function openStationSheet() { closeSettings(); closePskrList(); stationSheetMsg.textContent = ''; stationSheet.classList.add('open'); }
 function closeStationSheet() { stationSheet.classList.remove('open'); }
 document.getElementById('stationSheetBack').onclick = closeStationSheet;
 
@@ -2251,6 +2298,7 @@ async function loadConfig(quiet) {
     lastConfigOkMs = Date.now();
     lastCfgAt = lastConfigOkMs;
     saveStateCache();
+    PskrLive.sync();
     setForm(cfg);
     applyOperateLive(cfg);
     setMainBoardLive(true);
@@ -2296,6 +2344,7 @@ async function pollLiveStatus() {
     lastConfigOkMs = Date.now();
     lastCfgAt = lastConfigOkMs;
     saveStateCache();
+    PskrLive.sync();
     applyOperateLive(cfg);
     setMainBoardLive(true);
   } catch (e) { /* next tick */ }
@@ -3173,6 +3222,7 @@ function applyEvent(e) {
     txHud = { active: !!e.active, aborted: !!e.aborted, wrblk: !!e.wrblk,
              pw: e.pw, swr: e.swr, batt: e.batt, hz: e.hz, reason: e.reason || '', x: e.x };
     lastTxHudEventMs = Date.now();
+    if (txHud.active) PskrLive.noteTx();
   } else if (e.d === 5) {
     // Pushed the instant the main board's own USB host sees it -- not inferred from
     // cat_ready/audio_rx going stale on the next poll, and not a string match
@@ -3658,6 +3708,135 @@ function renderSpaceWx() {
   row.innerHTML = parts.join('');
 }
 
+// ---- online-required: who hears me (PSKReporter) ----
+// docs/architecture/webapp.md (Who hears me). pskr_live.js listens (shared with map.html) and pskr_core.js holds the
+// logic; this page names the call, listens while Tools or the list is on screen, and draws the card and the list.
+// The list's rows are built only while it is open.
+var PSKR_ROWS = 200;
+var PSKR_NOTE = { connecting: 'connecting…', listening: 'listening', offline: 'offline',
+                  unreachable: 'can’t reach PSKReporter', refused: 'PSKReporter refused the connection' };
+function pskrListOpen() { return document.getElementById('pskrList').classList.contains('open'); }
+function openPskrList() {
+  closeSettings();
+  closeStationSheet();
+  document.getElementById('pskrList').classList.add('open');
+  PskrLive.tick(); // draws the rows now that the list is open
+}
+function closePskrList() {
+  document.getElementById('pskrList').classList.remove('open');
+  document.getElementById('pskrListRows').innerHTML = '';
+}
+document.getElementById('pskrOpenList').onclick = openPskrList;
+document.getElementById('pskrListBack').onclick = closePskrList;
+
+// The list's band and sort, kept on the phone like the map's time window.
+var PSKR_VIEW_KEY = 'microft8_pskr_list_v1';
+var pskrView = { band: '', sort: 'time' };
+try {
+  var pskrViewSaved = JSON.parse(localStorage.getItem(PSKR_VIEW_KEY) || 'null');
+  if (pskrViewSaved && typeof pskrViewSaved.band === 'string' && /^(time|distance|snr)$/.test(pskrViewSaved.sort)) pskrView = pskrViewSaved;
+} catch (e) { /* unreadable: the defaults */ }
+function pskrSaveView() {
+  try { localStorage.setItem(PSKR_VIEW_KEY, JSON.stringify(pskrView)); } catch (e) { /* this session keeps it */ }
+}
+document.getElementById('pskrListTools').onclick = function (ev) {
+  var b = ev.target.closest('button');
+  if (!b) return;
+  if (b.hasAttribute('data-band')) pskrView.band = b.getAttribute('data-band');
+  else if (b.hasAttribute('data-sort')) pskrView.sort = b.getAttribute('data-sort');
+  else return;
+  pskrSaveView();
+  renderPskr();
+};
+
+function pskrDistKm(grid) {
+  var a = gridToLatLon(lastCfg.grid || ''), b = gridToLatLon(String(grid || '').slice(0, 6));
+  return a && b ? greatCircle(a, b).km : null;
+}
+function pskrJoinAnd(list) {
+  return list.length < 2 ? list.join('') : list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1];
+}
+// HTML: the farthest station's call is tappable.
+function pskrSummaryHtml(state, status, now) {
+  if (!state) return lastCfg.call === undefined ? '' : 'Set your call in Settings to see who hears you.'; // no config read yet says nothing
+  var call = esc(state.call), f = PskrCore.hourFacts(state, now, pskrDistKm), head;
+  if (f.stations) {
+    head = f.stations + (f.stations === 1 ? ' station' : ' stations') + ' reported hearing ' + call + ' in the last hour' +
+      (f.bands.length ? ', on ' + esc(pskrJoinAnd(f.bands)) : '') + '.';
+    if (f.farthest) {
+      head += ' Farthest: <span class=callink data-call="' + esc(f.farthest.rx) + '" data-grid="' + esc(f.farthest.grid.slice(0, 6)) + '">' +
+        esc(f.farthest.rx) + '</span>, ' + esc(fmtKm(f.farthest.km)) + '.';
+    }
+  } else if (state.spots.length) head = 'No one has reported hearing ' + call + ' in the last hour.';
+  else head = 'Stations that hear ' + call + ' show here, usually a minute or two after you transmit.';
+  if (status === 'offline' || status === 'unreachable') head += ' Can’t reach PSKReporter, so nothing new arrives.';
+  return head + ' From PSKReporter’s live feed (mqtt.pskreporter.info, M0LTE).';
+}
+function pskrChip(attr, value, label, on) {
+  return '<button type=button class="pskchip' + (on ? ' on' : '') + '" ' + attr + '="' + esc(value) + '">' + esc(label) + '</button>';
+}
+// One row per receiver and band (PskrCore.receivers()); the field the list is sorted by is the one emphasised.
+function pskrRowsHtml(state, now) {
+  var v = PskrCore.rows(state, now, { band: pskrView.band, sort: pskrView.sort, distKm: pskrDistKm }, PSKR_ROWS);
+  if (!v.rows.length) {
+    return '<div class=pskrsum>' + (pskrView.band ? 'No reports on ' + esc(pskrView.band) + ' yet.' : 'No reports yet.') + '</div>';
+  }
+  return v.rows.map(function (row) {
+    if (row.gap) {
+      return '<div class="pskrow pskgap"><span>Not listening</span><span class=r>' + esc(PskrCore.gapLabel(row.gap, now)) + '</span></div>';
+    }
+    var r = row.rx, grid = r.grid.slice(0, 6), dist = pskrDistKm(grid) == null ? '' : fmtDistBearing(lastCfg.grid, grid);
+    return '<div class=pskrow><span><span class=callink data-call="' + esc(r.rx) + '" data-grid="' + esc(grid) + '">' +
+      esc(r.rx) + '</span></span>' +
+      '<span class=snr>' + (r.snr == null ? '' : esc((r.snr > 0 ? '+' : '') + r.snr) + ' dB') + '</span>' +
+      '<span class=sub>' + esc(grid) + (dist ? ' · <span class=k-dist>' + esc(dist) + '</span>' : '') + '</span>' +
+      '<span class="sub r">' + esc(r.band) + (r.count > 1 ? ' · <span title="' + r.count + ' reports">×' + r.count + '</span>' : '') +
+      ' · <span class="toolsnote k-age" data-ts="' + r.t + '">' + fmtAgo(r.t) + '</span></span></div>';
+  }).join('') + (v.more ? '<div class=pskrsum>' + v.more + ' more not shown.</div>' : '');
+}
+// The receiver's own grid, from its spot, is a reliable pairing for the shared cache (callinfo.js, learnGrid());
+// learned on the tap rather than per spot, which would rewrite the whole cache dozens of times a minute.
+function pskrBindCalls(el) {
+  el.querySelectorAll('.callink').forEach(function (c) {
+    c.onclick = function () {
+      CallInfo.learnGrid(c.getAttribute('data-call'), c.getAttribute('data-grid'));
+      showCallInfo(c.getAttribute('data-call'));
+    };
+  });
+}
+function renderPskr() {
+  var state = PskrLive.state(), status = PskrLive.status(), now = Date.now();
+  var note = PSKR_NOTE[status] || '', summary = pskrSummaryHtml(state, status, now);
+  if (currentView === 'tools') {
+    document.getElementById('pskrNote').textContent = note;
+    var cardSum = document.getElementById('pskrSummary');
+    cardSum.innerHTML = summary;
+    pskrBindCalls(cardSum);
+  }
+  if (!pskrListOpen()) return;
+  document.getElementById('pskrListNote').textContent = note;
+  var listSum = document.getElementById('pskrListSummary');
+  listSum.innerHTML = summary;
+  pskrBindCalls(listSum);
+  var bands = state ? PskrCore.bandsIn(state) : [];
+  if (pskrView.band && bands.indexOf(pskrView.band) === -1) pskrView.band = ''; // that band's reports aged out
+  document.getElementById('pskrBandChips').innerHTML = '<span class=pskchiplabel>Band</span>' +
+    pskrChip('data-band', '', 'All', !pskrView.band) +
+    bands.map(function (b) { return pskrChip('data-band', b, b, pskrView.band === b); }).join('');
+  document.querySelectorAll('#pskrSort .pskchip').forEach(function (b) {
+    b.classList.toggle('on', b.getAttribute('data-sort') === pskrView.sort);
+  });
+  var list = document.getElementById('pskrListRows');
+  list.setAttribute('data-sort', pskrView.sort);
+  list.innerHTML = state ? pskrRowsHtml(state, now) : '';
+  pskrBindCalls(list);
+}
+PskrLive.start({
+  call: function () { return lastCfg.call; },
+  want: function () { return currentView === 'tools' || pskrListOpen(); },
+  changed: renderPskr
+});
+
 // ---- Callsign info modal (Operate + QSOs) ----
 // Wraps every callsign token (from extractAllCallsigns -- sender and, when
 // present, addressee) within a decode's own text in its own clickable span.
@@ -3700,7 +3879,8 @@ function heardThisSessionFor(call) {
 }
 function showCallInfo(call) {
   if (!call) return;
-  CallInfo.show(call.toUpperCase(), { myGrid: lastCfg.grid, qsoHistory: qsoHistoryFor, heardThisSession: heardThisSessionFor });
+  CallInfo.show(call.toUpperCase(), { myGrid: lastCfg.grid, qsoHistory: qsoHistoryFor, heardThisSession: heardThisSessionFor,
+                                      heardUs: function (c) { return PskrCore.heardBy(PskrLive.state(), c); } });
 }
 
 // Appends to `file`'s own persistent container rather than the end of
@@ -4441,6 +4621,11 @@ renderTxHud();
 // re-rendering their ages every second while the operator is looking at
 // Operate or Tools instead.
 function refreshVisibleAgo() {
+  if (pskrListOpen()) {
+    document.querySelectorAll('#pskrListRows .toolsnote[data-ts]').forEach(function (el) {
+      el.textContent = fmtAgo(parseInt(el.getAttribute('data-ts'), 10));
+    });
+  }
   VIEW_CONTAINERS[currentView].querySelectorAll('.ago[data-ts], .toolsnote[data-ts]')
     .forEach(function (el) {
       el.textContent = fmtAgo(parseInt(el.getAttribute('data-ts'), 10));

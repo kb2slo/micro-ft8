@@ -73,6 +73,12 @@ jobs:
       - name: Webapp SWR sweep test
         run: node webapp/tests/test_swr_core.js
 
+      # Who hears me (docs/architecture/webapp.md): the MQTT packets, the reader, spots and gaps.
+      - name: Webapp who-hears-me test
+        run: |
+          node webapp/tests/test_pskr_core.js
+          node webapp/tests/test_pskr_live.js
+
       - name: Autoseq host_mock
         working-directory: host_mock
         run: |

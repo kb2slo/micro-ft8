@@ -6,7 +6,7 @@
   the Log tab's former List/Map toggle into its own page, reached from
   Tools. The Log tab only ever had room for one data layer (QSOs); this page
   fills the whole viewport and adds independent show/hide layers (QSOs,
-  Decodes, POTA/SOTA spots -- PSKReporter later) over the same vector
+  Decodes, POTA/SOTA spots, PSKReporter) over the same vector
   basemap. Not a rewrite of the renderer itself: projection, pan/zoom,
   basemap/border/grid/terminator drawing are the same math this app already
   proved out in the Log tab, just no longer coupled to one fixed dataset.
@@ -14,7 +14,8 @@
   Shares localStorage state with app.html (same origin): theme, distance
   unit, and the opportunistic callsign->grid cache -- so a choice made in
   Settings or a grid learned from a decode shows up here without this page
-  re-deriving any of it.
+  re-deriving any of it. Also PSKReporter's stored spots (pskr_live.js), which
+  this page adds to while its layer is on.
 -->
 <style>
 :root{
@@ -96,7 +97,7 @@ body{font-family:system-ui;background:Canvas;color:CanvasText}
   <button id=layerSota class="layerbtn" type=button>SOTA</button>
   <button id=layerPlaces class="layerbtn" type=button>Places</button>
   <button id=layerGrid class="layerbtn" type=button>Grid squares</button>
-  <button id=layerPsk class="layerbtn" type=button disabled title="Not built yet">PSKReporter</button>
+  <button id=layerPsk class="layerbtn" type=button>PSKReporter</button>
   <label id=mapTimeWrap>Over the last
     <select id=mapTimeSelect>
       <option value="900000">15 minutes</option>
@@ -129,6 +130,8 @@ body{font-family:system-ui;background:Canvas;color:CanvasText}
 
 <script src=/pairing.js></script>
 <script src=callinfo.js></script>
+<script src=pskr_core.js></script>
+<script src=pskr_live.js></script>
 <script>
 'use strict';
 
@@ -393,8 +396,8 @@ var logMapCountryBBoxes = [];  // [{programPrefix, name, lonMin, lonMax, latMin,
 var logMapStateLabels = [];    // same, for logMapUsStatesGeo
 
 var LOG_MAP_PALETTE = {
-  light: { ocean: '#ffffff', land: '#ffffff', coast: '#000000', countryBorder: 'rgba(0,0,0,.55)', stateBorder: 'rgba(0,0,0,.3)', grid: 'rgba(0,0,0,.15)', gridLabel: 'rgba(0,0,0,.4)', path: 'rgba(0,0,0,.35)', own: '#ea580c', qso: '#1d4ed8', decode: '#7c3aed', spot: '#059669', place: 'rgba(0,0,0,.55)', terminator: '#ca8a04' },
-  dark: { ocean: '#000000', land: '#000000', coast: '#ffffff', countryBorder: 'rgba(255,255,255,.55)', stateBorder: 'rgba(255,255,255,.3)', grid: 'rgba(255,255,255,.15)', gridLabel: 'rgba(255,255,255,.4)', path: 'rgba(255,255,255,.35)', own: '#fb923c', qso: '#7aa2f7', decode: '#c4b5fd', spot: '#34d399', place: 'rgba(255,255,255,.55)', terminator: '#fbbf24' }
+  light: { ocean: '#ffffff', land: '#ffffff', coast: '#000000', countryBorder: 'rgba(0,0,0,.55)', stateBorder: 'rgba(0,0,0,.3)', grid: 'rgba(0,0,0,.15)', gridLabel: 'rgba(0,0,0,.4)', path: 'rgba(0,0,0,.35)', own: '#ea580c', qso: '#1d4ed8', decode: '#7c3aed', spot: '#059669', psk: '#be185d', pskPath: 'rgba(190,24,93,.35)', place: 'rgba(0,0,0,.55)', terminator: '#ca8a04' },
+  dark: { ocean: '#000000', land: '#000000', coast: '#ffffff', countryBorder: 'rgba(255,255,255,.55)', stateBorder: 'rgba(255,255,255,.3)', grid: 'rgba(255,255,255,.15)', gridLabel: 'rgba(255,255,255,.4)', path: 'rgba(255,255,255,.35)', own: '#fb923c', qso: '#7aa2f7', decode: '#c4b5fd', spot: '#34d399', psk: '#f472b6', pskPath: 'rgba(244,114,182,.4)', place: 'rgba(255,255,255,.55)', terminator: '#fbbf24' }
 };
 function logMapDarkMode() {
   if (themePref === 'dark') return true;
@@ -1412,6 +1415,17 @@ function withinMapTimeWindow(ts) {
 }
 function visibleQsoLocations() { return qsoLocations.filter(function (l) { return withinMapTimeWindow(l.ts); }); }
 function visibleDecodeLocations() { return decodeLocations.filter(function (d) { return withinMapTimeWindow(d.ts); }); }
+// One per receiver: its newest spot in the time window (the stored spots are newest first).
+function visiblePskReceivers() {
+  var state = PskrLive.state(), byRx = {};
+  if (!state) return [];
+  state.spots.forEach(function (sp) {
+    if (byRx[sp.rx] || !withinMapTimeWindow(sp.t)) return;
+    var grid = sp.grid.slice(0, 6), pt = gridToLatLon(grid);
+    if (pt) byRx[sp.rx] = { call: sp.rx, grid: grid, pt: pt };
+  });
+  return Object.keys(byRx).map(function (k) { return byRx[k]; });
+}
 // Per-program toggle applied here, not at each call site -- both the note
 // text and the render pass want "whichever programs are currently on," and
 // folding it into the one shared filter keeps that one definition instead
@@ -1444,7 +1458,7 @@ mapTimeSelectEl.onchange = function () {
 // location, the heavy per-country/per-region fetch) -> back to 'off'.
 // 'spots' exists specifically so an operator can see current activity
 // without paying for the static-location fetch/render at all.
-var layerState = { qsos: true, decodes: false, pota: 'off', sota: 'off', places: false, grid: false };
+var layerState = { qsos: true, decodes: false, pota: 'off', sota: 'off', places: false, grid: false, psk: false };
 function setLayerBtn(id, on) {
   document.getElementById(id).classList.toggle('on', on);
 }
@@ -1466,6 +1480,7 @@ function refreshLayerBtns() {
   setPoiLayerBtn('layerSota', 'SOTA', layerState.sota);
   setLayerBtn('layerPlaces', layerState.places);
   setLayerBtn('layerGrid', layerState.grid);
+  setLayerBtn('layerPsk', layerState.psk);
 }
 document.getElementById('layerQsos').onclick = function () {
   layerState.qsos = !layerState.qsos;
@@ -1513,6 +1528,15 @@ document.getElementById('layerGrid').onclick = function () {
   refreshLayerBtns();
   renderLogMap();
 };
+// PSKReporter: while the layer is on, this page listens too (pskr_live.js, shared with app.html), so the map keeps
+// filling while it is the page on screen. Turning it off stops listening unless a transmission still wants it.
+document.getElementById('layerPsk').onclick = function () {
+  layerState.psk = !layerState.psk;
+  refreshLayerBtns();
+  PskrLive.tick();
+  renderLogMap();
+  updateMapNote();
+};
 refreshLayerBtns();
 
 function updateMapNote() {
@@ -1536,6 +1560,15 @@ function updateMapNote() {
   // actually got drawn against poiMaxVisible, so "142 of 1,830 POIs" stays
   // legible feedback about the settled cap even with its tuning control
   // gone, not just a silently-truncated map.
+  if (layerState.psk) {
+    var pskStatus = PskrLive.status(), pskState = PskrLive.state();
+    if (!pskState) parts.push('PSKReporter: no call set');
+    else {
+      var pn = visiblePskReceivers().length;
+      var pskNote = { connecting: 'connecting', offline: 'offline', unreachable: 'unreachable', refused: 'refused' }[pskStatus];
+      parts.push(pn + ' station' + (pn === 1 ? '' : 's') + ' heard ' + pskState.call + (pskNote ? ' (PSKReporter ' + pskNote + ')' : ''));
+    }
+  }
   if (lastPoiCapStats) {
     parts.push(lastPoiCapStats.shown + ' of ' + lastPoiCapStats.total + ' POI' + (lastPoiCapStats.total === 1 ? '' : 's'));
   }
@@ -1652,6 +1685,32 @@ function renderLogMap() {
         ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
         ctx.fill();
         logMapPins.push({ x: p.x, y: p.y, call: d.call, grid: grid, lat: b.lat, lon: b.lon, source: 'Decode' });
+      });
+    });
+  }
+
+  // PSKReporter: stations that reported hearing us (docs/architecture/webapp.md, Who hears me). One per receiver,
+  // with a path from our own grid like a QSO's; a diamond, so it reads apart from a QSO's dot by shape too.
+  var visiblePsk = layerState.psk ? visiblePskReceivers() : [];
+  if (visiblePsk.length) {
+    var ownPt = lastCfg.grid ? gridToLatLon(lastCfg.grid) : null;
+    if (ownPt) {
+      ctx.strokeStyle = pal.pskPath;
+      ctx.lineWidth = 1;
+      visiblePsk.forEach(function (r) {
+        forEachBandOffset(bands, function (band, lonOffset) { drawGreatCirclePath(ctx, cssW, cssH, ownPt, r.pt, band, lonOffset); });
+      });
+    }
+    ctx.fillStyle = pal.psk;
+    visiblePsk.forEach(function (r) {
+      forEachBandOffset(bands, function (band, lonOffset) {
+        var p = bandProject(band, r.pt.lat, r.pt.lon, lonOffset, cssW, cssH);
+        if (p.x < -20 || p.x > cssW + 20 || p.y < -20 || p.y > cssH + 20) return;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y - 4); ctx.lineTo(p.x + 4, p.y); ctx.lineTo(p.x, p.y + 4); ctx.lineTo(p.x - 4, p.y);
+        ctx.closePath();
+        ctx.fill();
+        logMapPins.push({ x: p.x, y: p.y, call: r.call, grid: r.grid, lat: r.pt.lat, lon: r.pt.lon, source: 'PSKReporter' });
       });
     });
   }
@@ -1861,7 +1920,10 @@ function showMapPopup(pin) {
   // #mapPopup is only for a static POTA/SOTA location, which has no
   // operator/callsign to show a callsign card *for* at all.
   if (pin.call) {
-    CallInfo.show(pin.call, { myGrid: lastCfg.grid, qsoHistory: mapQsoHistoryFor });
+    // A receiver's own grid from its spot is a reliable pairing for the shared cache (callinfo.js, learnGrid()).
+    if (pin.source === 'PSKReporter') CallInfo.learnGrid(pin.call, pin.grid);
+    CallInfo.show(pin.call, { myGrid: lastCfg.grid, qsoHistory: mapQsoHistoryFor,
+                              heardUs: function (c) { return PskrCore.heardBy(PskrLive.state(), c); } });
     return;
   }
   document.getElementById('mapPopupCall').textContent = pin.name || '(unknown)';
@@ -2128,6 +2190,16 @@ function handleGeoReturn() {
 // *square* and fits the zoom to its actual extent, so a 4-char and a
 // 6-char grid both end up framed with the same margin around them
 // instead of one being far tighter than the other.
+// map.html?layer=psk (Tools' Who hears me card, "Show on map") opens with the PSKReporter layer on. The parameter
+// is removed from the address so a reload opens with the usual defaults.
+function handleLayerDeepLink() {
+  var params = new URLSearchParams(location.search);
+  if (params.get('layer') !== 'psk') return;
+  layerState.psk = true;
+  refreshLayerBtns();
+  params.delete('layer');
+  history.replaceState(null, '', location.pathname + (params.toString() ? '?' + params.toString() : ''));
+}
 function handleGridDeepLink() {
   var params = new URLSearchParams(location.search);
   var grid = params.get('grid');
@@ -2159,7 +2231,14 @@ function handleGridDeepLink() {
 (async function boot() {
   await loadCfg(); // own-grid marker + spots' band filter want this before first render, but basemap load below doesn't depend on it
   handleGeoReturn(); // wants lastCfg.grid (just loaded) to compare against
+  handleLayerDeepLink();
   handleGridDeepLink();
+  // Listens while the PSKReporter layer is on; the phone's stored copy (what app.html heard) shows at once.
+  PskrLive.start({
+    call: function () { return lastCfg.call; },
+    want: function () { return layerState.psk; },
+    changed: function () { if (layerState.psk) { renderLogMap(); updateMapNote(); } }
+  });
   if (layerState.decodes) loadDecodeLocations();
   loadLogMapBasemap(); // renders as soon as the basemap itself is in, doesn't wait on data layers
   loadQsoLocations();
