@@ -35,6 +35,7 @@ Each document answers one question. Put content where its question is answered.
 | How do I build, flash, or use this part? | That directory's `README.md` | How-to |
 | What must two codebases agree on? | The code | One source of truth, plus a test holding the other side to it |
 | What can an operator do with it? | `webapp/` → `micro-ft8.kalikstein.com` | Public site |
+| How does an operator set up a station? | `webapp/getting-started.md` → the site's Getting started page and the printed sheet in the box | One source for both; `webapp/tools/getting_started.mjs` builds it and fails when a label it quotes leaves the UI |
 
 **One fact, one home.** A fact lives in the doc of the component that implements it. Other docs link to it and restate at most the one sentence needed to follow the link — the trust argument for the firmware download is in `system.md`, its mechanism in `sidekick.md`.
 

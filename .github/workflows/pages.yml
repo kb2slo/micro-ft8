@@ -2,7 +2,9 @@
 # webapp/ (docs/architecture/sidekick.md (Installing the app bundle)). Path-filtered so firmware-only commits do not
 # redeploy the site. webapp/ is served as-is at micro-ft8.kalikstein.com except
 # webapp/app/, which is built first (webapp/tools/build.py, docs/architecture/
-# webapp.md (Build)) and swapped in for its sources. Uses Workers Static Assets rather than
+# webapp.md (Build)) and swapped in for its sources, and getting-started.html,
+# which is generated from getting-started.md (webapp/tools/getting_started.mjs)
+# and never committed. Uses Workers Static Assets rather than
 # classic Cloudflare Pages -- Cloudflare steers new deploys there now, and
 # webapp/wrangler.jsonc's `routes` entry is what attaches the custom domain.
 name: Pages
@@ -29,10 +31,12 @@ jobs:
       - uses: actions/checkout@v5
       # This checkout is thrown away after the deploy, so the built bundle
       # simply replaces the sources at the path the sidekick installs from
-      # (/app/manifest.json).
-      - name: Build the web app bundle
+      # (/app/manifest.json). The getting-started page is generated before
+      # that swap: it checks the labels it quotes against the app's sources.
+      - name: Build the web app bundle and the getting-started page
         run: |
           npm ci --prefix webapp/tools
+          node webapp/tools/getting_started.mjs
           python3 webapp/tools/build.py
           rm -rf webapp/app
           mv webapp/dist/app webapp/app

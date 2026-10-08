@@ -6,7 +6,7 @@
 // against. Everything else about serving stays default asset behavior.
 //
 // /download/* is served from the DOWNLOADS R2 bucket (public continuous
-// firmware + source mirror). See docs/RELEASE_PROCESS.md.
+// firmware, source and getting-started sheet mirror). See docs/RELEASE_PROCESS.md.
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -106,6 +106,7 @@ async function serveDownload(request, env, url) {
 function guessContentType(key) {
   if (key.endsWith(".json")) return "application/json; charset=utf-8";
   if (key.endsWith(".tar.gz")) return "application/gzip";
+  if (key.endsWith(".pdf")) return "application/pdf";
   if (key.endsWith(".sha256")) return "text/plain; charset=utf-8";
   return "application/octet-stream";
 }

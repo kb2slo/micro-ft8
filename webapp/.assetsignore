@@ -11,3 +11,5 @@ worker.js
 # Build scripts and their tests run before the deploy; no page loads them.
 tools
 tests
+# The getting-started page's source; pages.yml deploys the page built from it.
+getting-started.md

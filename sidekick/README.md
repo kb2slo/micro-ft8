@@ -27,6 +27,8 @@ The firmware carries only the setup pages. The app (`app.html`) is downloaded on
 
 **To start over** (testing, or handing the unit on): Settings > Network > **Factory reset**, then confirm. It erases the saved WiFi, the installed app, the pairing, the bundle host override and the AP-mode flag, and the sidekick restarts as a new unit. It also resets the main board's station settings to defaults (a second prompt offers to delete its QSO logs too), and refuses if the main board is not linked or is transmitting. If you cannot reach the app, `idf.py erase-flash` then flash again does the same and more. 
 
+**Handing a unit on** to another operator: factory reset and delete the logs too, then install the app over cellular (step 2 above) and join no WiFi network. It then arrives on its own network with the app ready, which is what the getting-started sheet in the box assumes: Settings shows Mode **AP (offline)** and Call `YOURCALL`. Print the sheet from a fresh build, so it describes the current screens: `npm ci --prefix webapp/tools` once, then `node webapp/tools/getting_started.mjs --pdf` writes `webapp/dist/getting-started.pdf`.
+
 After that, the app is on the sidekick: Settings > Network > **Switch to AP mode** runs it with no network at all. Opening `/app.html` before step 4 shows a "not installed yet" page that points back here. If Install says it cannot reach the host, the phone has no internet: check it is on your home WiFi.
 
 ## Backing up a stock unit

@@ -5,16 +5,23 @@ file is the working agreement, this one is what CI publishes and what a human mu
 
 Two paths, both defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). Nothing else publishes.
 
-| Path | Trigger | Job | Tag | PoE-P4 asset | Sidekick | Source |
-| --- | --- | --- | --- | --- | --- | --- |
-| Rolling | push to `main` that can change the binary | `release-main` | `continuous`, force-moved every run | `YYYYMMDD-microft8-poe-p4-<commit>.bin` | `YYYYMMDD-microft8-sidekick-<commit>.bin` | `YYYYMMDD-microft8-source-<commit>.tar.gz` |
-| Versioned | push of a tag matching `v*` | `release` | the tag you pushed, immovable | `MicroFT8-PoE-P4-<tag>-Merged.bin` | — | — |
+| Path | Trigger | Job | Tag | PoE-P4 asset | Sidekick | Source | Getting-started sheet |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Rolling | push to `main` that can change the binary | `release-main` | `continuous`, force-moved every run | `YYYYMMDD-microft8-poe-p4-<commit>.bin` | `YYYYMMDD-microft8-sidekick-<commit>.bin` | `YYYYMMDD-microft8-source-<commit>.tar.gz` | `YYYYMMDD-microft8-getting-started-<commit>.pdf` |
+| Versioned | push of a tag matching `v*` | `release` | the tag you pushed, immovable | `MicroFT8-PoE-P4-<tag>-Merged.bin` | — | — | `MicroFT8-Getting-Started-<tag>.pdf` |
 
 Both rolling and versioned publish the M5Stack Unit PoE-P4 merged image (esp32p4, 0x0, custom LittleFS
 `storage` partition in `poe_p4/partitions.csv`). Rolling also publishes a **standalone merged sidekick** image
 (merged by `tools/merge_sidekick_bin.sh` in the sidekick job) and a **history-free source tarball**
 (vendored `ft8_lib`, no `.git`). The firmware artifacts are skipped entirely for docs-only commits (the
 `changes` path filter, D7), so a roadmap-only merge neither rebuilds nor re-tags any binary.
+
+Both paths also publish the **getting-started sheet**, the one-page PDF that goes in the box with a unit.
+The `getting-started-sheet` job prints it from `webapp/getting-started.md` on every push, which is also
+what holds it to one page. It rides with the firmware: a merge that changes only the sheet republishes
+nothing, so the posted PDF can trail the site's Getting started page, which deploys on its own. The sheet
+is set in fonts the build embeds (`webapp/tools/getting_started.mjs`), so CI's copy breaks the same way
+as one printed on a Mac.
 
 **No image carries a version identity.** The ADV's `rel`/`dev` build machinery went with the ADV (row za6n),
 so every release ships whatever it builds to at that commit, with no version string in the image. The web
@@ -51,7 +58,7 @@ Corollaries an agent should not re-derive:
 ## Public Cloudflare mirror (anonymous downloads)
 
 The GitHub `continuous` release is on a **private** repo, so visitors cannot download those assets. After
-each successful `release-main`, CI also mirrors the three rolling payloads to Cloudflare **R2** bucket
+each successful `release-main`, CI also mirrors the four rolling payloads to Cloudflare **R2** bucket
 `micro-ft8-downloads`, served under the site origin by [`webapp/worker.js`](../webapp/worker.js):
 
 | Stable URL | Contents |
@@ -59,6 +66,7 @@ each successful `release-main`, CI also mirrors the three rolling payloads to Cl
 | `https://micro-ft8.kalikstein.com/download/microft8-poe-p4-continuous.bin` | PoE-P4 merged image |
 | `https://micro-ft8.kalikstein.com/download/microft8-sidekick-continuous.bin` | Sidekick merged image |
 | `https://micro-ft8.kalikstein.com/download/microft8-source-continuous.tar.gz` | Source tarball |
+| `https://micro-ft8.kalikstein.com/download/microft8-getting-started-continuous.pdf` | Getting-started sheet |
 | `https://micro-ft8.kalikstein.com/download/manifest.json` | Commit, dated filenames, SHA-256 |
 
 Human entry: [`https://micro-ft8.kalikstein.com/downloads.html`](https://micro-ft8.kalikstein.com/downloads.html).

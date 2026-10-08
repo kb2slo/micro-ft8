@@ -1,0 +1,143 @@
+/* The getting-started page (webapp/getting-started.md, built by webapp/tools/getting_started.mjs).
+   On screen it is a page of the site, styled like downloads.html: one column, QR codes hidden on a
+   phone, where they cannot be scanned. In print it is the sheet that goes in the box: one side of US
+   Letter, black ink plus one accent that still reads in grayscale, the header across the full width
+   and each `##` section in one of two columns. The PDF is Chrome printing this same page, set in IBM
+   Plex, which the build embeds so the sheet breaks the same way on a Mac and on CI's Linux. A browser
+   printing the site's copy uses Plex only if it is installed, and its own sans otherwise. */
+
+:root {
+  --ink: #1a1f1c;
+  --muted: #5a6560;
+  --paper: #f3efe6;
+  --band: #2f5d50;
+  --line: #d4cdc0;
+}
+
+* { box-sizing: border-box; }
+
+/* ---- QR codes, both media: ![caption](qr:text) ---- */
+.qr { display: inline-block; text-align: center; vertical-align: top; }
+.qr svg { display: block; }
+.qr svg path { fill: #000; }
+.qr-cap { display: block; line-height: 1.2; color: var(--muted); }
+header p:has(> .qr) { grid-column: 2; grid-row: 1 / span 4; display: flex; margin: 0; }
+header > * { grid-column: 1; }
+
+@media screen {
+  body {
+    margin: 0;
+    font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(1200px 600px at 10% -10%, #dfece6 0%, transparent 55%),
+      linear-gradient(180deg, #ebe4d6 0%, var(--paper) 40%, #e7e1d4 100%);
+    min-height: 100vh;
+  }
+  main { max-width: 40rem; margin: 0 auto; padding: 3.5rem 1.25rem 3rem; }
+  .eyebrow {
+    font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--band); font-weight: 600; margin: 0 0 0.75rem;
+  }
+  header { display: grid; grid-template-columns: 1fr auto; column-gap: 1.5rem; margin: 0 0 1.5rem; }
+  header h1 {
+    font-family: "IBM Plex Serif", Georgia, serif; font-weight: 600;
+    font-size: clamp(2rem, 5vw, 2.6rem); letter-spacing: -0.02em; line-height: 1.15; margin: 0 0 0.6rem;
+  }
+  header p { font-size: 1.05rem; color: var(--muted); line-height: 1.45; margin: 0; }
+  header p:has(> .qr) { gap: 0.75rem; }
+  .qr { width: 5.25rem; }
+  .qr svg { width: 5.25rem; height: 5.25rem; background: #fff; }
+  .qr-cap { margin-top: 0.3rem; font-size: 0.75rem; }
+  section { border-top: 1px solid var(--line); padding-top: 1.4rem; margin: 0.25rem 0 1.4rem; }
+  h2 { display: flex; align-items: center; gap: 0.55rem; font-size: 1.05rem; color: var(--band); margin: 0 0 0.75rem; }
+  h2 .step {
+    flex: none; display: inline-flex; align-items: center; justify-content: center;
+    width: 1.6rem; height: 1.6rem; border-radius: 50%;
+    background: var(--band); color: #fff; font-size: 0.85rem; font-weight: 700;
+  }
+  p, li { line-height: 1.55; }
+  p { margin: 0 0 0.9rem; }
+  ul, ol { padding-left: 1.2rem; margin: 0.35rem 0 0.9rem; }
+  li { margin-bottom: 0.55rem; }
+  a { color: var(--band); }
+  code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.88em;
+    background: rgba(47, 93, 80, 0.08); padding: 0.1em 0.35em; border-radius: 2px;
+  }
+  footer {
+    margin-top: 2.75rem; padding-top: 1.25rem; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 0.9rem; line-height: 1.5;
+  }
+}
+
+@media screen and (max-width: 640px) {
+  header { display: block; }
+  header p:has(> .qr) { display: none; }
+}
+
+/* ---- the printed sheet ---- */
+
+@page {
+  size: letter;
+  margin: 0.42in 0.5in 0.5in;
+  @bottom-right { font: 6.5pt/1 "IBM Plex Sans", -apple-system, "Helvetica Neue", Arial, sans-serif; color: #888; }
+}
+
+@media print {
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    margin: 0; background: #fff; color: #141414;
+    font: 9pt/1.3 "IBM Plex Sans", -apple-system, "Helvetica Neue", Arial, sans-serif;
+  }
+  main { margin: 0; padding: 0; }
+  footer { display: none; }
+
+  .eyebrow {
+    margin: 0 0 0.02in; font-size: 7.5pt; font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--band);
+  }
+  .eyebrow a { color: inherit; text-decoration: none; }
+  header {
+    display: grid; grid-template-columns: 1fr auto; column-gap: 0.25in; align-items: start;
+    margin-bottom: 0.1in; padding-bottom: 0.07in; border-bottom: 1.5pt solid var(--band);
+  }
+  header h1 { margin: 0 0 0.03in; font-size: 19pt; line-height: 1.1; letter-spacing: -0.01em; color: var(--band); }
+  header p { margin: 0; font-size: 9.3pt; line-height: 1.33; }
+  header p:has(> .qr) { gap: 0.1in; }
+  .qr { width: 0.82in; }
+  .qr svg { width: 0.82in; height: 0.82in; }
+  .qr-cap { margin-top: 0.01in; font-size: 7pt; }
+
+  /* A numbered step stays in one column; the reference lists may flow. */
+  .cols { column-count: 2; column-gap: 0.3in; column-rule: 0.5pt solid #c4c4c4; }
+  section { margin: 0 0 0.1in; }
+  section:has(> h2 .step) { break-inside: avoid; }
+  section:last-child { margin-bottom: 0; }
+  li { break-inside: avoid; }
+
+  h2 {
+    display: flex; align-items: center; gap: 0.38em;
+    margin: 0 0 0.04in; font-size: 10.5pt; line-height: 1.2; color: var(--band);
+    break-after: avoid;
+  }
+  h2 .step {
+    flex: none; display: inline-flex; align-items: center; justify-content: center;
+    width: 1.5em; height: 1.5em; border-radius: 50%;
+    background: var(--band); color: #fff; font-size: 8.5pt; font-weight: 700;
+  }
+
+  p { margin: 0 0 0.04in; }
+  ul, ol { margin: 0 0 0.04in; padding-left: 1.15em; }
+  li { margin: 0 0 0.025in; }
+  li::marker { color: var(--band); }
+  ol li::marker { font-weight: 700; }
+  strong { font-weight: 600; }
+  code {
+    font: 0.94em "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    background: #efefef; padding: 0 0.18em; border-radius: 2px; white-space: nowrap;
+  }
+  /* A link stays a link in the PDF; on paper the accent and underline say it is an address to open. */
+  a { color: var(--band); text-decoration: underline; text-decoration-thickness: 0.5pt; text-underline-offset: 0.14em; }
+  a code { color: inherit; }
+}

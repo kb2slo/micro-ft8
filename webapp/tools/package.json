@@ -1,10 +1,14 @@
 {
   "name": "micro-ft8-webapp-build",
   "private": true,
-  "description": "Minifier for the web app bundle, run by webapp/tools/build.py (docs/architecture/webapp.md, Build). Install with: npm ci --prefix webapp/tools",
+  "description": "Minifier for the web app bundle, run by webapp/tools/build.py (docs/architecture/webapp.md, Build), and the getting-started page's Markdown and QR renderer and the printed sheet's fonts, run by webapp/tools/getting_started.mjs. Install with: npm ci --prefix webapp/tools",
   "type": "module",
   "devDependencies": {
+    "@fontsource/ibm-plex-mono": "5.3.0",
+    "@fontsource/ibm-plex-sans": "5.3.0",
     "html-minifier-terser": "7.2.0",
+    "marked": "18.0.14",
+    "qrcode": "1.5.4",
     "terser": "5.51.2"
   }
 }

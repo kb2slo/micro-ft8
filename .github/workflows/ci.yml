@@ -123,6 +123,28 @@ jobs:
       - name: Decode recall
         run: python3 tools/decode_recall/report.py
 
+  # The printed getting-started sheet (webapp/getting-started.md), printed by
+  # headless Chrome on every push: it fails when the sheet runs past its page
+  # limit or quotes a label the station's UI no longer has. Both release jobs
+  # post the PDF with the firmware images (docs/RELEASE_PROCESS.md).
+  getting-started-sheet:
+    name: Getting-started sheet (PDF)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Print the sheet
+        run: |
+          npm ci --prefix webapp/tools
+          node webapp/tools/getting_started.mjs --pdf
+
+      - name: Upload the sheet
+        uses: actions/upload-artifact@v6
+        with:
+          name: getting-started-sheet
+          retention-days: 30
+          path: webapp/dist/getting-started.pdf
+
   sidekick-firmware:
     name: Sidekick (ESP32-S3)
     needs: changes
@@ -199,7 +221,7 @@ jobs:
 
   release:
     name: GitHub Release (tag)
-    needs: [host-tests, poe_p4-firmware]
+    needs: [host-tests, poe_p4-firmware, getting-started-sheet]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -210,6 +232,11 @@ jobs:
           name: poe_p4-firmware
           path: dist-poe-p4
 
+      - uses: actions/download-artifact@v7
+        with:
+          name: getting-started-sheet
+          path: dist-sheet
+
       - name: Name tagged binaries
         run: |
           tag="${GITHUB_REF_NAME}"
@@ -217,6 +244,9 @@ jobs:
           test -f "dist-poe-p4/poe_p4_merged.bin"
           cp "dist-poe-p4/poe_p4_merged.bin" "dist/MicroFT8-PoE-P4-${tag}-Merged.bin"
           sha256sum "dist/MicroFT8-PoE-P4-${tag}-Merged.bin" | tee "dist/MicroFT8-PoE-P4-${tag}-Merged.bin.sha256"
+          test -s dist-sheet/getting-started.pdf
+          cp dist-sheet/getting-started.pdf "dist/MicroFT8-Getting-Started-${tag}.pdf"
+          sha256sum "dist/MicroFT8-Getting-Started-${tag}.pdf" | tee "dist/MicroFT8-Getting-Started-${tag}.pdf.sha256"
 
       - uses: softprops/action-gh-release@v3
         with:
@@ -224,6 +254,8 @@ jobs:
           files: |
             dist/MicroFT8-PoE-P4-${{ github.ref_name }}-Merged.bin
             dist/MicroFT8-PoE-P4-${{ github.ref_name }}-Merged.bin.sha256
+            dist/MicroFT8-Getting-Started-${{ github.ref_name }}.pdf
+            dist/MicroFT8-Getting-Started-${{ github.ref_name }}.pdf.sha256
           body: |
             M5Stack Unit PoE-P4 (U213): the headless main board -- pair it with a sidekick, whose web app is the only UI. Flash at `0x0` over the USB-C port next to the RJ45 (labeled `USB-C PROG & OTG`).
 
@@ -231,9 +263,11 @@ jobs:
             esptool.py --chip esp32p4 write_flash 0x0 MicroFT8-PoE-P4-${{ github.ref_name }}-Merged.bin
             ```
 
+            **Getting-started sheet** — `MicroFT8-Getting-Started-${{ github.ref_name }}.pdf`: the one-page US Letter sheet that goes in the box with a unit, the same text as https://micro-ft8.kalikstein.com/getting-started at this tag.
+
   release-main:
     name: GitHub Release (main)
-    needs: [host-tests, poe_p4-firmware, sidekick-firmware]
+    needs: [host-tests, poe_p4-firmware, sidekick-firmware, getting-started-sheet]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -261,6 +295,11 @@ jobs:
         with:
           name: sidekick-firmware
           path: dist-sidekick
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: getting-started-sheet
+          path: dist-sheet
 
       # Self-identifying on disk: several of these land in one Downloads folder
       # during a bench session, where a fixed name plus "(3)" says nothing.
@@ -300,6 +339,14 @@ jobs:
           mv "dist/${asset_src}.sha256" "dist/${dated_src}.sha256"
           echo "ASSET_SRC=${dated_src}" >> "$GITHUB_ENV"
 
+      - name: Name the getting-started sheet
+        run: |
+          asset_gs="${DAY}-microft8-getting-started-${SHORT_SHA}.pdf"
+          test -s dist-sheet/getting-started.pdf
+          cp dist-sheet/getting-started.pdf "dist/${asset_gs}"
+          sha256sum "dist/${asset_gs}" | tee "dist/${asset_gs}.sha256"
+          echo "ASSET_GS=${asset_gs}" >> "$GITHUB_ENV"
+
       # The asset name changes every merge, so uploads would otherwise pile up
       # on this one rolling release forever. Clear the old ones; the release
       # object itself is kept, so its page and tag survive.
@@ -327,6 +374,8 @@ jobs:
             dist/${{ env.ASSET_SK }}.sha256
             dist/${{ env.ASSET_SRC }}
             dist/${{ env.ASSET_SRC }}.sha256
+            dist/${{ env.ASSET_GS }}
+            dist/${{ env.ASSET_GS }}.sha256
           body: |
             Rolling firmware from `main`, rebuilt on every merge that can change the binary. Not a versioned release — see `docs/RELEASE_PROCESS.md`.
 
@@ -348,6 +397,8 @@ jobs:
 
             **Source** — `${{ env.ASSET_SRC }}`: history-free tree at this commit, including vendored `ft8_lib` (no `.git`).
 
+            **Getting-started sheet** — `${{ env.ASSET_GS }}`: the one-page US Letter sheet that goes in the box with a unit, the same text as https://micro-ft8.kalikstein.com/getting-started at this commit.
+
       - name: Mirror continuous assets to Cloudflare R2
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -361,10 +412,12 @@ jobs:
           P4_SHA="$(sha256_of "dist/${ASSET_P4}.sha256")"
           SK_SHA="$(sha256_of "dist/${ASSET_SK}.sha256")"
           SRC_SHA="$(sha256_of "dist/${ASSET_SRC}.sha256")"
+          GS_SHA="$(sha256_of "dist/${ASSET_GS}.sha256")"
 
           cp "dist/${ASSET_P4}" dist/microft8-poe-p4-continuous.bin
           cp "dist/${ASSET_SK}" dist/microft8-sidekick-continuous.bin
           cp "dist/${ASSET_SRC}" dist/microft8-source-continuous.tar.gz
+          cp "dist/${ASSET_GS}" dist/microft8-getting-started-continuous.pdf
 
           cat > dist/manifest.json <<EOF
           {
@@ -391,6 +444,11 @@ jobs:
                 "stable": "microft8-source-continuous.tar.gz",
                 "filename": "${ASSET_SRC}",
                 "sha256": "${SRC_SHA}"
+              },
+              "getting_started": {
+                "stable": "microft8-getting-started-continuous.pdf",
+                "filename": "${ASSET_GS}",
+                "sha256": "${GS_SHA}"
               }
             }
           }
@@ -407,4 +465,5 @@ jobs:
           put microft8-poe-p4-continuous.bin dist/microft8-poe-p4-continuous.bin application/octet-stream
           put microft8-sidekick-continuous.bin dist/microft8-sidekick-continuous.bin application/octet-stream
           put microft8-source-continuous.tar.gz dist/microft8-source-continuous.tar.gz application/gzip
+          put microft8-getting-started-continuous.pdf dist/microft8-getting-started-continuous.pdf application/pdf
           put manifest.json dist/manifest.json 'application/json; charset=utf-8'

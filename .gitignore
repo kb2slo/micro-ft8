@@ -93,3 +93,7 @@ webapp/.wrangler/
 webapp/tools/node_modules/
 webapp/dist/
 webapp/app/manifest.json
+
+# The getting-started page, generated from webapp/getting-started.md by
+# webapp/tools/getting_started.mjs (its printed PDF goes to webapp/dist/, above).
+webapp/getting-started.html
