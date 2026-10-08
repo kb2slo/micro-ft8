@@ -1434,18 +1434,17 @@ mapTimeSelectEl.onchange = function () {
   renderLogMap();
 };
 
-// grid defaults off, unlike the other four -- operator-requested 2026-09-22:
-// the Maidenhead overlay is dense detail useful for a specific purpose
-// (reading a station's exact square), not something every visit needs to
-// see immediately, where QSOs/Decodes/spots/Places are all "here's what's
-// on the map" by default.
+// Only QSOs is on when the map opens; every other layer starts off
+// (operator decision 2026-10-08). Decodes, spots and Places crowd the first
+// view, and the spot feeds cost a fetch on cellular, so each waits for its
+// own tap.
 // pota/sota split from one combined toggle into two, operator-requested
 // 2026-09-22, then each given a third state the same day: 'off' -> 'spots'
 // (live activations only, cheap) -> 'all' (also every known static
 // location, the heavy per-country/per-region fetch) -> back to 'off'.
 // 'spots' exists specifically so an operator can see current activity
 // without paying for the static-location fetch/render at all.
-var layerState = { qsos: true, decodes: true, pota: 'all', sota: 'all', places: true, grid: false };
+var layerState = { qsos: true, decodes: false, pota: 'off', sota: 'off', places: false, grid: false };
 function setLayerBtn(id, on) {
   document.getElementById(id).classList.toggle('on', on);
 }
@@ -2161,9 +2160,10 @@ function handleGridDeepLink() {
   await loadCfg(); // own-grid marker + spots' band filter want this before first render, but basemap load below doesn't depend on it
   handleGeoReturn(); // wants lastCfg.grid (just loaded) to compare against
   handleGridDeepLink();
-  loadDecodeLocations();
+  if (layerState.decodes) loadDecodeLocations();
   loadLogMapBasemap(); // renders as soon as the basemap itself is in, doesn't wait on data layers
   loadQsoLocations();
-  loadSpotLocations();
+  // A layer that starts off loads on its first tap (the toggles above), so nothing is fetched for it here.
+  if (layerState.pota !== 'off' || layerState.sota !== 'off') loadSpotLocations();
 })();
 </script>
