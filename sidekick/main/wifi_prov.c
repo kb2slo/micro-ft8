@@ -113,7 +113,7 @@ static void ensure_sta_netif(void)
 // internet before falling back to cellular -- which, on 2026-10-09, it did only
 // some of the time (docs/architecture/sidekick.md, The access point). With no
 // route out, the AP is a local link and internet can only go over cellular.
-// Unproven: TEST_PLAN.md Pending. The flags persist in the DHCP server object,
+// Field-checked 2026-10-10 (that doc). The flags persist in the DHCP server object,
 // which lives as long as the netif, so setting them once here covers every
 // start of the AP.
 #if CONFIG_LWIP_DHCPS_ADD_DNS
