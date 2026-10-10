@@ -132,6 +132,7 @@ body{font-family:system-ui;background:Canvas;color:CanvasText}
 <script src=callinfo.js></script>
 <script src=pskr_core.js></script>
 <script src=pskr_live.js></script>
+<script src=geo_handoff.js></script>
 <script>
 'use strict';
 
@@ -2086,29 +2087,12 @@ function handleLogMapTap(clientX, clientY) {
 })();
 
 // ===================== geolocation (operator-requested 2026-09-23) =====================
-// navigator.geolocation is unreachable directly from this page -- gated on
-// a secure context, and http://micro-ft8.local deliberately isn't one
-// (docs/architecture/webapp.md (A non-secure origin)). geo.html, hosted on the bundle host's real HTTPS
-// certificate, does the actual API call and redirects back here with
-// ?lat=&lon=. Generic on that page's own end (a `return` URL, not
-// hardcoded to this page) so Settings' still-unbuilt "set my grid from
-// GPS" -- the handoff's original motivating feature -- can reuse the exact same
-// handoff later without its own copy.
-// "/geo", not "/geo.html" -- Static Assets 307s the .html form to this
-// canonical URL before worker.js's cache-control override would ever apply
-// (confirmed live 2026-09-22); linking straight here skips that redirect.
-var GEO_HANDOFF_URL = 'https://micro-ft8.kalikstein.com/geo';
+// geo_handoff.js leaves for geo.html only once the host answers; the return
+// carries ?lat=&lon=, read below.
 document.getElementById('mapLocateBtn').onclick = function () {
-  // Leaving this origin entirely needs real internet, not just the
-  // sidekick's own AP -- everything else on this page degrades in place
-  // when offline; this is the one feature that can't, because leaving is
-  // the whole point. One-time confirmation so a no-signal phone hits an
-  // informed choice instead of a surprise (the browser's own connection-
-  // error page, with no way back except its own Back button).
-  var ok = confirm("Finding your location needs your phone's own internet connection, not just the sidekick's WiFi. Continue?");
-  if (!ok) return;
-  var ret = location.origin + location.pathname;
-  location.href = GEO_HANDOFF_URL + '?return=' + encodeURIComponent(ret);
+  MicroFT8Geo.handoff(location.origin + location.pathname, function (t) {
+    document.getElementById('mapNote').textContent = t;
+  }, 'No internet right now, so your location cannot be read.');
 };
 
 async function writeGridConfig(grid) {
