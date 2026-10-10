@@ -40,7 +40,7 @@ Facts are from the working tree at `f24182a`.
   - `tools/decode_recall/report.py` scores the firmware's decode steps against pinned `jt9 -8 -d 3` truth. It matches on normalised message text, counts discordant decodes, and lists extras rather than scoring them false.
   - Host and device decode identically for every configuration tried ([decode.md](../architecture/decode.md)).
   - RFC 0006 P6 (row B86) plans "our chain" recordings from the QMX on a Mac.
-  - Row dj5n collected 798 paired SNRs by hand.
+  - The same report scores the firmware's SNR against `jt9`'s on the messages both decoded ([decode.md](../architecture/decode.md), **SNR**).
 * **`jt9`.**
   - `jt9 -h` on the operator's Mac (2026-10-04) offers file mode, `-d` depth, and QSO context: `-c` my call, `-x` their call, `-G`/`-g` grids, `-Q` QSO progress.
   - RFC 0006 measured about 1,450 ms per slot for `-d 3` and 440 ms for `-d 1` on one Apple M4 core.
@@ -102,7 +102,7 @@ flowchart LR
 
 **What it also feeds:**
 
-* the paired SNRs for dj5n
+* paired SNRs from our own receiver chain, beyond the two corpora `report.py` scores ([decode.md](../architecture/decode.md), **SNR**)
 * DT comparison for row I15
 * hard cases for B86's corpus and for `decode_recall` regressions
 

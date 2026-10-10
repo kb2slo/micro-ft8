@@ -31,6 +31,7 @@ extern "C" {
 #include "ft8/decode.h"
 #include "ft8/message.h"
 #include "decode_retry.h"
+#include "decode_snr.h"
 #include "decode_subtract.h"
 }
 
@@ -288,7 +289,7 @@ static void log_slot_summary(int num_candidates, int max_cand, int msg_count, in
   debug_log_line(buf);
 }
 
-void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
+void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const float* block_gain) {
   const int64_t decode_t0_us = esp_timer_get_time();
   sample_decode_cores();
   const int max_cand = DECODE_MAX_CANDIDATES;
@@ -322,21 +323,11 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
     hashtable_age_all();
   }
 
-  // ---- estimate noise floor ----
-  float noise_db = -120.0f;
-  if (mon->wf.mag && mon->wf.num_blocks > 0) {
-    const size_t total = (size_t)mon->wf.num_blocks * (size_t)mon->wf.block_stride;
-    static uint32_t hist[256];
-    memset(hist, 0, sizeof(hist));
-    for (size_t i = 0; i < total; ++i) hist[mon->wf.mag[i]]++;
-    uint64_t target = total * 25 / 100;
-    uint64_t accum = 0;
-    int noise_scaled = 0;
-    for (int v = 0; v < 256; ++v) {
-      accum += hist[v];
-      if (accum >= target) { noise_scaled = v; break; }
-    }
-    noise_db = 0.5f * ((float)noise_scaled - 240.0f);
+  // ---- per-frequency noise for the SNR, before any subtraction (decode.md, SNR) ----
+  static decode_snr_slot_t s_snr_slot;
+  if (!decode_snr_prepare(&s_snr_slot, mon, block_gain)) {
+    ESP_LOGW(TAG, "SNR not prepared: waterfall %d bins x freq_osr %d; SNRs read the floor",
+             mon->wf.num_bins, mon->wf.freq_osr);
   }
 
   // ---- mycall uppercase (stack, not heap) ----
@@ -428,26 +419,8 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg) {
     ftx_message_rc_t urc = ftx_message_decode(&message, &hash_if, text, &offsets);
     if (urc != FTX_MESSAGE_RC_OK || text[0] == '\0') continue;
 
-    float cand_db = noise_db;
-    {
-      int t_index = candidates[i].time_offset * mon->wf.time_osr + candidates[i].time_sub;
-      const int t_count = mon->wf.num_blocks * mon->wf.time_osr;
-      if (t_count > 0) { if (t_index < 0) t_index = 0; if (t_index >= t_count) t_index = t_count - 1; }
-      else t_index = 0;
-
-      int f_index = candidates[i].freq_sub * mon->wf.num_bins + candidates[i].freq_offset;
-      const int f_count = mon->wf.freq_osr * mon->wf.num_bins;
-      if (f_count > 0) { if (f_index < 0) f_index = 0; if (f_index >= f_count) f_index = f_count - 1; }
-      else f_index = 0;
-
-      size_t offset2 = (size_t)t_index * (size_t)f_count + (size_t)f_index;
-      size_t total2 = (size_t)mon->wf.num_blocks * (size_t)mon->wf.block_stride;
-      if (mon->wf.mag && offset2 < total2) cand_db = 0.5f * ((float)mon->wf.mag[offset2] - 240.0f);
-    }
-
-    int snr_q = (int)lrintf(cand_db - noise_db);
-    if (snr_q < -30) snr_q = -30;
-    if (snr_q >  99) snr_q = 99;
+    // Before this message is subtracted: the SNR reads its tones.
+    const int snr_q = decode_snr_message(&s_snr_slot, mon, &candidates[i], message.payload);
 
     if (seen < DECODE_MAX_CANDIDATES) seen_hz[seen++] = freq_hz;
     decode_subtract_message(&mon->wf, &candidates[i], message.payload,

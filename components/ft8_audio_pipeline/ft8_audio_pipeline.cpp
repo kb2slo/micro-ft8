@@ -22,7 +22,7 @@ extern "C" {
 #include "ft8/decode.h"
 }
 
-void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg);
+void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const float* block_gain);
 int64_t rtc_now_ms();
 
 #ifndef FT8_SAMPLE_RATE
@@ -90,12 +90,15 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
 
     float* ft8_buffer = (float*)heap_caps_malloc(sizeof(float) * mon.block_size, MALLOC_CAP_DEFAULT);
     float* temp_dec = (float*)heap_caps_malloc(sizeof(float) * 512, MALLOC_CAP_DEFAULT);
+    // The AGC gain applied to each waterfall block: the decode SNR divides it back out (decode.md, SNR).
+    float* block_gain = (float*)heap_caps_malloc(sizeof(float) * mon.wf.max_blocks, MALLOC_CAP_DEFAULT);
     log_heap("AUDIO_PIPE_AFTER_SAMPLE_BUFFERS");
 
-    if (!ft8_buffer || !temp_dec) {
+    if (!ft8_buffer || !temp_dec || !block_gain) {
         ESP_LOGE(tag, "pipeline buffer allocation failed");
         if (ft8_buffer) free(ft8_buffer);
         if (temp_dec) free(temp_dec);
+        if (block_gain) free(block_gain);
         monitor_free(&mon);
         return;
     }
@@ -120,6 +123,7 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
         ESP_LOGE(tag, "audio ingest task create failed");
         free(ft8_buffer);
         free(temp_dec);
+        free(block_gain);
         monitor_free(&mon);
         return;
     }
@@ -162,7 +166,8 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                     ft8_buffer[j] *= gain;
                 }
 
-                if (mon.wf.num_blocks < target_blocks) {
+                if (mon.wf.num_blocks < target_blocks && mon.wf.num_blocks < mon.wf.max_blocks) {
+                    block_gain[mon.wf.num_blocks] = gain;
                     monitor_process(&mon, ft8_buffer);
                 }
 
@@ -235,7 +240,7 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                         decode_tx_state_set_capture_clean(
                             slot_clean && ft8_sample_ring_dropped(&ring) == dropped_at_boundary);
                         decode_tx_state_set_decode_in_progress(true);
-                        decode_monitor_results(&mon, &mon_cfg);
+                        decode_monitor_results(&mon, &mon_cfg, block_gain);
                     } else {
                         char buf[32];
                         snprintf(buf, sizeof(buf), "PAUSED %lld", (long long)slot_idx);
@@ -258,5 +263,6 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
     }
     free(ft8_buffer);
     free(temp_dec);
+    free(block_gain);
     monitor_free(&mon);
 }

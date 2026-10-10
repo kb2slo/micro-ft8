@@ -6,7 +6,8 @@ One command, today's firmware settings unless flags say otherwise:
   python3 tools/decode_recall/report.py
 
 Prints recall, SNR-bucketed recall, and discordant counts (missed vs extras)
-against committed `jt9 -8 -d 3` truth (WSJT-X 3.0.1). CI never runs jt9.
+against committed `jt9 -8 -d 3` truth (WSJT-X 3.0.1), and how far the firmware's
+SNR sits from jt9's on the messages both decoded. CI never runs jt9.
 `20m_busy` is fetched from howard0su/ft8_lib at 55ccf01 and is not committed.
 The synthetic tier is GFSK plus calibrated AWGN; its truth is the message we encoded.
 
@@ -63,6 +64,14 @@ TODAY = {
 # CI fails if recall falls more than this many messages under the recorded hits.
 # Two libm implementations can move a marginal candidate either way (RFC 0006 §3).
 SLACK = {"in_tree": 4, "busy": 8}
+
+# CI fails if the SNR's mean error against jt9 moves more than this from the recorded value,
+# or its spread grows more than this. Tenths of a dB.
+SNR_SLACK_X10 = 5
+# CI fails if the synthetic grid's mean SNR at any level from SNR_CHECK_LOW up is further than
+# this from the injected SNR (dB). Below that only the lucky draws decode, so the mean is biased.
+SNR_SYNTH_TOLERANCE = 1.5
+SNR_CHECK_LOW = -18
 
 LINE = re.compile(
     r"^\s*\d{4,6}\s+([-+]?\d+(?:\.\d+)?)\s+[-+]?\d+\.\d+\s+\d+\s+~\s+(.*?)\s*$"
@@ -212,6 +221,7 @@ def score_corpus(name, wavs, decoded_by_path):
     buckets = defaultdict(lambda: [0, 0])
     missed = []
     extras = []
+    snr_pairs = []  # (jt9's SNR, ours) for every message both decoded
     for wav in wavs:
         truth = load_truth(name, wav)
         got = decoded_by_path[str(wav)]
@@ -228,6 +238,7 @@ def score_corpus(name, wavs, decoded_by_path):
             slot[1] += 1
             if text in got:
                 slot[0] += 1
+                snr_pairs.append((snr, got[text]))
     return {
         "truth": truth_n,
         "hits": hit_n,
@@ -235,6 +246,37 @@ def score_corpus(name, wavs, decoded_by_path):
         "buckets": buckets,
         "missed": missed,
         "extra_list": extras,
+        "snr": snr_error(snr_pairs),
+    }
+
+
+def percentile(values, q):
+    ordered = sorted(values)
+    rank = (len(ordered) - 1) * q
+    low = int(rank)
+    high = min(low + 1, len(ordered) - 1)
+    return ordered[low] + (ordered[high] - ordered[low]) * (rank - low)
+
+
+def snr_error(pairs):
+    """Our SNR minus jt9's over (jt9, ours) pairs: mean, spread, tails, and the slope of ours on jt9's."""
+    if not pairs:
+        return None
+    errors = [ours - truth for truth, ours in pairs]
+    mean = sum(errors) / len(errors)
+    sd = (sum((e - mean) ** 2 for e in errors) / len(errors)) ** 0.5
+    truth_mean = sum(t for t, _ in pairs) / len(pairs)
+    ours_mean = sum(o for _, o in pairs) / len(pairs)
+    sxx = sum((t - truth_mean) ** 2 for t, _ in pairs)
+    slope = sum((t - truth_mean) * (o - ours_mean) for t, o in pairs) / sxx if sxx else 0.0
+    return {
+        "n": len(errors),
+        "mean": mean,
+        "sd": sd,
+        "p5": percentile(errors, 0.05),
+        "p95": percentile(errors, 0.95),
+        "within3": sum(abs(e) <= 3 for e in errors) / len(errors),
+        "slope": slope,
     }
 
 
@@ -263,6 +305,11 @@ def print_score(name, score, wall_ms, n_files):
         if total == 0:
             continue
         print(f"    {label:>8}  {100.0 * got / total:5.1f}% ({got}/{total})")
+    snr = score["snr"]
+    if snr:
+        print(f"  SNR, ours minus jt9's over {snr['n']} messages: mean {snr['mean']:+.1f} dB, sd {snr['sd']:.1f},"
+              f" p5..p95 {snr['p5']:+.0f}..{snr['p95']:+.0f}, within 3 dB {100.0 * snr['within3']:.0f}%,"
+              f" slope {snr['slope']:.2f}")
 
 
 def synth_jobs(directory):
@@ -288,7 +335,7 @@ def write_synth():
 
 
 def score_synth(jobs, decoded_by_path):
-    by_snr = defaultdict(lambda: [0, 0, 0])  # hits, total, extras
+    by_snr = defaultdict(lambda: [0, 0, 0, []])  # hits, total, extras, our SNR for each hit
     strong_misses = []
     for path, snr, message in jobs:
         got = decoded_by_path[str(path)]
@@ -296,17 +343,31 @@ def score_synth(jobs, decoded_by_path):
         slot[1] += 1
         if message in got:
             slot[0] += 1
+            slot[3].append(got[message])
         elif snr >= -6:
             strong_misses.append((path.name, message))
         slot[2] += len(set(got) - {message})
     return by_snr, strong_misses
 
 
+def synth_snr_misses(by_snr):
+    """Levels from SNR_CHECK_LOW up whose mean decoded SNR is off the injected SNR by more than the tolerance."""
+    misses = []
+    for snr, (_hits, _total, _extras, ours) in sorted(by_snr.items()):
+        if snr < SNR_CHECK_LOW or not ours:
+            continue
+        mean = sum(ours) / len(ours)
+        if abs(mean - snr) > SNR_SYNTH_TOLERANCE:
+            misses.append((snr, mean))
+    return misses
+
+
 def print_synth(by_snr, strong_misses):
     print("synthetic GFSK + AWGN (truth is the encoded message; SNR is the injected SNR):")
     for snr in sorted(by_snr):
-        hits, total, extras = by_snr[snr]
-        print(f"    {snr:4d} dB  {100.0 * hits / total:5.1f}% ({hits}/{total})  extras {extras}")
+        hits, total, extras, ours = by_snr[snr]
+        reads = f"  reads {sum(ours) / len(ours):+.1f} dB" if ours else ""
+        print(f"    {snr:4d} dB  {100.0 * hits / total:5.1f}% ({hits}/{total})  extras {extras}{reads}")
     if strong_misses:
         print(f"  strong-signal misses (SNR >= -6): {len(strong_misses)}")
         for name, message in strong_misses[:8]:
@@ -325,11 +386,13 @@ def floors_from(scores, strong_misses):
         lines.append(f"{name}_hits {hits}")
         lines.append(f"{name}_truth {truth}")
         lines.append(f"{name}_min {minimum}")
+        lines.append(f"{name}_snr_mean_x10 {round(10 * scores[name]['snr']['mean'])}")
+        lines.append(f"{name}_snr_sd_x10 {round(10 * scores[name]['snr']['sd'])}")
     lines.append(f"synth_strong_misses {len(strong_misses)}")
     return "\n".join(lines) + "\n"
 
 
-def check_floors(path, scores, strong_misses):
+def check_floors(path, scores, strong_misses, snr_misses):
     if not path.is_file():
         raise SystemExit(f"missing {path}; run with --write-baseline")
     recorded = {}
@@ -346,6 +409,19 @@ def check_floors(path, scores, strong_misses):
         if hits < minimum:
             print(f"FAIL {name} recall dropped below the floor", file=sys.stderr)
             failed = True
+        snr = scores[name]["snr"]
+        mean_x10 = round(10 * snr["mean"])
+        sd_x10 = round(10 * snr["sd"])
+        want_mean = recorded[f"{name}_snr_mean_x10"]
+        want_sd = recorded[f"{name}_snr_sd_x10"]
+        print(f"baseline {name} SNR vs jt9: mean {mean_x10 / 10:+.1f} dB (recorded {want_mean / 10:+.1f}),"
+              f" sd {sd_x10 / 10:.1f} (recorded {want_sd / 10:.1f})")
+        if abs(mean_x10 - want_mean) > SNR_SLACK_X10 or sd_x10 > want_sd + SNR_SLACK_X10:
+            print(f"FAIL {name} SNR moved away from jt9's", file=sys.stderr)
+            failed = True
+    for snr, mean in snr_misses:
+        print(f"FAIL synthetic {snr:+d} dB reads {mean:+.1f} dB; refit DECODE_SNR_FT8_OFFSET_DB", file=sys.stderr)
+        failed = True
     if strong_misses:
         print("FAIL a synthetic signal at SNR >= -6 did not decode", file=sys.stderr)
         failed = True
@@ -436,10 +512,12 @@ def main():
     print_score("busy", scores["busy"], sum(busy_wall.values()), len(busy))
 
     strong_misses = []
+    snr_misses = []
     if config["sample_rate"] == 6000:
         jobs = write_synth()
         synth_decoded, _synth_wall, _synth_log = run_decoder(config, [job[0] for job in jobs])
         by_snr, strong_misses = score_synth(jobs, synth_decoded)
+        snr_misses = synth_snr_misses(by_snr)
         print_synth(by_snr, strong_misses)
     else:
         print("synthetic skipped: the AWGN grid is 6 kHz")
@@ -453,7 +531,7 @@ def main():
         print(f"wrote {baseline}")
         return 0
     if is_today(config) and not args.no_check:
-        if check_floors(baseline, scores, strong_misses):
+        if check_floors(baseline, scores, strong_misses, snr_misses):
             return 1
     return 0
 

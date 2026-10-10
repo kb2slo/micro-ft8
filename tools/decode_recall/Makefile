@@ -6,6 +6,7 @@ BENCH := $(ROOT)/test_apps/decode_bench/main
 SRCS := decode_recall.c $(BENCH)/bench_core.c \
         $(ROOT)/components/decode_pipeline/decode_subtract.c \
         $(ROOT)/components/decode_pipeline/decode_retry.c \
+        $(ROOT)/components/decode_pipeline/decode_snr.c \
         $(LIB)/vendor/ft8/decode.c $(LIB)/vendor/ft8/message.c $(LIB)/vendor/ft8/text.c \
         $(LIB)/vendor/ft8/encode.c $(LIB)/vendor/ft8/constants.c $(LIB)/vendor/ft8/crc.c \
         $(LIB)/vendor/ft8/ldpc.c $(LIB)/vendor/fft/kiss_fft.c $(LIB)/vendor/fft/kiss_fftr.c \

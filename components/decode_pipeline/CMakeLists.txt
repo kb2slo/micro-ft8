@@ -1,6 +1,6 @@
 idf_component_register(
     SRCS "decode_pipeline.cpp" "decode_subtract.c" "decode_retry.c" "decode_core_busy.c"
-         "decode_sync.c"
+         "decode_sync.c" "decode_snr.c"
     INCLUDE_DIRS "include"
     REQUIRES decode_types ft8_lib autoseq callsign_hashtable decode_tx_state
              debug_log protocol rtc_core adif dial_history

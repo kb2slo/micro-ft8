@@ -3,7 +3,11 @@
 in_tree_hits 285
 in_tree_truth 428
 in_tree_min 281
+in_tree_snr_mean_x10 1
+in_tree_snr_sd_x10 33
 busy_hits 699
 busy_truth 1041
 busy_min 691
+busy_snr_mean_x10 15
+busy_snr_sd_x10 29
 synth_strong_misses 0

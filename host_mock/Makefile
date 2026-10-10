@@ -63,6 +63,7 @@ SAMPLE_RING_TARGET = host_test_sample_ring
 CORE_BUSY_TARGET = host_test_core_busy
 DECODE_RETRY_TARGET = host_test_decode_retry
 DECODE_SYNC_TARGET = host_test_decode_sync
+DECODE_SNR_TARGET = host_test_decode_snr
 
 all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
      $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) \
@@ -72,7 +73,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET
      $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
      $(CAT_REPLY_PARSER_TARGET) $(SWR_SWEEP_TARGET) \
      $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(CORE_BUSY_TARGET) \
-     $(DECODE_RETRY_TARGET) $(DECODE_SYNC_TARGET) \
+     $(DECODE_RETRY_TARGET) $(DECODE_SYNC_TARGET) $(DECODE_SNR_TARGET) \
      $(SIM_TARGET)
 
 $(TARGET): $(OBJ) porta_event_json.o
@@ -156,6 +157,22 @@ decode_sync.o: ../components/decode_pipeline/decode_sync.c
 test_decode_sync.o: test_decode_sync.cpp
 	$(CXX) $(CXXFLAGS) -I../components/decode_pipeline/include -c $< -o $@
 $(DECODE_SYNC_TARGET): $(DECODE_SYNC_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^ -lm
+
+# decode_snr re-encodes the message for its tones: encode.c, constants.c, crc.c.
+DECODE_SNR_OBJ = decode_snr.o snr_encode.o snr_constants.o snr_crc.o test_decode_snr.o
+DECODE_SNR_INC = -I../components/decode_pipeline/include -I../components/ft8_lib -I../components/ft8_lib/vendor
+decode_snr.o: ../components/decode_pipeline/decode_snr.c
+	$(CC) $(CFLAGS) $(DECODE_SNR_INC) -c $< -o $@
+snr_encode.o: ../components/ft8_lib/vendor/ft8/encode.c
+	$(CC) $(CFLAGS) $(DECODE_SNR_INC) -c $< -o $@
+snr_constants.o: ../components/ft8_lib/vendor/ft8/constants.c
+	$(CC) $(CFLAGS) $(DECODE_SNR_INC) -c $< -o $@
+snr_crc.o: ../components/ft8_lib/vendor/ft8/crc.c
+	$(CC) $(CFLAGS) $(DECODE_SNR_INC) -c $< -o $@
+test_decode_snr.o: test_decode_snr.cpp
+	$(CXX) $(CXXFLAGS) $(DECODE_SNR_INC) -c $< -o $@
+$(DECODE_SNR_TARGET): $(DECODE_SNR_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^ -lm
 
 $(QUEUE_HEAD_TARGET): $(QUEUE_HEAD_OBJ)
@@ -267,6 +284,7 @@ clean:
 	      $(SWR_SWEEP_OBJ) $(SWR_SWEEP_TARGET) \
 	      $(PORTA_PROTO_OBJ) $(PORTA_PROTO_TARGET) \
 	      $(DECODE_RETRY_OBJ) $(DECODE_RETRY_TARGET) \
-	      $(DECODE_SYNC_OBJ) $(DECODE_SYNC_TARGET)
+	      $(DECODE_SYNC_OBJ) $(DECODE_SYNC_TARGET) \
+	      $(DECODE_SNR_OBJ) $(DECODE_SNR_TARGET)
 
 .PHONY: all clean

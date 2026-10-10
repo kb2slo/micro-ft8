@@ -47,7 +47,7 @@ typedef int64_t (*bench_clock_fn)(void);
 typedef void (*bench_message_fn)(void* context, const char* text, float freq_hz, float time_s, int snr);
 
 // Decode one slot. `samples` is mono int16 at `config->sample_rate` (or 6 kHz when that is 0),
-// starting at the slot boundary. `snr` is the firmware's quantised estimate, for the jt9-style line.
+// starting at the slot boundary. `snr` is decode_snr_message()'s, as the firmware reports it, for the jt9-style line.
 void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sample_count,
                     bench_clock_fn clock_us, bench_message_fn on_message, void* context,
                     BenchResult* result);

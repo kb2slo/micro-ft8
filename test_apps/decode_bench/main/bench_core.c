@@ -8,6 +8,7 @@
 
 #include "common/monitor.h"
 #include "decode_retry.h"
+#include "decode_snr.h"
 #include "decode_subtract.h"
 #include "ft8/constants.h"
 #include "ft8/decode.h"
@@ -39,7 +40,7 @@ static ftx_callsign_hash_interface_t s_hash_interface = {
     .save_hash = bench_save_hash,
 };
 
-// 25th-percentile cell, the firmware's noise-floor estimate in decode_monitor_results().
+// Cell code at `percent` of the waterfall, the noise floor the fewer-bits simulation anchors on.
 static int mag_percentile(const monitor_t* monitor, int percent)
 {
     const size_t total = (size_t)monitor->wf.num_blocks * (size_t)monitor->wf.block_stride;
@@ -78,40 +79,9 @@ static void quantise_waterfall(monitor_t* monitor, int levels)
     }
 }
 
-// Same cell read as decode_monitor_results(), then cand_db - noise_db, clamped to [-30, 99].
-static int candidate_snr(const monitor_t* monitor, const ftx_candidate_t* candidate, int noise_scaled)
-{
-    float noise_db = 0.5f * ((float)noise_scaled - 240.0f);
-    float cand_db = noise_db;
-    int t_index = candidate->time_offset * monitor->wf.time_osr + candidate->time_sub;
-    const int t_count = monitor->wf.num_blocks * monitor->wf.time_osr;
-    if (t_count > 0) {
-        if (t_index < 0) t_index = 0;
-        if (t_index >= t_count) t_index = t_count - 1;
-    } else {
-        t_index = 0;
-    }
-    int f_index = candidate->freq_sub * monitor->wf.num_bins + candidate->freq_offset;
-    const int f_count = monitor->wf.freq_osr * monitor->wf.num_bins;
-    if (f_count > 0) {
-        if (f_index < 0) f_index = 0;
-        if (f_index >= f_count) f_index = f_count - 1;
-    } else {
-        f_index = 0;
-    }
-    size_t offset = (size_t)t_index * (size_t)f_count + (size_t)f_index;
-    size_t total = (size_t)monitor->wf.num_blocks * (size_t)monitor->wf.block_stride;
-    if (monitor->wf.mag != NULL && offset < total) {
-        cand_db = 0.5f * ((float)monitor->wf.mag[offset] - 240.0f);
-    }
-    int snr_q = (int)lrintf(cand_db - noise_db);
-    if (snr_q < -30) snr_q = -30;
-    if (snr_q > 99) snr_q = 99;
-    return snr_q;
-}
-
 // Same normalisation as ft8_audio_pipeline_run(): scale each block to a mean |x| of 0.1, gain in [0.1, 10].
-static void bench_block_agc(float* block, int size)
+// Returns the gain, which the SNR divides back out.
+static float bench_block_agc(float* block, int size)
 {
     double accumulator = 0.0;
     for (int j = 0; j < size; ++j) {
@@ -124,6 +94,7 @@ static void bench_block_agc(float* block, int size)
     for (int j = 0; j < size; ++j) {
         block[j] *= gain;
     }
+    return gain;
 }
 
 // Open-addressing payload dedupe, as decode_monitor_results() does. Returns true if the message is new.
@@ -176,7 +147,10 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
     const int target_blocks = FT8_NN;
     const int block_size = monitor.block_size;
     float* block = (float*)malloc(sizeof(float) * (size_t)block_size);
-    if (block == NULL) {
+    float* block_gain = (float*)malloc(sizeof(float) * (size_t)monitor.wf.max_blocks);
+    if (block == NULL || block_gain == NULL) {
+        free(block);
+        free(block_gain);
         monitor_free(&monitor);
         return;
     }
@@ -187,7 +161,7 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
         for (int j = 0; j < block_size; ++j) {
             block[j] = samples[offset + (size_t)j] / 32768.0f;
         }
-        if (agc_on) bench_block_agc(block, block_size);
+        block_gain[monitor.wf.num_blocks] = agc_on ? bench_block_agc(block, block_size) : 1.0f;
         monitor_process(&monitor, block);
     }
     free(block);
@@ -202,7 +176,6 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
     const int do_subtract = config->subtract_passes > 0;
     const float fraction = config->subtract_fraction > 0.0f ? config->subtract_fraction : DECODE_SUBTRACT_FRACTION;
 
-    const int noise_scaled = mag_percentile(&monitor, 25);
     for (int i = 0; i < BENCH_HASH_SLOTS; ++i) {
         s_decoded_table[i] = NULL;
     }
@@ -210,6 +183,11 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
     int decoded = 0;
     int64_t find_us = 0;
     int64_t decode_us = 0;
+    // On the decode clock, as in decode_monitor_results().
+    static decode_snr_slot_t snr_slot;
+    int64_t snr_t0 = clock_us();
+    decode_snr_prepare(&snr_slot, &monitor, block_gain);
+    decode_us += clock_us() - snr_t0;
     static decode_retry_t retry;
     decode_retry_reset(&retry);
     const int n_tones = (monitor.wf.protocol == FTX_PROTOCOL_FT4) ? 4 : 8;
@@ -252,7 +230,7 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
             if (ftx_message_decode(&message, &s_hash_interface, text, &offsets) != FTX_MESSAGE_RC_OK || text[0] == '\0') {
                 continue;
             }
-            int snr = candidate_snr(&monitor, &s_candidates[i], noise_scaled);
+            int snr = decode_snr_message(&snr_slot, &monitor, &s_candidates[i], message.payload);
             if (do_subtract) {
                 if (seen < BENCH_MAX_CANDIDATES) seen_hz[seen++] = freq_hz;
                 decode_subtract_message(&monitor.wf, &s_candidates[i], message.payload,
@@ -277,5 +255,6 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
     result->process_us = t1 - t0;
     result->find_us = t2 - t1;
     result->decode_us = t3 - t2;
+    free(block_gain);
     monitor_free(&monitor);
 }

@@ -241,11 +241,14 @@ static int write_synth(const char* dir, int index, const char* message, float fr
 static int synth_grid(const char* dir)
 {
     static const char* messages[] = { "CQ KB2SLO FN31", "W1AW KB2SLO R-15" };
-    static const int snrs[] = { -24, -22, -20, -18, -16, -14, -12, -10, -6, 0 };
-    static const float freqs[] = { 800.0f, 1500.0f };
+    // Up to +20 dB so the SNR check sees strong signals; recall is solid well below that.
+    static const int snrs[] = { -24, -22, -20, -18, -16, -14, -12, -10, -6, 0, 6, 12, 20 };
+    // A quarter of a 3.125 Hz bin off centre, as an off-air signal is on average, so the SNR check sees
+    // the scalloping its constant was fitted with (decode.md, SNR).
+    static const float freqs[] = { 800.8f, 1500.8f };
     int index = 0;
     for (int m = 0; m < 2; ++m) {
-        for (int s = 0; s < 10; ++s) {
+        for (int s = 0; s < (int)(sizeof(snrs) / sizeof(snrs[0])); ++s) {
             for (int f = 0; f < 2; ++f) {
                 if (write_synth(dir, index, messages[m], freqs[f], snrs[s]) != 0) return 1;
                 ++index;

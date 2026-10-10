@@ -1,6 +1,6 @@
 # Decode: how fast it runs, and how that is measured
 
-What the decoder costs on each main board today, and the tool that measures it. The plan for improving decode — parameters, the audio path, algorithm changes — is [RFC 0006](../rfcs/0006-decode-performance.md), still in progress. The decoder itself is `ft8_lib` ([ft8_lib.md](ft8_lib.md)).
+What the decoder costs on each main board today, the tool that measures it, and how the SNR it reports is held to WSJT-X's. The plan for improving decode — parameters, the audio path, algorithm changes — is [RFC 0006](../rfcs/0006-decode-performance.md), still in progress. The decoder itself is `ft8_lib` ([ft8_lib.md](ft8_lib.md)).
 
 ## The time budget
 
@@ -33,7 +33,7 @@ What these settle:
 
 ## Recall against jt9
 
-`python3 tools/decode_recall/report.py` scores the firmware's decode (the same steps as `ft8_audio_pipeline_run()` and `decode_monitor_results()`, via `test_apps/decode_bench` `bench_run_slot`) against pinned `jt9 -8 -d 3` truth from WSJT-X 3.0.1. Truth is committed under `tools/decode_recall/truth/`; CI does not run `jt9`. The match key is normalised message text. The report is recall, recall by `jt9`'s SNR, and the discordant counts (missed, and extras listed for review). Host wall time is printed and is not device time.
+`python3 tools/decode_recall/report.py` scores the firmware's decode (the same steps as `ft8_audio_pipeline_run()` and `decode_monitor_results()`, via `test_apps/decode_bench` `bench_run_slot`) against pinned `jt9 -8 -d 3` truth from WSJT-X 3.0.1. Truth is committed under `tools/decode_recall/truth/`; CI does not run `jt9`. The match key is normalised message text. The report is recall, recall by `jt9`'s SNR, the discordant counts (missed, and extras listed for review), and how far our SNR sits from `jt9`'s (**SNR** below). Host wall time is printed and is not device time.
 
 Two off-air corpora, both 12 kHz. The in-tree set is the 24 WAVs in `components/ft8_lib/vendor/test/wav` (428 messages). `20m_busy` is 38 slots (1,041 messages) fetched from `howard0su/ft8_lib` at `55ccf01` into a gitignored cache, not committed. A 6 kHz configuration — today's firmware — is fed a low-pass then 2:1 decimation in the harness, not the firmware's stride decimator. That aliasing question stays [RFC 0006](../rfcs/0006-decode-performance.md) P3. A 12 kHz configuration takes the WAVs as they are.
 
@@ -41,7 +41,7 @@ Flags select every shipped tunable: `time_osr`, `freq_osr`, candidates, `DEC_MAX
 
 The synthetic tier encodes two messages with the vendored GFSK synthesiser, adds white noise at a known SNR in a 2500 Hz bandwidth, and scores whether that message comes back. It is an absolute curve for this decoder. It is not a capture-path test: USB audio, the stride decimator, and whether a full slot arrived stay on the device (RFC 0006 §3).
 
-CI runs the command on today's settings and fails if either corpus drops more than a few messages under the recorded hits (`tools/decode_recall/baseline/today.txt`), or if a synthetic signal at −6 dB or stronger does not decode. The slack is there because a marginal candidate can fall either way under a different libm. On the host that wrote the baseline, the firmware settings below recalled 285/428 and 699/1041, and the synthetic signals were solid from −18 dB up.
+CI runs the command on today's settings and fails if either corpus drops more than a few messages under the recorded hits (`tools/decode_recall/baseline/today.txt`), if a synthetic signal at −6 dB or stronger does not decode, or if the SNR drifts (**SNR** below). The slack is there because a marginal candidate can fall either way under a different libm. On the host that wrote the baseline, the firmware settings below recalled 285/428 and 699/1041, and the synthetic signals were solid from −18 dB up.
 
 ## Subtraction
 
@@ -60,6 +60,25 @@ Discordant counts are true `jt9` messages gained and lost against the previous f
 A quarter of the SNR was worse than half (279/428 and 689/1041 with neighbours). Busy-set recall in the weakest `jt9` bin moved 26/63 → 27/63. The messages gained sit higher: −3..0 dB went 72/132 → 79/132, and ≥ 1 dB went 383/477 → 398/477. Extras, not scored as false, stayed 4 on the in-tree set and went 8 → 10 on the busy set. The one-search row is itself +65/−0 and +169/−0 against the older 50-candidate, `freq_osr` 1 firmware. Both corpora favour the decoder their author tuned, so a win on them is expected, not proof.
 
 The P4 bench for the one-search t2/f2 decode is 1,747 ms. Scaling this host's find+decode ratio (18.8 / 16.2) puts two passes near 2.0 s, about 0.3 s more, inside the 0.45–0.8 s of air guard measured on 20 m the same day. Three passes scale to about 0.9 s more, which overruns that guard, so they are not in the firmware. On the P4, two passes on busy 20 m slots read `dec` 1.6–2.0 s (2026-10-05).
+
+## SNR
+
+Every SNR the station shows or sends — the `R` line, the web app's decode list, the report autoseq transmits, the log's RST — is `decode_snr_message()` (`components/decode_pipeline/decode_snr.c`). It is on WSJT-X's scale: the signal against the noise in 2500 Hz, in whole dB, floored at −24 as `jt9` is, and capped at +49, the most a report can carry (WSJT-X's `ft8code` reads a sent +55 as −46). WSJT-X's method, built here from its description rather than its code:
+
+* **Signal:** the mean power in the decoded message's tone cell, over every symbol the waterfall holds.
+* **Noise:** each frequency column's mean power over the slot; at the signal, the 10th percentile of those means within ±400 Hz of its middle tone. On a busy band the columns other stations occupy sit above that percentile.
+* **The AGC divided back out.** `ft8_audio_pipeline_run()` scales each 160 ms block to a fixed level before the waterfall, and passes those gains to the decode. Each cell is divided by the gain² under its analysis frame: the four half-blocks ending at that cell, weighted by the Hann window squared. Without this, the hot gain before a busy band's stations start, or while a strong one fades, inflates the noise. Frames that reach back before the slot are not measured: on the device they hold the previous slot's audio.
+* **The scale:** `10·log10(signal/noise − 1) + DECODE_SNR_FT8_OFFSET_DB`, −26.1 dB, fitted on a synthetic grid that `jt9` reads within 0.2 dB of its injected SNR. It is close to the expected value: a 320 ms Hann window has a 4.7 Hz noise bandwidth, which gives −27.3 dB, and a 160 ms symbol fills only part of that window. FT4 uses FT8's constant moved by the wider bandwidth of its shorter symbol, not fitted (row xph7).
+
+Measured with `report.py` (2026-10-10): the synthetic grid reads its injected SNR within 0.8 dB from −18 to +20 dB, and exactly from −10 dB up. Against `jt9` on the messages both decoded, our SNR minus theirs is mean +0.1 dB, sd 3.3 (in-tree, 285 messages) and +1.5, sd 2.9 (busy, 699), with slopes 0.94 and 1.01. The estimate this replaced (one waterfall cell minus the slot's 25th-percentile cell) read a median 16 dB above `jt9`, with slope 0.44. CI fails if either corpus's mean error moves more than 0.5 dB from the recorded value or its sd grows more than 0.5 dB, or if the synthetic grid reads more than 1.5 dB off at any level from −18 dB up; a change to the waterfall or the method must refit the constant. On the host the SNR costs 44 µs per slot and 4.5 µs per message; it adds 2.1 KB of static RAM and a gain per block on the heap.
+
+Why not:
+
+* **A median over time** instead of the mean: off-air it read about 6 dB high. Real band noise is not steady, and `jt9` averages.
+* **The mean without dividing the AGC out:** strong signals compressed (+20 dB read +15 on the synthetic grid), and the off-air sd rose to 4.0 dB.
+* **One noise level for the whole band** (a global percentile): sd 5.7 dB off-air. The passband and a band's occupancy are not flat.
+* **The signal's own unused tones as the noise:** sd 10.5 dB. GFSK transitions and neighbouring stations leak into them.
+* **Summing the neighbouring frequency sub-bins, or a baseline per tone:** no change in the result. The baseline is taken once, at the middle tone, which is 8× cheaper.
 
 ## Measuring decode yield on the air
 
