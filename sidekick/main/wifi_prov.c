@@ -107,10 +107,42 @@ static void ensure_sta_netif(void)
     }
 }
 
+// The AP's lease carries an address and a subnet only: no router (option 3),
+// no DNS server (option 6). The sidekick has no uplink, so a router it offered
+// would be a default route to nowhere, and a phone would try the AP first for
+// internet before falling back to cellular -- which, on 2026-10-09, it did only
+// some of the time (docs/architecture/sidekick.md, The access point). With no
+// route out, the AP is a local link and internet can only go over cellular.
+// Unproven: TEST_PLAN.md Pending. The flags persist in the DHCP server object,
+// which lives as long as the netif, so setting them once here covers every
+// start of the AP.
+#if CONFIG_LWIP_DHCPS_ADD_DNS
+// With this on, IDF's DHCP server offers its own address as DNS whatever the
+// DNS flag below says.
+#error "CONFIG_LWIP_DHCPS_ADD_DNS must be off (sidekick/sdkconfig.defaults); delete sidekick/sdkconfig to regenerate it"
+#endif
+static void ap_lease_local_only(void)
+{
+    uint8_t offer = 0;
+    esp_err_t rerr = esp_netif_dhcps_option(s_netif_ap, ESP_NETIF_OP_SET,
+                                            ESP_NETIF_ROUTER_SOLICITATION_ADDRESS,
+                                            &offer, sizeof(offer));
+    esp_err_t derr = esp_netif_dhcps_option(s_netif_ap, ESP_NETIF_OP_SET,
+                                            ESP_NETIF_DOMAIN_NAME_SERVER,
+                                            &offer, sizeof(offer));
+    if (rerr != ESP_OK || derr != ESP_OK) {
+        ESP_LOGW(TAG, "AP lease options not cleared: router %s, DNS %s",
+                 esp_err_to_name(rerr), esp_err_to_name(derr));
+    } else {
+        ESP_LOGI(TAG, "AP lease: address and subnet only (no router, no DNS)");
+    }
+}
+
 static void ensure_ap_netif(void)
 {
     if (!s_netif_ap) {
         s_netif_ap = esp_netif_create_default_wifi_ap();
+        ap_lease_local_only();
     }
 }
 
@@ -900,13 +932,11 @@ static void start_ap(void)
 
     s_join_active = false;
     s_ap_active = true;
-    // B74 follow-up, 2026-09-21: no more captive-portal DHCP option 114 or
-    // DNS-hijack server here -- standard DHCP (router + DNS both offered,
-    // esp_netif's own default). The captive-portal dance never reliably
-    // resolved to "Done" on iOS and was the actual source of the cellular-
-    // retention trade-off B55/B69 were fighting; dropping it removes both
-    // problems at once. An operator navigates to micro-ft8.local manually --
-    // the AP's own SSID already says exactly that.
+    // No captive portal: no DHCP option 114, no DNS-hijack server. It never
+    // reliably resolved to "Done" on iOS, and "captive, unauthenticated"
+    // fought the phone's cellular route. The lease is address-only
+    // (ap_lease_local_only()). An operator navigates to micro-ft8.local
+    // manually -- the AP's own SSID already says exactly that.
     mdns_bring_up();
     // Scan now, while nothing is connected: the off-channel time cannot drop
     // a client that has not arrived yet.

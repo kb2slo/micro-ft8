@@ -28,3 +28,7 @@ CONFIG_LWIP_MAX_SOCKETS=16
 # Port A. A WiFi flash access otherwise stalls the UART interrupt longer than
 # the 128-byte FIFO.
 CONFIG_UART_ISR_IN_IRAM=y
+
+# The AP lease offers no DNS server (wifi_prov.c, ap_lease_local_only()). On,
+# IDF's DHCP server adds its own address as DNS whatever the code asks.
+CONFIG_LWIP_DHCPS_ADD_DNS=n

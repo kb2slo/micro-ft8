@@ -37,7 +37,7 @@ You need the main board and sidekick on their Grove cable, your QMX (tested on f
 ## 2. Open the app
 
 - Join the phone to the WiFi network `micro-ft8.local` (open, no password), open [`http://192.168.4.1`](http://192.168.4.1/) and tap **Operate in AP mode**, or scan the two codes at the top in order. Bookmark the app.
-- An iPhone keeps its cellular internet meanwhile. Android may warn that the network has no internet: stay connected.
+- Cellular internet comes and goes meanwhile. Android may warn that the network has no internet: stay connected.
 - *App not installed?* With cellular data on, open [`http://192.168.4.1`](http://192.168.4.1/), tap **Install the app over your phone's cellular data**, press the sidekick's button, then **Install**. No internet? That page can use your home WiFi instead.
 
 ## 3. Pair your phone

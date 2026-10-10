@@ -79,6 +79,13 @@ Rules that follow:
 
 **Reopen TLS as a client** if the release host stops serving plain HTTP, or a feature needs the sidekick itself to reach an HTTPS-only service with no phone present. Measure the handshake's heap first. **Reopen TLS as a server** if a way appears to give a LAN device a browser-trusted certificate without renewal or a clock, or if the station will be operated on networks its owner does not trust.
 
+## The access point
+
+With no WiFi credentials, after a sustained loss of its network, or when the operator picks AP mode, the sidekick runs its own open network, `micro-ft8.local-…`, at `192.168.4.1`, answering to `micro-ft8.local` over mDNS (`wifi_prov.c`, `start_ap()`). Two clients at most.
+
+* **The lease is address-only: no router, no DNS server** (`ap_lease_local_only()`). The sidekick has no uplink, so an offered router is a default route to nowhere that the phone may try before cellular: on the 2026-10-09 activation, with a lease offering both, the phone had internet only some of the time, while with WiFi off it had it throughout ([system.md](system.md), **Connectivity**). Without a route out, the AP is a local link and internet can only go over cellular. **Unproven:** `TEST_PLAN.md` Pending. `CONFIG_LWIP_DHCPS_ADD_DNS=n` (`sdkconfig.defaults`) is part of it: with it on, IDF offers its own address as DNS whatever the code asks, so `wifi_prov.c` refuses to build with it on.
+* **Why not a captive portal:** it cannot coexist with an address-only lease. iOS raises the portal sheet only when its probe goes out over the WiFi, which needs an offered router and a DNS server answering every name with `192.168.4.1`. The sheet reaches "Done" only when that probe gets Apple's success page, and from then on iOS treats the WiFi as its internet. Tried with DHCP option 114, 2026-09-20/21: the sheet never reliably reached "Done", iOS kept re-intercepting page loads in Safari, and the captive state fought cellular. Option 114's standard API (RFC 8908) needs an HTTPS URL, which the sidekick cannot serve (**Why the sidekick has no TLS**). Instead, the SSID names the address to open, and the setup sheet's QR codes open it.
+
 ## First install
 
 USB-C is the only wire flash path: the ROM bootloader listens only on UART0's default pins, never on Grove ([`sidekick/README.md`](../../sidekick/README.md), B42). A new unit is flashed with the merged `0x0` image (`tools/merge_sidekick_bin.sh`, or the downloads page); after that it updates over WiFi (**Firmware updates**). Until the app bundle is installed it serves only the setup pages.
