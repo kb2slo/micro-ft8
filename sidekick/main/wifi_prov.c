@@ -36,11 +36,18 @@ static const char *TAG = "wifi_prov";
 // the device stuck re-forcing AP mode after an operator has since rejoined a
 // network through the portal's own WiFi form.
 #define NVS_KEY_FORCE_AP "force_ap"
+// The AP's own name and WPA2 password (row rgg2). Absent keys mean the defaults:
+// the SSID `micro-ft8.local` and an open network.
+#define NVS_KEY_AP_SSID "ap_ssid"
+#define NVS_KEY_AP_PASS "ap_pass"
 
 // WPA2 maxima, plus a NUL. Sized from the spec rather than guessed: an SSID is
 // up to 32 bytes and a PSK up to 63 characters.
 #define SSID_MAX 32
 #define PASS_MAX 64
+// WPA2 passphrases are 8 to 63 characters; the driver refuses anything else.
+#define AP_PASS_MIN 8
+#define AP_PASS_MAX 63
 
 // Join attempts before giving up and raising the AP. Each retry costs a couple
 // of seconds; the point is to fall back promptly rather than leave an operator
@@ -84,6 +91,16 @@ static bool s_online;
 static bool s_was_online;
 static bool s_ap_active;
 static char s_ssid[SSID_MAX + 1];
+// The AP's saved name and password, loaded once at boot and on save so the
+// per-poll /api/config facts never touch NVS. The password stays here and in
+// NVS: no route returns it (docs/architecture/system.md, Who may key the
+// transmitter -- a credential is not radio data).
+// Seconds the button has been held toward the AP reset, 0 when it is not (row
+// rgg2). The main loop writes it, the events reply reads it for the page's
+// "keep holding" card. One word, written by one task: no lock.
+static volatile int s_ap_reset_hold;
+static char s_ap_ssid[SSID_MAX + 1];
+static char s_ap_pass[AP_PASS_MAX + 1];
 static httpd_handle_t s_httpd;
 
 // Created at most once each. esp_netif_create_default_wifi_*() asserts on a
@@ -194,6 +211,81 @@ static bool creds_erase(void)
     (void)nvs_erase_key(h, NVS_KEY_PASS);
     const bool ok = nvs_commit(h) == ESP_OK;
     nvs_close(h);
+    return ok;
+}
+
+// ---------------------------------------------------------------------------
+// The AP's own name and password
+// ---------------------------------------------------------------------------
+
+static void ap_default_ssid(char *out, size_t out_len)
+{
+    // Operator-requested 2026-09-20: the SSID itself hints at the URL to
+    // visit (WIFI_PROV_MDNS_HOST, the same hostname mDNS already answers to)
+    // rather than a name with no connection to what to do next. No MAC
+    // suffix -- operator call 2026-09-20, overriding this file's own earlier
+    // multi-device-disambiguation concern; two sidekicks in range of each
+    // other would show identical SSIDs with this change.
+    snprintf(out, out_len, WIFI_PROV_MDNS_HOST ".local");
+}
+
+// Fills s_ap_ssid / s_ap_pass from NVS, falling back to the open default. A
+// stored pair that the driver would refuse (a password outside 8..63) is
+// ignored whole, so a corrupt entry can never leave the AP unable to start.
+static void ap_settings_load(void)
+{
+    char ssid[SSID_MAX + 1] = {0};
+    char pass[AP_PASS_MAX + 1] = {0};
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) == ESP_OK) {
+        size_t n = sizeof(ssid);
+        if (nvs_get_str(h, NVS_KEY_AP_SSID, ssid, &n) != ESP_OK) {
+            ssid[0] = '\0';
+        }
+        n = sizeof(pass);
+        if (nvs_get_str(h, NVS_KEY_AP_PASS, pass, &n) != ESP_OK) {
+            pass[0] = '\0';
+        }
+        nvs_close(h);
+    }
+    const size_t plen = strlen(pass);
+    if (plen != 0 && (plen < AP_PASS_MIN || plen > AP_PASS_MAX)) {
+        ESP_LOGW(TAG, "Stored AP password has a bad length -- using the defaults");
+        ssid[0] = '\0';
+        pass[0] = '\0';
+    }
+    if (ssid[0] == '\0') {
+        ap_default_ssid(ssid, sizeof(ssid));
+    }
+    strcpy(s_ap_ssid, ssid);
+    strcpy(s_ap_pass, pass);
+}
+
+// Saves a validated name and password. An empty name means the default; the
+// default name with no password is stored as no keys at all, which is also
+// what a factory reset leaves.
+static bool ap_settings_save(const char *ssid, const char *pass)
+{
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) {
+        return false;
+    }
+    char def[SSID_MAX + 1];
+    ap_default_ssid(def, sizeof(def));
+    const bool default_ssid = ssid[0] == '\0' || strcmp(ssid, def) == 0;
+    bool ok = true;
+    if (default_ssid && pass[0] == '\0') {
+        (void)nvs_erase_key(h, NVS_KEY_AP_SSID);
+        (void)nvs_erase_key(h, NVS_KEY_AP_PASS);
+    } else {
+        ok = nvs_set_str(h, NVS_KEY_AP_SSID, default_ssid ? "" : ssid) == ESP_OK &&
+             nvs_set_str(h, NVS_KEY_AP_PASS, pass) == ESP_OK;
+    }
+    ok = ok && nvs_commit(h) == ESP_OK;
+    nvs_close(h);
+    if (ok) {
+        ap_settings_load();
+    }
     return ok;
 }
 
@@ -617,6 +709,71 @@ static esp_err_t post_provision(httpd_req_t *req)
     return ESP_OK;  // not reached
 }
 
+static esp_err_t send_ap_config_error(httpd_req_t *req, const char *why)
+{
+    httpd_resp_set_status(req, "400 Bad Request");
+    httpd_resp_set_type(req, "application/json");
+    char out[128];
+    snprintf(out, sizeof(out), "{\"ok\":false,\"why\":\"%s\"}", why);
+    httpd_resp_sendstr(req, out);
+    return ESP_OK;
+}
+
+// Sets the AP's name and password (row rgg2). Form fields `ssid` and `pass`,
+// both optional: an empty name is the default and an empty password is an open
+// network. The password travels in the body, never the URL. In AP mode the
+// phone is on the network that is about to change, so the answer goes out
+// first and the restart follows, as post_forget() does; in station mode the
+// values are only saved and the next AP start uses them.
+static esp_err_t post_ap_config(httpd_req_t *req)
+{
+    // Percent-encoding triples the length of a non-ASCII SSID, so the encoded
+    // buffers are 3x the decoded maxima.
+    char body[(SSID_MAX + AP_PASS_MAX) * 3 + 32];
+    if (req->content_len >= (int)sizeof(body)) {
+        return send_ap_config_error(req, "That was too long.");
+    }
+    int received = 0;
+    while (received < req->content_len) {
+        int r = httpd_req_recv(req, body + received, req->content_len - received);
+        if (r <= 0) {
+            return ESP_FAIL;
+        }
+        received += r;
+    }
+    body[received] = '\0';
+
+    char ssid[SSID_MAX * 3 + 1] = {0};
+    char pass[AP_PASS_MAX * 3 + 1] = {0};
+    (void)httpd_query_key_value(body, "ssid", ssid, sizeof(ssid));
+    (void)httpd_query_key_value(body, "pass", pass, sizeof(pass));
+    url_decode(ssid);
+    url_decode(pass);
+    const size_t ssid_len = strlen(ssid);
+    const size_t pass_len = strlen(pass);
+    if (ssid_len > SSID_MAX) {
+        return send_ap_config_error(req, "The name can be at most 32 bytes.");
+    }
+    if (pass_len != 0 && (pass_len < AP_PASS_MIN || pass_len > AP_PASS_MAX)) {
+        return send_ap_config_error(req, "The password must be 8 to 63 characters, or empty for an open network.");
+    }
+    if (!ap_settings_save(ssid, pass)) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"Could not store the settings in flash.\"}");
+        return ESP_OK;
+    }
+    ESP_LOGW(TAG, "AP set to '%s' (%s)", s_ap_ssid, s_ap_pass[0] ? "WPA2" : "open");
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, s_ap_active ? "{\"ok\":true,\"restart\":true}"
+                                        : "{\"ok\":true,\"restart\":false}");
+    if (s_ap_active) {
+        vTaskDelay(pdMS_TO_TICKS(500));
+        esp_restart();
+    }
+    return ESP_OK;
+}
+
 // Log misses in both modes. Without this, a wrong path is silent on USB.
 static esp_err_t log_not_found(httpd_req_t *req, httpd_err_code_t err)
 {
@@ -670,6 +827,9 @@ static void httpd_start_provisioning(void)
     static const httpd_uri_t factory_reset = {
         .uri = "/factory-reset", .method = HTTP_POST, .handler = post_factory_reset,
     };
+    static const httpd_uri_t ap_config = {
+        .uri = "/ap-config", .method = HTTP_POST, .handler = post_ap_config,
+    };
     // The form, a rescan and /update are open: they change nothing stored
     // (/update only serves the install page; its writes go through the
     // token-guarded /api/bundle/* routes). /update is here so a phone on this
@@ -690,6 +850,7 @@ static void httpd_start_provisioning(void)
         { &update, PAIRING_OPEN },
         { &provision, PAIRING_REQUIRED },
         { &factory_reset, PAIRING_REQUIRED },
+        { &ap_config, PAIRING_REQUIRED },
     };
     _Static_assert(sizeof(core) / sizeof(core[0]) == PAIRING_ROUTES_WIFI_PROV_AP_CORE,
                    "AP core route count");
@@ -849,6 +1010,9 @@ static void httpd_start_status(void)
     static const httpd_uri_t factory_reset = {
         .uri = "/factory-reset", .method = HTTP_POST, .handler = post_factory_reset,
     };
+    static const httpd_uri_t ap_config = {
+        .uri = "/ap-config", .method = HTTP_POST, .handler = post_ap_config,
+    };
     // The redirect is a plain GET, open on principle (it hands off to app.html's
     // own reads, which are open the same way). Forget and ap-mode both tear
     // down the working network the operator is reachable on, so both are the
@@ -862,6 +1026,7 @@ static void httpd_start_status(void)
         { &forget, PAIRING_REQUIRED },
         { &ap_mode, PAIRING_REQUIRED },
         { &factory_reset, PAIRING_REQUIRED },
+        { &ap_config, PAIRING_REQUIRED },
     };
     _Static_assert(sizeof(core) / sizeof(core[0]) == PAIRING_ROUTES_WIFI_PROV_STATION_CORE,
                    "station core route count");
@@ -887,33 +1052,26 @@ static void httpd_start_status(void)
 // Modes
 // ---------------------------------------------------------------------------
 
-static void ap_name(char *out, size_t out_len)
-{
-    // Operator-requested 2026-09-20: the SSID itself hints at the URL to
-    // visit (WIFI_PROV_MDNS_HOST, the same hostname mDNS already answers to)
-    // rather than a name with no connection to what to do next. No MAC
-    // suffix -- operator call 2026-09-20, overriding this file's own earlier
-    // multi-device-disambiguation concern; two sidekicks in range of each
-    // other would show identical SSIDs with this change.
-    snprintf(out, out_len, WIFI_PROV_MDNS_HOST ".local");
-}
-
 static void start_ap(void)
 {
-    char ssid[33];
-    ap_name(ssid, sizeof(ssid));
+    const char *ssid = s_ap_ssid;
 
     ensure_ap_netif();
     wifi_config_t cfg = {0};
     strncpy((char *)cfg.ap.ssid, ssid, sizeof(cfg.ap.ssid));
     cfg.ap.ssid_len = strlen(ssid);
     cfg.ap.max_connection = 2;
-    // Open, deliberately. A fixed password shipped in a public repo is not
-    // security, it is the appearance of it, and provisioning only runs when
-    // the device has no credentials. Anyone in radio range during that window
-    // could set them — a real exposure, judged acceptable for a bench device
-    // and recorded rather than glossed. docs/architecture/sidekick.md (Firmware updates).
-    cfg.ap.authmode = WIFI_AUTH_OPEN;
+    // Open unless the operator set a password (row rgg2). A fixed password
+    // shipped in a public repo would be the appearance of security, not
+    // security, so the default stays open and a password is the operator's own.
+    // An open AP is what a phone with no internet offers to join, which is
+    // the reason to set one at a park.
+    if (s_ap_pass[0] != '\0') {
+        strncpy((char *)cfg.ap.password, s_ap_pass, sizeof(cfg.ap.password));
+        cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    } else {
+        cfg.ap.authmode = WIFI_AUTH_OPEN;
+    }
 
     // APSTA, not AP: scanning requires a station interface, and in plain AP
     // mode esp_wifi_scan_start() fails. The station side stays unconnected —
@@ -943,7 +1101,8 @@ static void start_ap(void)
     scan_refresh();
     httpd_start_provisioning();
     xTaskCreate(scan_keepfresh_task, "scan_fresh", 3072, NULL, 3, NULL);
-    ESP_LOGW(TAG, "Provisioning AP '%s' up — open http://192.168.4.1/", ssid);
+    ESP_LOGW(TAG, "Provisioning AP '%s' (%s) up — open http://192.168.4.1/", ssid,
+             s_ap_pass[0] ? "WPA2" : "open");
 }
 
 static bool try_join(const char *ssid, const char *pass)
@@ -993,6 +1152,7 @@ void wifi_prov_start(void)
         err = nvs_flash_init();
     }
     ESP_ERROR_CHECK(err);
+    ap_settings_load();
 
     // After NVS and before any route is registered: the token is read from
     // NVS, and pairing_http_register() is what installs the guard. Not
@@ -1070,13 +1230,15 @@ void wifi_prov_start(void)
 bool wifi_prov_is_online(void) { return s_online; }
 const char *wifi_prov_ssid(void) { return s_ssid; }
 bool wifi_prov_ap_active(void) { return s_ap_active; }
+int wifi_prov_ap_reset_hold(void) { return s_ap_reset_hold; }
+void wifi_prov_set_ap_reset_hold(int secs) { s_ap_reset_hold = secs; }
+const char *wifi_prov_ap_ssid(void) { return s_ap_ssid; }
+bool wifi_prov_ap_secured(void) { return s_ap_pass[0] != '\0'; }
 
 const char *wifi_prov_network_name(void)
 {
-    static char buf[SSID_MAX + 1];
     if (s_ap_active) {
-        ap_name(buf, sizeof(buf));
-        return buf;
+        return s_ap_ssid;
     }
     return s_ssid[0] ? s_ssid : "(unknown)";
 }
@@ -1150,6 +1312,25 @@ void wifi_prov_enter_ap_and_restart(void)
         ESP_LOGW(TAG, "AP mode requested — restarting");
     } else {
         ESP_LOGE(TAG, "Could not set AP-mode flag — restarting anyway, will retry station join");
+    }
+    vTaskDelay(pdMS_TO_TICKS(200));
+    esp_restart();
+}
+
+void wifi_prov_ap_reset_and_restart(void)
+{
+    nvs_handle_t h;
+    bool ok = false;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+        (void)nvs_erase_key(h, NVS_KEY_AP_SSID);
+        (void)nvs_erase_key(h, NVS_KEY_AP_PASS);
+        ok = nvs_commit(h) == ESP_OK;
+        nvs_close(h);
+    }
+    if (ok) {
+        ESP_LOGW(TAG, "AP name and password reset to the defaults -- restarting");
+    } else {
+        ESP_LOGE(TAG, "Could not reset the AP name and password -- restarting anyway");
     }
     vTaskDelay(pdMS_TO_TICKS(200));
     esp_restart();

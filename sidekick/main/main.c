@@ -138,6 +138,13 @@ static void mark_valid_once_beaconing(uint32_t beacons_sent)
 #define BUTTON_DEBOUNCE_US 250000
 
 static volatile bool s_button_pressed;
+static bool s_button_ready;
+
+// Holding the button this many loop ticks resets the AP's name and password
+// (row rgg2). Whole ticks of LOOP_TICK_MS, so the hold is one tick short of the
+// seconds; a press for the pairing token is far shorter.
+#define BUTTON_HOLD_TICKS WIFI_PROV_AP_RESET_HOLD_SECS
+_Static_assert(LOOP_TICK_MS == 1000, "the hold counts one-second ticks");
 
 // The edge is caught in an ISR and consumed by the loop below, because that
 // loop ticks once a second and would miss most presses. The work itself is
@@ -175,6 +182,30 @@ static void button_init(void)
     }
     if (gpio_isr_handler_add(BUTTON_PIN, button_isr, NULL) != ESP_OK) {
         ESP_LOGE(TAG, "Button ISR attach failed — pairing token cannot be read");
+        return;
+    }
+    s_button_ready = true;
+}
+
+// A pin that failed to configure reads low, so the hold is only trusted once
+// the button is set up. The hold is published for the page's "keep holding"
+// card (wifi_prov_ap_reset_hold()); the reset itself waits one more second
+// after the last number so that card can say it is resetting before the
+// sidekick goes away.
+static void button_check_hold(void)
+{
+    static int held;
+    if (!s_button_ready || gpio_get_level(BUTTON_PIN) != 0) {
+        held = 0;
+        wifi_prov_set_ap_reset_hold(0);
+        return;
+    }
+    ++held;
+    wifi_prov_set_ap_reset_hold(held > BUTTON_HOLD_TICKS ? BUTTON_HOLD_TICKS : held);
+    if (held >= BUTTON_HOLD_TICKS) {
+        ESP_LOGW(TAG, "Button held -- resetting the AP name and password");
+        vTaskDelay(pdMS_TO_TICKS(1500));
+        wifi_prov_ap_reset_and_restart();
     }
 }
 
@@ -208,6 +239,7 @@ void app_main(void)
             s_button_pressed = false;
             pairing_http_open_disclosure();
         }
+        button_check_hold();
         if (heartbeat % 5 == 0) {
             ESP_LOGI(TAG, "alive: %" PRIu32 " wifi=%s", heartbeat / 5,
                      wifi_prov_is_online() ? "up" : (wifi_prov_ap_active() ? "ap" : "down"));

@@ -320,8 +320,12 @@ static esp_err_t get_events(httpd_req_t *req)
     }
     xSemaphoreGive(s_lock);
 
-    char tail[48];
-    snprintf(tail, sizeof(tail), "],\"seq\":%" PRIu32 "}", head);
+    // `hold`: seconds the sidekick button has been held toward the AP reset (0
+    // when not), `hold_of`: the seconds that complete it. It rides here because this is the one reply the page reads
+    // every second.
+    char tail[80];
+    snprintf(tail, sizeof(tail), "],\"seq\":%" PRIu32 ",\"hold\":%d,\"hold_of\":%d}", head,
+             wifi_prov_ap_reset_hold(), WIFI_PROV_AP_RESET_HOLD_SECS);
     httpd_resp_sendstr_chunk(req, tail);
     return httpd_resp_send_chunk(req, NULL, 0);
 }
@@ -439,6 +443,8 @@ static size_t sidekick_facts_json(char *out, size_t cap)
         { "sk_ip", wifi_prov_ip_str() },
         { "sk_uptime", wifi_prov_uptime_str() },
         { "sk_fw_version", wifi_prov_fw_version() },
+        { "sk_ap_ssid", wifi_prov_ap_ssid() },
+        { "sk_ap_secured", wifi_prov_ap_secured() ? "1" : "0" },
     };
     static char esc[PORTA_CONFIG_VALUE_MAX * 6 + 1];  // httpd task only
     size_t w = 0;

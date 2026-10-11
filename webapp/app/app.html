@@ -161,7 +161,8 @@ button:disabled{opacity:.45}
 #resetWaitText{font-size:.9rem;margin:0;line-height:1.45}
 #resetWaitSpin{width:28px;height:28px;margin:0 auto;border:3px solid color-mix(in srgb, GrayText 30%, transparent);border-top-color:var(--accent);border-radius:50%;animation:resetspin 1s linear infinite}
 #resetWait.done #resetWaitSpin{display:none}
-#resetWaitOk{margin-top:1rem;width:100%}
+#resetWaitOk,#resetWaitCancel{margin-top:1rem;width:100%}
+#resetWaitCancel{margin-top:.5rem}
 @keyframes resetspin{to{transform:rotate(360deg)}}
 
 /* ---- tab bar ---- */
@@ -591,6 +592,16 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     </div>
     <p id=netMsg class=setnote></p>
 
+    <div class="hd sep">Sidekick's own network</div>
+    <p class=setnote>The network the sidekick raises when it has no WiFi to join. A password keeps phones that are only looking for internet from joining it. Saving restarts it, and a phone on it must rejoin. Whatever you name it, the app is at micro-ft8.local or 192.168.4.1.</p>
+    <div class=setrow><label>Name <input id=apSsid enterkeyhint=done maxlength=32 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false placeholder=micro-ft8.local></label></div>
+    <div class=setrow><label>Password <input id=apPass enterkeyhint=done maxlength=63 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false></label></div>
+    <div class=setrow style="display:flex;gap:.5rem">
+      <button id=apSave type=button disabled>Save</button>
+      <button id=apReset type=button disabled>Reset to default</button>
+    </div>
+    <p id=apMsg class=setnote></p>
+
     <div class="hd sep">Station</div>
     <p id=stationCached class=setnote hidden></p>
     <p class=setnote>CQ type, grid, retries and TX offset are in Operate's Station sheet.</p>
@@ -840,6 +851,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <h2 id=resetWaitTitle>Resetting the sidekick</h2>
     <p id=resetWaitText></p>
     <button id=resetWaitOk type=button hidden>OK</button>
+    <button id=resetWaitCancel type=button hidden>Cancel</button>
   </div>
 </div>
 
@@ -1690,6 +1702,21 @@ function updateNetInfo(cfg) {
   document.getElementById('netForget').hidden = !isStation;
   document.getElementById('netModeSwitch').hidden = !isStation;
   document.getElementById('netModeLink').hidden = isStation || !mode;
+  updateApInfo(cfg);
+}
+
+// The AP's saved name fills the field once, so a poll never overwrites what the
+// operator is typing. The password is never sent back; whether one is set is.
+var apSecured = false, apLoaded = false;
+function updateApInfo(cfg) {
+  if (cfg.sk_ap_ssid === undefined) return;
+  apSecured = cfg.sk_ap_secured === '1';
+  var pass = document.getElementById('apPass');
+  pass.placeholder = apSecured ? 'set (hidden)' : 'empty = open';
+  if (!apLoaded) {
+    apLoaded = true;
+    document.getElementById('apSsid').value = cfg.sk_ap_ssid;
+  }
 }
 
 // Operate's header and dock: CAT/audio/link dots, Connect/Tune labels, and
@@ -1841,16 +1868,173 @@ document.getElementById('netForget').onclick = function () {
   if (!confirm('Forget this network and restart into setup?')) return;
   netAction('/forget', 'Forgetting…', function () {
     document.getElementById('netMsg').textContent =
-      'Forgotten. Restarting into setup — look for the micro-ft8.local-… network.';
+      'Forgotten. Restarting into setup — join the sidekick\u2019s own network.';
   });
 };
 document.getElementById('netModeSwitch').onclick = function () {
   if (!confirm("Switch to AP mode? Your phone will need to join the sidekick's own network afterward.")) return;
   netAction('/ap-mode', 'Switching…', function () {
     document.getElementById('netMsg').textContent =
-      'Switching to AP mode — look for the micro-ft8.local-… network.';
+      'Switching to AP mode — join the sidekick\u2019s own network.';
   });
 };
+
+// ===================== Settings > Sidekick's own network =====================
+// Name and optional WPA2 password for the AP the sidekick raises (row rgg2). The
+// password is never read back, so a blank field next to a set password asks
+// before it opens the network.
+
+// The same full-screen card Factory reset uses, asking first. Resolves true on the
+// confirm button, false on Cancel.
+function resetCardConfirm(title, text, okLabel) {
+  return new Promise(function (resolve) {
+    var box = document.getElementById('resetWait');
+    var ok = document.getElementById('resetWaitOk');
+    var cancel = document.getElementById('resetWaitCancel');
+    function close(v) {
+      box.hidden = true; ok.hidden = true; cancel.hidden = true; ok.textContent = 'OK';
+      resolve(v);
+    }
+    box.classList.add('done');
+    document.getElementById('resetWaitTitle').textContent = title;
+    document.getElementById('resetWaitText').textContent = text;
+    ok.textContent = okLabel; ok.hidden = false; cancel.hidden = false;
+    // A tap that opened this card can still arrive as a click on the button under the finger:
+    // ignore taps for the first half second.
+    var openedAt = Date.now();
+    ok.onclick = function () { if (Date.now() - openedAt > 500) close(true); };
+    cancel.onclick = function () { if (Date.now() - openedAt > 500) close(false); };
+    box.hidden = false;
+  });
+}
+
+// Trimmed: a phone keyboard can append a space after a suggested word, and the confirm card shows
+// the password that will be saved.
+// The trim is written back into the box, so the operator sees what will be sent. It runs when the
+// field loses focus (QuickType's space is already there by then) and again on Save.
+function apTrimFields() {
+  var a = document.getElementById('apSsid'), b = document.getElementById('apPass');
+  a.value = a.value.trim();
+  b.value = b.value.trim();
+}
+// With the phone keyboard open, the first tap on a button only dismisses the keyboard: the page
+// re-lays out under the finger and the tap never becomes a click, so the operator had to tap again.
+// These controls only open a confirm card, so they act on touch-down, before anything moves, and
+// close the keyboard themselves. Every route in (touch-down, click, Enter, the keyboard toolbar's
+// Done) goes through apFire(), which lets one gesture through once.
+var apLastFire = 0, apDirty = false;
+function apFire(fn) {
+  if (Date.now() - apLastFire < 1000) return;
+  apLastFire = Date.now();
+  apDirty = false;
+  var a = document.activeElement;
+  if (a && a !== document.body && a.blur) a.blur();
+  fn();
+}
+function onTapOnce(el, fn) {
+  el.addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    apFire(fn);
+  });
+  el.addEventListener('click', function () { apFire(fn); });
+}
+function apSave() {
+  apTrimFields();
+  return apSubmit(document.getElementById('apSsid').value, document.getElementById('apPass').value);
+}
+onTapOnce(document.getElementById('apSave'), apSave);
+// An empty name and password are the defaults, so Reset sends exactly that.
+onTapOnce(document.getElementById('apReset'), function () {
+  document.getElementById('apSsid').value = '';
+  document.getElementById('apPass').value = '';
+  return apSubmit('', '');
+});
+['apSsid', 'apPass'].forEach(function (id) {
+  var el = document.getElementById(id);
+  el.addEventListener('input', function () { apDirty = true; });
+  // The keyboard's check mark (Enter) saves too.
+  el.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    apFire(apSave);
+  });
+  // The toolbar above the iOS keyboard (arrows and Done) sends no key: Done only blurs the field.
+  // Once the dust settles, focus on the other field means the arrows; focus on nothing, after an
+  // edit, means Done. Leaving for another control is left alone.
+  el.addEventListener('blur', function () {
+    apTrimFields();
+    setTimeout(function () {
+      if (!apDirty) return;
+      var a = document.activeElement;
+      if (a && a !== document.body) return;
+      apFire(apSave);
+    }, 80);
+  });
+});
+
+async function apSubmit(ssid, pass) {
+  var msg = document.getElementById('apMsg');
+  if (!MicroFT8Pairing.getToken()) {
+    msg.textContent = 'Press the sidekick button to pair first.';
+    MicroFT8Pairing.needsReauth();
+    return;
+  }
+  if (new TextEncoder().encode(ssid).length > 32) {
+    msg.textContent = 'The name can be at most 32 bytes.';
+    return;
+  }
+  if (pass && (pass.length < 8 || pass.length > 63)) {
+    msg.textContent = 'The password must be 8 to 63 characters, or empty for an open network.';
+    return;
+  }
+  var name = ssid || 'micro-ft8.local';
+  var stationMode = document.getElementById('netMode').textContent.indexOf('Station') === 0;
+  var ask = stationMode
+    ? 'This is only saved. The sidekick\u2019s own network uses it the next time it starts; nothing restarts now.'
+    : 'The sidekick will restart now and its WiFi will drop. On your phone, open Settings \u203A WiFi and join \u201C' +
+      name + '\u201D' + (pass ? ' with the password \u201C' + pass + '\u201D' : ' (it will be open, no password)') +
+      '. This page then reconnects by itself. Your phone may keep the old network saved; forget it if it rejoins that one.' +
+      (!pass && apSecured ? ' This removes the password.' : '');
+  if (!(await resetCardConfirm(stationMode ? 'Save the network name?' : 'Restart the sidekick\u2019s WiFi?', ask,
+                               stationMode ? 'Save' : 'Save and restart'))) return;
+  msg.textContent = 'Saving\u2026';
+  try {
+    var r = await MicroFT8Pairing.authFetch('/ap-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'ssid=' + encodeURIComponent(ssid) + '&pass=' + encodeURIComponent(pass)
+    });
+    if (r.status == 401) {
+      MicroFT8Pairing.needsReauth();
+      msg.textContent = 'Press the sidekick button to pair';
+      return;
+    }
+    var j = null;
+    try { j = await r.json(); } catch (e) { /* the restart can cut the body short */ }
+    if (!r.ok || (j && j.ok === false)) {
+      msg.textContent = (j && j.why) || 'The sidekick refused.';
+      return;
+    }
+    apSecured = !!pass;
+    document.getElementById('apPass').value = '';
+    if (j && j.restart === false) {
+      msg.textContent = 'Saved. The sidekick\u2019s network uses it the next time it starts.';
+      return;
+    }
+  } catch (e) {
+    // The restart can drop the connection before the reply is read: carry on to the wait.
+  }
+  msg.textContent = '';
+  waitForSetupPage({
+    title: 'Restarting the sidekick\u2019s WiFi',
+    hint: 'The sidekick is restarting. On your phone, open Settings \u203A WiFi and join \u201C' + name + '\u201D' +
+      (pass ? ' with the password \u201C' + pass + '\u201D' : '') + '. This page reopens by itself once you are connected.',
+    // Reload in place, not a new address: the pairing token belongs to this origin and the rename
+    // keeps it, so only this origin comes back paired.
+    reload: true,
+    giveUp: 'Join \u201C' + name + '\u201D in your phone\u2019s WiFi settings, then reload this page.'
+  });
+}
 
 // In-page arm/confirm (not window.confirm), same reasoning status.html's own
 // version had: phones often dismiss the native dialog with no status text
@@ -1960,24 +2144,25 @@ function showResetError(why) {
   ok.focus();
 }
 
-function waitForSetupPage() {
+function waitForSetupPage(opts) {
+  opts = opts || {};
   var box = document.getElementById('resetWait');
   var text = document.getElementById('resetWaitText');
   var title = document.getElementById('resetWaitTitle');
-  var SETUP = 'http://192.168.4.1/';
+  var SETUP = opts.reload ? location.origin + '/' : 'http://192.168.4.1/';
   var startedAt = Date.now();
   var GIVE_UP_MS = 90000;
   document.getElementById('netMsg').textContent = '';
   document.getElementById('resetWaitOk').hidden = true;
   box.classList.remove('done');
-  title.textContent = 'Resetting the sidekick';
+  title.textContent = opts.title || 'Resetting the sidekick';
   box.hidden = false;
   function tick() {
     var secs = Math.round((Date.now() - startedAt) / 1000);
     if (Date.now() - startedAt > GIVE_UP_MS) {
       box.classList.add('done');
       title.textContent = 'The sidekick did not come back on its own';
-      text.textContent = 'Join its micro-ft8.local-\u2026 network, then open http://192.168.4.1/ to set it up again.';
+      text.textContent = opts.giveUp || 'Join its own network, then open http://192.168.4.1/ to set it up again.';
       return;
     }
     var ctl = new AbortController();
@@ -1987,13 +2172,13 @@ function waitForSetupPage() {
     probe.then(function () {
       clearTimeout(t);
       title.textContent = 'Back up';
-      text.textContent = 'Opening setup\u2026';
-      location.href = SETUP;
+      text.textContent = opts.reload ? 'Reopening the app\u2026' : 'Opening setup\u2026';
+      if (opts.reload) location.reload(); else location.href = SETUP;
     }, function () {
       clearTimeout(t);
-      text.textContent = 'Waiting for the sidekick to restart (' + secs + ' s). ' +
-        'If your phone is on your home WiFi, join the sidekick\u2019s micro-ft8.local-\u2026 network; ' +
-        'this page opens setup once it can reach it.';
+      text.textContent = opts.hint || ('Waiting for the sidekick to restart (' + secs + ' s). ' +
+        'If your phone is on your home WiFi, join the sidekick\u2019s own network; ' +
+        'this page opens setup once it can reach it.');
       setTimeout(tick, 2000);
     });
   }
@@ -2526,6 +2711,8 @@ function enableWrites(on) {
   document.getElementById('netModeSwitch').disabled = !on;
   document.getElementById('netRehydrate').disabled = !on;
   document.getElementById('netFactory').disabled = !on;
+  document.getElementById('apSave').disabled = !on;
+  document.getElementById('apReset').disabled = !on;
 }
 document.getElementById('dist_unit').onchange = function () { setDistUnit(this.value); };
 document.getElementById('theme_pref').onchange = function () { setTheme(this.value); };
@@ -3227,6 +3414,50 @@ function applyEvent(e) {
   }
 }
 
+// The sidekick button held toward the AP reset: the events reply carries the seconds held
+// (`hold`, 0 when not, of `hold_of`). From the second second a card says to keep holding, so a short
+// pairing press never shows it; at the last second it becomes the same wait-and-reload card a Save uses.
+// Letting go early closes it. It only opens over an idle page, never over another card.
+var holdCardOpen = false;  // the total comes from the sidekick (`hold_of`), not from here
+function startHoldReset() {
+  holdCardOpen = false;
+  document.getElementById('resetWaitCancel').hidden = true;
+  waitForSetupPage({
+    title: 'Resetting the sidekick\u2019s WiFi',
+    hint: 'The sidekick is restarting with its default WiFi name and no password. On your phone, open ' +
+      'Settings \u203A WiFi and join \u201Cmicro-ft8.local\u201D. This page reopens by itself once you are connected.',
+    reload: true,
+    giveUp: 'Join \u201Cmicro-ft8.local\u201D in your phone\u2019s WiFi settings, then reload this page.'
+  });
+}
+function updateResetHold(hold, of) {
+  var box = document.getElementById('resetWait');
+  if (!(of > 0)) return;
+  if (hold >= of) {
+    if (holdCardOpen) startHoldReset();
+    return;
+  }
+  if (hold >= 2) {
+    if (!holdCardOpen) {
+      if (!box.hidden) return;
+      holdCardOpen = true;
+      document.getElementById('resetWaitOk').hidden = true;
+      document.getElementById('resetWaitCancel').hidden = true;
+      box.classList.remove('done');
+      document.getElementById('resetWaitTitle').textContent = 'Reset the sidekick\u2019s WiFi?';
+      box.hidden = false;
+    }
+    document.getElementById('resetWaitText').textContent =
+      'Keep holding the sidekick button to reset its WiFi name and password to the defaults (' + hold +
+      ' of ' + of + ' seconds). Let go to cancel.';
+    return;
+  }
+  if (holdCardOpen) {
+    holdCardOpen = false;
+    box.hidden = true;
+  }
+}
+
 async function pollEvents() {
   try {
     var r = await fetch('/api/events?since=' + evSeq, { cache: 'no-store' });
@@ -3254,7 +3485,11 @@ async function pollEvents() {
     }
     evSeq = j.seq;
     if (gotEvents || queueChanged) saveStateCache();
-  } catch (e) { /* next tick */ }
+    updateResetHold(j.hold | 0, j.hold_of | 0);
+  } catch (e) {
+    // The sidekick restarting out from under a hold card is the reset itself.
+    if (holdCardOpen) startHoldReset();
+  }
 }
 
 // ===================== Log =====================

@@ -15,7 +15,8 @@
 //      restart(), below) -> clear the flag and raise the AP directly,
 //      skipping station join entirely
 //   2. credentials in NVS -> try to join, retry a few times
-//   3. no credentials, or the join fails -> raise an open SoftAP
+//   3. no credentials, or the join fails -> raise the SoftAP (open unless the
+//      operator set a password, wifi_prov_ap_ssid())
 //   4. form submitted -> store to NVS, try to join, report the result
 //
 // B55 (docs/architecture/system.md (Constraints)): the AP raised by steps 1 or 3 is a real operating mode,
@@ -52,6 +53,28 @@ const char* wifi_prov_ssid(void);
 
 // True while the provisioning AP is up.
 bool wifi_prov_ap_active(void);
+
+// The AP's saved name (the default `micro-ft8.local` unless the operator set
+// one) and whether it has a WPA2 password. The password itself is never
+// readable: no route returns it. Both are valid in station mode too, where
+// they say what the AP will be the next time it comes up. Row rgg2.
+const char *wifi_prov_ap_ssid(void);
+bool wifi_prov_ap_secured(void);
+
+// Seconds the sidekick button has been held toward the AP reset, 0 when it is
+// not held. The events reply carries it so the page can show a card while the
+// hold runs. main.c writes it; wifi_prov_ap_reset_and_restart() ends it.
+int wifi_prov_ap_reset_hold(void);
+// How long the button must be held, in seconds. The events reply carries it
+// as `hold_of`, so the page's "N of M" never has its own copy. Long enough to
+// read the card that appears while holding.
+#define WIFI_PROV_AP_RESET_HOLD_SECS 10
+void wifi_prov_set_ap_reset_hold(int secs);
+
+// Erases the saved AP name and password (back to `micro-ft8.local`, open) and
+// restarts. Does not return. For the sidekick button's long hold: the way back
+// in when the password is forgotten, which needs no WiFi.
+void wifi_prov_ap_reset_and_restart(void);
 
 // Whichever-mode-is-actually-active network facts, surfaced through
 // /api/config (host_link.c) for app.html's Settings > Network section --
