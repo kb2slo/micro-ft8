@@ -54,6 +54,7 @@ WEB_MANIFEST_TARGET = host_test_web_manifest
 BUNDLE_HOST_TARGET = host_test_bundle_host
 RECENT_QSO_TARGET = host_test_recent_qso
 QUEUE_HEAD_TARGET = host_test_queue_head
+ROGERS_ONCE_TARGET = host_test_rogers_once
 DIAL_HISTORY_TARGET = host_test_dial_history
 ADIF_LOGGER_TARGET = host_test_adif_logger
 CAT_REPLY_PARSER_TARGET = host_test_cat_reply_parser
@@ -70,7 +71,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET
      $(FILE_LIST_TARGET) \
      $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
      $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(BUNDLE_HOST_TARGET) \
-     $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
+     $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(ROGERS_ONCE_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
      $(CAT_REPLY_PARSER_TARGET) $(SWR_SWEEP_TARGET) \
      $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(CORE_BUSY_TARGET) \
      $(DECODE_RETRY_TARGET) $(DECODE_SYNC_TARGET) $(DECODE_SNR_TARGET) \
@@ -100,6 +101,10 @@ $(RECENT_QSO_TARGET): $(RECENT_QSO_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 QUEUE_HEAD_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_queue_head.o
+ROGERS_ONCE_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_rogers_once.o
+$(ROGERS_ONCE_TARGET): $(ROGERS_ONCE_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
 DIAL_HISTORY_OBJ = dial_history.o test_dial_history.o
 dial_history.o: ../components/dial_history/dial_history.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
@@ -285,6 +290,7 @@ clean:
 	      $(PORTA_PROTO_OBJ) $(PORTA_PROTO_TARGET) \
 	      $(DECODE_RETRY_OBJ) $(DECODE_RETRY_TARGET) \
 	      $(DECODE_SYNC_OBJ) $(DECODE_SYNC_TARGET) \
-	      $(DECODE_SNR_OBJ) $(DECODE_SNR_TARGET)
+	      $(DECODE_SNR_OBJ) $(DECODE_SNR_TARGET) \
+	      $(ROGERS_ONCE_OBJ) $(ROGERS_ONCE_TARGET)
 
 .PHONY: all clean

@@ -60,10 +60,10 @@
       }
     },
     {
-      "comment": "Period 4 (even): RR73 retry, already logged",
+      "comment": "Period 4 (even): no RR73 resend. It went out once and logged, so the entry parked.",
       "messages": [],
       "expect": {
-        "tx": "N6HAN AG6AQ RR73"
+        "tx": ""
       }
     }
   ]

@@ -555,10 +555,21 @@ void autoseq_tick(int64_t slot_idx, int slot_parity, int ms_to_boundary) {
 
     // Advance retry counter or move to inactive zone
     switch (ctx->state) {
+        case AutoseqState::ROGERS:
+            // RR73 goes out once. The QSO is logged and DX's 73 is optional, so
+            // a blind resend almost always goes to a station that already has
+            // it. A DX who missed it resends R+report, which reactivates the
+            // parked entry and gets RR73 again (generate_response()).
+            if (ctx->logged) {
+                move_to_inactive(idx);
+                break;
+            }
+            // Not logged (the write failed): resend under retry_limit, the
+            // Station.txt setting, since each RR73 retries the write.
+            [[fallthrough]];
         case AutoseqState::REPLYING:
         case AutoseqState::REPORT:
-        case AutoseqState::ROGER_REPORT:
-        case AutoseqState::ROGERS: {
+        case AutoseqState::ROGER_REPORT: {
             if (ctx->retry_counter < ctx->retry_limit) {
                 ctx->next_tx = canonical_next_tx(ctx->state);
                 ctx->retry_counter++;
@@ -1218,7 +1229,8 @@ static bool generate_response(QsoContext* ctx, const UiRxLine& msg, bool overrid
         case AutoseqState::ROGERS:  // We sent TX4 (RR73) — already logged on emission
             switch (rcvd) {
                 case TxMsgType::TX3:
-                    // DX didn't get our RR73 — re-send with fresh retries.
+                    // DX didn't get our RR73 — send it again. Once logged,
+                    // autoseq_tick() parks the entry after this one RR73.
                     set_state(ctx, AutoseqState::ROGERS, TxMsgType::TX4, s_max_retry);
                     return true;
                 case TxMsgType::TX4:

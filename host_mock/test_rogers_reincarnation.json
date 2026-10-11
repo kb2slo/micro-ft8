@@ -6,7 +6,7 @@
     "DX_GRID": "CM88",
     "TX_ON_EVEN": true
   },
-  "comment": "Demonstrates ROGERS duplicate ADIF bug: full QSO completes (logged correctly at ROGERS entry), then retries of TX4 exhaust. DX retries TX3 after our context is popped, creating a reincarnated context that logs a DUPLICATE ADIF with snr_tx=-99. Unlike the REPORT case, the original correct entry exists.",
+  "comment": "ROGERS reincarnation: the QSO completes and logs at our first RR73, and the entry parks right after it (ROGERS sends RR73 once). Three minutes later DX resends R-08, having missed our RR73. It must reactivate the parked entry: RR73 again and no second log. If the entry were gone, on_decode() would refuse an R-report from an unknown call and send nothing, so period 15 would fail. The scenario runner transmits a QSO entry in every period; only the beacon CQ waits for its own parity.",
   "periods": [
     {
       "comment": "Period 0 (even): beacon CQ",
@@ -43,7 +43,7 @@
       }
     },
     {
-      "comment": "Period 3 (odd): DX sends TX3 (R-08) — acknowledges our report. REPORT+TX3 → ROGERS. QSO LOGGED here with rst_sent=-5, rst_rcvd=-8. CORRECT.",
+      "comment": "Period 3 (odd): DX sends TX3 (R-08), acknowledging our report. REPORT+TX3 → ROGERS: RR73, and the QSO logs with rst_sent=-5, rst_rcvd=-8. The tick after it parks the entry.",
       "messages": [
         {
           "call_to": "${MY_CALLSIGN}",
@@ -60,84 +60,84 @@
       }
     },
     {
-      "comment": "Period 4 (even): We send TX4 (RR73). ROGERS state, retry 1/5.",
-      "messages": [],
-      "expect": {
-        "tx": "W6ABC AG6AQ RR73"
-      }
-    },
-    {
-      "comment": "Period 5 (odd): DX doesn't respond (didn't decode our RR73)",
-      "messages": [],
-      "expect": {
-        "tx": "W6ABC AG6AQ RR73"
-      }
-    },
-    {
-      "comment": "Period 6: TX4 retry 2/5",
-      "messages": [],
-      "expect": {
-        "tx": "W6ABC AG6AQ RR73"
-      }
-    },
-    {
-      "comment": "Period 7: no response",
-      "messages": [],
-      "expect": {
-        "tx": "W6ABC AG6AQ RR73"
-      }
-    },
-    {
-      "comment": "Period 8: TX4 retry 3/5",
-      "messages": [],
-      "expect": {
-        "tx": "W6ABC AG6AQ RR73"
-      }
-    },
-    {
-      "comment": "Period 9: no response",
-      "messages": [],
-      "expect": {
-        "tx": ""
-      }
-    },
-    {
-      "comment": "Period 10: TX4 retry 4/5",
+      "comment": "Period 4 (even): no RR73 resend; the beacon CQ resumes.",
       "messages": [],
       "expect": {
         "tx": "CQ AG6AQ CM97"
       }
     },
     {
-      "comment": "Period 11: no response",
+      "comment": "Period 5 (odd): DX doesn't respond (didn't decode our RR73, and we miss its repeats for a while)",
       "messages": [],
       "expect": {
         "tx": ""
       }
     },
     {
-      "comment": "Period 12: TX4 retry 5/5",
+      "comment": "Period 6 (even): beacon CQ",
       "messages": [],
       "expect": {
         "tx": "CQ AG6AQ CM97"
       }
     },
     {
-      "comment": "Period 13: no response",
+      "comment": "Period 7 (odd): nothing to send",
       "messages": [],
       "expect": {
         "tx": ""
       }
     },
     {
-      "comment": "Period 14: TX4 final retry — tick exhausts retries, context POPPED.",
+      "comment": "Period 8 (even): beacon CQ",
       "messages": [],
       "expect": {
         "tx": "CQ AG6AQ CM97"
       }
     },
     {
-      "comment": "Period 15 (odd): DX retries TX3 (R-08) — they never got our RR73. No matching ctx → reincarnated context. EXPECT BUG: DUPLICATE ADIF with rst_sent=-99.",
+      "comment": "Period 9 (odd): nothing to send",
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
+    },
+    {
+      "comment": "Period 10 (even): beacon CQ",
+      "messages": [],
+      "expect": {
+        "tx": "CQ AG6AQ CM97"
+      }
+    },
+    {
+      "comment": "Period 11 (odd): nothing to send",
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
+    },
+    {
+      "comment": "Period 12 (even): beacon CQ",
+      "messages": [],
+      "expect": {
+        "tx": "CQ AG6AQ CM97"
+      }
+    },
+    {
+      "comment": "Period 13 (odd): nothing to send",
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
+    },
+    {
+      "comment": "Period 14 (even): beacon CQ",
+      "messages": [],
+      "expect": {
+        "tx": "CQ AG6AQ CM97"
+      }
+    },
+    {
+      "comment": "Period 15 (odd): DX resends TX3 (R-08); it never got our RR73. The parked entry reactivates: RR73 again, with no second log.",
       "messages": [
         {
           "call_to": "${MY_CALLSIGN}",
@@ -153,10 +153,10 @@
       }
     },
     {
-      "comment": "Period 16 (even): Reincarnated context sends TX4. Second ADIF logged with wrong rst_sent.",
+      "comment": "Period 16 (even): RR73 went out once, so the entry parked again. The beacon CQ resumes.",
       "messages": [],
       "expect": {
-        "tx": "W6ABC AG6AQ RR73"
+        "tx": "CQ AG6AQ CM97"
       }
     }
   ]

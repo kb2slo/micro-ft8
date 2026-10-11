@@ -111,14 +111,14 @@
       }
     },
     {
-      "comment": "Period 10 (even): should TX RR73 to DX (ROGERS state), not CQ.",
+      "comment": "Period 10 (even): RR73 went out once and the entry parked, so the beacon CQ resumes.",
       "messages": [],
       "expect": {
-        "tx": "N6HAN AG6AQ RR73"
+        "tx": "CQ AG6AQ CM97"
       }
     },
     {
-      "comment": "Period 11 (odd): DX sends TX5 (73). QSO complete → IDLE → pop. Queue empty.",
+      "comment": "Period 11 (odd): DX sends TX5 (73). It reactivates the parked entry, which closes → IDLE → pop. Queue empty.",
       "messages": [
         {
           "call_to": "${MY_CALLSIGN}",
@@ -134,7 +134,7 @@
       }
     },
     {
-      "comment": "Period 12 (even): QSO done, beacon still on → CQ resumes.",
+      "comment": "Period 12 (even): QSO done, beacon still on → CQ.",
       "messages": [],
       "expect": {
         "tx": "CQ AG6AQ CM97"

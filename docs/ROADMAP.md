@@ -110,6 +110,7 @@ Rejected ideas, kept so they are not re-proposed. One line each: ID, name, why.
 | I42 | Sidekick joins captive-portal networks (hotel/conference WiFi) | Declined 2026-09-24: its own provisioning captive portal already failed (B74), and nothing on the sidekick needs an uplink; the phone clears venue portals itself. Revisit only if a field session shows the sidekick needs outbound internet. |
 | I17 | M32 Pocket as Micro-FT8 host | Declined 2026-09-25: the P4 + sidekick is the direction; the Pocket needs unproven external hardware to host a radio. RFC 0003 already rejected. |
 | I16 | Optional TX meter poll off | Declined 2026-09-25: no observed CAT-load symptom; reopen if a late `TA` or USB glitch is traced to the poll. |
+| ujk5 | Autoseq: stop resending RR73 when DX is heard calling CQ or working another station | Declined 2026-10-11: ROGERS now sends RR73 once and parks right after it, before DX's next slot is decoded, so there is no resend left to stop; it would also have needed autoseq to see decodes not addressed to us. |
 
 Field-only (do not fake in CI): USB/CDC/QMX CAT, UAC timing/DRAM, display/SPI, full-slot audio.
 
