@@ -647,6 +647,17 @@ subtraction shipped ([decode.md](../architecture/decode.md), **Subtraction**). W
 4. **OSD, last and optional**, only bit-packed (not the fork's ~40 KB of byte-per-bit stack), and only if
    its ~1.3 points survive P0's timing and its extra false decodes are acceptable.
 
+**Added 2026-10-14: two leads from the QMX panadapter's release notes, unmeasured here.**
+
+5. **Stop LDPC when it stops improving.** Its v1.16.12 abandons a candidate once error correction stops
+   gaining instead of running every iteration, and with a dropped retry pass (no decode recovered across 35
+   recordings) reports busy-band decode about twice as fast. Ours runs 25 iterations per candidate and already
+   skips failed candidates no subtraction touched (`e38a8cf`). The time would go to B90 and bnhj. An early exit
+   must lose no decodes on the discordant count.
+6. **The top of the search range.** Its v1.17.0 reports +6% decodes from opening the top end. Ours stops at
+   `f_max` 2900 Hz (`components/ft8_audio_pipeline/ft8_audio_pipeline.cpp`), and the QMX passes to about
+   3200 Hz ([B85](../ROADMAP.md)). A corpus can only show it if its audio reaches that high.
+
 **Done-when:** per change, a discordant-count result on the corpus, device timing on the P4, and a decision
 (ship on P4 / ship on both / drop) recorded here.
 

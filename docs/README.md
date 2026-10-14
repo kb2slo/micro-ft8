@@ -145,7 +145,7 @@ State which of these you did in the turn you report the work. **"No test-plan ch
 
 Keep new logic out of `poe_p4/main/` ([STYLE.md](STYLE.md)). Radio and `ft8_lib` boundaries: [architecture/radio.md](architecture/radio.md), [architecture/ft8_lib.md](architecture/ft8_lib.md). Read the current Now from `ROADMAP.md` rather than trusting a name written here — this line has gone stale before.
 
-This project ships on **`origin/main`** (`kb2slo/micro-ft8`, private). De-forked 2026-09-15 from `kb2slo/Micro-FT8` (now archived, public) — there is no `upstream` git remote. Wei's `wcheng95/Micro-FT8` is watched for portable fixes (**Upstream watches** below), not tracked as a fork; never push or open a PR there unless the operator explicitly asks.
+This project ships on **`origin/main`** (`kb2slo/micro-ft8`, private). De-forked 2026-09-15 from `kb2slo/Micro-FT8` (now archived, public) — there is no `upstream` git remote. Wei's `wcheng95/Mini-FT8` is watched for portable fixes (**Upstream watches** below), not tracked as a fork; never push or open a PR there unless the operator explicitly asks.
 
 ### Clone (submodules)
 
@@ -352,29 +352,29 @@ If the submodule is missing, skip. If Karlis’s SHA **is** an ancestor of the p
 **Wei** — the other parent. Do **not** watch `wcheng95/ft8_lib`: that repo is stale at `bb3d94d` (2026-03) and already fully absorbed into the pin. His protocol fixes land in Micro-FT8’s *in-tree* `components/ft8_lib/ft8/` instead, and reach us only by hand — his tree has no submodule, so merging `upstream/main` cannot move our pin:
 
 ```bash
-git fetch https://github.com/wcheng95/Micro-FT8.git main
+git fetch https://github.com/wcheng95/Mini-FT8.git main
 for f in $(git ls-tree -r --name-only FETCH_HEAD components/ft8_lib/ft8/ | sed 's|.*/ft8/||'); do
   diff -q <(git show FETCH_HEAD:components/ft8_lib/ft8/$f) \
           <(git -C components/ft8_lib/vendor show HEAD:ft8/$f) >/dev/null 2>&1 || echo "DIFFERS $f"
 done
 ```
 
-Expect `message.c` to differ by our own `stpcpy_compat` removal (`f211146`); anything else is his.
+Expect `message.c` and `message.h` to differ by our own changes: the `stpcpy_compat` removal (`f211146`), and his telemetry-buffer fix (`491e757`) ported with named sizes. Anything else is his.
 
 **Why both.** Written 2026-09-08, after this watch missed a live stack overflow (B41): Karlis’s master has not moved since **2025-08-23**, while the one protocol fix worth having in that window came from Wei. Watching only Karlis watches the quiet parent.
 
 Then draft a Backlog row in chat. Do not commit it yet. Do not merge, bump the submodule, or open a kgoba PR in that turn. Done-when: written take (sync now / wait / drop). Sync uses [architecture/ft8_lib.md](architecture/ft8_lib.md) **Bumping the pin** and is a separate Now. Goldens gate the pin. If a row for that SHA already exists, remind; do not duplicate.
 
-#### Wei's Micro-FT8 (`wcheng95/Micro-FT8`) — at least weekly
+#### Wei's Mini-FT8 (`wcheng95/Mini-FT8`) — at least weekly
 
 Watched, not tracked: no `upstream` remote exists (this repo de-forked 2026-09-15), so the check below fetches Wei's `main` straight from its URL into `FETCH_HEAD` rather than a persistent remote-tracking branch.
 
-**Last checked:** 2026-09-12 — 11 commits on Wei's `main` not in our `main`. `491e757` ("Fix telemetry decode buffer overflow") is already ported by hand as B41; the other 10 are upstream's own CI/test-tooling commits for an "RX-1A" reference-dump/regression harness, nothing that looks portable here. No row drafted.
+**Last checked:** 2026-10-14 — nothing new on Wei's `main` since 2026-09-12: the same 11 commits not in ours, `491e757` (ported by hand as B41) and his RX-1A test tooling. His last push, 2026-10-03, went to the `msc_export` branch. No row drafted.
 
 General drift, not just the `ft8_lib` files this repo shares with Wei's tree (that's the watch above). Feeds [I12](ROADMAP.md) ("Mine public Micro-FT8 forks"), which is Ideas, not a standing workflow — this session-start check is what keeps it from going stale between the occasional full sweep (the kind B39 did once by hand).
 
 ```bash
-git fetch https://github.com/wcheng95/Micro-FT8.git main
+git fetch https://github.com/wcheng95/Mini-FT8.git main
 git log --oneline main..FETCH_HEAD
 ```
 
@@ -382,7 +382,7 @@ If the date above is more than **7 days** old, run it even though it repeats wha
 
 #### QMX panadapter project (`SteffenLav/qmx-panadapter`) — at least weekly
 
-**Last checked:** 2026-09-30 — no frequency-sweep feature there (its Antenna Tune is SWR Tune at one frequency, with a live readout). Nothing ported; what it says about QMX firmware and the SWR-protection latch is in [architecture/radio.md](architecture/radio.md) (**QMX SWR Tune over CAT**). Earlier finding, 2026-09-12 — large overlap with several open roadmap items, worth the operator's attention rather than an agent's judgment call. This is a shipping FT8/FT4 station on the **M5Stack Tab5 (ESP32-P4)**: QMX as a USB host (UAC audio + CAT), on-device FT8/FT4 decode and TX, a browser-streamed panadapter UI, ADIF logging with upload to QRZ/eQSL/LoTW/Cloudlog/Wavelog, POTA/SOTA activation logging, and live PSK Reporter/DX-cluster/POTA spotting. That bears directly on [B26](ROADMAP.md) (does a P4 host a QMX at all — this project says yes, in production), [I27](ROADMAP.md) (P4 headless design), [I26](ROADMAP.md) (decode headroom on P4), and [I28](ROADMAP.md)/[B48](ROADMAP.md) (headless web app, QRZ/PSKReporter from the browser). **Resolved 2026-09-16:** the operator accepted this project's production use as B26's feasibility answer rather than running B26's own bench test — since confirmed on our own U213 in daily use ([architecture/main_board.md](architecture/main_board.md), **P4**).
+**Last checked:** 2026-10-14 — v1.16.9 to v1.18.0 (2026-09-30 to 10-12). **Its licence changed from MIT to GPL-3 on 2026-10-09**, for JS8's coding tables, which exist only in JS8Call. What it says about QMX CAT is in [architecture/radio.md](architecture/radio.md). Earlier finding, 2026-09-12 — large overlap with several open roadmap items, worth the operator's attention rather than an agent's judgment call. This is a shipping FT8/FT4 station on the **M5Stack Tab5 (ESP32-P4)**: QMX as a USB host (UAC audio + CAT), on-device FT8/FT4 decode and TX, a browser-streamed panadapter UI, ADIF logging with upload to QRZ/eQSL/LoTW/Cloudlog/Wavelog, POTA/SOTA activation logging, and live PSK Reporter/DX-cluster/POTA spotting. That bears directly on [B26](ROADMAP.md) (does a P4 host a QMX at all — this project says yes, in production), [I27](ROADMAP.md) (P4 headless design), [I26](ROADMAP.md) (decode headroom on P4), and [I28](ROADMAP.md)/[B48](ROADMAP.md) (headless web app, QRZ/PSKReporter from the browser). **Resolved 2026-09-16:** the operator accepted this project's production use as B26's feasibility answer rather than running B26's own bench test — since confirmed on our own U213 in daily use ([architecture/main_board.md](architecture/main_board.md), **P4**).
 
 Check for anything new via the repo's own version history (`docs/version-history.md` in that repo) rather than a git remote — it is not a fork parent, just a project worth watching for ideas:
 
