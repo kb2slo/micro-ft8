@@ -106,6 +106,8 @@ Built as O1c ([webapp.md](../architecture/webapp.md), **The Station sheet**). St
 
 ### 3.6 CQ timeout (new)
 
+**Superseded 2026-10-14** (§7): CQ becomes a queue entry with a try budget, row `qfrr`. Do not build this section as written; its rewrite is that row's first step.
+
 * **Behaviour.** No such setting exists today. CQ turns itself off after N minutes of calling with no answer; the clock restarts whenever someone answers.
 * **It runs on the main board, not in the browser.** The phone may sleep while CQ keeps going out, so a browser timer would silently fail.
 * **Build:** a new Station key and a timer beside the beacon, with a host test of the timer logic, and the status line on the CQ row.
@@ -185,6 +187,8 @@ Nothing moves between home and activation: the dock grows by one line, and the C
 
 ### 3.11 Per-QSO retries
 
+**Superseded 2026-10-14** (§7): CQ becomes a queue entry with a try budget, row `qfrr`. Do not build this section as written; its rewrite is that row's first step.
+
 Redesign canvas: `Per-QSO retries`, interactive.
 
 * **Today there is one limit, and it is per step, not per QSO.**
@@ -258,14 +262,15 @@ Redesign canvas: `Reply feedback`, interactive. The feedback is on the Reply but
 
 ## 6. Slices
 
-O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); they are the Now rows. The later slices stay listed here, under row `s6qk`, until each is next. The combined order with RFC 0008 is RFC 0008 §7.
+O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); they are the Now rows. The later slices have their own rows: O2 `ybav`, O3 `mxvk`, O4 `jtgu`; O5 and O6 became `qfrr` (§7). The combined order with RFC 0008 is RFC 0008 §7.
 
 * **O1a: the CQ row**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The CQ row**).
 * **O1b: the dock**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The dock**).
 * **O1c: the Station sheet**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The Station sheet**).
 * **O2: radio status replaces Connect, the read-back, and the TX HUD** (§3.7, §3.12).
   - Web app; the `IF;` read-back operation, its parser test and its Port A message; the ADV's attach-time host start (`ADV-only`).
-  - **Field check:** unplug and replug the QMX. The chip walks No radio, Found, Ready, and the VFO lands on the selected band with nothing pressed. Then Tune from the chip's panel shows power and SWR there and in the HUD, and Stop in the HUD ends it.
+  - **An attach event before CDC opens.** The P4 sends `USB_STATUS` attach only once CDC opens (`poe_p4/main/qmx_transport.cpp`, `try_open()`), about 11 s after plug-in (a QMX-side delay, measured 2026-09-20), so today Found never shows and the wait reads as a hang. Found starts when the host core first sees the device (`cdc_new_dev_cb()`), not when `try_open()` starts polling: it polls about once a second whenever nothing is attached.
+  - **Field check:** unplug and replug the QMX. The chip walks No radio, Found, Ready, Found showing within a second or two of plug-in, and the VFO lands on the selected band with nothing pressed. Then Tune from the chip's panel shows power and SWR there and in the HUD, and Stop in the HUD ends it.
 * **O3: reply feedback** (§3.13). Web app only.
 * **O4: decode sort and filter** (§3.8).
 * **O5: per-QSO retries** (§3.11).
@@ -295,3 +300,10 @@ O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); th
 * No high-SWR warning (§4).
 * The CQ timeout defaults to Never (§3.6).
 * O1 ships as three pieces, O1a to O1c (§6).
+
+**2026-10-14, groom:**
+
+* O2 includes the attach event before CDC opens that the Found state needs (§6).
+* O4's CQ filter is the community's CQ-only ask (§3.8).
+* **CQ is a queue entry with a try budget** (row `qfrr`). Call CQ queues a CQ with N tries; each CQ sent uses one, an answer gives none back, and at zero it ends. Every queue entry's count can be changed in place. The beacon mode, O5 and O6 as designed in §3.6 and §3.11 are replaced; both sections are rewritten before the row is built.
+* **Call CQ picks its parity each time:** the active QSO's parity if there is one, otherwise the next slot it can still key. The CQ row shows it, and a tap flips it for that CQ, for a strong station nearby; SOTA spotting also wants the parity (RFC 0008 §3). Row `qfrr`.

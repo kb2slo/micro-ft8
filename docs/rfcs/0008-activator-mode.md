@@ -190,7 +190,7 @@ Accepted 2026-09-27. The slices stay listed here, under row I18, until each is n
 2. **O0:** done 2026-09-27; RFC 0009 accepted.
 3. **O1:** the dock layout, home case, in three pieces: the CQ row, the dock, and the Station sheet (RFC 0009 §6).
 4. **A1: the activation and the log**, shipped 2026-09-29 ([logging.md](../architecture/logging.md)). **The top goal lands here.** Proof: `host_mock` and `webapp/tests/test_nfer_export.js` validate a record's fields and the export's n-fer expansion against the POTA/SOTA ADIF spec (§8) — a real pota.app/SOTA-database upload waits for an actual activation, per the operator's 2026-09-28 relaxation of this slice's Done-when. Field checks on the shipped mechanics (TX-arm timing, the wire version bump, the sheet's Activation section) are tracked in `TEST_PLAN.md` Pending, not this Done-when.
-5. **A2: activation status** (§4.6), as the dock's progress line.
+5. **A2: activation status** (§4.6), as the dock's progress line. Row `xe2j`.
 6. **A4: offline phone location** (the service-worker `geo.html`) and the ADV GNSS feed (§4.3), then the grid check in the sheet. Field check: on an iPhone with cellular off, the grid fills from GNSS.
 7. **A3: the reference store on the sidekick, filled from the map's fetches** (§4.2). Also the map's Save this area, pick mode and offline layer, and the nearby list, search and unverified typed references in the add screen (§4.3; the UI is [RFC 0009](0009-operate-station-surface.md)'s). After this, **a whole activation works offline**.
 8. **A5: P2P/S2S capture:** a partner reference on queue entries, auto-filled from spots, and the "worked on this reference today" cue (§4.4).

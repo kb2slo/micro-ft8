@@ -65,7 +65,7 @@ A full-screen overlay (`#stationSheet`, same slide-up mechanics as `#settingsOve
 * **Footer:** the call, read-only, with a note that it is changed in Settings — the call is the licence identity, not something changed mid-QSO.
 * **Not in the sheet:** Off / Even / Odd (the queue row) and band/frequency (the dock) — each control has one home.
 * **Settings' own Save dropped these keys** (`cq_type`, `free_text`, `grid`, `autoseq_max_retry`, `offset`, `offset_src`): its `FIELDS` array no longer lists them, so `formBody()` never sends them and an all-keys Settings save can no longer overwrite a value this sheet just wrote (§2.1 of [RFC 0009](../rfcs/0009-operate-station-surface.md)). `cq_ft` left the web app outright rather than moving here: it never reaches the air (`poe_p4/main/porta_host.cpp` sends `free_text` for a FreeText or FD CQ), so nothing needed its own control. It still exists in the station file; row `sfwz` retires it from there.
-* **Not yet in the sheet:** CQ timeout (row `s6qk`) and the grid check against a station's references (row `I18`, RFC 0008 A4).
+* **Not yet in the sheet:** the CQ try budget (row `qfrr`) and the grid check against a station's references (row `I18`, RFC 0008 A4).
 
 ### Decisions a reference app would make differently
 
