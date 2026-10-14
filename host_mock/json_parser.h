@@ -16,13 +16,19 @@ struct TestConfig {
     bool        tx_on_even = false;
     std::string cq_type;       // "CQ", "FD", "SOTA", etc.
     std::string free_text;     // FD exchange or freetext (e.g. "1A SCV")
-    int         max_retry = 5; // autoseq_set_max_retry (default 5)
+    int         tries = 6;     // autoseq_set_tries (default AUTOSEQ_TRIES)
     bool        skip_tx1 = false; // autoseq_set_skip_tx1: a touch starts at the report
 };
 
-struct BeaconChange {
+// Call CQ (the CQ row), or drop the queued CQ (its x).
+struct CqCall {
     float time_offset = 0.0f;
-    int   beacon_on   = 0;       // 0=off, 1=even, 2=odd
+    int   tries       = 0;       // the CQ's own count; 0 = the station default
+    int   parity      = -1;      // -1 = TX_ON_EVEN's
+};
+
+struct CqDrop {
+    float time_offset = 0.0f;
 };
 
 struct TouchEvent {
@@ -37,8 +43,10 @@ struct FreeTextEvent {
 
 struct TestPeriod {
     std::vector<UiRxLine> messages;     // RX messages for this period
-    bool         has_beacon_change = false;
-    BeaconChange beacon_change;
+    bool         has_cq_call = false;
+    CqCall       cq_call;
+    bool         has_cq_drop = false;
+    CqDrop       cq_drop;
     bool         has_touch_event = false;
     TouchEvent   touch_event;
     bool          has_freetext_event = false;

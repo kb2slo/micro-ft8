@@ -8,8 +8,12 @@
 
 // Queue size: active + inactive entries.
 constexpr int AUTOSEQ_MAX_QUEUE = 30;
-// Maximum retries before moving to inactive zone
-constexpr int AUTOSEQ_MAX_RETRY = 5;
+// Tries are transmissions (docs/architecture/autoseq.md, Tries). The station
+// default bounds each QSO message and starts a CQ; an entry's own count can be
+// changed in place, up to the per-kind maximum.
+constexpr int AUTOSEQ_TRIES = 6;
+constexpr int AUTOSEQ_TRIES_MAX_QSO = 20;
+constexpr int AUTOSEQ_TRIES_MAX_CQ = 99;
 // How long a parked (inactive) entry lives. It is parked to catch DX retrying
 // the same QSO; after this, anything from that call is a new QSO, so the old
 // state, reports and `logged` must not come back. Equal to the ADIF dedupe
@@ -42,8 +46,8 @@ enum class AutoseqState {
 // or from the s_pending_ft_text sidecar (for FT).
 //
 // Semantics of TX_NONE on next_tx:
-//   - On a CALLING ctx: "one-shot — text from s_tx_msg_buffer, evict
-//     after one TX (tick CALLING → IDLE → pop)."
+//   - On a CALLING ctx: "text from s_tx_msg_buffer". The CQ entry stays
+//     until its tries are used; a Free Text one-shot is evicted after one TX.
 //   - On an IDLE ctx: "no TX, evict immediately by sort_and_clean."
 enum class TxMsgType {
     TX_NONE = 0,
@@ -52,7 +56,7 @@ enum class TxMsgType {
     TX3,  // <DXCALL> <MYCALL> R##
     TX4,  // <DXCALL> <MYCALL> RR73
     TX5,  // <DXCALL> <MYCALL> 73
-    TX6   // CQ <MYCALL> <GRID> — never used for next_tx (one-shots use TX_NONE)
+    TX6   // CQ <MYCALL> <GRID> — never used for next_tx (CALLING uses TX_NONE)
 };
 
 // QSO context - one per active contact
@@ -77,8 +81,11 @@ struct QsoContext {
     int snr_tx = -99;       // What we report to them (our measurement of their signal)
     int snr_rx = -99;       // What they reported about us
 
-    int retry_counter = 0;
-    int retry_limit = AUTOSEQ_MAX_RETRY;
+    // A QSO's count is per step: a state change starts it over. A CQ's is the
+    // whole CQ: each CQ sent uses one, and an answer gives none back.
+    int tries_sent = 0;
+    int try_limit = AUTOSEQ_TRIES;
+    int tries_custom = 0;   // the entry's own limit; 0 follows the station default
     bool logged = false;    // Prevents duplicate ADIF logging
     bool cabrillo_logged = false; // Prevents duplicate Field Day Cabrillo logging
     bool is_fd = false;
@@ -94,10 +101,10 @@ struct QsoContext {
     int offset_hz = 1500;   // TX audio offset
     int slot_id = 0;        // TX slot (0=even, 1=odd)
 
-    // One-shot entries (CQ and Free Text) share the CALLING state but differ
-    // in sort priority: FT must TX first (preempts QSOs), CQ stays at bottom
-    // (QSOs take priority over beacon CQ). is_freetext is the priority flag
-    // consulted in compare_ctx.
+    // CQ and Free Text entries share the CALLING state but differ in sort
+    // priority: FT must TX first (preempts QSOs), CQ stays at bottom (QSOs
+    // take priority over a CQ). is_freetext is the priority flag consulted in
+    // compare_ctx.
     //
     // Text storage: CQ text is regenerated from template at refresh; FT text
     // is held in the s_pending_ft_text singleton (only one FT pending at a
@@ -111,7 +118,7 @@ struct AutoseqTxEntry {
     std::string dxcall;     // Target callsign
     int offset_hz = 1500;
     int slot_id = 0;
-    int repeat_counter = 5;
+    int repeat_counter = AUTOSEQ_TRIES;  // tries left, this one included
     bool is_signoff = false; // True for TX4/TX5 (priority scheduling)
     uint16_t entry_id = 0;   // QsoContext::entry_id of the queue[0] this came from
 };
@@ -142,13 +149,19 @@ bool autoseq_drop_by_entry_id(uint16_t entry_id);
 // Returns true if a rotation occurred.
 bool autoseq_rotate_same_parity();
 
-// Start a CQ call (adds CQ to queue). One-shot: transmits once then evicts.
-// slot_parity: 0 for even slots, 1 for odd slots
-void autoseq_start_cq(int slot_parity);
+// Call CQ: queue the CQ entry on slot_parity (0 even, 1 odd) with the station
+// default's tries. It stays queued, below every QSO, until its tries are used
+// or it is dropped. False if a CQ is already queued (it is left as it is) or
+// there is no room.
+bool autoseq_call_cq(int slot_parity);
 
-// Drop pending beacon CQ entries (CALLING, not free-text). QSOs unchanged.
-// If skip_head is true, leave queue[0] (safe while that entry is on the air).
-bool autoseq_cancel_cq(bool skip_head = false);
+// The parity Call CQ picks: an active QSO's if there is one, so the CQ keeps
+// the period the station is already using; otherwise the slot that is under
+// way when it can still be keyed, or the next one.
+int autoseq_cq_parity(int current_slot_parity, bool current_slot_keyable);
+
+// The queued CQ's entry_id, 0 if none.
+uint16_t autoseq_cq_entry_id();
 
 // Schedule a Free Text one-shot transmission.
 // - Inherits slot parity from queue[0] if queue is non-empty, so FT joins the
@@ -189,6 +202,24 @@ bool autoseq_fetch_pending_tx(AutoseqTxEntry& out);
 // did not re-arm (a cancel, a drop) would otherwise send the old message.
 uint16_t autoseq_head_entry_id();
 
+// Change one queued entry's tries in place (docs/architecture/autoseq.md,
+// Tries). 0 returns it to the station default.
+enum class AutoseqTriesResult : uint8_t {
+    Ok = 0,
+    UnknownEntry,
+    OutOfRange,
+};
+AutoseqTriesResult autoseq_set_entry_tries(uint16_t entry_id, int tries);
+
+// Move the queued CQ to the other period. Only a CQ: a QSO's parity is set by
+// the station it works.
+enum class AutoseqParityResult : uint8_t {
+    Ok = 0,
+    UnknownEntry,
+    NotCq,
+};
+AutoseqParityResult autoseq_set_cq_parity(uint16_t entry_id, int slot_parity);
+
 // Combines the entry_id check above with the text refresh a board's armed
 // snapshot also needs: the *same* queue[0] entry's rendered text can change
 // without its entry_id changing (a live cq_type switch re-derives the CQ
@@ -207,6 +238,10 @@ bool autoseq_head_changed_or_refresh(AutoseqTxEntry* pending);
 // a cancelled TX gets no tick, so the board gates this on its own tx_active.
 // Cancelling that entry from the queue also stops the transmission.
 uint16_t autoseq_transmitting_entry_id();
+
+// A TX that was on the air was cancelled: it is not counted and gets no tick,
+// so nothing is transmitting until the next autoseq_on_tx_starting().
+void autoseq_on_tx_cancelled();
 
 // Mark TX as sent (called after transmission completes)
 void autoseq_mark_sent(int64_t slot_idx);
@@ -256,7 +291,9 @@ void autoseq_set_recent_qso_callback(AutoseqRecentQsoCallback cb);
 // Configuration setters (called when station data changes)
 void autoseq_set_station(const std::string& call, const std::string& grid);
 void autoseq_set_skip_tx1(bool skip);  // Skip TX1 and start with TX2
-void autoseq_set_max_retry(int retry); // Runtime retry limit for new/retried TX states
+// Station default tries, 1..AUTOSEQ_TRIES_MAX_QSO. Applies at once to every
+// entry that has no count of its own, the queued CQ included.
+void autoseq_set_tries(int tries);
 
 // CQ type configuration
 enum class AutoseqCqType { CQ = 0, SOTA, POTA, QRP, FD, FREETEXT };

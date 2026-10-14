@@ -14,6 +14,7 @@
 
 #include "scenario.h"
 
+#include "autoseq.h"
 #include "porta_proto.h"
 #include "swr_sweep.h"
 
@@ -73,7 +74,7 @@ static void seed_config(const TestData& td)
     g_cfg["grid"] = td.config.my_grid;
     g_cfg["cq_type"] = std::to_string(cq_type_number(td.config.cq_type));
     g_cfg["free_text"] = td.config.free_text;
-    g_cfg["autoseq_max_retry"] = std::to_string(td.config.max_retry);
+    g_cfg["tries"] = std::to_string(td.config.tries);
     g_cfg["offset"] = "1500";
     g_cfg["offset_src"] = "0";
     g_cfg["band_sel"] = "5";
@@ -219,8 +220,8 @@ static void apply_config_body(const std::string& body)
     }
     scenario_set_station(g_scenario, g_cfg["call"], g_cfg["grid"]);
     scenario_set_cq_type(g_scenario, std::atoi(g_cfg["cq_type"].c_str()), g_cfg["free_text"]);
-    if (!g_cfg["autoseq_max_retry"].empty()) {
-        scenario_set_max_retry(g_scenario, std::atoi(g_cfg["autoseq_max_retry"].c_str()));
+    if (!g_cfg["tries"].empty()) {
+        scenario_set_tries(g_scenario, std::atoi(g_cfg["tries"].c_str()));
     }
 }
 
@@ -318,7 +319,7 @@ std::string sim_sweep_start(const std::string& body)
 {
     // What the P4 refuses over (poe_p4/main/porta_host.cpp), so the page's ask-first flow
     // has something to ask about.
-    if (g_scenario.beacon != 0) return "{\"ok\":false,\"why\":\"beacon is on\"}";
+    if (autoseq_cq_entry_id() != 0) return "{\"ok\":false,\"why\":\"a CQ is queued\"}";
     swr_sweep_range_t ranges[SWR_SWEEP_MAX_RANGES + 1];
     size_t count = 0;
     const char* p = body.c_str();
@@ -396,20 +397,24 @@ static std::string handle(const std::string& method, const std::string& url,
         }
         return "{\"ok\":true}";
     }
-    if (method == "POST" && path == "/api/beacon") {
-        std::string mode = body;
-        while (!mode.empty() && (mode.back() == '\n' || mode.back() == '\r' || mode.back() == ' ')) {
-            mode.pop_back();
+    if (method == "POST" && path == "/api/cq") {
+        if (!scenario_call_cq(g_scenario)) {
+            return "{\"ok\":false,\"why\":\"a CQ is already queued\"}";
         }
-        int m = -1;
-        if (mode == "0" || mode == "off") m = 0;
-        else if (mode == "1" || mode == "even") m = 1;
-        else if (mode == "2" || mode == "odd") m = 2;
-        if (m < 0) {
+        return "{\"ok\":true}";
+    }
+    if (method == "POST" && (path == "/api/queue/tries" || path == "/api/queue/parity")) {
+        // "<entry_id> <n>", as the sidekick takes them.
+        char* end = nullptr;
+        const unsigned long id = std::strtoul(body.c_str(), &end, 10);
+        const long n = std::strtol(end, nullptr, 10);
+        const bool ok = path == "/api/queue/tries"
+                            ? scenario_set_entry_tries(g_scenario, (uint16_t)id, (int)n)
+                            : scenario_set_cq_parity(g_scenario, (uint16_t)id, (int)n);
+        if (id == 0 || !ok) {
             *status = 400;
-            return "{\"ok\":false,\"why\":\"want 0/1/2\"}";
+            return "{\"ok\":false,\"why\":\"refused\"}";
         }
-        scenario_set_beacon(g_scenario, m);
         return "{\"ok\":true}";
     }
     if (method == "POST" && path == "/api/tx/cancel") {
@@ -598,13 +603,15 @@ int main(int argc, char** argv)
 
     while (true) {
         const auto now = clock::now();
-        if (!script_done && now >= next_step) {
-            if (!scenario_step(g_scenario)) {
+        if (now >= next_step) {
+            // Past the script, periods keep running empty, so a CQ called
+            // from the page goes out and counts its tries.
+            if (script_done) {
+                scenario_idle_step(g_scenario);
+            } else if (!scenario_step(g_scenario)) {
                 script_done = true;
             }
             next_step = clock::now() + std::chrono::milliseconds(interval_ms);
-        } else if (script_done && g_scenario.hud_active && now >= next_step) {
-            scenario_clear_hud(g_scenario);
         }
         {
             // The sweep's clock: real time times --scale, but at most 100 ms a turn, so the
@@ -626,10 +633,8 @@ int main(int argc, char** argv)
         if (swr_sweep_busy()) {
             wake = clock::now() + std::chrono::milliseconds(5);
         }
-        if (!script_done || g_scenario.hud_active) {
-            if (next_step < wake) {
-                wake = next_step;
-            }
+        if (next_step < wake) {
+            wake = next_step;
         }
         const auto wait = std::chrono::duration_cast<std::chrono::milliseconds>(wake - clock::now());
         timeval tv;

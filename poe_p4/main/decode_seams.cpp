@@ -15,8 +15,8 @@ void log_rxtx_line(char dir, int snr, int offset_hz, const std::string &text, in
     ESP_LOGI(TAG, "%c snr=%d offset=%dHz: %s", dir, snr, offset_hz, text.c_str());
 }
 
-void arm_from_autoseq_or_beacon() {
-    tx_scheduler_arm_from_autoseq_or_beacon();
+void arm_from_autoseq() {
+    tx_scheduler_arm_from_autoseq();
 }
 
 bool ignorelist_matches_normalized_dxcall(const std::string & /*dxcall_norm*/) {

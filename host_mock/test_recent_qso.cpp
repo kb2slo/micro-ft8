@@ -72,17 +72,23 @@ static void reset() {
     mock_clock_set(1000);  // parked entries stamp this; 0 reads as "not parked"
     autoseq_init();
     autoseq_set_station("KB2SLO", "FN30");
-    autoseq_set_max_retry(5);
+    autoseq_set_tries(6);
     autoseq_set_adif_callback(adif_cb);
     autoseq_set_recent_qso_callback(recent_cb);
     s_logged.clear();
     s_log_count = 0;
 }
 
+// One CQ that ends after it is sent: the CQ these tests open a QSO with.
+static void one_cq() {
+    autoseq_call_cq(0);
+    autoseq_set_entry_tries(autoseq_cq_entry_id(), 1);
+}
+
 // We CQ, K1ABC answers, we end with RR73, K1ABC sends 73: one RR73, then done.
 static void test_rr73_once_then_73_closes() {
     reset();
-    autoseq_start_cq(0);
+    one_cq();
     check(transmit() == "CQ KB2SLO FN30", "CQ goes out");
 
     decode(to_me("K1ABC", "FN42"));
@@ -96,14 +102,14 @@ static void test_rr73_once_then_73_closes() {
     check(autoseq_active_count() == 0, "their 73 ends the QSO despite the log");
     check(transmit().empty(), "no second RR73");
 
-    autoseq_start_cq(0);
-    check(transmit() == "CQ KB2SLO FN30", "the beacon CQ resumes at once");
+    one_cq();
+    check(transmit() == "CQ KB2SLO FN30", "a CQ goes out at once");
 }
 
-// They missed our RR73 and resend R+report: RR73 again, fresh retries.
+// They missed our RR73 and resend R+report: RR73 again, fresh tries.
 static void test_resent_r_report_gets_rr73() {
     reset();
-    autoseq_start_cq(0);
+    one_cq();
     transmit();
     decode(to_me("K1ABC", "FN42"));
     transmit();
@@ -113,8 +119,8 @@ static void test_resent_r_report_gets_rr73() {
     decode(to_me("K1ABC", "R-10"));
     QsoContext head;
     check(autoseq_get_active_context(0, &head) && head.state == AutoseqState::ROGERS &&
-              head.retry_counter == 0,
-          "resent R-report reaches the logged QSO and resets its retries");
+              head.tries_sent == 0,
+          "resent R-report reaches the logged QSO and resets its tries");
     check(transmit() == "K1ABC KB2SLO RR73", "RR73 again");
     check(s_log_count == 1, "logged once");
 }
@@ -148,7 +154,7 @@ static void test_late_rr73_reactivates_parked_signoff() {
 // After the QSO is gone from the queue, the same call is refused a new one.
 static void test_recent_call_cannot_start_new_qso() {
     reset();
-    autoseq_start_cq(0);
+    one_cq();
     transmit();
     decode(to_me("K1ABC", "FN42"));
     transmit();

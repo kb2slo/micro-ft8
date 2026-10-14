@@ -6,14 +6,14 @@
     "DX_GRID": "CM88",
     "TX_ON_EVEN": true
   },
-  "comment": "REPORT reincarnation: we CQ, DX answers with its grid, and our report goes unanswered until its retries run out (the first send plus 5). The entry parks with snr_tx=-5. DX's late R-08 then reactivates it, so RR73 goes out and the QSO logs rst_sent=-5. Popping the entry instead let the R-08 build a fresh one with snr_tx=-99, which logged the wrong report. The scenario runner transmits a QSO entry in every period; only the beacon CQ waits for its own parity.",
+  "comment": "REPORT reincarnation: we CQ, DX answers with its grid, and our report goes unanswered until its 6 tries run out. The entry parks with snr_tx=-5. DX's late R-08 then reactivates it, so RR73 goes out and the QSO logs rst_sent=-5. Popping the entry instead let the R-08 build a fresh one with snr_tx=-99, which logged the wrong report. The scenario runner transmits a QSO entry in every period; only the CQ waits for its own parity.",
   "periods": [
     {
-      "comment": "Period 0 (even): beacon CQ",
+      "comment": "Period 0 (even): CQ",
       "messages": [],
-      "beacon_change": {
+      "cq_call": {
         "time_offset": 0.0,
-        "beacon_on": 1
+        "tries": 99
       },
       "expect": {
         "tx": "CQ AG6AQ CM97"
@@ -36,35 +36,35 @@
       }
     },
     {
-      "comment": "Period 2: TX2 retry 1/5. DX doesn't respond (QRM/weak signal) from here on.",
+      "comment": "Period 2: TX2, try 2 of 6. DX doesn't respond (QRM/weak signal) from here on.",
       "messages": [],
       "expect": {
         "tx": "W6ABC AG6AQ -5"
       }
     },
     {
-      "comment": "Period 3: TX2 retry 2/5",
+      "comment": "Period 3: TX2, try 3 of 6",
       "messages": [],
       "expect": {
         "tx": "W6ABC AG6AQ -5"
       }
     },
     {
-      "comment": "Period 4: TX2 retry 3/5",
+      "comment": "Period 4: TX2, try 4 of 6",
       "messages": [],
       "expect": {
         "tx": "W6ABC AG6AQ -5"
       }
     },
     {
-      "comment": "Period 5: TX2 retry 4/5",
+      "comment": "Period 5: TX2, try 5 of 6",
       "messages": [],
       "expect": {
         "tx": "W6ABC AG6AQ -5"
       }
     },
     {
-      "comment": "Period 6: TX2 retry 5/5. The tick after it parks the entry, keeping snr_tx=-5.",
+      "comment": "Period 6: TX2, try 6 of 6. The tick after it parks the entry, keeping snr_tx=-5.",
       "messages": [],
       "expect": {
         "tx": "W6ABC AG6AQ -5"
@@ -78,7 +78,7 @@
       }
     },
     {
-      "comment": "Period 8 (even): beacon CQ",
+      "comment": "Period 8 (even): CQ",
       "messages": [],
       "expect": {
         "tx": "CQ AG6AQ CM97"
@@ -92,7 +92,7 @@
       }
     },
     {
-      "comment": "Period 10 (even): beacon CQ",
+      "comment": "Period 10 (even): CQ",
       "messages": [],
       "expect": {
         "tx": "CQ AG6AQ CM97"
@@ -106,7 +106,7 @@
       }
     },
     {
-      "comment": "Period 12 (even): beacon CQ",
+      "comment": "Period 12 (even): CQ",
       "messages": [],
       "expect": {
         "tx": "CQ AG6AQ CM97"
@@ -130,7 +130,7 @@
       }
     },
     {
-      "comment": "Period 14 (even): RR73 went out once and logged, so the entry parked again. The beacon CQ resumes.",
+      "comment": "Period 14 (even): RR73 went out once and logged, so the entry parked again. The CQ resumes.",
       "messages": [],
       "expect": {
         "tx": "CQ AG6AQ CM97"

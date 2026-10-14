@@ -10,11 +10,11 @@
   },
   "periods": [
     {
-      "comment": "Period 0 (even): beacon starts — we CQ FD on even slots",
+      "comment": "Period 0 (even): Call CQ — we CQ FD on even slots",
       "messages": [],
-      "beacon_change": {
+      "cq_call": {
         "time_offset": 1.0,
-        "beacon_on": 1
+        "tries": 99
       },
       "expect": {
         "tx": "CQ FD AG6AQ CM97"
@@ -28,7 +28,7 @@
       }
     },
     {
-      "comment": "Period 2 (even): no reply yet, beacon sends another CQ FD",
+      "comment": "Period 2 (even): no reply yet, the CQ goes again",
       "messages": [],
       "expect": {
         "tx": "CQ FD AG6AQ CM97"

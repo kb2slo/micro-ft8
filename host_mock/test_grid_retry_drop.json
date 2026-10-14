@@ -1,27 +1,27 @@
 {
-  "comment": "A touch that only exchanges grids is dropped when retries run out, not parked. A later R+report must not revive it, and a later report starts a new QSO at the new SNR.",
+  "comment": "A touch that only exchanges grids is dropped when its tries run out, not parked. A later R+report must not revive it, and a later report starts a new QSO at the new SNR.",
   "config": {
     "MY_CALLSIGN": "AG6AQ",
     "MY_GRID": "CM97",
     "DX_CALLSIGN": "N6HAN",
     "DX_GRID": "CM87",
     "TX_ON_EVEN": true,
-    "MAX_RETRY": 1
+    "TRIES": 2
   },
   "periods": [
     {
-      "comment": "Period 0 (even): beacon on",
+      "comment": "Period 0 (even): Call CQ",
       "messages": [],
-      "beacon_change": {
+      "cq_call": {
         "time_offset": 1.0,
-        "beacon_on": 1
+        "tries": 99
       },
       "expect": {
         "tx": "CQ AG6AQ CM97"
       }
     },
     {
-      "comment": "Period 1 (odd): touch their CQ. First grid. max retry 1.",
+      "comment": "Period 1 (odd): touch their CQ. First grid. 2 tries.",
       "messages": [
         {
           "call_to": "CQ",
@@ -41,7 +41,7 @@
       }
     },
     {
-      "comment": "Period 2 (even): the one retry, then the entry is dropped",
+      "comment": "Period 2 (even): the second try, then the entry is dropped",
       "messages": [],
       "expect": {
         "tx": "N6HAN AG6AQ CM97"
@@ -63,7 +63,7 @@
       }
     },
     {
-      "comment": "Period 4 (even): beacon is back. The dropped QSO is not blocking it.",
+      "comment": "Period 4 (even): the CQ is back. The dropped QSO is not blocking it.",
       "messages": [],
       "expect": {
         "tx": "CQ AG6AQ CM97"

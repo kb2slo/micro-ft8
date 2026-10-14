@@ -60,8 +60,8 @@ A new or reset station is set to `YOURCALL` in grid `CM97`. Set yours before you
 ## Work some stations
 
 - *Answer a CQ:* tap **Reply** on a decode; it is offered for about 30 seconds after its slot. The station works the exchange and logs it.
-- *Call CQ:* set your CQ, the last row of the queue, to **Even** or **Odd**; **Off** stops it. Stations that answer are worked before the next CQ.
-- *Stop:* **Stop TX** ends the transmission on the air (**Stop CQ** also stops calling), and × on a queue row ends that QSO. **Tune** sends a carrier until you tap it again.
+- *Call CQ:* tap **Call CQ** on the last row of the queue. It sends as many CQs as **Tries** in the Station sheet (6 to start), every other slot, then stops. Stations that answer are worked first. On the row, tap the count to change it, or the slot to move the CQ to the other one.
+- *Stop:* **Stop TX** ends the transmission on the air (**Stop CQ** also ends the CQ), and × on a queue row ends that QSO or the CQ. **Tune** sends a carrier until you tap it again.
 - Close the app or lock the phone, and the station keeps working. Open it again to see what it did.
 
 ## Your log
@@ -78,7 +78,7 @@ One ADIF file per UTC day, kept on the main board. On **QSOs**, **Download ADI**
 - *SWR sweep,* on **Tools**: set the QMX's *Tune* power to 25% or more first.
 - *Home WiFi instead* (2.4 GHz only): in **Settings**, tap **Join a network →**, pick it and tap **Save and join**; then use [`http://micro-ft8.local`](http://micro-ft8.local/). Away from that network, the sidekick's own comes back within a minute of power-up.
 - *Updates:* **Install / update**, at the bottom of **Settings**, loads the newest app (needs internet).
-- *For now:* FT8 with a QMX only; leave **Protocol** at FT8. The CQ keeps calling until you set it to **Off**, and nothing else limits transmit time: you are the control operator.
+- *For now:* FT8 with a QMX only; leave **Protocol** at FT8. A CQ stops after its tries and each QSO message after its own, but you are still the control operator.
 
 ## Questions and feedback
 

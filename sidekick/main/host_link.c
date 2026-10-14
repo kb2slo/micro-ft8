@@ -92,11 +92,11 @@ typedef struct {
     uint32_t dial_hz;                         // DECODE: dial at the signal's middle, 0 unknown
     uint16_t entry_id;                        // QUEUE_ENTRY
     uint8_t  state;                           // QUEUE_ENTRY (AutoseqState wire value)
-    uint8_t  retry_count;                     // QUEUE_ENTRY
-    uint8_t  retry_limit;                     // QUEUE_ENTRY
+    uint8_t  tries_sent;                      // QUEUE_ENTRY
+    uint8_t  try_limit;                       // QUEUE_ENTRY
+    uint8_t  queue_flags;                     // QUEUE_ENTRY: PORTA_QUEUE_*
     char     dxcall[PORTA_CALLSIGN_MAX + 1];  // QUEUE_ENTRY
     uint8_t  slot_parity;                     // SLOT_STATE
-    uint8_t  beacon_mode;                     // SLOT_STATE
     bool     tx_active;                       // TX_HUD
     bool     tx_aborted;                      // TX_HUD
     bool     tx_writes_blocked;               // TX_HUD
@@ -248,8 +248,9 @@ static esp_err_t get_events(httpd_req_t *req)
             q.epoch_secs = e.epoch_secs;
             q.entry_id = e.entry_id;
             q.state = e.state;
-            q.retry_count = e.retry_count;
-            q.retry_limit = e.retry_limit;
+            q.tries_sent = e.tries_sent;
+            q.try_limit = e.try_limit;
+            q.flags = e.queue_flags;
             strncpy(q.dxcall, e.dxcall, sizeof(q.dxcall) - 1);
             n = porta_event_json_queue(row, sizeof(row), e.seq, &q);
             break;
@@ -259,7 +260,6 @@ static esp_err_t get_events(httpd_req_t *req)
             memset(&ss, 0, sizeof(ss));
             ss.epoch_secs = e.epoch_secs;
             ss.slot_parity = e.slot_parity;
-            ss.beacon_mode = e.beacon_mode;
             ss.resolved_offset_hz = e.offset_hz;
             n = porta_event_json_slot(row, sizeof(row), e.seq, &ss);
             break;
@@ -988,44 +988,62 @@ static esp_err_t post_swr_start(httpd_req_t *req)
     return wait_action_reply(req, PORTA_ACT_SWEEP_START);
 }
 
-// POST /api/beacon  body: "0"/"1"/"2" or "off"/"even"/"odd" (case-insensitive)
-// -- BeaconMode's own wire values, matching STATUS key 1's three-way cycle.
-// Token required: this starts/stops transmitting.
-static esp_err_t post_beacon(httpd_req_t *req)
+// POST /api/cq  no body: Call CQ. The main board picks the parity and the
+// tries (docs/architecture/autoseq.md, Tries). Token required: this keys the
+// transmitter.
+static esp_err_t post_cq(httpd_req_t *req)
 {
-    char body[16] = {0};
-    int received = httpd_req_recv(req, body, sizeof(body) - 1);
-    if (received <= 0) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "no body");
-        return ESP_FAIL;
-    }
-    while (received > 0) {
-        const char c = body[received - 1];
-        if (c != '\n' && c != '\r' && c != ' ' && c != '\t') {
-            break;
-        }
-        body[--received] = '\0';
-    }
-    uint8_t mode;
-    if (strcmp(body, "0") == 0 || strcasecmp(body, "off") == 0) {
-        mode = 0;
-    } else if (strcmp(body, "1") == 0 || strcasecmp(body, "even") == 0) {
-        mode = 1;
-    } else if (strcmp(body, "2") == 0 || strcasecmp(body, "odd") == 0) {
-        mode = 2;
-    } else {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "want 0/1/2 or off/even/odd");
-        return ESP_FAIL;
-    }
-
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
-    const size_t n = porta_proto_encode_beacon(mode, frame, sizeof(frame));
+    const size_t n = porta_proto_encode_cq_call(frame, sizeof(frame));
     reply_reset();
     if (!porta_send(frame, n)) {
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
     }
-    return wait_action_reply(req, PORTA_ACT_BEACON);
+    return wait_action_reply(req, PORTA_ACT_CQ_CALL);
+}
+
+// POST /api/queue/tries   body: "<entry_id> <tries>" (0 = the station default)
+// POST /api/queue/parity  body: "<entry_id> <parity>" (0 even, 1 odd; the CQ only)
+// Both address an entry by its id, as /api/queue/cancel does. Token required.
+static esp_err_t post_queue_entry_u8(httpd_req_t *req, uint8_t verb)
+{
+    char body[24] = {0};
+    const int received = httpd_req_recv(req, body, sizeof(body) - 1);
+    if (received <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "no body");
+        return ESP_FAIL;
+    }
+    body[received] = '\0';
+    char *end = NULL;
+    const unsigned long id = strtoul(body, &end, 10);
+    char *end2 = NULL;
+    const unsigned long value = strtoul(end, &end2, 10);
+    if (id == 0 || id > 0xFFFFu || end2 == end || value > 0xFFu) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "want <entry_id> <value>");
+        return ESP_FAIL;
+    }
+
+    uint8_t frame[PORTA_PROTO_MAX_FRAME];
+    const size_t n = (verb == PORTA_ACT_QUEUE_TRIES)
+                         ? porta_proto_encode_queue_tries((uint16_t)id, (uint8_t)value, frame, sizeof(frame))
+                         : porta_proto_encode_queue_parity((uint16_t)id, (uint8_t)value, frame, sizeof(frame));
+    reply_reset();
+    if (!porta_send(frame, n)) {
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
+    }
+    return wait_action_reply(req, verb);
+}
+
+static esp_err_t post_queue_tries(httpd_req_t *req)
+{
+    return post_queue_entry_u8(req, PORTA_ACT_QUEUE_TRIES);
+}
+
+static esp_err_t post_queue_parity(httpd_req_t *req)
+{
+    return post_queue_entry_u8(req, PORTA_ACT_QUEUE_PARITY);
 }
 
 // POST /api/queue/cancel  body: entry_id (decimal). Not a queue position --
@@ -1247,7 +1265,7 @@ static esp_err_t get_config(httpd_req_t *req)
 // A key the host refuses does not stop the keys after it: the refusals are
 // independent, and some mean "saved, but" (band_sel's "VFO not moved" while
 // TX is active). Stopping there silently dropped every later key, so a save
-// made mid-QSO never applied autoseq_max_retry. The first refusal is still
+// made mid-QSO never applied the retry setting. The first refusal is still
 // reported. A link failure does stop, since later keys would fail the same way.
 static esp_err_t put_config(httpd_req_t *req)
 {
@@ -1533,15 +1551,15 @@ static void porta_rx_task(void *arg)
                 e.epoch_secs = qe.epoch_secs;
                 e.entry_id = qe.entry_id;
                 e.state = qe.state;
-                e.retry_count = qe.retry_count;
-                e.retry_limit = qe.retry_limit;
+                e.tries_sent = qe.tries_sent;
+                e.try_limit = qe.try_limit;
+                e.queue_flags = qe.flags;
                 strncpy(e.dxcall, qe.dxcall, sizeof(e.dxcall) - 1);
                 ring_push(&e);
             } else if (porta_proto_parse_slot_state(&frame, &ss)) {
                 e.kind = ENTRY_SLOT_STATE;
                 e.epoch_secs = ss.epoch_secs;
                 e.slot_parity = ss.slot_parity;
-                e.beacon_mode = ss.beacon_mode;
                 e.offset_hz = ss.resolved_offset_hz;
                 ring_push(&e);
             } else if (porta_proto_parse_tx_hud(&frame, &hud)) {
@@ -1802,8 +1820,14 @@ void host_link_register_uris(httpd_handle_t server)
     static const httpd_uri_t link_test_post = {
         .uri = "/api/link-test", .method = HTTP_POST, .handler = post_link_test,
     };
-    static const httpd_uri_t beacon = {
-        .uri = "/api/beacon", .method = HTTP_POST, .handler = post_beacon,
+    static const httpd_uri_t cq = {
+        .uri = "/api/cq", .method = HTTP_POST, .handler = post_cq,
+    };
+    static const httpd_uri_t queue_tries = {
+        .uri = "/api/queue/tries", .method = HTTP_POST, .handler = post_queue_tries,
+    };
+    static const httpd_uri_t queue_parity = {
+        .uri = "/api/queue/parity", .method = HTTP_POST, .handler = post_queue_parity,
     };
     static const httpd_uri_t queue_cancel = {
         .uri = "/api/queue/cancel", .method = HTTP_POST, .handler = post_queue_cancel,
@@ -1824,8 +1848,8 @@ void host_link_register_uris(httpd_handle_t server)
     // may listen to what is on the air. Setting the host clock or keying the
     // transmitter changes the device, so those need the token. Station config
     // read is open (call/grid are on the air); writes are guarded. Connect /
-    // tune are writes (UAC + CAT / TX tone). Beacon / queue cancel / queue
-    // reply all change device state (docs/architecture/webapp.md (Screens)) -- guarded like
+    // tune are writes (UAC + CAT / TX tone). Call CQ / queue cancel, reply,
+    // tries and parity all change device state (docs/architecture/webapp.md (Screens)) -- guarded like
     // connect/tune. Log files/entries are QSO-log reads, the same category
     // docs/architecture/system.md (Who may key the transmitter) already opened up for the event feed. Log delete is destructive —
     // PAIRING_REQUIRED. (/log's own raw viewer.html is retired -- app.html's
@@ -1841,12 +1865,14 @@ void host_link_register_uris(httpd_handle_t server)
         { &config_put, PAIRING_REQUIRED },
         { &radio_connect, PAIRING_REQUIRED },
         { &radio_tune, PAIRING_REQUIRED },
-        { &beacon, PAIRING_REQUIRED },
+        { &cq, PAIRING_REQUIRED },
         { &swr_start, PAIRING_REQUIRED },
         { &link_test_get, PAIRING_OPEN },
         { &link_test_post, PAIRING_REQUIRED },
         { &queue_cancel, PAIRING_REQUIRED },
         { &queue_reply, PAIRING_REQUIRED },
+        { &queue_tries, PAIRING_REQUIRED },
+        { &queue_parity, PAIRING_REQUIRED },
         { &log_files, PAIRING_OPEN },
         { &log_files_delete, PAIRING_REQUIRED },
         { &log_entries, PAIRING_OPEN },

@@ -25,9 +25,6 @@ void log_rxtx_line(char dir, int snr, int offset_hz, const std::string &text, in
 
 static const char *TAG = "tx_sched";
 
-enum class BeaconMode : uint8_t { OFF = 0, EVEN = 1, ODD = 2 };
-
-static BeaconMode s_beacon = BeaconMode::OFF;
 static volatile bool s_qso_xmit = false;
 static int s_target_slot_parity = 0;
 static AutoseqTxEntry s_pending_tx;
@@ -74,12 +71,7 @@ void arm_pending_tx(const AutoseqTxEntry &pending) {
     s_pending_tx_valid = true;
 }
 
-static void enqueue_beacon_cq(void) {
-    const int target_parity = (s_beacon == BeaconMode::EVEN) ? 0 : 1;
-    autoseq_start_cq(target_parity);
-}
-
-void tx_scheduler_arm_from_autoseq_or_beacon(void) {
+void tx_scheduler_arm_from_autoseq(void) {
     if (decode_tx_state_get_tx_active()) {
         return;
     }
@@ -87,57 +79,37 @@ void tx_scheduler_arm_from_autoseq_or_beacon(void) {
     if (autoseq_fetch_pending_tx(pending)) {
         arm_pending_tx(pending);
         ESP_LOGI(TAG, "TX ready: %s parity=%d", pending.text.c_str(), s_target_slot_parity);
+    }
+}
+
+void tx_scheduler_rearm(void) {
+    // A TX on the air finishes as armed; its tick re-arms from the queue.
+    if (decode_tx_state_get_tx_active()) {
         return;
     }
-    if (s_beacon == BeaconMode::OFF) {
-        return;
-    }
-    enqueue_beacon_cq();
+    AutoseqTxEntry pending;
     if (autoseq_fetch_pending_tx(pending)) {
         arm_pending_tx(pending);
-        ESP_LOGI(TAG, "Beacon CQ ready: %s parity=%d", pending.text.c_str(), s_target_slot_parity);
-    }
-}
-
-// Three cases: Off re-arms whatever
-// autoseq still has queued rather than dropping it, and Even <-> Odd drops the
-// old-parity CQ before queueing the new one.
-void tx_scheduler_set_beacon(uint8_t mode) {
-    const BeaconMode next = (BeaconMode)mode;
-    if (mode > 2 || s_beacon == next) {
-        return;
-    }
-    const bool was_off = (s_beacon == BeaconMode::OFF);
-    const bool tx_active = decode_tx_state_get_tx_active();
-    s_beacon = next;
-    ESP_LOGI(TAG, "beacon mode=%u", (unsigned)mode);
-    AutoseqTxEntry pending;
-    if (s_beacon == BeaconMode::OFF) {
-        autoseq_cancel_cq(tx_active);
-        if (!tx_active) {
-            if (autoseq_fetch_pending_tx(pending)) {
-                arm_pending_tx(pending);
-            } else {
-                s_qso_xmit = false;
-                s_pending_tx_valid = false;
-            }
-        }
-    } else if (was_off) {
-        enqueue_beacon_cq();
-        if (autoseq_fetch_pending_tx(pending)) {
-            arm_pending_tx(pending);
-        }
     } else {
-        autoseq_cancel_cq(tx_active);
-        enqueue_beacon_cq();
-        if (!tx_active && autoseq_fetch_pending_tx(pending)) {
-            arm_pending_tx(pending);
-        }
+        s_qso_xmit = false;
+        s_pending_tx_valid = false;
     }
 }
 
-uint8_t tx_scheduler_beacon_mode(void) {
-    return (uint8_t)s_beacon;
+bool tx_scheduler_call_cq(void) {
+    const int64_t now_ms = rtc_now_ms();
+    const int slot_period = g_protocol->slot_time_ms;
+    const int64_t slot_idx = now_ms / slot_period;
+    const int slot_ms = (int)(now_ms % slot_period);
+    // The slot under way can still be keyed inside the trigger's window
+    // (check_slot_boundary()), unless the trigger refuses it.
+    const bool keyable = slot_ms < (slot_period * 4 / 15) && !decode_tx_state_get_tx_active() &&
+                         slot_idx != s_tx_cancel_slot_idx && slot_idx != s_tx_skip_slot_idx;
+    if (!autoseq_call_cq(autoseq_cq_parity((int)(slot_idx & 1), keyable))) {
+        return false;
+    }
+    tx_scheduler_rearm();
+    return true;
 }
 
 int tx_scheduler_target_parity(void) {
@@ -192,8 +164,8 @@ static TxStart tx_start(int skip_tones, std::string &skip_reason) {
         return TxStart::Skipped;
     }
     if (swr_sweep_busy()) {
-        // An SWR sweep has the radio (docs/architecture/radio.md, The SWR sweep). It refuses to start over a queued QSO or the
-        // beacon, but the operator can arm one after; that slot is skipped.
+        // An SWR sweep has the radio (docs/architecture/radio.md, The SWR sweep). It refuses to start over a queued QSO or
+        // CQ, but the operator can queue one after; that slot is skipped.
         skip_reason = "SWR sweep running";
         return TxStart::Skipped;
     }
@@ -286,6 +258,7 @@ static void tx_tick(void) {
     if (s_tx_cancel_requested) {
         ESP_LOGI(TAG, "tx_tick: TX cancelled at tone %d", s_tx_tone_idx);
         radio_control_end_tx();
+        autoseq_on_tx_cancelled();
         decode_tx_state_set_tx_active(false);
         s_pending_tx_valid = false;
         s_tx_cancel_requested = false;
@@ -335,7 +308,7 @@ static void check_slot_boundary(void) {
 
     if (!decode_tx_state_get_was_txing() && !decode_tx_state_get_tx_active() &&
         !(s_qso_xmit && s_pending_tx_valid)) {
-        tx_scheduler_arm_from_autoseq_or_beacon();
+        tx_scheduler_arm_from_autoseq();
     }
 
     // The armed TX must still be autoseq's head. A queue change that did not
@@ -350,7 +323,7 @@ static void check_slot_boundary(void) {
         autoseq_head_changed_or_refresh(&s_pending_tx)) {
         s_qso_xmit = false;
         s_pending_tx_valid = false;
-        tx_scheduler_arm_from_autoseq_or_beacon();
+        tx_scheduler_arm_from_autoseq();
     }
 
     if (s_qso_xmit && s_target_slot_parity == slot_parity && slot_idx != s_tx_cancel_slot_idx &&

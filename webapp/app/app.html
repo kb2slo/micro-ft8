@@ -49,8 +49,8 @@
   --warn-bg:#fef3c7;       /* .qs-1/2/3, #staleBanner */
   --warn-fg:#78350f;       /* .qs-1/2/3, #staleBanner */
   --good-hot:#007a00;      /* .c-cq -- brighter green, decode text for a fresh CQ; 5.5:1 on white (was #00c800, ~2.3:1; webapp.md, The CQ row) */
-  --good-bg:#dcfce7;       /* .pill-beacon-on, .qs-4/5 */
-  --good-fg:#14532d;       /* .pill-beacon-on, .qs-4/5 */
+  --good-bg:#dcfce7;       /* .qs-4/5 */
+  --good-fg:#14532d;       /* .qs-4/5 */
   --info-bg:#dbeafe;       /* .qs-0 */
   --info-fg:#1e3a8a;       /* .qs-0 */
   --muted-strong:#787878;  /* .c-recent */
@@ -184,8 +184,6 @@ button:disabled{opacity:.45}
 #opSlotBarFill.halt{background:#c98a10}
 #opSlotBarCursor{position:absolute;top:-1px;width:5px;height:8px;border-radius:1px;background:#1478c8;transition:left .2s linear}
 .pill{display:inline-block;font-size:.7rem;font-weight:700;padding:.15rem .5rem;border-radius:999px}
-.pill-beacon-on{background:var(--good-bg);color:var(--good-fg)}
-.pill-beacon-off{background:color-mix(in srgb, GrayText 20%, transparent);color:GrayText}
 #opDots{display:flex;flex-wrap:wrap;row-gap:.3rem;gap:.9rem;margin-top:.6rem;font-size:.7rem;color:GrayText}
 /* Glyph, not just a color, on purpose (operator feedback: colorblind-hostile
    to signal state with a plain colored dot). Shape carries the meaning --
@@ -201,7 +199,6 @@ button:disabled{opacity:.45}
 .dot.bad{color:var(--danger-strong)}
 .dot.bad::before{content:"\2715"}
 #opConnRow button{font-size:.85rem}
-#beaconSel{width:auto;margin-top:0;padding:.25rem .4rem;font-size:.8rem;font-family:inherit}
 
 /* ---- operate: TX HUD ---- */
 #opTxHud{padding:.6rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent);background:color-mix(in srgb, var(--bad) 8%, transparent)}
@@ -219,7 +216,9 @@ button:disabled{opacity:.45}
 #opQueue .hd{padding:.6rem 1rem .2rem;font-size:.7rem;color:GrayText;text-transform:uppercase;letter-spacing:.04em}
 .qrow{display:flex;align-items:center;gap:.5rem;padding:.4rem 1rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
 .qrow .call{font-family:ui-monospace,monospace;font-weight:700;flex:1}
-.qrow .retry{font-size:.7rem;color:GrayText;display:block}
+/* A row's count is a button: a tap opens the tries stepper (#opTriesEdit). */
+.qtries{display:block;font-size:.7rem;color:GrayText;background:transparent;padding:.05rem .35rem;margin-top:.15rem;border-color:color-mix(in srgb, GrayText 45%, transparent)}
+.qtries.custom{color:var(--accent);border-color:var(--accent)}
 .qstate{font-size:.65rem;font-weight:700;padding:.15rem .4rem;border-radius:.3rem;white-space:nowrap}
 .qs-0{background:var(--info-bg);color:var(--info-fg)}                    /* CALLING */
 .qs-1,.qs-2,.qs-3{background:var(--warn-bg);color:var(--warn-fg)}          /* REPLYING/REPORT/ROGER_REPORT */
@@ -231,12 +230,22 @@ button:disabled{opacity:.45}
 /* Always last: below #opQueueRows' scroll box rather than inside it, so a long
    queue neither scrolls it out of reach nor shrinks to make room for it.
    Static markup, not part of #opQueueRows' innerHTML rebuild: that list is
-   re-stringified on every poll tick, which would yank the native Off/Even/Odd
-   <select> out from under an operator mid-pick the same way rebuilding
-   #opBandGrid's buttons would (see buildDockBandGrid()/syncDockBandGrid()). */
+   re-stringified on every poll tick, which would yank a control out from
+   under an operator mid-tap the same way rebuilding #opBandGrid's buttons
+   would (see buildDockBandGrid()/syncDockBandGrid()). The tries stepper
+   (#opTriesEdit) is static for the same reason. */
 #opCqRow{padding:.5rem 1rem .6rem;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent)}
 .cqline{display:flex;justify-content:space-between;align-items:center;gap:.5rem}
 .cqline+.cqline{margin-top:.3rem;font-size:.75rem;color:GrayText}
+#cqCallBtn{font-size:.85rem;padding:.35rem .8rem;white-space:nowrap}
+#cqParityBtn{font-size:.75rem;padding:.25rem .5rem;white-space:nowrap}
+#cqTriesBtn{display:inline-block;margin-top:0;white-space:nowrap}
+#opTriesEdit{padding:.5rem 1rem .6rem;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent);font-size:.8rem}
+.stepper{display:flex;align-items:center;gap:.6rem;margin-top:.4rem}
+.stepper button:not(.dlink){min-width:44px;min-height:44px;font-size:1.1rem;padding:.2rem .6rem}
+#triesValue{font-family:ui-monospace,monospace;font-weight:700;font-size:1.1rem;min-width:2.5ch;text-align:center}
+#triesWarn{margin:.4rem 0 0;color:var(--warn-fg)}
+#triesWarn button{margin-left:.4rem;font-size:.8rem;padding:.3rem .6rem}
 .cqsends{font-family:ui-monospace,monospace;font-weight:700;font-size:.85rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* ---- operate: the dock (webapp.md, The dock) ---- */
@@ -465,7 +474,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
            already fires. Same /api/tx/cancel, gated the same way every
            other write is (enableWrites()). Label is set live by
            renderTxHud(): "Stop CQ" while this TX is our own CQ (webapp.md,
-           The CQ row), which also turns the beacon off; "Stop TX" otherwise,
+           The CQ row), which also ends the CQ; "Stop TX" otherwise,
            cancelling only this transmission. -->
       <button id=opTxCancel type=button disabled>Stop TX</button>
     </div>
@@ -474,23 +483,37 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       <div class=hd>Queue</div>
       <div id=opQueueEmpty>No active QSOs</div>
       <div id=opQueueRows></div>
-      <!-- Always present (webapp.md, The CQ row), replacing the old header beacon row
-           and the queue's own CQ/CALLING placeholder entry and its x -- Off
-           does that job now. See the CSS comment above #opCqRow for why this
-           is static markup rather than part of opQueueRows. -->
+      <!-- Always present (webapp.md, The CQ row): Call CQ when no CQ is queued;
+           otherwise the queued CQ, with its parity, its tries and its x. See
+           the CSS comment above #opCqRow for why this is static markup rather
+           than part of opQueueRows. -->
       <div id=opCqRow>
         <div class=cqline>
           <span id=cqSendsText class="cqsends callink">—</span>
-          <select id=beaconSel disabled>
-            <option value=0>Off</option>
-            <option value=1>Even</option>
-            <option value=2>Odd</option>
-          </select>
+          <button id=cqCallBtn type=button disabled>Call CQ</button>
+          <button id=cqParityBtn type=button disabled hidden>Even</button>
+          <button id=cqTriesBtn type=button class=qtries disabled hidden></button>
+          <button id=cqCancelBtn type=button class=qcancel disabled hidden>&times;</button>
         </div>
         <div class=cqline>
-          <span id=cqStatusLine>Off</span>
+          <span id=cqStatusLine>Not calling</span>
           <button id=cqSettingsBtn type=button class=dlink>Settings &rsaquo;</button>
         </div>
+      </div>
+      <!-- The tries stepper for one queue entry (webapp.md, Tries on a queue
+           row), opened from a row's count. -->
+      <div id=opTriesEdit hidden>
+        <div class=cqline>
+          <span id=triesEditWho></span>
+          <button id=triesEditDone type=button class=dlink>Done</button>
+        </div>
+        <div class=stepper>
+          <button id=triesDown type=button disabled>&minus;</button>
+          <span id=triesValue></span>
+          <button id=triesUp type=button disabled>+</button>
+          <button id=triesDefault type=button class=dlink disabled>Use default</button>
+        </div>
+        <p id=triesWarn hidden><span id=triesWarnText></span><button id=triesEnd type=button disabled>End it</button></p>
       </div>
     </div>
 
@@ -604,7 +627,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 
     <div class="hd sep">Station</div>
     <p id=stationCached class=setnote hidden></p>
-    <p class=setnote>CQ type, grid, retries and TX offset are in Operate's Station sheet.</p>
+    <p class=setnote>CQ type, grid, tries and TX offset are in Operate's Station sheet.</p>
     <div class=setrow><label>Call <input id=call autocomplete=off spellcheck=false></label></div>
     <div class=setrow><label>Comment <input id=comment1 autocomplete=off></label></div>
     <div class=setrow><label>Ignore prefixes <input id=ignore_prefixes autocomplete=off></label></div>
@@ -684,7 +707,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <!-- Stress test, hidden after the 2026-10-01 rate choice (sidekick.md, Port A).
          The markup and the /api/link-test handlers stay. Remove hidden to show it. -->
     <div id=linkTest hidden>
-    <p class=setnote>Full frames both ways on the Grove link, at the one rate selected below. No radio. Beacon turns off and the queue is cleared. The link rests at 2500000. Another rate is one switch, and Stop or the end of the run returns it to 2500000. The final pass is 14 MB at 2500000.</p>
+    <p class=setnote>Full frames both ways on the Grove link, at the one rate selected below. No radio. The queue is cleared, the CQ with it. The link rests at 2500000. Another rate is one switch, and Stop or the end of the run returns it to 2500000. The final pass is 14 MB at 2500000.</p>
     <div class=setrow>
       <label>Bytes
         <select id=linkTestBytes>
@@ -774,7 +797,8 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <p id=gridHint class=setnote>The CQ carries the first four characters.</p>
 
     <div class="hd sep">QSOs</div>
-    <div class=setrow><label>Max retry <input id=autoseq_max_retry type=number min=0></label></div>
+    <div class=setrow><label>Tries <input id=tries type=number min=1 max=20></label></div>
+    <p class=setnote>How many times each QSO message goes out, and how many CQs Call CQ sends. A queue row's own count is changed on the row.</p>
     <div class="setrow row">
       <label>Offset Hz <input id=offset type=number></label>
       <label>Offset src
@@ -889,7 +913,7 @@ var m = document.getElementById('m');
 var settingsMsg = document.getElementById('settingsMsg');
 var stationSheetMsg = document.getElementById('stationSheetMsg');
 // BANDS and BAND_EDGES_KHZ live in bands.js (shared with swr.html).
-// cq_type, free_text, grid, offset, offset_src and autoseq_max_retry left
+// cq_type, free_text, grid, offset, offset_src and tries left
 // Settings for the Station sheet (docs/architecture/webapp.md, "The Station
 // sheet"): each now writes its own key the moment it changes
 // (setStationSheetForm()'s onchange handlers), so Settings' own Save must
@@ -1370,7 +1394,7 @@ function offsetSettingLabel(cfg) {
   return (cfg.offset !== undefined && cfg.offset !== null && cfg.offset !== '') ? cfg.offset + ' Hz' : '—';
 }
 
-// The dock's second line: the frequency, then "Retries N · <offset> ·
+// The dock's second line: the frequency, then "Tries N · <offset> ·
 // Station ›", a preview of the Station settings that part of the line opens
 // (operator decision 2026-09-28: the setting, not the armed TX's offset,
 // which moves into the TX banner with O2, RFC 0009 §3.12).
@@ -1378,10 +1402,9 @@ function renderDockLine(cfg) {
   var khz = currentDockFreqKhz(cfg);
   document.getElementById('opDockFreqBtn').textContent =
     (khz != null ? khzToMhzLabel(khz) + ' MHz' : '—') + ' ›';
-  var retries = (cfg.autoseq_max_retry !== undefined && cfg.autoseq_max_retry !== null)
-    ? cfg.autoseq_max_retry : '—';
+  var tries = (cfg.tries !== undefined && cfg.tries !== null) ? cfg.tries : '—';
   document.getElementById('opDockMetaBtn').textContent =
-    'Retries ' + retries + ' · ' + offsetSettingLabel(cfg) + ' · Station ›';
+    'Tries ' + tries + ' · ' + offsetSettingLabel(cfg) + ' · Station ›';
 }
 
 function setForm(cfg) {
@@ -1440,7 +1463,7 @@ function updateGridHint() {
 document.getElementById('grid').addEventListener('input', updateGridHint);
 
 // The Station sheet's own fields (webapp.md, The Station sheet): cq_type,
-// free_text, grid, autoseq_max_retry, offset and offset_src left Settings'
+// free_text, grid, tries, offset and offset_src left Settings'
 // FIELDS loop above for this sheet, so they need their own population here,
 // called from setForm() alongside it -- same call sites (boot from cache,
 // loadConfig()), same reasoning against rebuilding mid-edit. The two
@@ -1463,8 +1486,8 @@ function setStationSheetForm(cfg) {
   var gridEl = document.getElementById('grid');
   if (document.activeElement !== gridEl) gridEl.value = cfg.grid || '';
   updateGridHint();
-  var retryEl = document.getElementById('autoseq_max_retry');
-  retryEl.value = (cfg.autoseq_max_retry !== undefined && cfg.autoseq_max_retry !== null) ? cfg.autoseq_max_retry : '';
+  var triesEl = document.getElementById('tries');
+  triesEl.value = (cfg.tries !== undefined && cfg.tries !== null) ? cfg.tries : '';
   var offsetEl = document.getElementById('offset');
   offsetEl.value = (cfg.offset !== undefined && cfg.offset !== null) ? cfg.offset : '';
   document.getElementById('offset_src').value =
@@ -1553,8 +1576,8 @@ document.getElementById('grid').onchange = function () {
   }
   sheetPutLine('grid=' + v, 'Setting grid…');
 };
-document.getElementById('autoseq_max_retry').onchange = function () {
-  sheetPutLine('autoseq_max_retry=' + this.value, 'Setting retries…');
+document.getElementById('tries').onchange = function () {
+  sheetPutLine('tries=' + this.value, 'Setting tries…');
 };
 document.getElementById('offset').onchange = function () {
   sheetPutLine('offset=' + this.value, 'Setting TX offset…');
@@ -1723,7 +1746,7 @@ function updateApInfo(cfg) {
 // there: rebuilding while the operator has a control open would yank it out
 // from under them). syncDockBandGrid() only re-classes the already-built
 // buttons, which is what makes a band changed some other way than this page show up here without a reload. renderDockLine() reruns for
-// the same reason: its Retries/frequency text can change from either side
+// the same reason: its Tries/frequency text can change from either side
 // too. One gap this doesn't close: if the device also changed active_bands
 // so the new band isn't among the buttons already built, the highlight
 // silently fails to apply until the next full setForm().
@@ -1768,7 +1791,7 @@ function applyOperateLive(cfg) {
   document.getElementById('opTune').textContent = 'Tune: ' + (yn(cfg.tune) === 'yes' ? 'On' : 'Off');
 
   renderTxHud();
-  renderBeacon();
+  renderCqRow();
 }
 
 // ===================== Settings > link test =====================
@@ -2262,10 +2285,10 @@ function confirmRetune(verb) {
 // rather than adding a new bulk-cancel ACTION, since looping the client's
 // own already-current `queue` (kept live by the same QUEUE_ENTRY stream the
 // Queue section renders from) covers it without any wire/firmware change.
-// The beacon CQ placeholder (dxcall "CQ") is deliberately left alone: it
-// carries no per-band state of its own (frequency is resolved from
-// g_band_sel at the moment of TX, not baked into the queue entry), so
-// beaconing continues seamlessly on the new band once it's synced.
+// The CQ (dxcall "CQ") is deliberately left alone: it carries no per-band
+// state of its own (frequency is resolved from g_band_sel at the moment of
+// TX, not baked into the queue entry), so calling continues seamlessly on
+// the new band, with the tries it has left, once it's synced.
 function cancelQsosAndTx() {
   var stops = [authPostQuiet('/api/tx/cancel')];
   Object.keys(queue).forEach(function (id) {
@@ -2381,7 +2404,7 @@ document.getElementById('opDockFreqBtn').onclick = function () {
   var editor = document.getElementById('opFreqEditor');
   if (editor.hidden) openFreqEditor(); else closeFreqEditor();
 };
-// "Retries N · <offset> · Station ›" opens the Station sheet (webapp.md,
+// "Tries N · <offset> · Station ›" opens the Station sheet (webapp.md,
 // The Station sheet), which is what it previews -- band and frequency are
 // the other half of the dock line, opDockFreqBtn above, not this one.
 document.getElementById('opDockMetaBtn').onclick = openStationSheet;
@@ -2698,7 +2721,10 @@ function enableWrites(on) {
   document.getElementById('opConnect').disabled = !on;
   document.getElementById('opTune').disabled = !on;
   document.getElementById('opTxCancel').disabled = !on;
-  document.getElementById('beaconSel').disabled = !on;
+  ['cqCallBtn', 'cqParityBtn', 'cqTriesBtn', 'cqCancelBtn',
+   'triesDown', 'triesUp', 'triesDefault', 'triesEnd'].forEach(function (id) {
+    document.getElementById(id).disabled = !on;
+  });
   document.getElementById('opFreqSet').disabled = !on;
   document.getElementById('opFreqDown').disabled = !on;
   document.getElementById('opFreqUp').disabled = !on;
@@ -2725,18 +2751,19 @@ document.getElementById('opTune').onclick = function () {
   radioPost('/api/radio/tune', next, 'Tune…')
     .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 };
-// Stop during our own CQ turns the beacon off too (webapp.md, The CQ row) --
-// otherwise Off/Even/Odd stays armed and the next CQ just goes out a cycle
-// later, exactly the surprise the operator asked to fix. The beacon-off
-// POST is quiet (authPostQuiet, same reasoning as changeBand()'s own
-// multi-step sequence above) so the visible message stays "Stopping CQ…
-// ok." from the cancel itself, and only fires once that cancel actually
-// succeeded. Decided at the tap, from what is on the air (txIsOurCq()).
+// Stop during our own CQ ends the CQ too (webapp.md, The CQ row) -- otherwise
+// it stays queued and the next CQ just goes out a cycle later, exactly the
+// surprise the operator asked to fix. The CQ's drop is quiet (authPostQuiet,
+// same reasoning as changeBand()'s own multi-step sequence above) so the
+// visible message stays "Stopping CQ… ok." from the cancel itself, and only
+// fires once that cancel actually succeeded. Decided at the tap, from what is
+// on the air (txIsOurCq()).
 document.getElementById('opTxCancel').onclick = function () {
   var stoppingCq = txIsOurCq();
+  var cqId = cqEntryId();
   radioPost('/api/tx/cancel', undefined, stoppingCq ? 'Stopping CQ…' : 'Stopping TX…')
     .then(function (ok) {
-      if (ok && stoppingCq) return authPostQuiet('/api/beacon', '0').then(function () { loadConfig(true); });
+      if (ok && stoppingCq && cqId) return authPostQuiet('/api/queue/cancel', cqId);
     })
     .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 };
@@ -2805,7 +2832,7 @@ setInterval(renderCountdown, 250);
 
 // ===================== Operate: the CQ row (webapp.md, The CQ row) =====================
 
-var slotState = null; // last SLOT_STATE event: {sp, bm, hz}
+var slotState = null; // last SLOT_STATE event: {sp, hz}
 
 // Mirrors autoseq's generate_cq_text_into() (components/autoseq/autoseq.cpp)
 // so the Sends preview matches what a CQ transmission actually carries: the
@@ -2820,33 +2847,146 @@ function cqSendsText() {
   return parts.join(' ');
 }
 
+// The queued CQ's entry_id (its dxcall is "CQ"), or '' when none is queued.
+function cqEntryId() {
+  var ids = Object.keys(queue).filter(function (id) { return queue[id].dxcall === 'CQ'; });
+  return ids.length ? ids[0] : '';
+}
+
+// "2/6", and "· custom" when the entry's count is its own (autoseq.md, Tries).
+function triesLabel(q) {
+  return (q.tries_sent | 0) + '/' + (q.try_limit | 0) + ' tries' + (q.custom ? ' · custom' : '');
+}
+
 // Every live QSO outranks a CQ (autoseq.md), so a real QSO entry's presence
 // is exactly "Waits for the queue" and its absence is exactly "Calling".
-function cqStatusText(mode) {
-  if (!mode) return 'Off';
+function cqStatusText(cq) {
+  if (!cq) return 'Not calling';
   var hasQso = Object.keys(queue).some(function (id) { return queue[id].dxcall !== 'CQ'; });
-  return (hasQso ? 'Waits for the queue · ' : 'Calling · ') + (mode === 1 ? 'Even' : 'Odd') + ' slots';
+  return (hasQso ? 'Waits for the queue · ' : 'Calling · ') + (cq.parity ? 'odd' : 'even') + ' slots';
 }
 
-function renderBeacon() {
-  var mode = slotState ? slotState.bm : 0;
+function renderCqRow() {
+  var id = cqEntryId();
+  var cq = id ? queue[id] : null;
   document.getElementById('cqSendsText').textContent = cqSendsText();
   document.getElementById('sheetSendsText').textContent = cqSendsText();
-  // A native <select> stays document.activeElement after the operator picks
-  // an option (focus doesn't return to the page), so gating this on focus --
-  // the original approach -- silently stopped all future live updates after
-  // the first tap. Setting .value doesn't fire 'change' and doesn't disturb
-  // an open native picker's own pending selection, so there's nothing here
-  // actually worth guarding against.
-  document.getElementById('beaconSel').value = String(mode);
-  document.getElementById('cqStatusLine').textContent = cqStatusText(mode);
+  document.getElementById('cqCallBtn').hidden = !!cq;
+  ['cqParityBtn', 'cqTriesBtn', 'cqCancelBtn'].forEach(function (b) {
+    document.getElementById(b).hidden = !cq;
+  });
+  if (cq) {
+    document.getElementById('cqParityBtn').textContent = (cq.parity ? 'Odd' : 'Even') + ' \u21c4';
+    var triesBtn = document.getElementById('cqTriesBtn');
+    triesBtn.textContent = triesLabel(cq);
+    triesBtn.classList.toggle('custom', !!cq.custom);
+  }
+  document.getElementById('cqStatusLine').textContent = cqStatusText(cq);
 }
 
-document.getElementById('beaconSel').onchange = function () {
-  var sel = this;
-  radioPost('/api/beacon', sel.value, 'Beacon…')
+// One tap keys the transmitter, as Reply does: Call CQ is the explicit action.
+// The main board picks the parity (an active QSO's, or the slot it can still
+// key) and the tries (the Tries setting); both show on the row once queued.
+document.getElementById('cqCallBtn').onclick = function () {
+  radioPost('/api/cq', undefined, 'Calling CQ…')
     .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 };
+// A tap moves the queued CQ to the other period, for a strong station nearby.
+document.getElementById('cqParityBtn').onclick = function () {
+  var id = cqEntryId();
+  if (!id) return;
+  radioPost('/api/queue/parity', id + ' ' + (queue[id].parity ? 0 : 1), 'Moving CQ…')
+    .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+};
+document.getElementById('cqTriesBtn').onclick = function () { openTriesEdit(cqEntryId()); };
+// The CQ row's x drops the CQ; one on the air stops at once (porta_host_queue_cancel()).
+document.getElementById('cqCancelBtn').onclick = function () {
+  var id = cqEntryId();
+  if (!id) return;
+  radioPost('/api/queue/cancel', id, 'Ending CQ…')
+    .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+};
+
+// ===================== Operate: the tries stepper (webapp.md, Tries on a queue row) =====================
+// Changes one entry's count in place. A step applies on its own once the taps
+// settle (no Save button: RFC 0009 §4), except one that would end the entry
+// (at or below the tries already sent), which waits for End it.
+
+var TRIES_MAX_QSO = 20, TRIES_MAX_CQ = 99; // autoseq.h AUTOSEQ_TRIES_MAX_*
+var triesEdit = null; // {id, draft, useDefault, timer}
+
+function openTriesEdit(id) {
+  if (!id || !queue[id]) return;
+  triesEdit = { id: id, draft: queue[id].try_limit | 0, useDefault: false, timer: null };
+  document.getElementById('opTriesEdit').hidden = false;
+  renderTriesEdit();
+}
+
+function closeTriesEdit() {
+  if (triesEdit && triesEdit.timer) clearTimeout(triesEdit.timer);
+  triesEdit = null;
+  document.getElementById('opTriesEdit').hidden = true;
+}
+
+function sendTries(value) {
+  var id = triesEdit.id;
+  radioPost('/api/queue/tries', id + ' ' + value, 'Setting tries…')
+    .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+}
+
+function renderTriesEdit() {
+  if (!triesEdit) return;
+  var q = queue[triesEdit.id];
+  if (!q) { closeTriesEdit(); return; } // ended, or dropped
+  var isCq = q.dxcall === 'CQ';
+  document.getElementById('triesEditWho').textContent = isCq
+    ? 'CQ · tries in all · ' + (q.tries_sent | 0) + ' sent'
+    : q.dxcall + ' · tries at each step · ' + (q.tries_sent | 0) + ' sent';
+  document.getElementById('triesValue').textContent = String(triesEdit.draft);
+  var ends = triesEdit.draft <= (q.tries_sent | 0);
+  document.getElementById('triesWarn').hidden = !ends;
+  document.getElementById('triesWarnText').textContent = ends
+    ? (q.tries_sent | 0) + ' already sent: this ends ' + (isCq ? 'the CQ' : 'this step') +
+      ', after the try on the air if there is one.'
+    : '';
+}
+
+function stepTries(delta) {
+  if (!triesEdit || !queue[triesEdit.id]) return;
+  var q = queue[triesEdit.id];
+  var max = q.dxcall === 'CQ' ? TRIES_MAX_CQ : TRIES_MAX_QSO;
+  triesEdit.draft = Math.max(1, Math.min(max, triesEdit.draft + delta));
+  triesEdit.useDefault = false;
+  renderTriesEdit();
+  if (triesEdit.timer) clearTimeout(triesEdit.timer);
+  triesEdit.timer = null;
+  if (triesEdit.draft > (q.tries_sent | 0) && triesEdit.draft !== (q.try_limit | 0)) {
+    var value = triesEdit.draft;
+    triesEdit.timer = setTimeout(function () {
+      if (triesEdit) { triesEdit.timer = null; sendTries(value); }
+    }, 800);
+  }
+}
+
+document.getElementById('triesDown').onclick = function () { stepTries(-1); };
+document.getElementById('triesUp').onclick = function () { stepTries(1); };
+document.getElementById('triesEnd').onclick = function () {
+  if (triesEdit) sendTries(triesEdit.useDefault ? 0 : triesEdit.draft);
+};
+// Back on the Station sheet's Tries. A default at or below the tries already
+// sent would end the entry, so that waits for End it like a step down does.
+document.getElementById('triesDefault').onclick = function () {
+  if (!triesEdit || !queue[triesEdit.id]) return;
+  if (triesEdit.timer) clearTimeout(triesEdit.timer);
+  triesEdit.timer = null;
+  var dflt = parseInt(lastCfg.tries, 10);
+  if (dflt > 0) triesEdit.draft = dflt;
+  triesEdit.useDefault = true;
+  renderTriesEdit();
+  if (!(dflt > 0) || dflt > (queue[triesEdit.id].tries_sent | 0)) sendTries(0);
+};
+document.getElementById('triesEditDone').onclick = closeTriesEdit;
+
 // The CQ text and Settings > both open the Station sheet (webapp.md, The
 // Station sheet), where Calling CQ (Sends preview, type, grid) now lives.
 document.getElementById('cqSendsText').onclick = openStationSheet;
@@ -2908,18 +3048,17 @@ function renderTxHud() {
   document.getElementById('opTxHudMeta').textContent = txHud.aborted
     ? ('TX ABORTED: ' + (txHud.reason || 'unknown reason'))
     : (parts.length ? parts.join(' · ') : '—');
-  // Stop CQ while this transmission is our own CQ (it also turns the beacon
-  // off, see opTxCancel's onclick), Stop TX during a QSO message (cancels
-  // only this transmission). webapp.md, The CQ row.
+  // Stop CQ while this transmission is our own CQ (it also ends the CQ, see
+  // opTxCancel's onclick), Stop TX during a QSO message (cancels only this
+  // transmission). webapp.md, The CQ row.
   document.getElementById('opTxCancel').textContent = txIsOurCq() ? 'Stop CQ' : 'Stop TX';
 }
 
 // Whether the transmission on the air is our CQ, from its text: autoseq's CQ
 // text starts with "CQ " (generate_cq_text_into()), and a Free text CQ sends
-// free_text as it stands. Not from the queue: the P4 arms the next beacon CQ
-// during an empty cycle (tx_scheduler_arm_from_autoseq_or_beacon()) and
-// nothing removes it when a station answers, so a CQ entry sits queued behind
-// the QSO that outranks it while our report is the one on the air.
+// free_text as it stands. Not from the queue: the CQ stays queued when a
+// station answers it (an answer gives none of its tries back), so it sits
+// behind the QSO that outranks it while our report is the one on the air.
 function txIsOurCq() {
   if (!txHud || !txHud.active) return false;
   var x = String(txHud.x || '').trim().toUpperCase();
@@ -2930,7 +3069,7 @@ function txIsOurCq() {
 
 // ===================== Operate: queue =====================
 
-var queue = {}; // entry_id -> {dxcall, state, retry_count, retry_limit, lastSeenMs}
+var queue = {}; // entry_id -> {dxcall, state, tries_sent, try_limit, parity, custom, lastSeenMs}
 // Display order follows host emit order (autoseq priority), not state enum.
 // porta_queue_state_tick re-sends the full active list ~1Hz; rebuild from each
 // poll's QUEUE_ENTRY stream (latest full emit wins). Sorting by state (B64)
@@ -2989,10 +3128,9 @@ function rebuildQueueOrderFromEvents(events) {
 }
 
 function renderQueue() {
-  // CQ is the beacon placeholder, not a real station -- it gets its own
-  // static row (#opCqRow, webapp.md, The CQ row) instead of one of these, the same
-  // reasoning changeBand() already uses to leave it out of the per-band
-  // queue clear.
+  // The CQ is not a station -- it gets its own static row (#opCqRow,
+  // webapp.md, The CQ row) instead of one of these, the same reasoning
+  // changeBand() already uses to leave it out of the per-band queue clear.
   var ids = queueOrder.filter(function (id) { return !!queue[id] && queue[id].dxcall !== 'CQ'; });
   Object.keys(queue).forEach(function (id) {
     if (queue[id].dxcall !== 'CQ' && ids.indexOf(id) < 0) ids.push(id);
@@ -3003,7 +3141,8 @@ function renderQueue() {
     var q = queue[id];
     return '<div class=qrow>' +
       '<div><span class="call callink" data-call="' + esc(q.dxcall) + '">' + esc(q.dxcall) + '</span>' +
-      '<span class=retry>retry ' + q.retry_count + '/' + q.retry_limit + '</span></div>' +
+      '<button type=button class="qtries' + (q.custom ? ' custom' : '') + '" data-id="' + id + '"' +
+      (writesEnabled ? '' : ' disabled') + '>' + esc(triesLabel(q)) + '</button></div>' +
       '<span class="qstate qs-' + q.state + '">' + esc(QUEUE_STATE_NAMES[q.state] || '?') + '</span>' +
       '<button type=button class=qcancel data-id="' + id + '">&times;</button>' +
       '</div>';
@@ -3014,6 +3153,10 @@ function renderQueue() {
         .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
     };
   });
+  rows.querySelectorAll('.qtries').forEach(function (b) {
+    b.onclick = function () { openTriesEdit(b.getAttribute('data-id')); };
+  });
+  renderTriesEdit();
   rows.querySelectorAll('.callink').forEach(function (el) {
     el.onclick = function (ev) {
       ev.stopPropagation();
@@ -3388,11 +3531,11 @@ function applyEvent(e) {
     if (e.st === 6) {
       delete queue[e.eid]; // IDLE is the removal signal (docs/architecture/webapp.md (Screens))
     } else {
-      queue[e.eid] = { dxcall: e.x, state: e.st, retry_count: e.rc, retry_limit: e.rl,
-                       lastSeenMs: Date.now() };
+      queue[e.eid] = { dxcall: e.x, state: e.st, tries_sent: e.ts, try_limit: e.tl,
+                       parity: e.p | 0, custom: !!e.cu, lastSeenMs: Date.now() };
     }
   } else if (e.d === 3) {
-    slotState = { sp: e.sp, bm: e.bm, hz: e.hz };
+    slotState = { sp: e.sp, hz: e.hz };
   } else if (e.d === 4) {
     txHud = { active: !!e.active, aborted: !!e.aborted, wrblk: !!e.wrblk,
              pw: e.pw, swr: e.swr, batt: e.batt, hz: e.hz, reason: e.reason || '', x: e.x };
@@ -3475,9 +3618,9 @@ async function pollEvents() {
     var queueChanged = sweepStaleQueue();
     if (queueChanged || gotEvents) {
       renderQueue();
-      // The CQ row's status line reads `queue` (webapp.md, The CQ row), so it
-      // runs after sweepStaleQueue() too, not only when an event arrived.
-      renderBeacon();
+      // The CQ row reads `queue` (webapp.md, The CQ row), so it runs after
+      // sweepStaleQueue() too, not only when an event arrived.
+      renderCqRow();
       renderTxHud();
     }
     evSeq = j.seq;
@@ -4832,7 +4975,7 @@ if (Object.keys(lastCfg).length) {
 loadConfig().catch(function () { /* setMsg already */ }).then(handleGeoReturn);
 computeAppVersion();
 renderCountdown();
-renderBeacon();
+renderCqRow();
 renderQueue();
 renderDecodes();
 renderTxHud();

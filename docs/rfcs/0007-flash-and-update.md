@@ -73,7 +73,7 @@ The main board writes the chunks into its inactive slot (`esp_ota_begin/write/en
 **Update mode.** Every update stops radio operation first, including a sidekick-only update: its restart takes the phone UI away while the main board could keep transmitting unattended. A new Port A action puts the main board into update mode:
 
 * it cancels any transmission, and the flow waits for the TX status the board already sends to report that TX has stopped;
-* it turns the beacon off, clears the autoseq queue, and stops decoding, CAT and USB audio;
+* it clears the autoseq queue, the CQ with it, and stops decoding, CAT and USB audio;
 * while in update mode it refuses every transmit action, from any phone;
 * it leaves update mode only by restarting into the new image, or by an explicit resume action if the update fails or is cancelled. After a restart the radio comes up stopped, as after every restart today (operator, 2026-09-25); nothing new is needed for that.
 
@@ -105,7 +105,7 @@ Decided with the operator, 2026-09-25. An update never starts by itself, and the
 
    There are no background notifications: Web Push needs an HTTPS origin, and the webapp is served from `http://micro-ft8.local`.
 2. **Not now.** Nothing stops; the notices stay. There is no "skip this version": the next build replaces it.
-3. **Review.** Tapping **Update** opens a screen that says what will happen before anything does: which boards, in which order, roughly how long, and **what stopping the radio will cost**, listed concretely: "Beacon will turn off", "QSO with K1ABC will be abandoned", "2 queued replies will be cleared". If a QSO is in progress, that line is shown as a warning. If the sidekick has no internet, the button is disabled with the reason ("Connect the sidekick to WiFi with internet"). Two buttons: **Stop radio and update** (styled as destructive) and **Cancel**. One button, not a separate stop step: the screen has already said what is lost.
+3. **Review.** Tapping **Update** opens a screen that says what will happen before anything does: which boards, in which order, roughly how long, and **what stopping the radio will cost**, listed concretely: "Your CQ will end", "QSO with K1ABC will be abandoned", "2 queued replies will be cleared". If a QSO is in progress, that line is shown as a warning. If the sidekick has no internet, the button is disabled with the reason ("Connect the sidekick to WiFi with internet"). Two buttons: **Stop radio and update** (styled as destructive) and **Cancel**. One button, not a separate stop step: the screen has already said what is lost.
 4. **Progress.** A full-screen step list: stop radio → download → verify → transfer (percentage and time left) → restart → confirm new version. The state lives on the sidekick, so locking or closing the phone does not matter, reopening the app shows where it is up to, and a second phone sees the same screen and cannot transmit. **Cancel** is offered until the image is fully written to the board; the old firmware is untouched until then.
 5. **Result.** "Updated to d18f9b2", or a plain reason ("Verification failed — still on 7e61488", "New version did not start — rolled back to 7e61488"), with **Retry**.
 6. **After.** The radio **stays stopped** until the operator taps **Resume operating**, whether the update succeeded, failed or was cancelled. Nothing transmits on its own after a restart.

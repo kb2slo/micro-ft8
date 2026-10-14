@@ -77,9 +77,10 @@ size_t porta_event_json_queue(char *out, size_t cap, uint32_t seq,
     json_escape(ev->dxcall, esc, sizeof(esc));
     const int n = snprintf(out, cap,
                            "{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":2,\"eid\":%u,"
-                           "\"st\":%u,\"rc\":%u,\"rl\":%u,\"x\":\"%s\"}",
+                           "\"st\":%u,\"ts\":%u,\"tl\":%u,\"p\":%u,\"cu\":%u,\"x\":\"%s\"}",
                            seq, ev->epoch_secs, ev->entry_id, ev->state,
-                           ev->retry_count, ev->retry_limit, esc);
+                           ev->tries_sent, ev->try_limit, (ev->flags & PORTA_QUEUE_ODD) ? 1u : 0u,
+                           (ev->flags & PORTA_QUEUE_CUSTOM) ? 1u : 0u, esc);
     return finish(out, cap, n);
 }
 
@@ -91,9 +92,8 @@ size_t porta_event_json_slot(char *out, size_t cap, uint32_t seq,
     }
     const int n = snprintf(out, cap,
                            "{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":3,"
-                           "\"sp\":%u,\"bm\":%u,\"hz\":%u}",
-                           seq, ev->epoch_secs, ev->slot_parity, ev->beacon_mode,
-                           ev->resolved_offset_hz);
+                           "\"sp\":%u,\"hz\":%u}",
+                           seq, ev->epoch_secs, ev->slot_parity, ev->resolved_offset_hz);
     return finish(out, cap, n);
 }
 

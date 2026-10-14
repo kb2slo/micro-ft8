@@ -146,16 +146,6 @@ static void fail_period(Scenario& s, const char* what, const std::string& expect
     s.failures++;
 }
 
-static const char* beacon_name(int mode)
-{
-    switch (mode) {
-        case 0: return "OFF";
-        case 1: return "EVEN";
-        case 2: return "ODD";
-        default: return "?";
-    }
-}
-
 void scenario_begin(Scenario& s, const TestData& data)
 {
     s = Scenario();
@@ -170,7 +160,7 @@ void scenario_begin(Scenario& s, const TestData& data)
     autoseq_set_station(s.station_call, s.station_grid);
     autoseq_set_adif_callback(on_adif);
     autoseq_set_cabrillo_fd_callback(on_cabrillo);
-    autoseq_set_max_retry(data.config.max_retry);
+    autoseq_set_tries(data.config.tries);
     autoseq_set_skip_tx1(data.config.skip_tx1);
 
     if (!data.config.cq_type.empty()) {
@@ -199,7 +189,6 @@ void scenario_emit_status(Scenario& s)
     memset(&slot, 0, sizeof(slot));
     slot.epoch_secs = s.epoch_secs;
     slot.slot_parity = s.last_parity;
-    slot.beacon_mode = (uint8_t)s.beacon;
     slot.resolved_offset_hz = s.last_offset;
     char row[1024];
     size_t n = porta_event_json_slot(row, sizeof(row), s.next_seq, &slot);
@@ -220,8 +209,10 @@ void scenario_emit_status(Scenario& s)
         q.epoch_secs = s.epoch_secs;
         q.entry_id = ctx.entry_id;
         q.state = (uint8_t)ctx.state;
-        q.retry_count = (uint8_t)ctx.retry_counter;
-        q.retry_limit = (uint8_t)ctx.retry_limit;
+        q.tries_sent = (uint8_t)ctx.tries_sent;
+        q.try_limit = (uint8_t)ctx.try_limit;
+        q.flags = (uint8_t)(((ctx.slot_id & 1) ? PORTA_QUEUE_ODD : 0) |
+                            (ctx.tries_custom ? PORTA_QUEUE_CUSTOM : 0));
         snprintf(q.dxcall, sizeof(q.dxcall), "%s", ctx.dxcall.c_str());
         n = porta_event_json_queue(row, sizeof(row), s.next_seq, &q);
         if (n > 0) {
@@ -291,15 +282,32 @@ void scenario_emit_usb(Scenario& s, bool present)
     }
 }
 
-void scenario_set_beacon(Scenario& s, int mode)
+bool scenario_call_cq(Scenario& s)
 {
     s_current = &s;
-    s.beacon = mode;
-    if (mode == 0) {
-        autoseq_cancel_cq();
-    }
+    stamp(s);
+    // The next period to run is the slot it can still key.
+    const bool ok = autoseq_call_cq(autoseq_cq_parity(s.period & 1, true));
+    scenario_emit_status(s);
+    return ok;
+}
+
+bool scenario_set_entry_tries(Scenario& s, uint16_t entry_id, int tries)
+{
+    s_current = &s;
+    const bool ok = autoseq_set_entry_tries(entry_id, tries) == AutoseqTriesResult::Ok;
     stamp(s);
     scenario_emit_status(s);
+    return ok;
+}
+
+bool scenario_set_cq_parity(Scenario& s, uint16_t entry_id, int parity)
+{
+    s_current = &s;
+    const bool ok = autoseq_set_cq_parity(entry_id, parity) == AutoseqParityResult::Ok;
+    stamp(s);
+    scenario_emit_status(s);
+    return ok;
 }
 
 void scenario_set_station(Scenario& s, const std::string& call, const std::string& grid)
@@ -325,10 +333,10 @@ void scenario_set_cq_type(Scenario& s, int type, const std::string& free_text)
     autoseq_set_cq_type(cq, free_text);
 }
 
-void scenario_set_max_retry(Scenario& s, int retry)
+void scenario_set_tries(Scenario& s, int tries)
 {
     s_current = &s;
-    autoseq_set_max_retry(retry);
+    autoseq_set_tries(tries);
 }
 
 bool scenario_reply(Scenario& s, uint32_t decode_id)
@@ -356,13 +364,74 @@ bool scenario_cancel_entry(Scenario& s, uint16_t entry_id)
 void scenario_cancel_tx(Scenario& s)
 {
     s_current = &s;
-    autoseq_cancel_cq();
+    // The TX is not counted and the entry stays queued, as on the P4.
+    autoseq_on_tx_cancelled();
     stamp(s);
     if (s.hud_active) {
         emit_hud_row(s, false);
         s.hud_active = false;
     }
     scenario_emit_status(s);
+}
+
+// What the queue sends in period p, as the board would: fetch, transmit,
+// tick. Returns the text sent, empty for none.
+static std::string period_tx(Scenario& s, int p, int slot_parity, int64_t period_base_ms)
+{
+    AutoseqTxEntry pending;
+    bool has_tx = autoseq_fetch_pending_tx(pending);
+    // A period is a slot for the CQ, which waits for its own parity. QSO
+    // entries go out in the period that decoded what they answer: each
+    // period stands for that decode and the reply slot after it.
+    if (has_tx && pending.entry_id == autoseq_cq_entry_id() &&
+        (pending.slot_id & 1) != slot_parity) {
+        has_tx = false;
+    }
+
+    std::string actual_tx;
+    if (has_tx) {
+        actual_tx = pending.text;
+        printf("[Period %d] TX: %s  (slot=%d offset=%dHz)\n",
+               p, pending.text.c_str(), pending.slot_id, pending.offset_hz);
+        autoseq_on_tx_starting();
+        autoseq_mark_sent(p);
+        const int ms_to_boundary = 15000 - (int)(mock_clock_get() - period_base_ms);
+        autoseq_tick(p, slot_parity, ms_to_boundary);
+        s.hud_text = pending.text;
+        s.hud_hz = (uint16_t)(pending.offset_hz < 0 ? 0 : pending.offset_hz);
+        s.hud_active = true;
+        s.last_offset = s.hud_hz;
+        emit_hud_row(s, true);
+    } else {
+        printf("[Period %d] (no TX)\n", p);
+        s.last_offset = 0;
+    }
+
+    return actual_tx;
+}
+
+bool scenario_idle_step(Scenario& s)
+{
+    s_current = &s;
+    if (s.wall_slots) {
+        stamp(s);
+    } else {
+        s.epoch_secs = kEpochBase + (uint32_t)s.period * 15u;
+        s.slot_idx = (uint32_t)s.period + 1u;
+    }
+    if (s.hud_active) {
+        emit_hud_row(s, false);
+        s.hud_active = false;
+    }
+    const int p = s.period;
+    const int slot_parity = p & 1;
+    const int64_t period_base_ms = (int64_t)p * 15000;
+    mock_clock_set(period_base_ms);
+    period_tx(s, p, slot_parity, period_base_ms);
+    s.last_parity = (uint8_t)slot_parity;
+    scenario_emit_status(s);
+    s.period++;
+    return true;
 }
 
 bool scenario_step(Scenario& s)
@@ -393,15 +462,18 @@ bool scenario_step(Scenario& s)
     printf("\n========== Period %d ==========\n", p);
 
     TestPeriod& tp = s.data.periods[p];
-    if (tp.has_beacon_change) {
-        const int old_beacon = s.beacon;
-        s.beacon = tp.beacon_change.beacon_on;
-        if (s.beacon == 0) {
-            autoseq_cancel_cq();
+    if (tp.has_cq_call) {
+        const int parity = tp.cq_call.parity >= 0 ? tp.cq_call.parity : s.my_tx_parity;
+        const bool ok = autoseq_call_cq(parity);
+        if (ok && tp.cq_call.tries > 0) {
+            autoseq_set_entry_tries(autoseq_cq_entry_id(), tp.cq_call.tries);
         }
-        printf("[Period %d @ %.1fs] Beacon: %s -> %s\n",
-               p, tp.beacon_change.time_offset,
-               beacon_name(old_beacon), beacon_name(s.beacon));
+        printf("[Period %d @ %.1fs] Call CQ: parity %d, %d tries (queued=%d)\n",
+               p, tp.cq_call.time_offset, parity, tp.cq_call.tries, ok ? 1 : 0);
+    }
+    if (tp.has_cq_drop) {
+        const bool ok = autoseq_drop_by_entry_id(autoseq_cq_entry_id());
+        printf("[Period %d @ %.1fs] Drop CQ (dropped=%d)\n", p, tp.cq_drop.time_offset, ok ? 1 : 0);
     }
 
     std::vector<UiRxLine> to_me;
@@ -439,31 +511,7 @@ bool scenario_step(Scenario& s)
                tp.freetext_event.text.c_str(), ok ? 1 : 0);
     }
 
-    AutoseqTxEntry pending;
-    bool has_tx = autoseq_fetch_pending_tx(pending);
-    if (!has_tx && s.beacon != 0 && slot_parity == s.my_tx_parity) {
-        autoseq_start_cq(s.my_tx_parity);
-        has_tx = autoseq_fetch_pending_tx(pending);
-    }
-
-    std::string actual_tx;
-    if (has_tx) {
-        actual_tx = pending.text;
-        printf("[Period %d] TX: %s  (slot=%d offset=%dHz)\n",
-               p, pending.text.c_str(), pending.slot_id, pending.offset_hz);
-        autoseq_on_tx_starting();
-        autoseq_mark_sent(p);
-        const int ms_to_boundary = 15000 - (int)(mock_clock_get() - period_base_ms);
-        autoseq_tick(p, slot_parity, ms_to_boundary);
-        s.hud_text = pending.text;
-        s.hud_hz = (uint16_t)(pending.offset_hz < 0 ? 0 : pending.offset_hz);
-        s.hud_active = true;
-        s.last_offset = s.hud_hz;
-        emit_hud_row(s, true);
-    } else {
-        printf("[Period %d] (no TX)\n", p);
-        s.last_offset = 0;
-    }
+    const std::string actual_tx = period_tx(s, p, slot_parity, period_base_ms);
 
     s.last_parity = (uint8_t)slot_parity;
     scenario_emit_status(s);

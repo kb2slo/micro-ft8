@@ -7,13 +7,13 @@
   - the dock's band and frequency controls, and one Station sheet;
   - adding a park or summit, from a list or the map;
   - radio status in place of Connect, and the TX HUD;
-  - decode sort and filter, reply feedback, and per-QSO retries;
+  - decode sort and filter, and reply feedback;
   - how an activation ([RFC 0008](0008-activator-mode.md)) appears with no separate flow;
   - auto-reply, as a later phase.
 * **Does not cover:** the activation's data, store, log and export (RFC 0008); the QSOs and Tools tabs.
 * **Mockups** (both private to the operator):
   - **"Operate Dock Options"** (https://claude.ai/artifact/HazeSpixV3UbDfUJDKqzGD). Its **chosen** page is this design; its **Explored** page keeps the rejected dock variants.
-  - **"Operate Redesign"** (https://claude.ai/artifact/GsMDrsrNLEtnUC7aVNxptF), the first pass. It is still the reference for decode sort and filter, reply feedback, per-QSO retries, the radio chip and the TX HUD states, drawn in the rejected A/B/C chrome.
+  - **"Operate Redesign"** (https://claude.ai/artifact/GsMDrsrNLEtnUC7aVNxptF), the first pass. It is still the reference for decode sort and filter, reply feedback, the radio chip and the TX HUD states, drawn in the rejected A/B/C chrome.
 
 ---
 
@@ -71,7 +71,7 @@ Clearing the references is the whole of ending an activation.
 Top to bottom:
 
 1. **Status strip:** the slot bar and parity, plus the radio chip (§3.7).
-2. **Queue:** QSO rows as today (call, retry count, state, ×), with per-QSO retries (§3.11). Then the **CQ row**, always last ([webapp.md](../architecture/webapp.md), **The CQ row**).
+2. **Queue:** QSO rows (call, tries, state, ×), each count changeable in place ([webapp.md](../architecture/webapp.md), **Tries on a queue row**). Then the **CQ row**, always last ([webapp.md](../architecture/webapp.md), **The CQ row**).
 3. **Decodes:**
    - **Rows exactly as today's app:** a mono meta line with DT and Hz in fixed left columns and dB right-justified; the message, with callsigns as links and the → ME badge; then grid · location on the left and distance and bearing on the right.
    - **The Reply button is the new style:** a 36 px outlined button.
@@ -85,18 +85,8 @@ Top to bottom:
 
 Built as O1c ([webapp.md](../architecture/webapp.md), **The Station sheet**). Still to add:
 
-* **CQ timeout:** turn CQ off if nobody answers for Never / 10 / 30 / 60 minutes (§3.6).
 * **Activation:** the references, each with × and an **unverified** badge where it applies; **Add a park or summit** (§3.9). CQ follows the references until the type is picked by hand: a park gives POTA, and any summit gives SOTA (RFC 0008 §4.4).
 * **The grid check against the references and the phone's fix** (RFC 0008 §4.3), on top of the sheet's own format check.
-
-### 3.6 CQ timeout (new)
-
-**Superseded 2026-10-14** (§7): CQ becomes a queue entry with a try budget, row `qfrr`. Do not build this section as written; its rewrite is that row's first step.
-
-* **Behaviour.** No such setting exists today. CQ turns itself off after N minutes of calling with no answer; the clock restarts whenever someone answers.
-* **It runs on the main board, not in the browser.** The phone may sleep while CQ keeps going out, so a browser timer would silently fail.
-* **Build:** a new Station key and a timer beside the beacon, with a host test of the timer logic, and the status line on the CQ row.
-* **Default: Never** (decided 2026-09-27), so existing behaviour does not change unless the operator chooses a timeout.
 
 ### 3.7 Radio status replaces Connect
 
@@ -169,30 +159,6 @@ Only when references exist (RFC 0008 §4.6):
 
 Nothing moves between home and activation: the dock grows by one line, and the CQ row's text changes.
 
-### 3.11 Per-QSO retries
-
-**Superseded 2026-10-14** (§7): CQ becomes a queue entry with a try budget, row `qfrr`. Do not build this section as written; its rewrite is that row's first step.
-
-Redesign canvas: `Per-QSO retries`, interactive.
-
-* **Today there is one limit, and it is per step, not per QSO.**
-  - `set_state()` resets the counter and takes the global limit at every state change (`components/autoseq/autoseq.cpp:742`), so "5" means each message to a station goes out up to five times.
-  - `autoseq_set_max_retry()` rewrites every active entry's limit (`autoseq.cpp:721`).
-* **Design:**
-  - The retry count on a queue row is a button. It opens a stepper for that QSO: "Tries at each step".
-  - An overridden entry reads `· custom` and offers "Use station default".
-  - Only active QSO entries have the control.
-  - **The range is 1–20** (decided 2026-09-27). Raising the count on a parked entry does not revive it; reviving is a separate action.
-* **Mechanics:**
-  - `QsoContext` gains an override, with 0 meaning "follow the default". `set_state()` uses the override when set.
-  - `autoseq_set_max_retry()` skips overridden entries, so the autoseq sync on every config write (§2.1) cannot clobber them.
-  - Lowering the count to the tries already sent, or below, ends the step after the current try (the clamp at `autoseq.cpp:727`). The stepper warns first.
-* **Wire:**
-  - A new Port A request carrying `entry_id` and the limit, behind a token-guarded `POST /api/queue/retry`.
-  - `QUEUE_ENTRY` gains a "custom" flag.
-  - Both are a `PORTA_PROTO_VERSION` bump.
-* **Proof:** `host_mock` tests that an override survives state changes, a global change leaves it alone, lowering ends the step, and reset restores the default.
-
 ### 3.12 The TX HUD
 
 Dock Options canvas: the chosen page's transmitting board. Redesign canvas: `TX HUD states`, interactive.
@@ -242,7 +208,7 @@ Redesign canvas: `Reply feedback`, interactive. The feedback is on the Reply but
 
 ## 6. Slices
 
-O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); they are the Now rows. The later slices have their own rows: O2 `ybav`, O3 `mxvk`, O4 `jtgu`; O5 and O6 became `qfrr` (§7). The combined order with RFC 0008 is RFC 0008 §7.
+O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); they are the Now rows. The later slices have their own rows: O2 `ybav`, O3 `mxvk`, O4 `jtgu`. O5 and O6 became one slice, the CQ's tries (§7). The combined order with RFC 0008 is RFC 0008 §7.
 
 * **O1a: the CQ row**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The CQ row**).
 * **O1b: the dock**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The dock**).
@@ -253,12 +219,7 @@ O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); th
   - **Field check:** unplug and replug the QMX. The chip walks No radio, Found, Ready, Found showing within a second or two of plug-in, and the VFO lands on the selected band with nothing pressed. Then Tune from the chip's panel shows power and SWR there and in the HUD, and Stop in the HUD ends it.
 * **O3: reply feedback** (§3.13). Web app only.
 * **O4: decode sort and filter** (§3.8).
-* **O5: per-QSO retries** (§3.11).
-  - The autoseq override with host tests, the Port A request, the sidekick route, and the queue-row stepper.
-  - **Field check:** raise one queued station to 12 mid-QSO, then change the station default from 5 to 3. That station still reads `/12` while the others read `/3`.
-* **O6: CQ timeout** (§3.6).
-  - The Station key, the main-board timer with a host test, the sheet control, and the CQ row's status.
-  - **Field check:** a 10-minute timeout with no answers turns CQ off, and an answer at minute 9 restarts the clock.
+* **O5 and O6: the CQ's tries and tries on every queue row**, shipped 2026-10-14 ([autoseq.md](../architecture/autoseq.md), **Tries**; [webapp.md](../architecture/webapp.md), **The CQ row** and **Tries on a queue row**).
 * **The Activation section and the add screen ship with RFC 0008's slices:**
   - A1 brings typed references.
   - A3 brings the store, the nearby list and search, and the map's pick mode.
@@ -276,9 +237,8 @@ O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); th
 
 * Decodes sort within each slot, and slots stay newest first (§3.8).
 * Reply feedback is on the Reply button and in the queue, matched by call, with no dialog and no protocol change (§3.13).
-* Per-QSO retries run 1–20, and raising the count on a parked entry does not revive it (§3.11).
+* Per-QSO tries run 1–20, and raising the count on a parked entry does not revive it ([autoseq.md](../architecture/autoseq.md), **Tries**).
 * No high-SWR warning (§4).
-* The CQ timeout defaults to Never (§3.6).
 * O1 ships as three pieces, O1a to O1c (§6).
 
 **2026-10-14, groom:**
@@ -286,5 +246,10 @@ O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); th
 * O2 includes the attach event before CDC opens that the Found state needs (§6).
 * O4's CQ filter is the community's CQ-only ask (§3.8).
 * **Decode sort and filter** (§3.8): the default sort is named Default, since within a slot every decode has the same time and "Newest" sorted nothing; New waits on row `xv23`; POTA / SOTA means `CQ POTA` and `CQ SOTA` calls; a decode with no grid fails the distance filter.
-* **CQ is a queue entry with a try budget** (row `qfrr`). Call CQ queues a CQ with N tries; each CQ sent uses one, an answer gives none back, and at zero it ends. Every queue entry's count can be changed in place. The beacon mode, O5 and O6 as designed in §3.6 and §3.11 are replaced; both sections are rewritten before the row is built.
-* **Call CQ picks its parity each time:** the active QSO's parity if there is one, otherwise the next slot it can still key. The CQ row shows it, and a tap flips it for that CQ, for a strong station nearby; SOTA spotting also wants the parity (RFC 0008 §3). Row `qfrr`.
+* **CQ is a queue entry with a try budget.** Call CQ queues a CQ with N tries; each CQ sent uses one, an answer gives none back, and at zero it ends. Every queue entry's count can be changed in place. This replaces the beacon mode, O5's per-QSO retries and O6's CQ timeout. Built ([autoseq.md](../architecture/autoseq.md), **Tries**).
+* **Call CQ picks its parity each time:** the active QSO's parity if there is one, otherwise the next slot it can still key. The CQ row shows it, and a tap flips it for that CQ, for a strong station nearby; SOTA spotting also wants the parity (RFC 0008 §3). Built (same).
+
+**2026-10-14, building the CQ's tries:**
+
+* **Every row counts tries, transmissions,** not retries. The Station key `tries` (default 6, the sends that 5 retries gave) replaces `autoseq_max_retry`.
+* **One setting** bounds each QSO message and is what Call CQ starts with; there is no separate CQ count.

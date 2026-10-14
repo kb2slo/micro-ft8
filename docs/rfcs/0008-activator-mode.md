@@ -196,7 +196,7 @@ Accepted 2026-09-27. The slices stay listed here, under row I18, until each is n
 8. **A5: P2P/S2S capture:** a partner reference on queue entries, auto-filled from spots, and the "worked on this reference today" cue (§4.4).
 9. **A6: the planning UI:** nearby, route, n-fer candidates, scheduling links (§4.7).
 
-RFC 0009's O2–O6 (radio status, reply feedback, decode sort and filter, per-QSO retries, CQ timeout) do not depend on this RFC and fit wherever they are most wanted.
+RFC 0009's O2–O4 (radio status, reply feedback, decode sort and filter) do not depend on this RFC and fit wherever they are most wanted.
 
 ## 8. Prior art
 

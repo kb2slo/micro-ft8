@@ -6,14 +6,14 @@
     "DX_GRID": "CM88",
     "TX_ON_EVEN": true
   },
-  "comment": "ROGERS reincarnation: the QSO completes and logs at our first RR73, and the entry parks right after it (ROGERS sends RR73 once). Three minutes later DX resends R-08, having missed our RR73. It must reactivate the parked entry: RR73 again and no second log. If the entry were gone, on_decode() would refuse an R-report from an unknown call and send nothing, so period 15 would fail. The scenario runner transmits a QSO entry in every period; only the beacon CQ waits for its own parity.",
+  "comment": "ROGERS reincarnation: the QSO completes and logs at our first RR73, and the entry parks right after it (ROGERS sends RR73 once). Three minutes later DX resends R-08, having missed our RR73. It must reactivate the parked entry: RR73 again and no second log. If the entry were gone, on_decode() would refuse an R-report from an unknown call and send nothing, so period 15 would fail. The scenario runner transmits a QSO entry in every period; only the CQ waits for its own parity.",
   "periods": [
     {
-      "comment": "Period 0 (even): beacon CQ",
+      "comment": "Period 0 (even): CQ",
       "messages": [],
-      "beacon_change": {
+      "cq_call": {
         "time_offset": 0.0,
-        "beacon_on": 1
+        "tries": 99
       },
       "expect": {
         "tx": "CQ AG6AQ CM97"
@@ -60,7 +60,7 @@
       }
     },
     {
-      "comment": "Period 4 (even): no RR73 resend; the beacon CQ resumes.",
+      "comment": "Period 4 (even): no RR73 resend; the CQ resumes.",
       "messages": [],
       "expect": {
         "tx": "CQ AG6AQ CM97"
@@ -74,7 +74,7 @@
       }
     },
     {
-      "comment": "Period 6 (even): beacon CQ",
+      "comment": "Period 6 (even): CQ",
       "messages": [],
       "expect": {
         "tx": "CQ AG6AQ CM97"
@@ -88,7 +88,7 @@
       }
     },
     {
-      "comment": "Period 8 (even): beacon CQ",
+      "comment": "Period 8 (even): CQ",
       "messages": [],
       "expect": {
         "tx": "CQ AG6AQ CM97"
@@ -102,7 +102,7 @@
       }
     },
     {
-      "comment": "Period 10 (even): beacon CQ",
+      "comment": "Period 10 (even): CQ",
       "messages": [],
       "expect": {
         "tx": "CQ AG6AQ CM97"
@@ -116,7 +116,7 @@
       }
     },
     {
-      "comment": "Period 12 (even): beacon CQ",
+      "comment": "Period 12 (even): CQ",
       "messages": [],
       "expect": {
         "tx": "CQ AG6AQ CM97"
@@ -130,7 +130,7 @@
       }
     },
     {
-      "comment": "Period 14 (even): beacon CQ",
+      "comment": "Period 14 (even): CQ",
       "messages": [],
       "expect": {
         "tx": "CQ AG6AQ CM97"
@@ -153,7 +153,7 @@
       }
     },
     {
-      "comment": "Period 16 (even): RR73 went out once, so the entry parked again. The beacon CQ resumes.",
+      "comment": "Period 16 (even): RR73 went out once, so the entry parked again. The CQ resumes.",
       "messages": [],
       "expect": {
         "tx": "CQ AG6AQ CM97"

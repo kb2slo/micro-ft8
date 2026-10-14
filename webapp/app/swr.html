@@ -105,7 +105,7 @@ var THEME_KEY = 'microft8_theme_v1';
 
 var PREV_KEY = 'microft8_swr_prev_v1';
 var NS = 'http://www.w3.org/2000/svg';
-var REFUSALS_ASKED = { 'beacon is on': 1, 'a QSO is queued': 1, 'transmitting': 1, 'tune is on': 1 };
+var REFUSALS_ASKED = { 'a CQ is queued': 1, 'a QSO is queued': 1, 'transmitting': 1, 'tune is on': 1 };
 
 var elBands = document.getElementById('bands');
 var elFine = document.getElementById('fine');
@@ -122,7 +122,6 @@ var prevRun = null;      // the run before it, drawn faintly behind
 var startSeq = 0;        // events before this belong to an earlier run
 var evSeq = 0;
 var queue = {};          // what a sweep would end, tracked from the same events Operate reads
-var beaconMode = 0;
 var txOnAir = false;
 var tuneOn = false;
 var polling = false;
@@ -297,8 +296,6 @@ function applyRows(rows) {
   rows.forEach(function (e) {
     if (e.d === 2) {
       if (e.st === 6) delete queue[e.eid]; else queue[e.eid] = { dxcall: e.x };
-    } else if (e.d === 3) {
-      beaconMode = e.bm;
     } else if (e.d === 4) {
       txOnAir = !!e.active;
     } else if (e.d === 6 && state && state.phase === 'running' && e.s >= startSeq) {
@@ -354,14 +351,13 @@ function whatItEnds() {
   var parts = [];
   var partners = Object.keys(queue).map(function (id) { return queue[id].dxcall; }).filter(function (c) { return c && c !== 'CQ'; });
   if (partners.length) parts.push('your QSO with ' + partners.join(', '));
-  if (beaconMode !== 0) parts.push('the beacon');
+  if (Object.keys(queue).some(function (id) { return queue[id].dxcall === 'CQ'; })) parts.push('your CQ');
   if (txOnAir) parts.push('the transmission on the air');
   if (tuneOn) parts.push('Tune');
   return parts;
 }
 
 async function endWhatItEnds() {
-  if (beaconMode !== 0) await post('/api/beacon', '0');
   await post('/api/tx/cancel');
   var ids = Object.keys(queue);
   for (var i = 0; i < ids.length; i++) await post('/api/queue/cancel', String(ids[i]));

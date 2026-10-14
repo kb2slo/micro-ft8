@@ -79,7 +79,11 @@ extern "C" {
 // v7 (2026-10-06): the FACTORY_RESET action (the sidekick's factory reset also resets the main
 // board). A v6 host would NAK it as "unknown action", so a v7 sidekick refuses the reset rather
 // than half doing it; both ends are flashed together as before.
-#define PORTA_PROTO_VERSION 7u
+// v8 (2026-10-14): the CQ is a queue entry with tries (docs/architecture/autoseq.md, Tries).
+// BEACON goes; CQ_CALL, QUEUE_TRIES and QUEUE_PARITY come; QUEUE_ENTRY counts tries and carries
+// the entry's parity and whether its count is its own; SLOT_STATE loses the beacon mode. Both
+// ends are flashed together.
+#define PORTA_PROTO_VERSION 8u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -211,7 +215,7 @@ typedef enum {
     PORTA_EVT_LOG         = 0x01,  // one line of the host's on-screen log
     PORTA_EVT_DECODE      = 0x02,  // one decoded FT8/FT4 message
     PORTA_EVT_QUEUE_ENTRY = 0x03,  // one autoseq queue row: added, changed, or removed
-    PORTA_EVT_SLOT_STATE  = 0x04,  // small scalars: slot parity, beacon mode, resolved TX offset
+    PORTA_EVT_SLOT_STATE  = 0x04,  // small scalars: slot parity, resolved TX offset
     PORTA_EVT_TX_HUD      = 0x05,  // TX HUD banner mirror: message, power/SWR, battery
     PORTA_EVT_USB_STATUS  = 0x06,  // host's own USB-C host port: a device attached or detached
     PORTA_EVT_SWEEP       = 0x07,  // SWR sweep progress: a point, a skipped band, done, aborted
@@ -271,15 +275,22 @@ bool porta_proto_parse_decode(const porta_frame_t *f, porta_decode_event_t *out)
 // AUTOSEQ_MAX_QUEUE is 30 (active + inactive), not a number that needs
 // paging on its own -- the whole queue fits comfortably in individual
 // per-change frames.
+//
+// `tries_sent` of `try_limit` are transmissions (docs/architecture/autoseq.md,
+// Tries): a QSO's count is per step, the CQ's (dxcall "CQ") is the whole CQ.
 
 #define PORTA_CALLSIGN_MAX 16u
+
+#define PORTA_QUEUE_ODD    0x01u  // the entry transmits on odd slots
+#define PORTA_QUEUE_CUSTOM 0x02u  // its count is its own, not the station default
 
 typedef struct {
     uint32_t epoch_secs;
     uint16_t entry_id;
     uint8_t  state;         // AutoseqState wire value
-    uint8_t  retry_count;
-    uint8_t  retry_limit;
+    uint8_t  tries_sent;
+    uint8_t  try_limit;
+    uint8_t  flags;         // PORTA_QUEUE_*
     char     dxcall[PORTA_CALLSIGN_MAX + 1];
 } porta_queue_entry_event_t;
 
@@ -288,13 +299,11 @@ size_t porta_proto_encode_queue_entry(const porta_queue_entry_event_t *q,
 bool porta_proto_parse_queue_entry(const porta_frame_t *f, porta_queue_entry_event_t *out);
 
 // SLOT_STATE is global scalars, not any one queue entry's: `slot_parity` is
-// the *next* slot boundary (0=even, 1=odd), and `resolved_offset_hz` is what
-// the next CQ/beacon transmission would use -- an established QSO's own
-// offset already lives on its QsoContext and travels in QUEUE_ENTRY instead.
+// the armed TX's slot parity (0=even, 1=odd), and `resolved_offset_hz` is the
+// offset that armed TX resolved to, 0 when nothing is armed.
 typedef struct {
     uint32_t epoch_secs;
     uint8_t  slot_parity;
-    uint8_t  beacon_mode;        // BeaconMode wire value: 0=OFF, 1=EVEN, 2=ODD
     uint16_t resolved_offset_hz;
 } porta_slot_state_event_t;
 
@@ -381,8 +390,8 @@ bool porta_proto_parse_sweep_start(const porta_frame_t *f, porta_sweep_range_t *
 // reason to show it -- the operator can see the cursor on STATUS) but is the
 // one genuinely new field here: g_pending_tx.offset_hz, the same value
 // log_rxtx_line() already treats as "what's actually going on air" -- unlike
-// SLOT_STATE's resolved_offset_hz, which is only ever the *next* beacon/CQ
-// offset and says nothing about an established QSO's reply. 0 = unknown,
+// SLOT_STATE's resolved_offset_hz, which is the armed TX's, before it goes
+// on the air. 0 = unknown,
 // same convention as SLOT_STATE's own offset field.
 #define PORTA_TX_HUD_TEXT_MAX PORTA_EVENT_TEXT_MAX
 #define PORTA_TX_HUD_REASON_MAX 24u
@@ -421,12 +430,16 @@ typedef enum {
     PORTA_ACT_TX_CANCEL = 0x03,  // abort in-flight / clear armed TX
     PORTA_ACT_CONNECT   = 0x04,  // start UAC + CAT sync (STATUS key 2)
     PORTA_ACT_TUNE      = 0x05,  // payload: u8 on (STATUS key 4)
-    PORTA_ACT_BEACON       = 0x06,  // payload: u8 mode (STATUS key 1's 3-way cycle)
+    // 0x06 was BEACON (Off/Even/Odd); removed in v8 for CQ_CALL. Do not reuse
+    // without a flag day.
     PORTA_ACT_QUEUE_CANCEL = 0x07,  // payload: u16 entry_id (not a list index)
     PORTA_ACT_QUEUE_REPLY  = 0x08,  // payload: u32 decode_id
     PORTA_ACT_FILE_DELETE  = 0x09,  // payload: filename (empty = clear all daily logs)
     PORTA_ACT_SWEEP_START  = 0x0A,  // payload: u8 count, then count x (lo, hi, step) kHz, each u16 LE
     PORTA_ACT_FACTORY_RESET = 0x0B, // payload: u8 flags (PORTA_FACTORY_RESET_LOGS)
+    PORTA_ACT_CQ_CALL      = 0x0C,  // verb only: queue a CQ; the host picks its parity
+    PORTA_ACT_QUEUE_TRIES  = 0x0D,  // payload: u16 entry_id, u8 tries (0 = station default)
+    PORTA_ACT_QUEUE_PARITY = 0x0E,  // payload: u16 entry_id, u8 parity (the CQ only)
 } porta_action_verb_t;
 
 // FACTORY_RESET flags. Station settings are always reset; the QSO logs only when asked,
@@ -454,11 +467,25 @@ bool porta_proto_parse_connect(const porta_frame_t *f);
 size_t porta_proto_encode_tune(bool on, uint8_t *out, size_t out_cap);
 bool porta_proto_parse_tune(const porta_frame_t *f, bool *on_out);
 
-// Beacon: verb + u8 mode. `mode` is BeaconMode's own wire value
-// (0=OFF/1=EVEN/2=ODD, main.cpp's STATUS-key-1 cycle), so the browser sends
-// back exactly the value it displayed, no translation either side.
-size_t porta_proto_encode_beacon(uint8_t mode, uint8_t *out, size_t out_cap);
-bool porta_proto_parse_beacon(const porta_frame_t *f, uint8_t *mode_out);
+// Call CQ: verb only. The host picks the parity (an active QSO's, or the slot
+// it can still key) and the tries (the station default), because it holds the
+// slot clock and the setting.
+size_t porta_proto_encode_cq_call(uint8_t *out, size_t out_cap);
+bool porta_proto_parse_cq_call(const porta_frame_t *f);
+
+// Queue tries: verb + u16 entry_id + u8 tries. 0 returns the entry to the
+// station default; the host refuses a count out of range for that entry.
+size_t porta_proto_encode_queue_tries(uint16_t entry_id, uint8_t tries,
+                                      uint8_t *out, size_t out_cap);
+bool porta_proto_parse_queue_tries(const porta_frame_t *f, uint16_t *entry_id_out,
+                                   uint8_t *tries_out);
+
+// Queue parity: verb + u16 entry_id + u8 parity (0 even, 1 odd). Only the CQ
+// moves; a QSO's parity is set by the station it works.
+size_t porta_proto_encode_queue_parity(uint16_t entry_id, uint8_t parity,
+                                       uint8_t *out, size_t out_cap);
+bool porta_proto_parse_queue_parity(const porta_frame_t *f, uint16_t *entry_id_out,
+                                    uint8_t *parity_out);
 
 // Queue cancel: verb + u16 entry_id. See porta_queue_entry_event_t above for
 // why this is an id and not a queue position.

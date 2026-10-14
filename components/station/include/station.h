@@ -27,7 +27,7 @@ struct StationSettings {
     std::string ignore_prefixes;
     bool rxtx_log;
     std::string active_bands;
-    int autoseq_max_retry;
+    int tries;  // transmissions per QSO message, and a CQ's to start (autoseq.md, Tries)
     bool protocol_ft4;
     bool serialize_ft4_band_keys;
     // "POTA:US-1234,SOTA:W7O/CC-001" -- the active activation's references,
@@ -40,15 +40,15 @@ struct StationSettings {
 
 void station_settings_init(StationSettings* out);
 
-// Overlay key=value lines onto *io. Unknown keys ignored. beacon=, date=,
-// time=, rtc_comp=, and rtc_sleep_epoch= are ignored (clock is not persisted).
+// Overlay key=value lines onto *io. Unknown keys ignored. date=, time=,
+// rtc_comp=, and rtc_sleep_epoch= are ignored (clock is not persisted).
 void station_parse(const std::string& text, StationSettings* io);
 
-// Writes the same keys save_station_data() does. No beacon= line.
+// Writes the same keys save_station_data() does.
 std::string station_serialize(const StationSettings& in);
 
-// True for Station.txt keys CONFIG may set (call, grid, band0…, …). Beacon and
-// clock lines are not included — those are live controls / not persisted here.
+// True for Station.txt keys CONFIG may set (call, grid, band0…, …). Clock
+// lines are not included — the clock is not persisted here.
 bool station_key_known(const char* name);
 
 // On activation start (act_refs empty -> non-empty), the CQ type is derived

@@ -57,7 +57,7 @@ static std::string grid_ft8_4(const std::string &grid) {
 static void sync_autoseq_station(void) {
     autoseq_set_station(s_station.call, grid_ft8_4(s_station.grid));
     autoseq_set_skip_tx1(s_station.skip_tx1);
-    autoseq_set_max_retry(s_station.autoseq_max_retry);
+    autoseq_set_tries(s_station.tries);
     AutoseqCqType cq = AutoseqCqType::CQ;
     if (s_station.cq_type >= 0 && s_station.cq_type <= 5) {
         cq = (AutoseqCqType)s_station.cq_type;
@@ -87,7 +87,7 @@ static void station_seed_adv_defaults(void) {
     s_station.ignore_prefixes.clear();
     s_station.rxtx_log = true;
     s_station.active_bands = "80 40 30 20 17 15 12 10";
-    s_station.autoseq_max_retry = 5;  // AUTOSEQ_MAX_RETRY
+    s_station.tries = AUTOSEQ_TRIES;
     s_station.protocol_ft4 = false;
     s_station.serialize_ft4_band_keys = false;
     g_call = s_station.call;
@@ -245,7 +245,7 @@ void porta_p4_companion_status_tick(void) {
     // that offset as "TX: … Hz" and places the passband cursor with it.
     int armed_offset_hz = 0;
     const bool armed = tx_scheduler_hud_snapshot(nullptr, &armed_offset_hz);
-    porta_emit_slot_state((uint8_t)(tx_scheduler_target_parity() & 1), tx_scheduler_beacon_mode(),
+    porta_emit_slot_state((uint8_t)(tx_scheduler_target_parity() & 1),
                           (uint16_t)(armed ? armed_offset_hz : 0));
 
     uint16_t current_ids[AUTOSEQ_MAX_QUEUE];
@@ -257,8 +257,10 @@ void porta_p4_companion_status_tick(void) {
             continue;
         }
         current_ids[filled++] = ctx.entry_id;
-        porta_emit_queue_entry(ctx.entry_id, (uint8_t)ctx.state, (uint8_t)ctx.retry_counter,
-                               (uint8_t)ctx.retry_limit, ctx.dxcall.c_str());
+        const uint8_t flags = (uint8_t)(((ctx.slot_id & 1) ? PORTA_QUEUE_ODD : 0) |
+                                        (ctx.tries_custom ? PORTA_QUEUE_CUSTOM : 0));
+        porta_emit_queue_entry(ctx.entry_id, (uint8_t)ctx.state, (uint8_t)ctx.tries_sent,
+                               (uint8_t)ctx.try_limit, flags, ctx.dxcall.c_str());
     }
     for (int i = 0; i < s_last_active_count; ++i) {
         bool still_here = false;
@@ -269,7 +271,7 @@ void porta_p4_companion_status_tick(void) {
             }
         }
         if (!still_here) {
-            porta_emit_queue_entry(s_last_active_ids[i], 6 /* IDLE */, 0, 0, "");
+            porta_emit_queue_entry(s_last_active_ids[i], 6 /* IDLE */, 0, 0, 0, "");
         }
     }
     memcpy(s_last_active_ids, current_ids, sizeof(uint16_t) * (size_t)filled);
@@ -382,8 +384,8 @@ const char *porta_host_sweep_start(const porta_sweep_range_t *ranges, size_t cou
     if (decode_tx_state_get_tx_active()) {
         return "transmitting";
     }
-    if (tx_scheduler_beacon_mode() != 0) {
-        return "beacon is on";
+    if (autoseq_cq_entry_id() != 0) {
+        return "a CQ is queued";
     }
     if (autoseq_queue_size() > 0 || autoseq_has_active_qso()) {
         return "a QSO is queued";
@@ -471,6 +473,14 @@ const char *porta_host_config_set(const char *key, const char *value) {
     if (strlen(key) > 32 || strlen(value) > 200) {
         return "too long";
     }
+    if (strcmp(key, "tries") == 0) {
+        // Refused here rather than clamped by autoseq, so the Station sheet never
+        // shows a count the engine is not using (docs/architecture/autoseq.md, Tries).
+        const int tries = atoi(value);
+        if (tries < 1 || tries > AUTOSEQ_TRIES_MAX_QSO) {
+            return "tries is 1 to 20";
+        }
+    }
 
     std::string line = std::string(key) + "=" + value + "\n";
     const bool act_refs_was_empty = s_station.act_refs.empty();
@@ -490,7 +500,7 @@ const char *porta_host_config_set(const char *key, const char *value) {
     }
 
     if (strcmp(key, "call") == 0 || strcmp(key, "grid") == 0 || strcmp(key, "skiptx1") == 0 ||
-        strcmp(key, "autoseq_max_retry") == 0 || strcmp(key, "cq_type") == 0 ||
+        strcmp(key, "tries") == 0 || strcmp(key, "cq_type") == 0 ||
         strcmp(key, "free_text") == 0 ||
         strcmp(key, "act_refs") == 0) {
         sync_autoseq_station();
@@ -554,15 +564,47 @@ const char *porta_host_tune(bool on) {
     return nullptr;
 }
 
-const char *porta_host_beacon(uint8_t mode) {
-    if (mode != 0 && porta_link_test_active()) {
+const char *porta_host_cq_call(void) {
+    if (porta_link_test_active()) {
         return "link test";
     }
-    if (mode > 2) {
-        return "unknown beacon mode";
+    ensure_seeded();
+    if (autoseq_cq_entry_id() != 0) {
+        return "a CQ is already queued";
     }
-    tx_scheduler_set_beacon(mode);
+    if (!tx_scheduler_call_cq()) {
+        return "TX queue full";
+    }
     return nullptr;
+}
+
+const char *porta_host_queue_tries(uint16_t entry_id, uint8_t tries) {
+    switch (autoseq_set_entry_tries(entry_id, tries)) {
+        case AutoseqTriesResult::Ok:
+            tx_scheduler_rearm();
+            return nullptr;
+        case AutoseqTriesResult::UnknownEntry:
+            return "unknown entry";
+        case AutoseqTriesResult::OutOfRange:
+            return "tries out of range";
+    }
+    return "tries refused";
+}
+
+const char *porta_host_queue_parity(uint16_t entry_id, uint8_t parity) {
+    if (parity > 1) {
+        return "parity is 0 or 1";
+    }
+    switch (autoseq_set_cq_parity(entry_id, parity)) {
+        case AutoseqParityResult::Ok:
+            tx_scheduler_rearm();
+            return nullptr;
+        case AutoseqParityResult::UnknownEntry:
+            return "unknown entry";
+        case AutoseqParityResult::NotCq:
+            return "only a CQ's parity can change";
+    }
+    return "parity refused";
 }
 
 void porta_host_link_test(bool active, bool tune) {
@@ -573,7 +615,6 @@ void porta_host_link_test(bool active, bool tune) {
         return;
     }
     porta_host_tx_cancel();
-    porta_host_beacon(0);
     autoseq_clear();
     if (tune) {
         porta_host_tune(true);
@@ -718,7 +759,6 @@ const char *porta_host_factory_reset(uint8_t flags) {
         return "settings delete failed";
     }
     // Nothing queued under the old callsign or frequency should go out.
-    porta_host_beacon(0);
     porta_host_tx_cancel();
     autoseq_clear();
     station_seed_adv_defaults();

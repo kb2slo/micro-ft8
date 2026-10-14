@@ -11,11 +11,11 @@
   },
   "periods": [
     {
-      "comment": "Period 0 (even): beacon on, free-text CQ",
+      "comment": "Period 0 (even): Call CQ: the free-text CQ",
       "messages": [],
-      "beacon_change": {
+      "cq_call": {
         "time_offset": 1.0,
-        "beacon_on": 1
+        "tries": 99
       },
       "expect": {
         "tx": "POTA US-1234"
@@ -29,7 +29,7 @@
       }
     },
     {
-      "comment": "Period 2 (even): beacon sends the free text again",
+      "comment": "Period 2 (even): the CQ sends the free text again",
       "messages": [],
       "expect": {
         "tx": "POTA US-1234"

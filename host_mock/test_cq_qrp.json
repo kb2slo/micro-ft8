@@ -10,11 +10,11 @@
   },
   "periods": [
     {
-      "comment": "Period 0 (even): beacon on, CQ QRP",
+      "comment": "Period 0 (even): Call CQ: CQ QRP",
       "messages": [],
-      "beacon_change": {
+      "cq_call": {
         "time_offset": 1.0,
-        "beacon_on": 1
+        "tries": 99
       },
       "expect": {
         "tx": "CQ QRP AG6AQ CM97"
@@ -28,7 +28,7 @@
       }
     },
     {
-      "comment": "Period 2 (even): beacon sends a fresh CQ QRP",
+      "comment": "Period 2 (even): the CQ goes again, CQ QRP",
       "messages": [],
       "expect": {
         "tx": "CQ QRP AG6AQ CM97"

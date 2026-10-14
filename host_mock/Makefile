@@ -40,7 +40,7 @@ OBJ     = $(CXX_OBJ) $(C_OBJ)
 TARGET = host_test
 SIM_TARGET = sim_station
 UNIQUE_TARGET = host_test_unique_callsign
-CANCEL_TARGET = host_test_beacon_cancel
+CQ_TRIES_TARGET = host_test_cq_tries
 ADIF_TARGET = host_test_adif_merge
 STATION_TARGET = host_test_station
 DECODE_SORT_TARGET = host_test_decode_sort
@@ -67,7 +67,7 @@ DECODE_SYNC_TARGET = host_test_decode_sync
 DECODE_SNR_TARGET = host_test_decode_snr
 PORTA_OUT_QUEUE_TARGET = host_test_porta_out_queue
 
-all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
+all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
      $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) \
      $(FILE_LIST_TARGET) \
      $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
@@ -93,8 +93,8 @@ UNIQUE_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_unique_callsign.o
 $(UNIQUE_TARGET): $(UNIQUE_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
-CANCEL_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_beacon_cancel.o
-$(CANCEL_TARGET): $(CANCEL_OBJ)
+CQ_TRIES_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_cq_tries.o
+$(CQ_TRIES_TARGET): $(CQ_TRIES_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 RECENT_QSO_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_recent_qso.o
@@ -283,10 +283,10 @@ $(FILE_LIST_TARGET): $(FILE_LIST_OBJ)
 
 clean:
 	rm -f $(OBJ) porta_event_json.o sim_station.o $(SIM_TARGET) \
-	      $(UNIQUE_OBJ) $(CANCEL_OBJ) $(ADIF_OBJ) $(STATION_OBJ) \
+	      $(UNIQUE_OBJ) $(CQ_TRIES_OBJ) $(ADIF_OBJ) $(STATION_OBJ) \
 	      $(DECODE_SORT_OBJ) $(QSO_BROWSE_OBJ) $(ADIF_DELETE_OBJ) \
 	      $(FILE_LIST_OBJ) \
-	      $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
+	      $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
 	      $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) \
 	      $(FILE_LIST_TARGET) \
 	      $(PAIRING_TOKEN_OBJ) $(PAIRING_TOKEN_TARGET) \

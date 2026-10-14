@@ -43,13 +43,13 @@ static const char* TAG = "DECODE";
 // own: the main board's own file (poe_p4/main) defines each.
 //
 //   g_call: the station callsign.
-//   arm_from_autoseq_or_beacon/ignorelist_matches_normalized_dxcall: the
+//   arm_from_autoseq/ignorelist_matches_normalized_dxcall: the
 //     TX-arming trigger and its ignorelist filter (the P4 has no ignorelist
 //     yet, row j4xh).
 //   porta_emit_decode: the sidekick link. Safe to call unconditionally --
 //     no-op until porta_start() has run.
 extern std::string g_call;
-void arm_from_autoseq_or_beacon();
+void arm_from_autoseq();
 bool ignorelist_matches_normalized_dxcall(const std::string& dxcall_norm);
 void porta_emit_decode(uint32_t decode_id, const char* text, int snr, int offset_hz,
                        float dt_s, bool is_cq, bool is_to_me, bool is_recent_qso,
@@ -366,7 +366,7 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
       }
       decode_tx_state_set_decode_in_progress(false);
       if (!decode_tx_state_get_was_txing()) {
-        arm_from_autoseq_or_beacon();
+        arm_from_autoseq();
       }
       log_slot_summary(0, max_cand, 0, 0, decode_t0_us);
       return;
@@ -536,7 +536,7 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
       autoseq_on_decodes(to_me_auto);
     }
 
-    arm_from_autoseq_or_beacon();
+    arm_from_autoseq();
   }
 
   // ---- Hand the sorted list to the sidekick link ----

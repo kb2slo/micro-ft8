@@ -69,18 +69,24 @@ static void reset() {
     mock_clock_set(1000);  // parked entries stamp this; 0 reads as "not parked"
     autoseq_init();
     autoseq_set_station("KB2SLO", "FN30");
-    autoseq_set_max_retry(AUTOSEQ_MAX_RETRY);
+    autoseq_set_tries(AUTOSEQ_TRIES);
     autoseq_set_adif_callback(adif_cb);
     autoseq_set_recent_qso_callback(nullptr);
     s_log_count = 0;
     s_log_fails = false;
 }
 
+// One CQ that ends after it is sent: the CQ these tests open a QSO with.
+static void one_cq() {
+    autoseq_call_cq(0);
+    autoseq_set_entry_tries(autoseq_cq_entry_id(), 1);
+}
+
 static const char* const kRr73 = "K1ABC KB2SLO RR73";
 
 // We CQ, K1ABC answers with a grid, and their R-report gets our first RR73.
 static void work_to_first_rr73() {
-    autoseq_start_cq(0);
+    one_cq();
     transmit();
     decode(to_me("K1ABC", "FN42"));
     transmit();
@@ -93,11 +99,11 @@ static void test_silent_dx_gets_one_rr73() {
     work_to_first_rr73();
     check(s_log_count == 1, "the first RR73 logs");
     check(autoseq_active_count() == 0, "the entry parks right after it");
-    for (int i = 0; i <= AUTOSEQ_MAX_RETRY; ++i) {
+    for (int i = 0; i < AUTOSEQ_TRIES; ++i) {
         check(transmit().empty(), "no RR73 resent to a silent DX");
     }
-    autoseq_start_cq(0);
-    check(transmit() == "CQ KB2SLO FN30", "the beacon CQ is not held behind it");
+    one_cq();
+    check(transmit() == "CQ KB2SLO FN30", "a CQ is not held behind it");
 }
 
 // DX missed our RR73 and says so with R+report: RR73 again, once each time.
@@ -108,8 +114,8 @@ static void test_resent_r_report_gets_rr73_each_time() {
         decode(to_me("K1ABC", "R-10"));
         QsoContext head;
         check(autoseq_get_active_context(0, &head) && head.state == AutoseqState::ROGERS &&
-                  head.retry_counter == 0,
-              "a resent R-report reactivates the parked entry with fresh retries");
+                  head.tries_sent == 0,
+              "a resent R-report reactivates the parked entry with fresh tries");
         check(transmit() == kRr73, "and gets RR73");
         check(autoseq_active_count() == 0, "which parks it again");
     }
@@ -143,12 +149,12 @@ static void test_failed_log_write_keeps_rr73_going() {
 
 static void test_failed_log_write_resends_up_to_the_setting() {
     reset();
-    autoseq_set_max_retry(2);
+    autoseq_set_tries(3);
     s_log_fails = true;
     work_to_first_rr73();
-    check(transmit() == kRr73, "resend 1");
-    check(transmit() == kRr73, "resend 2");
-    check(transmit().empty(), "the setting's 2 resends used, parked unlogged");
+    check(transmit() == kRr73, "try 2");
+    check(transmit() == kRr73, "try 3");
+    check(transmit().empty(), "the setting's 3 tries used, parked unlogged");
 }
 
 // Counts how many times `text` goes out before something else (or nothing).
@@ -160,19 +166,19 @@ static int count_sends(const char* text) {
 
 static void test_earlier_states_keep_the_setting() {
     reset();
-    autoseq_start_cq(0);
+    one_cq();
     transmit();
     decode(to_me("K1ABC", "FN42"));
-    check(count_sends("K1ABC KB2SLO -8") == 1 + AUTOSEQ_MAX_RETRY,
-          "an unanswered report goes out once plus the default retries");
+    check(count_sends("K1ABC KB2SLO -8") == AUTOSEQ_TRIES,
+          "an unanswered report goes out the default's tries");
 
     reset();
-    autoseq_set_max_retry(3);
-    autoseq_start_cq(0);
+    autoseq_set_tries(4);
+    one_cq();
     transmit();
     decode(to_me("K1ABC", "-12"));
-    check(count_sends("K1ABC KB2SLO R-8") == 1 + 3,
-          "an unanswered R-report goes out once plus the setting's retries");
+    check(count_sends("K1ABC KB2SLO R-8") == 4,
+          "an unanswered R-report goes out the setting's tries");
 }
 
 int main() {

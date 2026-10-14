@@ -52,7 +52,7 @@ static std::string s_pending_ft_text;
 static std::string s_my_call;
 static std::string s_my_grid;
 static bool s_skip_tx1 = false;
-static int s_max_retry = AUTOSEQ_MAX_RETRY;
+static int s_tries = AUTOSEQ_TRIES;  // the station default (Tries)
 
 // Forward declarations (must appear before format_tx_text uses them)
 static std::string trim_copy(const std::string& s);
@@ -84,9 +84,10 @@ static int s_last_tx_parity = -1;
 
 // ============== Forward declarations ==============
 
-static void set_state(QsoContext* ctx, AutoseqState s, TxMsgType first_tx, int limit);
+static void set_state(QsoContext* ctx, AutoseqState s, TxMsgType first_tx);
 static void generate_cq_text_into(std::string& out);
 static void refresh_tx_msg_buffer();
+static void retire_used_up();
 static void format_tx_text(QsoContext* ctx, TxMsgType id, std::string& out);
 static TxMsgType parse_rcvd_msg(QsoContext* ctx, const UiRxLine& msg);
 static bool generate_response(QsoContext* ctx, const UiRxLine& msg, bool override);
@@ -166,9 +167,14 @@ static const char* tx_name(TxMsgType tx) {
     return "?";
 }
 
-static inline int clamp_retry_limit(int retry) {
-    if (retry < 0) return 0;
-    return retry;
+// The entry's own count if it has one, otherwise the station default.
+static int entry_try_limit(const QsoContext* ctx) {
+    return ctx->tries_custom > 0 ? ctx->tries_custom : s_tries;
+}
+
+// The queued CQ, as Call CQ makes it (a Free Text one-shot shares CALLING).
+static bool is_cq_entry(const QsoContext& ctx) {
+    return ctx.state == AutoseqState::CALLING && !ctx.is_freetext;
 }
 
 // ============== Public API ==============
@@ -248,11 +254,9 @@ bool autoseq_rotate_same_parity() {
     return true;
 }
 
-// Shared helper for injecting one-shot CALLING entries (CQ and Free Text).
-// Both types are single-transmission: emit once, tick moves CALLING → IDLE → pop.
-// Returns the appended ctx, or nullptr if no room.
-// Inject a one-shot CALLING entry. The caller is responsible for:
-//   - Choosing the dxcall marker ("CQ" for beacon CQ, "(FT)" for Free Text)
+// Inject a CALLING entry (the CQ, or a Free Text one-shot). The caller is
+// responsible for:
+//   - Choosing the dxcall marker ("CQ" for the CQ, "(FT)" for Free Text)
 //   - Setting is_freetext (sort priority — FT above QSOs, CQ below)
 //   - Picking the slot parity
 // Text is NOT stored on the ctx; it's derived at refresh time from either
@@ -272,40 +276,69 @@ static QsoContext* enqueue_one_shot(const std::string& dxcall,
     ctx->snr_rx = -99;
     ctx->slot_id = slot_parity;
     ctx->is_freetext = is_freetext;  // compare_ctx priority (FT above CQ)
-    // next_tx = TX_NONE marks this ctx as "evict after tick." Text source
-    // is determined by is_freetext at refresh time — decoupled from next_tx.
-    set_state(ctx, AutoseqState::CALLING, TxMsgType::TX_NONE, 0);
+    // next_tx = TX_NONE: the text source is picked by is_freetext at refresh
+    // time. The tick evicts a Free Text after one TX and a CQ after its tries.
+    set_state(ctx, AutoseqState::CALLING, TxMsgType::TX_NONE);
     return ctx;
 }
 
-void autoseq_start_cq(int slot_parity) {
-    // Don't add duplicate CQ in active zone
-    for (int i = 0; i < s_active_count; ++i) {
-        if (s_queue[i].state == AutoseqState::CALLING && !s_queue[i].is_freetext) {
-            return;
-        }
+bool autoseq_call_cq(int slot_parity) {
+    if (autoseq_cq_entry_id() != 0) {
+        return false;  // one CQ at a time; the queued one keeps its count
     }
-    if (enqueue_one_shot("CQ", false, slot_parity)) {
-        ESP_LOGI(TAG, "Started CQ on slot %d", slot_parity);
-        refresh_tx_msg_buffer();
+    if (!enqueue_one_shot("CQ", false, slot_parity & 1)) {
+        return false;
     }
+    ESP_LOGI(TAG, "Call CQ on slot %d, %d tries", slot_parity & 1, s_tries);
+    refresh_tx_msg_buffer();
+    return true;
 }
 
-bool autoseq_cancel_cq(bool skip_head) {
-    bool removed = false;
-    const int last = skip_head ? 1 : 0;
-    for (int i = s_active_count - 1; i >= last; --i) {
-        if (s_queue[i].is_freetext) continue;
-        if (s_queue[i].state == AutoseqState::CALLING || s_queue[i].dxcall == "CQ") {
-            remove_active_at(i);
-            removed = true;
+int autoseq_cq_parity(int current_slot_parity, bool current_slot_keyable) {
+    for (int i = 0; i < s_active_count; ++i) {
+        if (is_live_qso_state(s_queue[i].state) && !s_queue[i].is_freetext) {
+            return s_queue[i].slot_id & 1;
         }
     }
-    if (removed) {
-        ESP_LOGI(TAG, "Cancelled beacon CQ");
-        refresh_tx_msg_buffer();
+    return current_slot_keyable ? (current_slot_parity & 1) : ((current_slot_parity & 1) ^ 1);
+}
+
+uint16_t autoseq_cq_entry_id() {
+    for (int i = 0; i < s_active_count; ++i) {
+        if (is_cq_entry(s_queue[i])) return s_queue[i].entry_id;
     }
-    return removed;
+    return 0;
+}
+
+AutoseqTriesResult autoseq_set_entry_tries(uint16_t entry_id, int tries) {
+    if (entry_id == 0) return AutoseqTriesResult::UnknownEntry;
+    for (int i = 0; i < s_active_count; ++i) {
+        QsoContext& ctx = s_queue[i];
+        if (ctx.entry_id != entry_id || ctx.state == AutoseqState::IDLE) continue;
+        const int max = is_cq_entry(ctx) ? AUTOSEQ_TRIES_MAX_CQ : AUTOSEQ_TRIES_MAX_QSO;
+        if (tries < 0 || tries > max) return AutoseqTriesResult::OutOfRange;
+        ctx.tries_custom = tries;
+        ctx.try_limit = entry_try_limit(&ctx);
+        ESP_LOGI(TAG, "Entry %u (%s): %d tries%s", (unsigned)entry_id, ctx.dxcall.c_str(),
+                 ctx.try_limit, tries ? "" : " (station default)");
+        retire_used_up();
+        refresh_tx_msg_buffer();
+        return AutoseqTriesResult::Ok;
+    }
+    return AutoseqTriesResult::UnknownEntry;
+}
+
+AutoseqParityResult autoseq_set_cq_parity(uint16_t entry_id, int slot_parity) {
+    if (entry_id == 0) return AutoseqParityResult::UnknownEntry;
+    for (int i = 0; i < s_active_count; ++i) {
+        QsoContext& ctx = s_queue[i];
+        if (ctx.entry_id != entry_id) continue;
+        if (!is_cq_entry(ctx)) return AutoseqParityResult::NotCq;
+        ctx.slot_id = slot_parity & 1;
+        ESP_LOGI(TAG, "CQ moved to slot %d", ctx.slot_id);
+        return AutoseqParityResult::Ok;
+    }
+    return AutoseqParityResult::UnknownEntry;
 }
 
 bool autoseq_schedule_freetext(const std::string& text, int fallback_slot_parity) {
@@ -496,7 +529,7 @@ AutoseqTouchResult autoseq_on_touch(const UiRxLine& msg, bool hold_queue_head) {
     const bool open_with_tx2 = s_skip_tx1 || ctx->is_fd;
 
     set_state(ctx, open_with_tx2 ? AutoseqState::REPORT : AutoseqState::REPLYING,
-              open_with_tx2 ? TxMsgType::TX2 : TxMsgType::TX1, s_max_retry);
+              open_with_tx2 ? TxMsgType::TX2 : TxMsgType::TX1);
     sort_and_clean();
     for (int i = 0; i < s_active_count; ++i) {
         if (same_dxcall(s_queue[i].dxcall, dxcall) && !s_queue[i].is_freetext) {
@@ -553,7 +586,7 @@ void autoseq_tick(int64_t slot_idx, int slot_parity, int ms_to_boundary) {
     QsoContext* ctx = &s_queue[idx];
     bool finished = false;
 
-    // Advance retry counter or move to inactive zone
+    // Count the try, then resend, or end the entry once its tries are used.
     switch (ctx->state) {
         case AutoseqState::ROGERS:
             // RR73 goes out once. The QSO is logged and DX's 73 is optional, so
@@ -564,17 +597,16 @@ void autoseq_tick(int64_t slot_idx, int slot_parity, int ms_to_boundary) {
                 move_to_inactive(idx);
                 break;
             }
-            // Not logged (the write failed): resend under retry_limit, the
-            // Station.txt setting, since each RR73 retries the write.
+            // Not logged (the write failed): resend under the entry's tries,
+            // since each RR73 retries the write.
             [[fallthrough]];
         case AutoseqState::REPLYING:
         case AutoseqState::REPORT:
         case AutoseqState::ROGER_REPORT: {
-            if (ctx->retry_counter < ctx->retry_limit) {
+            if (++ctx->tries_sent < ctx->try_limit) {
                 ctx->next_tx = canonical_next_tx(ctx->state);
-                ctx->retry_counter++;
             } else if (has_exchanged(ctx)) {
-                // Retries exhausted but we exchanged data with DX — move to
+                // Tries used but we exchanged data with DX — move to
                 // inactive zone to preserve metadata in case DX retries.
                 move_to_inactive(idx);
             } else {
@@ -584,9 +616,12 @@ void autoseq_tick(int64_t slot_idx, int slot_parity, int ms_to_boundary) {
             }
             break;
         }
-        case AutoseqState::CALLING:  // CQ only once (controlled by beacon)
-            // CQ with no response — safe to evict (dxcall is "CQ")
-            finished = true;
+        case AutoseqState::CALLING:
+            // A Free Text goes once. A CQ uses one try per CQ sent and ends
+            // when they are used; an answer gives none back.
+            if (ctx->is_freetext || ++ctx->tries_sent >= ctx->try_limit) {
+                finished = true;
+            }
             break;
         case AutoseqState::SIGNOFF:
             // After TX5: park in inactive so a late RR73 can be answered.
@@ -605,12 +640,12 @@ void autoseq_tick(int64_t slot_idx, int slot_parity, int ms_to_boundary) {
     }
     refresh_tx_msg_buffer();
 
-    ESP_LOGI(TAG, "Tick: active=%d state=%s next=%s retry=%d/%d",
+    ESP_LOGI(TAG, "Tick: active=%d state=%s next=%s tries=%d/%d",
              s_active_count,
              s_active_count > 0 ? state_name(s_queue[0].state) : "none",
              s_active_count > 0 ? tx_name(s_queue[0].next_tx) : "none",
-             s_active_count > 0 ? s_queue[0].retry_counter : 0,
-             s_active_count > 0 ? s_queue[0].retry_limit : 0);
+             s_active_count > 0 ? s_queue[0].tries_sent : 0,
+             s_active_count > 0 ? s_queue[0].try_limit : 0);
 }
 
 // Pure reads of the singleton s_tx_msg_buffer. No inspection of next_tx.
@@ -631,7 +666,7 @@ bool autoseq_fetch_pending_tx(AutoseqTxEntry& out) {
     out.dxcall = ctx->dxcall;
     out.offset_hz = ctx->offset_hz;
     out.slot_id = ctx->slot_id;
-    out.repeat_counter = ctx->retry_limit - ctx->retry_counter;
+    out.repeat_counter = ctx->try_limit - ctx->tries_sent;
     out.is_signoff = (ctx->next_tx == TxMsgType::TX4 ||
                       ctx->next_tx == TxMsgType::TX5);
 
@@ -657,6 +692,11 @@ bool autoseq_head_changed_or_refresh(AutoseqTxEntry* pending) {
 
 uint16_t autoseq_transmitting_entry_id() {
     return s_tx_entry_id;
+}
+
+void autoseq_on_tx_cancelled() {
+    // A cancelled TX gets no tick and is not counted, so nothing is on the air.
+    s_tx_entry_id = 0;
 }
 
 void autoseq_mark_sent(int64_t slot_idx) {
@@ -703,7 +743,7 @@ void autoseq_get_qso_states(std::vector<std::string>& out) {
         snprintf(buf, sizeof(buf), "%-8.8s %.4s %d/%d",
                  ctx->dxcall.c_str(),
                  state_names[(int)ctx->state],
-                 ctx->retry_counter, ctx->retry_limit);
+                 ctx->tries_sent, ctx->try_limit);
         out.push_back(buf);
     }
 }
@@ -765,17 +805,13 @@ void autoseq_set_skip_tx1(bool skip) {
     s_skip_tx1 = skip;
 }
 
-void autoseq_set_max_retry(int retry) {
-    s_max_retry = clamp_retry_limit(retry);
+void autoseq_set_tries(int tries) {
+    s_tries = std::min(std::max(tries, 1), AUTOSEQ_TRIES_MAX_QSO);
     for (int i = 0; i < s_active_count; ++i) {
-        QsoContext& ctx = s_queue[i];
-        if (ctx.retry_limit > 0) {
-            ctx.retry_limit = s_max_retry;
-            if (ctx.retry_counter > ctx.retry_limit) {
-                ctx.retry_counter = ctx.retry_limit;
-            }
-        }
+        s_queue[i].try_limit = entry_try_limit(&s_queue[i]);
     }
+    retire_used_up();
+    refresh_tx_msg_buffer();
 }
 
 void autoseq_set_cq_type(AutoseqCqType type, const std::string& freetext) {
@@ -786,11 +822,33 @@ void autoseq_set_cq_type(AutoseqCqType type, const std::string& freetext) {
 
 // ============== Internal helpers ==============
 
-static void set_state(QsoContext* ctx, AutoseqState s, TxMsgType first_tx, int limit) {
+// A new step starts its count over; the limit is the entry's own or the default.
+static void set_state(QsoContext* ctx, AutoseqState s, TxMsgType first_tx) {
     ctx->state = s;
     ctx->next_tx = first_tx;
-    ctx->retry_counter = 0;
-    ctx->retry_limit = limit;
+    ctx->tries_sent = 0;
+    ctx->try_limit = entry_try_limit(ctx);
+}
+
+// End every active entry whose tries are used, as the tick would after its
+// last try (docs/architecture/autoseq.md, Tries): a QSO that has exchanged
+// reports parks, anything else is dropped. Lowering a count, or the default,
+// to the tries already sent gets here. The entry on the air is left to its
+// tick, so the try in flight still counts and ends it.
+static void retire_used_up() {
+    for (int i = s_active_count - 1; i >= 0; --i) {
+        const QsoContext& ctx = s_queue[i];
+        if (ctx.state == AutoseqState::IDLE || ctx.is_freetext) continue;
+        if (ctx.tries_sent < ctx.try_limit) continue;
+        if (s_tx_entry_id != 0 && ctx.entry_id == s_tx_entry_id) continue;
+        ESP_LOGI(TAG, "Entry %u (%s): tries used, ending", (unsigned)ctx.entry_id,
+                 ctx.dxcall.c_str());
+        if (has_exchanged(&ctx)) {
+            move_to_inactive(i);
+        } else {
+            remove_active_at(i);
+        }
+    }
 }
 
 // Recompute s_tx_msg_buffer from queue[0]. Sole writer of the TX text
@@ -1084,19 +1142,19 @@ static bool generate_response(QsoContext* ctx, const UiRxLine& msg, bool overrid
         // Reset state based on received message type
         switch (rcvd) {
             case TxMsgType::TX1:
-                set_state(ctx, AutoseqState::CALLING, TxMsgType::TX_NONE, 0);
+                set_state(ctx, AutoseqState::CALLING, TxMsgType::TX_NONE);
                 break;
             case TxMsgType::TX2:
-                set_state(ctx, AutoseqState::REPLYING, TxMsgType::TX_NONE, 0);
+                set_state(ctx, AutoseqState::REPLYING, TxMsgType::TX_NONE);
                 break;
             case TxMsgType::TX3:
-                set_state(ctx, AutoseqState::REPORT, TxMsgType::TX_NONE, 0);
+                set_state(ctx, AutoseqState::REPORT, TxMsgType::TX_NONE);
                 break;
             case TxMsgType::TX4:
-                set_state(ctx, AutoseqState::ROGER_REPORT, TxMsgType::TX_NONE, 0);
+                set_state(ctx, AutoseqState::ROGER_REPORT, TxMsgType::TX_NONE);
                 break;
             case TxMsgType::TX5:
-                set_state(ctx, AutoseqState::ROGERS, TxMsgType::TX_NONE, 0);
+                set_state(ctx, AutoseqState::ROGERS, TxMsgType::TX_NONE);
                 break;
             default:
                 break;
@@ -1114,9 +1172,9 @@ static bool generate_response(QsoContext* ctx, const UiRxLine& msg, bool overrid
     // passes in a ctx with a stale TX_NONE.
     switch (ctx->state) {
         case AutoseqState::CALLING:  // We sent CQ
-            // CQ is short-lived by design: autoseq_start_cq sets next_tx=TX6,
-            // we TX once, and tick() transitions CALLING→IDLE→pop. The beacon
-            // re-enqueues a fresh CQ on the next cycle if still on.
+            // Only a fresh entry passes through here (the override above sets
+            // CALLING for a received TX1). The queued CQ itself never does:
+            // an answer to it starts its own entry, and the CQ keeps its count.
             //
             // The default case here is unreachable in normal operation:
             //  - CALLING ctx always has dxcall="CQ" which never matches a DX
@@ -1124,23 +1182,23 @@ static bool generate_response(QsoContext* ctx, const UiRxLine& msg, bool overrid
             //    an existing CALLING ctx.
             //  - The override path sets CALLING only when rcvd=TX1, which
             //    immediately transitions via the TX1 case below.
-            //  - CALLING ctxs never enter the inactive zone (tick pops them
-            //    directly), so reactivation never produces CALLING.
+            //  - CALLING ctxs never enter the inactive zone (the tick or a
+            //    drop removes them), so reactivation never produces CALLING.
             switch (rcvd) {
                 case TxMsgType::TX1:
-                    set_state(ctx, AutoseqState::REPORT, TxMsgType::TX2, s_max_retry);
+                    set_state(ctx, AutoseqState::REPORT, TxMsgType::TX2);
                     return true;
                 case TxMsgType::TX2:
-                    set_state(ctx, AutoseqState::ROGER_REPORT, TxMsgType::TX3, s_max_retry);
+                    set_state(ctx, AutoseqState::ROGER_REPORT, TxMsgType::TX3);
                     return true;
                 case TxMsgType::TX3:
                     // Advance to ROGERS; logging happens when TX4 is emitted.
-                    set_state(ctx, AutoseqState::ROGERS, TxMsgType::TX4, s_max_retry);
+                    set_state(ctx, AutoseqState::ROGERS, TxMsgType::TX4);
                     return true;
                 case TxMsgType::TX5:
                     // Receive 73 = terminal. Evict immediately. No log (never
                     // reached ROGERS/SIGNOFF; we never emitted TX4/TX5 ourselves).
-                    set_state(ctx, AutoseqState::IDLE, TxMsgType::TX_NONE, 0);
+                    set_state(ctx, AutoseqState::IDLE, TxMsgType::TX_NONE);
                     return false;
                 default:
                     return false;
@@ -1149,20 +1207,20 @@ static bool generate_response(QsoContext* ctx, const UiRxLine& msg, bool overrid
         case AutoseqState::REPLYING:  // We sent TX1 (grid)
             switch (rcvd) {
                 case TxMsgType::TX2:
-                    set_state(ctx, AutoseqState::ROGER_REPORT, TxMsgType::TX3, s_max_retry);
+                    set_state(ctx, AutoseqState::ROGER_REPORT, TxMsgType::TX3);
                     return true;
                 case TxMsgType::TX3:
-                    set_state(ctx, AutoseqState::ROGERS, TxMsgType::TX4, s_max_retry);
+                    set_state(ctx, AutoseqState::ROGERS, TxMsgType::TX4);
                     return true;
                 case TxMsgType::TX4:
                     // DX sent RR73 skipping normal exchange. Advance to SIGNOFF;
                     // we'll emit TX5 (73) and log on that emission.
-                    set_state(ctx, AutoseqState::SIGNOFF, TxMsgType::TX5, 0);
+                    set_state(ctx, AutoseqState::SIGNOFF, TxMsgType::TX5);
                     ctx->park_after_signoff_tx = true;
                     return true;
                 case TxMsgType::TX5:
                     // Receive 73 = terminal. Evict immediately, no log.
-                    set_state(ctx, AutoseqState::IDLE, TxMsgType::TX_NONE, 0);
+                    set_state(ctx, AutoseqState::IDLE, TxMsgType::TX_NONE);
                     return false;
                 default:
                     // No-op (e.g. DX resent TX1): keep sending our grid
@@ -1176,18 +1234,18 @@ static bool generate_response(QsoContext* ctx, const UiRxLine& msg, bool overrid
                     // DX sent their own report (no R prefix) — they either
                     // didn't copy our TX2 or changed from TX1 to TX2.
                     // Both sides have exchanged reports; advance to TX3.
-                    set_state(ctx, AutoseqState::ROGER_REPORT, TxMsgType::TX3, s_max_retry);
+                    set_state(ctx, AutoseqState::ROGER_REPORT, TxMsgType::TX3);
                     return true;
                 case TxMsgType::TX3:
-                    set_state(ctx, AutoseqState::ROGERS, TxMsgType::TX4, s_max_retry);
+                    set_state(ctx, AutoseqState::ROGERS, TxMsgType::TX4);
                     return true;
                 case TxMsgType::TX4:
-                    set_state(ctx, AutoseqState::SIGNOFF, TxMsgType::TX5, 0);
+                    set_state(ctx, AutoseqState::SIGNOFF, TxMsgType::TX5);
                     ctx->park_after_signoff_tx = true;
                     return true;
                 case TxMsgType::TX5:
                     // Receive 73 = terminal. Evict immediately, no log.
-                    set_state(ctx, AutoseqState::IDLE, TxMsgType::TX_NONE, 0);
+                    set_state(ctx, AutoseqState::IDLE, TxMsgType::TX_NONE);
                     return false;
                 default:
                     // No-op (e.g. DX resent TX1 grid): keep sending our report
@@ -1198,12 +1256,12 @@ static bool generate_response(QsoContext* ctx, const UiRxLine& msg, bool overrid
         case AutoseqState::ROGER_REPORT:  // We sent TX3 (R+report)
             switch (rcvd) {
                 case TxMsgType::TX4:
-                    set_state(ctx, AutoseqState::SIGNOFF, TxMsgType::TX5, s_max_retry);
+                    set_state(ctx, AutoseqState::SIGNOFF, TxMsgType::TX5);
                     ctx->park_after_signoff_tx = true;
                     return true;
                 case TxMsgType::TX5:
                     // Receive 73 = terminal. We never emitted TX4/TX5 → no log.
-                    set_state(ctx, AutoseqState::IDLE, TxMsgType::TX_NONE, 0);
+                    set_state(ctx, AutoseqState::IDLE, TxMsgType::TX_NONE);
                     return false;
                 default:
                     // No-op (DX resent TX1/TX2/TX3): keep sending R+report
@@ -1216,13 +1274,13 @@ static bool generate_response(QsoContext* ctx, const UiRxLine& msg, bool overrid
                 case TxMsgType::TX3:
                     // DX didn't get our RR73 — send it again. Once logged,
                     // autoseq_tick() parks the entry after this one RR73.
-                    set_state(ctx, AutoseqState::ROGERS, TxMsgType::TX4, s_max_retry);
+                    set_state(ctx, AutoseqState::ROGERS, TxMsgType::TX4);
                     return true;
                 case TxMsgType::TX4:
                 case TxMsgType::TX5:
                     // Receive RR73/73 after we sent RR73 = terminal.
                     // Already logged on TX4 emission; no extra action needed.
-                    set_state(ctx, AutoseqState::IDLE, TxMsgType::TX_NONE, 0);
+                    set_state(ctx, AutoseqState::IDLE, TxMsgType::TX_NONE);
                     return false;
                 default:
                     // No-op (DX resent TX1/TX2): keep sending RR73
@@ -1234,12 +1292,12 @@ static bool generate_response(QsoContext* ctx, const UiRxLine& msg, bool overrid
             switch (rcvd) {
                 case TxMsgType::TX4:
                     // Late RR73: send another 73 and park inactive again.
-                    set_state(ctx, AutoseqState::SIGNOFF, TxMsgType::TX5, 0);
+                    set_state(ctx, AutoseqState::SIGNOFF, TxMsgType::TX5);
                     ctx->park_after_signoff_tx = true;
                     return true;
                 case TxMsgType::TX5:
                     // Receive 73 = terminal. Already logged.
-                    set_state(ctx, AutoseqState::IDLE, TxMsgType::TX_NONE, 0);
+                    set_state(ctx, AutoseqState::IDLE, TxMsgType::TX_NONE);
                     ctx->park_after_signoff_tx = false;
                     return false;
                 default:
@@ -1365,11 +1423,11 @@ static bool compare_ctx(const QsoContext& left, const QsoContext& right) {
         return left.is_freetext;  // FT comes first
     }
 
-    // Same state? Lower retry count gets priority — round-robin among
+    // Same state? Fewer tries sent gets priority — round-robin among
     // contacts so we probe for viable propagation paths rather than
-    // burning all retries on one potentially dead contact.
+    // burning all tries on one potentially dead contact.
     if (left.state == right.state) {
-        return left.retry_counter < right.retry_counter;
+        return left.tries_sent < right.tries_sent;
     }
 
     // Higher state value wins (more advanced in QSO)
@@ -1501,13 +1559,14 @@ static void reactivate(int inactive_idx) {
 
     // Append to active zone — there's now room because we freed one slot
     s_queue[s_active_count++] = saved;
-    // Reset retry counter for fresh attempts
-    s_queue[s_active_count - 1].retry_counter = 0;
+    // Fresh tries, under the entry's own count or today's default
+    s_queue[s_active_count - 1].tries_sent = 0;
+    s_queue[s_active_count - 1].try_limit = entry_try_limit(&s_queue[s_active_count - 1]);
     s_queue[s_active_count - 1].inactive_since_ms = 0;
     // move_to_inactive() cleared next_tx. Restore it here rather than relying
     // on generate_response(): a message it cannot classify returns before the
     // state machine runs, and an active entry with TX_NONE renders no text --
-    // at queue[0] that stopped every TX, the beacon's included.
+    // at queue[0] that stopped every TX, the CQ's included.
     s_queue[s_active_count - 1].next_tx =
         canonical_next_tx(s_queue[s_active_count - 1].state);
     ESP_LOGI(TAG, "Reactivated %s into active zone (active=%d)",

@@ -47,7 +47,7 @@ bool load_test_data(const std::string& filename, TestData& out) {
         out.config.tx_on_even  = c.value("TX_ON_EVEN", false);
         out.config.cq_type    = c.value("CQ_TYPE", "");
         out.config.free_text  = c.value("FREE_TEXT", "");
-        out.config.max_retry  = c.value("MAX_RETRY", 5);
+        out.config.tries      = c.value("TRIES", 6);
         out.config.skip_tx1   = c.value("SKIP_TX1", false);
     }
 
@@ -93,12 +93,17 @@ bool load_test_data(const std::string& filename, TestData& out) {
             }
         }
 
-        // beacon_change
-        if (pj.contains("beacon_change")) {
-            auto& bc = pj["beacon_change"];
-            period.has_beacon_change = true;
-            period.beacon_change.time_offset = bc.value("time_offset", 0.0f);
-            period.beacon_change.beacon_on   = bc.value("beacon_on", 0);
+        // cq_call / cq_drop
+        if (pj.contains("cq_call")) {
+            auto& cq = pj["cq_call"];
+            period.has_cq_call = true;
+            period.cq_call.time_offset = cq.value("time_offset", 0.0f);
+            period.cq_call.tries       = cq.value("tries", 0);
+            period.cq_call.parity      = cq.value("parity", -1);
+        }
+        if (pj.contains("cq_drop")) {
+            period.has_cq_drop = true;
+            period.cq_drop.time_offset = pj["cq_drop"].value("time_offset", 0.0f);
         }
 
         // touch_event

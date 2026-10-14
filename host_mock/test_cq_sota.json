@@ -10,11 +10,11 @@
   },
   "periods": [
     {
-      "comment": "Period 0 (even): beacon on, CQ SOTA",
+      "comment": "Period 0 (even): Call CQ: CQ SOTA",
       "messages": [],
-      "beacon_change": {
+      "cq_call": {
         "time_offset": 1.0,
-        "beacon_on": 1
+        "tries": 99
       },
       "expect": {
         "tx": "CQ SOTA AG6AQ CM97"
@@ -28,7 +28,7 @@
       }
     },
     {
-      "comment": "Period 2 (even): beacon sends a fresh CQ SOTA",
+      "comment": "Period 2 (even): the CQ goes again, CQ SOTA",
       "messages": [],
       "expect": {
         "tx": "CQ SOTA AG6AQ CM97"

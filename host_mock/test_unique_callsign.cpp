@@ -51,7 +51,7 @@ static int fail(const char* msg) {
 int main() {
     autoseq_init();
     autoseq_set_station("KB2SLO", "FN30");
-    autoseq_set_max_retry(5);
+    autoseq_set_tries(6);
 
     UiRxLine other = make_cq("W1AW", -10, 1, 1200);
     UiRxLine target = make_cq("K1ABC", -5, 1, 1500);
@@ -136,7 +136,7 @@ int main() {
     // During TX the live head must stay put; a new tap queues behind it.
     autoseq_init();
     autoseq_set_station("KB2SLO", "FN30");
-    autoseq_set_max_retry(5);
+    autoseq_set_tries(6);
     if (autoseq_on_touch(other) != AutoseqTouchResult::Queued) {
         return fail("hold-head setup W1AW");
     }
@@ -157,7 +157,7 @@ int main() {
     // whatever position it currently occupies.
     autoseq_init();
     autoseq_set_station("KB2SLO", "FN30");
-    autoseq_set_max_retry(5);
+    autoseq_set_tries(6);
     if (autoseq_on_touch(other) != AutoseqTouchResult::Queued) {
         return fail("drop_by_entry_id setup: queue W1AW");
     }

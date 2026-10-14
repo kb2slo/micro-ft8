@@ -196,10 +196,9 @@ enum class StationKey {
     SkipTx1,
     ActiveBand,
     ActiveBands,
-    AutoseqMaxRetry,
+    Tries,
     ProtocolMode,
     ActRefs,
-    Beacon,
     Unknown,
 };
 
@@ -220,10 +219,9 @@ StationKey key_from_name(const std::string& name)
     if (name == "skiptx1") return StationKey::SkipTx1;
     if (name == "active_band") return StationKey::ActiveBand;
     if (name == "active_bands") return StationKey::ActiveBands;
-    if (name == "autoseq_max_retry") return StationKey::AutoseqMaxRetry;
+    if (name == "tries") return StationKey::Tries;
     if (name == "protocol_mode") return StationKey::ProtocolMode;
     if (name == "act_refs") return StationKey::ActRefs;
-    if (name == "beacon") return StationKey::Beacon;
     return StationKey::Unknown;
 }
 
@@ -302,9 +300,9 @@ void apply_key(StationSettings* io, StationKey key, const std::string& value)
         case StationKey::ActiveBands:
             io->active_bands = trim_upper_copy(value);
             break;
-        case StationKey::AutoseqMaxRetry:
-            if (sscanf(value.c_str(), "%d", &val) == 1 && val >= 0) {
-                io->autoseq_max_retry = val;
+        case StationKey::Tries:
+            if (sscanf(value.c_str(), "%d", &val) == 1 && val >= 1) {
+                io->tries = val;
             }
             break;
         case StationKey::ProtocolMode: {
@@ -315,7 +313,6 @@ void apply_key(StationSettings* io, StationKey key, const std::string& value)
         case StationKey::ActRefs:
             io->act_refs = normalize_act_refs(value);
             break;
-        case StationKey::Beacon:
         case StationKey::Unknown:
             break;
     }
@@ -412,7 +409,7 @@ std::string station_serialize(const StationSettings& in)
     out << "ignore_prefixes=" << in.ignore_prefixes << "\n";
     out << "rxtx_log=" << (in.rxtx_log ? 1 : 0) << "\n";
     out << "active_bands=" << in.active_bands << "\n";
-    out << "autoseq_max_retry=" << in.autoseq_max_retry << "\n";
+    out << "tries=" << in.tries << "\n";
     if (in.protocol_ft4) {
         out << "protocol_mode=FT4\n";
     }
@@ -432,7 +429,6 @@ bool station_key_known(const char* name)
     }
     StationKey key = key_from_name(name);
     switch (key) {
-        case StationKey::Beacon:
         case StationKey::Unknown:
             break;
         default:

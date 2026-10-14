@@ -4,7 +4,7 @@
  *
  * - Dropping the on-air entry (Port A QUEUE_CANCEL, the web app's row x) used
  *   to leave the tick to advance whatever was queue[0] next: a QSO that never
- *   transmitted lost a retry.
+ *   transmitted lost a try.
  * - autoseq_head_entry_id()/AutoseqTxEntry::entry_id let a board check that
  *   its armed TX is still autoseq's head before keying, and
  *   autoseq_transmitting_entry_id() tells it that a cancelled entry is the one
@@ -57,7 +57,7 @@ static void reset() {
     mock_clock_set(1000);
     autoseq_init();
     autoseq_set_station("KB2SLO", "FN30");
-    autoseq_set_max_retry(5);
+    autoseq_set_tries(6);
     autoseq_set_adif_callback(adif_cb);
 }
 
@@ -96,12 +96,12 @@ static void test_tick_skips_dropped_on_air_entry() {
     autoseq_mark_sent(0);
     autoseq_tick(0, 0, 0);
     QsoContext after;
-    check(find(other, &after) && after.retry_counter == before.retry_counter &&
+    check(find(other, &after) && after.tries_sent == before.tries_sent &&
               after.state == before.state,
           "the tick left the QSO that never transmitted alone");
 }
 
-// A retry still counts on the entry that did transmit, even if it moved.
+// A try still counts on the entry that did transmit, even if it moved.
 static void test_tick_follows_moved_entry() {
     reset();
     decode(to_me("K1ABC", "FN42"));              // REPORT
@@ -115,8 +115,8 @@ static void test_tick_follows_moved_entry() {
     autoseq_mark_sent(0);
     autoseq_tick(0, 0, 0);
     QsoContext k, n;
-    check(find("K1ABC", &k) && k.retry_counter == 1, "K1ABC's retry counted");
-    check(find("N0CALL", &n) && n.retry_counter == 0, "N0CALL untouched");
+    check(find("K1ABC", &k) && k.tries_sent == 1, "K1ABC's try counted");
+    check(find("N0CALL", &n) && n.tries_sent == 0, "N0CALL untouched");
 }
 
 // Parked SIGNOFF, reactivated by a message with no third field.
@@ -138,16 +138,16 @@ static void test_reactivation_by_unclassified_message_can_transmit() {
 
     decode(to_me("W1AW", ""));
     check(transmit() == "W1AW KB2SLO 73", "reactivated entry sends its 73");
-    autoseq_start_cq(0);
-    check(transmit() == "CQ KB2SLO FN30", "and the beacon is not blocked");
+    autoseq_call_cq(0);
+    check(transmit() == "CQ KB2SLO FN30", "and a CQ is not blocked");
 }
 
-// Parked REPORT (retries exhausted), reactivated the same way.
+// Parked REPORT (tries used), reactivated the same way.
 static void test_reactivated_report_resends_report() {
     reset();
     decode(to_me("K1ABC", "FN42"));
-    for (int i = 0; i < 6; ++i) transmit();      // first TX + 5 retries, then parked
-    check(autoseq_active_count() == 0, "K1ABC parked after its retries");
+    for (int i = 0; i < 6; ++i) transmit();      // 6 tries, then parked
+    check(autoseq_active_count() == 0, "K1ABC parked after its tries");
     decode(to_me("K1ABC", ""));
     check(transmit() == "K1ABC KB2SLO -8", "reactivated REPORT resends the report");
 }
@@ -180,7 +180,7 @@ static void test_transmitting_id_names_the_on_air_entry() {
 // instead.
 static void test_head_refresh_picks_up_cq_type_switch() {
     reset();
-    autoseq_start_cq(0);
+    autoseq_call_cq(0);
     AutoseqTxEntry pending;
     check(autoseq_fetch_pending_tx(pending), "CQ queued");
     check(pending.text == "CQ KB2SLO FN30", "plain CQ text before the switch");

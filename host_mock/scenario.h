@@ -24,7 +24,6 @@ struct SimLogEntry {
 struct Scenario {
     TestData data;
     int period = 0;
-    int beacon = 0;             // 0 off, 1 even, 2 odd
     int my_tx_parity = 0;
     bool check_expect = true;
     bool wall_slots = false;    // live: stamp si from the wall clock
@@ -54,6 +53,10 @@ void scenario_begin(Scenario& s, const TestData& data);
 // One JSON period. False when the script is finished.
 bool scenario_step(Scenario& s);
 
+// A period with nothing scripted: the queue sends what it has, so a CQ called
+// after the script still goes out and counts its tries.
+bool scenario_idle_step(Scenario& s);
+
 // Slot state plus the active queue, and an IDLE row for any entry that left.
 // The live server calls this about once a second so the page's queue does
 // not go stale between periods.
@@ -69,10 +72,14 @@ void scenario_emit_usb(Scenario& s, bool present);
 void scenario_emit_sweep(Scenario& s, uint8_t kind, uint8_t range_index, uint32_t freq_hz, int swr_c,
                          uint8_t reason);
 
-void scenario_set_beacon(Scenario& s, int mode);
+// Call CQ on the slot it can still key (autoseq_cq_parity()), with the
+// station default's tries. False if a CQ is already queued.
+bool scenario_call_cq(Scenario& s);
+bool scenario_set_entry_tries(Scenario& s, uint16_t entry_id, int tries);
+bool scenario_set_cq_parity(Scenario& s, uint16_t entry_id, int parity);
 void scenario_set_station(Scenario& s, const std::string& call, const std::string& grid);
 void scenario_set_cq_type(Scenario& s, int type, const std::string& free_text);
-void scenario_set_max_retry(Scenario& s, int retry);
+void scenario_set_tries(Scenario& s, int tries);
 bool scenario_reply(Scenario& s, uint32_t decode_id);
 bool scenario_cancel_entry(Scenario& s, uint16_t entry_id);
 void scenario_cancel_tx(Scenario& s);

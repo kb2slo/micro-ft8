@@ -387,7 +387,7 @@ static void test_decode_event()
 }
 
 // QUEUE_ENTRY reports one autoseq context. entry_id is the load-bearing field:
-// it must survive independently of state/retry/dxcall, since QUEUE_CANCEL
+// it must survive independently of state/tries/dxcall, since QUEUE_CANCEL
 // addresses by this id rather than by list position (the queue re-sorts by
 // priority, so a position is not safe to cancel by).
 static void test_queue_entry_event()
@@ -400,8 +400,9 @@ static void test_queue_entry_event()
     in.epoch_secs = 1789012345u;
     in.entry_id = 4242;
     in.state = 1;            // REPLYING
-    in.retry_count = 2;
-    in.retry_limit = 5;
+    in.tries_sent = 2;
+    in.try_limit = 12;
+    in.flags = PORTA_QUEUE_ODD | PORTA_QUEUE_CUSTOM;
     std::snprintf(in.dxcall, sizeof(in.dxcall), "KB2SLO/P");  // exercise a portable suffix
 
     size_t n = porta_proto_encode_queue_entry(&in, buf, sizeof(buf));
@@ -412,7 +413,8 @@ static void test_queue_entry_event()
         check(porta_proto_parse_queue_entry(&got[0], &out), "queue_entry event parses");
         check(out.entry_id == 4242, "entry_id round-trips");
         check(out.state == 1, "state round-trips");
-        check(out.retry_count == 2 && out.retry_limit == 5, "retry counters round-trip");
+        check(out.tries_sent == 2 && out.try_limit == 12, "tries round-trip");
+        check(out.flags == (PORTA_QUEUE_ODD | PORTA_QUEUE_CUSTOM), "parity and custom round-trip");
         check(std::string(out.dxcall) == "KB2SLO/P", "dxcall with a portable suffix round-trips");
 
         porta_decode_event_t dec;
@@ -435,9 +437,9 @@ static void test_queue_entry_event()
     // rejected rather than read past the payload.
     porta_frame_t stub = {};
     stub.type = PORTA_MSG_EVENT;
-    stub.len = 11;  // fixed part only
+    stub.len = 12;  // fixed part only
     stub.payload[0] = PORTA_EVT_QUEUE_ENTRY;
-    stub.payload[10] = 5;  // claims a 5-byte dxcall that is not there
+    stub.payload[11] = 5;  // claims a 5-byte dxcall that is not there
     porta_queue_entry_event_t out;
     check(!porta_proto_parse_queue_entry(&stub, &out), "a truncated dxcall is rejected");
 }
@@ -451,7 +453,6 @@ static void test_slot_state_event()
     porta_slot_state_event_t in = {};
     in.epoch_secs = 1789012345u;
     in.slot_parity = 1;
-    in.beacon_mode = 2;  // ODD
     in.resolved_offset_hz = 1834;
 
     size_t n = porta_proto_encode_slot_state(&in, buf, sizeof(buf));
@@ -461,7 +462,6 @@ static void test_slot_state_event()
         porta_slot_state_event_t out;
         check(porta_proto_parse_slot_state(&got[0], &out), "slot_state event parses");
         check(out.slot_parity == 1, "slot_parity round-trips");
-        check(out.beacon_mode == 2, "beacon_mode round-trips");
         check(out.resolved_offset_hz == 1834, "resolved_offset_hz round-trips");
 
         porta_queue_entry_event_t qe;
@@ -697,32 +697,45 @@ static void test_action_factory_reset()
           "connect is not factory reset");
 }
 
-static void test_action_beacon()
+static void test_action_cq_tries_parity()
 {
     porta_decoder_t d;
     porta_decoder_init(&d);
     uint8_t buf[PORTA_PROTO_MAX_FRAME];
 
-    // Mode is BeaconMode's own wire value (0=OFF/1=EVEN/2=ODD) -- pin all
-    // three so a translation slip in either direction shows up here rather
-    // than as a beacon that starts on the wrong parity in the field.
-    for (uint8_t mode = 0; mode <= 2; ++mode) {
-        porta_decoder_init(&d);
-        size_t n = porta_proto_encode_beacon(mode, buf, sizeof(buf));
-        auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
-        check(got.size() == 1 && got[0].len == 2, "beacon is verb + mode");
-        if (got.size() == 1) {
-            uint8_t out = 99;
-            check(porta_proto_parse_beacon(&got[0], &out) && out == mode,
-                  "beacon mode round-trips");
-        }
+    size_t n = porta_proto_encode_cq_call(buf, sizeof(buf));
+    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1 && got[0].len == 1, "cq_call is the verb alone");
+    if (got.size() == 1) {
+        check(porta_proto_parse_cq_call(&got[0]), "cq_call parses");
+        check(!porta_proto_parse_tx_cancel(&got[0]), "cq_call is not tx_cancel");
+    }
+
+    // The two share a shape, so each must refuse the other's verb.
+    porta_decoder_init(&d);
+    n = porta_proto_encode_queue_tries(4242, 99, buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1 && got[0].len == 4, "queue_tries is verb + u16 entry_id + u8 tries");
+    if (got.size() == 1) {
+        uint16_t id = 0;
+        uint8_t tries = 0;
+        check(porta_proto_parse_queue_tries(&got[0], &id, &tries) && id == 4242 && tries == 99,
+              "queue_tries round-trips");
+        check(!porta_proto_parse_queue_parity(&got[0], nullptr, nullptr),
+              "queue_tries is not queue_parity");
+        check(!porta_proto_parse_cq_call(&got[0]), "queue_tries is not cq_call");
     }
 
     porta_decoder_init(&d);
-    size_t n = porta_proto_encode_beacon(1, buf, sizeof(buf));
-    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    n = porta_proto_encode_queue_parity(0xBEEF, 1, buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
     if (got.size() == 1) {
-        check(!porta_proto_parse_tune(&got[0], nullptr), "beacon is not tune");
+        uint16_t id = 0;
+        uint8_t parity = 0;
+        check(porta_proto_parse_queue_parity(&got[0], &id, &parity) && id == 0xBEEF && parity == 1,
+              "queue_parity round-trips");
+        check(!porta_proto_parse_queue_tries(&got[0], nullptr, nullptr),
+              "queue_parity is not queue_tries");
     }
 }
 
@@ -739,7 +752,8 @@ static void test_action_queue_cancel_and_reply()
         uint16_t id = 0;
         check(porta_proto_parse_queue_cancel(&got[0], &id) && id == 4242,
               "queue_cancel entry_id round-trips");
-        check(!porta_proto_parse_beacon(&got[0], nullptr), "queue_cancel is not beacon");
+        check(!porta_proto_parse_queue_tries(&got[0], nullptr, nullptr),
+              "queue_cancel is not queue_tries");
     }
 
     porta_decoder_init(&d);
@@ -1165,22 +1179,23 @@ static void test_event_json()
     q.epoch_secs = 1700000001;
     q.entry_id = 2;
     q.state = 1;
-    q.retry_count = 0;
-    q.retry_limit = 5;
+    q.tries_sent = 0;
+    q.try_limit = 6;
+    q.flags = PORTA_QUEUE_ODD;
     std::snprintf(q.dxcall, sizeof(q.dxcall), "N6HAN");
     check(porta_event_json_queue(row, sizeof(row), 4, &q) > 0, "queue row encodes");
     check_row(row,
-              "{\"s\":4,\"t\":1700000001,\"d\":2,\"eid\":2,\"st\":1,\"rc\":0,\"rl\":5,\"x\":\"N6HAN\"}",
+              "{\"s\":4,\"t\":1700000001,\"d\":2,\"eid\":2,\"st\":1,\"ts\":0,\"tl\":6,"
+              "\"p\":1,\"cu\":0,\"x\":\"N6HAN\"}",
               "queue row");
 
     porta_slot_state_event_t slot;
     std::memset(&slot, 0, sizeof(slot));
     slot.epoch_secs = 1700000002;
     slot.slot_parity = 1;
-    slot.beacon_mode = 1;
     slot.resolved_offset_hz = 1500;
     check(porta_event_json_slot(row, sizeof(row), 5, &slot) > 0, "slot row encodes");
-    check_row(row, "{\"s\":5,\"t\":1700000002,\"d\":3,\"sp\":1,\"bm\":1,\"hz\":1500}", "slot row");
+    check_row(row, "{\"s\":5,\"t\":1700000002,\"d\":3,\"sp\":1,\"hz\":1500}", "slot row");
 
     porta_tx_hud_event_t hud;
     std::memset(&hud, 0, sizeof(hud));
@@ -1573,7 +1588,7 @@ int main()
     test_action_tx_cancel();
     test_action_connect_and_tune();
     test_action_factory_reset();
-    test_action_beacon();
+    test_action_cq_tries_parity();
     test_action_queue_cancel_and_reply();
     test_action_file_delete();
     test_action_sweep_start();

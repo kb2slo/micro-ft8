@@ -64,15 +64,15 @@ void porta_emit_decode(uint32_t decode_id, const char* text, int snr, int offset
 // One autoseq queue row (I28d, docs/architecture/webapp.md (Screens)). `state` is the AutoseqState
 // wire value; IDLE (6) is the removal signal, not a separate flag -- callers
 // use it to tell a browser an entry is gone, same as the host side does.
-void porta_emit_queue_entry(uint16_t entry_id, uint8_t state, uint8_t retry_count,
-                            uint8_t retry_limit, const char* dxcall);
+// `flags` is PORTA_QUEUE_*.
+void porta_emit_queue_entry(uint16_t entry_id, uint8_t state, uint8_t tries_sent,
+                            uint8_t try_limit, uint8_t flags, const char* dxcall);
 
 // Global slot scalars, not any one queue entry's -- see porta_slot_state_event_t
 // in porta_proto.h. Emitted periodically (main.cpp), not on change: one
 // mechanism serves both "keep the browser current" and "give a freshly
 // loaded browser today's state" without a separate getter or diff logic.
-void porta_emit_slot_state(uint8_t slot_parity, uint8_t beacon_mode,
-                           uint16_t resolved_offset_hz);
+void porta_emit_slot_state(uint8_t slot_parity, uint16_t resolved_offset_hz);
 
 // Mirrors the on-device TX HUD banner (tx_hud_banner.h's TxHudBannerInput):
 // same raw fields, emitted periodically while the banner is visible
@@ -81,8 +81,8 @@ void porta_emit_slot_state(uint8_t slot_parity, uint8_t beacon_mode,
 // not a timeout the browser has to guess. power_w/swr are -1 for "not read
 // yet"; battery_pct is -1 if unavailable. offset_hz is what's actually going
 // on air (g_pending_tx.offset_hz), 0 if there is no pending TX -- distinct
-// from SLOT_STATE's resolved_offset_hz, which is only ever the next
-// beacon/CQ offset. `reason` is why `aborted` is true (e.g. "low battery",
+// from SLOT_STATE's resolved_offset_hz, which is the armed TX's, before it
+// goes on the air. `reason` is why `aborted` is true (e.g. "low battery",
 // from wherever the abort was actually triggered) -- empty when not aborted.
 // Sourced from the real abort site rather than assumed client-side, so a
 // future second abort reason shows up as itself instead of every abort

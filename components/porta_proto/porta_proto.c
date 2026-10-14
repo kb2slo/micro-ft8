@@ -297,8 +297,8 @@ bool porta_proto_parse_decode(const porta_frame_t *f, porta_decode_event_t *out)
     return true;
 }
 
-// subtype | epoch(4) | entry_id(2) | state | retry | retry_limit | dxcall_len | dxcall...
-#define QUEUE_ENTRY_FIXED_LEN (EVENT_HEADER_LEN + 2u + 1u + 1u + 1u + 1u)
+// subtype | epoch(4) | entry_id(2) | state | tries_sent | try_limit | flags | dxcall_len | dxcall...
+#define QUEUE_ENTRY_FIXED_LEN (EVENT_HEADER_LEN + 2u + 1u + 1u + 1u + 1u + 1u)
 
 size_t porta_proto_encode_queue_entry(const porta_queue_entry_event_t *q,
                                       uint8_t *out, size_t out_cap)
@@ -315,9 +315,10 @@ size_t porta_proto_encode_queue_entry(const porta_queue_entry_event_t *q,
     put_u32(&payload[1], q->epoch_secs);
     put_u16(&payload[5], q->entry_id);
     payload[7] = q->state;
-    payload[8] = q->retry_count;
-    payload[9] = q->retry_limit;
-    payload[10] = (uint8_t)call_n;
+    payload[8] = q->tries_sent;
+    payload[9] = q->try_limit;
+    payload[10] = q->flags;
+    payload[11] = (uint8_t)call_n;
     if (call_n > 0) {
         memcpy(&payload[QUEUE_ENTRY_FIXED_LEN], q->dxcall, call_n);
     }
@@ -331,7 +332,7 @@ bool porta_proto_parse_queue_entry(const porta_frame_t *f, porta_queue_entry_eve
         f->payload[0] != PORTA_EVT_QUEUE_ENTRY) {
         return false;
     }
-    const uint8_t call_n = f->payload[10];
+    const uint8_t call_n = f->payload[11];
     if ((size_t)QUEUE_ENTRY_FIXED_LEN + call_n > f->len || call_n > PORTA_CALLSIGN_MAX) {
         return false;
     }
@@ -339,15 +340,16 @@ bool porta_proto_parse_queue_entry(const porta_frame_t *f, porta_queue_entry_eve
     out->epoch_secs   = get_u32(&f->payload[1]);
     out->entry_id     = get_u16(&f->payload[5]);
     out->state        = f->payload[7];
-    out->retry_count  = f->payload[8];
-    out->retry_limit  = f->payload[9];
+    out->tries_sent   = f->payload[8];
+    out->try_limit    = f->payload[9];
+    out->flags        = f->payload[10];
     memcpy(out->dxcall, &f->payload[QUEUE_ENTRY_FIXED_LEN], call_n);
     out->dxcall[call_n] = '\0';
     return true;
 }
 
-// subtype | epoch(4) | slot_parity | beacon_mode | resolved_offset_hz(2)
-#define SLOT_STATE_LEN (EVENT_HEADER_LEN + 1u + 1u + 2u)
+// subtype | epoch(4) | slot_parity | resolved_offset_hz(2)
+#define SLOT_STATE_LEN (EVENT_HEADER_LEN + 1u + 2u)
 
 size_t porta_proto_encode_slot_state(const porta_slot_state_event_t *s,
                                      uint8_t *out, size_t out_cap)
@@ -359,8 +361,7 @@ size_t porta_proto_encode_slot_state(const porta_slot_state_event_t *s,
     payload[0] = PORTA_EVT_SLOT_STATE;
     put_u32(&payload[1], s->epoch_secs);
     payload[5] = s->slot_parity;
-    payload[6] = s->beacon_mode;
-    put_u16(&payload[7], s->resolved_offset_hz);
+    put_u16(&payload[6], s->resolved_offset_hz);
     return porta_proto_encode(PORTA_MSG_EVENT, payload, sizeof(payload), out, out_cap);
 }
 
@@ -372,8 +373,7 @@ bool porta_proto_parse_slot_state(const porta_frame_t *f, porta_slot_state_event
     }
     out->epoch_secs        = get_u32(&f->payload[1]);
     out->slot_parity       = f->payload[5];
-    out->beacon_mode       = f->payload[6];
-    out->resolved_offset_hz = get_u16(&f->payload[7]);
+    out->resolved_offset_hz = get_u16(&f->payload[6]);
     return true;
 }
 
@@ -600,22 +600,65 @@ bool porta_proto_parse_factory_reset(const porta_frame_t *f, uint8_t *flags_out)
     return true;
 }
 
-size_t porta_proto_encode_beacon(uint8_t mode, uint8_t *out, size_t out_cap)
+size_t porta_proto_encode_cq_call(uint8_t *out, size_t out_cap)
 {
-    uint8_t payload[2] = {PORTA_ACT_BEACON, mode};
-    return porta_proto_encode(PORTA_MSG_ACTION, payload, 2, out, out_cap);
+    const uint8_t payload[1] = {PORTA_ACT_CQ_CALL};
+    return porta_proto_encode(PORTA_MSG_ACTION, payload, 1, out, out_cap);
 }
 
-bool porta_proto_parse_beacon(const porta_frame_t *f, uint8_t *mode_out)
+bool porta_proto_parse_cq_call(const porta_frame_t *f)
 {
-    if (!f || f->type != PORTA_MSG_ACTION || f->len != 2 ||
-        f->payload[0] != PORTA_ACT_BEACON) {
+    return f && f->type == PORTA_MSG_ACTION && f->len == 1 && f->payload[0] == PORTA_ACT_CQ_CALL;
+}
+
+// verb | entry_id(2) | value: QUEUE_TRIES and QUEUE_PARITY share the shape.
+static size_t encode_entry_u8(uint8_t verb, uint16_t entry_id, uint8_t value,
+                              uint8_t *out, size_t out_cap)
+{
+    uint8_t payload[4];
+    payload[0] = verb;
+    put_u16(&payload[1], entry_id);
+    payload[3] = value;
+    return porta_proto_encode(PORTA_MSG_ACTION, payload, sizeof(payload), out, out_cap);
+}
+
+static bool parse_entry_u8(const porta_frame_t *f, uint8_t verb, uint16_t *entry_id_out,
+                           uint8_t *value_out)
+{
+    if (!f || f->type != PORTA_MSG_ACTION || f->len != 4 || f->payload[0] != verb) {
         return false;
     }
-    if (mode_out) {
-        *mode_out = f->payload[1];
+    if (entry_id_out) {
+        *entry_id_out = get_u16(&f->payload[1]);
+    }
+    if (value_out) {
+        *value_out = f->payload[3];
     }
     return true;
+}
+
+size_t porta_proto_encode_queue_tries(uint16_t entry_id, uint8_t tries,
+                                      uint8_t *out, size_t out_cap)
+{
+    return encode_entry_u8(PORTA_ACT_QUEUE_TRIES, entry_id, tries, out, out_cap);
+}
+
+bool porta_proto_parse_queue_tries(const porta_frame_t *f, uint16_t *entry_id_out,
+                                   uint8_t *tries_out)
+{
+    return parse_entry_u8(f, PORTA_ACT_QUEUE_TRIES, entry_id_out, tries_out);
+}
+
+size_t porta_proto_encode_queue_parity(uint16_t entry_id, uint8_t parity,
+                                       uint8_t *out, size_t out_cap)
+{
+    return encode_entry_u8(PORTA_ACT_QUEUE_PARITY, entry_id, parity, out, out_cap);
+}
+
+bool porta_proto_parse_queue_parity(const porta_frame_t *f, uint16_t *entry_id_out,
+                                    uint8_t *parity_out)
+{
+    return parse_entry_u8(f, PORTA_ACT_QUEUE_PARITY, entry_id_out, parity_out);
 }
 
 size_t porta_proto_encode_queue_cancel(uint16_t entry_id, uint8_t *out, size_t out_cap)

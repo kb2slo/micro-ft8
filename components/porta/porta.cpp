@@ -30,9 +30,12 @@ const char* porta_host_config_set(const char* key, const char* value);
 // STATUS → 2 / → 4 equivalents for the companion.
 const char* porta_host_connect(void);
 const char* porta_host_tune(bool on);
-// STATUS key-1's three-way cycle, applied immediately rather than staged.
-const char* porta_host_beacon(uint8_t mode);
-// active: cancel TX, beacon off, clear the queue, and key Tune when asked.
+// Call CQ, and change a queued entry's tries or the CQ's parity
+// (docs/architecture/autoseq.md, Tries).
+const char* porta_host_cq_call(void);
+const char* porta_host_queue_tries(uint16_t entry_id, uint8_t tries);
+const char* porta_host_queue_parity(uint16_t entry_id, uint8_t parity);
+// active: cancel TX, clear the queue (the CQ with it), and key Tune when asked.
 // !active: unkey Tune if this test turned it on.
 void porta_host_link_test(bool active, bool tune);
 // Cancel/reply by the stable ids QUEUE_ENTRY and EVENT DECODE hand out.
@@ -538,7 +541,7 @@ void handle_action(const porta_frame_t& f) {
   if (testing) {
     switch (verb) {
     case PORTA_ACT_TUNE:
-    case PORTA_ACT_BEACON:
+    case PORTA_ACT_CQ_CALL:
     case PORTA_ACT_QUEUE_REPLY:
     case PORTA_ACT_SWEEP_START:
     case PORTA_ACT_FACTORY_RESET:
@@ -601,13 +604,32 @@ void handle_action(const porta_frame_t& f) {
     }
     return;
   }
-  case PORTA_ACT_BEACON: {
-    uint8_t mode = 0;
-    if (!porta_proto_parse_beacon(&f, &mode)) {
+  case PORTA_ACT_CQ_CALL: {
+    if (!porta_proto_parse_cq_call(&f)) {
       enqueue(buf, porta_proto_encode_nak(verb, "malformed", buf, sizeof(buf)));
       return;
     }
-    const char* why = porta_host_beacon(mode);
+    const char* why = porta_host_cq_call();
+    if (why) {
+      enqueue(buf, porta_proto_encode_nak(verb, why, buf, sizeof(buf)));
+    } else {
+      enqueue(buf, porta_proto_encode_ack(verb, buf, sizeof(buf)));
+    }
+    return;
+  }
+  case PORTA_ACT_QUEUE_TRIES:
+  case PORTA_ACT_QUEUE_PARITY: {
+    uint16_t entry_id = 0;
+    uint8_t value = 0;
+    const bool tries = verb == PORTA_ACT_QUEUE_TRIES;
+    const bool ok = tries ? porta_proto_parse_queue_tries(&f, &entry_id, &value)
+                          : porta_proto_parse_queue_parity(&f, &entry_id, &value);
+    if (!ok) {
+      enqueue(buf, porta_proto_encode_nak(verb, "malformed", buf, sizeof(buf)));
+      return;
+    }
+    const char* why = tries ? porta_host_queue_tries(entry_id, value)
+                            : porta_host_queue_parity(entry_id, value);
     if (why) {
       enqueue(buf, porta_proto_encode_nak(verb, why, buf, sizeof(buf)));
     } else {
@@ -908,15 +930,16 @@ void porta_emit_decode(uint32_t decode_id, const char* text, int snr, int offset
   enqueue(buf, n);
 }
 
-void porta_emit_queue_entry(uint16_t entry_id, uint8_t state, uint8_t retry_count,
-                            uint8_t retry_limit, const char* dxcall) {
+void porta_emit_queue_entry(uint16_t entry_id, uint8_t state, uint8_t tries_sent,
+                            uint8_t try_limit, uint8_t flags, const char* dxcall) {
   if (!s_running) return;
   porta_queue_entry_event_t q = {};
   q.epoch_secs = host_epoch_secs();
   q.entry_id = entry_id;
   q.state = state;
-  q.retry_count = retry_count;
-  q.retry_limit = retry_limit;
+  q.tries_sent = tries_sent;
+  q.try_limit = try_limit;
+  q.flags = flags;
   if (dxcall) {
     strncpy(q.dxcall, dxcall, sizeof(q.dxcall) - 1);
   }
@@ -925,13 +948,11 @@ void porta_emit_queue_entry(uint16_t entry_id, uint8_t state, uint8_t retry_coun
   enqueue(buf, n);
 }
 
-void porta_emit_slot_state(uint8_t slot_parity, uint8_t beacon_mode,
-                           uint16_t resolved_offset_hz) {
+void porta_emit_slot_state(uint8_t slot_parity, uint16_t resolved_offset_hz) {
   if (!s_running) return;
   porta_slot_state_event_t s = {};
   s.epoch_secs = host_epoch_secs();
   s.slot_parity = slot_parity;
-  s.beacon_mode = beacon_mode;
   s.resolved_offset_hz = resolved_offset_hz;
   uint8_t buf[PORTA_PROTO_MAX_FRAME];
   const size_t n = porta_proto_encode_slot_state(&s, buf, sizeof(buf));
