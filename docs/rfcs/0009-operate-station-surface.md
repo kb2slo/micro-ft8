@@ -1,6 +1,6 @@
 # RFC 0009: Operate — one station surface, home or activation
 
-* **Status:** Accepted 2026-09-27. Decisions: §7. Build order and the O1 build notes: §6. **Amended 2026-10-02:** the ADV was dropped (row za6n). Where this RFC discusses the ADV, its measurements, its screens or its `ADV-only` work, it is history and no longer applies.
+* **Status:** Accepted 2026-09-27. Decisions: §7. Slices and their rows: §6.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:**
   - the Operate view's layout, and a CQ row in the queue;
@@ -10,7 +10,7 @@
   - decode sort and filter, reply feedback, and per-QSO retries;
   - how an activation ([RFC 0008](0008-activator-mode.md)) appears with no separate flow;
   - auto-reply, as a later phase.
-* **Does not cover:** the activation's data, store, log and export (RFC 0008); the QSOs and Tools tabs; the ADV's own screens (RFC 0008 §9: no ADV activator UI).
+* **Does not cover:** the activation's data, store, log and export (RFC 0008); the QSOs and Tools tabs.
 * **Mockups** (both private to the operator):
   - **"Operate Dock Options"** (https://claude.ai/artifact/HazeSpixV3UbDfUJDKqzGD). Its **chosen** page is this design; its **Explored** page keeps the rejected dock variants.
   - **"Operate Redesign"** (https://claude.ai/artifact/GsMDrsrNLEtnUC7aVNxptF), the first pass. It is still the reference for decode sort and filter, reply feedback, per-QSO retries, the radio chip and the TX HUD states, drawn in the rejected A/B/C chrome.
@@ -33,41 +33,27 @@ Stated by the operator, 2026-09-26 and 2026-09-27:
 
 ## 2. What exists
 
-Each fact is from the code at `3777f3c` plus the working-tree fix in §2.1.
+What the unbuilt slices start from, checked against the code on 2026-10-14. Operate as O1 left it (the status header, the queue and its CQ row, decodes, the dock): [webapp.md](../architecture/webapp.md), **Screens**.
 
-* **Operate** (`webapp/app/app.html:363`), top to bottom:
-  - the slot bar;
-  - CAT, Audio and Link dots, with the decode rate;
-  - a Connect and Tune row;
-  - a beacon row (label "Beacon: <CQ type>" and an Off/Even/Odd select);
-  - band select, with the next TX offset;
-  - the TX HUD;
-  - the queue, including a CQ / CALLING entry with its own ×;
-  - decodes, grouped by slot, newest first.
-* **What the operator is sending is scattered.** Call, grid, CQ type, retries and TX offset are in Settings (`FIELDS`, `app.html:647`). The CQ type shows on Operate only as the beacon label.
-* **Connect.**
-  - **P4:** `porta_host_connect()` only pushes the band to the VFO (`poe_p4/main/porta_host.cpp:411`). USB host starts at boot, and the main loop already re-syncs the VFO whenever CAT opens (`poe_p4/main/main.cpp:79`). So on the P4, Connect is a manual retune and nothing else.
-  - **ADV:** `begin_usb_host_mode()` starts RX audio and syncs CAT (`main/main.cpp:4188`).
+* **Connect** (`porta_host_connect()`) only pushes the band to the VFO. USB host starts at boot, and the main loop already re-syncs the VFO whenever CAT opens (`poe_p4/main/main.cpp`), so Connect is a manual retune and nothing else.
 * **Attach and detach are already pushed.** `USB_STATUS` events reach the browser (`applyEvent`, `e.d === 5`) but only drive a banner.
-* **Reply.** The button posts `/api/queue/reply` and does not change. The queue row appears only when a `QUEUE_ENTRY` event is polled, which the P4 emits once a second (`porta_host.cpp:226`), plus the browser's poll interval. A "Queueing…" message line is the only feedback.
+* **Reply.** The button posts `/api/queue/reply` and does not change. The queue row appears only when a `QUEUE_ENTRY` event is polled, which the P4 emits once a second (`porta_p4_companion_status_tick()`), plus the browser's poll interval. A "Queueing…" message line is the only feedback.
 * **The map** (`map.html`):
-  - It loads POTA parks per country and SOTA summits per region while online, into memory only.
-  - Parks and summits draw identically (hollow green circles), at most 40 spread evenly across the view.
+  - It loads POTA parks per program and SOTA summits per region while online, into memory only.
+  - Parks and summits draw identically, at most 40 spread evenly across the view.
   - A tap opens a popup with name, reference, distance and a link to the official page.
-  - Deep links: `?grid=` and `?lat=&lon=`.
-* **Contrast.** CQ decode text is `#00c800` on white (`--good-hot`), about 2.3:1, which fails WCAG's 4.5:1. Fixed in O1a ([webapp.md](../architecture/webapp.md), **The CQ row**).
-* **The P4 transmits "silently" when CAT is down.** If `radio_control_ready()` is false when a slot starts, `tx_start()` still marks TX active and runs the whole slot without keying the radio (`poe_p4/main/tx_scheduler.cpp:217`, `:245`). At the end it calls `autoseq_mark_sent()` (`:283`), so the try is counted and the HUD shows "Transmitting" with no power reading. The ADV has not been checked. Row `t7xf`.
+  - Deep links: `?grid=`, `?lat=&lon=` and `?layer=psk`.
+* **The P4 transmits "silently" when CAT is down.** If `radio_control_ready()` is false when a slot starts, `tx_start()` still marks TX active and runs the whole slot without keying the radio (`poe_p4/main/tx_scheduler.cpp`). At the end it calls `autoseq_mark_sent()`, so the try is counted and the HUD shows "Transmitting" with no power reading. Row `t7xf`.
 
 ### 2.1 Settings writes, fixed with this draft
 
-Found while tracing the operator's retries report (5 changed to 8, a new reply still showing `/5`). The fix ships in its own commit, and its field check is in [TEST_PLAN.md](../TEST_PLAN.md) Pending.
+Found while tracing the operator's retries report (5 changed to 8, a new reply still showing `/5`); the fix shipped in `5b69795`.
 
 * **The sidekick's `PUT /api/config` stopped at the first key the host refused.**
   - The web app saves every field at once, `band_sel` comes before `autoseq_max_retry`, and the P4 refuses `band_sel` whenever the VFO cannot move ("band saved, VFO not moved (TX active)").
   - So a save made mid-QSO dropped every later key, and the form still showed the typed value.
   - The sidekick now applies every line and reports the first refusal; the web app reloads the form after a failed save.
-  - This was the cause of the report: on the P4 bench (2026-09-28) a save made during TX applied the new limit, and the next QSO used it. The ADV half is still owed in [TEST_PLAN.md](../TEST_PLAN.md) Pending.
-* **The ADV's `porta_host_config_set()` never pushed call, grid, CQ type or retries into autoseq** until a reboot. `sync_autoseq_from_globals()` now runs on every config write. The P4 already did this.
+  - This was the cause of the report: on the P4 bench (2026-09-28) a save made during TX applied the new limit, and the next QSO used it.
 
 ## 3. Design
 
@@ -140,15 +126,14 @@ The radio chip shows one of five states (Redesign canvas: `Radio status`, and th
   - **Unknown USB:** the VID/PID, and which radios are supported.
   - **Lost:** when CAT stopped answering, and **Retry now**. TX is not keyed until CAT answers, and a slot that cannot be keyed is skipped, not counted (row `t7xf`).
 * **Not in the panel:** choosing the radio model. It stays in Settings, and the P4 ignores it today (row `cgc4`).
-* **The ADV** needs `begin_usb_host_mode()` on attach instead of on a key. That is an `ADV-only` detail, and whether it is worth doing waits on row `za6n`.
 
 ### 3.8 Decode sort and filter
 
 Redesign canvas: `Decode sort and filter`, interactive. On Operate the controls sit in the Decodes header.
 
-* **Sort:** Newest (today's order), Strongest (SNR), Nearest (distance). A decode with no known grid sorts after those with one.
+* **Sort:** Default (today's order: decodes to us, then replyable lines with CQs strongest first, then the rest, then stations recently worked), Strongest (SNR), Nearest (distance). A decode with no known grid sorts after those with one.
 * **Sorting applies within each slot, and slots stay newest first** (decided 2026-09-27). The 15 s rhythm stays visible, and replies go to the newest slot anyway.
-* **Show only:** CQ, New, POTA / SOTA, under a distance. Filters combine.
+* **Show only:** CQ, POTA / SOTA (`CQ POTA`, `CQ SOTA`), under a distance (a decode with no known grid fails it). Filters combine. **New** waits on row `xv23`: the app knows only the log it has loaded.
 * **Messages addressed to the operator always stay on top**, and are never filtered out.
 * **The choice is remembered per browser** (`localStorage`: a per-viewer convenience).
 
@@ -201,7 +186,7 @@ Redesign canvas: `Per-QSO retries`, interactive.
   - **The range is 1–20** (decided 2026-09-27). Raising the count on a parked entry does not revive it; reviving is a separate action.
 * **Mechanics:**
   - `QsoContext` gains an override, with 0 meaning "follow the default". `set_state()` uses the override when set.
-  - `autoseq_set_max_retry()` skips overridden entries, which also keeps the ADV's sync on every config write (§2.1) from clobbering them.
+  - `autoseq_set_max_retry()` skips overridden entries, so the autoseq sync on every config write (§2.1) cannot clobber them.
   - Lowering the count to the tries already sent, or below, ends the step after the current try (the clamp at `autoseq.cpp:727`). The stepper warns first.
 * **Wire:**
   - A new Port A request carrying `entry_id` and the limit, behind a token-guarded `POST /api/queue/retry`.
@@ -213,11 +198,9 @@ Redesign canvas: `Per-QSO retries`, interactive.
 
 Dock Options canvas: the chosen page's transmitting board. Redesign canvas: `TX HUD states`, interactive.
 
-* **Today** (`renderTxHud()`, `app.html:1818`):
-  - A red band under the header: "Transmitting", the message, then power and SWR (both boards poll the QMX), battery (the ADV only; the P4 sends -1), and **Cancel TX**.
-  - An abort (the ADV's low battery) turns it amber with the reason.
-  - On the ADV, "WRITE BLOCKED" replaces the meter when the battery is too low to write storage.
-  - Tune shows as `TUNE` (`porta_host.cpp:303`).
+* **Today** (`renderTxHud()`):
+  - A red band under the header: "Transmitting", the message, then power and SWR (polled from the QMX), and **Cancel TX**.
+  - Tune shows as `TUNE`.
   - Events arrive every 500 ms while active.
 * **It is a red band added on top of the dock.** Nothing below it moves, so band, frequency and the CQ row stay reachable while a message is on the air. The status strip's slot bar turns red for our slot.
 * **Added to what shows today:**
@@ -225,9 +208,7 @@ Dock Options canvas: the chosen page's transmitting board. Redesign canvas: `TX 
   - A progress bar and the time left, from the slot clock the browser already runs.
   - For Tune, large power and SWR readings.
   - **Stop CQ / Stop TX**, shipped with O1a ([webapp.md](../architecture/webapp.md), **The CQ row**).
-* **New states:**
-  - **Not keyed:** CAT was not ready when the slot started. The message is struck through and "not counted" is shown (row `t7xf`).
-  - **Log blocked** replaces "WRITE BLOCKED" with what it means: QSOs completed now will not be saved.
+* **New state, Not keyed:** CAT was not ready when the slot started. The message is struck through and "not counted" is shown (row `t7xf`).
 
 ### 3.13 Reply feedback
 
@@ -268,7 +249,7 @@ O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); th
 * **O1b: the dock**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The dock**).
 * **O1c: the Station sheet**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The Station sheet**).
 * **O2: radio status replaces Connect, the read-back, and the TX HUD** (§3.7, §3.12).
-  - Web app; the `IF;` read-back operation, its parser test and its Port A message; the ADV's attach-time host start (`ADV-only`).
+  - Web app; the `IF;` read-back operation, its parser test and its Port A message.
   - **An attach event before CDC opens.** The P4 sends `USB_STATUS` attach only once CDC opens (`poe_p4/main/qmx_transport.cpp`, `try_open()`), about 11 s after plug-in (a QMX-side delay, measured 2026-09-20), so today Found never shows and the wait reads as a hang. Found starts when the host core first sees the device (`cdc_new_dev_cb()`), not when `try_open()` starts polling: it polls about once a second whenever nothing is attached.
   - **Field check:** unplug and replug the QMX. The chip walks No radio, Found, Ready, Found showing within a second or two of plug-in, and the VFO lands on the selected band with nothing pressed. Then Tune from the chip's panel shows power and SWR there and in the HUD, and Stop in the HUD ends it.
 * **O3: reply feedback** (§3.13). Web app only.
@@ -305,5 +286,6 @@ O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); th
 
 * O2 includes the attach event before CDC opens that the Found state needs (§6).
 * O4's CQ filter is the community's CQ-only ask (§3.8).
+* **Decode sort and filter** (§3.8): the default sort is named Default, since within a slot every decode has the same time and "Newest" sorted nothing; New waits on row `xv23`; POTA / SOTA means `CQ POTA` and `CQ SOTA` calls; a decode with no grid fails the distance filter.
 * **CQ is a queue entry with a try budget** (row `qfrr`). Call CQ queues a CQ with N tries; each CQ sent uses one, an answer gives none back, and at zero it ends. Every queue entry's count can be changed in place. The beacon mode, O5 and O6 as designed in §3.6 and §3.11 are replaced; both sections are rewritten before the row is built.
 * **Call CQ picks its parity each time:** the active QSO's parity if there is one, otherwise the next slot it can still key. The CQ row shows it, and a tap flips it for that CQ, for a strong station nearby; SOTA spotting also wants the parity (RFC 0008 §3). Row `qfrr`.
