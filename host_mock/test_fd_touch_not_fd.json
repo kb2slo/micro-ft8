@@ -1,0 +1,69 @@
+{
+  "config": {
+    "MY_CALLSIGN": "AG6AQ",
+    "MY_GRID": "CM97",
+    "DX_CALLSIGN": "W6ABC",
+    "DX_GRID": "CM88",
+    "TX_ON_EVEN": true,
+    "CQ_TYPE": "CQ",
+    "FREE_TEXT": "1A SCV"
+  },
+  "periods": [
+    {
+      "comment": "Period 0 (even): idle; our CQ type is plain CQ, with an FD exchange left in free_text",
+      "messages": [],
+      "expect": {
+        "tx": ""
+      }
+    },
+    {
+      "comment": "Period 1 (odd): DX sends CQ FD — we touch it; not in FD mode, so an ordinary reply with our grid, as WSJT-X sends outside Field Day mode",
+      "messages": [
+        {
+          "call_to": "CQ FD",
+          "call_from": "${DX_CALLSIGN}",
+          "locator": "${DX_GRID}",
+          "snr": -8,
+          "slot": 1,
+          "freq_hz": 1200
+        }
+      ],
+      "touch_event": {
+        "time_offset": 14.0,
+        "message_index": 0
+      },
+      "expect": {
+        "tx": "W6ABC AG6AQ CM97"
+      }
+    },
+    {
+      "comment": "Period 2 (even): we send TX1 (grid)",
+      "messages": [],
+      "expect": {
+        "tx": "W6ABC AG6AQ CM97"
+      }
+    },
+    {
+      "comment": "Period 3 (odd): DX, in Field Day mode, answers with its exchange; we answer with R and a report, never our exchange",
+      "messages": [
+        {
+          "call_to": "${MY_CALLSIGN}",
+          "call_from": "${DX_CALLSIGN}",
+          "locator": "2A ORG",
+          "snr": -6,
+          "slot": 1
+        }
+      ],
+      "expect": {
+        "tx": "W6ABC AG6AQ R-8"
+      }
+    },
+    {
+      "comment": "Period 4 (even): we send R-8 (TX3)",
+      "messages": [],
+      "expect": {
+        "tx": "W6ABC AG6AQ R-8"
+      }
+    }
+  ]
+}

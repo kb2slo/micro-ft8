@@ -489,14 +489,14 @@ AutoseqTouchResult autoseq_on_touch(const UiRxLine& msg, bool hold_queue_head) {
     ctx->offset_hz = msg.offset_hz;
     ctx->slot_id = msg.slot_id ^ 1;
 
-    {
-        std::string f1 = msg.field1;
-        for (auto& ch : f1) ch = toupper((unsigned char)ch);
-        ctx->is_fd = (f1 == "FD" || f1 == "CQ FD" || f1.rfind("CQ FD", 0) == 0);
-    }
+    // Field Day is the station's mode, as WSJT-X's "Special operating activity" is:
+    // with our CQ type FD every contact carries the exchange and opens with it,
+    // never with a grid; otherwise a tapped CQ FD gets an ordinary reply.
+    ctx->is_fd = (s_cq_type == AutoseqCqType::FD);
+    const bool open_with_tx2 = s_skip_tx1 || ctx->is_fd;
 
-    set_state(ctx, s_skip_tx1 ? AutoseqState::REPORT : AutoseqState::REPLYING,
-              s_skip_tx1 ? TxMsgType::TX2 : TxMsgType::TX1, s_max_retry);
+    set_state(ctx, open_with_tx2 ? AutoseqState::REPORT : AutoseqState::REPLYING,
+              open_with_tx2 ? TxMsgType::TX2 : TxMsgType::TX1, s_max_retry);
     sort_and_clean();
     for (int i = 0; i < s_active_count; ++i) {
         if (same_dxcall(s_queue[i].dxcall, dxcall) && !s_queue[i].is_freetext) {
@@ -1078,23 +1078,8 @@ static bool generate_response(QsoContext* ctx, const UiRxLine& msg, bool overrid
         ctx->offset_hz = msg.offset_hz;
         ctx->slot_id = msg.slot_id ^ 1;  // TX on opposite slot
 
-        // Determine if this is a Field Day QSO
-        {
-            std::string f1 = msg.field1;
-            for (auto& ch : f1) ch = toupper((unsigned char)ch);
-            // Accept "CQ FD" in field1 (touch on CQ FD message)
-            if (f1 == "CQ FD" || f1 == "CQFD" || (f1.rfind("CQ FD", 0) == 0)) {
-                ctx->is_fd = true;
-            }
-            // Also mark as FD when we're in FD mode and received a valid FD exchange
-            // (handles DX replying to our CQ FD — field1 is our callsign, not "CQ FD")
-            else if (s_cq_type == AutoseqCqType::FD) {
-                std::string norm;
-                if (parse_fd_exchange(msg.field3, norm)) {
-                    ctx->is_fd = true;
-                }
-            }
-        }
+        // Field Day follows our CQ type, not what DX sent (see the touch path above).
+        ctx->is_fd = (s_cq_type == AutoseqCqType::FD);
 
         // Reset state based on received message type
         switch (rcvd) {

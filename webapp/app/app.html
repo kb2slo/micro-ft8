@@ -895,10 +895,7 @@ var stationSheetMsg = document.getElementById('stationSheetMsg');
 // (setStationSheetForm()'s onchange handlers), so Settings' own Save must
 // never resend them -- formBody() only walks FIELDS, so removing them here is
 // what stops Save from overwriting a sheet write with a stale value (RFC 0009
-// §2.1). cq_ft leaves the web app outright: it never reaches the air on
-// the main board (poe_p4/main/porta_host.cpp sends free_text
-// instead); row sfwz retires it from the rest of the firmware
-// later.
+// §2.1).
 var FIELDS = [
   'call','comment1','ignore_prefixes',
   'radio','protocol_mode','skiptx1','rxtx_log'

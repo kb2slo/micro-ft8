@@ -17,7 +17,7 @@
       }
     },
     {
-      "comment": "Period 1 (odd): DX sends CQ FD — we touch to reply",
+      "comment": "Period 1 (odd): DX sends CQ FD — we touch to reply with our exchange",
       "messages": [
         {
           "call_to": "CQ FD",
@@ -33,14 +33,14 @@
         "message_index": 0
       },
       "expect": {
-        "tx": "W6ABC AG6AQ CM97"
+        "tx": "W6ABC AG6AQ 1A SCV"
       }
     },
     {
-      "comment": "Period 2 (even): we send TX1 (grid) to DX",
+      "comment": "Period 2 (even): we send our exchange (TX2): in FD mode, as in WSJT-X, a reply opens with it, never a grid",
       "messages": [],
       "expect": {
-        "tx": "W6ABC AG6AQ CM97"
+        "tx": "W6ABC AG6AQ 1A SCV"
       }
     },
     {

@@ -62,10 +62,9 @@ static void sync_autoseq_station(void) {
     if (s_station.cq_type >= 0 && s_station.cq_type <= 5) {
         cq = (AutoseqCqType)s_station.cq_type;
     }
-    const std::string &ft =
-        (cq == AutoseqCqType::FREETEXT || cq == AutoseqCqType::FD) ? s_station.free_text
-                                                                  : s_station.cq_freetext;
-    autoseq_set_cq_type(cq, ft);
+    // free_text is the Free text CQ's message and, with type FD, our Field Day
+    // exchange (docs/architecture/autoseq.md, Field Day follows the CQ type).
+    autoseq_set_cq_type(cq, s_station.free_text);
 }
 
 static void station_seed_adv_defaults(void) {
@@ -77,7 +76,6 @@ static void station_seed_adv_defaults(void) {
     s_station.offset_hz = 1500;
     s_station.band_sel = 1;  // 80m
     s_station.cq_type = 0;
-    s_station.cq_freetext = "FreeText";
     s_station.skip_tx1 = false;
     s_station.free_text = "CQ DX";
     s_station.call = "YOURCALL";
@@ -493,7 +491,7 @@ const char *porta_host_config_set(const char *key, const char *value) {
 
     if (strcmp(key, "call") == 0 || strcmp(key, "grid") == 0 || strcmp(key, "skiptx1") == 0 ||
         strcmp(key, "autoseq_max_retry") == 0 || strcmp(key, "cq_type") == 0 ||
-        strcmp(key, "cq_ft") == 0 || strcmp(key, "free_text") == 0 ||
+        strcmp(key, "free_text") == 0 ||
         strcmp(key, "act_refs") == 0) {
         sync_autoseq_station();
     }

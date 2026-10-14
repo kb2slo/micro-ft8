@@ -16,7 +16,6 @@ struct StationSettings {
     int offset_hz;
     int band_sel;
     int cq_type;
-    std::string cq_freetext;
     bool skip_tx1;
     std::string free_text;
     std::string call;

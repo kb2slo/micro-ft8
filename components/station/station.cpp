@@ -187,7 +187,6 @@ enum class StationKey {
     OffsetSrc,
     Radio,
     GpsBaud,
-    CqFt,
     FreeText,
     Call,
     Grid,
@@ -212,7 +211,6 @@ StationKey key_from_name(const std::string& name)
     if (name == "offset_src") return StationKey::OffsetSrc;
     if (name == "radio") return StationKey::Radio;
     if (name == "gps_baud") return StationKey::GpsBaud;
-    if (name == "cq_ft") return StationKey::CqFt;
     if (name == "free_text") return StationKey::FreeText;
     if (name == "call") return StationKey::Call;
     if (name == "grid") return StationKey::Grid;
@@ -266,9 +264,6 @@ void apply_key(StationSettings* io, StationKey key, const std::string& value)
             if (sscanf(value.c_str(), "%d", &val) == 1) {
                 io->gps_baud = normalize_gps_baud(val);
             }
-            break;
-        case StationKey::CqFt:
-            io->cq_freetext = trim_upper_copy(value);
             break;
         case StationKey::FreeText:
             io->free_text = trim_upper_copy(value);
@@ -406,7 +401,6 @@ std::string station_serialize(const StationSettings& in)
     out << "offset=" << in.offset_hz << "\n";
     out << "band_sel=" << in.band_sel << "\n";
     out << "cq_type=" << in.cq_type << "\n";
-    out << "cq_ft=" << in.cq_freetext << "\n";
     out << "skiptx1=" << (in.skip_tx1 ? 1 : 0) << "\n";
     out << "free_text=" << in.free_text << "\n";
     out << "call=" << in.call << "\n";

@@ -68,6 +68,7 @@ Shipped code that has never run on hardware, with no check scheduled. Listed so 
 proven, and not counted as owed. Move one into the table when a check is planned.
 
 - **QDX.** The P4 has never run against one; the operator has no QDX. The site's QDX mentions are untested.
+- **Field Day follows the CQ type** (2026-10-14; [autoseq.md](architecture/autoseq.md)). Host scenarios pin the sequences; no Field Day station is on the air to work until Winter Field Day (January) or ARRL Field Day (June).
 - **Port A v2, a slot retuned partway through** (decodes from one slot under two headers, the same time, each
   under the frequency it was heard on). Not reproduced on the bench (2026-09-28, several tries): a decode lands
   on the new band only if the switch comes within a second or two of the slot start and the station is strong,
