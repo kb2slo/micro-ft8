@@ -43,7 +43,6 @@ What the unbuilt slices start from, checked against the code on 2026-10-14. Oper
   - Parks and summits draw identically, at most 40 spread evenly across the view.
   - A tap opens a popup with name, reference, distance and a link to the official page.
   - Deep links: `?grid=`, `?lat=&lon=` and `?layer=psk`.
-* **The P4 transmits "silently" when CAT is down.** If `radio_control_ready()` is false when a slot starts, `tx_start()` still marks TX active and runs the whole slot without keying the radio (`poe_p4/main/tx_scheduler.cpp`). At the end it calls `autoseq_mark_sent()`, so the try is counted and the HUD shows "Transmitting" with no power reading. Row `t7xf`.
 
 ### 2.1 Settings writes, fixed with this draft
 
@@ -124,7 +123,7 @@ The radio chip shows one of five states (Redesign canvas: `Radio status`, and th
   - **Found:** a checklist of USB, CAT, audio and VFO, with nothing to press.
   - **No radio:** where to plug in, and that a charge-only cable shows nothing.
   - **Unknown USB:** the VID/PID, and which radios are supported.
-  - **Lost:** when CAT stopped answering, and **Retry now**. TX is not keyed until CAT answers, and a slot that cannot be keyed is skipped, not counted (row `t7xf`).
+  - **Lost:** when CAT stopped answering, and **Retry now**. TX is not keyed until CAT answers, and a slot that cannot be keyed is skipped, not counted ([autoseq.md](../architecture/autoseq.md), **The slot cycle**).
 * **Not in the panel:** choosing the radio model. It stays in Settings, and the P4 ignores it today (row `cgc4`).
 
 ### 3.8 Decode sort and filter
@@ -208,7 +207,7 @@ Dock Options canvas: the chosen page's transmitting board. Redesign canvas: `TX 
   - A progress bar and the time left, from the slot clock the browser already runs.
   - For Tune, large power and SWR readings.
   - **Stop CQ / Stop TX**, shipped with O1a ([webapp.md](../architecture/webapp.md), **The CQ row**).
-* **New state, Not keyed:** CAT was not ready when the slot started. The message is struck through and "not counted" is shown (row `t7xf`).
+* **New state, Not keyed:** CAT was not ready when the slot started. The message is struck through and "not counted" is shown. The P4 already skips and does not count the slot ([autoseq.md](../architecture/autoseq.md), **The slot cycle**); the state needs a Port A event, which is row ybav's.
 
 ### 3.13 Reply feedback
 

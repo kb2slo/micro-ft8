@@ -79,9 +79,18 @@ Each board runs `check_slot_boundary()` on every pass of its main loop. It does 
    * the slot is under 4/15 elapsed (4 s for FT8, 2 s for FT4);
    * no TX is on the air and no decode is running;
    * **the previous slot's decode has been applied** (`decode_applied_slot_idx >= slot_idx − 1`);
-   * the slot is not the one a TX cancel landed in.
+   * the slot is not the one a TX cancel landed in, and not one `tx_start()` skipped (below).
 
    Just before the trigger, `autoseq_head_changed_or_refresh()` checks the armed TX against `autoseq_head_entry_id()`. A different entry (any queue change that did not re-arm, such as a Port A `QUEUE_CANCEL` between the decode and the slot) discards the armed TX and re-arms from the queue. The *same* entry gets its snapshot's text re-copied from the live `s_tx_msg_buffer` in place, rather than trusting what was armed — `autoseq_set_cq_type()` re-renders a queued CQ's text without changing its `entry_id`, so a `cq_type` switch made after this slot armed (RFC 0008 §4.4, found 2026-09-28) still lands in it instead of keying the stale text. The check waits while a decode runs, since the decode mutates the queue on the other core.
+
+   **A slot that cannot be keyed is skipped, not counted** (`tx_start()` returns `Skipped`). That is: `radio_control_ready()` is false, `radio_control_begin_tx()` fails, the CPFSK start fails with anything but `ESP_ERR_NOT_SUPPORTED`, or an SWR sweep has the radio. `tx_start()` keys the radio before it calls `autoseq_on_tx_starting()`, so a skipped slot:
+   * records no entry as transmitting and logs no QSO, so an RR73 that never went out is not logged;
+   * sets no `was_txing`, so no tick runs and no retry is charged;
+   * writes no `T` line and never marks TX active, so nothing reads "Transmitting";
+   * leaves the TX armed, so the entry goes out in its next slot once the radio answers;
+   * is not tried again in that slot (`s_tx_skip_slot_idx`), and writes one `TX slot <n> skipped, not counted: <reason>` line to the console and the sidekick's log.
+
+   An encode failure is the exception: it keys nothing but still charges the try, so a message that can never encode cannot loop forever. CAT lost partway through a TX that started keyed counts as sent. The web app does not yet show a skipped slot (row ybav).
 
    A late start skips the tones it has missed. Tones are timed from the slot boundary, not from the start, so a late TX still ends on time.
 

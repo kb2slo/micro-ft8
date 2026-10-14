@@ -5,6 +5,7 @@
 #include <string>
 
 #include "callsign_hashtable.h"
+#include "debug_log.h"
 #include "decode_tx_state.h"
 #include "esp_log.h"
 #include "esp_random.h"
@@ -39,10 +40,11 @@ static int s_tx_base_hz = 1500;
 static int64_t s_tx_slot_start_ms = 0;
 static int64_t s_tx_next_tone_time = 0;
 static int64_t s_tx_slot_idx = 0;
-static bool s_tx_cat_ok = false;
 static bool s_tx_cancel_requested = false;
 // Slot a cancel landed in; the trigger will not start a TX in it.
 static int64_t s_tx_cancel_slot_idx = -1;
+// Slot tx_start() skipped; the trigger will not try again in it.
+static int64_t s_tx_skip_slot_idx = -1;
 static int s_tx_last_ta_int = -1;
 static int s_tx_last_ta_frac = -1;
 
@@ -178,18 +180,26 @@ static void tx_send_ta(float tone_hz) {
     }
 }
 
-static void tx_start(int skip_tones) {
+// Started: the radio is keyed and TX is active. Skipped: the slot could not be
+// keyed; nothing was recorded, so it is not counted and the entry stays armed.
+// EncodeFailed: nothing was keyed, but the try is charged (a message that can
+// never encode must not loop forever).
+enum class TxStart { Started, Skipped, EncodeFailed };
+
+static TxStart tx_start(int skip_tones, std::string &skip_reason) {
     if (decode_tx_state_get_tx_active()) {
-        return;
+        skip_reason = "TX already active";
+        return TxStart::Skipped;
     }
     if (swr_sweep_busy()) {
         // An SWR sweep has the radio (docs/architecture/radio.md, The SWR sweep). It refuses to start over a queued QSO or the
         // beacon, but the operator can arm one after; that slot is skipped.
-        return;
+        skip_reason = "SWR sweep running";
+        return TxStart::Skipped;
     }
     if (!s_pending_tx_valid || s_pending_tx.text.empty()) {
-        ESP_LOGW(TAG, "tx_start: no pending TX");
-        return;
+        skip_reason = "no pending TX";
+        return TxStart::Skipped;
     }
 
     const int64_t now_ms = rtc_now_ms();
@@ -199,14 +209,13 @@ static void tx_start(int skip_tones) {
     ESP_LOGI(TAG, "tx_start: TX=%s offset=%d skip=%d slot=%lld", s_pending_tx.text.c_str(),
              s_pending_tx.offset_hz, skip_tones, (long long)s_tx_slot_idx);
 
-    autoseq_on_tx_starting();
-
     ftx_message_t msg;
     const ftx_message_rc_t rc =
         ftx_message_encode(&msg, &hash_if, s_pending_tx.text.c_str());
     if (rc != FTX_MESSAGE_RC_OK) {
         ESP_LOGE(TAG, "Encode failed for TX");
-        return;
+        autoseq_on_tx_starting();
+        return TxStart::EncodeFailed;
     }
     if (g_protocol->protocol_id == FTX_PROTOCOL_FT4) {
         ft4_encode(msg.payload, s_tx_tones);
@@ -214,44 +223,49 @@ static void tx_start(int skip_tones) {
         ft8_encode(msg.payload, s_tx_tones);
     }
 
-    s_tx_base_hz = s_pending_tx.offset_hz;
-    s_tx_slot_start_ms = (now_ms / slot_period) * slot_period;
-    s_tx_tone_idx =
+    const int tx_base_hz = s_pending_tx.offset_hz;
+    const int tone_idx =
         (skip_tones >= g_protocol->total_symbols) ? g_protocol->total_symbols : skip_tones;
+
+    // Key the radio before autoseq is told: autoseq_on_tx_starting() records the
+    // entry as transmitting and logs a QSO on RR73 or 73, so it must not run
+    // for a slot that cannot go out.
+    if (!radio_control_ready()) {
+        skip_reason = "CAT not ready";
+        return TxStart::Skipped;
+    }
+    const esp_err_t err = radio_control_begin_tx(porta_p4_station_freq_hz(), tx_base_hz);
+    if (err != ESP_OK) {
+        radio_control_end_tx();
+        skip_reason = std::string("radio TX begin failed: ") + esp_err_to_name(err);
+        return TxStart::Skipped;
+    }
+    const int remaining = g_protocol->total_symbols - tone_idx;
+    const size_t n = remaining > 0 ? (size_t)remaining : 0;
+    const esp_err_t cpfsk = radio_control_begin_cpfsk_tx(
+        static_cast<float>(tx_base_hz), n ? s_tx_tones + tone_idx : nullptr, n,
+        g_protocol->tone_spacing, g_protocol->samples_per_symbol);
+    if (cpfsk != ESP_OK && cpfsk != ESP_ERR_NOT_SUPPORTED) {
+        radio_control_end_tx();
+        skip_reason = std::string("CPFSK start failed: ") + esp_err_to_name(cpfsk);
+        return TxStart::Skipped;
+    }
+
+    autoseq_on_tx_starting();
+
+    s_tx_base_hz = tx_base_hz;
+    s_tx_slot_start_ms = (now_ms / slot_period) * slot_period;
+    s_tx_tone_idx = tone_idx;
     const int sym_ms = (int)roundf(g_protocol->symbol_period * 1000.0f);
     s_tx_next_tone_time = s_tx_slot_start_ms + s_tx_tone_idx * sym_ms;
     s_tx_last_ta_int = -1;
     s_tx_last_ta_frac = -1;
 
-    s_tx_cat_ok = radio_control_ready();
-    if (s_tx_cat_ok) {
-        const int freq_hz = porta_p4_station_freq_hz();
-        const esp_err_t err = radio_control_begin_tx(freq_hz, s_tx_base_hz);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "tx_start: radio TX begin failed: %s", esp_err_to_name(err));
-            s_tx_cat_ok = false;
-        }
-    }
-
-    if (s_tx_cat_ok) {
-        const int remaining = g_protocol->total_symbols - s_tx_tone_idx;
-        const size_t n = remaining > 0 ? (size_t)remaining : 0;
-        const esp_err_t cpfsk = radio_control_begin_cpfsk_tx(
-            static_cast<float>(s_tx_base_hz), n ? s_tx_tones + s_tx_tone_idx : nullptr, n,
-            g_protocol->tone_spacing, g_protocol->samples_per_symbol);
-        if (cpfsk != ESP_OK && cpfsk != ESP_ERR_NOT_SUPPORTED) {
-            ESP_LOGW(TAG, "tx_start: CPFSK start failed: %s", esp_err_to_name(cpfsk));
-            radio_control_end_tx();
-            s_tx_cat_ok = false;
-            return;
-        }
-    }
-
     if (skip_tones > 0) {
         ESP_LOGI(TAG, "Skipping first %d tones (late start)", skip_tones);
     }
 
-    if (s_tx_cat_ok && s_tx_tone_idx < g_protocol->total_symbols) {
+    if (s_tx_tone_idx < g_protocol->total_symbols) {
         const float tone_hz =
             s_tx_base_hz + g_protocol->tone_spacing * s_tx_tones[s_tx_tone_idx];
         tx_send_ta(tone_hz);
@@ -259,6 +273,7 @@ static void tx_start(int skip_tones) {
 
     decode_tx_state_set_tx_active(true);
     decode_tx_state_set_tx_slot_idx(s_tx_slot_idx);
+    return TxStart::Started;
 }
 
 static void tx_tick(void) {
@@ -270,9 +285,7 @@ static void tx_tick(void) {
 
     if (s_tx_cancel_requested) {
         ESP_LOGI(TAG, "tx_tick: TX cancelled at tone %d", s_tx_tone_idx);
-        if (s_tx_cat_ok) {
-            radio_control_end_tx();
-        }
+        radio_control_end_tx();
         decode_tx_state_set_tx_active(false);
         s_pending_tx_valid = false;
         s_tx_cancel_requested = false;
@@ -286,9 +299,7 @@ static void tx_tick(void) {
 
     if (s_tx_tone_idx >= g_protocol->total_symbols) {
         ESP_LOGI(TAG, "tx_tick: TX complete, all %d tones sent", g_protocol->total_symbols);
-        if (s_tx_cat_ok) {
-            radio_control_end_tx();
-        }
+        radio_control_end_tx();
         autoseq_mark_sent(s_tx_slot_idx);
         decode_tx_state_set_tx_active(false);
         s_pending_tx_valid = false;
@@ -297,9 +308,7 @@ static void tx_tick(void) {
     }
 
     const float tone_hz = s_tx_base_hz + g_protocol->tone_spacing * s_tx_tones[s_tx_tone_idx];
-    if (s_tx_cat_ok) {
-        tx_send_ta(tone_hz);
-    }
+    tx_send_ta(tone_hz);
     s_tx_tone_idx++;
     s_tx_next_tone_time =
         s_tx_slot_start_ms +
@@ -345,6 +354,7 @@ static void check_slot_boundary(void) {
     }
 
     if (s_qso_xmit && s_target_slot_parity == slot_parity && slot_idx != s_tx_cancel_slot_idx &&
+        slot_idx != s_tx_skip_slot_idx &&
         slot_ms < (g_protocol->slot_time_ms * 4 / 15) && !decode_tx_state_get_tx_active() &&
         !decode_tx_state_get_decode_in_progress() &&
         decode_tx_state_get_decode_applied_slot_idx() >= slot_idx - 1) {
@@ -356,11 +366,24 @@ static void check_slot_boundary(void) {
         const int skip_tones = slot_ms / sym_ms;
         if (skip_tones < g_protocol->total_symbols) {
             if (s_pending_tx_valid && !s_pending_tx.text.empty()) {
-                s_qso_xmit = false;
-                decode_tx_state_set_was_txing(true);
-                log_rxtx_line('T', 0, s_pending_tx.offset_hz, s_pending_tx.text,
-                              s_pending_tx.repeat_counter);
-                tx_start(skip_tones);
+                std::string skip_reason;
+                const TxStart started = tx_start(skip_tones, skip_reason);
+                if (started == TxStart::Skipped) {
+                    // Armed still, so the entry goes out in its next slot; the
+                    // guard stops another attempt in this one.
+                    s_tx_skip_slot_idx = slot_idx;
+                    ESP_LOGW(TAG, "TX slot %lld skipped, not counted: %s", (long long)slot_idx,
+                             skip_reason.c_str());
+                    debug_log_line("TX slot " + std::to_string((long long)slot_idx) +
+                                   " skipped, not counted: " + skip_reason);
+                } else {
+                    s_qso_xmit = false;
+                    decode_tx_state_set_was_txing(true);
+                    if (started == TxStart::Started) {
+                        log_rxtx_line('T', 0, s_pending_tx.offset_hz, s_pending_tx.text,
+                                      s_pending_tx.repeat_counter);
+                    }
+                }
             }
         }
     }
