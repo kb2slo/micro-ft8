@@ -53,6 +53,7 @@ const char* porta_host_factory_reset(uint8_t flags);
 // non-null return is the refusal's reason and nothing was started.
 const char* porta_host_sweep_start(const porta_sweep_range_t* ranges, size_t count);
 #include "porta_proto.h"
+#include "porta_out_queue.h"
 
 namespace {
 
@@ -151,62 +152,66 @@ bool install_uart() {
   return true;
 }
 
-// Outbound queue. Sized for a busy slot (~30 decodes). CONFIG_GET-all bursts (~38 VALUE+ACK frames) are handled by
-// drain_out() inside handle_config_get(), which pushes into the 4 KiB UART
-// TX ring as it enqueues so a 24-deep software queue is enough.
-constexpr size_t kOutQueueLen = 24;
+// Outbound queue (porta_out_queue.h): sized for a whole busy slot. Frames are
+// queued from several tasks -- the decode task, the USB host task, and any
+// task that logs through the debug_log relay -- and sent only by the main
+// loop. Without the lock, the decode task on core 1 and drain_out() on core 0
+// updated the head and count at once. A mutex, not a spinlock, for
+// the reason s_link_lock gives, and because drain_out() holds it across
+// uart_write_bytes(), which takes the driver's own mutex. Lock order: link,
+// then out. Nothing run while holding it may take the link lock or queue a
+// frame: the mutex is not recursive.
+PortaOutQueue s_out;
+SemaphoreHandle_t s_out_lock = nullptr;
 
-struct OutFrame {
-  uint8_t bytes[PORTA_PROTO_MAX_FRAME];
-  size_t len;
-};
+void out_lock() {
+  xSemaphoreTake(s_out_lock, portMAX_DELAY);
+}
 
-OutFrame s_out[kOutQueueLen];
-size_t s_out_head = 0;   // next to send
-size_t s_out_count = 0;
-uint32_t s_dropped = 0;
+void out_unlock() {
+  xSemaphoreGive(s_out_lock);
+}
 
-// Drops the oldest rather than the newest. On a link that has fallen behind,
-// the recent decodes are the ones worth having; discarding them to preserve a
-// backlog would make the viewer lag further the busier the band got.
 void enqueue(const uint8_t* bytes, size_t len) {
-  if (len == 0 || len > PORTA_PROTO_MAX_FRAME) return;
-  if (s_out_count == kOutQueueLen) {
-    s_out_head = (s_out_head + 1) % kOutQueueLen;
-    s_out_count--;
-    s_dropped++;
-  }
-  const size_t slot = (s_out_head + s_out_count) % kOutQueueLen;
-  memcpy(s_out[slot].bytes, bytes, len);
-  s_out[slot].len = len;
-  s_out_count++;
+  out_lock();
+  porta_out_queue_push(&s_out, bytes, len);
+  out_unlock();
+}
+
+uint32_t out_dropped() {
+  out_lock();
+  const uint32_t dropped = porta_out_queue_dropped(&s_out);
+  out_unlock();
+  return dropped;
 }
 
 // Drain as many frames as the UART TX ring can take without blocking.
 // CONFIG_GET-all enqueues dozens of VALUE frames in one handle_frame(); a
 // hard "1 frame per tick" (the old rate limit) then took hundreds of ms to
-// clear and still overflowed a short queue. The ring is 4 KiB and the line
-// is ~11 KB/s — writing only what fits keeps the main loop non-blocking
-// while clearing a snapshot burst in a few 10 ms ticks.
+// clear and still overflowed a short queue. The ring is 4 KiB; writing only
+// what fits keeps the main loop non-blocking while clearing a burst in a few
+// 10 ms ticks. Main loop only: every UART write stays on one task, which the
+// link test's baud changes rely on.
 void drain_out() {
-  while (s_out_count > 0) {
+  out_lock();
+  for (const PortaOutFrame* f = porta_out_queue_front(&s_out); f != nullptr;
+       f = porta_out_queue_front(&s_out)) {
     size_t free_bytes = 0;
     if (uart_get_tx_buffer_free_size(kPortaUart, &free_bytes) != ESP_OK) {
       break;
     }
-    const OutFrame& f = s_out[s_out_head];
     // Leave a little slack so a concurrent writer never sees a zero-free
     // ring; uart_write_bytes with ticks=0 would otherwise return short.
-    if (free_bytes < f.len + 32) {
+    if (free_bytes < f->len + 32u) {
       break;
     }
-    const int wrote = uart_write_bytes(kPortaUart, (const char*)f.bytes, f.len);
-    if (wrote < 0 || (size_t)wrote < f.len) {
+    const int wrote = uart_write_bytes(kPortaUart, (const char*)f->bytes, f->len);
+    if (wrote < 0 || (size_t)wrote < f->len) {
       break;
     }
-    s_out_head = (s_out_head + 1) % kOutQueueLen;
-    s_out_count--;
+    porta_out_queue_pop(&s_out);
   }
+  out_unlock();
 }
 
 // HELLO replaces the ad-hoc beacon. Same purpose -- report the companion's
@@ -713,7 +718,7 @@ void handle_config_get(const porta_frame_t& f) {
   const int m = snprintf(snap + n, sizeof(snap) - n,
                          "porta_crc_errors=%lu\nporta_frames_ok=%lu\nporta_dropped=%lu\n",
                          (unsigned long)s_dec.crc_errors, (unsigned long)s_dec.frames_ok,
-                         (unsigned long)s_dropped);
+                         (unsigned long)out_dropped());
   if (m > 0 && (size_t)m < sizeof(snap) - n) {
     n += (size_t)m;
   } else {
@@ -1011,7 +1016,6 @@ void porta_emit_nak(uint8_t verb, const char* reason) {
   enqueue(buf, porta_proto_encode_nak(verb, reason, buf, sizeof(buf)));
 }
 
-uint32_t porta_dropped_events() { return s_dropped; }
 uint32_t porta_crc_errors() { return s_dec.crc_errors; }
 uint32_t porta_frames_ok() { return s_dec.frames_ok; }
 
@@ -1024,6 +1028,14 @@ void porta_start() {
       ESP_LOGW(kTag, "link lock failed");
       return;
     }
+  }
+  if (s_out_lock == nullptr) {
+    s_out_lock = xSemaphoreCreateMutex();
+    if (s_out_lock == nullptr) {
+      ESP_LOGW(kTag, "out lock failed");
+      return;
+    }
+    porta_out_queue_init(&s_out);
   }
 
   gpio_num_t tx_pin = GPIO_NUM_NC;
@@ -1106,9 +1118,10 @@ void porta_tick() {
   // nothing to say why -- and the drop count is the only evidence that the
   // per-tick send rate is too slow for the traffic.
   static uint32_t s_reported_drops = 0;
-  if (s_dropped != s_reported_drops) {
-    s_reported_drops = s_dropped;
-    ESP_LOGW(kTag, "Dropped %" PRIu32 " outbound events (queue full)", s_dropped);
+  const uint32_t dropped = out_dropped();
+  if (dropped != s_reported_drops) {
+    s_reported_drops = dropped;
+    ESP_LOGW(kTag, "Dropped %" PRIu32 " outbound events (queue full)", dropped);
   }
 
   // Link health. A wire quietly failing a share of its frames looks identical

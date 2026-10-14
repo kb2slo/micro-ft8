@@ -103,10 +103,6 @@ void porta_emit_usb_status(bool present, uint8_t kind, uint16_t vid, uint16_t pi
 void porta_emit_sweep(uint8_t kind, uint8_t range_index, uint32_t freq_hz, int swr_hundredths,
                       uint8_t reason);
 
-// Frames dropped because the queue was full — the number that matters when the
-// browser's view looks thinner than the screen's.
-uint32_t porta_dropped_events();
-
 // Link health, decoding bytes *from* the sidekick: a CRC failure here means a
 // corrupt frame arrived and was silently dropped (porta_proto.h's decoder
 // never rescans a bad frame's bytes). Counts, not events. handle_config_get()

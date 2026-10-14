@@ -65,6 +65,7 @@ CORE_BUSY_TARGET = host_test_core_busy
 DECODE_RETRY_TARGET = host_test_decode_retry
 DECODE_SYNC_TARGET = host_test_decode_sync
 DECODE_SNR_TARGET = host_test_decode_snr
+PORTA_OUT_QUEUE_TARGET = host_test_porta_out_queue
 
 all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
      $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) \
@@ -75,7 +76,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CANCEL_TARGET) $(ADIF_TARGET) $(STATION_TARGET
      $(CAT_REPLY_PARSER_TARGET) $(SWR_SWEEP_TARGET) \
      $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(CORE_BUSY_TARGET) \
      $(DECODE_RETRY_TARGET) $(DECODE_SYNC_TARGET) $(DECODE_SNR_TARGET) \
-     $(SIM_TARGET)
+     $(PORTA_OUT_QUEUE_TARGET) $(SIM_TARGET)
 
 $(TARGET): $(OBJ) porta_event_json.o
 	$(CXX) $(CXXFLAGS) -o $@ $^
@@ -209,6 +210,15 @@ test_porta_proto.o: test_porta_proto.cpp
 $(PORTA_PROTO_TARGET): $(PORTA_PROTO_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
+PORTA_OUT_QUEUE_OBJ = porta_out_queue.o porta_proto.o test_porta_out_queue.o
+porta_out_queue.o: ../components/porta/porta_out_queue.c
+	$(CC) $(CFLAGS) -I../components/porta/include -I../components/porta_proto/include -c $< -o $@
+test_porta_out_queue.o: test_porta_out_queue.cpp
+	$(CXX) $(CXXFLAGS) -I../components/porta/include -I../components/porta_proto/include \
+	      -I../components/decode_types/include -c $< -o $@
+$(PORTA_OUT_QUEUE_TARGET): $(PORTA_OUT_QUEUE_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
 PAIRING_TOKEN_OBJ = pairing_token.o test_pairing_token.o
 pairing_token.o: ../sidekick/main/pairing_token.c
 	$(CC) $(CFLAGS) -I../sidekick/main -c $< -o $@
@@ -288,6 +298,7 @@ clean:
 	      $(CAT_REPLY_PARSER_OBJ) $(CAT_REPLY_PARSER_TARGET) \
 	      $(SWR_SWEEP_OBJ) $(SWR_SWEEP_TARGET) \
 	      $(PORTA_PROTO_OBJ) $(PORTA_PROTO_TARGET) \
+	      $(PORTA_OUT_QUEUE_OBJ) $(PORTA_OUT_QUEUE_TARGET) \
 	      $(DECODE_RETRY_OBJ) $(DECODE_RETRY_TARGET) \
 	      $(DECODE_SYNC_OBJ) $(DECODE_SYNC_TARGET) \
 	      $(DECODE_SNR_OBJ) $(DECODE_SNR_TARGET) \

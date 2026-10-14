@@ -131,7 +131,6 @@ The app cannot load once the sidekick is packed away (§2). A page on the releas
   - **What it gains:** every decode the sidekick relays is reported, whether or not the phone is locked. UDP needs no TLS, so "the sidekick never speaks TLS" holds.
   - **What it costs:**
     - a firmware encoder, and a table of recently reported calls (flash and DIRAM to be measured; the S3 has no PSRAM, [sidekick.md](../architecture/sidekick.md), **Hardware**)
-    - Port A already drops decodes from a busy slot (row rd8d)
     - **a second named exception** to "third parties are reached by the phone, never by the device", beside the firmware fetch
   - **This is a later slice** (S5), worth it only if reporting while the phone is locked matters (Ask 4).
 * **f4kb from a UDP relay host of our own.** No longer needed now that TCP is accepted, and it would be a server we run.
