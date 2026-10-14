@@ -647,16 +647,37 @@ subtraction shipped ([decode.md](../architecture/decode.md), **Subtraction**). W
 4. **OSD, last and optional**, only bit-packed (not the fork's ~40 KB of byte-per-bit stack), and only if
    its ~1.3 points survive P0's timing and its extra false decodes are acceptable.
 
-**Added 2026-10-14: two leads from the QMX panadapter's release notes, unmeasured here.**
+**Added 2026-10-14: two leads from the QMX panadapter's release notes (its v1.16.12 and v1.17.0), measured
+on both corpora the same day.**
 
-5. **Stop LDPC when it stops improving.** Its v1.16.12 abandons a candidate once error correction stops
-   gaining instead of running every iteration, and with a dropped retry pass (no decode recovered across 35
-   recordings) reports busy-band decode about twice as fast. Ours runs 25 iterations per candidate and already
-   skips failed candidates no subtraction touched (`e38a8cf`). The time would go to B90 and bnhj. An early exit
-   must lose no decodes on the discordant count.
-6. **The top of the search range.** Its v1.17.0 reports +6% decodes from opening the top end. Ours stops at
-   `f_max` 2900 Hz (`components/ft8_audio_pipeline/ft8_audio_pipeline.cpp`), and the QMX passes to about
-   3200 Hz ([B85](../ROADMAP.md)). A corpus can only show it if its audio reaches that high.
+5. **Stop LDPC early.** The panadapter abandons a candidate once error correction stops gaining, and reports
+   busy-band decode about twice as fast together with a dropped retry pass. Here, a trace of every LDPC call on
+   both corpora (14,683 calls) put **98% of LDPC iterations on candidates that never reach zero errors**;
+   successes mostly converge in 2–6 iterations, with a tail to 24 and plateaus of up to 17 iterations before
+   converging, and their error counts overlap the failures' at every iteration, so no threshold separates
+   them. Host decode time scales with the iterations run, and every rule that saves time costs true `jt9`
+   messages (lost in-tree / busy; busy-set decode time against 25 iterations in the same run, 534–539 ms):
+
+   | Rule | Lost | Busy decode |
+   |---|---|---|
+   | Cap at 20 iterations | 1 / 0 | −18% |
+   | Stop after 10 iterations without a better guess | 1 / 1 | −26% |
+   | Cap at 15 | 1 / 2 | −37% |
+   | Stop after 7 without a better guess | 2 / 2 | −40% |
+   | Stop after 5 without a better guess | 5 / 3 | −50% |
+   | Cap at 10 | 9 / 14 | −57% |
+
+   A stall rule beats a plain cap at equal time, but none is free. **Not shipped:** the decode fits the guard
+   today (decode.md), and the time is worth a decode only once something spends it. B90 (a later trigger,
+   up to ~4% more decodes on the host) and bnhj are the buyers; choose a row of this table when one of them
+   needs the time, then confirm on the P4. The change would be in `bp_decode()` (`vendor/ft8/ldpc.c`), so it
+   ships as a commit on `kb2slo/ft8_lib` ([ft8_lib.md](../architecture/ft8_lib.md)).
+6. **The top of the search range.** The panadapter reports +6% decodes from opening the top end. That cannot
+   carry over as it stands: the firmware decodes at 6 kHz, so its band ends at 3,000 Hz, and `f_max` 2900 Hz
+   (`components/ft8_audio_pipeline/ft8_audio_pipeline.cpp`) leaves room for one 50 Hz signal. Going higher
+   needs the 12 kHz path, which waits on [B85](../ROADMAP.md)'s measurement of the QMX's audio above 3 kHz.
+   Neither corpus can show the gain either: no `jt9` message in them sits above 2,830 Hz. Own-chain recordings
+   ([B86](../ROADMAP.md)) are the test.
 
 **Done-when:** per change, a discordant-count result on the corpus, device timing on the P4, and a decision
 (ship on P4 / ship on both / drop) recorded here.
