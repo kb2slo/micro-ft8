@@ -1,16 +1,14 @@
 #pragma once
 
 #include <string>
-#include <vector>
 
 // ============================================================================
 // debug_log.h
 //
-// The on-screen "D" debug log ring buffer (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)) -- extracted out
-// of main.cpp so a headless board's decode pipeline can log through the same
-// funnel without linking main.cpp itself). No board/UI coupling of its own:
-// g_debug_lines/debug_page are plain data a screen *may* choose to render
-// (the board has no screen, so nothing reads them today).
+// One funnel for log lines meant for the operator, so the decode pipeline and
+// the board's own code reach the sidekick the same way. It keeps no lines of
+// its own: the board has no screen to show them, and a buffer here would be
+// appended from every logging task at once and need a lock.
 //
 // Relaying lines to the sidekick (porta_emit_log) used to be hardwired here,
 // but that made this component depend on porta and porta depend on this one
@@ -30,16 +28,6 @@ void debug_log_line_public(const std::string& msg);
 // Log free / minimum-free / largest-block heap figures under `tag`.
 void log_heap(const char* tag);
 
-// Registers a relay called with every logged line, after it's appended to
-// g_debug_lines. Pass nullptr to clear. Last call wins.
+// Registers a relay called with every logged line. Pass nullptr to clear.
+// Last call wins.
 void debug_log_set_relay(void (*relay)(const char* text));
-
-extern std::vector<std::string> g_debug_lines;
-extern int debug_page;
-extern const size_t DEBUG_MAX_LINES;  // 3 pages
-extern const size_t DEBUG_HUD_LINES;  // slots 0-1 reserved for live HUD
-
-// Ensures the HUD-reserved slots (0..DEBUG_HUD_LINES-1) exist. Called by
-// debug_log_line() itself and by whoever fills the HUD slots (main.cpp's
-// anything that samples the stack); a no-op if nothing does.
-void debug_ensure_hud_lines();
