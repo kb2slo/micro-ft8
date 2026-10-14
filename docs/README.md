@@ -249,6 +249,11 @@ every agent and every operator can see them — see "Memory lives in this repo" 
   option does — so the operator never has to open a row, an RFC, or an earlier message to answer. Stated
   2026-09-24.
 
+- **WSJT-X is the on-air standard.** Where our behaviour on the air differs from WSJT-X's (the message
+  sequence, a message's format, what a tap sends), WSJT-X's is the default, and we differ only by a recorded
+  decision. Check its source first: the `WSJTX/wsjtx` mirror, `widgets/mainwindow.cpp` for sequencing.
+  Stated 2026-10-14.
+
 - **Prose is authoritative; a diagram is derived.** Never let a fact live only in a diagram. Agents read
   the prose and may not reconstruct a constraint that exists only as an arrow, and a diagram that is the sole
   source of something goes stale without anyone noticing. Where a diagram earns its place, write it as
@@ -321,6 +326,8 @@ If the operator asks to add an idea or “add to the backlog”:
 **"Timebox"** — the operator can say it at any point. Stop proposing, apply nothing not yet accepted, and go straight to the wrap. An open proposal is listed as not reached, not applied.
 
 **Grooming is a conversation, not a sweep.** Propose one change at a time — or a small group of the same kind — with the evidence, and wait for the operator to accept or change it before moving on. A full-roadmap triage may be prepared as input, but it is never applied as a batch; the operator walks through it.
+
+**Inline work** (stated 2026-10-14). When a groom turns up a row small enough to finish on the spot, the operator may say to build it then. It qualifies when the compiler or a host test proves it (a field check still goes to [TEST_PLAN.md](TEST_PLAN.md) Pending), it needs no design decision, and it is small. The operator saying so is the exception **Push back before tools** asks for. The groom pauses while it is built; the work is committed on its own, never inside the groom commit, and its row is dropped in that commit rather than moved through Backlog. A defect it uncovers that needs a decision is asked in chat before the groom resumes. Anything field-only or still needing design becomes a row instead.
 
 **Health, not the calendar, decides when.** The backlog may drift from ideal for velocity; `tools/roadmap_rows.sh health` measures how far. Its budget constants live in the script, like `LIMIT`.
 
