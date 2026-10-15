@@ -363,10 +363,19 @@ async function locateGrid(grid) {
 // already treats '' as "nothing to show this render", same as an unfilled
 // distance/bearing badge, so the row just quietly gains the badge on its
 // next redraw once the fetch lands.
+// Natural Earth leaves iso_a2 as the placeholder '-99' for France, Norway,
+// Kosovo, N. Cyprus and Somaliland, and as 'CN-TW' for Taiwan (ne_110m_countries.json).
+// The badge named these by the placeholder ("-99" for JN07, in France), so
+// they get their codes here and any other non-2-letter value shows nothing.
+var COUNTRY_CODE_FIX = { 'France': 'FR', 'Norway': 'NO', 'Kosovo': 'XK', 'Taiwan': 'TW', 'N. Cyprus': 'CY', 'Somaliland': 'SO' };
+function countryCode(c) {
+  var code = COUNTRY_CODE_FIX[c.name] || c.iso_a2;
+  return /^[A-Z]{2}$/.test(code || '') ? code : '';
+}
 function shortLocation(grid) {
   var r = resolveGridSync(grid);
   if (!r || !r.countries.length) return '';
-  var countryCodes = r.countries.map(function (c) { return c.iso_a2; }).filter(Boolean);
+  var countryCodes = r.countries.map(countryCode).filter(Boolean);
   var stateCodes = r.states.map(function (s) { return s.postal; }).filter(Boolean);
   if (stateCodes.length) return stateCodes.join('/') + (countryCodes.length ? '·' + countryCodes.join('/') : '');
   return countryCodes.join('/');
@@ -579,5 +588,5 @@ if (document.readyState === 'loading') {
 // silently going without it until whatever happens to open the modal first.
 loadGeoData();
 
-window.CallInfo = { show: show, hide: hide, learnGrid: learnGrid, cachedGrid: cachedGrid, shortLocation: shortLocation, gridLink: gridLink };
+window.CallInfo = { show: show, hide: hide, learnGrid: learnGrid, cachedGrid: cachedGrid, shortLocation: shortLocation, countryCode: countryCode, gridLink: gridLink };
 })();

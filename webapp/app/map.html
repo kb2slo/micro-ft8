@@ -513,7 +513,7 @@ function computeCountryBBoxes(geo) {
   if (!geo) return [];
   return geo.features.map(function (f) {
     var b = featureBBox(f.geometry);
-    b.programPrefix = f.properties.iso_a2;
+    b.programPrefix = CallInfo.countryCode(f.properties) || null;
     b.name = f.properties.name;
     return b;
   });
@@ -1352,10 +1352,11 @@ function triggerPoiFetches(w, h) {
   // it must not trigger the same per-country/per-region walk 'all' does.
   if (layerState.pota === 'all') {
     // Which bundled countries overlap the view -> that country's own
-    // program. iso_a2 doubles as POTA's programPrefix for 171 of our 173
-    // bundled countries (measured 2026-09-22); the two known misses
-    // (Kosovo's placeholder '-99', Taiwan's 'CN-TW') just 404 and that
-    // program silently never loads, same as any other unreachable program.
+    // program. The country's ISO code (CallInfo.countryCode(), which
+    // replaces Natural Earth's '-99' and 'CN-TW' placeholders) doubles as
+    // POTA's programPrefix for nearly all bundled countries (measured
+    // 2026-09-22); a program that does not exist just 404s and silently
+    // never loads, same as any other unreachable program.
     logMapCountryBBoxes.forEach(function (c) {
       if (!c.programPrefix || poiPotaPrograms[c.programPrefix]) return;
       if (bboxesOverlap(c, view)) fetchPotaProgram(c.programPrefix);
