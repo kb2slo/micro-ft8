@@ -243,7 +243,11 @@ button:disabled{opacity:.45}
 #opTriesEdit{padding:.5rem 1rem .6rem;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent);font-size:.8rem}
 .stepper{display:flex;align-items:center;gap:.6rem;margin-top:.4rem}
 .stepper button:not(.dlink){min-width:44px;min-height:44px;font-size:1.1rem;padding:.2rem .6rem}
-#triesValue{font-family:ui-monospace,monospace;font-weight:700;font-size:1.1rem;min-width:2.5ch;text-align:center}
+/* Two quick taps on - or + are a double-tap to iOS, which zooms the page;
+   manipulation keeps tap and scroll and drops the double-tap zoom. */
+button{touch-action:manipulation}
+.stepper button{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.stepper .stepval{font-family:ui-monospace,monospace;font-weight:700;font-size:1.1rem;min-width:2.5ch;text-align:center}
 #triesWarn{margin:.4rem 0 0;color:var(--warn-fg)}
 #triesWarn button{margin-left:.4rem;font-size:.8rem;padding:.3rem .6rem}
 .cqsends{font-family:ui-monospace,monospace;font-weight:700;font-size:.85rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -509,7 +513,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         </div>
         <div class=stepper>
           <button id=triesDown type=button disabled>&minus;</button>
-          <span id=triesValue></span>
+          <span id=triesValue class=stepval></span>
           <button id=triesUp type=button disabled>+</button>
           <button id=triesDefault type=button class=dlink disabled>Use default</button>
         </div>
@@ -671,7 +675,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     </div>
 
     <div class="hd sep">This device</div>
-    <p class=setnote>Local to this browser -- not saved to the main board, not part of Save station below.</p>
+    <p class=setnote>Local to this browser -- not saved to the main board.</p>
     <div class=setrow>
       <label>Distance units
         <select id=dist_unit>
@@ -688,10 +692,6 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
           <option value=dark>Dark</option>
         </select>
       </label>
-    </div>
-
-    <div style="padding:1rem">
-      <button id=save type=button disabled style="width:100%">Save station</button>
     </div>
 
     <!-- Cumulative link-health counters (reset only on reboot), not a status
@@ -797,7 +797,14 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <p id=gridHint class=setnote>The CQ carries the first four characters.</p>
 
     <div class="hd sep">QSOs</div>
-    <div class=setrow><label>Tries <input id=tries type=number min=1 max=20></label></div>
+    <div class=setrow>
+      <span>Tries</span>
+      <div class=stepper>
+        <button id=sheetTriesDown type=button aria-label="Fewer tries">&minus;</button>
+        <span id=tries class=stepval></span>
+        <button id=sheetTriesUp type=button aria-label="More tries">+</button>
+      </div>
+    </div>
     <p class=setnote>How many times each QSO message goes out, and how many CQs Call CQ sends. A queue row's own count is changed on the row.</p>
     <div class="setrow row">
       <label>Offset Hz <input id=offset type=number></label>
@@ -917,9 +924,7 @@ var stationSheetMsg = document.getElementById('stationSheetMsg');
 // Settings for the Station sheet (docs/architecture/webapp.md, "The Station
 // sheet"): each now writes its own key the moment it changes
 // (setStationSheetForm()'s onchange handlers), so Settings' own Save must
-// never resend them -- formBody() only walks FIELDS, so removing them here is
-// what stops Save from overwriting a sheet write with a stale value (RFC 0009
-// §2.1).
+// never resend them. Settings' own fields (below) autosave one key each.
 var FIELDS = [
   'call','comment1','ignore_prefixes',
   'radio','protocol_mode','skiptx1','rxtx_log'
@@ -1487,7 +1492,7 @@ function setStationSheetForm(cfg) {
   if (document.activeElement !== gridEl) gridEl.value = cfg.grid || '';
   updateGridHint();
   var triesEl = document.getElementById('tries');
-  triesEl.value = (cfg.tries !== undefined && cfg.tries !== null) ? cfg.tries : '';
+  triesEl.textContent = (cfg.tries !== undefined && cfg.tries !== null) ? cfg.tries : '';
   var offsetEl = document.getElementById('offset');
   offsetEl.value = (cfg.offset !== undefined && cfg.offset !== null) ? cfg.offset : '';
   document.getElementById('offset_src').value =
@@ -1555,6 +1560,31 @@ document.getElementById('actRefAddBtn').onclick = function () {
 // reloads the whole station on success or failure either way, which is what
 // brings every field here (and the CQ row's Sends text, and the dock line)
 // back in sync with what the station actually holds.
+// A press on a stepper button steps once, then repeats while it is held
+// (after 450 ms, every 100 ms). The pointer events do the stepping so a
+// held press does not also click; a keyboard activation (click with no
+// pointer, detail 0) steps once.
+function holdRepeat(btn, fn) {
+  var wait = null, rep = null;
+  function stop() {
+    if (wait) clearTimeout(wait);
+    if (rep) clearInterval(rep);
+    wait = rep = null;
+  }
+  btn.addEventListener('pointerdown', function (e) {
+    if (btn.disabled) return;
+    e.preventDefault();
+    stop();
+    fn();
+    wait = setTimeout(function () { rep = setInterval(fn, 100); }, 450);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (t) {
+    btn.addEventListener(t, stop);
+  });
+  btn.addEventListener('click', function (e) { if (e.detail === 0 && !btn.disabled) fn(); });
+  btn.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+}
+
 function sheetPutLine(line, busyMsg) {
   putConfigLine(line, busyMsg, true).catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
 }
@@ -1576,9 +1606,26 @@ document.getElementById('grid').onchange = function () {
   }
   sheetPutLine('grid=' + v, 'Setting grid…');
 };
-document.getElementById('tries').onchange = function () {
-  sheetPutLine('tries=' + this.value, 'Setting tries…');
-};
+// The Station sheet's Tries: the same control as a queue row's count
+// (holdRepeat()). A step changes the number at once; the write goes out once
+// the steps settle, and a refusal reloads the number.
+var SHEET_TRIES_MAX = 20; // autoseq.h AUTOSEQ_TRIES_MAX_QSO
+var sheetTriesTimer = null;
+function sheetTriesCommit(n) {
+  var el = document.getElementById('tries');
+  el.textContent = String(n);
+  if (sheetTriesTimer) clearTimeout(sheetTriesTimer);
+  sheetTriesTimer = setTimeout(function () {
+    sheetTriesTimer = null;
+    if (String(n) !== String(lastCfg.tries)) sheetPutLine('tries=' + n, 'Setting tries…');
+  }, 800);
+}
+function sheetTriesStep(delta) {
+  var cur = parseInt(document.getElementById('tries').textContent, 10) || 1;
+  sheetTriesCommit(Math.max(1, Math.min(SHEET_TRIES_MAX, cur + delta)));
+}
+holdRepeat(document.getElementById('sheetTriesDown'), function () { sheetTriesStep(-1); });
+holdRepeat(document.getElementById('sheetTriesUp'), function () { sheetTriesStep(1); });
 document.getElementById('offset').onchange = function () {
   sheetPutLine('offset=' + this.value, 'Setting TX offset…');
 };
@@ -1586,28 +1633,29 @@ document.getElementById('offset_src').onchange = function () {
   sheetPutLine('offset_src=' + this.value, 'Setting offset source…');
 };
 
-function formBody() {
-  var lines = [];
-  FIELDS.forEach(function (k) {
-    var el = document.getElementById(k);
-    if (!el) return;
-    var v = el.value;
-    if (k === 'protocol_mode') {
-      lines.push('protocol_mode=' + (v === 'FT4' ? 'FT4' : 'FT8'));
-      return;
-    }
-    lines.push(k + '=' + v);
-  });
-  // active_bands comes from the checkboxes buildBandRows() renders, not a
-  // plain FIELDS entry. band_sel and per-band frequency left Settings for
-  // the dock (webapp.md, The dock), so Save no longer sends them.
+// Settings has no Save button: each field writes its own key the moment it
+// changes (blur or Enter for text, a pick for a menu, a tick for a band), one
+// putConfigLine() PUT like the Station sheet's. A refusal shows its reason on
+// the status line and reloads the field to what the station still holds.
+// The sidekick's own network keeps its Save (its write restarts the AP).
+FIELDS.forEach(function (k) {
+  document.getElementById(k).onchange = function () {
+    var v = this.value;
+    if (k === 'protocol_mode') v = (v === 'FT4') ? 'FT4' : 'FT8';
+    else if (this.tagName === 'INPUT') v = v.trim();
+    putConfigLine(k + '=' + v, 'Setting ' + k.replace(/_/g, ' ') + '…', false)
+      .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+  };
+});
+document.getElementById('bandList').addEventListener('change', function (e) {
+  if (!e.target.classList.contains('bandactive')) return;
   var active = [];
   document.querySelectorAll('#bandList .bandactive').forEach(function (cb) {
     if (cb.checked) active.push(cb.getAttribute('data-n'));
   });
-  lines.push('active_bands=' + active.join(' '));
-  return lines.join('\n');
-}
+  putConfigLine('active_bands=' + active.join(' '), 'Setting bands…', false)
+    .catch(function (e2) { setMsg(String(e2 && e2.message ? e2.message : e2)); });
+});
 
 // Shared by the header dots: "up" (confirmed good), "bad" (confirmed
 // not-good) or neither (unknown -- never confirmed either way, e.g. before
@@ -2560,55 +2608,6 @@ async function pollLiveStatus() {
   autoSyncClock();
 }
 
-async function saveConfig() {
-  if (!MicroFT8Pairing.getToken()) {
-    setMsg('Press the sidekick button to pair first.');
-    MicroFT8Pairing.needsReauth();
-    return;
-  }
-  var btn = document.getElementById('save');
-  btn.disabled = true;
-  btn.textContent = 'Saving…';
-  setMsg('Saving…');
-  try {
-    var r = await MicroFT8Pairing.authFetch('/api/config', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'text/plain' },
-      body: formBody()
-    });
-    if (r.status == 401) {
-      MicroFT8Pairing.needsReauth();
-      setMsg('Press the sidekick button to pair');
-      return;
-    }
-    var text = await r.text();
-    var j = {};
-    try { j = JSON.parse(text); } catch (e) { /* not JSON: report the text */ }
-    var failed = (!r.ok || j.ok === false)
-      ? 'Save failed: ' + (j.why || text || ('HTTP ' + r.status))
-      : null;
-    // Reload either way: the sidekick applies every key it can past a
-    // refusal, so the form must show what the station now holds, not what
-    // was typed.
-    var reloadFailed = null;
-    try { await loadConfig(true); } catch (e) { reloadFailed = e; }
-    if (failed) {
-      setMsg(failed); // Settings stays open, beside the fields to fix
-      return;
-    }
-    if (reloadFailed) {
-      setMsg('Station saved, but the form did not reload: '
-        + String(reloadFailed && reloadFailed.message ? reloadFailed.message : reloadFailed));
-      return;
-    }
-    closeSettings();
-    setMsg('Station saved.');
-  } finally {
-    btn.textContent = 'Save station';
-    btn.disabled = !writesEnabled;
-  }
-}
-
 // ---- geolocation handoff (operator-requested 2026-09-23) ----
 // geo_handoff.js leaves for geo.html only once the host answers, and returns
 // to #stationsheet with ?lat=&lon=, which handleGeoReturn() below reads.
@@ -2717,7 +2716,6 @@ async function radioPost(path, body, busyMsg) {
 var writesEnabled = false;
 function enableWrites(on) {
   writesEnabled = on;
-  document.getElementById('save').disabled = !on;
   document.getElementById('opConnect').disabled = !on;
   document.getElementById('opTune').disabled = !on;
   document.getElementById('opTxCancel').disabled = !on;
@@ -2739,9 +2737,6 @@ function enableWrites(on) {
 }
 document.getElementById('dist_unit').onchange = function () { setDistUnit(this.value); };
 document.getElementById('theme_pref').onchange = function () { setTheme(this.value); };
-document.getElementById('save').onclick = function () {
-  saveConfig().catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
-};
 document.getElementById('opConnect').onclick = function () {
   radioPost('/api/radio/connect', undefined, 'Connecting…')
     .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
@@ -2951,11 +2946,19 @@ function renderTriesEdit() {
     : '';
 }
 
+function triesMaxFor(q) { return q.dxcall === 'CQ' ? TRIES_MAX_CQ : TRIES_MAX_QSO; }
+
 function stepTries(delta) {
   if (!triesEdit || !queue[triesEdit.id]) return;
+  setTriesDraft(triesEdit.draft + delta);
+}
+
+// Applies a count from a step: clamped to the entry's range,
+// shown at once, sent when the changes settle.
+function setTriesDraft(n) {
+  if (!triesEdit || !queue[triesEdit.id]) return;
   var q = queue[triesEdit.id];
-  var max = q.dxcall === 'CQ' ? TRIES_MAX_CQ : TRIES_MAX_QSO;
-  triesEdit.draft = Math.max(1, Math.min(max, triesEdit.draft + delta));
+  triesEdit.draft = Math.max(1, Math.min(triesMaxFor(q), n));
   triesEdit.useDefault = false;
   renderTriesEdit();
   if (triesEdit.timer) clearTimeout(triesEdit.timer);
@@ -2968,8 +2971,8 @@ function stepTries(delta) {
   }
 }
 
-document.getElementById('triesDown').onclick = function () { stepTries(-1); };
-document.getElementById('triesUp').onclick = function () { stepTries(1); };
+holdRepeat(document.getElementById('triesDown'), function () { stepTries(-1); });
+holdRepeat(document.getElementById('triesUp'), function () { stepTries(1); });
 document.getElementById('triesEnd').onclick = function () {
   if (triesEdit) sendTries(triesEdit.useDefault ? 0 : triesEdit.draft);
 };
