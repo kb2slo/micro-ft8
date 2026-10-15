@@ -49,7 +49,7 @@ You need the main board and sidekick on their Grove cable, your QMX (tested on f
 
 A new or reset station is set to `YOURCALL` in grid `CM97`. Set yours before you transmit.
 
-- Tap the gear at the top right. Enter your **Call** and leave the field, and tick the **Bands** your QMX covers; each saves as you change it.
+- Tap the gear at the top right. Enter your **Call** and tick the **Bands** your QMX covers; they save as you go.
 - On **Operate**, tap **Station ›** at the bottom and enter your **Grid**; it saves when you leave the field. **Set from GPS →** uses the phone's location, and needs internet.
 
 ## 5. Check that it hears
