@@ -32,7 +32,7 @@ A contact's state is **what we last sent**. `next_tx` is what we send next.
 
 `TX6` (CQ) exists in the enum but is never assigned to `next_tx`.
 
-**Classifying what DX sent** (`parse_rcvd_msg()`, on the third field): `RR73` or `RRR` is TX4, and `73` is TX5. An ARRL Field Day exchange (`1B SCV`, or `R 1B SCV`) counts as TX2, or TX3 with the `R`. A four-character grid is TX1, and fills in `dxgrid` if it is still empty (`RR73` is excluded; it matches the shape). `R±NN` is TX3 and `±NN` is TX2, either one setting `snr_rx`, within ±30. Anything else is `TX_NONE` and changes nothing.
+**Classifying what DX sent** (`parse_rcvd_msg()`, on the third field): `RR73` or `RRR` is TX4, and `73` is TX5. An ARRL Field Day exchange (`1B SCV`, or `R 1B SCV`) counts as TX2, or TX3 with the `R`. A four-character grid is TX1, and fills in `dxgrid` if it is still empty (`RR73` is excluded; it matches the shape). **A QSO's grid is only ever one DX sent in this QSO or in the CQ we tapped:** tail-ending an RR73 or a report logs no `gridsquare`, and the log row shows no grid, region or distance. WSJT-X does the same (`widgets/mainwindow.cpp` at `967c85a`, line 9414: its DX grid is set only from a grid in the tapped message, and cleared when the base call changes; its one fallback is a user's `CALL3.TXT`). The info card's cached grid comes from other decodes and never reaches the log. `R±NN` is TX3 and `±NN` is TX2, either one setting `snr_rx`, within ±30. Anything else is `TX_NONE` and changes nothing.
 
 **Transitions** (`generate_response()`). Rows are our state and columns are what DX sent. "→ X" means the state becomes X with fresh tries; "keep" means we resend the state's canonical message.
 
