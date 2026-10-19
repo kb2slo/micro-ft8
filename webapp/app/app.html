@@ -629,6 +629,14 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     </div>
     <p id=apMsg class=setnote></p>
 
+    <div class="hd sep">Pairing token</div>
+    <p class=setnote>The key this browser sends to change the sidekick. Each address (micro-ft8.local, 192.168.x.x) keeps its own copy, so to pair another address without the button, copy the token from one and paste it into the other. 32 characters, 0-9 and a-f.</p>
+    <div class=setrow><label>Token <input id=tokInput maxlength=32 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false></label></div>
+    <div class=setrow style="display:flex;gap:.5rem">
+      <button id=tokSave type=button>Save</button>
+    </div>
+    <p id=tokMsg class=setnote></p>
+
     <div class="hd sep">Station</div>
     <p id=stationCached class=setnote hidden></p>
     <p class=setnote>CQ type, grid, tries and TX offset are in Operate's Station sheet.</p>
@@ -2103,6 +2111,23 @@ async function apSubmit(ssid, pass) {
     giveUp: 'Join \u201C' + name + '\u201D in your phone\u2019s WiFi settings, then reload this page.'
   });
 }
+
+// Pairing token editor. Browser-side only: pastes a token copied from another
+// address of the same sidekick. Reloads so pairing.js boots with it; a token
+// the sidekick rejects is dropped by the usual 401 handling.
+function tokSave() {
+  var msg = document.getElementById('tokMsg');
+  var tok = document.getElementById('tokInput').value.trim();
+  if (!/^[0-9a-f]{32}$/.test(tok)) {
+    msg.textContent = 'The token must be 32 characters, 0-9 and a-f.';
+    return;
+  }
+  MicroFT8Pairing.setToken(tok);
+  msg.textContent = 'Saved. Reloading\u2026';
+  setTimeout(function () { location.reload(); }, 300);
+}
+onTapOnce(document.getElementById('tokSave'), tokSave);
+document.getElementById('tokInput').value = MicroFT8Pairing.getToken();
 
 // In-page arm/confirm (not window.confirm), same reasoning status.html's own
 // version had: phones often dismiss the native dialog with no status text
