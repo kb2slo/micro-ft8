@@ -1,5 +1,6 @@
 #include "tx_scheduler.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -17,6 +18,7 @@
 #include "radio_control.h"
 #include "radio_ta_format.h"
 #include "rtc_core.h"
+#include "tx_timing.h"
 #include "swr_sweep.h"
 
 extern const ProtocolConfig *g_protocol;
@@ -36,6 +38,11 @@ static int s_tx_tone_idx = 0;
 static int s_tx_base_hz = 1500;
 static int64_t s_tx_slot_start_ms = 0;
 static int64_t s_tx_next_tone_time = 0;
+// First tone is due this long after the slot boundary (radio_control_tone_lead_ms()).
+static int s_tx_lead_ms = 0;
+// After the last tone: TA0; has keyed down and RX; follows at this time.
+static bool s_tx_keyed_down = false;
+static int64_t s_tx_rx_at_ms = 0;
 static int64_t s_tx_slot_idx = 0;
 static bool s_tx_cancel_requested = false;
 // Slot a cancel landed in; the trigger will not start a TX in it.
@@ -139,6 +146,12 @@ void tx_scheduler_cancel(void) {
     }
 }
 
+// The operator's least TX;-to-RF gap. A radio with no lead (QDX: audio starts
+// with TX;) has nothing to hold back.
+static int tx_min_delay_ms(void) {
+    return radio_control_tone_lead_ms() > 0 ? porta_p4_station_tx_min_delay_ms() : 0;
+}
+
 static void tx_send_ta(float tone_hz) {
     int ta_int = 0;
     int ta_frac = 0;
@@ -212,6 +225,7 @@ static TxStart tx_start(int skip_tones, std::string &skip_reason) {
         skip_reason = std::string("radio TX begin failed: ") + esp_err_to_name(err);
         return TxStart::Skipped;
     }
+    const int64_t keyed_ms = rtc_now_ms();  // after TX; returned, so the gap is not cut short
     const int remaining = g_protocol->total_symbols - tone_idx;
     const size_t n = remaining > 0 ? (size_t)remaining : 0;
     const esp_err_t cpfsk = radio_control_begin_cpfsk_tx(
@@ -229,19 +243,21 @@ static TxStart tx_start(int skip_tones, std::string &skip_reason) {
     s_tx_slot_start_ms = (now_ms / slot_period) * slot_period;
     s_tx_tone_idx = tone_idx;
     const int sym_ms = (int)roundf(g_protocol->symbol_period * 1000.0f);
-    s_tx_next_tone_time = s_tx_slot_start_ms + s_tx_tone_idx * sym_ms;
+    s_tx_lead_ms = radio_control_tone_lead_ms();
+    // The first TA waits the minimum TX delay after TX; however late this TX
+    // is armed (tx_timing.h). Later tones are slot-anchored again.
+    s_tx_next_tone_time =
+        std::max(tx_tone_time_ms(s_tx_slot_start_ms, s_tx_tone_idx, sym_ms, s_tx_lead_ms),
+                 tx_first_rf_ms(keyed_ms, tx_min_delay_ms()));
     s_tx_last_ta_int = -1;
     s_tx_last_ta_frac = -1;
+    s_tx_keyed_down = false;
 
     if (skip_tones > 0) {
         ESP_LOGI(TAG, "Skipping first %d tones (late start)", skip_tones);
     }
-
-    if (s_tx_tone_idx < g_protocol->total_symbols) {
-        const float tone_hz =
-            s_tx_base_hz + g_protocol->tone_spacing * s_tx_tones[s_tx_tone_idx];
-        tx_send_ta(tone_hz);
-    }
+    // No TA here: TX; keyed PTT with no RF, and the first tx_tick() TA starts
+    // the RF s_tx_lead_ms after the slot boundary.
 
     decode_tx_state_set_tx_active(true);
     decode_tx_state_set_tx_slot_idx(s_tx_slot_idx);
@@ -262,6 +278,7 @@ static void tx_tick(void) {
         decode_tx_state_set_tx_active(false);
         s_pending_tx_valid = false;
         s_tx_cancel_requested = false;
+        s_tx_keyed_down = false;
         decode_tx_state_set_was_txing(false);
         return;
     }
@@ -270,13 +287,24 @@ static void tx_tick(void) {
         return;
     }
 
-    if (s_tx_tone_idx >= g_protocol->total_symbols) {
+    if (!s_tx_keyed_down && s_tx_tone_idx >= g_protocol->total_symbols) {
+        // The last tone has run its symbol. Key down, then release PTT after
+        // the tail, so an amplifier on the radio's PTT sees no RF at release.
+        // A radio with no key-up goes straight to RX;.
+        s_tx_keyed_down = true;
+        s_tx_rx_at_ms = now_ms + (radio_control_key_up() == ESP_OK ? kTxKeyUpTailMs : 0);
+    }
+    if (s_tx_keyed_down) {
+        if (now_ms < s_tx_rx_at_ms) {
+            return;
+        }
         ESP_LOGI(TAG, "tx_tick: TX complete, all %d tones sent", g_protocol->total_symbols);
         radio_control_end_tx();
         autoseq_mark_sent(s_tx_slot_idx);
         decode_tx_state_set_tx_active(false);
         s_pending_tx_valid = false;
         s_tx_cancel_requested = false;
+        s_tx_keyed_down = false;
         return;
     }
 
@@ -284,8 +312,8 @@ static void tx_tick(void) {
     tx_send_ta(tone_hz);
     s_tx_tone_idx++;
     s_tx_next_tone_time =
-        s_tx_slot_start_ms +
-        s_tx_tone_idx * (int)roundf(g_protocol->symbol_period * 1000.0f);
+        tx_tone_time_ms(s_tx_slot_start_ms, s_tx_tone_idx,
+                        (int)roundf(g_protocol->symbol_period * 1000.0f), s_tx_lead_ms);
 }
 
 static void check_slot_boundary(void) {
@@ -336,7 +364,8 @@ static void check_slot_boundary(void) {
                  slot_parity);
 
         const int sym_ms = (int)roundf(g_protocol->symbol_period * 1000.0f);
-        const int skip_tones = slot_ms / sym_ms;
+        const int skip_tones =
+            tx_skip_tones(slot_ms, sym_ms, radio_control_tone_lead_ms(), tx_min_delay_ms());
         if (skip_tones < g_protocol->total_symbols) {
             if (s_pending_tx_valid && !s_pending_tx.text.empty()) {
                 std::string skip_reason;

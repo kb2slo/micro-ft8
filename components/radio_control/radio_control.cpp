@@ -3,6 +3,7 @@
 #include "radio_control.h"
 
 #include "radio_control_backend.h"
+#include "tx_timing.h"
 
 #include "esp_log.h"
 
@@ -90,6 +91,17 @@ esp_err_t radio_control_end_tx(void) {
     const radio_control_ops_t* ops = current_ops();
     if (!ops || !ops->end_tx) return ESP_ERR_INVALID_STATE;
     return ops->end_tx();
+}
+
+esp_err_t radio_control_key_up(void) {
+    const radio_control_ops_t* ops = current_ops();
+    if (!ops || !ops->key_up) return ESP_ERR_NOT_SUPPORTED;
+    return ops->key_up();
+}
+
+int radio_control_tone_lead_ms(void) {
+    const radio_control_ops_t* ops = current_ops();
+    return ops && !ops->begin_cpfsk_tx ? kTxToneLeadMs : 0;
 }
 
 esp_err_t radio_control_set_tune(bool enable, int freq_hz, int tone_hz) {

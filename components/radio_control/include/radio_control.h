@@ -53,6 +53,10 @@ esp_err_t radio_control_sync_frequency_mode(int freq_hz);
 esp_err_t radio_control_begin_tx(int freq_hz, int tx_base_hz);
 esp_err_t radio_control_set_tone_hz(float tone_hz);
 esp_err_t radio_control_end_tx(void);
+// RF off with PTT still held (QMX TA0;); ESP_ERR_NOT_SUPPORTED where end_tx() is the only stop.
+esp_err_t radio_control_key_up(void);
+// How long after the slot boundary this radio's first tone is due (tx_timing.h).
+int radio_control_tone_lead_ms(void);
 esp_err_t radio_control_set_tune(bool enable, int freq_hz, int tone_hz);
 esp_err_t radio_control_set_time(int hour, int minute, int second);
 esp_err_t radio_control_begin_cpfsk_tx(float base_hz,

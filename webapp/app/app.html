@@ -654,6 +654,12 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         </select>
       </label>
     </div>
+    <div class=setrow>
+      <label>Min TX delay (ms)
+        <input id=tx_min_delay_ms type=number min=0 max=500 step=10 inputmode=numeric autocomplete=off>
+      </label>
+    </div>
+    <p class=setnote>For an external amplifier keyed from the QMX's PTT output. The radio keys, then waits this long before sending RF, so the amp's relay can switch first and the QMX's SWR protection doesn't trip on the switching. No amp: 0 works, and the default 50 does no harm. 0 to 500 ms. A reply started late waits the full delay and loses the tones that pass in the meantime.</p>
     <div class=hd>Bands</div>
     <p class=setnote>Which bands appear. Band and frequency are set from Operate's dock.</p>
     <div id=bandList></div>
@@ -935,7 +941,7 @@ var stationSheetMsg = document.getElementById('stationSheetMsg');
 // never resend them. Settings' own fields (below) autosave one key each.
 var FIELDS = [
   'call','comment1','ignore_prefixes',
-  'radio','protocol_mode','skiptx1','rxtx_log'
+  'radio','protocol_mode','skiptx1','rxtx_log','tx_min_delay_ms'
 ];
 var CQ_TYPE_NAMES = ['CQ', 'SOTA', 'POTA', 'QRP', 'FD', 'FreeText'];
 // AutoseqState wire values (main/autoseq.h). 6 = IDLE = remove from display.

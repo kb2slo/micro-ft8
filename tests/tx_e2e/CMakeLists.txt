@@ -131,6 +131,15 @@ else()
     target_link_libraries(test_l4 PRIVATE ft8_lib m)
 endif()
 
+# L5 TX CAT command sequence
+add_executable(test_l5 test_l5_tx_cat_sequence.cpp tx_state_machine.cpp)
+target_include_directories(test_l5 PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/../../components/radio_control/include)
+if(WIN32)
+    target_link_libraries(test_l5 PRIVATE ft8_lib)
+else()
+    target_link_libraries(test_l5 PRIVATE ft8_lib m)
+endif()
+
 # WAV diagnostic tool
 add_executable(test_wav_diag test_wav_diag.cpp decode_helper.cpp)
 target_include_directories(test_wav_diag PRIVATE ${CMAKE_SOURCE_DIR})
@@ -148,6 +157,7 @@ add_test(NAME l1_encoder         COMMAND test_l1)
 add_test(NAME l2_state_machine   COMMAND test_l2)
 add_test(NAME l3_poll_timing     COMMAND test_l3)
 add_test(NAME l4_timer_isolation COMMAND test_l4)
+add_test(NAME l5_cat_sequence    COMMAND test_l5)
 add_test(NAME golden_rx          COMMAND test_golden_rx)
 add_test(NAME telemetry_decode   COMMAND test_telemetry_decode)
 add_test(NAME ta_format          COMMAND test_ta_format)

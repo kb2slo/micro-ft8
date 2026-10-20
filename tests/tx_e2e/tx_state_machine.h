@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include "../../components/ft8_lib/vendor/ft8/constants.h"
+#include "tx_timing.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,6 +19,9 @@ struct TxConfig {
     int64_t slot_start_ms;       // Simulated wall clock at slot boundary
     int skip_tones;              // How many tones to skip before TX
     const char* text;            // Message to transmit
+    int64_t cancel_ms = -1;      // >= 0: tx_scheduler_cancel() lands this far into the slot
+    int min_delay_ms = 50;       // Station tx_min_delay_ms: least TX;-to-first-RF gap
+    int64_t arm_ms = 0;          // How far into the slot the TX is keyed (late start)
 };
 
 #ifdef __cplusplus
@@ -26,11 +30,14 @@ struct TxConfig {
 // CAT command event
 struct CatEvent {
     int64_t time_ms;
-    enum Kind { TX_BEGIN, TA, TX_END } kind;
+    enum Kind { TX_BEGIN, TA, KEY_UP, TX_END } kind;
     float tone_hz;  // Valid for TA
 };
 
-// Run TX state machine, return CAT event stream
+// Run TX state machine, return CAT event stream. Mirrors poe_p4/main/tx_scheduler.cpp
+// for a CAT-tone radio: TX_BEGIN (TX;) at arm_ms into the slot with no TA, tone n at
+// tx_tone_time_ms(), KEY_UP (TA0;) when the last symbol has run, TX_END (RX;)
+// kTxKeyUpTailMs later.
 std::vector<CatEvent> run_tx(const TxConfig& cfg, int64_t loop_delay_ms = 2);
 
 // Verify that tick-loop TA events are slot-anchored within tolerance.

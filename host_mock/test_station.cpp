@@ -52,6 +52,28 @@ int main()
         expect_str(s.call, "", "empty call");
         expect_int(s.radio, 2, "default radio QMX");
         expect_int(s.gps_baud, 115200, "default gps baud");
+        expect_int(s.tx_min_delay_ms, 50, "default min TX delay");
+    }
+
+    {
+        StationSettings s;
+        station_settings_init(&s);
+        station_parse("tx_min_delay_ms=200\n", &s);
+        expect_int(s.tx_min_delay_ms, 200, "min TX delay parsed");
+        station_parse("tx_min_delay_ms=501\n", &s);
+        expect_int(s.tx_min_delay_ms, 200, "above 500 ignored");
+        station_parse("tx_min_delay_ms=-1\n", &s);
+        expect_int(s.tx_min_delay_ms, 200, "negative ignored");
+        station_parse("tx_min_delay_ms=0\n", &s);
+        expect_int(s.tx_min_delay_ms, 0, "zero is allowed");
+        station_parse("tx_min_delay_ms=abc\n", &s);
+        expect_int(s.tx_min_delay_ms, 0, "non-number ignored");
+        station_parse("tx_min_delay_ms=500\n", &s);
+        StationSettings t;
+        station_settings_init(&t);
+        station_parse(station_serialize(s), &t);
+        expect_int(t.tx_min_delay_ms, 500, "min TX delay round-trips");
+        expect_true(station_key_known("tx_min_delay_ms"), "key known to CONFIG");
     }
 
     {

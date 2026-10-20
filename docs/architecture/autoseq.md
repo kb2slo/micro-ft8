@@ -104,7 +104,7 @@ Each board runs `check_slot_boundary()` on every pass of its main loop. It does 
 
    An encode failure is the exception: it keys nothing but still charges the try, so a message that can never encode cannot loop forever. CAT lost partway through a TX that started keyed counts as sent. The web app does not yet show a skipped slot (row ybav).
 
-   A late start skips the tones it has missed. Tones are timed from the slot boundary, not from the start, so a late TX still ends on time.
+   A late start skips the tones it has missed, counted from the first tone's due time (see **TX timing on a QMX**, [radio.md](radio.md)). Tones are timed from the slot boundary, not from the start, so a late TX still ends on time.
 
 **Why this ordering.** Two rules keep the trigger, the transmission and the tick on the same entry. The `entry_id` checks (the head check above, and the tick's lookup below) are the backstop for queue changes the rules do not cover:
 

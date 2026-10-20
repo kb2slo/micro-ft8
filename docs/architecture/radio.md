@@ -17,11 +17,23 @@ The core (slot loop, TX scheduler, HUD) talks to the radio only through `compone
 * **Adding a radio** means filling in a new operations table and capabilities, — no edit to the slot loop. This is the design's test; no second radio family has been added yet to prove it.
 * **Why a table, not `class Radio`:** the variants are a closed set, and a C struct of function pointers is what the rest of this ESP-IDF tree already uses. [STYLE.md](../STYLE.md) (**Structure**) allows inheritance only for closed sets like this one, and the table is the lighter form of it.
 
+## TX timing on a QMX
+
+The QMX takes its tones over CAT, so the main board sets the timing (`tx_scheduler.cpp`; the constants and arithmetic in `components/radio_control/include/tx_timing.h`, which the host model in `tests/tx_e2e/tx_state_machine.cpp` shares):
+
+* **`MD6;`, `TX;` at the slot boundary.** `TX;` keys PTT and emits no RF (bench-verified, below).
+* **Tone *n* at `slot_start + 500 ms + n * symbol`**, FT8 and FT4 alike. The first `TA` is the first RF, 0.5 s after PTT, which is the gap an amplifier keyed from the QMX's PTT output needs to switch its relay before RF arrives, and WSJT-X's own start time.
+* **The first `TA` is never sooner than the minimum TX delay after `TX;` returned**, however late the TX is armed, so an amplifier keyed from the QMX's PTT has its switching time before RF and the QMX's SWR protection never sees the transient. The delay is Settings › Radio › **Min TX delay**, `tx_min_delay_ms` in Station.txt: 0 to 500 ms, default 50, refused outside that; it is separate from the 0.5 s start above, which is the convention. A late start skips `(slot_ms + delay − 500) / symbol` tones (`tx_skip_tones()`): the first RF is the later of tone 0's due time and `TX;` + delay, sounding the tone due then, and later tones are slot-anchored again. At the default a reply armed up to 450 ms into the slot loses nothing; one armed at 3 s loses 17 of 79. A larger delay trades tones on late starts for relay time.
+* **After the last tone: `TA0;`, 50 ms, `RX;`.** RF stops before PTT drops. FT8 ends at about 13.19 s of 15 s. A cancel sends `RX;` at once.
+* **Both waits are states of the 10 ms tick**, not sleeps, and `tx_active` stays true from `TX;` to `RX;`.
+* **A radio with CPFSK audio (QDX) is unchanged:** `radio_control_tone_lead_ms()` is 0 where `begin_cpfsk_tx` exists, so neither the 0.5 s start nor the minimum delay applies, and with no `key_up` it goes straight to `RX;`.
+
 ## QMX SWR Tune over CAT
 
 Measured on a QMX at firmware 1_04_003 with `tools/qmx_swr_probe.py` (2026-09-30); `tools/qmx_swr_sweep.py` and `tools/qmx_swr_plot.py` are the bench prototype of the sweep and its plot. The sweep is built on it: see **The SWR sweep on the main board** below.
 
 * **`MD8;` enters SWR Tune and keys the radio by itself** (`KD;`/`TQ;` read `1`; `MD;` then reads `3`). `SW;` returns the SWR in hundredths while keyed, and an empty `SW;` in receive. No `TX;` is needed, and a plain `TX;` does not measure: `KD;` stays `0` and `SW;` returns noisy, meaningless values.
+* **`TX;` asserts PTT and emits no RF; the first `TA` does (bench-verified, QMX 1_04_003, Micro PA100+ keyed from the QMX's grounded PTT output).** After `TX;` the PA relay clicks and both radios read ~0 W. RF appears on the first `TA`, `TA0;` keys down, and `RX;` releases PTT. With a gap between `TX;` and the first `TA` the QMX no longer trips SWR protection on the relay's switching transient. Found by test, not read from the CAT manual, whose PDF text could not be extracted.
 * **The frequency is taken when SWR Tune is entered.** `FA` while keyed is refused (`?;`), and `MD8;` sent while already in SWR Tune keeps the old frequency. Per point: `RX;`, `MD6;`, `FA<hz>;`, `MD8;`, then read `SW;`. Afterwards `RX;`, `MD6;` and the original `FA`.
 * **Timing:** setters return nothing, and the next query answers within a few ms, so the radio's own latency is small. With a 300 ms discard after `MD8;` the first read was already steady, and three reads 50 ms apart plus a median absorb the odd outlier (one in ~20 reads strays 0.1-0.3). A point costs about 0.7 s keyed: 15 points in 11 s.
 * **The reading depends on the Tune %.** The same dummy load on 20 m read 1.14-1.15 at 50%, 1.19-1.22 at 25%, 1.28-1.32 at 10%; at 10% the noise hides the small rise across the band. So 25% is the floor, and a curve must be labelled with its Tune %. The real antenna at 25% read a smooth 1.37-1.43 across 20 m, lowest at 14.175-14.200 MHz.

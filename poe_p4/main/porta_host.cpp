@@ -220,6 +220,11 @@ int porta_p4_station_offset_hz(void) {
     return s_station.offset_hz;
 }
 
+int porta_p4_station_tx_min_delay_ms(void) {
+    ensure_seeded();
+    return s_station.tx_min_delay_ms;
+}
+
 int porta_p4_station_offset_src(void) {
     ensure_seeded();
     return s_station.offset_src;
@@ -479,6 +484,16 @@ const char *porta_host_config_set(const char *key, const char *value) {
         const int tries = atoi(value);
         if (tries < 1 || tries > AUTOSEQ_TRIES_MAX_QSO) {
             return "tries is 1 to 20";
+        }
+    }
+
+    if (strcmp(key, "tx_min_delay_ms") == 0) {
+        // Refused, not clamped, like tries: the field must not show a delay the
+        // scheduler is not using.
+        char *end = nullptr;
+        const long ms = strtol(value, &end, 10);
+        if (end == value || *end != '\0' || ms < 0 || ms > kStationTxMinDelayMaxMs) {
+            return "min TX delay is 0 to 500 ms";
         }
     }
 

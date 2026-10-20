@@ -75,6 +75,11 @@ static esp_err_t qmx_end_tx(void) {
     return err;
 }
 
+// TA0; (a tone under 10 Hz) keys down; PTT stays asserted until RX;.
+static esp_err_t qmx_key_up(void) {
+    return qmx_send_cmd("TA0;", 10);
+}
+
 static esp_err_t qmx_set_tune(bool enable, int freq_hz, int tone_hz) {
     if (!enable) {
         return qmx_end_tx();
@@ -233,6 +238,7 @@ static const radio_control_ops_t k_ops = {
     .begin_tx = qmx_begin_tx,
     .set_tone_hz = qmx_set_tone_hz,
     .end_tx = qmx_end_tx,
+    .key_up = qmx_key_up,
     .set_tune = qmx_set_tune,
     .set_time = qmx_set_time,
     .reset_tx_power_swr = qmx_reset_tx_power_swr,

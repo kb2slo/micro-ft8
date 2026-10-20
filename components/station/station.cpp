@@ -197,6 +197,7 @@ enum class StationKey {
     ActiveBand,
     ActiveBands,
     Tries,
+    TxMinDelay,
     ProtocolMode,
     ActRefs,
     Unknown,
@@ -220,6 +221,7 @@ StationKey key_from_name(const std::string& name)
     if (name == "active_band") return StationKey::ActiveBand;
     if (name == "active_bands") return StationKey::ActiveBands;
     if (name == "tries") return StationKey::Tries;
+    if (name == "tx_min_delay_ms") return StationKey::TxMinDelay;
     if (name == "protocol_mode") return StationKey::ProtocolMode;
     if (name == "act_refs") return StationKey::ActRefs;
     return StationKey::Unknown;
@@ -303,6 +305,12 @@ void apply_key(StationSettings* io, StationKey key, const std::string& value)
         case StationKey::Tries:
             if (sscanf(value.c_str(), "%d", &val) == 1 && val >= 1) {
                 io->tries = val;
+            }
+            break;
+        case StationKey::TxMinDelay:
+            if (sscanf(value.c_str(), "%d", &val) == 1 && val >= 0 &&
+                val <= kStationTxMinDelayMaxMs) {
+                io->tx_min_delay_ms = val;
             }
             break;
         case StationKey::ProtocolMode: {
@@ -410,6 +418,7 @@ std::string station_serialize(const StationSettings& in)
     out << "rxtx_log=" << (in.rxtx_log ? 1 : 0) << "\n";
     out << "active_bands=" << in.active_bands << "\n";
     out << "tries=" << in.tries << "\n";
+    out << "tx_min_delay_ms=" << in.tx_min_delay_ms << "\n";
     if (in.protocol_ft4) {
         out << "protocol_mode=FT4\n";
     }

@@ -7,6 +7,11 @@
 
 static constexpr int kStationBandCount = 12;
 
+// Least time from TX; (PTT) to the first RF of a QMX transmission, for an amplifier
+// keyed from the radio's PTT (architecture/radio.md, TX timing on a QMX).
+static constexpr int kStationTxMinDelayDefaultMs = 50;
+static constexpr int kStationTxMinDelayMaxMs = 500;
+
 struct StationSettings {
     float band_freq[kStationBandCount];
     bool band_freq_set[kStationBandCount];
@@ -27,6 +32,7 @@ struct StationSettings {
     std::string ignore_prefixes;
     bool rxtx_log;
     std::string active_bands;
+    int tx_min_delay_ms = kStationTxMinDelayDefaultMs;  // 0..kStationTxMinDelayMaxMs
     int tries;  // transmissions per QSO message, and a CQ's to start (autoseq.md, Tries)
     bool protocol_ft4;
     bool serialize_ft4_band_keys;

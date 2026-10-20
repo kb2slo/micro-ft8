@@ -2,6 +2,7 @@
 #include "../../components/ft8_lib/vendor/ft8/message.h"
 #include "../../components/ft8_lib/vendor/ft8/encode.h"
 #include "radio_ta_format.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -46,15 +47,16 @@ std::vector<CatEvent> run_tx(const TxConfig& cfg, int64_t loop_delay_ms) {
     int tone_idx = cfg.skip_tones;
     if (tone_idx >= nn) tone_idx = nn;
 
-    int64_t next_tone_time = cfg.slot_start_ms + (int64_t)tone_idx * sym_ms;
+    const int lead_ms = kTxToneLeadMs;
+    now += cfg.arm_ms;
+    // The first TA waits the minimum TX delay after TX;, however late the TX is armed.
+    int64_t next_tone_time = std::max(tx_tone_time_ms(cfg.slot_start_ms, tone_idx, sym_ms, lead_ms),
+                                      tx_first_rf_ms(now, cfg.min_delay_ms));
 
-    // TX_BEGIN: radio enters TX mode at slot start
+    // TX_BEGIN: TX; at the slot boundary (or when armed, if later). It keys PTT
+    // and emits no RF; nothing is sent as a TA here.
     events.push_back({now, CatEvent::TX_BEGIN, 0.0f});
 
-    // Initial TA: mirrors firmware tx_start() — send the first tone frequency
-    // immediately so the radio has a valid audio frequency the moment it is keyed,
-    // rather than waiting for the first tx_tick() call.  tx_tick (the loop below)
-    // will dedup this on its first fire.
     int last_ta_int = -1, last_ta_frac = -1;
     auto record_ta = [&](float hz) {
         int ta_int = 0;
@@ -67,15 +69,19 @@ std::vector<CatEvent> run_tx(const TxConfig& cfg, int64_t loop_delay_ms) {
         }
     };
 
-    if (tone_idx < nn) {
-        float hz = cfg.base_hz + spacing * tones[tone_idx];
-        // Push directly (not via record_ta) so last_ta remains -1/-1;
-        // record_ta will then dedup naturally on the first tick.
-        events.push_back({now, CatEvent::TA, hz});
-    }
+    // A cancel ends the TX at once with RX;, with no key-down: the same as
+    // tx_tick()'s s_tx_cancel_requested branch.
+    auto cancelled = [&]() {
+        return cfg.cancel_ms >= 0 && now >= cfg.slot_start_ms + cfg.cancel_ms;
+    };
+    auto end_now = [&]() {
+        events.push_back({now, CatEvent::TX_END, 0.0f});
+        return events;
+    };
 
     // === tx_tick loop ===
     while (tone_idx < nn) {
+        if (cancelled()) return end_now();
         if (now < next_tone_time) {
             now += loop_delay_ms;
             continue;
@@ -83,23 +89,32 @@ std::vector<CatEvent> run_tx(const TxConfig& cfg, int64_t loop_delay_ms) {
         float hz = cfg.base_hz + spacing * tones[tone_idx];
         record_ta(hz);
         tone_idx++;
-        next_tone_time = cfg.slot_start_ms + (int64_t)tone_idx * sym_ms;
+        next_tone_time = tx_tone_time_ms(cfg.slot_start_ms, tone_idx, sym_ms, lead_ms);
     }
 
-    // TX_END
-    events.push_back({now, CatEvent::TX_END, 0.0f});
-    return events;
+    // The last tone runs its symbol, then TA0; keys down and RX; follows.
+    while (now < next_tone_time) {
+        if (cancelled()) return end_now();
+        now += loop_delay_ms;
+    }
+    if (cancelled()) return end_now();
+    events.push_back({now, CatEvent::KEY_UP, 0.0f});
+    const int64_t rx_at = now + kTxKeyUpTailMs;
+    while (now < rx_at) {
+        if (cancelled()) return end_now();
+        now += loop_delay_ms;
+    }
+    return end_now();
 }
 
 // ---------------------------------------------------------------------------
 // Timing verifier
 // ---------------------------------------------------------------------------
-// Checks that every TA event emitted by the tick loop (i.e. every TA after
-// the initial tx_start TA at slot_start_ms) arrives at a slot-anchored time:
-//   (event.time_ms - slot_start_ms) % sym_ms  <=  loop_delay_ms
+// Checks that every TA event arrives at a slot-anchored time:
+//   (event.time_ms - slot_start_ms - kTxToneLeadMs) % sym_ms  <=  loop_delay_ms
 //
 // This directly tests the slot-anchor formula used by tx_tick:
-//   next_tone_time = slot_start_ms + tone_idx * sym_ms
+//   next_tone_time = tx_tone_time_ms(slot_start_ms, tone_idx, sym_ms, lead)
 //
 // Returns an empty string on success, or a human-readable error on the first
 // violation found.
@@ -107,16 +122,22 @@ std::string verify_event_timing(const std::vector<CatEvent>& events,
                                 const TxConfig& cfg,
                                 int sym_ms, int64_t loop_delay_ms)
 {
+    bool first_seen = false;
     for (size_t i = 0; i < events.size(); i++) {
         if (events[i].kind != CatEvent::TA) continue;
 
         int64_t t = events[i].time_ms;
-        // Skip the initial tx_start TA which is intentionally emitted at
-        // slot_start_ms regardless of skip_tones.
-        if (t <= cfg.slot_start_ms) continue;
-
-        int64_t offset    = t - cfg.slot_start_ms;
+        int64_t offset    = t - cfg.slot_start_ms - kTxToneLeadMs;
+        if (offset < 0) {
+            return "TA before the first tone is due (RF inside the lead)";
+        }
         int64_t remainder = offset % sym_ms;
+        // The first TA of a late TX goes out when the gap after TX; has run,
+        // mid-symbol; L5 checks that gap.
+        if (!first_seen) {
+            first_seen = true;
+            if (cfg.arm_ms > 0) continue;
+        }
         if (remainder > loop_delay_ms) {
             char buf[256];
             snprintf(buf, sizeof(buf),
@@ -157,6 +178,7 @@ std::vector<float> events_to_pcm(const std::vector<CatEvent>& events,
             switch (events[evt_idx].kind) {
                 case CatEvent::TX_BEGIN: tx_active  = true;                      break;
                 case CatEvent::TA:       current_hz = events[evt_idx].tone_hz;   break;
+                case CatEvent::KEY_UP:   current_hz = 0.0f;                      break;
                 case CatEvent::TX_END:   tx_active  = false;                     break;
             }
             evt_idx++;
