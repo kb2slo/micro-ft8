@@ -10,7 +10,6 @@ Ship on `origin/main`. Talk through changes before a local commit (see [README.m
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| ybav | Operate: radio status replaces Connect; read-back; TX banner (RFC 0009 O2) | Connect is a leftover (on the P4 it only retunes), and since the dock shipped Operate shows no TX offset. A radio chip with a details panel, and a TX banner with parity, offset, progress and Not keyed: [RFC 0009](rfcs/0009-operate-station-surface.md) §3.7, §3.12, §6. **Done-when:** unplug and replug the QMX: the chip goes No radio, Found (within a second or two), Ready, and the VFO lands on the selected band with nothing pressed; Tune from the chip's panel shows power and SWR there and in the banner, and Stop in the banner ends it (field). |
 | mxvk | Operate: reply feedback (RFC 0009 O3) | Reply posts and nothing on screen changes until the main board's queue event comes back about a second later, so a tap reads as missed. Web app only. [RFC 0009](rfcs/0009-operate-station-surface.md) §3.13. **Done-when:** tap Reply: the button reads "Sending…" at once; "Queued ✓" and a placeholder queue row appear within about 1 s, and the placeholder becomes the real entry; a refused reply shows its reason on the decode row with Retry (bench). |
 
 ## Backlog

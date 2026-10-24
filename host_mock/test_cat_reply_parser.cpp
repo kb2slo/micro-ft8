@@ -93,6 +93,26 @@ int main()
     expect(parser.fa_hz, -1, "reset forgets FA");
     expect(parser.pc_tenths, -1, "reset forgets PC");
 
+    // IF: the Kenwood layout, 14.074 MHz, receiving, mode 6, split off, in a reply with a
+    // display code after it.
+    cat_reply_parser_reset(&parser);
+    expect(parser.if_hz, -1, "nothing heard reads as none: IF");
+    feed(&parser, "IF00014074000    00000000000" "0" "6" "0" "0" "0" "0" "00" "0;\x1b[7m");
+    expect(parser.if_hz, 14074000, "IF reply carries the frequency");
+    expect(parser.if_tx, 0, "IF reply: receiving");
+    expect(parser.if_mode, 6, "IF reply: mode digit");
+    expect(parser.if_split, 0, "IF reply: split off");
+    feed(&parser, "IF00007074000    00000000000" "1" "6" "0" "0" "0" "0" "00" "0;");
+    expect(parser.if_tx, 1, "IF reply: transmitting");
+    expect(parser.if_hz, 7074000, "a later IF replaces the first");
+    cat_reply_parser_reset(&parser);
+    feed(&parser, "IF0001407400;");
+    expect(parser.if_hz, -1, "a short IF is ignored");
+    feed(&parser, "IF0001407400x    00000000000" "0" "6" "0" "0" "0" "0" "00" "0;");
+    expect(parser.if_hz, -1, "an IF with a non-digit in the frequency is ignored");
+    cat_reply_parser_reset(&parser);
+    expect(parser.if_tx, -1, "reset forgets IF");
+
     if (g_fails == 0) {
         printf("PASS: cat_reply_parser\n");
     }

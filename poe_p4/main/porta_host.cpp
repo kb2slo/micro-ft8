@@ -173,6 +173,9 @@ static const char *sync_vfo(const char *reason) {
         return "CAT sync failed";
     }
     ESP_LOGI(TAG, "VFO sync ok (%s) freq=%d", reason ? reason : "", freq_hz);
+    // What the radio says of itself, for the page's chip (RFC 0009 section 3.7); the reply
+    // lands in the config snapshot. Not an error if the radio cannot say.
+    (void)radio_control_query_state();
     return nullptr;
 }
 
@@ -305,7 +308,8 @@ void porta_p4_tx_hud_tick(void) {
 
     // A transmission the radio's SWR protection stopped stays on the banner for the rest of its slot.
     const char *abort_reason = tx_scheduler_hud_abort_reason();
-    const bool active = tx_scheduler_hud_active() || s_tune || abort_reason;
+    const char *not_keyed = tx_scheduler_hud_not_keyed_reason();
+    const bool active = tx_scheduler_hud_active() || s_tune || abort_reason || not_keyed;
     if (!active && !s_last_active) {
         return;
     }
@@ -329,6 +333,11 @@ void porta_p4_tx_hud_tick(void) {
     if (!tx_scheduler_hud_snapshot(&tx_text, &offset_hz) && s_tune) {
         tx_text = "TUNE";
         offset_hz = (s_station.offset_src == 1) ? s_station.offset_hz : 1500;
+    }
+
+    if (not_keyed && !abort_reason && !tx_scheduler_hud_active() && !s_tune) {
+        porta_emit_tx_not_keyed(tx_text, offset_hz, not_keyed);
+        return;
     }
 
     if (abort_reason && !tx_scheduler_hud_active() && !s_tune) {
@@ -480,6 +489,16 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
              freq_khz, qmx_audio_ready() ? 1 : 0, rtc_is_set() ? 1 : 0);
     text += live;
 
+    // What the radio last said of itself (IF;), against what Micro-FT8 means it to be: both in
+    // Hz, so the page can tell a knob turned from a band changed. Absent until a reply arrives.
+    radio_state_t rs;
+    if (radio_control_get_state(&rs)) {
+        char rbuf[96];
+        snprintf(rbuf, sizeof(rbuf), "radio_hz=%d\nradio_tx=%d\nradio_mode=%d\nradio_split=%d\nwant_hz=%d\n",
+                 rs.freq_hz, rs.transmitting ? 1 : 0, rs.mode, rs.split ? 1 : 0, station_freq_hz());
+        text += rbuf;
+    }
+
     // GET-only like the other live lines. Absent while firmware does not own storage, which the
     // app shows as unknown rather than as zero.
     size_t st_total = 0, st_used = 0;
@@ -608,6 +627,23 @@ const char *porta_host_tune(bool on) {
         ESP_LOGI(TAG, "CAT tune: %s", s_tune ? "TX" : "RX");
     } else {
         ESP_LOGI(TAG, "CAT tune: off (no CAT)");
+    }
+    return nullptr;
+}
+
+const char *porta_host_radio_read(void) {
+    if (porta_link_test_active()) {
+        return "link test";
+    }
+    if (!radio_control_ready()) {
+        return "CAT not ready";
+    }
+    // The query is a CAT command between tones' neighbours; never during a transmission.
+    if (decode_tx_state_get_tx_active() || s_tune) {
+        return "TX active";
+    }
+    if (radio_control_query_state() != ESP_OK) {
+        return "the radio cannot report its state";
     }
     return nullptr;
 }

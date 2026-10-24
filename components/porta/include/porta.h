@@ -91,6 +91,10 @@ void porta_emit_tx_hud(bool active, bool aborted, bool writes_blocked,
                        const char* text, float power_w, float swr, int battery_pct,
                        int offset_hz, const char* reason);
 
+// The armed message was not keyed this slot (CAT not ready, SWR protection) and the slot is not
+// counted. A TX HUD event with active and not_keyed set; `reason` says why.
+void porta_emit_tx_not_keyed(const char* text, int offset_hz, const char* reason);
+
 // The host's own USB-C host port attached or detached a device (radio
 // normally; briefly the sidekick during its own flash workflow). Pushed the
 // instant usb_c_presence_host.cpp's event fires -- see porta_proto.h's

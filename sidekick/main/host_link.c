@@ -1003,6 +1003,20 @@ static esp_err_t post_cq(httpd_req_t *req)
     return wait_action_reply(req, PORTA_ACT_CQ_CALL);
 }
 
+// POST /api/radio/read  no body: ask the radio for its state (IF;). The answer arrives in the next
+// config poll as radio_hz, radio_tx, radio_mode and radio_split. Token required like every POST.
+static esp_err_t post_radio_read(httpd_req_t *req)
+{
+    uint8_t frame[PORTA_PROTO_MAX_FRAME];
+    const size_t n = porta_proto_encode_radio_read(frame, sizeof(frame));
+    reply_reset();
+    if (!porta_send(frame, n)) {
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
+    }
+    return wait_action_reply(req, PORTA_ACT_RADIO_READ);
+}
+
 // POST /api/queue/tries   body: "<entry_id> <tries>" (0 = the station default)
 // POST /api/queue/parity  body: "<entry_id> <parity>" (0 even, 1 odd; the CQ only)
 // Both address an entry by its id, as /api/queue/cancel does. Token required.
@@ -1811,6 +1825,9 @@ void host_link_register_uris(httpd_handle_t server)
     static const httpd_uri_t radio_tune = {
         .uri = "/api/radio/tune", .method = HTTP_POST, .handler = post_radio_tune,
     };
+    static const httpd_uri_t radio_read = {
+        .uri = "/api/radio/read", .method = HTTP_POST, .handler = post_radio_read,
+    };
     static const httpd_uri_t swr_start = {
         .uri = "/api/swr/start", .method = HTTP_POST, .handler = post_swr_start,
     };
@@ -1865,6 +1882,7 @@ void host_link_register_uris(httpd_handle_t server)
         { &config_put, PAIRING_REQUIRED },
         { &radio_connect, PAIRING_REQUIRED },
         { &radio_tune, PAIRING_REQUIRED },
+        { &radio_read, PAIRING_REQUIRED },
         { &cq, PAIRING_REQUIRED },
         { &swr_start, PAIRING_REQUIRED },
         { &link_test_get, PAIRING_OPEN },

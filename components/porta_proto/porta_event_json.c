@@ -109,10 +109,11 @@ size_t porta_event_json_tx_hud(char *out, size_t cap, uint32_t seq,
     json_escape(ev->reason, esc_reason, sizeof(esc_reason));
     const int n = snprintf(out, cap,
                            "{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":4,"
-                           "\"active\":%d,\"aborted\":%d,\"wrblk\":%d,"
+                           "\"active\":%d,\"aborted\":%d,\"wrblk\":%d,\"nk\":%d,"
                            "\"pw\":%d,\"swr\":%d,\"batt\":%d,\"hz\":%u,\"reason\":\"%s\",\"x\":\"%s\"}",
                            seq, ev->epoch_secs,
                            ev->active ? 1 : 0, ev->aborted ? 1 : 0, ev->writes_blocked ? 1 : 0,
+                           ev->not_keyed ? 1 : 0,
                            ev->power_dw, ev->swr_c, ev->battery_pct, ev->offset_hz,
                            esc_reason, esc);
     return finish(out, cap, n);

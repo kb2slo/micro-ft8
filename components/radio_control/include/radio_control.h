@@ -53,12 +53,27 @@ typedef struct {
     void (*poll_with_meters)(bool on);    // PC;SW;SR; instead of PC;SW; in the TX poll
 } radio_swr_lock_t;
 
+// What the radio says of itself (IF;): where it is, not where we put it. The reply holds a value
+// only after the matching query and only until the next reset of the radio's replies.
+typedef struct {
+    int freq_hz;
+    bool transmitting;
+    int mode;   // the MD digit
+    bool split;
+} radio_state_t;
+
 void radio_control_set_backend(radio_control_backend_t backend);
 radio_control_backend_t radio_control_get_backend(void);
 const char* radio_control_backend_name(radio_control_backend_t backend);
 const radio_control_capabilities_t* radio_control_get_capabilities(void);
 
 bool radio_control_ready(void);
+
+// Asks the radio for its state (QMX IF;); ESP_ERR_NOT_SUPPORTED where it cannot say. Not a poll:
+// the caller asks when the operator looks and after a sync, never during a slot.
+esp_err_t radio_control_query_state(void);
+// The last IF reply; false when none has arrived since the radio's replies were last reset.
+bool radio_control_get_state(radio_state_t* out);
 
 esp_err_t radio_control_on_audio_start(void);
 esp_err_t radio_control_sync_frequency_mode(int freq_hz);

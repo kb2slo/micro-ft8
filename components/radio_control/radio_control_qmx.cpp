@@ -241,6 +241,25 @@ static const radio_swr_lock_t k_swr_lock = {
     .poll_with_meters = qmx_swr_lock_poll_with_meters,
 };
 
+static esp_err_t qmx_query_state(void) {
+    cat_cdc_reset_parsed_if();
+    return qmx_send_cmd("IF;", 50);
+}
+
+static bool qmx_get_state(radio_state_t* out) {
+    int hz = 0, tx = 0, mode = 0, split = 0;
+    if (!cat_cdc_get_parsed_if(&hz, &tx, &mode, &split)) {
+        return false;
+    }
+    if (out) {
+        out->freq_hz = hz;
+        out->transmitting = tx != 0;
+        out->mode = mode;
+        out->split = split != 0;
+    }
+    return true;
+}
+
 static const radio_swr_io_t k_swr_io = {
     .unkey = qmx_swr_unkey,
     .mode_digital = qmx_swr_mode_digital,
@@ -282,6 +301,8 @@ static const radio_control_ops_t k_ops = {
     .begin_cpfsk_tx = nullptr,
     .swr_io = &k_swr_io,
     .swr_lock = &k_swr_lock,
+    .query_state = qmx_query_state,
+    .get_state = qmx_get_state,
 };
 
 const radio_control_ops_t* radio_control_qmx_get_ops(void) {

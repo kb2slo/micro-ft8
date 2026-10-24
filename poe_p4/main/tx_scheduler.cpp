@@ -50,6 +50,9 @@ static int64_t s_tx_slot_idx = 0;
 static bool s_tx_cancel_requested = false;
 // Slot a cancel landed in; the trigger will not start a TX in it.
 static int64_t s_tx_cancel_slot_idx = -1;
+// The slot whose skip the TX HUD shows as Not keyed, and why (tx_scheduler_hud_not_keyed_reason()).
+static int64_t s_not_keyed_slot_idx = -1;
+static std::string s_not_keyed_reason;
 // Slot tx_start() skipped; the trigger will not try again in it.
 static int64_t s_tx_skip_slot_idx = -1;
 static int s_tx_last_ta_int = -1;
@@ -327,6 +330,13 @@ void tx_scheduler_swr_abort_note(void) {
     s_swr_abort_slot_idx = rtc_now_ms() / g_protocol->slot_time_ms;
 }
 
+const char *tx_scheduler_hud_not_keyed_reason(void) {
+    return s_not_keyed_slot_idx >= 0 &&
+                   s_not_keyed_slot_idx == rtc_now_ms() / g_protocol->slot_time_ms
+               ? s_not_keyed_reason.c_str()
+               : nullptr;
+}
+
 const char *tx_scheduler_hud_abort_reason(void) {
     return s_swr_abort_slot_idx >= 0 &&
                    s_swr_abort_slot_idx == rtc_now_ms() / g_protocol->slot_time_ms
@@ -557,6 +567,8 @@ static void check_slot_boundary(void) {
                     // Armed still, so the entry goes out in its next slot; the
                     // guard stops another attempt in this one.
                     s_tx_skip_slot_idx = slot_idx;
+                    s_not_keyed_slot_idx = slot_idx;
+                    s_not_keyed_reason = skip_reason;
                     ESP_LOGW(TAG, "TX slot %lld skipped, not counted: %s", (long long)slot_idx,
                              skip_reason.c_str());
                     debug_log_line("TX slot " + std::to_string((long long)slot_idx) +

@@ -143,6 +143,17 @@ const radio_swr_lock_t* radio_control_swr_lock(void) {
     return ops ? ops->swr_lock : nullptr;
 }
 
+esp_err_t radio_control_query_state(void) {
+    const radio_control_ops_t* ops = current_ops();
+    if (!ops || !ops->query_state) return ESP_ERR_NOT_SUPPORTED;
+    return ops->query_state();
+}
+
+bool radio_control_get_state(radio_state_t* out) {
+    const radio_control_ops_t* ops = current_ops();
+    return ops && ops->get_state && ops->get_state(out);
+}
+
 void radio_control_reset_tx_power_swr(void) {
     const radio_control_ops_t* ops = current_ops();
     if (!ops || !ops->reset_tx_power_swr) return;

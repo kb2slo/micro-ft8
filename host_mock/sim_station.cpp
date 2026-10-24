@@ -399,6 +399,19 @@ static std::string handle(const std::string& method, const std::string& url,
         }
         return "{\"ok\":true}";
     }
+    if (method == "POST" && (path == "/api/radio/read" || path == "/api/radio/connect")) {
+        // The simulated radio is always where Micro-FT8 put it.
+        g_cfg["want_hz"] = "7074000";
+        g_cfg["radio_hz"] = "7074000";
+        g_cfg["radio_tx"] = "0";
+        g_cfg["radio_mode"] = "6";
+        g_cfg["radio_split"] = "0";
+        return "{\"ok\":true}";
+    }
+    if (method == "POST" && path == "/api/radio/tune") {
+        g_cfg["tune"] = (body == "1" || body == "on") ? "1" : "0";
+        return "{\"ok\":true}";
+    }
     if (method == "POST" && path == "/api/cq") {
         if (!scenario_call_cq(g_scenario)) {
             return "{\"ok\":false,\"why\":\"a CQ is already queued\"}";

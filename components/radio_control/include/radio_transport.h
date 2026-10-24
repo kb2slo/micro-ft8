@@ -37,6 +37,10 @@ bool cat_cdc_get_parsed_meters(int* pc_tenths, int* sw_hundredths);
 bool cat_cdc_get_parsed_freq(int* hz);
 // The last SR reply (1 the SWR-protection lock is set, 0 clear); false when none has arrived since the last reset.
 bool cat_cdc_get_parsed_sr(int* lock);
+// Forgets the last IF reply only; the meters and the SWR lock keep theirs.
+void cat_cdc_reset_parsed_if(void);
+// The last IF reply; false when none has arrived since the last reset. tx 1 = transmitting, mode is the MD digit, split 1 = on.
+bool cat_cdc_get_parsed_if(int* hz, int* tx, int* mode, int* split);
 
 bool uac_tx_begin_cpfsk(float base_hz,
                         const uint8_t* symbols,

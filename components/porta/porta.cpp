@@ -33,6 +33,7 @@ const char* porta_host_tune(bool on);
 // Call CQ, and change a queued entry's tries or the CQ's parity
 // (docs/architecture/autoseq.md, Tries).
 const char* porta_host_cq_call(void);
+const char* porta_host_radio_read(void);
 const char* porta_host_queue_tries(uint16_t entry_id, uint8_t tries);
 const char* porta_host_queue_parity(uint16_t entry_id, uint8_t parity);
 // active: cancel TX, clear the queue (the CQ with it), and key Tune when asked.
@@ -604,6 +605,19 @@ void handle_action(const porta_frame_t& f) {
     }
     return;
   }
+  case PORTA_ACT_RADIO_READ: {
+    if (!porta_proto_parse_radio_read(&f)) {
+      enqueue(buf, porta_proto_encode_nak(verb, "malformed", buf, sizeof(buf)));
+      return;
+    }
+    const char* why = porta_host_radio_read();
+    if (why) {
+      enqueue(buf, porta_proto_encode_nak(verb, why, buf, sizeof(buf)));
+    } else {
+      enqueue(buf, porta_proto_encode_ack(verb, buf, sizeof(buf)));
+    }
+    return;
+  }
   case PORTA_ACT_CQ_CALL: {
     if (!porta_proto_parse_cq_call(&f)) {
       enqueue(buf, porta_proto_encode_nak(verb, "malformed", buf, sizeof(buf)));
@@ -999,6 +1013,27 @@ void porta_emit_tx_hud(bool active, bool aborted, bool writes_blocked,
   h.power_dw = (power_w < 0.f) ? -1 : (int16_t)(power_w * 10.f + 0.5f);
   h.swr_c = (swr < 0.f) ? -1 : (int16_t)(swr * 100.f + 0.5f);
   h.battery_pct = (int8_t)(battery_pct < -1 ? -1 : (battery_pct > 127 ? 127 : battery_pct));
+  h.offset_hz = (uint16_t)(offset_hz < 0 ? 0 : offset_hz);
+  if (text) {
+    strncpy(h.text, text, sizeof(h.text) - 1);
+  }
+  if (reason) {
+    strncpy(h.reason, reason, sizeof(h.reason) - 1);
+  }
+  uint8_t buf[PORTA_PROTO_MAX_FRAME];
+  const size_t n = porta_proto_encode_tx_hud(&h, buf, sizeof(buf));
+  enqueue(buf, n);
+}
+
+void porta_emit_tx_not_keyed(const char* text, int offset_hz, const char* reason) {
+  if (!s_running) return;
+  porta_tx_hud_event_t h = {};
+  h.epoch_secs = host_epoch_secs();
+  h.active = true;
+  h.not_keyed = true;
+  h.power_dw = -1;
+  h.swr_c = -1;
+  h.battery_pct = -1;
   h.offset_hz = (uint16_t)(offset_hz < 0 ? 0 : offset_hz);
   if (text) {
     strncpy(h.text, text, sizeof(h.text) - 1);

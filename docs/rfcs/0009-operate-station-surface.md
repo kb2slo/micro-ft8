@@ -35,8 +35,6 @@ Stated by the operator, 2026-09-26 and 2026-09-27:
 
 What the unbuilt slices start from, checked against the code on 2026-10-14. Operate as O1 left it (the status header, the queue and its CQ row, decodes, the dock): [webapp.md](../architecture/webapp.md), **Screens**.
 
-* **Connect** (`porta_host_connect()`) only pushes the band to the VFO. USB host starts at boot, and the main loop already re-syncs the VFO whenever CAT opens (`poe_p4/main/main.cpp`), so Connect is a manual retune and nothing else.
-* **Attach and detach are already pushed.** `USB_STATUS` events reach the browser (`applyEvent`, `e.d === 5`) but only drive a banner.
 * **Reply.** The button posts `/api/queue/reply` and does not change. The queue row appears only when a `QUEUE_ENTRY` event is polled, which the P4 emits once a second (`porta_p4_companion_status_tick()`), plus the browser's poll interval. A "Queueing…" message line is the only feedback.
 * **The map** (`map.html`):
   - It loads POTA parks per program and SOTA summits per region while online, into memory only.
@@ -90,31 +88,7 @@ Built as O1c ([webapp.md](../architecture/webapp.md), **The Station sheet**). St
 
 ### 3.7 Radio status replaces Connect
 
-The radio chip shows one of five states (Redesign canvas: `Radio status`, and the interactive `Radio chip: tap for details`):
-
-| State | Chip | Driven by |
-|---|---|---|
-| No radio | grey | no `USB_STATUS` attach |
-| Unknown USB | grey, "Unknown USB" | attach of a device that is not a known radio (`USB_KIND_NAMES` falls back to VID/PID today) |
-| Found | amber, "syncing" | attach seen; CAT and audio not both up yet |
-| Ready | green, radio and band | `cat_ready` and `audio_rx` |
-| Lost | red, "CAT lost" | CAT down after being up |
-
-* **The Connect button goes.** The P4 already syncs the VFO on every CAT open (§2).
-* **Tapping the chip opens a details panel under it.** It never navigates away from Operate, and tapping the chip again closes it. What the panel holds depends on the state:
-  - **Ready:**
-    - Rows: USB device, CAT, audio in, what was last sent to the radio and when, what the radio reports, and the last TX's power and SWR.
-    - **What is sent.** A sync writes `MD6;` (Digi: "FSK" in the Kenwood table the QMX follows), `FR0;` `FT0;` (VFO A for RX and TX) and `FA<freq>;` (`components/radio_control/radio_control_qmx.cpp:26`). Nothing reads the radio back today.
-    - **Read-back (decided 2026-09-27).** `IF;` when the panel opens and after each sync, never polled during a slot. One reply carries the frequency, TX/RX state, mode and VFO/split (QMX CAT manual, firmware 1.04_004).
-    - **When the radio is not where Micro-FT8 put it** (a knob turned, another program), the chip turns amber and the panel offers **Put it back** (Retune) or **Use it** (save the radio's frequency as that band's custom frequency).
-    - **Building the read-back:** a `radio_control` operation that sends `IF;` and parses the reply, with a capability flag; a `host_mock` test of the parser against the manual's format; a Port A request and reply.
-    - **Retune VFO:** sends that frequency, Digi and VFO A again. It is today's P4 Connect (`porta_host_connect()` → `sync_vfo()`); a confirmation line shows what was sent.
-    - **Tune carrier:** today's Tune button (`/api/radio/tune`), a carrier at the TX offset (`porta_host_tune()`). While keyed, the panel shows power and SWR large enough to read while adjusting a tuner. It is also a TX HUD state (§3.12).
-  - **Found:** a checklist of USB, CAT, audio and VFO, with nothing to press.
-  - **No radio:** where to plug in, and that a charge-only cable shows nothing.
-  - **Unknown USB:** the VID/PID, and which radios are supported.
-  - **Lost:** when CAT stopped answering, and **Retry now**. TX is not keyed until CAT answers, and a slot that cannot be keyed is skipped, not counted ([autoseq.md](../architecture/autoseq.md), **The slot cycle**).
-* **Not in the panel:** choosing the radio model. It stays in Settings, and the P4 ignores it today (row `cgc4`).
+Shipped as O2: [webapp.md](../architecture/webapp.md), **The radio chip and the TX banner**. Choosing the radio model stays in Settings, and the P4 ignores it today (row `cgc4`).
 
 ### 3.8 Decode sort and filter
 
@@ -161,19 +135,7 @@ Nothing moves between home and activation: the dock grows by one line, and the C
 
 ### 3.12 The TX HUD
 
-Dock Options canvas: the chosen page's transmitting board. Redesign canvas: `TX HUD states`, interactive.
-
-* **Today** (`renderTxHud()`):
-  - A red band under the header: "Transmitting", the message, then power and SWR (polled from the QMX), and **Cancel TX**.
-  - Tune shows as `TUNE`.
-  - Events arrive every 500 ms while active.
-* **It is a red band added on top of the dock.** Nothing below it moves, so band, frequency and the CQ row stay reachable while a message is on the air. The status strip's slot bar turns red for our slot.
-* **Added to what shows today:**
-  - The parity and TX offset (`offset_hz` is already in the event but not shown).
-  - A progress bar and the time left, from the slot clock the browser already runs.
-  - For Tune, large power and SWR readings.
-  - **Stop CQ / Stop TX**, shipped with O1a ([webapp.md](../architecture/webapp.md), **The CQ row**).
-* **New state, Not keyed:** CAT was not ready when the slot started. The message is struck through and "not counted" is shown. The P4 already skips and does not count the slot ([autoseq.md](../architecture/autoseq.md), **The slot cycle**); the state needs a Port A event, which is row ybav's.
+Shipped as O2: [webapp.md](../architecture/webapp.md), **The radio chip and the TX banner**. Stop CQ / Stop TX shipped with O1a ([webapp.md](../architecture/webapp.md), **The CQ row**).
 
 ### 3.13 Reply feedback
 
@@ -208,15 +170,12 @@ Redesign canvas: `Reply feedback`, interactive. The feedback is on the Reply but
 
 ## 6. Slices
 
-O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); they are the Now rows. The later slices have their own rows: O2 `ybav`, O3 `mxvk`, O4 `jtgu`. O5 and O6 became one slice, the CQ's tries (§7). The combined order with RFC 0008 is RFC 0008 §7.
+O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); they are the Now rows. The later slices have their own rows: O3 `mxvk`, O4 `jtgu`. O5 and O6 became one slice, the CQ's tries (§7). The combined order with RFC 0008 is RFC 0008 §7.
 
 * **O1a: the CQ row**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The CQ row**).
 * **O1b: the dock**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The dock**).
 * **O1c: the Station sheet**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The Station sheet**).
-* **O2: radio status replaces Connect, the read-back, and the TX HUD** (§3.7, §3.12).
-  - Web app; the `IF;` read-back operation, its parser test and its Port A message.
-  - **An attach event before CDC opens.** The P4 sends `USB_STATUS` attach only once CDC opens (`poe_p4/main/qmx_transport.cpp`, `try_open()`), about 11 s after plug-in (a QMX-side delay, measured 2026-09-20), so today Found never shows and the wait reads as a hang. Found starts when the host core first sees the device (`cdc_new_dev_cb()`), not when `try_open()` starts polling: it polls about once a second whenever nothing is attached.
-  - **Field check:** unplug and replug the QMX. The chip walks No radio, Found, Ready, Found showing within a second or two of plug-in, and the VFO lands on the selected band with nothing pressed. Then Tune from the chip's panel shows power and SWR there and in the HUD, and Stop in the HUD ends it.
+* **O2: radio status replaces Connect, the read-back, and the TX HUD**, shipped 2026-10-24 ([webapp.md](../architecture/webapp.md), **The radio chip and the TX banner**); its field check is in TEST_PLAN Pending.
 * **O3: reply feedback** (§3.13). Web app only.
 * **O4: decode sort and filter** (§3.8).
 * **O5 and O6: the CQ's tries and tries on every queue row**, shipped 2026-10-14 ([autoseq.md](../architecture/autoseq.md), **Tries**; [webapp.md](../architecture/webapp.md), **The CQ row** and **Tries on a queue row**).

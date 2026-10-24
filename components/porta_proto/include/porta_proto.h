@@ -83,7 +83,10 @@ extern "C" {
 // BEACON goes; CQ_CALL, QUEUE_TRIES and QUEUE_PARITY come; QUEUE_ENTRY counts tries and carries
 // the entry's parity and whether its count is its own; SLOT_STATE loses the beacon mode. Both
 // ends are flashed together.
-#define PORTA_PROTO_VERSION 8u
+// v9 (2026-10-24): the RADIO_READ action (ask the radio for its state, IF;) and the TX HUD's
+// not-keyed flag. An older host NAKs the action as unknown and ignores the flag. Both ends are
+// flashed together.
+#define PORTA_PROTO_VERSION 9u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -401,6 +404,7 @@ typedef struct {
     bool     active;
     bool     aborted;
     bool     writes_blocked;
+    bool     not_keyed;     // active with nothing on the air: the slot was skipped and not counted; `reason` says why
     int16_t  power_dw;      // deciwatts (power_w * 10), -1 = unknown
     int16_t  swr_c;         // SWR * 100, -1 = unknown
     int8_t   battery_pct;   // -1 = unknown
@@ -440,6 +444,7 @@ typedef enum {
     PORTA_ACT_CQ_CALL      = 0x0C,  // verb only: queue a CQ; the host picks its parity
     PORTA_ACT_QUEUE_TRIES  = 0x0D,  // payload: u16 entry_id, u8 tries (0 = station default)
     PORTA_ACT_QUEUE_PARITY = 0x0E,  // payload: u16 entry_id, u8 parity (the CQ only)
+    PORTA_ACT_RADIO_READ   = 0x0F,  // verb only: ask the radio for its state (IF;); the answer is in the config snapshot
 } porta_action_verb_t;
 
 // FACTORY_RESET flags. Station settings are always reset; the QSO logs only when asked,
@@ -472,6 +477,8 @@ bool porta_proto_parse_tune(const porta_frame_t *f, bool *on_out);
 // slot clock and the setting.
 size_t porta_proto_encode_cq_call(uint8_t *out, size_t out_cap);
 bool porta_proto_parse_cq_call(const porta_frame_t *f);
+size_t porta_proto_encode_radio_read(uint8_t *out, size_t out_cap);
+bool porta_proto_parse_radio_read(const porta_frame_t *f);
 
 // Queue tries: verb + u16 entry_id + u8 tries. 0 returns the entry to the
 // station default; the host refuses a count out of range for that entry.

@@ -29,6 +29,8 @@ typedef struct {
                                 uint32_t samples_per_symbol);
     const radio_swr_io_t* swr_io;  // null = cannot sweep
     const radio_swr_lock_t* swr_lock;  // null = no SWR-protection lock to read
+    esp_err_t (*query_state)(void);    // null = the radio cannot report its state
+    bool (*get_state)(radio_state_t* out);
 } radio_control_ops_t;
 
 const radio_control_ops_t* radio_control_qmx_get_ops(void);

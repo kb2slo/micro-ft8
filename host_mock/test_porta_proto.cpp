@@ -584,6 +584,68 @@ static void test_tx_hud_event()
     }
 }
 
+// Not keyed: an active HUD with nothing on the air, its own flag so the page does not match a
+// reason string. A normal HUD must not carry it.
+static void test_tx_hud_not_keyed()
+{
+    porta_decoder_t d;
+    porta_decoder_init(&d);
+    uint8_t buf[PORTA_PROTO_MAX_FRAME];
+
+    porta_tx_hud_event_t in = {};
+    in.active = true;
+    in.not_keyed = true;
+    in.power_dw = -1;
+    in.swr_c = -1;
+    in.battery_pct = -1;
+    in.offset_hz = 1234;
+    std::snprintf(in.reason, sizeof(in.reason), "CAT not ready");
+    std::snprintf(in.text, sizeof(in.text), "CQ KB2SLO FN30");
+    size_t n = porta_proto_encode_tx_hud(&in, buf, sizeof(buf));
+    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1, "not-keyed tx_hud decodes");
+    if (got.size() == 1) {
+        porta_tx_hud_event_t out;
+        check(porta_proto_parse_tx_hud(&got[0], &out) && out.active && out.not_keyed && !out.aborted &&
+              out.offset_hz == 1234 && std::string(out.reason) == "CAT not ready" &&
+              std::string(out.text) == "CQ KB2SLO FN30",
+              "not_keyed round-trips with its reason and message");
+        char json[256];
+        check(porta_event_json_tx_hud(json, sizeof(json), 7, &out) > 0 &&
+              std::string(json).find("\"nk\":1") != std::string::npos,
+              "the browser event carries nk");
+    }
+
+    in.not_keyed = false;
+    porta_decoder_init(&d);
+    n = porta_proto_encode_tx_hud(&in, buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    if (got.size() == 1) {
+        porta_tx_hud_event_t out;
+        check(porta_proto_parse_tx_hud(&got[0], &out) && !out.not_keyed, "the flag is off unless set");
+    }
+}
+
+static void test_action_radio_read()
+{
+    porta_decoder_t d;
+    porta_decoder_init(&d);
+    uint8_t buf[PORTA_PROTO_MAX_FRAME];
+    size_t n = porta_proto_encode_radio_read(buf, sizeof(buf));
+    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1 && got[0].len == 1, "radio_read is the verb alone");
+    if (got.size() == 1) {
+        check(porta_proto_parse_radio_read(&got[0]), "radio_read parses");
+        check(!porta_proto_parse_cq_call(&got[0]), "radio_read is not cq_call");
+    }
+    porta_decoder_init(&d);
+    n = porta_proto_encode_cq_call(buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    if (got.size() == 1) {
+        check(!porta_proto_parse_radio_read(&got[0]), "cq_call is not radio_read");
+    }
+}
+
 // ACTION is the control direction, and the first thing to cross it is the
 // clock. These pin the round trip and, more importantly, that a reply can be
 // matched to its request by verb -- there is no sequence number, so a NAK that
@@ -1208,7 +1270,7 @@ static void test_event_json()
     std::snprintf(hud.text, sizeof(hud.text), "N6HAN AG6AQ CM97");
     check(porta_event_json_tx_hud(row, sizeof(row), 6, &hud) > 0, "hud row encodes");
     check_row(row,
-              "{\"s\":6,\"t\":1700000003,\"d\":4,\"active\":1,\"aborted\":0,\"wrblk\":0,"
+              "{\"s\":6,\"t\":1700000003,\"d\":4,\"active\":1,\"aborted\":0,\"wrblk\":0,\"nk\":0,"
               "\"pw\":-1,\"swr\":-1,\"batt\":-1,\"hz\":1200,\"reason\":\"\",\"x\":\"N6HAN AG6AQ CM97\"}",
               "hud row");
 
@@ -1589,6 +1651,8 @@ int main()
     test_action_connect_and_tune();
     test_action_factory_reset();
     test_action_cq_tries_parity();
+    test_tx_hud_not_keyed();
+    test_action_radio_read();
     test_action_queue_cancel_and_reply();
     test_action_file_delete();
     test_action_sweep_start();

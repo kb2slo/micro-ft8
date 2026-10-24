@@ -464,7 +464,8 @@ size_t porta_proto_encode_tx_hud(const porta_tx_hud_event_t *h, uint8_t *out, si
     put_u32(&payload[1], h->epoch_secs);
     payload[5] = (uint8_t)((h->active ? 0x01u : 0u) |
                            (h->aborted ? 0x02u : 0u) |
-                           (h->writes_blocked ? 0x04u : 0u));
+                           (h->writes_blocked ? 0x04u : 0u) |
+                           (h->not_keyed ? 0x08u : 0u));
     put_u16(&payload[6], (uint16_t)h->power_dw);
     put_u16(&payload[8], (uint16_t)h->swr_c);
     payload[10] = (uint8_t)h->battery_pct;
@@ -495,6 +496,7 @@ bool porta_proto_parse_tx_hud(const porta_frame_t *f, porta_tx_hud_event_t *out)
     out->active          = (f->payload[5] & 0x01u) != 0;
     out->aborted         = (f->payload[5] & 0x02u) != 0;
     out->writes_blocked  = (f->payload[5] & 0x04u) != 0;
+    out->not_keyed       = (f->payload[5] & 0x08u) != 0;
     out->power_dw        = (int16_t)get_u16(&f->payload[6]);
     out->swr_c           = (int16_t)get_u16(&f->payload[8]);
     out->battery_pct     = (int8_t)f->payload[10];
@@ -609,6 +611,17 @@ size_t porta_proto_encode_cq_call(uint8_t *out, size_t out_cap)
 bool porta_proto_parse_cq_call(const porta_frame_t *f)
 {
     return f && f->type == PORTA_MSG_ACTION && f->len == 1 && f->payload[0] == PORTA_ACT_CQ_CALL;
+}
+
+size_t porta_proto_encode_radio_read(uint8_t *out, size_t out_cap)
+{
+    const uint8_t payload[1] = {PORTA_ACT_RADIO_READ};
+    return porta_proto_encode(PORTA_MSG_ACTION, payload, sizeof(payload), out, out_cap);
+}
+
+bool porta_proto_parse_radio_read(const porta_frame_t *f)
+{
+    return f && f->type == PORTA_MSG_ACTION && f->len == 1 && f->payload[0] == PORTA_ACT_RADIO_READ;
 }
 
 // verb | entry_id(2) | value: QUEUE_TRIES and QUEUE_PARITY share the shape.

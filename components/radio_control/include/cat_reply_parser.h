@@ -2,7 +2,8 @@
 
 // Turns the bytes a QMX/QDX sends back over CAT into the few replies this
 // firmware reads: PC (power, tenths of a watt), SW (SWR, hundredths), FA
-// (the VFO A frequency) and SR (the SWR-protection lock: 1 locked, 0 clear). Everything else, including the radio's "?;" for a
+// (the VFO A frequency), SR (the SWR-protection lock: 1 locked, 0 clear) and IF (the radio's
+// state in one reply: frequency, TX or RX, mode, split). Everything else, including the radio's "?;" for a
 // command it refused, is ignored.
 //
 // The radio appends terminal display codes (ESC [ ... final byte, for example
@@ -26,6 +27,11 @@ typedef struct {
     volatile int sw_hundredths;
     volatile int fa_hz;
     volatile int sr_lock;
+    // IF: -1 until a reply arrives. tx 1 = transmitting; mode is the MD digit; split 1 = on.
+    volatile int if_hz;
+    volatile int if_tx;
+    volatile int if_mode;
+    volatile int if_split;
     char frame[CAT_REPLY_FRAME_MAX];
     size_t frame_len;
     int escape_state;  // 0 text, 1 after ESC, 2 inside a CSI sequence

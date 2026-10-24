@@ -35,6 +35,8 @@ bool tx_scheduler_swr_tripped(void);
 void tx_scheduler_swr_abort_note(void);
 // Why the TX HUD shows an abort now, or null.
 const char *tx_scheduler_hud_abort_reason(void);
+// Why the message armed for this slot was not keyed, or nullptr when it was or nothing was due.
+const char *tx_scheduler_hud_not_keyed_reason(void);
 
 // Operate TX HUD: active while CAT tones are in flight; snapshot is the
 // armed/in-flight message text + on-air offset (power/SWR filled by the caller).

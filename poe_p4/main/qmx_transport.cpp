@@ -65,6 +65,23 @@ static int64_t s_cdc_first_attempt_ms = 0;
 static constexpr int64_t kCdcReconnectBackoffMs = 3000;
 static int64_t s_cdc_reconnect_after_ms = 0;
 
+// What the browser has been told about the USB-C port (USB_STATUS), so a
+// plug-in shows as Found when the host core first sees the device -- about
+// 11 s before CDC opens, a QMX-side delay (docs/rfcs/0009-operate-station-
+// surface.md, section 6, O2) -- and a device that never opens still clears when it
+// goes. announced: an attach was sent and no detach since. announced_known:
+// that attach carried the device's VID/PID. Written on usb_lib_task and the
+// CDC event task, hence volatile.
+static volatile bool s_usb_announced = false;
+static volatile bool s_usb_announced_known = false;
+static int64_t s_usb_first_seen_ms = 0;
+// The address list can lag the descriptor callback; this long with nothing
+// from the callback, say a device is there without naming it.
+static constexpr int64_t kUsbUnidentifiedAfterMs = 1500;
+// Port kind on the wire (porta_proto.h, UsbCKind): 0 = the QMX, 2 = other.
+static constexpr uint8_t kUsbKindRadio = 0;
+static constexpr uint8_t kUsbKindOther = 2;
+
 static uac_host_device_handle_t s_uac_handle = nullptr;
 // QMX can fire DISCONNECTED once per UAC logic iface; only queue one close.
 static uac_host_device_handle_t s_uac_close_queued = nullptr;
@@ -118,7 +135,10 @@ static void cdc_event_cb(const cdc_acm_host_dev_event_data_t *event, void * /*us
         // just double the banner for one physical event. kind is always 0
         // (QmxQdx) -- this board's USB-C port has exactly one occupant, ever,
         // so there is nothing to classify.
-        porta_emit_usb_status(false, 0, kQmxVid, kQmxPid);
+        porta_emit_usb_status(false, kUsbKindRadio, kQmxVid, kQmxPid);
+        s_usb_announced = false;
+        s_usb_announced_known = false;
+        s_usb_first_seen_ms = 0;
         // Field-found 2026-09-17: cdc_acm_host_close() must be called even
         // though the device is already gone, or the driver's interface/
         // endpoint claim for this handle leaks. The next cdc_acm_host_open()
@@ -141,7 +161,7 @@ static void cdc_event_cb(const cdc_acm_host_dev_event_data_t *event, void * /*us
     }
 }
 
-static cat_reply_parser_t s_cat_parser = {-1, -1, -1, -1, {0}, 0, 0};
+static cat_reply_parser_t s_cat_parser = {-1, -1, -1, -1, -1, -1, -1, -1, {0}, 0, 0};
 
 static bool cdc_data_cb(const uint8_t *data, size_t data_len, void* /*user_arg*/) {
     if (!data || data_len == 0) {
@@ -166,9 +186,45 @@ static void cdc_new_dev_cb(usb_device_handle_t usb_dev) {
     if (err == ESP_OK && desc) {
         ESP_LOGI(TAG, "B67: CDC client saw new USB dev at %lld ms (VID:0x%04x PID:0x%04x)",
                  (long long)now_ms(), desc->idVendor, desc->idProduct);
+        const bool radio = desc->idVendor == kQmxVid && desc->idProduct == kQmxPid;
+        porta_emit_usb_status(true, radio ? kUsbKindRadio : kUsbKindOther,
+                              desc->idVendor, desc->idProduct);
+        s_usb_announced = true;
+        s_usb_announced_known = true;
     } else {
         ESP_LOGI(TAG, "B67: CDC client saw new USB dev at %lld ms (descriptor read failed: %s)",
                  (long long)now_ms(), esp_err_to_name(err));
+    }
+}
+
+// Announces a device the host core can see but the CDC client has not named
+// (the descriptor callback did not fire, or not yet), and clears an attach
+// whose device left before CDC ever opened -- no CDC disconnect comes then.
+// Runs every pass of usb_lib_task.
+static void track_usb_presence(void) {
+    uint8_t addrs[10];
+    int n = 0;
+    if (usb_host_device_addr_list_fill(sizeof(addrs), addrs, &n) != ESP_OK) {
+        return;
+    }
+    const int64_t t = now_ms();
+    if (n > 0) {
+        if (s_usb_announced || t < s_cdc_reconnect_after_ms) {
+            return;  // told already, or a device that just left is still listed
+        }
+        if (s_usb_first_seen_ms == 0) {
+            s_usb_first_seen_ms = t;
+        } else if (t - s_usb_first_seen_ms >= kUsbUnidentifiedAfterMs) {
+            porta_emit_usb_status(true, kUsbKindOther, 0, 0);
+            s_usb_announced = true;
+        }
+        return;
+    }
+    s_usb_first_seen_ms = 0;
+    if (s_usb_announced && !s_cdc_handle) {
+        porta_emit_usb_status(false, kUsbKindOther, 0, 0);
+        s_usb_announced = false;
+        s_usb_announced_known = false;
     }
 }
 
@@ -221,7 +277,11 @@ static void try_open(void) {
              (long long)(t - s_cdc_first_attempt_ms));
     s_cdc_open_attempts = 0;
     s_cdc_first_attempt_ms = 0;
-    porta_emit_usb_status(true, 0, kQmxVid, kQmxPid);
+    if (!s_usb_announced_known) {
+        porta_emit_usb_status(true, kUsbKindRadio, kQmxVid, kQmxPid);
+        s_usb_announced = true;
+        s_usb_announced_known = true;
+    }
     // The main loop pushes the Station band to the VFO once CAT is up. Every
     // open, not just the first: the QMX comes back only after a power cycle,
     // and it powers up on its own frequency.
@@ -484,6 +544,7 @@ static void usb_lib_task(void * /*arg*/) {
                 logged_first_addr = true;
             }
         }
+        track_usb_presence();
         try_open();
     }
 }
@@ -547,6 +608,33 @@ bool cat_cdc_get_parsed_freq(int* hz) {
     }
     if (hz) {
         *hz = value;
+    }
+    return true;
+}
+
+void cat_cdc_reset_parsed_if(void) {
+    s_cat_parser.if_hz = -1;
+    s_cat_parser.if_tx = -1;
+    s_cat_parser.if_mode = -1;
+    s_cat_parser.if_split = -1;
+}
+
+bool cat_cdc_get_parsed_if(int* hz, int* tx, int* mode, int* split) {
+    const int value = s_cat_parser.if_hz;
+    if (value < 0) {
+        return false;
+    }
+    if (hz) {
+        *hz = value;
+    }
+    if (tx) {
+        *tx = s_cat_parser.if_tx;
+    }
+    if (mode) {
+        *mode = s_cat_parser.if_mode;
+    }
+    if (split) {
+        *split = s_cat_parser.if_split;
     }
     return true;
 }

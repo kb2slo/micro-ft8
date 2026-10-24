@@ -198,7 +198,25 @@ button:disabled{opacity:.45}
 .dot.stale::before{content:"\2026"}
 .dot.bad{color:var(--danger-strong)}
 .dot.bad::before{content:"\2715"}
+#opConnRow{align-items:center}
 #opConnRow button{font-size:.85rem}
+/* The radio chip (RFC 0009 3.7): a glyph as well as a color, like .dot. */
+#opRadioChip{display:inline-flex;align-items:center;gap:.4rem;border-radius:999px;font-size:.8rem;font-weight:700;padding:.3rem .8rem;border:1px solid color-mix(in srgb, GrayText 50%, transparent);background:transparent;color:GrayText}
+#opRadioChip .glyph::before{content:"\2013"}
+#opRadioChip.ready{color:var(--accent);border-color:var(--accent)}
+#opRadioChip.ready .glyph::before{content:"\2713"}
+#opRadioChip.found,#opRadioChip.drift{color:var(--warn);border-color:var(--warn)}
+#opRadioChip.found .glyph::before,#opRadioChip.drift .glyph::before{content:"\2026"}
+#opRadioChip.drift .glyph::before{content:"!"}
+#opRadioChip.lost{color:var(--danger-strong);border-color:var(--danger-strong)}
+#opRadioChip.lost .glyph::before{content:"\2715"}
+#opRadioPanel{margin-top:.6rem;padding:.6rem .8rem;border:1px solid color-mix(in srgb, GrayText 30%, transparent);border-radius:8px;font-size:.8rem}
+#opRadioPanel dl{display:grid;grid-template-columns:auto 1fr;gap:.2rem .8rem;margin:0 0 .5rem}
+#opRadioPanel dt{color:GrayText}
+#opRadioPanel dd{margin:0}
+#opRadioPanel .row{gap:.5rem;flex-wrap:wrap}
+#opRadioTuneMeter{font-family:ui-monospace,monospace;font-size:1.4rem;font-weight:700;margin:.4rem 0}
+#opRadioNote{margin:.3rem 0;color:GrayText}
 
 /* ---- operate: TX HUD ---- */
 #opTxHud{padding:.6rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent);background:color-mix(in srgb, var(--bad) 8%, transparent)}
@@ -207,6 +225,12 @@ button:disabled{opacity:.45}
 #opTxHud.aborted .hd{color:var(--warn)}
 #opTxHudText{font-family:ui-monospace,monospace;font-weight:700;font-size:1rem;margin-top:.2rem;min-height:1.2em}
 #opTxHudMeta{font-family:ui-monospace,monospace;font-size:.8rem;color:GrayText;margin-top:.15rem}
+#opTxHud.notkeyed{background:color-mix(in srgb, var(--warn) 14%, transparent)}
+#opTxHud.notkeyed .hd{color:var(--warn)}
+#opTxHud.notkeyed #opTxHudText{text-decoration:line-through;color:GrayText}
+#opTxHudBig{font-family:ui-monospace,monospace;font-size:1.6rem;font-weight:700;margin-top:.3rem}
+#opTxHudProg{height:5px;border-radius:3px;overflow:hidden;background:color-mix(in srgb, GrayText 25%, transparent);margin-top:.4rem}
+#opTxHudProgFill{height:100%;width:0%;background:var(--danger)}
 #opTxCancel{margin-top:.5rem;font-size:.8rem;padding:.35rem .7rem}
 
 /* ---- operate: queue ---- */
@@ -463,8 +487,21 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         <span title="Decodes in the last 5 minutes -- is the band actually alive right now">Decodes <span id=decodeRateCount>—</span></span>
       </div>
       <div id=opConnRow class=row>
-        <button id=opConnect type=button disabled>Connect</button>
-        <button id=opTune type=button disabled>Tune: Off</button>
+        <button id=opRadioChip type=button class=chip aria-expanded=false aria-controls=opRadioPanel>
+          <span class=glyph aria-hidden=true></span><span id=opRadioChipText>No radio</span>
+        </button>
+      </div>
+      <!-- The radio chip's details (RFC 0009 3.7). What it holds depends on the chip's state;
+           renderRadioChip() fills it. Tune lives here, not in the header. -->
+      <div id=opRadioPanel hidden>
+        <dl id=opRadioRows></dl>
+        <div id=opRadioNote></div>
+        <div id=opRadioTuneMeter hidden></div>
+        <div class=row>
+          <button id=opRadioRetune type=button disabled hidden>Retune VFO</button>
+          <button id=opRadioUse type=button disabled hidden>Use it</button>
+          <button id=opTune type=button disabled>Tune: Off</button>
+        </div>
       </div>
     </div>
 
@@ -472,6 +509,8 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       <div class=hd>Transmitting</div>
       <div id=opTxHudText></div>
       <div id=opTxHudMeta></div>
+      <div id=opTxHudBig hidden></div>
+      <div id=opTxHudProg hidden><div id=opTxHudProgFill></div></div>
       <!-- Retired from /log's viewer.html (the one control there that wasn't
            otherwise replicated here) -- a manual abort for a stuck or
            errant TX, not just the automatic band-change cancel changeBand()
@@ -863,8 +902,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 <!-- The dock (webapp.md, The dock): band grid and frequency, pinned above the
      tab bar and shown only on Operate. Outside #viewTrack on purpose: the track
      slides with a transform, which would be the containing block for a fixed
-     descendant, so the dock would slide away with the panel. Connect and Tune
-     stay in Operate's header until O2 (RFC 0009 §6). -->
+     descendant, so the dock would slide away with the panel. -->
 <div id=opDock>
   <div class=dockinner>
     <div id=opFreqEditor hidden>
@@ -1428,7 +1466,7 @@ function offsetSettingLabel(cfg) {
 // The dock's second line: the frequency, then "Tries N · <offset> ·
 // Station ›", a preview of the Station settings that part of the line opens
 // (operator decision 2026-09-28: the setting, not the armed TX's offset,
-// which moves into the TX banner with O2, RFC 0009 §3.12).
+// which the TX banner shows).
 function renderDockLine(cfg) {
   var khz = currentDockFreqKhz(cfg);
   document.getElementById('opDockFreqBtn').textContent =
@@ -1838,7 +1876,114 @@ function updateLogFree(cfg) {
   el.hidden = false;
 }
 
+// ===================== Operate: the radio chip (RFC 0009 3.7) =====================
+
+// The last USB_STATUS event: {present, kind, vid, pid}, or null before any. Pushed the instant the
+// main board's USB host sees a device, so Found shows before CAT opens.
+var usbState = null;
+var everCatUp = false;
+var MD_NAMES = { 1: 'LSB', 2: 'USB', 3: 'CW', 5: 'AM', 6: 'Digi', 7: 'CWR', 8: 'Tune', 9: 'FSR' };
+
+// What the radio last said of itself (IF;), or null when it has not.
+function radioReadBack(cfg) {
+  var hz = parseInt(cfg.radio_hz, 10), want = parseInt(cfg.want_hz, 10);
+  if (!(hz > 0)) return null;
+  return { hz: hz, want: want > 0 ? want : 0, tx: yn(cfg.radio_tx) === 'yes',
+           mode: parseInt(cfg.radio_mode, 10), split: yn(cfg.radio_split) === 'yes' };
+}
+
+// 'none' | 'unknown' | 'found' | 'ready' | 'drift' | 'lost'. The radio is "where we put it" when
+// it reports the wanted frequency, in Digi, on VFO A without split; anything else is a drift.
+function radioChipState(cfg) {
+  var cat = yn(cfg.cat_ready) === 'yes', audio = yn(cfg.audio_rx) === 'yes';
+  if (cat) everCatUp = true;
+  if (cat && audio) {
+    var rs = radioReadBack(cfg);
+    if (rs && rs.want && (rs.hz !== rs.want || rs.mode !== 6 || rs.split)) return 'drift';
+    return 'ready';
+  }
+  if (usbState && !usbState.present) { everCatUp = false; return 'none'; }
+  if (everCatUp && !cat) return 'lost';
+  if (usbState && usbState.present) {
+    return (usbState.kind === 2 && usbState.vid) ? 'unknown' : 'found';
+  }
+  return cat || audio ? 'found' : 'none';
+}
+
+function fmtHzMHz(hz) { return (hz / 1e6).toFixed(4).replace(/0+$/, '').replace(/\.$/, '.0'); }
+
+function renderRadioChip(cfg) {
+  var st = radioChipState(cfg);
+  var chip = document.getElementById('opRadioChip');
+  chip.className = 'chip ' + st;
+  var band = cfg.band_name && cfg.band_name !== '?' ? cfg.band_name : '';
+  var text = { none: 'No radio', unknown: 'Unknown USB', found: 'Found · syncing',
+               ready: 'Ready' + (band ? ' · ' + band : ''), drift: 'Radio moved',
+               lost: 'CAT lost' }[st];
+  document.getElementById('opRadioChipText').textContent = text;
+
+  var rows = [], note = '';
+  var dev = usbState && usbState.present ? fmtUsbDevice(usbState.kind, usbState.vid, usbState.pid) : '';
+  var cat = yn(cfg.cat_ready) === 'yes', audio = yn(cfg.audio_rx) === 'yes';
+  if (st === 'none') {
+    note = 'Plug the radio into the main board\u2019s USB-C port. A charge-only cable shows nothing.';
+  } else if (st === 'unknown') {
+    rows.push(['USB device', dev]);
+    note = 'Not a radio Micro-FT8 knows. It supports the QMX and QDX.';
+  } else if (st === 'found') {
+    rows.push(['USB', dev || 'seen'], ['CAT', cat ? 'up' : 'waiting'], ['Audio in', audio ? 'up' : 'waiting'],
+              ['VFO', 'set once CAT is up']);
+    note = 'The radio takes about ten seconds to be ready after it is plugged in. Nothing to press.';
+  } else if (st === 'lost') {
+    rows.push(['USB', dev || 'seen'], ['CAT', 'stopped answering']);
+    note = 'A slot that cannot be keyed is skipped and not counted. It transmits again once CAT answers.';
+  } else {
+    rows.push(['USB', dev || 'QMX/QDX radio'], ['CAT', cat ? 'up' : 'down'], ['Audio in', audio ? 'up' : 'down']);
+    var rs = radioReadBack(cfg);
+    if (rs) {
+      rows.push(['Radio reports', fmtHzMHz(rs.hz) + ' MHz · ' + (MD_NAMES[rs.mode] || 'mode ' + rs.mode) +
+                 (rs.split ? ' · split' : '') + (rs.tx ? ' · transmitting' : '')]);
+      if (rs.want) rows.push(['Micro-FT8 set', fmtHzMHz(rs.want) + ' MHz · Digi']);
+    } else {
+      rows.push(['Radio reports', '\u2014']);
+    }
+    if (st === 'drift') note = 'The radio is not where Micro-FT8 put it: a knob was turned, or another program changed it.';
+  }
+  var dl = document.getElementById('opRadioRows');
+  dl.innerHTML = rows.map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('');
+  document.getElementById('opRadioNote').textContent = note;
+  var retune = document.getElementById('opRadioRetune');
+  retune.hidden = !(st === 'ready' || st === 'drift' || st === 'lost');
+  retune.textContent = st === 'drift' ? 'Put it back' : (st === 'lost' ? 'Retry now' : 'Retune VFO');
+  document.getElementById('opRadioUse').hidden = st !== 'drift';
+  document.getElementById('opTune').hidden = st !== 'ready' && st !== 'drift';
+
+  // Tune: power and SWR large enough to read while adjusting a tuner.
+  var meter = document.getElementById('opRadioTuneMeter');
+  var tuning = yn(cfg.tune) === 'yes' && txHud && txHud.active;
+  meter.hidden = !tuning;
+  if (tuning) meter.textContent = tuneReadout();
+}
+
+function tuneReadout() {
+  var parts = [];
+  parts.push(txHud.pw > -1 ? (txHud.pw / 10).toFixed(1) + ' W' : '\u2014 W');
+  parts.push(txHud.swr > -1 ? 'SWR ' + (txHud.swr / 100).toFixed(2) : 'SWR \u2014');
+  return parts.join('  ');
+}
+
+// Asks the radio for its state; the answer arrives in the next config read. Quiet: no status
+// message, and a refusal (TX on the air, CAT down) just leaves the chip as it was.
+async function readRadioBack() {
+  if (!MicroFT8Pairing.getToken()) return;
+  try {
+    var r = await MicroFT8Pairing.authFetch('/api/radio/read', { method: 'POST' });
+    if (r.ok) setTimeout(function () { loadConfig(true); }, 400);
+  } catch (e) { /* the chip keeps its last reading */ }
+}
+
 function applyOperateLive(cfg) {
+  renderRadioChip(cfg);
   updateLogFree(cfg);
   syncDockBandGrid(cfg);
   renderDockLine(cfg);
@@ -2759,7 +2904,8 @@ async function radioPost(path, body, busyMsg) {
 var writesEnabled = false;
 function enableWrites(on) {
   writesEnabled = on;
-  document.getElementById('opConnect').disabled = !on;
+  document.getElementById('opRadioRetune').disabled = !on;
+  document.getElementById('opRadioUse').disabled = !on;
   document.getElementById('opTune').disabled = !on;
   document.getElementById('opTxCancel').disabled = !on;
   ['cqCallBtn', 'cqParityBtn', 'cqTriesBtn', 'cqCancelBtn',
@@ -2780,9 +2926,25 @@ function enableWrites(on) {
 }
 document.getElementById('dist_unit').onchange = function () { setDistUnit(this.value); };
 document.getElementById('theme_pref').onchange = function () { setTheme(this.value); };
-document.getElementById('opConnect').onclick = function () {
-  radioPost('/api/radio/connect', undefined, 'Connecting…')
+document.getElementById('opRadioRetune').onclick = function () {
+  radioPost('/api/radio/connect', undefined, 'Retuning the radio…')
+    .then(function () { return readRadioBack(); })
     .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+};
+document.getElementById('opRadioUse').onclick = function () {
+  var rs = radioReadBack(lastCfg);
+  if (!rs) return;
+  var khz = Math.round(rs.hz / 100) / 10;
+  var band = bandForKhz(khz);
+  if (!band) { setMsg(khzToMhzLabel(khz) + ' MHz is outside every amateur band.'); return; }
+  var curIdx = parseInt(lastCfg.band_sel, 10);
+  if (band.i === curIdx) setOperatingBandFreq(khz); else switchToBandWithFreq(band, khz);
+};
+document.getElementById('opRadioChip').onclick = function () {
+  var panel = document.getElementById('opRadioPanel');
+  panel.hidden = !panel.hidden;
+  this.setAttribute('aria-expanded', panel.hidden ? 'false' : 'true');
+  if (!panel.hidden) readRadioBack();
 };
 document.getElementById('opTune').onclick = function () {
   var next = (yn(lastCfg.tune) === 'yes') ? '0' : '1';
@@ -2797,6 +2959,12 @@ document.getElementById('opTune').onclick = function () {
 // fires once that cancel actually succeeded. Decided at the tap, from what is
 // on the air (txIsOurCq()).
 document.getElementById('opTxCancel').onclick = function () {
+  // Tune is not a queued transmission: ending it is the Tune control's own off.
+  if (yn(lastCfg.tune) === 'yes') {
+    radioPost('/api/radio/tune', '0', 'Stopping Tune…')
+      .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+    return;
+  }
   var stoppingCq = txIsOurCq();
   var cqId = cqEntryId();
   radioPost('/api/tx/cancel', undefined, stoppingCq ? 'Stopping CQ…' : 'Stopping TX…')
@@ -2867,6 +3035,8 @@ function renderCountdown() {
   }
 }
 setInterval(renderCountdown, 250);
+// The banner's progress and time left follow the same clock.
+setInterval(function () { if (txHud && txHud.active) renderTxHud(); }, 500);
 
 // ===================== Operate: the CQ row (webapp.md, The CQ row) =====================
 
@@ -3076,7 +3246,20 @@ function renderTxHud() {
   }
   el.hidden = false;
   el.classList.toggle('aborted', txHud.aborted);
+  el.classList.toggle('notkeyed', txHud.nk);
   document.getElementById('opTxHudText').textContent = txHud.x || '(empty)';
+  var isTune = yn(lastCfg.tune) === 'yes' || txHud.x === 'TUNE';
+  document.getElementById('opTxHudBig').hidden = !isTune || txHud.nk;
+  document.getElementById('opTxHudBig').textContent = isTune ? tuneReadout() : '';
+  // Progress and time left from the slot clock the page already runs; Tune has no slot.
+  var prog = document.getElementById('opTxHudProg');
+  prog.hidden = isTune || txHud.nk || txHud.aborted;
+  if (!prog.hidden) {
+    var p = periodMs(), into = Date.now() % p;
+    document.getElementById('opTxHudProgFill').style.width = (into / p * 100).toFixed(1) + '%';
+  }
+  document.getElementById('opTxHud').firstElementChild.textContent =
+    txHud.nk ? 'Not keyed' : (isTune ? 'Tuning' : 'Transmitting');
 
   var parts = [];
   if (txHud.wrblk) {
@@ -3091,13 +3274,27 @@ function renderTxHud() {
   // second abort cause shows up as itself instead of always reading
   // "low battery". Falls back to a generic label only if the firmware ever
   // sends aborted:true with no reason at all (should not happen).
-  document.getElementById('opTxHudMeta').textContent = txHud.aborted
+  var slotBits = [];
+  if (!isTune) {
+    var pm = periodMs(), left = Math.max(0, Math.ceil((pm - Date.now() % pm) / 1000));
+    slotBits.push((Math.floor(Date.now() / pm) % 2 ? 'Odd' : 'Even') + ' slot');
+    if (txHud.hz) slotBits.push(txHud.hz + ' Hz');
+    if (!txHud.nk && !txHud.aborted) slotBits.push(left + ' s left');
+  } else if (txHud.hz) {
+    slotBits.push(txHud.hz + ' Hz');
+  }
+  var meta = txHud.aborted
     ? ('TX ABORTED: ' + (txHud.reason || 'unknown reason'))
-    : (parts.length ? parts.join(' · ') : '—');
+    : txHud.nk
+      ? ('Not counted: ' + (txHud.reason || 'could not key') + ' \u00b7 ' + slotBits.join(' \u00b7 '))
+      : slotBits.concat(isTune ? [] : parts).join(' \u00b7 ');
+  document.getElementById('opTxHudMeta').textContent = meta || '\u2014';
   // Stop CQ while this transmission is our own CQ (it also ends the CQ, see
   // opTxCancel's onclick), Stop TX during a QSO message (cancels only this
   // transmission). webapp.md, The CQ row.
-  document.getElementById('opTxCancel').textContent = txIsOurCq() ? 'Stop CQ' : 'Stop TX';
+  var cancel = document.getElementById('opTxCancel');
+  cancel.textContent = isTune ? 'Stop Tune' : (txIsOurCq() ? 'Stop CQ' : 'Stop TX');
+  cancel.hidden = txHud.nk;  // nothing is on the air to stop; the CQ row ends the CQ
 }
 
 // Whether the transmission on the air is our CQ, from its text: autoseq's CQ
@@ -3583,7 +3780,7 @@ function applyEvent(e) {
   } else if (e.d === 3) {
     slotState = { sp: e.sp, hz: e.hz };
   } else if (e.d === 4) {
-    txHud = { active: !!e.active, aborted: !!e.aborted, wrblk: !!e.wrblk,
+    txHud = { active: !!e.active, aborted: !!e.aborted, wrblk: !!e.wrblk, nk: !!e.nk,
              pw: e.pw, swr: e.swr, batt: e.batt, hz: e.hz, reason: e.reason || '', x: e.x };
     lastTxHudEventMs = Date.now();
     if (txHud.active) PskrLive.noteTx();
@@ -3595,8 +3792,13 @@ function applyEvent(e) {
     // for any device, not just the radio: an unrecognized device attaching
     // is exactly the case worth a name-or-vid/pid banner for, same as the
     // radio disconnecting is.
-    showLinkBanner('usb', (e.present ? 'USB attached: ' : 'USB detached: ') +
-      fmtUsbDevice(e.kind, e.vid, e.pid));
+    usbState = { present: !!e.present, kind: e.kind, vid: e.vid, pid: e.pid };
+    renderRadioChip(lastCfg);
+    // vid 0 is "something is there, not named yet": the chip says it, a banner would not.
+    if (e.vid) {
+      showLinkBanner('usb', (e.present ? 'USB attached: ' : 'USB detached: ') +
+        fmtUsbDevice(e.kind, e.vid, e.pid));
+    }
   }
 }
 

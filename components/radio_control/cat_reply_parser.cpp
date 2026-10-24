@@ -17,10 +17,59 @@ static int parse_digits(const char* digits)
     return static_cast<int>(value);
 }
 
+// IF is the Kenwood TS-480 reply the QMX follows: after the two letters, the frequency in 11
+// digits, then 4 step, 6 RIT, RIT on, XIT on, 1 bank, 2 channel, then TX/RX, mode, VFO, scan,
+// split. Unchecked against a real QMX (docs/TEST_PLAN.md, Pending); a reply short of the split
+// digit, or with a non-digit where a number belongs, is ignored whole.
+static const size_t kIfFreqLen = 11;
+static const size_t kIfTxAt = 26;
+static const size_t kIfModeAt = 27;
+static const size_t kIfSplitAt = 30;
+
+static bool digit_at(const char* payload, size_t at, int* out)
+{
+    if (payload[at] < '0' || payload[at] > '9') {
+        return false;
+    }
+    *out = payload[at] - '0';
+    return true;
+}
+
+static void parse_if(cat_reply_parser_t* parser, const char* payload, size_t len)
+{
+    if (len < kIfSplitAt + 1) {
+        return;
+    }
+    int hz = 0;
+    for (size_t i = 0; i < kIfFreqLen; ++i) {
+        int d = 0;
+        if (!digit_at(payload, i, &d)) {
+            return;
+        }
+        hz = hz * 10 + d;
+        if (hz > 200000000) {
+            return;
+        }
+    }
+    int tx = 0, mode = 0, split = 0;
+    if (!digit_at(payload, kIfTxAt, &tx) || !digit_at(payload, kIfModeAt, &mode) ||
+        !digit_at(payload, kIfSplitAt, &split)) {
+        return;
+    }
+    parser->if_tx = tx;
+    parser->if_mode = mode;
+    parser->if_split = split;
+    parser->if_hz = hz;
+}
+
 static void parse_frame(cat_reply_parser_t* parser)
 {
     const char* frame = parser->frame;
     if (frame[0] == 0 || frame[1] == 0) {
+        return;
+    }
+    if (frame[0] == 'I' && frame[1] == 'F') {
+        parse_if(parser, frame + 2, parser->frame_len - 2);
         return;
     }
     const int value = parse_digits(frame + 2);
@@ -44,6 +93,10 @@ void cat_reply_parser_reset(cat_reply_parser_t* parser)
     parser->sw_hundredths = -1;
     parser->fa_hz = -1;
     parser->sr_lock = -1;
+    parser->if_hz = -1;
+    parser->if_tx = -1;
+    parser->if_mode = -1;
+    parser->if_split = -1;
     parser->frame_len = 0;
     parser->escape_state = 0;
 }
