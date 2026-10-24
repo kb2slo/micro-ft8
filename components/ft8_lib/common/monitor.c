@@ -66,6 +66,12 @@ static void waterfall_init(ftx_waterfall_t* me, int max_blocks, int num_bins, in
 #define WF_STATIC_SIZE  (93 * 2 * 1 * 433)  // 80,538 bytes
 static WF_ELEM_T waterfall_static_buf[WF_STATIC_SIZE];
 static bool waterfall_is_static = false;
+// A waterfall too big for the static buffer (the P4's 161076 bytes) is malloc'd once and kept for
+// the life of the program, reused by every later start. Freed at each stop, the heap's one block
+// that large was split by small allocations made while the radio was away, and the decoder never
+// restarted after a power cycle (2026-10-24: "Not decoding" until the P4 was reset).
+static WF_ELEM_T* waterfall_heap_cache = NULL;
+static size_t waterfall_heap_cache_bytes = 0;
 
 static void waterfall_free(ftx_waterfall_t* me)
 {
@@ -139,8 +145,19 @@ void monitor_init(monitor_t* me, const monitor_config_t* cfg)
     }
     else
     {
-        waterfall_mag_buf = (WF_ELEM_T*)malloc(wf_bytes);
-        waterfall_is_static = false;
+        if (waterfall_heap_cache && waterfall_heap_cache_bytes < wf_bytes)
+        {
+            free(waterfall_heap_cache);  // a bigger waterfall is wanted (another protocol)
+            waterfall_heap_cache = NULL;
+            waterfall_heap_cache_bytes = 0;
+        }
+        if (!waterfall_heap_cache)
+        {
+            waterfall_heap_cache = (WF_ELEM_T*)malloc(wf_bytes);
+            waterfall_heap_cache_bytes = waterfall_heap_cache ? wf_bytes : 0;
+        }
+        waterfall_mag_buf = waterfall_heap_cache;
+        waterfall_is_static = true;  // owned by the cache: waterfall_free() must not free it
         if (waterfall_mag_buf == NULL)
         {
             LOG(LOG_ERROR, "Waterfall alloc failed (%zu bytes)\n", wf_bytes);
