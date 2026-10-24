@@ -31,3 +31,12 @@ The daily station. Headless is the only mode: the module has no display, touch o
 ### Field power
 
 Confirmed by the operator, 2026-09-25: **one laptop power bank runs the whole station.** The QMX takes 12 V from the bank through a USB-C PD trigger cable; the P4 takes straight USB-C from the bank into PROG; the sidekick takes 5 V from the P4 over Grove. The P4 also runs from an iPhone 17 Pro's USB-C port. The sidekick is powered over Grove in every setup.
+
+### On the bench
+
+What a session with a P4 and a QMX runs into, observed 2026-10-24 with QMX firmware 1_04_003. These are facts about the hardware, so nothing here is a procedure to follow.
+
+* **The QMX has to be power-cycled after the P4 resets or flashes.** The USB host reads a short device descriptor (`ENUM: CHECK_SHORT_DEV_DESC FAILED`) and never retries, so `QMX CDC open attempt N failed` repeats until the radio is powered off and on (row `qdcm`). A cable replug while the QMX stays powered fails the same way; a QMX power cycle enumerates in about 10 to 15 s. Plan for one power cycle after every flash.
+* **The PROG console link can drop when the QMX keys.** Once, on Tune, the serial console went silent and the P4 stopped answering the flasher (`Failed to connect to ESP32-P4: No serial data received`) while the station kept working, until the PROG cable was unplugged and replugged. Cause unconfirmed; RF on the cable is the suspect. A log capture that stops mid-transmission is this, not a P4 hang.
+* **When the console is silent, the sidekick still has the P4's `debug_log_line` lines**, in `/api/events` as `d:0` rows (for example `DECODE pipeline could not start`). Only one program can hold the serial port at a time, so a monitor has to be stopped before flashing.
+* **`VN;` answers with the release and the model run together** (`VN1_04_003QMX;`), and `SR;` needs 1_04_004 or later, so the SWR-protection recovery does nothing on 1_04_003 ([radio.md](radio.md)).
