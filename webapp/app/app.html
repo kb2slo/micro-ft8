@@ -1931,6 +1931,14 @@ function radioChipState(cfg) {
   return cat || audio ? 'found' : 'none';
 }
 
+// The radio's VN reply is its release and its model run together: "1_04_003QMX" reads
+// "1.04.003 (QMX)", as QRP Labs names the release. Anything else is shown as sent.
+function fmtRadioFirmware(vn) {
+  var m = /^(\d+_\d+_\d+)(.*)$/.exec(String(vn));
+  if (!m) return String(vn);
+  return m[1].replace(/_/g, '.') + (m[2] ? ' (' + m[2] + ')' : '');
+}
+
 function fmtHzMHz(hz) { return (hz / 1e6).toFixed(4).replace(/0+$/, '').replace(/\.$/, '.0'); }
 
 function renderRadioChip(cfg) {
