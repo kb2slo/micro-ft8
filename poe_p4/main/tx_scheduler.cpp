@@ -7,6 +7,7 @@
 
 #include "callsign_hashtable.h"
 #include "debug_log.h"
+#include "decode_pipeline.h"
 #include "decode_tx_state.h"
 #include "esp_log.h"
 #include "esp_random.h"
@@ -344,21 +345,22 @@ static void check_slot_boundary(void) {
     // -- would otherwise key the cancelled message once. Same entry but
     // changed text (a live cq_type switch) is refreshed in place rather than
     // re-armed, so a switch made after this slot armed still lands in it.
-    // Not while a decode runs: it mutates the queue on the other task, and
-    // the trigger below waits for it anyway.
     if (s_qso_xmit && s_pending_tx_valid && !decode_tx_state_get_tx_active() &&
-        !decode_tx_state_get_decode_in_progress() &&
         autoseq_head_changed_or_refresh(&s_pending_tx)) {
         s_qso_xmit = false;
         s_pending_tx_valid = false;
         tx_scheduler_arm_from_autoseq();
     }
 
+    // The previous slot's decode is applied once the decode task has marked it
+    // and this loop has taken its result (decode_pipeline_apply()). Read in this
+    // order: the decode task publishes before it marks (decode_pipeline.cpp).
     if (s_qso_xmit && s_target_slot_parity == slot_parity && slot_idx != s_tx_cancel_slot_idx &&
         slot_idx != s_tx_skip_slot_idx &&
         slot_ms < (g_protocol->slot_time_ms * 4 / 15) && !decode_tx_state_get_tx_active() &&
         !decode_tx_state_get_decode_in_progress() &&
-        decode_tx_state_get_decode_applied_slot_idx() >= slot_idx - 1) {
+        decode_tx_state_get_decode_applied_slot_idx() >= slot_idx - 1 &&
+        !decode_pipeline_result_pending()) {
 
         ESP_LOGI(TAG, "TX trigger: starting TX in slot %lld (parity %d)", (long long)slot_idx,
                  slot_parity);

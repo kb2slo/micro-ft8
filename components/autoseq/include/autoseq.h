@@ -129,6 +129,9 @@ using AdifLogCallback = std::function<bool(const std::string& dxcall,
                                             int rst_sent, int rst_rcvd)>;
 
 // ============== Public API ==============
+// Not locked: every call, and every callback, runs on the board's main loop
+// (docs/architecture/main_board.md, P4). The decode task hands its decodes
+// over rather than calling in (decode_pipeline_apply()).
 
 // Initialize/reset the autoseq engine
 void autoseq_init();
@@ -257,7 +260,7 @@ void autoseq_get_qso_states(std::vector<std::string>& out);
 
 // Copy the full active-zone QsoContext entries for structured consumers
 // (e.g. the core_api). Returns active contexts only; inactive
-// zone is not included. Thread-safe snapshot.
+// zone is not included. A copy, not a lock: main loop only, as above.
 void autoseq_get_active_contexts(std::vector<QsoContext>& out);
 
 // Non-allocating accessors for hot paths that can't tolerate

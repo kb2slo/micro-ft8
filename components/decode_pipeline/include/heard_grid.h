@@ -9,8 +9,9 @@
 // (docs/architecture/autoseq.md, Classifying what DX sent). Fed from every
 // decode; read by autoseq when it logs, through
 // autoseq_set_heard_grid_callback(). Times are uptime: a reboot empties the
-// table, so it never depends on the clock having been set. Not locked: the
-// board's callers (decode_pipeline.cpp) hold a mutex around every call.
+// table, so it never depends on the clock having been set. Not locked: every
+// caller is on the main loop (decode_pipeline_apply() notes each decode, and
+// autoseq reads it when a QSO logs).
 
 constexpr int HEARD_GRID_CAPACITY = 128;
 constexpr int64_t HEARD_GRID_EXPIRY_MS = 4LL * 60 * 60 * 1000;

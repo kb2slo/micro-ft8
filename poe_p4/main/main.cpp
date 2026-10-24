@@ -7,6 +7,7 @@
 
 #include "autoseq.h"
 #include "callsign_hashtable.h"
+#include "decode_pipeline.h"
 #include "decode_tx_state.h"
 #include "ft8_audio_pipeline.h"
 #include "porta.h"
@@ -73,6 +74,9 @@ extern "C" void app_main(void) {
         porta_p4_companion_status_tick();
         porta_p4_tx_hud_tick();
         porta_p4_file_tick();
+        // The decode task hands each slot here: this loop alone touches autoseq
+        // and the armed TX (docs/architecture/main_board.md, P4).
+        decode_pipeline_apply();
         tx_scheduler_tick();
         // A sweep request accepted just before a TX started waits for it to end; one already
         // running is always ticked, so it can de-key.

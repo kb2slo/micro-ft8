@@ -51,6 +51,8 @@ static const char* TAG = "DECODE";
 //     yet, row j4xh).
 //   porta_emit_decode: the sidekick link. Safe to call unconditionally --
 //     no-op until porta_start() has run.
+//
+// All but g_call are called from decode_pipeline_apply(), on the main loop.
 extern std::string g_call;
 void arm_from_autoseq();
 bool ignorelist_matches_normalized_dxcall(const std::string& dxcall_norm);
@@ -69,34 +71,20 @@ bool decode_pipeline_recently_logged(const std::string& dxcall_norm) {
   return adif_logger_dedupe_is_duplicate(&s_adif_logger_dedupe, dxcall_norm, rtc_now_ms());
 }
 
-// ---- Heard grids (heard_grid.h). The decode task writes the table and the
-// main loop reads it when a QSO logs, so every call holds this mutex, created
-// once on first use from either task. Times are uptime, not rtc_now_ms(): the
-// table empties on reboot anyway, so it never waits on the clock being set. ----
-static SemaphoreHandle_t heard_grid_mutex() {
-  static StaticSemaphore_t buffer;
-  static SemaphoreHandle_t mutex = xSemaphoreCreateMutexStatic(&buffer);
-  return mutex;
-}
-
-static void note_heard_grid(const RxDecodeEntry* d, bool standard_message) {
-  xSemaphoreTake(heard_grid_mutex(), portMAX_DELAY);
-  heard_grid_note(d->field2, d->field3, standard_message, esp_timer_get_time() / 1000);
-  xSemaphoreGive(heard_grid_mutex());
-}
-
+// ---- Heard grids (heard_grid.h). Main loop only, so not locked:
+// decode_pipeline_apply() notes each decode, and autoseq reads the table when
+// a QSO logs. Times are uptime, not rtc_now_ms(): the table empties on reboot
+// anyway, so it never waits on the clock being set. ----
 bool decode_pipeline_heard_grid(const std::string& dxcall_norm, std::string* grid_out) {
-  xSemaphoreTake(heard_grid_mutex(), portMAX_DELAY);
-  const bool found = heard_grid_lookup(dxcall_norm.c_str(), esp_timer_get_time() / 1000, grid_out);
-  xSemaphoreGive(heard_grid_mutex());
-  return found;
+  return heard_grid_lookup(dxcall_norm.c_str(), esp_timer_get_time() / 1000, grid_out);
 }
 
 // ---- Recent decodes, keyed by the id handed out with EVENT DECODE (docs/architecture/webapp.md (Screens)) so Port A's QUEUE_REPLY can name one without re-parsing rendered text
 // on the phone. A ring, not a map: bounded and allocation-free like
 // everything else on this path. An id that has scrolled out of the ring
 // resolves to nothing, which porta_host_queue_reply reports plainly rather
-// than guessing. ----
+// than guessing. Main loop only, so not locked: decode_pipeline_apply()
+// writes it and QUEUE_REPLY reads it. ----
 constexpr int kDecodeIdRingLen = 64;
 struct DecodeIdEntry {
   uint32_t id = 0;  // 0 = empty slot
@@ -184,6 +172,78 @@ typedef RxDecodeEntry DecodeMsg;
 
 static DecodeMsg s_dec[DEC_MAX];
 static int       s_dec_count;
+// Each s_dec[] entry's ft8_lib FTX_MESSAGE_TYPE_STANDARD, for heard_grid_note().
+static bool      s_dec_standard[DEC_MAX];
+
+// ---- The decode task's hand-off to the main loop (docs/architecture/main_board.md, P4).
+// The main loop owns autoseq, the armed TX, the decode-id ring and the
+// recently-worked and heard-grid tables, so the decode task touches none of
+// them: it publishes each slot's decodes here, and decode_pipeline_apply()
+// does the rest. One slot deep, copied by value with no heap, under a mutex
+// as porta's frame queue is. A result still waiting when the next is
+// published means the main loop went a whole slot without a pass; the older
+// one is dropped, and the drop is logged. ----
+struct DecodeSlotResult {
+  int64_t slot_idx;
+  int64_t published_us;  // esp_timer
+  int count;
+  DecodeMsg dec[DEC_MAX];
+  bool standard[DEC_MAX];
+};
+static DecodeSlotResult s_result;      // guarded by result_mutex()
+static bool s_result_pending = false;  // guarded by result_mutex()
+
+// A wait this long is 25 main-loop passes: the loop was stalled, not busy.
+constexpr int64_t kLateApplyMs = 250;
+
+static SemaphoreHandle_t result_mutex() {
+  static StaticSemaphore_t buffer;
+  static SemaphoreHandle_t mutex = xSemaphoreCreateMutexStatic(&buffer);
+  return mutex;
+}
+
+// Decode task.
+static void publish_slot_result(int64_t slot_idx) {
+  int64_t dropped_slot = -1;
+  xSemaphoreTake(result_mutex(), portMAX_DELAY);
+  if (s_result_pending) dropped_slot = s_result.slot_idx;
+  s_result.slot_idx = slot_idx;
+  s_result.published_us = esp_timer_get_time();
+  s_result.count = s_dec_count;
+  memcpy(s_result.dec, s_dec, sizeof(s_dec[0]) * (size_t)s_dec_count);
+  memcpy(s_result.standard, s_dec_standard, sizeof(s_dec_standard[0]) * (size_t)s_dec_count);
+  s_result_pending = true;
+  xSemaphoreGive(result_mutex());
+  if (dropped_slot >= 0) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "DECODE slot %lld dropped, never applied", (long long)dropped_slot);
+    ESP_LOGW(TAG, "%s", buf);
+    debug_log_line(buf);
+  }
+}
+
+// Main loop.
+static bool take_slot_result(DecodeSlotResult* out) {
+  xSemaphoreTake(result_mutex(), portMAX_DELAY);
+  const bool pending = s_result_pending;
+  if (pending) {
+    out->slot_idx = s_result.slot_idx;
+    out->published_us = s_result.published_us;
+    out->count = s_result.count;
+    memcpy(out->dec, s_result.dec, sizeof(s_result.dec[0]) * (size_t)s_result.count);
+    memcpy(out->standard, s_result.standard, sizeof(s_result.standard[0]) * (size_t)s_result.count);
+    s_result_pending = false;
+  }
+  xSemaphoreGive(result_mutex());
+  return pending;
+}
+
+bool decode_pipeline_result_pending(void) {
+  xSemaphoreTake(result_mutex(), portMAX_DELAY);
+  const bool pending = s_result_pending;
+  xSemaphoreGive(result_mutex());
+  return pending;
+}
 
 // Plain-C normalize: strip <>, uppercase, write into out[out_sz].
 static void dec_normalize_call(const char* src, char* out, int out_sz) {
@@ -273,7 +333,6 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
 
   s_dec_count = 0;
 
-  const int64_t now_ms = rtc_now_ms();
   static ftx_candidate_t candidates[max_cand];
   static float seen_hz[DECODE_MAX_CANDIDATES];
   static decode_retry_t retry;
@@ -328,14 +387,14 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
     if (pass == 0 && found <= 0) {
       ESP_LOGD(TAG, "No candidates found; keeping RX list");
       // No candidates means we processed the slot's audio but found nothing —
-      // still counts as "applied" for the TX-trigger guard.
+      // still counts as "applied" for the TX-trigger guard. Still handed over,
+      // empty, so the main loop arms after it and a quiet band cannot stall
+      // the CQ. Published before the marker, as below.
+      publish_slot_result(slot_idx);
       if (decode_tx_state_get_decode_slot_idx() > decode_tx_state_get_decode_applied_slot_idx()) {
         decode_tx_state_set_decode_applied_slot_idx(decode_tx_state_get_decode_slot_idx());
       }
       decode_tx_state_set_decode_in_progress(false);
-      if (!decode_tx_state_get_was_txing()) {
-        arm_from_autoseq();
-      }
       log_slot_summary(0, max_cand, 0, 0, decode_t0_us);
       return;
     }
@@ -436,7 +495,7 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
     d->time_s = time_s;
 
     decode_fields_fill(d);
-    note_heard_grid(d, ftx_message_get_type(&message) == FTX_MESSAGE_TYPE_STANDARD);
+    s_dec_standard[s_dec_count] = ftx_message_get_type(&message) == FTX_MESSAGE_TYPE_STANDARD;
 
     d->is_cq = (strncmp(d->text, "CQ ", 3) == 0 || strcmp(d->text, "CQ") == 0);
 
@@ -444,10 +503,8 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
     dec_normalize_call(d->field1, f1_norm, DEC_FIELD_MAX);
     d->is_to_me = (mycall_up[0] != '\0' && strcmp(f1_norm, mycall_up) == 0);
 
-    char dxnorm[DEC_FIELD_MAX];
-    dec_normalize_call(d->field2, dxnorm, DEC_FIELD_MAX);
-    d->is_recent_qso = (dxnorm[0] != '\0') &&
-                       adif_logger_dedupe_is_duplicate(&s_adif_logger_dedupe, std::string(dxnorm), now_ms);
+    // The recently-worked table is the main loop's: decode_pipeline_apply() sets this.
+    d->is_recent_qso = false;
 
     s_dec_count++;
     }
@@ -470,69 +527,8 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
     }
   }
 
-  // ---- Sort in-place: to_me, fresh CQ, other fresh, recent QSOs ----
-  qsort(s_dec, s_dec_count, sizeof(DecodeMsg), dec_sort_cmp);
-
-  // ---- Autoseq: build small to_me vector at boundary (only to_me entries) ----
-  if (!decode_tx_state_get_was_txing()) {
-    std::vector<UiRxLine> to_me_auto;
-    for (int i = 0; i < s_dec_count; ++i) {
-      if (!s_dec[i].is_to_me) break;  // sorted, so once we pass to_me we're done
-      char dxnorm[DEC_FIELD_MAX];
-      dec_normalize_call(s_dec[i].field2, dxnorm, DEC_FIELD_MAX);
-      if (ignorelist_matches_normalized_dxcall(std::string(dxnorm))) {
-        ESP_LOGI(TAG, "IgnoreList: skip auto reply to %s", dxnorm);
-        continue;
-      }
-      // A recently worked call is not dropped here: autoseq refuses it a new
-      // QSO itself (decode_pipeline_recently_logged), and a QSO still in the
-      // queue needs the station's closing 73 -- which arrives after our RR73
-      // has already logged it.
-      UiRxLine rx;
-      rx.text = s_dec[i].text;
-      rx.field1 = s_dec[i].field1;
-      rx.field2 = s_dec[i].field2;
-      rx.field3 = s_dec[i].field3;
-      rx.snr = s_dec[i].snr;
-      rx.offset_hz = s_dec[i].offset_hz;
-      rx.slot_id = s_dec[i].slot_id;
-      rx.is_cq = s_dec[i].is_cq;
-      rx.is_to_me = true;
-      to_me_auto.push_back(std::move(rx));
-    }
-
-    if (!to_me_auto.empty()) {
-      autoseq_on_decodes(to_me_auto);
-    }
-
-    arm_from_autoseq();
-  }
-
-  // ---- Hand the sorted list to the sidekick link ----
-  if (s_dec_count > 0) {
-    // Each decode carries the slot its audio was recorded in, and the dial frequency
-    // at the middle of its own signal (Port A v2). A signal only decodes if
-    // most of it was received on one frequency, so when the operator retunes
-    // partway through the slot, this labels each decode with the frequency
-    // it was actually heard on, and none has to be dropped. time_s counts
-    // from the start of the recording, which begins on the slot boundary.
-    const int64_t emit_slot_idx = slot_idx;
-    const int64_t emit_slot_ms = g_protocol->slot_time_ms;
-    const int64_t half_signal_ms =
-        (int64_t)(g_protocol->total_symbols * g_protocol->symbol_period * 500.0f);
-    for (int i = 0; i < s_dec_count; ++i) {
-      const RxDecodeEntry& e = s_dec[i];
-      uint32_t decode_id = remember_decode_for_reply(e);
-      const int64_t mid_ms =
-          emit_slot_idx * emit_slot_ms + (int64_t)(e.time_s * 1000.0f) + half_signal_ms;
-      porta_emit_decode(decode_id, e.text, e.snr, e.offset_hz, e.time_s,
-                        e.is_cq, e.is_to_me, e.is_recent_qso,
-                        (uint32_t)emit_slot_idx, (uint8_t)(emit_slot_ms / 100),
-                        dial_history_at(mid_ms));
-    }
-  } else {
-    ESP_LOGD(TAG, "No messages decoded; keeping RX list");
-  }
+  // ---- Hand the slot to the main loop (decode_pipeline_apply()) ----
+  publish_slot_result(slot_idx);
 
   // ---- heap instrumentation (exit) ----
   {
@@ -550,11 +546,104 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
   for (int i = 0; i < s_dec_count; ++i) if (s_dec[i].is_to_me) tome++;
   log_slot_summary(num_candidates, max_cand, s_dec_count, tome, decode_t0_us);
 
-  // Mark this slot's decode as fully applied BEFORE clearing the in-progress
-  // flag. Readers (TX trigger on core 0) must see the applied marker as soon
-  // as in_progress drops, not later.
+  // Publish, then mark this slot's decode applied, then clear the in-progress
+  // flag, in that order. The TX trigger on core 0 reads in_progress and the
+  // marker, then decode_pipeline_result_pending(): once it sees the marker, the
+  // slot's result is already waiting for decode_pipeline_apply(), and the
+  // trigger holds until the main loop has applied it.
   if (decode_tx_state_get_decode_slot_idx() > decode_tx_state_get_decode_applied_slot_idx()) {
     decode_tx_state_set_decode_applied_slot_idx(decode_tx_state_get_decode_slot_idx());
   }
   decode_tx_state_set_decode_in_progress(false);
+}
+
+void decode_pipeline_apply(void) {
+  static DecodeSlotResult r;  // the main loop's copy; too big for its stack
+  if (!take_slot_result(&r)) return;
+
+  const int64_t wait_ms = (esp_timer_get_time() - r.published_us) / 1000;
+  if (wait_ms >= kLateApplyMs) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "DECODE slot %lld applied %lld ms late", (long long)r.slot_idx,
+             (long long)wait_ms);
+    ESP_LOGW(TAG, "%s", buf);
+    debug_log_line(buf);
+  }
+
+  // ---- Heard grids and the recently-worked flag, both the main loop's tables ----
+  const int64_t now_ms = rtc_now_ms();
+  const int64_t uptime_ms = esp_timer_get_time() / 1000;
+  for (int i = 0; i < r.count; ++i) {
+    DecodeMsg* d = &r.dec[i];
+    heard_grid_note(d->field2, d->field3, r.standard[i], uptime_ms);
+    char dxnorm[DEC_FIELD_MAX];
+    dec_normalize_call(d->field2, dxnorm, DEC_FIELD_MAX);
+    d->is_recent_qso = (dxnorm[0] != '\0') &&
+                       adif_logger_dedupe_is_duplicate(&s_adif_logger_dedupe, std::string(dxnorm), now_ms);
+  }
+
+  // ---- Sort in-place: to_me, fresh CQ, other fresh, recent QSOs ----
+  // After the loop above: r.standard[] follows the unsorted order.
+  qsort(r.dec, r.count, sizeof(DecodeMsg), dec_sort_cmp);
+
+  // ---- Autoseq: build small to_me vector at boundary (only to_me entries) ----
+  if (!decode_tx_state_get_was_txing()) {
+    std::vector<UiRxLine> to_me_auto;
+    for (int i = 0; i < r.count; ++i) {
+      if (!r.dec[i].is_to_me) break;  // sorted, so once we pass to_me we're done
+      char dxnorm[DEC_FIELD_MAX];
+      dec_normalize_call(r.dec[i].field2, dxnorm, DEC_FIELD_MAX);
+      if (ignorelist_matches_normalized_dxcall(std::string(dxnorm))) {
+        ESP_LOGI(TAG, "IgnoreList: skip auto reply to %s", dxnorm);
+        continue;
+      }
+      // A recently worked call is not dropped here: autoseq refuses it a new
+      // QSO itself (decode_pipeline_recently_logged), and a QSO still in the
+      // queue needs the station's closing 73 -- which arrives after our RR73
+      // has already logged it.
+      UiRxLine rx;
+      rx.text = r.dec[i].text;
+      rx.field1 = r.dec[i].field1;
+      rx.field2 = r.dec[i].field2;
+      rx.field3 = r.dec[i].field3;
+      rx.snr = r.dec[i].snr;
+      rx.offset_hz = r.dec[i].offset_hz;
+      rx.slot_id = r.dec[i].slot_id;
+      rx.is_cq = r.dec[i].is_cq;
+      rx.is_to_me = true;
+      to_me_auto.push_back(std::move(rx));
+    }
+
+    if (!to_me_auto.empty()) {
+      autoseq_on_decodes(to_me_auto);
+    }
+
+    arm_from_autoseq();
+  }
+
+  // ---- Hand the sorted list to the sidekick link ----
+  if (r.count > 0) {
+    // Each decode carries the slot its audio was recorded in, and the dial frequency
+    // at the middle of its own signal (Port A v2). A signal only decodes if
+    // most of it was received on one frequency, so when the operator retunes
+    // partway through the slot, this labels each decode with the frequency
+    // it was actually heard on, and none has to be dropped. time_s counts
+    // from the start of the recording, which begins on the slot boundary.
+    const int64_t emit_slot_idx = r.slot_idx;
+    const int64_t emit_slot_ms = g_protocol->slot_time_ms;
+    const int64_t half_signal_ms =
+        (int64_t)(g_protocol->total_symbols * g_protocol->symbol_period * 500.0f);
+    for (int i = 0; i < r.count; ++i) {
+      const RxDecodeEntry& e = r.dec[i];
+      uint32_t decode_id = remember_decode_for_reply(e);
+      const int64_t mid_ms =
+          emit_slot_idx * emit_slot_ms + (int64_t)(e.time_s * 1000.0f) + half_signal_ms;
+      porta_emit_decode(decode_id, e.text, e.snr, e.offset_hz, e.time_s,
+                        e.is_cq, e.is_to_me, e.is_recent_qso,
+                        (uint32_t)emit_slot_idx, (uint8_t)(emit_slot_ms / 100),
+                        dial_history_at(mid_ms));
+    }
+  } else {
+    ESP_LOGD(TAG, "No messages decoded; keeping RX list");
+  }
 }
