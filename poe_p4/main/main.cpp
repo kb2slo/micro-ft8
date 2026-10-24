@@ -8,6 +8,7 @@
 #include "autoseq.h"
 #include "callsign_hashtable.h"
 #include "decode_pipeline.h"
+#include "debug_log.h"
 #include "decode_tx_state.h"
 #include "ft8_audio_pipeline.h"
 #include "porta.h"
@@ -44,7 +45,16 @@ static void decode_audio_task(void * /*arg*/) {
             vTaskDelay(pdMS_TO_TICKS(200));
         }
         ESP_LOGI(TAG, "QMX UAC streaming; starting decode pipeline");
-        ft8_audio_pipeline_run(&pipe_cfg);
+        porta_p4_set_decode_failed(false);
+        if (!ft8_audio_pipeline_run(&pipe_cfg)) {
+            // Could not start (RAM, a task), so nothing will decode until it can. Say so once, on
+            // the phone as well as here, and wait before trying again rather than every 60 ms.
+            ESP_LOGE(TAG, "decode pipeline could not start: the radio is up but nothing will decode");
+            debug_log_line("DECODE pipeline could not start: no RAM or task; retrying every 10 s");
+            porta_p4_set_decode_failed(true);
+            vTaskDelay(pdMS_TO_TICKS(10000));
+            continue;
+        }
         ESP_LOGW(TAG, "decode_audio_task: pipeline exited (QMX audio disconnected); waiting for UAC");
     }
 }

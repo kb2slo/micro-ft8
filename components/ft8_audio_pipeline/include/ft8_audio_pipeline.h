@@ -15,4 +15,6 @@ typedef struct {
     ft8_audio_block_cb_t on_block_processed;
 } ft8_audio_pipeline_config_t;
 
-void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg);
+// Runs until should_stop(). False when it could not start (no RAM for the waterfall or a buffer, no
+// task for the ingest): nothing was decoded, and the caller says so rather than retrying silently.
+bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg);

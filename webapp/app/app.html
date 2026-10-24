@@ -208,8 +208,8 @@ button:disabled{opacity:.45}
 #opRadioChip.found,#opRadioChip.drift{color:var(--warn);border-color:var(--warn)}
 #opRadioChip.found .glyph::before,#opRadioChip.drift .glyph::before{content:"\2026"}
 #opRadioChip.drift .glyph::before{content:"!"}
-#opRadioChip.lost{color:var(--danger-strong);border-color:var(--danger-strong)}
-#opRadioChip.lost .glyph::before{content:"\2715"}
+#opRadioChip.lost,#opRadioChip.nodecode{color:var(--danger-strong);border-color:var(--danger-strong)}
+#opRadioChip.lost .glyph::before,#opRadioChip.nodecode .glyph::before{content:"\2715"}
 #opRadioPanel{margin-top:.6rem;padding:.6rem .8rem;border:1px solid color-mix(in srgb, GrayText 30%, transparent);border-radius:8px;font-size:.8rem}
 #opRadioPanel dl{display:grid;grid-template-columns:auto 1fr;gap:.2rem .8rem;margin:0 0 .5rem}
 #opRadioPanel dt{color:GrayText}
@@ -1911,12 +1911,14 @@ function radioReadBack(cfg) {
            mode: parseInt(cfg.radio_mode, 10), split: yn(cfg.radio_split) === 'yes' };
 }
 
-// 'none' | 'unknown' | 'found' | 'ready' | 'drift' | 'lost'. The radio is "where we put it" when
+// 'none' | 'unknown' | 'found' | 'ready' | 'drift' | 'lost' | 'nodecode'. The radio is "where we put it" when
 // it reports the wanted frequency, in Digi, on VFO A without split; anything else is a drift.
 function radioChipState(cfg) {
   var cat = yn(cfg.cat_ready) === 'yes', audio = yn(cfg.audio_rx) === 'yes';
   if (cat) everCatUp = true;
   if (cat && audio) {
+    // The radio is fine but the main board's decoder could not start, so nothing decodes.
+    if (yn(cfg.decode_failed) === 'yes') return 'nodecode';
     var rs = radioReadBack(cfg);
     if (rs && rs.want && (rs.hz !== rs.want || rs.mode !== 6 || rs.split)) return 'drift';
     return 'ready';
@@ -1938,7 +1940,7 @@ function renderRadioChip(cfg) {
   var band = cfg.band_name && cfg.band_name !== '?' ? cfg.band_name : '';
   var text = { none: 'No radio', unknown: 'Unknown USB', found: 'Found · syncing',
                ready: 'Ready' + (band ? ' · ' + band : ''), drift: 'Radio moved',
-               lost: 'CAT lost' }[st];
+               lost: 'CAT lost', nodecode: 'Not decoding' }[st];
   document.getElementById('opRadioChipText').textContent = text;
 
   var rows = [], note = '';
@@ -1953,6 +1955,9 @@ function renderRadioChip(cfg) {
     rows.push(['USB', dev || 'seen'], ['CAT', cat ? 'up' : 'waiting'], ['Audio in', audio ? 'up' : 'waiting'],
               ['VFO', 'set once CAT is up']);
     note = 'The radio takes about ten seconds to be ready after it is plugged in. Nothing to press.';
+  } else if (st === 'nodecode') {
+    rows.push(['USB', dev || 'QMX/QDX radio'], ['CAT', 'up'], ['Audio in', 'up'], ['Decoder', 'could not start']);
+    note = 'The radio is connected but the main board could not start its decoder (out of memory), so nothing will decode. It retries every 10 seconds. Restart the main board; if it keeps happening, report it.';
   } else if (st === 'lost') {
     rows.push(['USB', dev || 'seen'], ['CAT', 'stopped answering']);
     note = 'A slot that cannot be keyed is skipped and not counted. It transmits again once CAT answers.';
@@ -1972,7 +1977,7 @@ function renderRadioChip(cfg) {
   dl.innerHTML = rows.map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('');
   document.getElementById('opRadioNote').textContent = note;
   var retune = document.getElementById('opRadioRetune');
-  retune.hidden = !(st === 'ready' || st === 'drift' || st === 'lost');
+  retune.hidden = !(st === 'ready' || st === 'drift' || st === 'lost' || st === 'nodecode');
   retune.textContent = st === 'drift' ? 'Put it back' : (st === 'lost' ? 'Retry now' : 'Retune VFO');
   document.getElementById('opRadioUse').hidden = st !== 'drift';
   document.getElementById('opTune').hidden = st !== 'ready' && st !== 'drift';

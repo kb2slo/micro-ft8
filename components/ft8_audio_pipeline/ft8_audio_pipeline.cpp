@@ -60,9 +60,9 @@ static void audio_ingest_task(void *arg)
     vTaskDelete(nullptr);
 }
 
-void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
+bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
 {
-    if (!cfg || !cfg->read || !cfg->should_stop) return;
+    if (!cfg || !cfg->read || !cfg->should_stop) return false;
     const char* tag = cfg->tag ? cfg->tag : "FT8_AUDIO";
 
     monitor_config_t mon_cfg = {
@@ -81,7 +81,7 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
     log_heap("AUDIO_PIPE_AFTER_MONITOR_INIT");
     if (mon.wf.mag == nullptr) {
         ESP_LOGE(tag, "monitor init failed nfft=%d freq_osr=%d", mon.nfft, mon_cfg.freq_osr);
-        return;
+        return false;
     }
     ESP_LOGI(tag, "monitor nfft=%d freq_osr=%d waterfall=%d bytes",
              mon.nfft, mon.wf.freq_osr, mon.wf.max_blocks * mon.wf.block_stride);
@@ -100,7 +100,7 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
         if (temp_dec) free(temp_dec);
         if (block_gain) free(block_gain);
         monitor_free(&mon);
-        return;
+        return false;
     }
 
     const int64_t slot_ms      = g_protocol->slot_time_ms;
@@ -125,7 +125,7 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
         free(temp_dec);
         free(block_gain);
         monitor_free(&mon);
-        return;
+        return false;
     }
     ESP_LOGI(tag, "audio ingest ring=%u samples", kIngestRingSamples);
 
@@ -265,4 +265,5 @@ void ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
     free(temp_dec);
     free(block_gain);
     monitor_free(&mon);
+    return true;
 }

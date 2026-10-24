@@ -179,6 +179,12 @@ static const char *sync_vfo(const char *reason) {
     return nullptr;
 }
 
+static volatile bool s_decode_failed = false;
+
+void porta_p4_set_decode_failed(bool failed) {
+    s_decode_failed = failed;
+}
+
 void porta_p4_station_boot(void) {
     load_station_from_storage();
 }
@@ -484,9 +490,9 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
     char live[256];
     snprintf(live, sizeof(live),
              "streaming=%d\ncat_ready=%d\ntune=%d\nband_name=%s\nfreq_khz=%d\n"
-             "audio_rx=%d\nclock_set=%d\n",
+             "audio_rx=%d\nclock_set=%d\ndecode_failed=%d\n",
              qmx_audio_ready() ? 1 : 0, radio_control_ready() ? 1 : 0, s_tune ? 1 : 0, band_name,
-             freq_khz, qmx_audio_ready() ? 1 : 0, rtc_is_set() ? 1 : 0);
+             freq_khz, qmx_audio_ready() ? 1 : 0, rtc_is_set() ? 1 : 0, s_decode_failed ? 1 : 0);
     text += live;
 
     // What the radio last said of itself (IF;), against what Micro-FT8 means it to be: both in

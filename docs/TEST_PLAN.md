@@ -72,6 +72,7 @@ field-only path, naming the change and the exact check. **Drop it when the check
 Shipped code that has never run on hardware, with no check scheduled. Listed so it is not mistaken for
 proven, and not counted as owed. Move one into the table when a check is planned.
 
+- **The Not decoding chip** (`decode_failed`, `main.cpp`; [main_board.md](architecture/main_board.md), internal RAM). It needs the decoder to fail to start, which the RAM budget now prevents; the failure it reports happened once, on a build 14.6 KB over.
 - **QDX.** The P4 has never run against one; the operator has no QDX. The site's QDX mentions are untested.
 - **Field Day follows the CQ type** (2026-10-14; [autoseq.md](architecture/autoseq.md)). Host scenarios pin the sequences; no Field Day station is on the air to work until Winter Field Day (January) or ARRL Field Day (June).
 - **Port A v2, a slot retuned partway through** (decodes from one slot under two headers, the same time, each

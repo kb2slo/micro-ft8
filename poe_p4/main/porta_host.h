@@ -3,6 +3,9 @@
 // P4-only helpers owned by porta_host.cpp (station seed + Operate ticks).
 
 void porta_p4_station_boot(void);
+// The decode pipeline could not start (no RAM for the waterfall): the radio is up and nothing
+// decodes. Shown on the phone as decoding=0 in the config snapshot.
+void porta_p4_set_decode_failed(bool failed);
 void porta_p4_adif_register(void);
 void porta_p4_file_tick(void);
 int porta_p4_station_freq_hz(void);
