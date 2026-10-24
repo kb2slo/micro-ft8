@@ -29,6 +29,12 @@ void decode_pipeline_apply(void);
 // the main loop has applied it.
 bool decode_pipeline_result_pending(void);
 
+// The station call the decode task tests decodes against (addressed to us,
+// the DXpedition rewrite). The main loop sets it whenever the call changes;
+// the decode task reads its own copy, never the board's g_call. Empty until
+// set, which matches nothing.
+void decode_pipeline_set_my_call(const std::string& call);
+
 // Resolves a decode_id handed out by an earlier decode_pipeline_apply() call
 // (see porta_emit_decode) back to the UiRxLine a QUEUE_REPLY names. Main loop.
 bool find_decode_for_reply(uint32_t decode_id, UiRxLine* out);

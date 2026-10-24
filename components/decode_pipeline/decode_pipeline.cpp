@@ -45,15 +45,13 @@ static const char* TAG = "DECODE";
 // Bare forward declarations for the seams this pipeline needs but doesn't
 // own: the main board's own file (poe_p4/main) defines each.
 //
-//   g_call: the station callsign.
 //   arm_from_autoseq/ignorelist_matches_normalized_dxcall: the
 //     TX-arming trigger and its ignorelist filter (the P4 has no ignorelist
 //     yet, row j4xh).
 //   porta_emit_decode: the sidekick link. Safe to call unconditionally --
 //     no-op until porta_start() has run.
 //
-// All but g_call are called from decode_pipeline_apply(), on the main loop.
-extern std::string g_call;
+// Each is called from decode_pipeline_apply(), on the main loop.
 void arm_from_autoseq();
 bool ignorelist_matches_normalized_dxcall(const std::string& dxcall_norm);
 void porta_emit_decode(uint32_t decode_id, const char* text, int snr, int offset_hz,
@@ -245,6 +243,24 @@ bool decode_pipeline_result_pending(void) {
   return pending;
 }
 
+// ---- The station call, the decode task's one input from the main loop: a
+// copy the main loop sets (decode_pipeline_set_my_call()) and each decode
+// reads once, so the decode task never reads g_call while a Station change
+// rewrites it. ----
+static char s_my_call[DEC_FIELD_MAX] = "";  // guarded by my_call_mutex()
+
+static SemaphoreHandle_t my_call_mutex() {
+  static StaticSemaphore_t buffer;
+  static SemaphoreHandle_t mutex = xSemaphoreCreateMutexStatic(&buffer);
+  return mutex;
+}
+
+void decode_pipeline_set_my_call(const std::string& call) {
+  xSemaphoreTake(my_call_mutex(), portMAX_DELAY);
+  snprintf(s_my_call, sizeof(s_my_call), "%s", call.c_str());
+  xSemaphoreGive(my_call_mutex());
+}
+
 // Plain-C normalize: strip <>, uppercase, write into out[out_sz].
 static void dec_normalize_call(const char* src, char* out, int out_sz) {
   const char* p = src;
@@ -359,13 +375,10 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
 
   // ---- mycall uppercase (stack, not heap) ----
   char mycall_up[DEC_FIELD_MAX];
-  {
-    const char* src = g_call.c_str();
-    int len = (int)g_call.size();
-    if (len >= DEC_FIELD_MAX) len = DEC_FIELD_MAX - 1;
-    for (int i = 0; i < len; ++i) mycall_up[i] = (char)toupper((unsigned char)src[i]);
-    mycall_up[len] = '\0';
-  }
+  xSemaphoreTake(my_call_mutex(), portMAX_DELAY);
+  memcpy(mycall_up, s_my_call, sizeof(mycall_up));
+  xSemaphoreGive(my_call_mutex());
+  for (char* p = mycall_up; *p; ++p) *p = (char)toupper((unsigned char)*p);
 
   // ---- decode candidates into static s_dec[] ----
   const int kMaxDecoded = 50;

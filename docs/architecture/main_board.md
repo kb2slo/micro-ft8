@@ -17,10 +17,9 @@ The daily station. Headless is the only mode: the module has no display, touch o
   * **Decode** runs in `decode_audio`, pinned to core 1 (`poe_p4/main/main.cpp`). It decodes and steps the clock, then hands each slot's decodes to the main loop: a one-slot hand-off under a mutex, as Port A's frames are, which `decode_pipeline_apply()` (`components/decode_pipeline`) takes on the main loop's next pass. That call does the rest: the two tables, the sort, `autoseq_on_decodes()`, arming, the decode ids and the DECODE events. The TX trigger waits until the main loop has applied the previous slot, not just until it is decoded ([autoseq.md](autoseq.md), **The slot cycle**).
   * **Logged:** a slot applied 250 ms or more after its decode (`DECODE slot <n> applied <ms> ms late`), and one never applied because the next slot's decode came first (`DECODE slot <n> dropped, never applied`). Both mean the main loop stalled, and both go to the console and the sidekick's log.
   * **Why not a lock around autoseq.** A QSO's ADIF flash write would run under it, autoseq's callbacks call back into the board, and the armed TX would need the same lock.
-  * **Still shared across the two tasks, unlocked:**
-    * The station call (`g_call`). Any Station change rewrites it on the main loop, at any moment, while the decode task reads it to tell which decodes are addressed to us. A callsign fits the string's inline buffer, so the worst case is one slot tested against a half-written call, not a freed buffer.
-    * The soft clock (`rtc_ms_start`, [time.md](time.md)). The decode task steps it from decode timing; the main loop reads it on every pass and sets it from the phone.
-    * The callsign hash table. Decode fills it and TX encoding reads it, kept apart only because the TX trigger waits for the decode.
+  * **The station call** is the main loop's (`g_call`). The decode task tests decodes against its own copy, which the main loop sets whenever the call changes (`decode_pipeline_set_my_call()`, under a mutex), never against `g_call` itself.
+  * **The soft clock** is one atomic value, safe from any task ([time.md](time.md)). The decode task steps it; the main loop sets it from the phone.
+  * **Still shared, unlocked:** the `decode_tx_state` flags, the designed hand-shake between the two tasks (one writer per field, none wider than one 32-bit write); and the callsign hash table, which decode fills and TX encoding reads, kept apart only because the TX trigger waits for the decode.
 * **Storage:** a LittleFS `storage` partition holds `Station.txt` and the daily `.adi` files (`poe_p4/partitions.csv`).
 
 ### Two USB-C ports

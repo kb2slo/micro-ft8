@@ -37,7 +37,8 @@ void decode_tx_state_set_freq_osr(int osr);
 // boot isn't blocked. With decode_pipeline_result_pending() false, the main
 // loop has also taken it (decode_pipeline_apply()). Enforces the sequential
 // invariant "TX in slot N is blocked until the decode for slot N-1 has been
-// applied."
+// applied." Stored as 32 bits, like tx_slot_idx below, so core 0 never reads
+// it half-written.
 int64_t decode_tx_state_get_decode_slot_idx(void);
 void    decode_tx_state_set_decode_slot_idx(int64_t slot_idx);
 // capture_clean is set with decode_slot_idx, on the same task: the slot began one

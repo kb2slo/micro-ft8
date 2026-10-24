@@ -10,12 +10,13 @@
 // stamps and auto-syncs time through these without linking the main board's
 // own file. Arithmetic plus the ESP's built-in RTC peripheral
 // (settimeofday/gettimeofday).
+//
+// Safe from any task with no lock: the clock is one atomic value, so a read
+// never sees half a set, and a decode step never writes over a set.
 // ============================================================================
 
-// Owned state. rtc_valid stays false until the clock is first seeded.
-extern bool rtc_valid;
-extern time_t rtc_epoch_base;
-extern int64_t rtc_ms_start;
+// False until the clock is first seeded; rtc_now_ms() reads uptime until then.
+bool rtc_is_set();
 
 int64_t rtc_now_ms();
 // For PORTA event stamps: 0 means "clock unset" so the viewer can show
@@ -32,5 +33,5 @@ void rtc_sync_to_esp_rtc();
 
 // Nudges the soft clock by delta_ms (positive = clock was behind, negative =
 // ahead) and re-syncs the ESP RTC in one step. Used by the decode pipeline's
-// auto-sync-from-timing correction.
+// auto-sync-from-timing correction. Does nothing to an unset clock.
 void rtc_apply_decode_sync(int delta_ms);

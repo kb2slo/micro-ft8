@@ -68,6 +68,7 @@ DECODE_SNR_TARGET = host_test_decode_snr
 PORTA_OUT_QUEUE_TARGET = host_test_porta_out_queue
 HEARD_GRID_TARGET = host_test_heard_grid
 DECODE_FIELDS_TARGET = host_test_decode_fields
+RTC_CORE_TARGET = host_test_rtc_core
 
 all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
      $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) \
@@ -78,7 +79,8 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARG
      $(CAT_REPLY_PARSER_TARGET) $(SWR_SWEEP_TARGET) \
      $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(CORE_BUSY_TARGET) \
      $(DECODE_RETRY_TARGET) $(DECODE_SYNC_TARGET) $(DECODE_SNR_TARGET) \
-     $(PORTA_OUT_QUEUE_TARGET) $(HEARD_GRID_TARGET) $(DECODE_FIELDS_TARGET) $(SIM_TARGET)
+     $(PORTA_OUT_QUEUE_TARGET) $(HEARD_GRID_TARGET) $(DECODE_FIELDS_TARGET) $(RTC_CORE_TARGET) \
+     $(SIM_TARGET)
 
 $(TARGET): $(OBJ) porta_event_json.o heard_grid.o
 	$(CXX) $(CXXFLAGS) -o $@ $^
@@ -119,6 +121,14 @@ $(DECODE_FIELDS_TARGET): $(DECODE_FIELDS_OBJ)
 ROGERS_ONCE_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_rogers_once.o
 $(ROGERS_ONCE_TARGET): $(ROGERS_ONCE_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
+
+# settimeofday is renamed so the test never sets this machine's clock; the
+# test defines rtc_test_settimeofday.
+RTC_CORE_OBJ = rtc_core.o test_rtc_core.o
+rtc_core.o: ../components/rtc_core/rtc_core.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -Dsettimeofday=rtc_test_settimeofday -c $< -o $@
+$(RTC_CORE_TARGET): $(RTC_CORE_OBJ)
+	$(CXX) $(CXXFLAGS) -pthread -o $@ $^
 
 DIAL_HISTORY_OBJ = dial_history.o test_dial_history.o
 dial_history.o: ../components/dial_history/dial_history.cpp
@@ -318,6 +328,7 @@ clean:
 	      $(DECODE_SNR_OBJ) $(DECODE_SNR_TARGET) \
 	      $(ROGERS_ONCE_OBJ) $(ROGERS_ONCE_TARGET) \
 	      $(HEARD_GRID_OBJ) $(HEARD_GRID_TARGET) \
-	      $(DECODE_FIELDS_OBJ) $(DECODE_FIELDS_TARGET)
+	      $(DECODE_FIELDS_OBJ) $(DECODE_FIELDS_TARGET) \
+	      $(RTC_CORE_OBJ) $(RTC_CORE_TARGET)
 
 .PHONY: all clean

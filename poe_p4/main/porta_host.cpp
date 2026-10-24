@@ -67,6 +67,13 @@ static void sync_autoseq_station(void) {
     autoseq_set_cq_type(cq, s_station.free_text);
 }
 
+// The station call: g_call for this loop, and a copy for the decode task,
+// which never reads g_call (docs/architecture/main_board.md, P4).
+static void set_station_call(void) {
+    g_call = s_station.call;
+    decode_pipeline_set_my_call(g_call);
+}
+
 static void station_seed_adv_defaults(void) {
     station_settings_init(&s_station);
     for (int i = 0; i < kStationBandCount; ++i) {
@@ -90,7 +97,7 @@ static void station_seed_adv_defaults(void) {
     s_station.tries = AUTOSEQ_TRIES;
     s_station.protocol_ft4 = false;
     s_station.serialize_ft4_band_keys = false;
-    g_call = s_station.call;
+    set_station_call();
     s_seeded = true;
     sync_autoseq_station();
 }
@@ -127,7 +134,7 @@ static void load_station_from_storage(void) {
     }
     station_parse(text, &s_station);
     s_station.serialize_ft4_band_keys = s_station.protocol_ft4;
-    g_call = s_station.call;
+    set_station_call();
     sync_autoseq_station();
     ESP_LOGI(TAG, "loaded Station.txt call=%s grid=%s", s_station.call.c_str(),
              s_station.grid.c_str());
@@ -330,7 +337,7 @@ const char *porta_host_set_clock(uint32_t epoch_secs, uint16_t millis) {
     }
     const time_t now = rtc_current_epoch_seconds();
     const long drift = (long)((time_t)epoch_secs - now);
-    if (rtc_valid && drift > -2 && drift < 2) {
+    if (rtc_is_set() && drift > -2 && drift < 2) {
         return nullptr;
     }
     rtc_seed_epoch((time_t)epoch_secs, esp_timer_get_time() / 1000 - (int64_t)millis);
@@ -448,7 +455,7 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
              "streaming=%d\ncat_ready=%d\ntune=%d\nband_name=%s\nfreq_khz=%d\n"
              "audio_rx=%d\nclock_set=%d\n",
              qmx_audio_ready() ? 1 : 0, radio_control_ready() ? 1 : 0, s_tune ? 1 : 0, band_name,
-             freq_khz, qmx_audio_ready() ? 1 : 0, rtc_valid ? 1 : 0);
+             freq_khz, qmx_audio_ready() ? 1 : 0, rtc_is_set() ? 1 : 0);
     text += live;
 
     // GET-only like the other live lines. Absent while firmware does not own storage, which the
@@ -502,7 +509,7 @@ const char *porta_host_config_set(const char *key, const char *value) {
     const bool act_refs_was_empty = s_station.act_refs.empty();
     station_parse(line, &s_station);
     s_station.serialize_ft4_band_keys = s_station.protocol_ft4;
-    g_call = s_station.call;
+    set_station_call();
 
     // Activation start (act_refs empty -> non-empty) picks the CQ type for
     // the operator -- SOTA if any SOTA reference is present (a mixed

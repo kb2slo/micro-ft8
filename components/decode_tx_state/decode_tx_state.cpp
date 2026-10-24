@@ -12,7 +12,9 @@ static int     s_freq_osr = 2;
 
 static int64_t          s_decode_slot_idx = -1;
 static bool             s_capture_clean = false;
-static volatile int64_t s_decode_applied_slot_idx = -1;
+// 32 bits, as s_tx_slot_idx: core 0 reads it, and a 64-bit value is two
+// writes on the P4, so the -1 to slot change after boot could read torn.
+static volatile int32_t s_decode_applied_slot_idx = -1;
 static volatile bool    s_decode_in_progress = false;
 
 static volatile bool s_tx_active = false;
@@ -35,7 +37,7 @@ void    decode_tx_state_set_decode_slot_idx(int64_t slot_idx) { s_decode_slot_id
 bool    decode_tx_state_get_capture_clean(void) { return s_capture_clean; }
 void    decode_tx_state_set_capture_clean(bool clean) { s_capture_clean = clean; }
 int64_t decode_tx_state_get_decode_applied_slot_idx(void) { return s_decode_applied_slot_idx; }
-void    decode_tx_state_set_decode_applied_slot_idx(int64_t slot_idx) { s_decode_applied_slot_idx = slot_idx; }
+void    decode_tx_state_set_decode_applied_slot_idx(int64_t slot_idx) { s_decode_applied_slot_idx = (int32_t)slot_idx; }
 bool    decode_tx_state_get_decode_in_progress(void) { return s_decode_in_progress; }
 void    decode_tx_state_set_decode_in_progress(bool in_progress) { s_decode_in_progress = in_progress; }
 

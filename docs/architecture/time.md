@@ -4,10 +4,10 @@ FT8 needs UTC. Slots start on UTC boundaries (15 s for FT8, 7.5 s for FT4), and 
 
 ## One clock
 
-* **`rtc_now_ms()` is the clock.** It is an epoch base plus the time elapsed on `esp_timer` since that base was set. Everything that needs wall time reads it: the capture task's slot boundaries (`ft8_audio_pipeline.cpp`), the TX trigger and tone schedule, the decode slot index, the ADIF `qso_date`/`time_on` and daily file name (`adif_logger.cpp`), and Port A event stamps (`rtc_epoch_secs_or_zero()`).
+* **`rtc_now_ms()` is the clock.** It is an epoch base plus the time elapsed on `esp_timer` since that base was set, held as one atomic value (UTC minus uptime, `rtc_core.cpp`), so every task reads it with no lock: a read never sees half a set, and a decode step never writes over a set (`host_mock/test_rtc_core.cpp`). Everything that needs wall time reads it: the capture task's slot boundaries (`ft8_audio_pipeline.cpp`), the TX trigger and tone schedule, the decode slot index, the ADIF `qso_date`/`time_on` and daily file name (`adif_logger.cpp`), and Port A event stamps (`rtc_epoch_secs_or_zero()`).
 * **Setting the clock is a step, not a slew.** `rtc_seed_epoch()` replaces the base. Every full set also mirrors the time into the chip's own RTC (`rtc_sync_to_esp_rtc()`, `settimeofday`).
 * **UTC throughout.** Strings come from `gmtime_r`. `mktime` and `localtime_r` are safe only because the device TZ is never set; do not set one.
-* **Unset is a real state.** Until a source sets it, `rtc_valid` is false and `rtc_now_ms()` returns uptime, so slot phase is arbitrary and decode will not work. Event stamps go out as 0, which the web app shows as `--:--:--` rather than a 1970 time. **Nothing refuses to transmit on an unset clock,** and a QSO logged on one is stamped with uptime as a 1970 date.
+* **Unset is a real state.** Until a source sets it, `rtc_is_set()` is false and `rtc_now_ms()` returns uptime, so slot phase is arbitrary and decode will not work. Event stamps go out as 0, which the web app shows as `--:--:--` rather than a 1970 time. **Nothing refuses to transmit on an unset clock,** and a QSO logged on one is stamped with uptime as a 1970 date.
 
 ## Sources
 
@@ -36,7 +36,7 @@ The Operate slot bar runs on the **phone's** clock (`Date.now()` modulo the slot
 
 ## Decode auto-sync
 
-After each decoded slot with more than three decodes, `decode_pipeline.cpp` takes the median `time_s` (where each signal starts, relative to the start of capture). If the median is more than 0.3 s from zero, it moves the clock by that amount, capped at 320 ms per slot (`rtc_apply_decode_sync()`). Each nudge also rewrites the ESP RTC.
+After each decoded slot with more than three decodes, `decode_pipeline.cpp` takes the median `time_s` (where each signal starts, relative to the start of capture). If the median is more than 0.3 s from zero, it moves the clock by that amount, capped at 320 ms per slot (`rtc_apply_decode_sync()`, on the decode task). An unset clock is not moved. Each nudge also rewrites the ESP RTC, as a set on the main loop does. The two can cross and leave the ESP RTC holding the time from before a set until the next nudge or set rewrites it; nothing reads it back (**Sources**).
 
 * **It fixes fine error, never gross error.** It needs decodes, and a clock off by more than a couple of seconds produces none. Gross error needs a full set. Making it visible is row I15.
 * **Where it settles** (derived from the code, **unmeasured**). FT8 transmitters start 0.5 s after the UTC boundary, and capture starts at the main board's boundary. So a clock set exactly to UTC sees a median of about +0.5 s plus any audio-path latency, and auto-sync pulls it back until the median is within ±0.3 s. After a browser set, then, the main board's clock runs a few tenths of a second **behind** UTC. Consequences, all inferred:
