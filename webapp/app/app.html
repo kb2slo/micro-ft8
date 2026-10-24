@@ -1957,7 +1957,7 @@ function renderRadioChip(cfg) {
     note = 'The radio takes about ten seconds to be ready after it is plugged in. Nothing to press.';
   } else if (st === 'nodecode') {
     rows.push(['USB', dev || 'QMX/QDX radio'], ['CAT', 'up'], ['Audio in', 'up'], ['Decoder', 'could not start']);
-    if (cfg.radio_fw) rows.push(['Radio firmware', cfg.radio_fw.replace(/_/g, '.')]);
+    if (cfg.radio_fw) rows.push(['Radio firmware', fmtRadioFirmware(cfg.radio_fw)]);
     note = 'The radio is connected but the main board could not start its decoder (out of memory), so nothing will decode. It retries every 10 seconds. Restart the main board; if it keeps happening, report it.';
   } else if (st === 'lost') {
     rows.push(['USB', dev || 'seen'], ['CAT', 'stopped answering']);
@@ -1965,7 +1965,7 @@ function renderRadioChip(cfg) {
   } else {
     rows.push(['USB', dev || 'QMX/QDX radio'], ['CAT', cat ? 'up' : 'down'], ['Audio in', audio ? 'up' : 'down']);
     // The version the radio reports (VN;), as the QRP Labs release names it: 1_04_004 reads 1.04.004.
-    if (cfg.radio_fw) rows.push(['Radio firmware', cfg.radio_fw.replace(/_/g, '.')]);
+    if (cfg.radio_fw) rows.push(['Radio firmware', fmtRadioFirmware(cfg.radio_fw)]);
     var rs = radioReadBack(cfg);
     if (rs) {
       rows.push(['Radio reports', fmtHzMHz(rs.hz) + ' MHz · ' + (MD_NAMES[rs.mode] || 'mode ' + rs.mode) +
