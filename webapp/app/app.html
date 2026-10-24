@@ -575,6 +575,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
           <option value=default>Default</option>
           <option value=snr>Strongest</option>
           <option value=near>Nearest</option>
+          <option value=far>Farthest</option>
         </select>
         <button id=dvCq type=button aria-pressed=false>CQ</button>
         <button id=dvPark type=button aria-pressed=false>POTA/SOTA</button>
@@ -3624,7 +3625,7 @@ function isReplyableDecode(d) {
 }
 
 // ===================== Operate: decode sort and filter (RFC 0009 3.8) =====================
-// Applied when a slot is drawn, within each slot; slots stay newest first. A message to us is
+// Applied when a slot is drawn, within each slot; slots stay newest first. Sorts: Default, Strongest, Nearest, Farthest. A message to us is
 // always on top and never filtered. `distKmOf(d)` answers the sender's distance in km, or null
 // when the grid is not known (such a decode fails a distance filter and sorts last under Nearest).
 var DV_KEY = 'microft8_decode_view_v1';
@@ -3649,11 +3650,12 @@ function decodePassesView(d, view, distKmOf) {
 function decodeViewOf(slot, view, distKmOf) {
   var items = slot.map(function (d, i) { return { d: d, i: i }; })
     .filter(function (it) { return decodePassesView(it.d, view, distKmOf); });
-  if (view.sort === 'snr' || view.sort === 'near') {
+  if (view.sort === 'snr' || view.sort === 'near' || view.sort === 'far') {
     var key = function (d) {
       if (view.sort === 'snr') return -d.snr;
       var km = distKmOf(d);
-      return (km === null || km === undefined) ? Infinity : km;
+      if (km === null || km === undefined) return Infinity;  // no grid: last either way
+      return view.sort === 'far' ? -km : km;
     };
     items.sort(function (a, b) {
       var ma = a.d.me ? 0 : 1, mb = b.d.me ? 0 : 1;
@@ -3676,7 +3678,7 @@ function decodeDistKm(d) {
 function loadDecodeView() {
   try {
     var v = JSON.parse(localStorage.getItem(DV_KEY) || 'null');
-    if (v && (v.sort === 'snr' || v.sort === 'near')) decodeView.sort = v.sort;
+    if (v && (v.sort === 'snr' || v.sort === 'near' || v.sort === 'far')) decodeView.sort = v.sort;
     if (v) {
       decodeView.cq = !!v.cq;
       decodeView.park = !!v.park;

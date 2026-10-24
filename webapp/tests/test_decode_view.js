@@ -50,6 +50,7 @@ const eq = (got, want, msg) => assert.deepStrictEqual(got, want, msg);
 eq(ids(view()), [1, 2, 3, 4, 5], 'default keeps the stored order');
 eq(ids(view({ sort: 'snr' })), [1, 4, 3, 5, 2], 'Strongest: the message to us on top, then by SNR');
 eq(ids(view({ sort: 'near' })), [1, 3, 2, 4, 5], 'Nearest: no-grid last');
+eq(ids(view({ sort: 'far' })), [1, 4, 2, 3, 5], 'Farthest: the message to us on top, then by distance, no-grid last');
 eq(ids(view({ cq: true })), [1, 2, 3, 5], 'CQ filter keeps CQs and the message to us');
 eq(ids(view({ park: true })), [1, 3, 5], 'POTA/SOTA filter');
 eq(ids(view({ cq: true, park: true, maxKm: 1000 })), [1, 3], 'filters combine; no-grid fails the distance');
