@@ -41,6 +41,10 @@ The chip sits under the slot bar (`#opRadioChip`) and replaces the old Connect a
 * **Panel actions.** **Retune VFO** (**Put it back** when the radio moved) is the old Connect: sync the Station band, Digi, VFO A. **Use it** saves the radio's frequency as that band's frequency. **Tune** is here, with power and SWR large while the carrier is on. **Retry now** in Lost is the same sync, refused while CAT is down.
 * **The TX banner** (`renderTxHud()`) shows the slot's parity, the offset, a progress bar and the seconds left from the page's slot clock, and for Tune large power and SWR with **Stop Tune**. **Not keyed** is a TX HUD event with its `nk` flag: CAT was not ready (or SWR protection held the slot) when the slot started, the message is struck through with "Not counted: <reason>", and there is no Stop since nothing is on the air.
 
+### Reply feedback
+
+Tapping Reply locks the button at once as "Sending…" (`sendReply()`); the sidekick holds the POST until the main board accepts or refuses, about a second. Accepted, it reads "Queued ✓" and a dashed placeholder for the sender's call stands in the queue until a `QUEUE_ENTRY` for the same call arrives (matched on the call, no protocol change); a call already queued is highlighted instead. A refusal, or no entry within 10 s, removes the placeholder and shows the reason under the decode row with **Retry**. The button frees again when the queue entry later goes away. State is `replyState`, reconciled by `reconcileReplies()` on each queue render and once a second.
+
 ### The dock
 
 Pinned above the tab bar and shown only on Operate (`app.html`, `#opDock`), so band stays one tap away however long the decode list grows. It replaces the old header's band select (`opBandSel`) and its "Next TX" offset line; the next TX's offset returns in the TX banner with O2 ([RFC 0009](../rfcs/0009-operate-station-surface.md) §3.12), and Connect and Tune stay in the header until then (§6).

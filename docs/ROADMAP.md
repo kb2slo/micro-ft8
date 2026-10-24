@@ -10,7 +10,6 @@ Ship on `origin/main`. Talk through changes before a local commit (see [README.m
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| mxvk | Operate: reply feedback (RFC 0009 O3) | Reply posts and nothing on screen changes until the main board's queue event comes back about a second later, so a tap reads as missed. Web app only. [RFC 0009](rfcs/0009-operate-station-surface.md) §3.13. **Done-when:** tap Reply: the button reads "Sending…" at once; "Queued ✓" and a placeholder queue row appear within about 1 s, and the placeholder becomes the real entry; a refused reply shows its reason on the decode row with Retry (bench). |
 
 ## Backlog
 

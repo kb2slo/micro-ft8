@@ -319,6 +319,10 @@ body:not(.on-operate) #opDock{display:none}
 .drow .meta{font-family:ui-monospace,monospace;font-size:.7rem;color:GrayText;display:grid;grid-template-columns:15em 5em 1fr}
 .drow .meta span:last-child{text-align:right}
 .drow-body{display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;margin-top:.1rem}
+.replyBtn.done{color:var(--accent);border-color:var(--accent)}
+.rfail{font-size:.7rem;color:var(--danger);padding:0 1rem .3rem}
+.qrow.pending{border-top-style:dashed;opacity:.75}
+.qrow.flash{background:color-mix(in srgb, var(--accent) 15%, transparent)}
 .replyBtn{flex:none;font-size:.7rem;padding:.15rem .5rem;background:ButtonFace;color:ButtonText;border:1px solid GrayText;border-radius:.3rem}
 .drow .txt{font-size:.85rem;flex:1;min-width:0}
 /* Decode-row color precedence: to_me red, else recent_qso gray,
@@ -3380,9 +3384,16 @@ function renderQueue() {
   });
   var rows = document.getElementById('opQueueRows');
   document.getElementById('opQueueEmpty').hidden = ids.length > 0;
-  rows.innerHTML = ids.map(function (id) {
+  if (reconcileReplies()) renderDecodes();
+  var pending = pendingReplyCalls().filter(function (c) { return !queueHasCall(c); });
+  document.getElementById('opQueueEmpty').hidden = ids.length > 0 || pending.length > 0;
+  var placeholders = pending.map(function (c) {
+    return '<div class="qrow pending"><div><span class=call>' + esc(c) + '</span></div>' +
+      '<span class="qstate">Queued\u2026</span></div>';
+  }).join('');
+  rows.innerHTML = placeholders + ids.map(function (id) {
     var q = queue[id];
-    return '<div class=qrow>' +
+    return '<div class="qrow' + (flashCalls[q.dxcall] ? ' flash' : '') + '">' +
       '<div><span class="call callink" data-call="' + esc(q.dxcall) + '">' + esc(q.dxcall) + '</span>' +
       '<button type=button class="qtries' + (q.custom ? ' custom' : '') + '" data-id="' + id + '"' +
       (writesEnabled ? '' : ' disabled') + '>' + esc(triesLabel(q)) + '</button></div>' +
@@ -3613,8 +3624,9 @@ function renderDecodes() {
         '<div class=drow-body>' +
           '<div class="txt ' + decodeColorClass(d) + '">' + highlightCallInText(d.x, allCalls) +
           (d.me ? '<span class=me>&rarr; ME</span>' : '') + '</div>' +
-          (replyOpen && isReplyableDecode(d) ? '<button type=button class=replyBtn data-id="' + d.id + '">Reply</button>' : '') +
+          (replyOpen && isReplyableDecode(d) ? replyButtonHtml(d.id) : '') +
         '</div>' +
+        replyFailHtml(d.id) +
         (distBearing ? '<div class=ddist><span>' + CallInfo.gridLink(theirGrid) +
           (shortLoc ? ' · ' + esc(shortLoc) : '') + '</span><span>' + esc(distBearing) + '</span></div>' : '') +
         '</div>';
@@ -3635,11 +3647,117 @@ function renderDecodes() {
         alert(why);
         return;
       }
-      radioPost('/api/queue/reply', el.getAttribute('data-id'), 'Queueing…')
-        .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+      sendReply(el.getAttribute('data-id'));
     };
   });
 }
+
+// ===================== Operate: reply feedback (RFC 0009 3.13) =====================
+// replyState[decodeId] = {phase: 'sending' | 'queued' | 'refused', call, reason, ts, seen}.
+// The sidekick holds the POST until the main board accepts or refuses, so the answer takes
+// about a second; the button says so at once, and a dashed placeholder stands in the queue
+// until the main board's QUEUE_ENTRY for the same call arrives (matched on the call, no
+// protocol change). No entry within REPLY_ENTRY_WAIT_MS is a refusal, shown with Retry.
+var replyState = {};
+var REPLY_ENTRY_WAIT_MS = 10000;
+
+function replyButtonHtml(id) {
+  var st = replyState[id];
+  var label = !st || st.phase === 'refused' ? (st ? 'Retry' : 'Reply') : (st.phase === 'sending' ? 'Sending\u2026' : 'Queued \u2713');
+  return '<button type=button class="replyBtn' + (st && st.phase === 'queued' ? ' done' : '') + '" data-id="' + id + '"' +
+    (st && st.phase !== 'refused' ? ' disabled' : '') + '>' + label + '</button>';
+}
+
+function replyFailHtml(id) {
+  var st = replyState[id];
+  return st && st.phase === 'refused' ? '<div class=rfail>' + esc(st.reason) + '</div>' : '';
+}
+
+function decodeById(id) {
+  for (var i = 0; i < decodeSlots.length; i++) {
+    for (var k = 0; k < decodeSlots[i].length; k++) {
+      if (String(decodeSlots[i][k].id) === String(id)) return decodeSlots[i][k];
+    }
+  }
+  return null;
+}
+
+function queueHasCall(call) {
+  return Object.keys(queue).some(function (id) { return queue[id].dxcall === call; });
+}
+
+async function sendReply(id) {
+  if (!MicroFT8Pairing.getToken()) {
+    setMsg('Press the sidekick button to pair first.');
+    MicroFT8Pairing.needsReauth();
+    return;
+  }
+  var d = decodeById(id);
+  var call = (d && extractSenderCall(d.x)) || '';
+  replyState[id] = { phase: 'sending', call: call, reason: '', ts: Date.now(), seen: false };
+  renderDecodes();
+  var reason = '';
+  try {
+    var r = await MicroFT8Pairing.authFetch('/api/queue/reply', { method: 'POST', body: String(id) });
+    if (r.status == 401) {
+      MicroFT8Pairing.needsReauth();
+      reason = 'Press the sidekick button to pair.';
+    } else {
+      var j = await r.json().catch(function () { return {}; });
+      if (!r.ok || j.ok === false) reason = j.why || ('refused (' + r.status + ')');
+    }
+  } catch (e) {
+    reason = String(e && e.message ? e.message : e);
+  }
+  if (reason) {
+    replyState[id] = { phase: 'refused', call: call, reason: reason, ts: Date.now(), seen: false };
+    renderDecodes();
+    return;
+  }
+  // Accepted. A call already in the queue is highlighted instead of getting a placeholder.
+  replyState[id] = { phase: 'queued', call: call, reason: '', ts: Date.now(), seen: queueHasCall(call) };
+  if (replyState[id].seen) flashQueueCall(call);
+  renderDecodes();
+  renderQueue();
+}
+
+// Placeholders: one per call that has an accepted reply and no queue entry yet.
+function pendingReplyCalls() {
+  var calls = [];
+  Object.keys(replyState).forEach(function (id) {
+    var st = replyState[id];
+    if (st.phase === 'queued' && !st.seen && st.call && calls.indexOf(st.call) < 0) calls.push(st.call);
+  });
+  return calls;
+}
+
+var flashCalls = {};
+function flashQueueCall(call) {
+  flashCalls[call] = true;
+  setTimeout(function () { delete flashCalls[call]; renderQueue(); }, 1500);
+}
+
+// Runs on every queue render and once a second: the entry arriving retires the placeholder;
+// the entry going away frees the Reply button; no entry in time is a refusal.
+function reconcileReplies() {
+  var changed = false, now = Date.now();
+  Object.keys(replyState).forEach(function (id) {
+    var st = replyState[id];
+    if (st.phase !== 'queued') return;
+    var has = queueHasCall(st.call);
+    if (has && !st.seen) { st.seen = true; changed = true; }
+    else if (!has && st.seen) { delete replyState[id]; changed = true; }
+    else if (!has && !st.seen && now - st.ts > REPLY_ENTRY_WAIT_MS) {
+      replyState[id] = { phase: 'refused', call: st.call, reason: 'The main board did not queue it.',
+                         ts: now, seen: false };
+      changed = true;
+    }
+  });
+  return changed;
+}
+setInterval(function () {
+  if (reconcileReplies()) { renderDecodes(); renderQueue(); }
+}, 1000);
 
 // A button drawn a moment before its slot aged out can still be tapped; the
 // same rule refuses it (slotReplyOpen()). Coming back to a tab that stayed

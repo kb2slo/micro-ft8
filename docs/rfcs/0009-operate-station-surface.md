@@ -139,12 +139,7 @@ Shipped as O2: [webapp.md](../architecture/webapp.md), **The radio chip and the 
 
 ### 3.13 Reply feedback
 
-Redesign canvas: `Reply feedback`, interactive. The feedback is on the Reply button and in the queue, not in a dialog (decided 2026-09-27).
-
-* **Tap Reply:** the button locks at once and reads "Sending…". The sidekick holds the POST until the main board accepts or refuses (`post_queue_reply()`, `sidekick/main/host_link.c:795`), so the answer takes about a second.
-* **Accepted:** the button reads "Queued ✓", and a dashed placeholder for that call appears in the queue. When a `QUEUE_ENTRY` for the same call arrives, the placeholder becomes the real entry. Matching on the call needs no protocol change. If the call is already queued, that row is highlighted instead.
-* **Refused, or no entry within 10 s:** the placeholder goes, and the reason shows on the decode row with a Retry button.
-* **Already built** (2026-09-28): a reply to a decode heard on another frequency is refused in the app with a dialog ([webapp.md](../architecture/webapp.md), **The dock**).
+Shipped as O3: [webapp.md](../architecture/webapp.md), **Reply feedback**. The already-built refusal of a reply to a decode heard on another frequency is in **The dock**.
 
 ## 4. Rejected alternatives
 
@@ -170,13 +165,13 @@ Redesign canvas: `Reply feedback`, interactive. The feedback is on the Reply but
 
 ## 6. Slices
 
-O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); they are the Now rows. The later slices have their own rows: O3 `mxvk`, O4 `jtgu`. O5 and O6 became one slice, the CQ's tries (§7). The combined order with RFC 0008 is RFC 0008 §7.
+O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); they are the Now rows. The later slices have their own rows: O4 `jtgu`. O5 and O6 became one slice, the CQ's tries (§7). The combined order with RFC 0008 is RFC 0008 §7.
 
 * **O1a: the CQ row**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The CQ row**).
 * **O1b: the dock**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The dock**).
 * **O1c: the Station sheet**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The Station sheet**).
 * **O2: radio status replaces Connect, the read-back, and the TX HUD**, shipped 2026-10-24 ([webapp.md](../architecture/webapp.md), **The radio chip and the TX banner**); its field check is in TEST_PLAN Pending.
-* **O3: reply feedback** (§3.13). Web app only.
+* **O3: reply feedback**, shipped 2026-10-24 ([webapp.md](../architecture/webapp.md), **Reply feedback**); its bench check is in TEST_PLAN Pending.
 * **O4: decode sort and filter** (§3.8).
 * **O5 and O6: the CQ's tries and tries on every queue row**, shipped 2026-10-14 ([autoseq.md](../architecture/autoseq.md), **Tries**; [webapp.md](../architecture/webapp.md), **The CQ row** and **Tries on a queue row**).
 * **The Activation section and the add screen ship with RFC 0008's slices:**
