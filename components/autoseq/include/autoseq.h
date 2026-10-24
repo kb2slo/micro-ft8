@@ -288,6 +288,13 @@ void autoseq_set_cabrillo_fd_callback(CabrilloFdLogCallback cb);
 using AutoseqRecentQsoCallback = bool (*)(const std::string& dxcall_norm);
 void autoseq_set_recent_qso_callback(AutoseqRecentQsoCallback cb);
 
+// "What grid did this call last send?" -- consulted only when a QSO is logged
+// with no grid of its own (none sent in the QSO or in the CQ we tapped).
+// True fills *grid_out. dxcall_norm is upper case with <> stripped. Null (the
+// default) logs such a QSO with no grid.
+using AutoseqHeardGridCallback = bool (*)(const std::string& dxcall_norm, std::string* grid_out);
+void autoseq_set_heard_grid_callback(AutoseqHeardGridCallback cb);
+
 // Configuration setters (called when station data changes)
 void autoseq_set_station(const std::string& call, const std::string& grid);
 void autoseq_set_skip_tx1(bool skip);  // Skip TX1 and start with TX2

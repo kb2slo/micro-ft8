@@ -2,7 +2,9 @@
 #include "decode_pipeline.h"
 #include "decode_limits.h"
 #include "decode_core_busy.h"
+#include "decode_fields.h"
 #include "decode_sync.h"
+#include "heard_grid.h"
 
 #include <cmath>
 #include <cstdio>
@@ -15,6 +17,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "freertos/idf_additions.h"
 
@@ -64,6 +67,29 @@ static_assert(AUTOSEQ_INACTIVE_EXPIRY_MS == kAdifLoggerDedupeWindowMs,
 
 bool decode_pipeline_recently_logged(const std::string& dxcall_norm) {
   return adif_logger_dedupe_is_duplicate(&s_adif_logger_dedupe, dxcall_norm, rtc_now_ms());
+}
+
+// ---- Heard grids (heard_grid.h). The decode task writes the table and the
+// main loop reads it when a QSO logs, so every call holds this mutex, created
+// once on first use from either task. Times are uptime, not rtc_now_ms(): the
+// table empties on reboot anyway, so it never waits on the clock being set. ----
+static SemaphoreHandle_t heard_grid_mutex() {
+  static StaticSemaphore_t buffer;
+  static SemaphoreHandle_t mutex = xSemaphoreCreateMutexStatic(&buffer);
+  return mutex;
+}
+
+static void note_heard_grid(const RxDecodeEntry* d, bool standard_message) {
+  xSemaphoreTake(heard_grid_mutex(), portMAX_DELAY);
+  heard_grid_note(d->field2, d->field3, standard_message, esp_timer_get_time() / 1000);
+  xSemaphoreGive(heard_grid_mutex());
+}
+
+bool decode_pipeline_heard_grid(const std::string& dxcall_norm, std::string* grid_out) {
+  xSemaphoreTake(heard_grid_mutex(), portMAX_DELAY);
+  const bool found = heard_grid_lookup(dxcall_norm.c_str(), esp_timer_get_time() / 1000, grid_out);
+  xSemaphoreGive(heard_grid_mutex());
+  return found;
 }
 
 // ---- Recent decodes, keyed by the id handed out with EVENT DECODE (docs/architecture/webapp.md (Screens)) so Port A's QUEUE_REPLY can name one without re-parsing rendered text
@@ -158,64 +184,6 @@ typedef RxDecodeEntry DecodeMsg;
 
 static DecodeMsg s_dec[DEC_MAX];
 static int       s_dec_count;
-
-// Plain-C field parser: tokenize text into field1/field2/field3.
-static void dec_fill_fields(DecodeMsg* d) {
-  d->field1[0] = d->field2[0] = d->field3[0] = '\0';
-  char tmp[DEC_TEXT_MAX];
-  strncpy(tmp, d->text, sizeof(tmp));
-  tmp[sizeof(tmp) - 1] = '\0';
-
-  char* saveptr = nullptr;
-  char* toks[8];
-  int ntoks = 0;
-  for (char* p = strtok_r(tmp, " ", &saveptr); p && ntoks < 8; p = strtok_r(nullptr, " ", &saveptr)) {
-    toks[ntoks++] = p;
-  }
-  if (ntoks == 0) return;
-
-  auto all_digits = [](const char* s, int len) {
-    for (int i = 0; i < len; ++i) if (s[i] < '0' || s[i] > '9') return false;
-    return true;
-  };
-  auto all_alpha = [](const char* s, int len) {
-    for (int i = 0; i < len; ++i) {
-      char c = s[i];
-      if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) return false;
-    }
-    return true;
-  };
-
-  // CQ <short_token> CALL GRID pattern
-  if (strcmp(toks[0], "CQ") == 0 && ntoks >= 2) {
-    int len1 = (int)strlen(toks[1]);
-    bool short_tok = (len1 <= 3 && all_digits(toks[1], len1)) ||
-                     (len1 <= 4 && all_alpha(toks[1], len1));
-    if (short_tok) {
-      strncpy(d->field1, toks[1], DEC_FIELD_MAX - 1); d->field1[DEC_FIELD_MAX - 1] = '\0';
-      if (ntoks > 2) { strncpy(d->field2, toks[2], DEC_FIELD_MAX - 1); d->field2[DEC_FIELD_MAX - 1] = '\0'; }
-      if (ntoks > 3) {
-        d->field3[0] = '\0';
-        for (int i = 3; i < ntoks; ++i) {
-          if (i > 3) strncat(d->field3, " ", DEC_FIELD_MAX - strlen(d->field3) - 1);
-          strncat(d->field3, toks[i], DEC_FIELD_MAX - strlen(d->field3) - 1);
-        }
-      }
-      return;
-    }
-  }
-
-  // Default: first 2 tokens + remainder
-  strncpy(d->field1, toks[0], DEC_FIELD_MAX - 1); d->field1[DEC_FIELD_MAX - 1] = '\0';
-  if (ntoks > 1) { strncpy(d->field2, toks[1], DEC_FIELD_MAX - 1); d->field2[DEC_FIELD_MAX - 1] = '\0'; }
-  if (ntoks > 2) {
-    d->field3[0] = '\0';
-    for (int i = 2; i < ntoks; ++i) {
-      if (i > 2) strncat(d->field3, " ", DEC_FIELD_MAX - strlen(d->field3) - 1);
-      strncat(d->field3, toks[i], DEC_FIELD_MAX - strlen(d->field3) - 1);
-    }
-  }
-}
 
 // Plain-C normalize: strip <>, uppercase, write into out[out_sz].
 static void dec_normalize_call(const char* src, char* out, int out_sz) {
@@ -467,7 +435,8 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
     d->slot_id = slot_id;
     d->time_s = time_s;
 
-    dec_fill_fields(d);
+    decode_fields_fill(d);
+    note_heard_grid(d, ftx_message_get_type(&message) == FTX_MESSAGE_TYPE_STANDARD);
 
     d->is_cq = (strncmp(d->text, "CQ ", 3) == 0 || strcmp(d->text, "CQ") == 0);
 

@@ -1,5 +1,5 @@
 {
-  "comment": "A touch that only exchanges grids is dropped when its tries run out, not parked. A later R+report must not revive it, and a later report starts a new QSO at the new SNR.",
+  "comment": "A touch that only exchanges grids is dropped when its tries run out, not parked. A later R+report must not revive it, and a later report starts a new QSO at the new SNR, which logs the grid heard in the tapped CQ.",
   "config": {
     "MY_CALLSIGN": "AG6AQ",
     "MY_GRID": "CM97",
@@ -92,7 +92,7 @@
       }
     },
     {
-      "comment": "Period 7 (odd): RR73. Log the new SNR and no grid (the grid died with the dropped entry).",
+      "comment": "Period 7 (odd): RR73. Log the new SNR, and the grid N6HAN sent in its CQ (the heard-grid table), though the entry that held it was dropped.",
       "messages": [
         {
           "call_to": "${MY_CALLSIGN}",
@@ -104,7 +104,7 @@
       ],
       "expect": {
         "tx": "N6HAN AG6AQ 73",
-        "log": "N6HAN  rst_sent=-18 rst_rcvd=-18"
+        "log": "N6HAN CM87 rst_sent=-18 rst_rcvd=-18"
       }
     }
   ]

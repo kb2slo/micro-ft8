@@ -1,6 +1,7 @@
 #include "scenario.h"
 
 #include "autoseq.h"
+#include "heard_grid.h"
 #include "host_mocks.h"
 #include "porta_proto.h"
 
@@ -116,6 +117,12 @@ static bool on_adif(const std::string& dxcall, const std::string& dxgrid,
     return true;
 }
 
+// As decode_pipeline_heard_grid() on the board, on the scenario's clock.
+static bool on_heard_grid(const std::string& dxcall_norm, std::string* grid_out)
+{
+    return heard_grid_lookup(dxcall_norm.c_str(), mock_clock_get(), grid_out);
+}
+
 static bool on_cabrillo(const std::string& dxcall, const std::string& exchange)
 {
     if (!s_current) {
@@ -157,8 +164,10 @@ void scenario_begin(Scenario& s, const TestData& data)
     s_current = &s;
 
     autoseq_init();
+    heard_grid_clear();
     autoseq_set_station(s.station_call, s.station_grid);
     autoseq_set_adif_callback(on_adif);
+    autoseq_set_heard_grid_callback(on_heard_grid);
     autoseq_set_cabrillo_fd_callback(on_cabrillo);
     autoseq_set_tries(data.config.tries);
     autoseq_set_skip_tx1(data.config.skip_tx1);
@@ -484,6 +493,7 @@ bool scenario_step(Scenario& s)
                p, rx.field1.c_str(), rx.field2.c_str(), rx.field3.c_str(),
                rx.snr, rx.slot_id);
         emit_decode(s, rx);
+        heard_grid_note(rx.field2.c_str(), rx.field3.c_str(), true, mock_clock_get());
         if (rx.is_to_me) {
             to_me.push_back(rx);
         }

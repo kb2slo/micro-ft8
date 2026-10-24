@@ -24,3 +24,8 @@ bool find_decode_for_reply(uint32_t decode_id, UiRxLine* out);
 // board registers it with autoseq_set_recent_qso_callback(), which consults it
 // only before starting a new QSO.
 bool decode_pipeline_recently_logged(const std::string& dxcall_norm);
+
+// The grid dxcall_norm last sent in any decode (heard_grid.h). Each board
+// registers it with autoseq_set_heard_grid_callback(), which consults it only
+// when a QSO logs with no grid of its own.
+bool decode_pipeline_heard_grid(const std::string& dxcall_norm, std::string* grid_out);

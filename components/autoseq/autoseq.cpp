@@ -71,6 +71,9 @@ static CabrilloFdLogCallback s_cabrillo_fd_callback = nullptr;
 // Recently-worked check, consulted only before starting a new QSO.
 static AutoseqRecentQsoCallback s_recent_qso_callback = nullptr;
 
+// Grid DX sent in any message we decoded, consulted only when a QSO logs
+// with none of its own.
+static AutoseqHeardGridCallback s_heard_grid_callback = nullptr;
 
 // TX scheduling state
 static bool s_pending_valid = false;
@@ -793,6 +796,10 @@ void autoseq_set_recent_qso_callback(AutoseqRecentQsoCallback cb) {
     s_recent_qso_callback = cb;
 }
 
+void autoseq_set_heard_grid_callback(AutoseqHeardGridCallback cb) {
+    s_heard_grid_callback = cb;
+}
+
 void autoseq_set_station(const std::string& call, const std::string& grid) {
     s_my_call = call;
     s_my_grid = grid;
@@ -1096,14 +1103,20 @@ static void log_qso_if_needed(QsoContext* ctx) {
     if (ctx->logged) return;
     if (!s_adif_callback) return;
 
-    if (!s_adif_callback(ctx->dxcall, ctx->dxgrid, ctx->snr_tx, ctx->snr_rx)) {
+    // A grid sent in this QSO, or in the CQ we tapped, wins. Otherwise the
+    // grid DX last sent in any message we decoded.
+    std::string grid = ctx->dxgrid;
+    const bool heard = grid.empty() && s_heard_grid_callback &&
+                       s_heard_grid_callback(normalize_call_token(ctx->dxcall), &grid);
+    if (!s_adif_callback(ctx->dxcall, grid, ctx->snr_tx, ctx->snr_rx)) {
         ESP_LOGW(TAG, "ADIF log failed for %s; will retry", ctx->dxcall.c_str());
         return;
     }
     ctx->logged = true;
 
-    ESP_LOGI(TAG, "Logged QSO: %s grid=%s rst_sent=%d rst_rcvd=%d",
-             ctx->dxcall.c_str(), ctx->dxgrid.c_str(), ctx->snr_tx, ctx->snr_rx);
+    ESP_LOGI(TAG, "Logged QSO: %s grid=%s%s rst_sent=%d rst_rcvd=%d",
+             ctx->dxcall.c_str(), grid.c_str(), heard ? " (heard)" : "", ctx->snr_tx,
+             ctx->snr_rx);
 }
 
 static bool generate_response(QsoContext* ctx, const UiRxLine& msg, bool override) {
