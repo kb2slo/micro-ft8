@@ -176,6 +176,11 @@ static const char *sync_vfo(const char *reason) {
     // What the radio says of itself, for the page's chip (RFC 0009 section 3.7); the reply
     // lands in the config snapshot. Not an error if the radio cannot say.
     (void)radio_control_query_state();
+    // Once per connection: the version does not change, and the parser keeps it until the radio goes.
+    char fw[16];
+    if (!radio_control_get_version(fw, sizeof(fw))) {
+        (void)radio_control_query_version();
+    }
     return nullptr;
 }
 
@@ -497,6 +502,15 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
 
     // What the radio last said of itself (IF;), against what Micro-FT8 means it to be: both in
     // Hz, so the page can tell a knob turned from a band changed. Absent until a reply arrives.
+    char fw[16];
+    if (radio_control_get_version(fw, sizeof(fw))) {
+        text += std::string("radio_fw=") + fw + "\n";
+        static char s_logged_fw[16] = "";
+        if (strcmp(s_logged_fw, fw) != 0) {
+            snprintf(s_logged_fw, sizeof(s_logged_fw), "%s", fw);
+            ESP_LOGI(TAG, "radio firmware %s", fw);
+        }
+    }
     radio_state_t rs;
     if (radio_control_get_state(&rs)) {
         char rbuf[96];

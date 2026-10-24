@@ -113,6 +113,25 @@ int main()
     cat_reply_parser_reset(&parser);
     expect(parser.if_tx, -1, "reset forgets IF");
 
+    // VN: the firmware version string, which survives reset() (a transmission's end calls it)
+    // and goes only on forget_version().
+    cat_reply_parser_reset(&parser);
+    feed(&parser, "VN1_04_004;");
+    expect(strcmp(parser.vn, "1_04_004"), 0, "VN reply is the version string");
+    feed(&parser, "SW140;");
+    cat_reply_parser_reset(&parser);
+    expect(strcmp(parser.vn, "1_04_004"), 0, "reset keeps the firmware version");
+    feed(&parser, "VN;");
+    expect(strcmp(parser.vn, "1_04_004"), 0, "an empty VN is ignored");
+    feed(&parser, "VN1_04_0 04;");
+    expect(strcmp(parser.vn, "1_04_004"), 0, "a VN with a space in it is ignored");
+    feed(&parser, "VN12345678901234567;");
+    expect(strcmp(parser.vn, "1_04_004"), 0, "a VN too long to be a version is ignored");
+    feed(&parser, "VN1_04_005;");
+    expect(strcmp(parser.vn, "1_04_005"), 0, "a later VN replaces it");
+    cat_reply_parser_forget_version(&parser);
+    expect(parser.vn[0], 0, "forget clears the version");
+
     if (g_fails == 0) {
         printf("PASS: cat_reply_parser\n");
     }

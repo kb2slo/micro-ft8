@@ -260,6 +260,14 @@ static bool qmx_get_state(radio_state_t* out) {
     return true;
 }
 
+static esp_err_t qmx_query_version(void) {
+    return qmx_send_cmd("VN;", 50);
+}
+
+static bool qmx_get_version(char* out, size_t cap) {
+    return cat_cdc_get_version(out, cap);
+}
+
 static const radio_swr_io_t k_swr_io = {
     .unkey = qmx_swr_unkey,
     .mode_digital = qmx_swr_mode_digital,
@@ -303,6 +311,8 @@ static const radio_control_ops_t k_ops = {
     .swr_lock = &k_swr_lock,
     .query_state = qmx_query_state,
     .get_state = qmx_get_state,
+    .query_version = qmx_query_version,
+    .get_version = qmx_get_version,
 };
 
 const radio_control_ops_t* radio_control_qmx_get_ops(void) {

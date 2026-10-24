@@ -149,6 +149,17 @@ esp_err_t radio_control_query_state(void) {
     return ops->query_state();
 }
 
+esp_err_t radio_control_query_version(void) {
+    const radio_control_ops_t* ops = current_ops();
+    if (!ops || !ops->query_version) return ESP_ERR_NOT_SUPPORTED;
+    return ops->query_version();
+}
+
+bool radio_control_get_version(char* out, size_t cap) {
+    const radio_control_ops_t* ops = current_ops();
+    return ops && ops->get_version && ops->get_version(out, cap);
+}
+
 bool radio_control_get_state(radio_state_t* out) {
     const radio_control_ops_t* ops = current_ops();
     return ops && ops->get_state && ops->get_state(out);

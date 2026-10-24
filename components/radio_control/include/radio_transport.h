@@ -39,6 +39,9 @@ bool cat_cdc_get_parsed_freq(int* hz);
 bool cat_cdc_get_parsed_sr(int* lock);
 // Forgets the last IF reply only; the meters and the SWR lock keep theirs.
 void cat_cdc_reset_parsed_if(void);
+// The radio's firmware version from its VN reply ("1_04_004"), copied into `out`; false when it
+// has not answered since the radio connected.
+bool cat_cdc_get_version(char* out, size_t cap);
 // The last IF reply; false when none has arrived since the last reset. tx 1 = transmitting, mode is the MD digit, split 1 = on.
 bool cat_cdc_get_parsed_if(int* hz, int* tx, int* mode, int* split);
 

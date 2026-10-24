@@ -1,5 +1,7 @@
 #include "cat_reply_parser.h"
 
+#include <string.h>
+
 // A reply's digits: stops at the first non-digit, and -1 when there are none
 // or the value is too big to be a real reading.
 static int parse_digits(const char* digits)
@@ -68,6 +70,24 @@ static void parse_frame(cat_reply_parser_t* parser)
     if (frame[0] == 0 || frame[1] == 0) {
         return;
     }
+    if (frame[0] == 'V' && frame[1] == 'N') {
+        // "1_04_004": letters, digits, underscore and dot only, and short enough to be a version.
+        const size_t len = parser->frame_len - 2;
+        if (len == 0 || len >= sizeof(parser->vn)) {
+            return;
+        }
+        for (size_t i = 0; i < len; ++i) {
+            const char c = frame[2 + i];
+            const bool ok = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') ||
+                            (c >= 'a' && c <= 'z') || c == '_' || c == '.';
+            if (!ok) {
+                return;
+            }
+        }
+        memcpy(parser->vn, frame + 2, len);
+        parser->vn[len] = 0;
+        return;
+    }
     if (frame[0] == 'I' && frame[1] == 'F') {
         parse_if(parser, frame + 2, parser->frame_len - 2);
         return;
@@ -85,6 +105,11 @@ static void parse_frame(cat_reply_parser_t* parser)
     } else if (frame[0] == 'S' && frame[1] == 'R') {
         parser->sr_lock = value;
     }
+}
+
+void cat_reply_parser_forget_version(cat_reply_parser_t* parser)
+{
+    parser->vn[0] = 0;
 }
 
 void cat_reply_parser_reset(cat_reply_parser_t* parser)

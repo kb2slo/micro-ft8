@@ -72,6 +72,10 @@ bool radio_control_ready(void);
 // Asks the radio for its state (QMX IF;); ESP_ERR_NOT_SUPPORTED where it cannot say. Not a poll:
 // the caller asks when the operator looks and after a sync, never during a slot.
 esp_err_t radio_control_query_state(void);
+// Asks the radio which firmware it runs (QMX VN;); ESP_ERR_NOT_SUPPORTED where it cannot say.
+esp_err_t radio_control_query_version(void);
+// The radio's firmware version, such as "1_04_004", once it has answered; false before that.
+bool radio_control_get_version(char* out, size_t cap);
 // The last IF reply; false when none has arrived since the radio's replies were last reset.
 bool radio_control_get_state(radio_state_t* out);
 

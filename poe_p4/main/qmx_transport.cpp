@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <cstring>
 
 #include "esp_log.h"
@@ -126,6 +127,7 @@ static int64_t now_ms(void) {
 }
 
 void cat_cdc_reset_parsed_meters(void);  // defined with radio_transport CAT group below
+static void forget_radio_version(void);  // likewise
 
 static void cdc_event_cb(const cdc_acm_host_dev_event_data_t *event, void * /*user_ctx*/) {
     if (event->type == CDC_ACM_HOST_DEVICE_DISCONNECTED) {
@@ -153,6 +155,7 @@ static void cdc_event_cb(const cdc_acm_host_dev_event_data_t *event, void * /*us
         s_cdc_open_attempts = 0;
         s_cdc_first_attempt_ms = 0;
         cat_cdc_reset_parsed_meters();
+        forget_radio_version();
         if (h) {
             cdc_acm_host_close(h);
         }
@@ -161,7 +164,7 @@ static void cdc_event_cb(const cdc_acm_host_dev_event_data_t *event, void * /*us
     }
 }
 
-static cat_reply_parser_t s_cat_parser = {-1, -1, -1, -1, -1, -1, -1, -1, {0}, 0, 0};
+static cat_reply_parser_t s_cat_parser = {-1, -1, -1, -1, -1, -1, -1, -1, {0}, {0}, 0, 0};
 
 static bool cdc_data_cb(const uint8_t *data, size_t data_len, void* /*user_arg*/) {
     if (!data || data_len == 0) {
@@ -617,6 +620,18 @@ void cat_cdc_reset_parsed_if(void) {
     s_cat_parser.if_tx = -1;
     s_cat_parser.if_mode = -1;
     s_cat_parser.if_split = -1;
+}
+
+static void forget_radio_version(void) {
+    cat_reply_parser_forget_version(&s_cat_parser);
+}
+
+bool cat_cdc_get_version(char* out, size_t cap) {
+    if (s_cat_parser.vn[0] == 0 || !out || cap == 0) {
+        return false;
+    }
+    snprintf(out, cap, "%s", s_cat_parser.vn);
+    return true;
 }
 
 bool cat_cdc_get_parsed_if(int* hz, int* tx, int* mode, int* split) {
