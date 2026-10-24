@@ -28,6 +28,7 @@ int main()
     expect(parser.sw_hundredths, -1, "nothing heard reads as none: SW");
     expect(parser.fa_hz, -1, "nothing heard reads as none: FA");
     expect(parser.pc_tenths, -1, "nothing heard reads as none: PC");
+    expect(parser.sr_lock, -1, "nothing heard reads as none: SR");
 
     feed(&parser, "SW140;");
     expect(parser.sw_hundredths, 140, "SW reply is hundredths");
@@ -42,6 +43,16 @@ int main()
     feed(&parser, "ID020;");
     expect(parser.sw_hundredths, -1, "a refusal, an empty SW and other replies are ignored");
     expect(parser.fa_hz, -1, "and do not set FA");
+
+    // SR is the SWR-protection lock: 1 locked, 0 clear. An empty SR is not a reading.
+    cat_reply_parser_reset(&parser);
+    feed(&parser, "SR1;");
+    expect(parser.sr_lock, 1, "SR1 is locked");
+    feed(&parser, "SR0;");
+    expect(parser.sr_lock, 0, "SR0 is clear");
+    cat_reply_parser_reset(&parser);
+    feed(&parser, "SR;?;");
+    expect(parser.sr_lock, -1, "an empty SR and a refusal are not a reading");
 
     // The radio appends terminal display codes after some replies; the next reply
     // must still parse, which it did not when they stayed in the frame.

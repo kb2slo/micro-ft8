@@ -141,7 +141,7 @@ static void cdc_event_cb(const cdc_acm_host_dev_event_data_t *event, void * /*us
     }
 }
 
-static cat_reply_parser_t s_cat_parser = {-1, -1, -1, {0}, 0, 0};
+static cat_reply_parser_t s_cat_parser = {-1, -1, -1, -1, {0}, 0, 0};
 
 static bool cdc_data_cb(const uint8_t *data, size_t data_len, void* /*user_arg*/) {
     if (!data || data_len == 0) {
@@ -547,6 +547,17 @@ bool cat_cdc_get_parsed_freq(int* hz) {
     }
     if (hz) {
         *hz = value;
+    }
+    return true;
+}
+
+bool cat_cdc_get_parsed_sr(int* lock) {
+    const int value = s_cat_parser.sr_lock;
+    if (value < 0) {
+        return false;
+    }
+    if (lock) {
+        *lock = value;
     }
     return true;
 }

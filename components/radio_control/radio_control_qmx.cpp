@@ -12,6 +12,7 @@ static const char* TAG = "RADIO_QMX";
 
 static bool s_power_swr_poll_disabled;
 static int s_power_swr_poll_misses;
+static bool s_poll_sr;  // add SR; to the TX poll (radio_swr_lock_t::poll_with_meters)
 static constexpr int kPowerSwrPollGiveUp = 4;
 
 static bool qmx_ready(void) {
@@ -129,8 +130,9 @@ static void qmx_poll_tx_power_swr(void) {
         return;
     }
 
+    const char* poll = s_poll_sr ? "PC;SW;SR;" : "PC;SW;";
     const esp_err_t err =
-        cat_cdc_send(reinterpret_cast<const uint8_t*>("PC;SW;"), 6, 10);
+        cat_cdc_send(reinterpret_cast<const uint8_t*>(poll), strlen(poll), 10);
     if (err != ESP_OK) {
         s_power_swr_poll_disabled = true;
         ESP_LOGW(TAG, "TX power/SWR: CAT send failed (%s), giving up this TX",
@@ -207,6 +209,38 @@ static bool qmx_swr_swr_reply(int* hundredths) {
     return true;
 }
 
+static esp_err_t qmx_swr_lock_query(void) {
+    cat_cdc_reset_parsed_meters();
+    return qmx_send_cmd("SR;", 50);
+}
+
+static bool qmx_swr_lock_reply(bool* locked) {
+    int sr = -1;
+    if (!cat_cdc_get_parsed_sr(&sr)) {
+        return false;
+    }
+    if (locked) {
+        *locked = sr != 0;
+    }
+    return true;
+}
+
+static esp_err_t qmx_swr_lock_clear(void) {
+    cat_cdc_reset_parsed_meters();
+    return qmx_send_cmd("SR0;SR;", 50);
+}
+
+static void qmx_swr_lock_poll_with_meters(bool on) {
+    s_poll_sr = on;
+}
+
+static const radio_swr_lock_t k_swr_lock = {
+    .query = qmx_swr_lock_query,
+    .reply = qmx_swr_lock_reply,
+    .clear = qmx_swr_lock_clear,
+    .poll_with_meters = qmx_swr_lock_poll_with_meters,
+};
+
 static const radio_swr_io_t k_swr_io = {
     .unkey = qmx_swr_unkey,
     .mode_digital = qmx_swr_mode_digital,
@@ -227,6 +261,7 @@ static const radio_control_capabilities_t k_capabilities = {
     .audio_is_uac = true,
     .can_md8_tune = true,
     .can_ps0 = true,
+    .can_sr = true,
 };
 
 static const radio_control_ops_t k_ops = {
@@ -246,6 +281,7 @@ static const radio_control_ops_t k_ops = {
     .get_tx_power_swr = qmx_get_tx_power_swr,
     .begin_cpfsk_tx = nullptr,
     .swr_io = &k_swr_io,
+    .swr_lock = &k_swr_lock,
 };
 
 const radio_control_ops_t* radio_control_qmx_get_ops(void) {

@@ -35,6 +35,8 @@ void cat_cdc_reset_parsed_meters(void);
 bool cat_cdc_get_parsed_meters(int* pc_tenths, int* sw_hundredths);
 // The last FA reply (the VFO A frequency in Hz); false when none has arrived since the last reset.
 bool cat_cdc_get_parsed_freq(int* hz);
+// The last SR reply (1 the SWR-protection lock is set, 0 clear); false when none has arrived since the last reset.
+bool cat_cdc_get_parsed_sr(int* lock);
 
 bool uac_tx_begin_cpfsk(float base_hz,
                         const uint8_t* symbols,

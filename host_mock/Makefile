@@ -20,6 +20,7 @@ INCLUDES = -I. \
            -I../components/decode_pipeline/include \
            -I../components/dial_history/include \
            -I../components/swr_sweep/include \
+           -I../components/swr_trip/include \
            -I../components/ft8_lib -I../components/ft8_lib/vendor \
            -I../components/ft8_lib/vendor/ft8 \
            -I../components/porta_proto/include
@@ -59,6 +60,7 @@ DIAL_HISTORY_TARGET = host_test_dial_history
 ADIF_LOGGER_TARGET = host_test_adif_logger
 CAT_REPLY_PARSER_TARGET = host_test_cat_reply_parser
 SWR_SWEEP_TARGET = host_test_swr_sweep
+SWR_TRIP_TARGET = host_test_swr_trip
 SLOT_DEFICIT_TARGET = host_test_slot_deficit
 SAMPLE_RING_TARGET = host_test_sample_ring
 CORE_BUSY_TARGET = host_test_core_busy
@@ -76,7 +78,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARG
      $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
      $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(BUNDLE_HOST_TARGET) \
      $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(ROGERS_ONCE_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
-     $(CAT_REPLY_PARSER_TARGET) $(SWR_SWEEP_TARGET) \
+     $(CAT_REPLY_PARSER_TARGET) $(SWR_SWEEP_TARGET) $(SWR_TRIP_TARGET) \
      $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(CORE_BUSY_TARGET) \
      $(DECODE_RETRY_TARGET) $(DECODE_SYNC_TARGET) $(DECODE_SNR_TARGET) \
      $(PORTA_OUT_QUEUE_TARGET) $(HEARD_GRID_TARGET) $(DECODE_FIELDS_TARGET) $(RTC_CORE_TARGET) \
@@ -146,6 +148,12 @@ SWR_SWEEP_OBJ = swr_sweep.o test_swr_sweep.o
 swr_sweep.o: ../components/swr_sweep/swr_sweep.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 $(SWR_SWEEP_TARGET): $(SWR_SWEEP_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+SWR_TRIP_OBJ = test_swr_trip.o
+test_swr_trip.o: test_swr_trip.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+$(SWR_TRIP_TARGET): $(SWR_TRIP_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 SLOT_DEFICIT_OBJ = ft8_slot_deficit.o test_slot_deficit.o

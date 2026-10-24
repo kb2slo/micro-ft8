@@ -33,6 +33,8 @@ static void parse_frame(cat_reply_parser_t* parser)
         parser->sw_hundredths = value;
     } else if (frame[0] == 'F' && frame[1] == 'A') {
         parser->fa_hz = value;
+    } else if (frame[0] == 'S' && frame[1] == 'R') {
+        parser->sr_lock = value;
     }
 }
 
@@ -41,6 +43,7 @@ void cat_reply_parser_reset(cat_reply_parser_t* parser)
     parser->pc_tenths = -1;
     parser->sw_hundredths = -1;
     parser->fa_hz = -1;
+    parser->sr_lock = -1;
     parser->frame_len = 0;
     parser->escape_state = 0;
 }

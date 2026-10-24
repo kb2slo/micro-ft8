@@ -28,6 +28,7 @@ typedef struct {
                                 float tone_spacing_hz,
                                 uint32_t samples_per_symbol);
     const radio_swr_io_t* swr_io;  // null = cannot sweep
+    const radio_swr_lock_t* swr_lock;  // null = no SWR-protection lock to read
 } radio_control_ops_t;
 
 const radio_control_ops_t* radio_control_qmx_get_ops(void);

@@ -33,6 +33,7 @@ struct StationSettings {
     bool rxtx_log;
     std::string active_bands;
     int tx_min_delay_ms = kStationTxMinDelayDefaultMs;  // 0..kStationTxMinDelayMaxMs
+    bool amp_swr_guard = false;  // recover from the QMX's SWR-protection trips (architecture/radio.md)
     int tries;  // transmissions per QSO message, and a CQ's to start (autoseq.md, Tries)
     bool protocol_ft4;
     bool serialize_ft4_band_keys;

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "callsign_hashtable.h"
 #include "debug_log.h"
@@ -21,6 +22,7 @@
 #include "rtc_core.h"
 #include "tx_timing.h"
 #include "swr_sweep.h"
+#include "swr_trip.h"
 
 extern const ProtocolConfig *g_protocol;
 
@@ -52,6 +54,19 @@ static int64_t s_tx_cancel_slot_idx = -1;
 static int64_t s_tx_skip_slot_idx = -1;
 static int s_tx_last_ta_int = -1;
 static int s_tx_last_ta_frac = -1;
+
+// SWR protection (docs/architecture/radio.md, SWR protection trips on a QMX). Whether the
+// radio answers SR; is learned at each CAT connect.
+enum class SrProbe { Idle, Waiting, Yes, No };
+static SrProbe s_sr_probe = SrProbe::Idle;
+static bool s_sr_was_ready = false;
+static int64_t s_sr_probe_deadline_ms = 0;
+static constexpr int64_t kSrProbeMs = 1000;
+static bool s_sr_readback_pending = false;
+static SwrTrip s_swr_trip;
+// Slot a trip or a Tune trip ended a transmission in; the TX HUD shows it for the rest of it.
+static int64_t s_swr_abort_slot_idx = -1;
+static constexpr const char *kSwrReason = "SWR protection";
 
 static int resolve_tx_offset(const AutoseqTxEntry &e) {
     const int src = porta_p4_station_offset_src();
@@ -105,6 +120,7 @@ void tx_scheduler_rearm(void) {
 }
 
 bool tx_scheduler_call_cq(void) {
+    tx_scheduler_swr_operator_start(false);
     const int64_t now_ms = rtc_now_ms();
     const int slot_period = g_protocol->slot_time_ms;
     const int64_t slot_idx = now_ms / slot_period;
@@ -181,6 +197,12 @@ static TxStart tx_start(int skip_tones, std::string &skip_reason) {
         // An SWR sweep has the radio (docs/architecture/radio.md, The SWR sweep). It refuses to start over a queued QSO or
         // CQ, but the operator can queue one after; that slot is skipped.
         skip_reason = "SWR sweep running";
+        return TxStart::Skipped;
+    }
+    if (s_swr_trip.stopped) {
+        // Two transmissions in a row were stopped by the radio's lock; it stays set until the
+        // operator calls CQ, replies or presses Tune (tx_scheduler_swr_operator_start()).
+        skip_reason = kSwrReason;
         return TxStart::Skipped;
     }
     if (!s_pending_tx_valid || s_pending_tx.text.empty()) {
@@ -265,6 +287,159 @@ static TxStart tx_start(int skip_tones, std::string &skip_reason) {
     return TxStart::Started;
 }
 
+static bool swr_lock_known(void) {
+    return s_sr_probe == SrProbe::Yes;
+}
+
+// True when the latest SR reply says the lock is set.
+static bool swr_lock_set(void) {
+    const radio_swr_lock_t *lock = radio_control_swr_lock();
+    bool locked = false;
+    return swr_lock_known() && lock && lock->reply(&locked) && locked;
+}
+
+static void swr_lock_clear(const char *why) {
+    const radio_swr_lock_t *lock = radio_control_swr_lock();
+    if (!lock) {
+        return;
+    }
+    const esp_err_t err = lock->clear();
+    s_sr_readback_pending = err == ESP_OK;
+    ESP_LOGI(TAG, "SWR protection lock cleared (%s): %s", why, esp_err_to_name(err));
+}
+
+// The operator called CQ, replied or pressed Tune (Tune: clear_anyway, since a Tune trip leaves
+// the lock set). Out of the stopped state, and the lock cleared when it was set.
+void tx_scheduler_swr_operator_start(bool clear_anyway) {
+    if (!swr_lock_known() || decode_tx_state_get_tx_active()) {
+        return;
+    }
+    if (swr_trip_operator_start(s_swr_trip) || clear_anyway) {
+        swr_lock_clear("operator start");
+    }
+}
+
+bool tx_scheduler_swr_tripped(void) {
+    return swr_lock_set();
+}
+
+void tx_scheduler_swr_abort_note(void) {
+    s_swr_abort_slot_idx = rtc_now_ms() / g_protocol->slot_time_ms;
+}
+
+const char *tx_scheduler_hud_abort_reason(void) {
+    return s_swr_abort_slot_idx >= 0 &&
+                   s_swr_abort_slot_idx == rtc_now_ms() / g_protocol->slot_time_ms
+               ? kSwrReason
+               : nullptr;
+}
+
+// The radio's lock ended this transmission. Handled like a TX cancel (docs/architecture/autoseq.md,
+// The slot cycle): not counted, no try charged, the entry re-armed for its next slot, which the
+// trigger skips this one. A second trip in a row leaves the lock set and stops the station.
+static void tx_swr_tripped(void) {
+    radio_control_end_tx();
+    autoseq_on_tx_cancelled();
+    decode_tx_state_set_tx_active(false);
+    s_pending_tx_valid = false;
+    s_tx_cancel_requested = false;
+    s_tx_keyed_down = false;
+    decode_tx_state_set_was_txing(false);
+    s_tx_cancel_slot_idx = s_tx_slot_idx;
+    s_swr_abort_slot_idx = s_tx_slot_idx;
+
+    if (swr_trip_on_trip(s_swr_trip) == SwrTripAction::Retry) {
+        ESP_LOGW(TAG, "TX tripped the radio's SWR protection at tone %d: lock cleared, entry re-armed",
+                 s_tx_tone_idx);
+        debug_log_line("TX slot " + std::to_string((long long)s_tx_slot_idx) +
+                       " tripped SWR protection: lock cleared, not counted");
+        swr_lock_clear("trip");
+        return;
+    }
+    ESP_LOGE(TAG, "TX tripped the radio's SWR protection twice in a row: lock left set, station stopped");
+    debug_log_line("TX tripped SWR protection twice in a row: stopped, CQ ended and QSOs cancelled");
+    s_qso_xmit = false;
+    std::vector<QsoContext> active;
+    autoseq_get_active_contexts(active);
+    for (const QsoContext &q : active) {
+        autoseq_drop_by_entry_id(q.entry_id);
+    }
+}
+
+// Learns at each CAT connect whether the radio answers SR; (QMX 1_04_004 and later), and
+// whether it was already locked. Waits out a transmission, which clears the replies.
+static void swr_lock_tick(void) {
+    if (!radio_control_ready()) {
+        s_sr_was_ready = false;
+        s_sr_probe = SrProbe::Idle;
+        s_sr_readback_pending = false;
+        return;
+    }
+    const radio_swr_lock_t *lock = radio_control_swr_lock();
+    if (!lock) {
+        return;
+    }
+    if (!s_sr_was_ready) {
+        s_sr_was_ready = true;
+        s_sr_probe = SrProbe::Idle;
+        lock->poll_with_meters(false);
+    }
+    if (!porta_p4_station_amp_swr_guard()) {
+        // Off (the default): no probe, no SR; in the poll, trips go unseen as before.
+        if (s_sr_probe != SrProbe::Idle) {
+            lock->poll_with_meters(false);
+            s_swr_trip = SwrTrip{};
+            s_sr_readback_pending = false;
+            s_sr_probe = SrProbe::Idle;
+        }
+        return;
+    }
+    if (decode_tx_state_get_tx_active() || swr_sweep_busy()) {
+        if (s_sr_probe == SrProbe::Waiting) {
+            s_sr_probe = SrProbe::Idle;
+        }
+        return;
+    }
+    const int64_t now_ms = rtc_now_ms();
+    bool locked = false;
+    switch (s_sr_probe) {
+    case SrProbe::Idle:
+        if (lock->query() == ESP_OK) {
+            s_sr_probe = SrProbe::Waiting;
+            s_sr_probe_deadline_ms = now_ms + kSrProbeMs;
+        }
+        break;
+    case SrProbe::Waiting:
+        if (lock->reply(&locked)) {
+            s_sr_probe = SrProbe::Yes;
+            lock->poll_with_meters(true);
+            ESP_LOGI(TAG, "SR; answered: SWR protection lock is %s", locked ? "SET" : "clear");
+            s_swr_trip = SwrTrip{};  // a new connection starts clean
+            if (locked) {
+                swr_trip_on_locked_before_tx(s_swr_trip);
+                debug_log_line("SWR protection lock set before we keyed: stopped until CQ, reply or Tune");
+            }
+        } else if (now_ms >= s_sr_probe_deadline_ms) {
+            s_sr_probe = SrProbe::No;
+            ESP_LOGW(TAG, "SR; unanswered: SWR protection is not handled on this connection "
+                          "(QMX firmware before 1_04_004?)");
+            debug_log_line("SR; unanswered: SWR protection not handled (QMX firmware before 1_04_004?)");
+        }
+        break;
+    case SrProbe::Yes:
+        if (s_sr_readback_pending && lock->reply(&locked)) {
+            s_sr_readback_pending = false;
+            if (locked) {
+                ESP_LOGW(TAG, "SR0; did not clear the SWR protection lock");
+                debug_log_line("SR0; did not clear the SWR protection lock");
+            }
+        }
+        break;
+    case SrProbe::No:
+        break;
+    }
+}
+
 static void tx_tick(void) {
     if (!decode_tx_state_get_tx_active()) {
         return;
@@ -281,6 +456,11 @@ static void tx_tick(void) {
         s_tx_cancel_requested = false;
         s_tx_keyed_down = false;
         decode_tx_state_set_was_txing(false);
+        return;
+    }
+
+    if (swr_lock_set()) {
+        tx_swr_tripped();
         return;
     }
 
@@ -302,6 +482,7 @@ static void tx_tick(void) {
         ESP_LOGI(TAG, "tx_tick: TX complete, all %d tones sent", g_protocol->total_symbols);
         radio_control_end_tx();
         autoseq_mark_sent(s_tx_slot_idx);
+        swr_trip_on_clean(s_swr_trip);
         decode_tx_state_set_tx_active(false);
         s_pending_tx_valid = false;
         s_tx_cancel_requested = false;
@@ -394,6 +575,7 @@ static void check_slot_boundary(void) {
 }
 
 void tx_scheduler_tick(void) {
+    swr_lock_tick();
     check_slot_boundary();
     tx_tick();
 }

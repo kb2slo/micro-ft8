@@ -135,6 +135,14 @@ const radio_swr_io_t* radio_control_swr_io(void) {
     return ops ? ops->swr_io : nullptr;
 }
 
+const radio_swr_lock_t* radio_control_swr_lock(void) {
+    if (!radio_control_get_capabilities()->can_sr) {
+        return nullptr;
+    }
+    const radio_control_ops_t* ops = current_ops();
+    return ops ? ops->swr_lock : nullptr;
+}
+
 void radio_control_reset_tx_power_swr(void) {
     const radio_control_ops_t* ops = current_ops();
     if (!ops || !ops->reset_tx_power_swr) return;

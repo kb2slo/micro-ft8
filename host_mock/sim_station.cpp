@@ -78,6 +78,7 @@ static void seed_config(const TestData& td)
     g_cfg["offset"] = "1500";
     g_cfg["offset_src"] = "0";
     g_cfg["tx_min_delay_ms"] = "50";
+    g_cfg["amp_swr_guard"] = "0";
     g_cfg["band_sel"] = "5";
     g_cfg["protocol_mode"] = "FT8";
     g_cfg["active_bands"] = "40 30 20 17 15 12 10";

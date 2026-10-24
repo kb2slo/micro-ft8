@@ -22,6 +22,7 @@ typedef struct {
     bool audio_is_uac;
     bool can_md8_tune;
     bool can_ps0;
+    bool can_sr;  // SR; reads the SWR-protection lock (QMX 1_04_004 and later; the firmware may still refuse it)
 } radio_control_capabilities_t;
 
 // What an SWR sweep needs from the radio, one CAT command per call, none of them
@@ -40,6 +41,17 @@ typedef struct {
     void (*clear_replies)(void);
     esp_err_t (*restore)(int hz);        // MD6, FR0, FT0, FA: the operating dial again
 } radio_swr_io_t;
+
+// The radio's SWR-protection lock, one CAT command per call and none blocking on a reply
+// (the caller owns the timing). The reply holds a value only after the matching query and
+// only until the next reset of the radio's replies (a TX begin or end, a disconnect).
+// QMX only; see docs/architecture/radio.md (SWR protection trips on a QMX).
+typedef struct {
+    esp_err_t (*query)(void);             // SR;
+    bool (*reply)(bool* locked);          // the last SR reply
+    esp_err_t (*clear)(void);             // SR0;, then SR; so the reply reads it back
+    void (*poll_with_meters)(bool on);    // PC;SW;SR; instead of PC;SW; in the TX poll
+} radio_swr_lock_t;
 
 void radio_control_set_backend(radio_control_backend_t backend);
 radio_control_backend_t radio_control_get_backend(void);
@@ -68,6 +80,9 @@ esp_err_t radio_control_begin_cpfsk_tx(float base_hz,
 // The sweep's radio operations, or NULL when the selected radio cannot sweep
 // (no can_md8_tune). The pointer stays valid for the life of the program.
 const radio_swr_io_t* radio_control_swr_io(void);
+
+// The SWR-protection lock's operations, or NULL when the selected radio has none (no can_sr).
+const radio_swr_lock_t* radio_control_swr_lock(void);
 
 void radio_control_reset_tx_power_swr(void);
 void radio_control_poll_tx_power_swr(void);

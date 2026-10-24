@@ -16,6 +16,7 @@ set(EXTRA_COMPONENT_DIRS
     "${CMAKE_CURRENT_LIST_DIR}/../components/porta"
     "${CMAKE_CURRENT_LIST_DIR}/../components/radio_control"
     "${CMAKE_CURRENT_LIST_DIR}/../components/swr_sweep"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/swr_trip"
     "${CMAKE_CURRENT_LIST_DIR}/../components/dial_history"
     "${CMAKE_CURRENT_LIST_DIR}/../components/decode_types"
     "${CMAKE_CURRENT_LIST_DIR}/../components/decode_tx_state"

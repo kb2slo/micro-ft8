@@ -111,6 +111,7 @@ static const radio_control_capabilities_t k_capabilities = {
     .audio_is_uac = true,
     .can_md8_tune = false,
     .can_ps0 = false,
+    .can_sr = false,
 };
 
 static const radio_control_ops_t k_ops = {
@@ -129,6 +130,7 @@ static const radio_control_ops_t k_ops = {
     .get_tx_power_swr = nullptr,
     .begin_cpfsk_tx = qdx_begin_cpfsk_tx,
     .swr_io = nullptr,  // the SWR sweep is QMX-only (docs/architecture/radio.md)
+    .swr_lock = nullptr,
 };
 
 const radio_control_ops_t* radio_control_qdx_get_ops(void) {

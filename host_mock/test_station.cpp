@@ -79,6 +79,21 @@ int main()
     {
         StationSettings s;
         station_settings_init(&s);
+        expect_true(!s.amp_swr_guard, "SWR protection recovery is off by default");
+        station_parse("amp_swr_guard=1\n", &s);
+        expect_true(s.amp_swr_guard, "amp_swr_guard parsed");
+        StationSettings t;
+        station_settings_init(&t);
+        station_parse(station_serialize(s), &t);
+        expect_true(t.amp_swr_guard, "amp_swr_guard round-trips");
+        station_parse("amp_swr_guard=0\n", &s);
+        expect_true(!s.amp_swr_guard, "and turns off");
+        expect_true(station_key_known("amp_swr_guard"), "key known to CONFIG");
+    }
+
+    {
+        StationSettings s;
+        station_settings_init(&s);
         station_parse(
             "call= kb2slo\n"
             "grid=fn30pr\n"

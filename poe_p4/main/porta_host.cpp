@@ -228,6 +228,11 @@ int porta_p4_station_offset_hz(void) {
     return s_station.offset_hz;
 }
 
+bool porta_p4_station_amp_swr_guard(void) {
+    ensure_seeded();
+    return s_station.amp_swr_guard;
+}
+
 int porta_p4_station_tx_min_delay_ms(void) {
     ensure_seeded();
     return s_station.tx_min_delay_ms;
@@ -298,7 +303,9 @@ void porta_p4_tx_hud_tick(void) {
     static uint32_t s_last_ms = 0;
     static bool s_last_active = false;
 
-    const bool active = tx_scheduler_hud_active() || s_tune;
+    // A transmission the radio's SWR protection stopped stays on the banner for the rest of its slot.
+    const char *abort_reason = tx_scheduler_hud_abort_reason();
+    const bool active = tx_scheduler_hud_active() || s_tune || abort_reason;
     if (!active && !s_last_active) {
         return;
     }
@@ -324,7 +331,22 @@ void porta_p4_tx_hud_tick(void) {
         offset_hz = (s_station.offset_src == 1) ? s_station.offset_hz : 1500;
     }
 
+    if (abort_reason && !tx_scheduler_hud_active() && !s_tune) {
+        porta_emit_tx_hud(true, true, false, tx_text, -1.f, -1.f, -1, offset_hz, abort_reason);
+        return;
+    }
+
     radio_control_poll_tx_power_swr();
+    if (s_tune && tx_scheduler_swr_tripped()) {
+        // The lock stays set: the next Tune press clears it (tx_scheduler_swr_operator_start()).
+        s_tune = false;
+        radio_control_set_tune(false, 0, 0);
+        tx_scheduler_swr_abort_note();
+        ESP_LOGW(TAG, "CAT tune: stopped by the radio's SWR protection");
+        porta_emit_tx_hud(true, true, false, tx_text, -1.f, -1.f, -1, offset_hz,
+                          tx_scheduler_hud_abort_reason());
+        return;
+    }
     float power_w = -1.f, swr = -1.f;
     (void)radio_control_get_tx_power_swr(&power_w, &swr);
 
@@ -569,6 +591,9 @@ const char *porta_host_tune(bool on) {
     if (on && !radio_control_ready()) {
         return "CAT not ready";
     }
+    if (on) {
+        tx_scheduler_swr_operator_start(true);
+    }
     s_tune = on;
     if (radio_control_ready()) {
         const int freq_hz = station_freq_hz();
@@ -683,6 +708,7 @@ const char *porta_host_queue_reply(uint32_t decode_id) {
     if (!find_decode_for_reply(decode_id, &msg)) {
         return "unknown decode";
     }
+    tx_scheduler_swr_operator_start(false);
     const char *why = apply_reply_touch(msg);
     if (why) {
         ESP_LOGI(TAG, "queue reply decode_id=%lu: %s", (unsigned long)decode_id, why);
