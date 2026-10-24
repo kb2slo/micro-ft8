@@ -92,13 +92,7 @@ Shipped as O2: [webapp.md](../architecture/webapp.md), **The radio chip and the 
 
 ### 3.8 Decode sort and filter
 
-Redesign canvas: `Decode sort and filter`, interactive. On Operate the controls sit in the Decodes header.
-
-* **Sort:** Default (today's order: decodes to us, then replyable lines with CQs strongest first, then the rest, then stations recently worked), Strongest (SNR), Nearest (distance). A decode with no known grid sorts after those with one.
-* **Sorting applies within each slot, and slots stay newest first** (decided 2026-09-27). The 15 s rhythm stays visible, and replies go to the newest slot anyway.
-* **Show only:** CQ, POTA / SOTA (`CQ POTA`, `CQ SOTA`), under a distance (a decode with no known grid fails it). Filters combine. **New** waits on row `xv23`: the app knows only the log it has loaded.
-* **Messages addressed to the operator always stay on top**, and are never filtered out.
-* **The choice is remembered per browser** (`localStorage`: a per-viewer convenience).
+Shipped as O4: [webapp.md](../architecture/webapp.md), **Decode sort and filter**. **New** waits on row `xv23`.
 
 ### 3.9 Adding a park or summit
 
@@ -165,14 +159,14 @@ Shipped as O3: [webapp.md](../architecture/webapp.md), **Reply feedback**. The a
 
 ## 6. Slices
 
-O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); they are the Now rows. The later slices have their own rows: O4 `jtgu`. O5 and O6 became one slice, the CQ's tries (§7). The combined order with RFC 0008 is RFC 0008 §7.
+O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); they are the Now rows. O5 and O6 became one slice, the CQ's tries (§7). The combined order with RFC 0008 is RFC 0008 §7.
 
 * **O1a: the CQ row**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The CQ row**).
 * **O1b: the dock**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The dock**).
 * **O1c: the Station sheet**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The Station sheet**).
 * **O2: radio status replaces Connect, the read-back, and the TX HUD**, shipped 2026-10-24 ([webapp.md](../architecture/webapp.md), **The radio chip and the TX banner**); its field check is in TEST_PLAN Pending.
 * **O3: reply feedback**, shipped 2026-10-24 ([webapp.md](../architecture/webapp.md), **Reply feedback**); its bench check is in TEST_PLAN Pending.
-* **O4: decode sort and filter** (§3.8).
+* **O4: decode sort and filter**, shipped 2026-10-24 ([webapp.md](../architecture/webapp.md), **Decode sort and filter**); the phone check is in TEST_PLAN Pending.
 * **O5 and O6: the CQ's tries and tries on every queue row**, shipped 2026-10-14 ([autoseq.md](../architecture/autoseq.md), **Tries**; [webapp.md](../architecture/webapp.md), **The CQ row** and **Tries on a queue row**).
 * **The Activation section and the add screen ship with RFC 0008's slices:**
   - A1 brings typed references.

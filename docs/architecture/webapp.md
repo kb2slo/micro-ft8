@@ -45,6 +45,10 @@ The chip sits under the slot bar (`#opRadioChip`) and replaces the old Connect a
 
 Tapping Reply locks the button at once as "Sending…" (`sendReply()`); the sidekick holds the POST until the main board accepts or refuses, about a second. Accepted, it reads "Queued ✓" and a dashed placeholder for the sender's call stands in the queue until a `QUEUE_ENTRY` for the same call arrives (matched on the call, no protocol change); a call already queued is highlighted instead. A refusal, or no entry within 10 s, removes the placeholder and shows the reason under the decode row with **Retry**. The button frees again when the queue entry later goes away. State is `replyState`, reconciled by `reconcileReplies()` on each queue render and once a second.
 
+### Decode sort and filter
+
+Controls sit under the Decodes header (`#dvBar`). **Sort** is Default (the order `decodeSortCmp()` stored: decodes to us, replyable lines with CQs strongest first, the rest, recent partners), Strongest (SNR) or Nearest (distance); it applies within each slot and slots stay newest first, because replies go to the newest slot and the 15 s rhythm stays readable. **Filters** combine: CQ, POTA/SOTA (`CQ POTA`, `CQ SOTA`), and under a distance from the Station grid; a decode with no known grid fails the distance and sorts last under Nearest. A message to us stays on top and is never filtered. The choice is kept per browser (`localStorage`, a per-viewer convenience), and a count of hidden decodes shows beside the controls. Applied when a slot is drawn (`decodeViewOf()`), so changing it re-sorts what is on screen; host-tested by `webapp/tests/test_decode_view.js`. A New filter waits on row `xv23`: the app knows only the log it has loaded.
+
 ### The dock
 
 Pinned above the tab bar and shown only on Operate (`app.html`, `#opDock`), so band stays one tap away however long the decode list grows. It replaces the old header's band select (`opBandSel`) and its "Next TX" offset line; the next TX's offset returns in the TX banner with O2 ([RFC 0009](../rfcs/0009-operate-station-surface.md) §3.12), and Connect and Tune stay in the header until then (§6).

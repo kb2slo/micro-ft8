@@ -308,6 +308,10 @@ body:not(.on-operate) #opDock{display:none}
 
 /* ---- operate: decode stream ---- */
 #opDecodes{padding-bottom:.5rem}
+#dvBar{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;padding:.2rem 1rem .4rem}
+#dvBar select,#dvBar button{font-size:.75rem;padding:.2rem .5rem;width:auto;flex:none}
+#dvBar button[aria-pressed=true]{color:var(--accent);border-color:var(--accent);font-weight:700}
+#dvHidden{font-size:.7rem;color:GrayText}
 #opDecodes .hd{padding:.6rem 1rem .2rem;font-size:.7rem;color:GrayText;text-transform:uppercase;letter-spacing:.04em}
 .drow{padding:.4rem 1rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
 /* DT and Hz are fixed-width, left-justified columns (each column's leading
@@ -566,6 +570,17 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 
     <div id=opDecodes>
       <div class=hd>Decodes &middot; tap a callsign for info</div>
+      <div id=dvBar>
+        <select id=dvSort aria-label="Sort within each slot">
+          <option value=default>Default</option>
+          <option value=snr>Strongest</option>
+          <option value=near>Nearest</option>
+        </select>
+        <button id=dvCq type=button aria-pressed=false>CQ</button>
+        <button id=dvPark type=button aria-pressed=false>POTA/SOTA</button>
+        <select id=dvDist aria-label="Show only decodes closer than"></select>
+        <span id=dvHidden></span>
+      </div>
       <div id=opDecodeRows></div>
     </div>
 
@@ -3592,10 +3607,107 @@ function isReplyableDecode(d) {
   return last === '73' || last === 'RR73';
 }
 
+// ===================== Operate: decode sort and filter (RFC 0009 3.8) =====================
+// Applied when a slot is drawn, within each slot; slots stay newest first. A message to us is
+// always on top and never filtered. `distKmOf(d)` answers the sender's distance in km, or null
+// when the grid is not known (such a decode fails a distance filter and sorts last under Nearest).
+var DV_KEY = 'microft8_decode_view_v1';
+var decodeView = { sort: 'default', cq: false, park: false, maxKm: 0 };
+var DV_DIST_KM = [500, 1000, 2500, 5000, 10000];
+
+function decodeIsPark(d) {
+  return /^CQ (POTA|SOTA)\b/.test(String(d.x || '').trim().toUpperCase());
+}
+
+function decodePassesView(d, view, distKmOf) {
+  if (d.me) return true;
+  if (view.cq && !d.cq) return false;
+  if (view.park && !decodeIsPark(d)) return false;
+  if (view.maxKm > 0) {
+    var km = distKmOf(d);
+    if (km === null || km === undefined || km > view.maxKm) return false;
+  }
+  return true;
+}
+
+function decodeViewOf(slot, view, distKmOf) {
+  var items = slot.map(function (d, i) { return { d: d, i: i }; })
+    .filter(function (it) { return decodePassesView(it.d, view, distKmOf); });
+  if (view.sort === 'snr' || view.sort === 'near') {
+    var key = function (d) {
+      if (view.sort === 'snr') return -d.snr;
+      var km = distKmOf(d);
+      return (km === null || km === undefined) ? Infinity : km;
+    };
+    items.sort(function (a, b) {
+      var ma = a.d.me ? 0 : 1, mb = b.d.me ? 0 : 1;
+      if (ma !== mb) return ma - mb;
+      if (!ma) return a.i - b.i;
+      var ka = key(a.d), kb = key(b.d);
+      return ka === kb ? a.i - b.i : (ka < kb ? -1 : 1);
+    });
+  }
+  return items.map(function (it) { return it.d; });
+}
+
+function decodeDistKm(d) {
+  var call = extractSenderCall(d.x);
+  var theirGrid = call && CallInfo.cachedGrid(call);
+  var a = gridToLatLon(lastCfg.grid), b = theirGrid ? gridToLatLon(theirGrid) : null;
+  return a && b ? greatCircle(a, b).km : null;
+}
+
+function loadDecodeView() {
+  try {
+    var v = JSON.parse(localStorage.getItem(DV_KEY) || 'null');
+    if (v && (v.sort === 'snr' || v.sort === 'near')) decodeView.sort = v.sort;
+    if (v) {
+      decodeView.cq = !!v.cq;
+      decodeView.park = !!v.park;
+      if (DV_DIST_KM.indexOf(v.maxKm) >= 0) decodeView.maxKm = v.maxKm;
+    }
+  } catch (e) { /* the default view stands */ }
+}
+function saveDecodeView() {
+  try { localStorage.setItem(DV_KEY, JSON.stringify(decodeView)); } catch (e) { /* applies live */ }
+}
+
+function renderDecodeControls() {
+  document.getElementById('dvSort').value = decodeView.sort;
+  document.getElementById('dvCq').setAttribute('aria-pressed', decodeView.cq ? 'true' : 'false');
+  document.getElementById('dvPark').setAttribute('aria-pressed', decodeView.park ? 'true' : 'false');
+  var sel = document.getElementById('dvDist');
+  sel.innerHTML = '<option value=0>Any distance</option>' + DV_DIST_KM.map(function (km) {
+    var shown = distUnit === 'mi' ? Math.round(km * 0.621371 / 10) * 10 : km;
+    return '<option value=' + km + '>Under ' + shown.toLocaleString() + ' ' + distUnit + '</option>';
+  }).join('');
+  sel.value = String(decodeView.maxKm);
+}
+document.getElementById('dvSort').onchange = function () {
+  decodeView.sort = this.value; saveDecodeView(); renderDecodes();
+};
+document.getElementById('dvCq').onclick = function () {
+  decodeView.cq = !decodeView.cq; saveDecodeView(); renderDecodeControls(); renderDecodes();
+};
+document.getElementById('dvPark').onclick = function () {
+  decodeView.park = !decodeView.park; saveDecodeView(); renderDecodeControls(); renderDecodes();
+};
+document.getElementById('dvDist').onchange = function () {
+  decodeView.maxKm = parseInt(this.value, 10) || 0; saveDecodeView(); renderDecodes();
+};
+
 function renderDecodes() {
   var rows = document.getElementById('opDecodeRows');
   var nowMs = Date.now();
-  rows.innerHTML = decodeSlots.map(function (slot, i) {
+  var hidden = 0;
+  var shownSlots = decodeSlots.map(function (slot) {
+    var shown = decodeViewOf(slot, decodeView, decodeDistKm);
+    hidden += slot.length - shown.length;
+    return { slot: slot, shown: shown };
+  }).filter(function (s) { return s.shown.length > 0; });
+  document.getElementById('dvHidden').textContent = hidden ? hidden + ' hidden' : '';
+  rows.innerHTML = shownSlots.map(function (entry, i) {
+    var slot = entry.slot;
     var divider = i > 0 ? '<div class=dslotdiv></div>' : '';
     var replyOpen = slotReplyOpen(slot, nowMs);
     // .day's own flex/space-between (Log's day dividers use the same class)
@@ -3605,7 +3717,7 @@ function renderDecodes() {
       esc(slotBandName(slot)) + (freqMHz ? ' · ' + freqMHz + ' MHz' : '') +
       '</span><span class=daytime><span>' + fmtSlotSpan(slot) + '</span>' +
       '<span class=ago data-ts="' + slot.ts + '">' + fmtAgo(slot.ts) + '</span></span></div>';
-    return divider + header + slot.map(function (d) {
+    return divider + header + entry.shown.map(function (d) {
       // Looked up from the opportunistic callsign->grid cache, not this
       // row's own message -- most decodes (signal reports, RRR/73) never
       // carry a grid themselves. '' whenever the sender is unclear or was
@@ -4140,6 +4252,7 @@ function setDistUnit(v) {
   try { localStorage.setItem(DIST_UNIT_KEY, v); } catch (e) { /* applies live even if not persisted */ }
   // Cheap, already-in-memory data; Log rows already on screen don't
   // retroactively update.
+  renderDecodeControls();
   renderDecodes();
 }
 
@@ -5326,6 +5439,7 @@ function loadStateCache() {
 }
 loadStateCache();
 loadDistUnit();
+renderDecodeControls();
 document.getElementById('dist_unit').value = distUnit;
 loadTheme();
 document.getElementById('theme_pref').value = themePref;
@@ -5343,6 +5457,8 @@ computeAppVersion();
 renderCountdown();
 renderCqRow();
 renderQueue();
+loadDecodeView();
+renderDecodeControls();
 renderDecodes();
 renderTxHud();
 
