@@ -1,7 +1,10 @@
 CXX      = g++
 CC       = gcc
-CXXFLAGS = -DHOST_MOCK -std=c++17 -g -Wall -Wno-unused-variable
-CFLAGS   = -DHOST_MOCK -g -Wall
+# -MMD -MP writes each object's header dependencies to a .d file, included at the bottom, so a
+# changed header rebuilds what includes it. Without them a stale object linked into a test passes
+# or fails on the old code (seen 2026-10-24).
+CXXFLAGS = -DHOST_MOCK -std=c++17 -g -Wall -Wno-unused-variable -MMD -MP
+CFLAGS   = -DHOST_MOCK -g -Wall -MMD -MP
 
 # host_mock first so mock esp_log.h shadows the real one
 INCLUDES = -I. \
@@ -314,7 +317,7 @@ $(FILE_LIST_TARGET): $(FILE_LIST_OBJ)
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 clean:
-	rm -f $(OBJ) porta_event_json.o sim_station.o $(SIM_TARGET) \
+	rm -f *.d $(OBJ) porta_event_json.o sim_station.o $(SIM_TARGET) \
 	      $(UNIQUE_OBJ) $(CQ_TRIES_OBJ) $(ADIF_OBJ) $(STATION_OBJ) \
 	      $(DECODE_SORT_OBJ) $(QSO_BROWSE_OBJ) $(ADIF_DELETE_OBJ) \
 	      $(FILE_LIST_OBJ) \
@@ -340,3 +343,5 @@ clean:
 	      $(RTC_CORE_OBJ) $(RTC_CORE_TARGET)
 
 .PHONY: all clean
+
+-include $(wildcard *.d)

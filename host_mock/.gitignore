@@ -1,5 +1,6 @@
 .cache
 *.o
+*.d
 
 # Every host_test* binary the Makefile produces. Pattern, not a list: the
 # enumerated version silently let three binaries (menu_model, screen_model,
