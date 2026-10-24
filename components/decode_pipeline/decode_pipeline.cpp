@@ -188,8 +188,17 @@ struct DecodeSlotResult {
   DecodeMsg dec[DEC_MAX];
   bool standard[DEC_MAX];
 };
-static DecodeSlotResult s_result;      // guarded by result_mutex()
-static bool s_result_pending = false;  // guarded by result_mutex()
+// Both copies of a slot's result (this one and the main loop's in decode_pipeline_apply()) are
+// allocated on first use, not static: about 7 KB each, and as statics they took the internal
+// RAM the waterfall needs in one block (161076 bytes), so no decode ever started. First use
+// comes after the waterfall is allocated, from what is left.
+static DecodeSlotResult* s_result = nullptr;  // guarded by result_mutex()
+static bool s_result_pending = false;         // guarded by result_mutex()
+
+static DecodeSlotResult* alloc_slot_result() {
+  return static_cast<DecodeSlotResult*>(
+      heap_caps_malloc(sizeof(DecodeSlotResult), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+}
 
 // A wait this long is 25 main-loop passes: the loop was stalled, not busy.
 constexpr int64_t kLateApplyMs = 250;
@@ -204,12 +213,19 @@ static SemaphoreHandle_t result_mutex() {
 static void publish_slot_result(int64_t slot_idx) {
   int64_t dropped_slot = -1;
   xSemaphoreTake(result_mutex(), portMAX_DELAY);
-  if (s_result_pending) dropped_slot = s_result.slot_idx;
-  s_result.slot_idx = slot_idx;
-  s_result.published_us = esp_timer_get_time();
-  s_result.count = s_dec_count;
-  memcpy(s_result.dec, s_dec, sizeof(s_dec[0]) * (size_t)s_dec_count);
-  memcpy(s_result.standard, s_dec_standard, sizeof(s_dec_standard[0]) * (size_t)s_dec_count);
+  if (!s_result) s_result = alloc_slot_result();
+  if (!s_result) {
+    xSemaphoreGive(result_mutex());
+    ESP_LOGE(TAG, "DECODE slot %lld lost: no RAM for the hand-off", (long long)slot_idx);
+    debug_log_line("DECODE slot lost: no RAM for the hand-off");
+    return;
+  }
+  if (s_result_pending) dropped_slot = s_result->slot_idx;
+  s_result->slot_idx = slot_idx;
+  s_result->published_us = esp_timer_get_time();
+  s_result->count = s_dec_count;
+  memcpy(s_result->dec, s_dec, sizeof(s_dec[0]) * (size_t)s_dec_count);
+  memcpy(s_result->standard, s_dec_standard, sizeof(s_dec_standard[0]) * (size_t)s_dec_count);
   s_result_pending = true;
   xSemaphoreGive(result_mutex());
   if (dropped_slot >= 0) {
@@ -223,13 +239,13 @@ static void publish_slot_result(int64_t slot_idx) {
 // Main loop.
 static bool take_slot_result(DecodeSlotResult* out) {
   xSemaphoreTake(result_mutex(), portMAX_DELAY);
-  const bool pending = s_result_pending;
+  const bool pending = s_result_pending && s_result;
   if (pending) {
-    out->slot_idx = s_result.slot_idx;
-    out->published_us = s_result.published_us;
-    out->count = s_result.count;
-    memcpy(out->dec, s_result.dec, sizeof(s_result.dec[0]) * (size_t)s_result.count);
-    memcpy(out->standard, s_result.standard, sizeof(s_result.standard[0]) * (size_t)s_result.count);
+    out->slot_idx = s_result->slot_idx;
+    out->published_us = s_result->published_us;
+    out->count = s_result->count;
+    memcpy(out->dec, s_result->dec, sizeof(s_result->dec[0]) * (size_t)s_result->count);
+    memcpy(out->standard, s_result->standard, sizeof(s_result->standard[0]) * (size_t)s_result->count);
     s_result_pending = false;
   }
   xSemaphoreGive(result_mutex());
@@ -571,7 +587,16 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
 }
 
 void decode_pipeline_apply(void) {
-  static DecodeSlotResult r;  // the main loop's copy; too big for its stack
+  static DecodeSlotResult* rp = nullptr;  // the main loop's copy; too big for its stack
+  if (!rp) {
+    if (!decode_pipeline_result_pending()) return;  // nothing yet; allocate with the first result
+    rp = alloc_slot_result();
+    if (!rp) {
+      ESP_LOGE(TAG, "DECODE apply: no RAM for the main loop's copy");
+      return;
+    }
+  }
+  DecodeSlotResult& r = *rp;
   if (!take_slot_result(&r)) return;
 
   const int64_t wait_ms = (esp_timer_get_time() - r.published_us) / 1000;

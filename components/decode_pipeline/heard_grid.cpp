@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <cstring>
 
 #include "heard_grid.h"
@@ -14,7 +15,18 @@ struct HeardGrid {
     bool used;
 };
 
-HeardGrid s_table[HEARD_GRID_CAPACITY];
+// Allocated on first use, not static: 5 KB of the internal RAM the decode pipeline's waterfall
+// needs in one block, and the first note comes after the waterfall is allocated. Null when
+// there is no RAM for it: nothing is noted and nothing is found.
+HeardGrid* s_table_ptr = nullptr;
+
+HeardGrid* table()
+{
+    if (!s_table_ptr) {
+        s_table_ptr = static_cast<HeardGrid*>(calloc(HEARD_GRID_CAPACITY, sizeof(HeardGrid)));
+    }
+    return s_table_ptr;
+}
 
 // Upper case with <> stripped, as autoseq keys its entries. False for
 // anything that cannot be a callsign, including the unresolved hash "<...>".
@@ -59,6 +71,8 @@ bool normalize_grid(const char* in, char* out)
 
 int find(const char* call)
 {
+    const HeardGrid* s_table = table();
+    if (!s_table) return -1;
     for (int i = 0; i < HEARD_GRID_CAPACITY; ++i) {
         if (s_table[i].used && strcmp(s_table[i].call, call) == 0) return i;
     }
@@ -68,6 +82,7 @@ int find(const char* call)
 // An unused slot, or else the one heard longest ago.
 int slot_for_new()
 {
+    const HeardGrid* s_table = table();
     int oldest = 0;
     for (int i = 0; i < HEARD_GRID_CAPACITY; ++i) {
         if (!s_table[i].used) return i;
@@ -80,7 +95,7 @@ int slot_for_new()
 
 void heard_grid_clear()
 {
-    memset(s_table, 0, sizeof(s_table));
+    if (s_table_ptr) memset(s_table_ptr, 0, HEARD_GRID_CAPACITY * sizeof(HeardGrid));
 }
 
 void heard_grid_note(const char* sender, const char* field3, bool standard_message, int64_t now_ms)
@@ -88,6 +103,8 @@ void heard_grid_note(const char* sender, const char* field3, bool standard_messa
     char call[kCallMax + 1];
     char grid[5];
     if (!standard_message || !normalize_grid(field3, grid) || !normalize_call(sender, call)) return;
+    HeardGrid* s_table = table();
+    if (!s_table) return;
     int idx = find(call);
     if (idx < 0) {
         idx = slot_for_new();
@@ -103,7 +120,7 @@ bool heard_grid_lookup(const char* call, int64_t now_ms, std::string* grid_out)
     char key[kCallMax + 1];
     if (!normalize_call(call, key)) return false;
     const int idx = find(key);
-    if (idx < 0 || now_ms - s_table[idx].heard_ms >= HEARD_GRID_EXPIRY_MS) return false;
-    if (grid_out) *grid_out = s_table[idx].grid;
+    if (idx < 0 || now_ms - s_table_ptr[idx].heard_ms >= HEARD_GRID_EXPIRY_MS) return false;
+    if (grid_out) *grid_out = s_table_ptr[idx].grid;
     return true;
 }
