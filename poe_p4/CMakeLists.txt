@@ -49,3 +49,12 @@ add_custom_command(TARGET app POST_BUILD
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
     COMMENT "Generating merged image poe_p4_merged.bin"
 )
+
+# Static RAM budget (tools/check_ram_budget.py): the waterfall needs one 161076-byte block of
+# internal RAM when the radio's audio starts, and static data comes out of it. Fails the build, so a
+# local `idf.py build` and CI both stop a change that would silence every decode.
+add_custom_command(TARGET app POST_BUILD
+    COMMAND ${PYTHON} "${CMAKE_CURRENT_LIST_DIR}/../tools/check_ram_budget.py" "${CMAKE_BINARY_DIR}/poe_p4.elf"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    COMMENT "Checking the static RAM budget"
+)
