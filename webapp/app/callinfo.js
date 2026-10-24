@@ -214,6 +214,14 @@ async function loadActiveSpots() {
   })();
   return spotFetchPromise;
 }
+// QRZ's /db/ page is keyed by the home call. A portable call ("K1ABC/2", "K1ABC/P") or a foreign-prefixed
+// one ("PJ4/K1ABC") escapes to %2F and lands nowhere, so link the longest segment: the suffix or the
+// prefix is always the shorter part.
+function qrzUrl(call) {
+  var parts = String(call).replace(/[<>]/g, '').toUpperCase().split('/').filter(Boolean);
+  var base = parts.reduce(function (a, b) { return b.length > a.length ? b : a; }, parts[0] || '');
+  return 'https://www.qrz.com/db/' + encodeURIComponent(base);
+}
 function officialLink(program, ref) {
   if (program === 'POTA') return 'https://pota.app/#/park/' + encodeURIComponent(ref);
   // A SOTA summit code is itself two path segments ("W7O/CC-001" ==
@@ -518,7 +526,7 @@ async function show(call, opts) {
     '<span style="color:GrayText">checking…</span></div>';
 
   document.getElementById('callInfoBody').innerHTML = body;
-  document.getElementById('callInfoQrz').href = 'https://www.qrz.com/db/' + encodeURIComponent(call);
+  document.getElementById('callInfoQrz').href = qrzUrl(call);
   document.getElementById('callInfoModal').hidden = false;
 
   if (grid) {
@@ -588,5 +596,5 @@ if (document.readyState === 'loading') {
 // silently going without it until whatever happens to open the modal first.
 loadGeoData();
 
-window.CallInfo = { show: show, hide: hide, learnGrid: learnGrid, cachedGrid: cachedGrid, shortLocation: shortLocation, countryCode: countryCode, gridLink: gridLink };
+window.CallInfo = { show: show, hide: hide, learnGrid: learnGrid, cachedGrid: cachedGrid, shortLocation: shortLocation, countryCode: countryCode, gridLink: gridLink, qrzUrl: qrzUrl };
 })();

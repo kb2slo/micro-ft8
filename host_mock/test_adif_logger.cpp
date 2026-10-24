@@ -75,6 +75,26 @@ int main() {
         expect_contains(g_appended[0], "<comment:8>MicroFT8 ", "plain comment unchanged");
     }
 
+    // A portable or foreign-prefixed call is logged as received, with its own grid: the suffix
+    // is a different operating location, and LoTW/QRZ matching wants the call as sent.
+    {
+        g_appended.clear();
+        AdifStationSnapshot station;
+        station.call = "KB2SLO";
+        station.my_gridsquare = "FN30";
+        station.mode = "FT8";
+        station.freq_mhz = "14.074";
+        station.raw_comment = "";
+        station.radio_name = "QMX";
+        station.grid_for_macro = "FN31";
+        AdifLoggerDedupe dedupe;
+        expect_true(adif_log_entry("K1ABC/2", "FN32", -3, -7, station, &dedupe), "a /2 call is logged");
+        expect_contains(g_appended[0], "<call:7>K1ABC/2 ", "the /2 stays in CALL");
+        expect_contains(g_appended[0], "<gridsquare:4>FN32 ", "its own grid is kept");
+        expect_true(adif_log_entry("PJ4/K1ABC", "FK52", -3, -7, station, &dedupe), "a prefixed call is logged");
+        expect_contains(g_appended[1], "<call:9>PJ4/K1ABC ", "the prefix stays in CALL");
+    }
+
     // BAND gets a unit and upper case (POTA requires "20M", this app's own
     // band names are "20m"); act_refs splits by program into
     // MY_POTA_REF/MY_SOTA_REF, each a bare comma list with the "POTA:"/

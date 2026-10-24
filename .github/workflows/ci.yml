@@ -79,6 +79,9 @@ jobs:
           node webapp/tests/test_pskr_core.js
           node webapp/tests/test_pskr_live.js
 
+      - name: Webapp callsign card test
+        run: node webapp/tests/test_callinfo_qrz.js
+
       - name: Autoseq host_mock
         working-directory: host_mock
         run: |
