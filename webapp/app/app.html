@@ -418,12 +418,9 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 .pskchip{min-height:36px;padding:.25rem .75rem;font-size:.8rem;border:1px solid GrayText;border-radius:999px;background:transparent;color:GrayText}
 .pskchip.on{background:var(--accent);border-color:var(--accent);color:Canvas;font-weight:700}
 #pskrListRows[data-sort=distance] .k-dist,#pskrListRows[data-sort=time] .k-age{color:CanvasText;font-weight:600}
-.spotrow{padding:.5rem 1rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
-.spotrow-main{display:flex;justify-content:space-between;align-items:center;gap:.5rem}
-.spotrow .call{font-family:ui-monospace,monospace;font-weight:700}
-.spotrow .sub{font-size:.7rem;color:GrayText;font-family:ui-monospace,monospace;margin-top:.15rem;display:flex;justify-content:space-between;gap:.5rem}
+.dflags{display:inline-flex;gap:.3rem;margin-left:.4rem;vertical-align:baseline}
 .wflag{font-size:.65rem;font-weight:700;padding:.1rem .4rem;border-radius:.3rem;flex:none}
-.wflag-new{background:var(--good-bg);color:var(--good-fg)}
+.wflag-act{background:var(--good-bg);color:var(--good-fg)}
 .wflag-worked{background:color-mix(in srgb, GrayText 20%, transparent);color:GrayText}
 
 /* ---- settings ---- */
@@ -3678,6 +3675,82 @@ function decodeDistKm(d) {
   return a && b ? greatCircle(a, b).km : null;
 }
 
+// ===================== Operate: activation cues (RFC 0009 3.10, hh3v) =====================
+// Only while the station has references. The dupe cue reads today's day file (opLog, loaded by
+// refreshOpLog() below, not the Log tab's list); the badges read callinfo.js's spot cache.
+// A dupe is the same call, band, mode and UTC day (the file) on a QSO logged at one of our
+// current references. A cue, never a block.
+function refsOverlap(q, refs) {
+  var mine = {};
+  (q.my_pota_ref || '').split(',').forEach(function (r) { if (r.trim()) mine['POTA:' + r.trim()] = true; });
+  (q.my_sota_ref || '').split(',').forEach(function (r) { if (r.trim()) mine['SOTA:' + r.trim()] = true; });
+  return refs.some(function (r) { return mine[r.token]; });
+}
+
+function dupeKey(call, band, mode) {
+  return String(call).toUpperCase() + '|' + band + '|' + String(mode).toUpperCase();
+}
+
+// Set of dupeKey()s for the rows logged at any of refs ([{program, ref, token}], parseActRefs()).
+function dupeIndex(rows, refs) {
+  var set = {};
+  if (!refs.length) return set;
+  rows.forEach(function (q) {
+    if (q.call && refsOverlap(q, refs)) set[dupeKey(q.call, q.band || '', q.mode || '')] = true;
+  });
+  return set;
+}
+
+// Our program matches the spot's: P2P for POTA, S2S for SOTA; otherwise the plain program.
+function spotBadgeLabel(spot, refs) {
+  if (!spot) return '';
+  var ours = refs.some(function (r) { return r.program === spot.program; });
+  var tag = ours ? (spot.program === 'POTA' ? 'P2P' : 'S2S') : spot.program;
+  return tag + ' ' + spot.ref;
+}
+
+function slotMode(slot) {
+  if (slot.lenMs) return slot.lenMs < 10000 ? 'FT4' : 'FT8';
+  return lastCfg.protocol_mode === 'FT4' ? 'FT4' : 'FT8';
+}
+
+var opLog = { file: '', rows: [], busy: false };
+
+function utcDayFile() {
+  var t = new Date();
+  return t.getUTCFullYear() + String(t.getUTCMonth() + 1).padStart(2, '0') +
+         String(t.getUTCDate()).padStart(2, '0') + '.adi';
+}
+
+// Follows today's file for new QSOs while Operate is showing and the station has references;
+// xe2j counts from opLog.rows too. A day with no file yet reads as no rows.
+async function refreshOpLog() {
+  if (opLog.busy || currentView !== 'operate' || !parseActRefs(lastCfg).length) return;
+  opLog.busy = true;
+  try {
+    var file = utcDayFile();
+    if (file !== opLog.file) { opLog.file = file; opLog.rows = []; }
+    var before = opLog.rows.length;
+    while (true) {
+      var r = await fetch('/api/log/entries?file=' + encodeURIComponent(file) +
+                          '&skip=' + opLog.rows.length + '&take=50', { cache: 'no-store' });
+      var j = await r.json();
+      if (!j.ok) break;
+      var page = j.entries || [];
+      opLog.rows = opLog.rows.concat(page);
+      if (page.length < 50) break;
+    }
+    if (opLog.rows.length !== before) renderDecodes();
+  } catch (e) { /* next tick */ } finally {
+    opLog.busy = false;
+  }
+  if (parseActRefs(lastCfg).length) {
+    CallInfo.loadActiveSpots().then(function () { renderDecodes(); }).catch(function () {});
+  }
+}
+setInterval(refreshOpLog, LOG_REFRESH_MS);
+setTimeout(refreshOpLog, 3000);
+
 function loadDecodeView() {
   try {
     var v = JSON.parse(localStorage.getItem(DV_KEY) || 'null');
@@ -3713,6 +3786,8 @@ function renderDecodes() {
   var rows = document.getElementById('opDecodeRows');
   var nowMs = Date.now();
   var hidden = 0;
+  var actRefs = parseActRefs(lastCfg);
+  var dupes = dupeIndex(opLog.rows, actRefs);
   var shownSlots = decodeSlots.map(function (slot) {
     var shown = decodeViewOf(slot, decodeView, decodeDistKm);
     hidden += slot.length - shown.length;
@@ -3725,6 +3800,7 @@ function renderDecodes() {
     var slot = entry.slot;
     var divider = i > 0 ? '<div class=dslotdiv></div>' : '';
     var replyOpen = slotReplyOpen(slot, nowMs);
+    var slotBand = slotBandName(slot), slotModeName = slotMode(slot);
     // .day's own flex/space-between (Log's day dividers use the same class)
     // puts band+frequency left, date/time right, with no extra CSS needed.
     var freqMHz = fmtSlotFreqMHz(slot.freqKhz);
@@ -3745,12 +3821,19 @@ function renderDecodes() {
       // grid doesn't resolve -- shortLocation() never blocks this render on
       // its own fetch, so the badge just appears on a later redraw.
       var shortLoc = theirGrid ? CallInfo.shortLocation(theirGrid) : '';
+      var flags = '';
+      if (actRefs.length && senderCall) {
+        if (dupes[dupeKey(senderCall, slotBand, slotModeName)]) flags += '<span class="wflag wflag-worked">Worked</span>';
+        var badge = spotBadgeLabel(CallInfo.activeSpotFor(senderCall), actRefs);
+        if (badge) flags += '<span class="wflag wflag-act">' + esc(badge) + '</span>';
+      }
       return '<div class=drow data-id="' + d.id + '">' +
         '<div class=meta><span>DT ' + fmtDt(d.dt) + '</span><span>' + d.hz + ' Hz</span><span>' +
         (d.snr > 0 ? '+' : '') + d.snr + ' dB</span></div>' +
         '<div class=drow-body>' +
           '<div class="txt ' + decodeColorClass(d) + '">' + highlightCallInText(d.x, allCalls) +
-          (d.me ? '<span class=me>&rarr; ME</span>' : '') + '</div>' +
+          (d.me ? '<span class=me>&rarr; ME</span>' : '') +
+          (flags ? '<span class=dflags>' + flags + '</span>' : '') + '</div>' +
           (replyOpen && isReplyableDecode(d) ? replyButtonHtml(d.id) : '') +
         '</div>' +
         replyFailHtml(d.id) +

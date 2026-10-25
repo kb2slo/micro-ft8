@@ -183,6 +183,14 @@ function khzToBandName(khz) {
   }
   return '';
 }
+// The cached activator spot for call, or null; never fetches (loadActiveSpots() does), so a decode
+// row can ask while it draws.
+function activeSpotFor(call) {
+  if (!spotCache) return null;
+  call = String(call).toUpperCase();
+  for (var i = 0; i < spotCache.length; i++) if (spotCache[i].call === call) return spotCache[i];
+  return null;
+}
 async function loadActiveSpots() {
   if (spotCache && Date.now() - spotCacheAt < SPOT_CACHE_MS) return spotCache;
   if (spotFetchPromise) return spotFetchPromise;
@@ -596,5 +604,5 @@ if (document.readyState === 'loading') {
 // silently going without it until whatever happens to open the modal first.
 loadGeoData();
 
-window.CallInfo = { show: show, hide: hide, learnGrid: learnGrid, cachedGrid: cachedGrid, shortLocation: shortLocation, countryCode: countryCode, gridLink: gridLink, qrzUrl: qrzUrl };
+window.CallInfo = { loadActiveSpots: loadActiveSpots, activeSpotFor: activeSpotFor, show: show, hide: hide, learnGrid: learnGrid, cachedGrid: cachedGrid, shortLocation: shortLocation, countryCode: countryCode, gridLink: gridLink, qrzUrl: qrzUrl };
 })();
