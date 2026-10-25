@@ -197,6 +197,12 @@ O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); th
 * **CQ is a queue entry with a try budget.** Call CQ queues a CQ with N tries; each CQ sent uses one, an answer gives none back, and at zero it ends. Every queue entry's count can be changed in place. This replaces the beacon mode, O5's per-QSO retries and O6's CQ timeout. Built ([autoseq.md](../architecture/autoseq.md), **Tries**).
 * **Call CQ picks its parity each time:** the active QSO's parity if there is one, otherwise the next slot it can still key. The CQ row shows it, and a tap flips it for that CQ, for a strong station nearby; SOTA spotting also wants the parity (RFC 0008 §3). Built (same).
 
+**2026-10-24, decode controls:**
+
+* The Decodes controls are one non-wrapping row of same-shape pills: Sort (opens its four choices), Replyable, POTA/SOTA, and "N of M" right-aligned; an active pill is filled.
+* **Replyable replaces the CQ filter** and keeps the lines that carry a Reply button, by `isReplyableDecode()` and not by the clock.
+* **The distance filter is dropped:** Nearest and Farthest already order by distance, and it hid every decode with no known grid.
+
 **2026-10-14, building the CQ's tries:**
 
 * **Every row counts tries, transmissions,** not retries. The Station key `tries` (default 6, the sends that 5 retries gave) replaces `autoseq_max_retry`.

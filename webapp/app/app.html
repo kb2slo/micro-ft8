@@ -308,10 +308,11 @@ body:not(.on-operate) #opDock{display:none}
 
 /* ---- operate: decode stream ---- */
 #opDecodes{padding-bottom:.5rem}
-#dvBar{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;padding:.2rem 1rem .4rem}
-#dvBar select,#dvBar button{font-size:.75rem;padding:.2rem .5rem;width:auto;flex:none}
-#dvBar button[aria-pressed=true]{color:var(--accent);border-color:var(--accent);font-weight:700}
-#dvHidden{font-size:.7rem;color:GrayText}
+#dvBar{display:flex;flex-wrap:nowrap;gap:.4rem;align-items:center;padding:.2rem 1rem .4rem}
+#dvBar select,#dvBar button{font-size:.75rem;padding:.25rem .65rem;width:auto;flex:none;margin:0;border-radius:999px;border:1px solid GrayText;background:ButtonFace;color:ButtonText}
+#dvBar select{appearance:none;-webkit-appearance:none}
+#dvBar button[aria-pressed=true],#dvBar select.on{background:var(--accent);border-color:var(--accent);color:Canvas;font-weight:700}
+#dvHidden{font-size:.7rem;color:GrayText;margin-left:auto;white-space:nowrap}
 #opDecodes .hd{padding:.6rem 1rem .2rem;font-size:.7rem;color:GrayText;text-transform:uppercase;letter-spacing:.04em}
 .drow{padding:.4rem 1rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
 /* DT and Hz are fixed-width, left-justified columns (each column's leading
@@ -572,14 +573,13 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       <div class=hd>Decodes &middot; tap a callsign for info</div>
       <div id=dvBar>
         <select id=dvSort aria-label="Sort within each slot">
-          <option value=default>Default</option>
+          <option value=default>Sort</option>
           <option value=snr>Strongest</option>
           <option value=near>Nearest</option>
           <option value=far>Farthest</option>
         </select>
-        <button id=dvCq type=button aria-pressed=false>CQ</button>
+        <button id=dvReply type=button aria-pressed=false>Replyable</button>
         <button id=dvPark type=button aria-pressed=false>POTA/SOTA</button>
-        <select id=dvDist aria-label="Show only decodes closer than"></select>
         <span id=dvHidden></span>
       </div>
       <div id=opDecodeRows></div>
@@ -3637,27 +3637,22 @@ function isReplyableDecode(d) {
 // always on top and never filtered. `distKmOf(d)` answers the sender's distance in km, or null
 // when the grid is not known (such a decode fails a distance filter and sorts last under Nearest).
 var DV_KEY = 'microft8_decode_view_v1';
-var decodeView = { sort: 'default', cq: false, park: false, maxKm: 0 };
-var DV_DIST_KM = [500, 1000, 2500, 5000, 10000];
+var decodeView = { sort: 'default', reply: false, park: false };
 
 function decodeIsPark(d) {
   return /^CQ (POTA|SOTA)\b/.test(String(d.x || '').trim().toUpperCase());
 }
 
-function decodePassesView(d, view, distKmOf) {
+function decodePassesView(d, view) {
   if (d.me) return true;
-  if (view.cq && !d.cq) return false;
+  if (view.reply && !isReplyableDecode(d)) return false;
   if (view.park && !decodeIsPark(d)) return false;
-  if (view.maxKm > 0) {
-    var km = distKmOf(d);
-    if (km === null || km === undefined || km > view.maxKm) return false;
-  }
   return true;
 }
 
 function decodeViewOf(slot, view, distKmOf) {
   var items = slot.map(function (d, i) { return { d: d, i: i }; })
-    .filter(function (it) { return decodePassesView(it.d, view, distKmOf); });
+    .filter(function (it) { return decodePassesView(it.d, view); });
   if (view.sort === 'snr' || view.sort === 'near' || view.sort === 'far') {
     var key = function (d) {
       if (view.sort === 'snr') return -d.snr;
@@ -3688,9 +3683,8 @@ function loadDecodeView() {
     var v = JSON.parse(localStorage.getItem(DV_KEY) || 'null');
     if (v && (v.sort === 'snr' || v.sort === 'near' || v.sort === 'far')) decodeView.sort = v.sort;
     if (v) {
-      decodeView.cq = !!v.cq;
+      decodeView.reply = !!v.reply;
       decodeView.park = !!v.park;
-      if (DV_DIST_KM.indexOf(v.maxKm) >= 0) decodeView.maxKm = v.maxKm;
     }
   } catch (e) { /* the default view stands */ }
 }
@@ -3699,27 +3693,20 @@ function saveDecodeView() {
 }
 
 function renderDecodeControls() {
-  document.getElementById('dvSort').value = decodeView.sort;
-  document.getElementById('dvCq').setAttribute('aria-pressed', decodeView.cq ? 'true' : 'false');
+  var sort = document.getElementById('dvSort');
+  sort.value = decodeView.sort;
+  sort.classList.toggle('on', decodeView.sort !== 'default');
+  document.getElementById('dvReply').setAttribute('aria-pressed', decodeView.reply ? 'true' : 'false');
   document.getElementById('dvPark').setAttribute('aria-pressed', decodeView.park ? 'true' : 'false');
-  var sel = document.getElementById('dvDist');
-  sel.innerHTML = '<option value=0>Any distance</option>' + DV_DIST_KM.map(function (km) {
-    var shown = distUnit === 'mi' ? Math.round(km * 0.621371 / 10) * 10 : km;
-    return '<option value=' + km + '>Under ' + shown.toLocaleString() + ' ' + distUnit + '</option>';
-  }).join('');
-  sel.value = String(decodeView.maxKm);
 }
 document.getElementById('dvSort').onchange = function () {
-  decodeView.sort = this.value; saveDecodeView(); renderDecodes();
+  decodeView.sort = this.value; saveDecodeView(); renderDecodeControls(); renderDecodes();
 };
-document.getElementById('dvCq').onclick = function () {
-  decodeView.cq = !decodeView.cq; saveDecodeView(); renderDecodeControls(); renderDecodes();
+document.getElementById('dvReply').onclick = function () {
+  decodeView.reply = !decodeView.reply; saveDecodeView(); renderDecodeControls(); renderDecodes();
 };
 document.getElementById('dvPark').onclick = function () {
   decodeView.park = !decodeView.park; saveDecodeView(); renderDecodeControls(); renderDecodes();
-};
-document.getElementById('dvDist').onchange = function () {
-  decodeView.maxKm = parseInt(this.value, 10) || 0; saveDecodeView(); renderDecodes();
 };
 
 function renderDecodes() {
@@ -3731,7 +3718,9 @@ function renderDecodes() {
     hidden += slot.length - shown.length;
     return { slot: slot, shown: shown };
   }).filter(function (s) { return s.shown.length > 0; });
-  document.getElementById('dvHidden').textContent = hidden ? hidden + ' hidden' : '';
+  var total = hidden;
+  shownSlots.forEach(function (e) { total += e.shown.length; });
+  document.getElementById('dvHidden').textContent = total ? (total - hidden) + ' of ' + total : '';
   rows.innerHTML = shownSlots.map(function (entry, i) {
     var slot = entry.slot;
     var divider = i > 0 ? '<div class=dslotdiv></div>' : '';
