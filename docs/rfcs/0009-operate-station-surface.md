@@ -92,7 +92,7 @@ Shipped as O2: [webapp.md](../architecture/webapp.md), **The radio chip and the 
 
 ### 3.8 Decode sort and filter
 
-Shipped as O4: [webapp.md](../architecture/webapp.md), **Decode sort and filter**. **New** waits on row `xv23`.
+Shipped as O4: [webapp.md](../architecture/webapp.md), **Decode sort and filter**. **New** waits on row `I32`.
 
 ### 3.9 Adding a park or summit
 
@@ -193,7 +193,7 @@ O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); th
 
 * O2 includes the attach event before CDC opens that the Found state needs (§6).
 * O4's CQ filter is the community's CQ-only ask (§3.8).
-* **Decode sort and filter** (§3.8): the default sort is named Default, since within a slot every decode has the same time and "Newest" sorted nothing; New waits on row `xv23`; POTA / SOTA means `CQ POTA` and `CQ SOTA` calls; a decode with no grid fails the distance filter.
+* **Decode sort and filter** (§3.8): the default sort is named Default, since within a slot every decode has the same time and "Newest" sorted nothing; New waits on row `I32`; POTA / SOTA means `CQ POTA` and `CQ SOTA` calls; a decode with no grid fails the distance filter.
 * **CQ is a queue entry with a try budget.** Call CQ queues a CQ with N tries; each CQ sent uses one, an answer gives none back, and at zero it ends. Every queue entry's count can be changed in place. This replaces the beacon mode, O5's per-QSO retries and O6's CQ timeout. Built ([autoseq.md](../architecture/autoseq.md), **Tries**).
 * **Call CQ picks its parity each time:** the active QSO's parity if there is one, otherwise the next slot it can still key. The CQ row shows it, and a tap flips it for that CQ, for a strong station nearby; SOTA spotting also wants the parity (RFC 0008 §3). Built (same).
 

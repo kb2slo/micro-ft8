@@ -11,7 +11,7 @@ The web app (`webapp/app/`) is the station's only UI on the headless P4, served 
 * **Operate** stacks a state header (slot countdown and parity, CAT and audio liveness, and the radio chip: **The radio chip** below), the queue (**The CQ row** below) and the decode stream, with the dock (**The dock** below, band and frequency) pinned above the tab bar.
 * **Grow by destination, never by feature.** QRZ is not a screen: per-callsign data expands on the row it belongs to. One shared expand-on-tap component, used on decode, queue and QSO rows, shows **offline-derived** facts at once (DXCC and zones from the prefix, distance and bearing from grid arithmetic) and **online-enriched** ones (QRZ bio, photo) when reachable, failing legibly when not.
 * **QSOs is one continuous list** with day dividers ("Today", "Sep 13"), not a day-file picker. The main board keeps one ADIF file per UTC day; the list loads the current day on open and older days as the operator scrolls (`FILE_LIST`/`FILE_READ`), because Port A's budget cannot carry the whole log on every open. A line under the toolbar shows the main board's log storage, "N MB free of M MB", from the live `storage_total_kb` / `storage_used_kb` config lines; it is hidden while the board has not said, and red under 10% free.
-* **Worked/new flags are computed in the browser** from the QSOs loaded so far, for decode rows and the map. A station worked on a day not yet loaded shows as new; accepted 2026-09-25, and row xv23 explores loading and caching more of the log.
+* **The callsign card's QSO history comes from the QSOs loaded so far** (`qsoHistoryFor()`), so a QSO on a day not yet loaded is missing from it. Row I32 would answer it from the P4.
 
 ### The CQ row
 
@@ -49,7 +49,7 @@ Tapping Reply locks the button at once as "Sending…" (`sendReply()`); the side
 
 ### Decode sort and filter
 
-Controls sit under the Decodes header (`#dvBar`). **Sort** is Default (the order `decodeSortCmp()` stored: decodes to us, replyable lines with CQs strongest first, the rest, recent partners), Strongest (SNR), Nearest or Farthest (distance; added 2026-10-24 at the operator's ask, for DX); it applies within each slot and slots stay newest first, because replies go to the newest slot and the 15 s rhythm stays readable. **Filters** combine: CQ, POTA/SOTA (`CQ POTA`, `CQ SOTA`), and under a distance from the Station grid; a decode with no known grid fails the distance and sorts last under Nearest and Farthest. A message to us stays on top and is never filtered. The choice is kept per browser (`localStorage`, a per-viewer convenience), and a count of hidden decodes shows beside the controls. Applied when a slot is drawn (`decodeViewOf()`), so changing it re-sorts what is on screen; host-tested by `webapp/tests/test_decode_view.js`. A New filter waits on row `xv23`: the app knows only the log it has loaded.
+Controls sit under the Decodes header (`#dvBar`). **Sort** is Default (the order `decodeSortCmp()` stored: decodes to us, replyable lines with CQs strongest first, the rest, recent partners), Strongest (SNR), Nearest or Farthest (distance; added 2026-10-24 at the operator's ask, for DX); it applies within each slot and slots stay newest first, because replies go to the newest slot and the 15 s rhythm stays readable. **Filters** combine: CQ, POTA/SOTA (`CQ POTA`, `CQ SOTA`), and under a distance from the Station grid; a decode with no known grid fails the distance and sorts last under Nearest and Farthest. A message to us stays on top and is never filtered. The choice is kept per browser (`localStorage`, a per-viewer convenience), and a count of hidden decodes shows beside the controls. Applied when a slot is drawn (`decodeViewOf()`), so changing it re-sorts what is on screen; host-tested by `webapp/tests/test_decode_view.js`. A New filter waits on row `I32`: the app knows only the log it has loaded.
 
 ### The dock
 
@@ -93,7 +93,7 @@ A full-screen overlay (`#stationSheet`, same slide-up mechanics as `#settingsOve
 * **Footer:** the call, read-only, with a note that it is changed in Settings — the call is the licence identity, not something changed mid-QSO.
 * **Not in the sheet:** Call CQ and an entry's own count (the queue's rows) and band/frequency (the dock) — each control has one home.
 * **Settings does not carry these keys** (`cq_type`, `free_text`, `grid`, `tries`, `offset`, `offset_src`): its `FIELDS` array no longer lists them, and each Settings field writes only its own key (§2.1 of [RFC 0009](../rfcs/0009-operate-station-surface.md)). `free_text` is the Free text CQ's message and, with Type FD, our Field Day exchange ([autoseq.md](autoseq.md), **Field Day follows the CQ type**); there is no separate CQ free-text key.
-* **Not yet in the sheet:** the grid check against a station's references (row `I18`, RFC 0008 A4).
+* **Not yet in the sheet:** the grid check against a station's references (row `I18`, RFC 0008 A3).
 
 ### Decisions a reference app would make differently
 

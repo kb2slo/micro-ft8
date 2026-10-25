@@ -29,7 +29,7 @@ Each fact is from the code or docs at `9d0d704`.
 * **Location.** The P4 has no GPS ([main_board.md](../architecture/main_board.md)). The ADV reads GNSS from the LoRa cap ([time.md](../architecture/time.md)). The browser can use geolocation only through `geo.html` on the HTTPS release host ([webapp.md](../architecture/webapp.md), **A non-secure origin**), so **today the phone's location needs internet**.
 * **Browser storage on this origin.** `localStorage` and IndexedDB work; the Cache API and service workers do not ([webapp.md](../architecture/webapp.md)). Safari evicts script-writable storage after seven days unused ([system.md](../architecture/system.md)).
 * **Reference data already fetched online.** `map.html` loads POTA parks per country (`api.pota.app/program/parks/{prefix}`) and SOTA summits per association region, driven by the viewport; `callinfo.js` and `map.html` read live activator spots. All of it is online-only today.
-* **Device storage.** Sidekick `web` partition: LittleFS, 1.9 MB, 512 KB per file, holding the app bundle. Main boards: `storage` 3 MB LittleFS. Port A: 115200 baud, 255-byte payloads, until RFC 0007 S0 raises the rate.
+* **Device storage.** Sidekick `web` partition: LittleFS, 1.9 MB, 512 KB per file, holding the app bundle. Main boards: `storage` 3 MB LittleFS. Port A: 2.5 Mbaud, 255-byte payloads ([sidekick.md](../architecture/sidekick.md), **Port A**).
 * **`/P`.** `ft8_lib` packs a `/P` suffix as message type i3=2, grid included (`components/ft8_lib/vendor/ft8/message.c:288`).
 * **No reference goes on the air today.** An upstream convention for sending one in place of the sign-off is documented but has no code, and Backlog row `nuvm` removes its doc.
 
@@ -84,7 +84,7 @@ The rule: **whatever must work offline lives on a device; the browser only cache
 
 * **The active activation: main-board config.** Built as A1 ([webapp.md](../architecture/webapp.md), **The Station sheet**): `act_refs=POTA:US-1234,SOTA:W7O/CC-001` on the existing `CONFIG_*`/`Station.txt` path (`PORTA_CONFIG_VALUE_MAX`, 200 bytes), shared by both boards.
 * **The reference store: the sidekick** (decided 2026-09-27). It holds saved areas of POTA parks and SOTA summits, each record carrying reference, program, trimmed name, lat/lon, grid and summit points, about 60 bytes.
-  - **Why the sidekick.** Every reader is the browser (the map, the nearby list, search), and the sidekick serves the browser directly over WiFi. The main board would force every read through Port A: about 10 KB/s at 115200 baud until [RFC 0007](0007-flash-and-update.md) S0, plus new protocol messages, for data only the browser uses. The main board needs only the active references.
+  - **Why the sidekick.** Every reader is the browser (the map, the nearby list, search), and the sidekick serves the browser directly over WiFi. The main board would force every read through a second hop over Port A, plus new protocol messages, for data only the browser uses. The main board needs only the active references.
   - **Layout.** A reserved directory in the `web` partition that no bundle ships or touches (for example `data/refs/`). It holds one file per saved area plus an index of name, bounding box, date saved and count. Reads are open; saving and deleting need the pairing token ([system.md](../architecture/system.md), **Who may key the transmitter**).
   - **Budget.** The partition is 1.9 MB. The bundle takes about 470 KB since the build minifies it (650 KB of source; [webapp.md](../architecture/webapp.md), **Build**), and a bundle install briefly stages a second copy. The store is capped (for example 256 KB, about 4,000 references); the saved-areas list shows usage and refuses, with a clear message, past the cap.
   - **Filled by the map's existing fetches** (operator, 2026-09-27). `map.html` already downloads POTA parks per country and SOTA summits per association region while online (its "All" layers). **Save this area** filters what is already loaded to the view and writes it; there is no second download path. The map's live path and the store share one record format and one parser, so a stored area and a live fetch draw identically. Offline, the store is the map's POTA/SOTA source.
@@ -92,7 +92,7 @@ The rule: **whatever must work offline lives on a device; the browser only cache
   - **To confirm in code before building:** that bundle commit never removes files outside its manifest, and what boot or rehydrate does to an unmountable filesystem. A format would lose the store, which is acceptable only because it can be re-downloaded.
   - **If the cap pinches:** the sidekick's OTA slots are 3 MB for a 955 KB image (RFC 0007 §2), so a repartition could roughly double `web`. It costs a USB reflash of every sidekick, so do it only alongside another one.
 * **The browser caches** in IndexedDB, keyed by area and version, purely for speed. It is never the only copy.
-* **Why not the main board for the store:** Port A throughput and new protocol work for data only the browser reads. An earlier draft chose the main board and rejected the sidekick for lack of a partition to add. Files in the existing `web` partition need no new partition.
+* **Why not the main board for the store:** a second hop over Port A and new protocol work for data only the browser reads. An earlier draft chose the main board and rejected the sidekick for lack of a partition to add. Files in the existing `web` partition need no new partition.
 
 ### 4.3 Location and the grid check
 
@@ -140,7 +140,7 @@ Still to add:
 Offline-derived. It answers a mid-QSO question ("am I there yet?"), so it belongs on Operate, as the dock's progress line, and only while the station has references (decided 2026-09-26). Where and how it appears: [RFC 0009](0009-operate-station-surface.md) §3.10. What it computes:
 
 * QSOs counted per reference against its threshold (POTA 10, SOTA 4).
-* Unique by call, band and mode.
+* Unique by call, band and mode for a park; by call alone for a summit, since SOTA wants four different stations.
 * A countdown to 0000Z, when a POTA activation starts over.
 * A dupe cue on decode rows.
 
@@ -191,8 +191,8 @@ Accepted 2026-09-27. The slices stay listed here, under row I18, until each is n
 3. **O1:** the dock layout, home case, in three pieces: the CQ row, the dock, and the Station sheet (RFC 0009 §6).
 4. **A1: the activation and the log**, shipped 2026-09-29 ([logging.md](../architecture/logging.md)). **The top goal lands here.** Proof: `host_mock` and `webapp/tests/test_nfer_export.js` validate a record's fields and the export's n-fer expansion against the POTA/SOTA ADIF spec (§8) — a real pota.app/SOTA-database upload waits for an actual activation, per the operator's 2026-09-28 relaxation of this slice's Done-when. Field checks on the shipped mechanics (TX-arm timing, the wire version bump, the sheet's Activation section) are tracked in `TEST_PLAN.md` Pending, not this Done-when.
 5. **A2: activation status** (§4.6), as the dock's progress line. Row `xe2j`.
-6. **A4: offline phone location** (the service-worker `geo.html`) and the ADV GNSS feed (§4.3), then the grid check in the sheet. Field check: on an iPhone with cellular off, the grid fills from GNSS.
-7. **A3: the reference store on the sidekick, filled from the map's fetches** (§4.2). Also the map's Save this area, pick mode and offline layer, and the nearby list, search and unverified typed references in the add screen (§4.3; the UI is [RFC 0009](0009-operate-station-surface.md)'s). After this, **a whole activation works offline**.
+6. **A4: offline phone location** (the service-worker `geo.html`, §4.3). Row `rrsp`. Field check: on an iPhone with cellular off, the grid fills from GNSS.
+7. **A3: the reference store on the sidekick, filled from the map's fetches** (§4.2). Also the map's Save this area, pick mode and offline layer, the nearby list, search and unverified typed references in the add screen, and the grid check in the sheet (§4.3; the UI is [RFC 0009](0009-operate-station-surface.md)'s). After this, **a whole activation works offline**.
 8. **A5: P2P/S2S capture:** a partner reference on queue entries, auto-filled from spots, and the "worked on this reference today" cue (§4.4).
 9. **A6: the planning UI:** nearby, route, n-fer candidates, scheduling links (§4.7).
 
@@ -223,6 +223,8 @@ Decided by the operator, 2026-09-26:
 4. **The 2026-09-21 SOTA API decision covers bulk `summitslist.csv` downloads** from `storage.sota.org.uk` for planning.
 
 5. **The reference store lives on the sidekick, capped; the active references stay on the main board** (2026-09-27, §4.2). The store is filled from the map's own POTA/SOTA fetches.
+6. **The grid check ships with A3, not A4** (2026-10-24, §7). Until the store gives references a location it has nothing to compare: the phone's fix arrives only through Set from GPS, which sets the grid itself.
+7. **A summit counts different calls; a park counts calls unique by band and mode** (2026-10-24, §4.6). The earlier text gave POTA's rule for both.
 
 Open, deferred at acceptance (2026-09-27) to the slice that needs each:
 
