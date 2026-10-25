@@ -121,6 +121,7 @@ An unproven fix is still worth making. Pretending it is proven is not.
 
 - **Claude Opus** — strongest on judgment: defect severity (a TX-cancel bug as a safety issue), whether a row is still real work (obsolete, field-check-only, superseded-but-unbuilt). Missed stale facts that only a code check finds (a menu count, a dropped ID cited by an RFC). Flagged a row as breaking the pre-alpha rule from its text alone; the code had no such compat path (Composer made the same call).
 - **Cursor Composer (Auto)** — strongest on verification: cited `file:line` for nearly every claim, swept dangling IDs broadly, caught stale counts and a parked defect conflicting with **Fix defects in the slice**. Weaker on severity ranking; dropped a row whose remaining work was unbuilt.
+- **Claude Opus 5.5** (focused groom, 2026-10-24) — checking rows against the code found three stale facts (a row's "the QSOs tab already loads today's log", a doc's worked/new flags, an RFC's Port A speed). The one figure it quoted from an RFC without that check was itself stale; it corrected it a turn later.
 - **Claude Sonnet** — strongest on mechanical compliance (every missing Done-when, oversize row, dangling reference; the only one to catch an RFC citing a dropped row). Missed most judgment findings, and contradicted itself once against the pre-alpha rule.
 
 **Test plan matches the work too.** [TEST_PLAN.md](TEST_PLAN.md) is a ledger, not a manual, and is updated in the **same turn** as the work:
