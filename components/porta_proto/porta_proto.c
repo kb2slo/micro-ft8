@@ -410,6 +410,39 @@ bool porta_proto_parse_usb_status(const porta_frame_t *f, porta_usb_status_event
     return true;
 }
 
+// subtype | epoch(4) | freq_hz(4) | tx(1) | mode(1) | split(1)
+#define RADIO_STATE_LEN (EVENT_HEADER_LEN + 4u + 1u + 1u + 1u)
+
+size_t porta_proto_encode_radio_state(const porta_radio_state_event_t *r,
+                                      uint8_t *out, size_t out_cap)
+{
+    if (!r) {
+        return 0;
+    }
+    uint8_t payload[RADIO_STATE_LEN];
+    payload[0] = PORTA_EVT_RADIO_STATE;
+    put_u32(&payload[1], r->epoch_secs);
+    put_u32(&payload[5], r->freq_hz);
+    payload[9] = r->tx ? 1u : 0u;
+    payload[10] = r->mode;
+    payload[11] = r->split ? 1u : 0u;
+    return porta_proto_encode(PORTA_MSG_EVENT, payload, sizeof(payload), out, out_cap);
+}
+
+bool porta_proto_parse_radio_state(const porta_frame_t *f, porta_radio_state_event_t *out)
+{
+    if (!f || !out || f->type != PORTA_MSG_EVENT || f->len != RADIO_STATE_LEN ||
+        f->payload[0] != PORTA_EVT_RADIO_STATE) {
+        return false;
+    }
+    out->epoch_secs = get_u32(&f->payload[1]);
+    out->freq_hz    = get_u32(&f->payload[5]);
+    out->tx         = f->payload[9] != 0;
+    out->mode       = f->payload[10];
+    out->split      = f->payload[11] != 0;
+    return true;
+}
+
 // subtype | epoch(4) | kind(1) | range_index(1) | freq_hz(4) | swr_c(2) | reason(1)
 #define SWEEP_EVENT_LEN (EVENT_HEADER_LEN + 1u + 1u + 4u + 2u + 1u)
 

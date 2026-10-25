@@ -164,7 +164,7 @@ static void cdc_event_cb(const cdc_acm_host_dev_event_data_t *event, void * /*us
     }
 }
 
-static cat_reply_parser_t s_cat_parser = {-1, -1, -1, -1, -1, -1, -1, -1, {0}, {0}, 0, 0};
+static cat_reply_parser_t s_cat_parser = {-1, -1, -1, -1, -1, -1, -1, -1, 0, {0}, {0}, 0, 0};
 
 static bool cdc_data_cb(const uint8_t *data, size_t data_len, void* /*user_arg*/) {
     if (!data || data_len == 0) {
@@ -632,6 +632,10 @@ bool cat_cdc_get_version(char* out, size_t cap) {
     }
     snprintf(out, cap, "%s", s_cat_parser.vn);
     return true;
+}
+
+uint32_t cat_cdc_if_changes(void) {
+    return s_cat_parser.if_changes;
 }
 
 bool cat_cdc_get_parsed_if(int* hz, int* tx, int* mode, int* split) {

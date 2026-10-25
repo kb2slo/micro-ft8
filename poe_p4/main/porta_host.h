@@ -17,3 +17,4 @@ bool porta_p4_station_amp_swr_guard(void);  // handle the QMX's SWR-protection t
 int porta_p4_station_tx_min_delay_ms(void);  // least TX;-to-first-RF gap, 0..500
 void porta_p4_companion_status_tick(void);
 void porta_p4_tx_hud_tick(void);
+void porta_p4_radio_push_tick(void);

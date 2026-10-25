@@ -160,6 +160,17 @@ bool radio_control_get_version(char* out, size_t cap) {
     return ops && ops->get_version && ops->get_version(out, cap);
 }
 
+esp_err_t radio_control_set_push(bool on) {
+    const radio_control_ops_t* ops = current_ops();
+    if (!ops || !ops->set_push) return ESP_ERR_NOT_SUPPORTED;
+    return ops->set_push(on);
+}
+
+uint32_t radio_control_state_changes(void) {
+    const radio_control_ops_t* ops = current_ops();
+    return ops && ops->state_changes ? ops->state_changes() : 0;
+}
+
 bool radio_control_get_state(radio_state_t* out) {
     const radio_control_ops_t* ops = current_ops();
     return ops && ops->get_state && ops->get_state(out);

@@ -520,6 +520,43 @@ static void test_usb_status_event()
     }
 }
 
+static void test_radio_state_event()
+{
+    porta_decoder_t d;
+    porta_decoder_init(&d);
+    uint8_t buf[PORTA_PROTO_MAX_FRAME];
+
+    porta_radio_state_event_t in = {};
+    in.epoch_secs = 1789012345u;
+    in.freq_hz = 14074300u;
+    in.tx = 1;
+    in.mode = 6;
+    in.split = 1;
+    size_t n = porta_proto_encode_radio_state(&in, buf, sizeof(buf));
+    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1, "radio_state event decodes");
+    if (got.size() == 1) {
+        porta_radio_state_event_t out;
+        check(porta_proto_parse_radio_state(&got[0], &out), "radio_state event parses");
+        check(out.epoch_secs == 1789012345u, "radio_state epoch round-trips");
+        check(out.freq_hz == 14074300u, "radio_state frequency round-trips");
+        check(out.tx == 1 && out.mode == 6 && out.split == 1, "radio_state flags round-trip");
+        porta_usb_status_event_t usb;
+        check(!porta_proto_parse_usb_status(&got[0], &usb),
+              "a radio_state event is not a usb_status event");
+    }
+    in.tx = 0;
+    in.split = 0;
+    n = porta_proto_encode_radio_state(&in, buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1, "radio_state RX event decodes");
+    if (got.size() == 1) {
+        porta_radio_state_event_t out;
+        check(porta_proto_parse_radio_state(&got[0], &out) && !out.tx && !out.split,
+              "radio_state RX with split off round-trips");
+    }
+}
+
 static void test_tx_hud_event()
 {
     porta_decoder_t d;
@@ -1286,6 +1323,16 @@ static void test_event_json()
               "{\"s\":7,\"t\":1700000004,\"d\":5,\"present\":1,\"kind\":0,\"vid\":1155,\"pid\":41804}",
               "usb row");
 
+    porta_radio_state_event_t radio;
+    std::memset(&radio, 0, sizeof(radio));
+    radio.epoch_secs = 1700000004;
+    radio.freq_hz = 14074300;
+    radio.tx = 1;
+    radio.mode = 6;
+    check(porta_event_json_radio(row, sizeof(row), 10, &radio) > 0, "radio row encodes");
+    check_row(row, "{\"s\":10,\"t\":1700000004,\"d\":7,\"hz\":14074300,\"tx\":1,\"md\":6,\"sp\":0}",
+              "radio row");
+
     porta_sweep_event_t sweep;
     std::memset(&sweep, 0, sizeof(sweep));
     sweep.epoch_secs = 1700000005;
@@ -1644,6 +1691,7 @@ int main()
     test_queue_entry_event();
     test_slot_state_event();
     test_usb_status_event();
+    test_radio_state_event();
     test_sweep_event();
     test_tx_hud_event();
     test_action_set_clock();

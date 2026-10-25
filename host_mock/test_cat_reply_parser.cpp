@@ -113,6 +113,27 @@ int main()
     cat_reply_parser_reset(&parser);
     expect(parser.if_tx, -1, "reset forgets IF");
 
+    // A push (AI2;) and an answer to IF; look alike; only a reply that differs from the one before
+    // counts, and reset() does not clear the count.
+    cat_reply_parser_reset(&parser);
+    const uint32_t base = parser.if_changes;
+    feed(&parser, "IF00014074000    00000000000" "0" "6" "0" "0" "0" "0" "00" "0;");
+    expect(parser.if_changes, base + 1, "the first IF after a reset is a change");
+    feed(&parser, "IF00014074000    00000000000" "0" "6" "0" "0" "0" "0" "00" "0;");
+    expect(parser.if_changes, base + 1, "the same IF again is not");
+    feed(&parser, "IF00014074100    00000000000" "0" "6" "0" "0" "0" "0" "00" "0;");
+    expect(parser.if_changes, base + 2, "a knob turn is");
+    feed(&parser, "IF00014074100    00000000000" "1" "6" "0" "0" "0" "0" "00" "0;");
+    expect(parser.if_changes, base + 3, "TX starting is");
+    feed(&parser, "IF00014074100    00000000000" "1" "3" "0" "0" "0" "0" "00" "0;");
+    expect(parser.if_changes, base + 4, "a mode change is");
+    feed(&parser, "IF00014074100    00000000000" "1" "3" "0" "0" "1" "0" "00" "0;");
+    expect(parser.if_changes, base + 5, "split is");
+    feed(&parser, "IF0001407410;");
+    expect(parser.if_changes, base + 5, "a short IF is not");
+    cat_reply_parser_reset(&parser);
+    expect(parser.if_changes, base + 5, "reset keeps the count");
+
     // VN: the firmware version string, which survives reset() (a transmission's end calls it)
     // and goes only on forget_version().
     cat_reply_parser_reset(&parser);

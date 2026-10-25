@@ -86,7 +86,10 @@ extern "C" {
 // v9 (2026-10-24): the RADIO_READ action (ask the radio for its state, IF;) and the TX HUD's
 // not-keyed flag. An older host NAKs the action as unknown and ignores the flag. Both ends are
 // flashed together.
-#define PORTA_PROTO_VERSION 9u
+// v10 (2026-10-24): the RADIO_STATE event, pushed when the radio reports a change (AI2;). An
+// older sidekick ignores the event, so the chip only follows the radio when its panel is opened.
+// Both ends are flashed together.
+#define PORTA_PROTO_VERSION 10u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -222,6 +225,7 @@ typedef enum {
     PORTA_EVT_TX_HUD      = 0x05,  // TX HUD banner mirror: message, power/SWR, battery
     PORTA_EVT_USB_STATUS  = 0x06,  // host's own USB-C host port: a device attached or detached
     PORTA_EVT_SWEEP       = 0x07,  // SWR sweep progress: a point, a skipped band, done, aborted
+    PORTA_EVT_RADIO_STATE = 0x08,  // the radio's own report of its state changed (IF; pushed by AI2;)
 } porta_event_subtype_t;
 
 #define PORTA_EVENT_TEXT_MAX 64  // matches RX_TEXT_MAX on the host
@@ -337,6 +341,21 @@ typedef struct {
 size_t porta_proto_encode_usb_status(const porta_usb_status_event_t *u,
                                      uint8_t *out, size_t out_cap);
 bool porta_proto_parse_usb_status(const porta_frame_t *f, porta_usb_status_event_t *out);
+
+// RADIO_STATE: what the radio last said of itself, sent when it changes (a knob turn, a mode or
+// split change, TX starting or ending). The fields are IF;'s: `tx` 1 = transmitting, `mode` is
+// the MD digit, `split` 1 = on.
+typedef struct {
+    uint32_t epoch_secs;
+    uint32_t freq_hz;
+    uint8_t  tx;
+    uint8_t  mode;
+    uint8_t  split;
+} porta_radio_state_event_t;
+
+size_t porta_proto_encode_radio_state(const porta_radio_state_event_t *r,
+                                      uint8_t *out, size_t out_cap);
+bool porta_proto_parse_radio_state(const porta_frame_t *f, porta_radio_state_event_t *out);
 
 // SWEEP (docs/architecture/radio.md, The SWR sweep). One event per measured point, plus one each for a band the radio does not
 // have, the end of a sweep, and an abort. `kind` and `reason` are wire values, below.
@@ -825,6 +844,8 @@ size_t porta_event_json_usb(char *out, size_t cap, uint32_t seq,
                             const porta_usb_status_event_t *ev);
 size_t porta_event_json_sweep(char *out, size_t cap, uint32_t seq,
                               const porta_sweep_event_t *ev);
+size_t porta_event_json_radio(char *out, size_t cap, uint32_t seq,
+                              const porta_radio_state_event_t *ev);
 
 #ifdef __cplusplus
 }

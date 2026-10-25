@@ -58,10 +58,15 @@ static void parse_if(cat_reply_parser_t* parser, const char* payload, size_t len
         !digit_at(payload, kIfSplitAt, &split)) {
         return;
     }
+    const bool changed = parser->if_hz != hz || parser->if_tx != tx || parser->if_mode != mode ||
+                         parser->if_split != split;
     parser->if_tx = tx;
     parser->if_mode = mode;
     parser->if_split = split;
     parser->if_hz = hz;
+    if (changed) {
+        parser->if_changes = parser->if_changes + 1;
+    }
 }
 
 static void parse_frame(cat_reply_parser_t* parser)

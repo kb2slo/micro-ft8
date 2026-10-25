@@ -146,3 +146,17 @@ size_t porta_event_json_sweep(char *out, size_t cap, uint32_t seq,
                            ev->swr_c, ev->reason);
     return finish(out, cap, n);
 }
+
+size_t porta_event_json_radio(char *out, size_t cap, uint32_t seq,
+                              const porta_radio_state_event_t *ev)
+{
+    if (!ev) {
+        return 0;
+    }
+    const int n = snprintf(out, cap,
+                           "{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":7,"
+                           "\"hz\":%" PRIu32 ",\"tx\":%u,\"md\":%u,\"sp\":%u}",
+                           seq, ev->epoch_secs, ev->freq_hz, ev->tx ? 1u : 0u, ev->mode,
+                           ev->split ? 1u : 0u);
+    return finish(out, cap, n);
+}

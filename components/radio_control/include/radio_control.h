@@ -78,6 +78,12 @@ esp_err_t radio_control_query_version(void);
 bool radio_control_get_version(char* out, size_t cap);
 // The last IF reply; false when none has arrived since the radio's replies were last reset.
 bool radio_control_get_state(radio_state_t* out);
+// Asks the radio to push its state when it changes (QMX AI2;), or to stop (AI0;);
+// ESP_ERR_NOT_SUPPORTED where it cannot. A radio without the command ignores it.
+esp_err_t radio_control_set_push(bool on);
+// How many times the radio's reported state has changed since boot, 0 where it cannot push.
+// Compare with the count last seen, then read radio_control_get_state().
+uint32_t radio_control_state_changes(void);
 
 esp_err_t radio_control_on_audio_start(void);
 esp_err_t radio_control_sync_frequency_mode(int freq_hz);

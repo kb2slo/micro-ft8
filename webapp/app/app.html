@@ -1912,6 +1912,14 @@ function radioReadBack(cfg) {
            mode: parseInt(cfg.radio_mode, 10), split: yn(cfg.radio_split) === 'yes' };
 }
 
+// A RADIO_STATE event (d 7) in the poll's own keys, so radioReadBack() reads it unchanged.
+function applyRadioPush(cfg, e) {
+  cfg.radio_hz = String(e.hz);
+  cfg.radio_tx = e.tx ? '1' : '0';
+  cfg.radio_mode = String(e.md);
+  cfg.radio_split = e.sp ? '1' : '0';
+}
+
 // 'none' | 'unknown' | 'found' | 'ready' | 'drift' | 'lost' | 'nodecode'. The radio is "where we put it" when
 // it reports the wanted frequency, in Digi, on VFO A without split; anything else is a drift.
 function radioChipState(cfg) {
@@ -4032,6 +4040,12 @@ function applyEvent(e) {
              pw: e.pw, swr: e.swr, batt: e.batt, hz: e.hz, reason: e.reason || '', x: e.x };
     lastTxHudEventMs = Date.now();
     if (txHud.active) PskrLive.noteTx();
+  } else if (e.d === 7) {
+    // The radio told the main board its state changed (AI2;): a knob turn, a mode or split change,
+    // TX starting or ending. Put it where the poll would, so the chip follows at once; the next
+    // poll carries the same values.
+    applyRadioPush(lastCfg, e);
+    renderRadioChip(lastCfg);
   } else if (e.d === 5) {
     // Pushed the instant the main board's own USB host sees it -- not inferred from
     // cat_ready/audio_rx going stale on the next poll, and not a string match

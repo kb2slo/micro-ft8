@@ -32,6 +32,9 @@ typedef struct {
     volatile int if_tx;
     volatile int if_mode;
     volatile int if_split;
+    // Counts IF replies that differ from the one before (a push from AI2; or an answer to IF;).
+    // Never reset, so a reader that remembers the count it saw cannot lose a change to a clear.
+    volatile uint32_t if_changes;
     // VN: the radio's firmware version, such as "1_04_004"; empty until it answers. Unlike the
     // readings above, reset() leaves it: it is a fact about the radio, not about the last
     // transmission. forget_version() clears it when the radio goes.

@@ -1,3 +1,4 @@
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -148,8 +149,28 @@ static int station_freq_hz(void) {
     return (int)(s_station.band_freq[idx] * 1000.0f + 0.5f);
 }
 
+// A sync sets the radio in several commands and the radio answers each with its state (AI2;), so
+// the pushed states in between are not the radio's own doing. The push tick waits out a sync and
+// kRadioPushQuietMs after it, then sends the state the radio settled on.
+static std::atomic<int> s_syncing{0};
+static std::atomic<uint32_t> s_sync_end_ms{0};
+static constexpr uint32_t kRadioPushQuietMs = 150;
+
+static uint32_t uptime_ms() {
+    return (uint32_t)(esp_timer_get_time() / 1000);
+}
+
+struct SyncGuard {
+    SyncGuard() { s_syncing.fetch_add(1); }
+    ~SyncGuard() {
+        s_sync_end_ms.store(uptime_ms());
+        s_syncing.fetch_sub(1);
+    }
+};
+
 // nullptr = VFO updated (or already at target with CAT up). Non-null = why not.
 static const char *sync_vfo(const char *reason) {
+    SyncGuard guard;
     const int freq_hz = station_freq_hz();
     if (freq_hz <= 0) {
         return "no band frequency";
@@ -180,6 +201,10 @@ static const char *sync_vfo(const char *reason) {
     char fw[16];
     if (!radio_control_get_version(fw, sizeof(fw))) {
         (void)radio_control_query_version();
+        // The radio then sends its state when it changes; the read above and on panel open stay
+        // for firmware that does not answer AI2;. There is no AI0; here: the P4 has no clean stop
+        // to send it from, and the QMX forgets AI2; when it is power cycled.
+        (void)radio_control_set_push(true);
     }
     return nullptr;
 }
@@ -308,6 +333,33 @@ void porta_p4_companion_status_tick(void) {
     }
     memcpy(s_last_active_ids, current_ids, sizeof(uint16_t) * (size_t)filled);
     s_last_active_count = filled;
+}
+
+// The radio pushes its state when it changes (AI2;); send what it settled on as one RADIO_STATE
+// event, so the page's chip follows a knob turn at once. Coalesced to at most one per 100 ms, and
+// held back while a sync is setting the radio ourselves.
+void porta_p4_radio_push_tick(void) {
+    static uint32_t s_last_ms = 0;
+    static uint32_t s_seen = 0;
+
+    const uint32_t now_ms = uptime_ms();
+    if (now_ms - s_last_ms < 100) {
+        return;
+    }
+    s_last_ms = now_ms;
+    if (s_syncing.load() > 0 || now_ms - s_sync_end_ms.load() < kRadioPushQuietMs) {
+        return;
+    }
+    const uint32_t changes = radio_control_state_changes();
+    if (changes == s_seen) {
+        return;
+    }
+    s_seen = changes;
+    radio_state_t rs;
+    if (!radio_control_get_state(&rs)) {
+        return;  // a read of ours cleared it; its reply counts as a change and lands here again
+    }
+    porta_emit_radio_state((uint32_t)rs.freq_hz, rs.transmitting, (uint8_t)rs.mode, rs.split);
 }
 
 // Phone Operate panel TX HUD.

@@ -102,6 +102,10 @@ void porta_emit_tx_not_keyed(const char* text, int offset_hz, const char* reason
 // browser pattern-matches. `kind` is UsbCKind's own wire value.
 void porta_emit_usb_status(bool present, uint8_t kind, uint16_t vid, uint16_t pid);
 
+// The radio's own state changed (RADIO_STATE, see porta_proto.h): frequency in Hz, TX or RX, the
+// MD digit, split. Not for a state the main board set itself; the caller sends what the radio said.
+void porta_emit_radio_state(uint32_t freq_hz, bool tx, uint8_t mode, bool split);
+
 // One SWR sweep progress event (docs/architecture/radio.md, The SWR sweep): `kind` and `reason` are porta_sweep_kind_t and
 // porta_sweep_reason_t wire values. `swr_hundredths` is -1 where there is no reading.
 void porta_emit_sweep(uint8_t kind, uint8_t range_index, uint32_t freq_hz, int swr_hundredths,

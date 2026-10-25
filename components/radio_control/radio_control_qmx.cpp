@@ -246,6 +246,17 @@ static esp_err_t qmx_query_state(void) {
     return qmx_send_cmd("IF;", 50);
 }
 
+// AI2; asks the radio to send IF; unprompted whenever its state changes (frequency, mode, TX,
+// split), AI0; to stop. Firmware without AI answers "?;", which the parser ignores, and the state
+// is then read only on request.
+static esp_err_t qmx_set_push(bool on) {
+    return qmx_send_cmd(on ? "AI2;" : "AI0;", 50);
+}
+
+static uint32_t qmx_state_changes(void) {
+    return cat_cdc_if_changes();
+}
+
 static bool qmx_get_state(radio_state_t* out) {
     int hz = 0, tx = 0, mode = 0, split = 0;
     if (!cat_cdc_get_parsed_if(&hz, &tx, &mode, &split)) {
@@ -313,6 +324,8 @@ static const radio_control_ops_t k_ops = {
     .get_state = qmx_get_state,
     .query_version = qmx_query_version,
     .get_version = qmx_get_version,
+    .set_push = qmx_set_push,
+    .state_changes = qmx_state_changes,
 };
 
 const radio_control_ops_t* radio_control_qmx_get_ops(void) {

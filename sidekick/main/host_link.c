@@ -72,6 +72,7 @@ typedef enum {
     ENTRY_TX_HUD = 4,       // I28d, docs/architecture/webapp.md (Screens)
     ENTRY_USB_STATUS = 5,   // host's own USB-C host port: device attached/detached
     ENTRY_SWEEP = 6,        // SWR sweep progress (docs/architecture/radio.md)
+    ENTRY_RADIO_STATE = 7,  // the radio's own state changed (IF; pushed by AI2;)
 } entry_kind_t;
 
 typedef struct {
@@ -113,6 +114,10 @@ typedef struct {
     uint32_t sweep_hz;                        // SWEEP: POINT's frequency
     int16_t  sweep_swr_c;                     // SWEEP: SWR * 100, -1 none
     uint8_t  sweep_reason;                    // SWEEP: porta_sweep_reason_t
+    uint32_t radio_hz;                        // RADIO_STATE
+    uint8_t  radio_tx;                        // RADIO_STATE
+    uint8_t  radio_mode;                      // RADIO_STATE: the MD digit
+    uint8_t  radio_split;                     // RADIO_STATE
 } entry_t;
 
 static entry_t s_ring[RING_LEN];
@@ -301,6 +306,17 @@ static esp_err_t get_events(httpd_req_t *req)
             sw.swr_c = e.sweep_swr_c;
             sw.reason = e.sweep_reason;
             n = porta_event_json_sweep(row, sizeof(row), e.seq, &sw);
+            break;
+        }
+        case ENTRY_RADIO_STATE: {
+            porta_radio_state_event_t rs;
+            memset(&rs, 0, sizeof(rs));
+            rs.epoch_secs = e.epoch_secs;
+            rs.freq_hz = e.radio_hz;
+            rs.tx = e.radio_tx;
+            rs.mode = e.radio_mode;
+            rs.split = e.radio_split;
+            n = porta_event_json_radio(row, sizeof(row), e.seq, &rs);
             break;
         }
         case ENTRY_LOG:
@@ -1519,6 +1535,7 @@ static void porta_rx_task(void *arg)
     porta_tx_hud_event_t hud;
     porta_usb_status_event_t usb;
     porta_sweep_event_t sweep;
+    porta_radio_state_event_t radio;
     char file_name[PORTA_FILENAME_MAX + 1];
     porta_qso_entry_row_t qrow;
     uint32_t reported_crc = 0;
@@ -1598,6 +1615,14 @@ static void porta_rx_task(void *arg)
                 e.usb_pid = usb.pid;
                 ESP_LOGI("adv", "USB %s: kind=%u vid=%04x pid=%04x",
                          usb.present ? "attach" : "detach", usb.kind, usb.vid, usb.pid);
+                ring_push(&e);
+            } else if (porta_proto_parse_radio_state(&frame, &radio)) {
+                e.kind = ENTRY_RADIO_STATE;
+                e.epoch_secs = radio.epoch_secs;
+                e.radio_hz = radio.freq_hz;
+                e.radio_tx = radio.tx;
+                e.radio_mode = radio.mode;
+                e.radio_split = radio.split;
                 ring_push(&e);
             } else if (porta_proto_parse_sweep_event(&frame, &sweep)) {
                 e.kind = ENTRY_SWEEP;

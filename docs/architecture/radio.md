@@ -58,6 +58,10 @@ Measured on a QMX at firmware 1_04_003 with `tools/qmx_swr_probe.py` (2026-09-30
 * **Leaving the "Band config." menus moves the radio (unverified).** The panadapter reads each band's settings by walking those menus over CAT, and found that leaving them drops the radio on 160 m, in whatever mode the menus left (its v1.16.10, 2026-10-02); it now restores band and mode afterwards. Not tried here. Rows vu8t (the Tune % on the sweep plot) and B57 (band capability) both plan Menu Manager (`MM`/`ML`) reads of these menus, so each must put the radio back and check by read-back that it did.
 * **The radio appends terminal display codes** (`ESC[7m` and similar) after some replies; a parser must strip them and read a reply by pattern.
 
+## The radio pushes its state (`AI2;`)
+
+Bench-verified 2026-10-24, QMX 1_04_003: `AI2;` is accepted (`AI;` reads back `AI2;`) and the radio then sends `IF;` unprompted for a knob click (about every 60 ms while turning), a mode change, a VFO change, split and TX starting or ending. It also sends one after every command we set (`FR0;`, `FT0;`, `FA…;`, `TX;`, `RX;`), so a pushed `IF;` is not always the operator's doing. Replies are fragmented across USB reads, which the parser's frame buffer already joins. During Tune and an FT8 CQ the `PC;SW;` replies stayed whole and no push arrived between them, other than one `IF;` with the TX digit set right after our `TX;`. `SR;` was not exercised (1_04_003 has none). How the main board uses it: [webapp.md](webapp.md), **The radio chip and the TX banner**.
+
 ## The SWR sweep on the main board
 
 A phone page ([webapp.md](webapp.md), **The SWR sweep**) asks the main board to sweep SWR over the bands the operator ticks; the wire is Port A v4 ([sidekick.md](sidekick.md), **Port A**). **Not yet built: row vu8t (reading the Tune %).**
