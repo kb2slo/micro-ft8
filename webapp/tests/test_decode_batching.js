@@ -232,6 +232,16 @@ check('a slot retuned partway through becomes two batches with the same time, an
   assert.strictEqual(byFreq['14074'].ts, byFreq['7074'].ts);
 });
 
+check('a decode with no frequency joins its slot\'s named frequency instead of forming a second batch', () => {
+  const sb = freshSandbox();
+  sb.applyEvent(decodeEvt(1, 0.1, 900, -3, 'CQ K1ABC FN42', { si: SLOT, sl: 150, fq: 0 }));
+  sb.applyEvent(decodeEvt(2, 0.2, 1200, -8, 'CQ W2DEF FN20', { si: SLOT, sl: 150, fq: 14074000 }));
+  sb.flushDecodeBatch();
+  assert.strictEqual(sb.decodeSlots.length, 1);
+  assert.strictEqual(sb.decodeSlots[0].length, 2);
+  assert.strictEqual(sb.decodeSlots[0].freqKhz, '14074');
+});
+
 check('the next v2 slot starts a new batch without any SLOT_STATE parity flip', () => {
   const sb = freshSandbox();
   sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ K1ABC FN42', { si: SLOT, sl: 150, fq: 7074000 }));

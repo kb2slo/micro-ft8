@@ -3960,8 +3960,15 @@ function flushDecodeBatch() {
   // the host, the latest config labels the batch, as before.
   var byFreq = {};
   var order = [];
+  // A decode the host has no frequency for (fq 0: the slot began before the
+  // first tune it has on record, as after a reboot or a CAT reconnect) is not
+  // a different frequency from its slot-mates; it joins the first one the host
+  // did name, so one slot does not read as two batches under the same label.
+  var named = '0';
+  pendingDecodes.some(function (d) { if (d.fq) { named = String(d.fq); return true; } });
   pendingDecodes.forEach(function (d) {
     var k = String(d.fq || 0);
+    if (k === '0') k = named;
     if (!byFreq[k]) { byFreq[k] = []; order.push(k); }
     byFreq[k].push(d);
   });
