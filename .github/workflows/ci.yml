@@ -72,6 +72,12 @@ jobs:
       - name: Webapp activation cues test
         run: node webapp/tests/test_activation_cues.js
 
+      # Operate layout v2 (docs/architecture/webapp.md, The radio bar and Decode rows and tap to reply).
+      - name: Webapp radio bar and tap-to-reply tests
+        run: |
+          node webapp/tests/test_radio_bar.js
+          node webapp/tests/test_decode_tap.js
+
       # The n-fer export (architecture/logging.md) and the SWR sweep's plan and plot (docs/architecture/webapp.md, The SWR sweep).
       - name: Webapp n-fer export test
         run: node webapp/tests/test_nfer_export.js

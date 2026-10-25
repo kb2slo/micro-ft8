@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// The radio chip follows a pushed RADIO_STATE event (AI2;) the way it follows a poll: runs
+// The radio bar's state follows a pushed RADIO_STATE event (AI2;) the way it follows a poll: runs
 // app.html's own radioChipState(), radioReadBack() and applyRadioPush(), so a knob turn read from
-// an event drifts the chip and a return to the wanted state clears it.
+// an event drifts the state and a return to the wanted state clears it.
 'use strict';
 const vm = require('vm');
 const fs = require('fs');

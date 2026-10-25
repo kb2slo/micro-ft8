@@ -50,18 +50,18 @@ You need the main board and sidekick on their Grove cable, your QMX (tested on f
 A new or reset station is set to `YOURCALL` in grid `CM97`. Set yours before you transmit.
 
 - Tap the gear at the top right. Enter your **Call** and tick the **Bands** your QMX covers; they save as you go.
-- On **Operate**, tap **Station ›** at the bottom and enter your **Grid**; it saves when you leave the field. **Set from GPS →** uses the phone's location, and needs internet.
+- On **Operate**, tap **Band & radio** at the bottom, then **Station ›**, and enter your **Grid**; it saves when you leave the field. **Set from GPS →** uses the phone's location, and needs internet.
 
 ## 5. Check that it hears
 
-- At the top of **Operate**, **CAT** and **Audio** show ✓ once the QMX is connected (– not known yet, ✕ down).
-- Tap a band at the bottom. The QMX tunes to its FT8 frequency, the bar under the header fills every 15 seconds, and decodes arrive after each slot.
+- The bar at the bottom of **Operate** says when the QMX is ready. Tap it: **CAT** and **Audio** show ✓ once the QMX is connected (– not known yet, ✕ down).
+- Tap a band there. The QMX tunes to its FT8 frequency, the bar at the top fills every 15 seconds, and decodes arrive after each slot.
 
 ## Work some stations
 
-- *Answer a CQ:* tap **Reply** on a decode; it is offered for about 30 seconds after its slot. The station works the exchange and logs it.
+- *Answer a CQ:* tap the decode. A row you can answer ends in a blue ›, for about 30 seconds after its slot; a tap on its callsign shows the station instead. The row says **Queued**, and **Undo** takes it back for a few seconds. The station works the exchange and logs it.
 - *Call CQ:* tap **Call CQ** on the last row of the queue. It sends as many CQs as **Tries** in the Station sheet (6 to start), every other slot, then stops. Stations that answer are worked first. On the row, tap the count to change it, or the slot to move the CQ to the other one.
-- *Stop:* **Stop TX** ends the transmission on the air (**Stop CQ** also ends the CQ), and × on a queue row ends that QSO or the CQ. **Tune** sends a carrier until you tap it again.
+- *Stop:* **Stop TX**, on the bar at the bottom, ends the transmission on the air (**Stop CQ** also ends the CQ), and × on a queue row ends that QSO or the CQ. **Tune**, under the bands, sends a carrier until you tap it again.
 - Close the app or lock the phone, and the station keeps working. Open it again to see what it did.
 
 ## Your log

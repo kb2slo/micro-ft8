@@ -503,7 +503,8 @@ async function show(call, opts) {
       (heard.length
         ? heard.slice(0, 6).map(function (h) {
             return '<div class=ci-heard>' + esc(h.when) + (h.band ? ' · ' + esc(h.band) : '') +
-              ' · ' + (h.snr > 0 ? '+' : '') + h.snr + ' dB · ' + esc(h.text) + '</div>';
+              ' · ' + (h.snr > 0 ? '+' : '') + h.snr + ' dB' + (h.hz ? ' · ' + h.hz + ' Hz' : '') +
+              ' · ' + esc(h.text) + '</div>';
           }).join('')
         : 'No decodes from this callsign in the current decode history') +
       '</div>';

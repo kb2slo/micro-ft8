@@ -102,7 +102,7 @@ Each board runs `check_slot_boundary()` on every pass of its main loop. It does 
    * leaves the TX armed, so the entry goes out in its next slot once the radio answers;
    * is not tried again in that slot (`s_tx_skip_slot_idx`), and writes one `TX slot <n> skipped, not counted: <reason>` line to the console and the sidekick's log.
 
-   An encode failure is the exception: it keys nothing but still charges the try, so a message that can never encode cannot loop forever. CAT lost partway through a TX that started keyed counts as sent. The phone shows a skipped slot as Not keyed for the rest of that slot ([webapp.md](webapp.md), **The radio chip and the TX banner**).
+   An encode failure is the exception: it keys nothing but still charges the try, so a message that can never encode cannot loop forever. CAT lost partway through a TX that started keyed counts as sent. The phone shows a skipped slot as Not keyed for the rest of that slot ([webapp.md](webapp.md), **The radio bar**).
 
    A late start skips the tones it has missed, counted from the first tone's due time (see **TX timing on a QMX**, [radio.md](radio.md)). Tones are timed from the slot boundary, not from the start, so a late TX still ends on time.
 

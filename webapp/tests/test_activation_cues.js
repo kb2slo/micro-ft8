@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-// Activation cues on Operate (RFC 0009 3.10): runs the real dupe and badge functions from app.html.
-// Without references neither cue shows; a dupe is the same call, band, mode and reference (today's
-// file is the day); another band, mode or reference is not a dupe; P2P/S2S only when the program is ours.
+// Activation cues on Operate (RFC 0009 3.10): runs the real dupe, badge and progress functions from
+// app.html. Without references neither cue shows; a dupe is the same call, band, mode and reference
+// (today's file is the day); another band, mode or reference is not a dupe; P2P/S2S only when the
+// program is ours. Progress: a park counts calls unique by band and mode, a summit different calls,
+// and an n-fer record counts for each of its references.
 'use strict';
 const vm = require('vm');
 const fs = require('fs');
@@ -30,7 +32,7 @@ function extractFunction(text, name) {
 
 const sandbox = { lastCfg: {} };
 vm.createContext(sandbox);
-vm.runInContext(['parseActRefs', 'refsOverlap', 'dupeKey', 'dupeIndex', 'spotBadgeLabel', 'slotMode']
+vm.runInContext(['parseActRefs', 'refsOverlap', 'dupeKey', 'dupeIndex', 'spotBadgeLabel', 'slotMode', 'activationCounts']
   .map((n) => extractFunction(src, n)).join('\n'), sandbox);
 
 const refs = sandbox.parseActRefs({ act_refs: 'POTA:US-1234' });
@@ -56,4 +58,20 @@ assert.strictEqual(sandbox.spotBadgeLabel(sota, sandbox.parseActRefs({ act_refs:
 assert.strictEqual(sandbox.spotBadgeLabel(null, refs), '');
 assert.strictEqual(sandbox.slotMode({ lenMs: 7500 }), 'FT4');
 assert.strictEqual(sandbox.slotMode({ lenMs: 15000 }), 'FT8');
+const progress = (rs, refsStr) => sandbox.activationCounts(rs, sandbox.parseActRefs({ act_refs: refsStr }))
+  .map((c) => c.ref + ' ' + c.n + '/' + c.target).join(', ');
+const log = [
+  { call: 'W1AW', band: '20m', mode: 'FT8', my_pota_ref: 'US-1234', my_sota_ref: 'W2/XX-001' },
+  { call: 'W1AW', band: '20m', mode: 'FT8', my_pota_ref: 'US-1234', my_sota_ref: 'W2/XX-001' },
+  { call: 'W1AW', band: '40m', mode: 'FT8', my_pota_ref: 'US-1234', my_sota_ref: 'W2/XX-001' },
+  { call: 'K9XYZ', band: '20m', mode: 'FT8', my_pota_ref: 'US-1234,US-5678' },
+  { call: 'N0ABC', band: '20m', mode: 'FT8', my_pota_ref: 'US-9999' },
+];
+assert.strictEqual(progress(log, 'POTA:US-1234,POTA:US-5678,SOTA:W2/XX-001'),
+  'US-1234 3/10, US-5678 1/10, W2/XX-001 1/4',
+  'a repeat on the same band and mode counts once; another band counts for a park; an n-fer counts for each; ' +
+  'a summit counts the call once across bands; another reference does not count');
+assert.strictEqual(progress([], 'POTA:US-1234'), 'US-1234 0/10');
+assert.strictEqual(progress(log, ''), '', 'no references, no line');
+
 console.log('PASS: activation cues');

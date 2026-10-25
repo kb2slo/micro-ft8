@@ -21,7 +21,7 @@ var BANDS = [
 ];
 // Region 2 amateur allocations (ITU RR Article 5), kHz -- a sanity check,
 // not a licence check, applied only here: the main board takes any frequency
-// (webapp.md, The dock). 60m is one range spanning the US channels and the
+// (webapp.md, Band and frequency). 60m is one range spanning the US channels and the
 // WRC-15 allocation. Keyed by BANDS[].n.
 var BAND_EDGES_KHZ = {
   160: [1800, 2000], 80: [3500, 4000], 60: [5330, 5407], 40: [7000, 7300],

@@ -43,9 +43,9 @@
   color-scheme:light dark;
   --accent:#1d4ed8;        /* links, badges: .dlink, .drow .me, .frow .grid, #callInfoQrz; .dot.up's glyph */
   --accent-border:#93c5fd; /* border paired with --accent on badges */
-  --danger:#b91c1c;        /* .dlink-danger, #opTxHud .hd */
+  --danger:#b91c1c;        /* .dlink-danger, #opRadioBar.t-red */
   --danger-strong:#ff0000; /* .c-me -- decode text addressed to me; .dot.bad's glyph */
-  --warn:#b45309;          /* #opTxHud.aborted .hd; .dot.stale's glyph */
+  --warn:#b45309;          /* #opRadioBar.t-amber; .dot.stale's glyph */
   --warn-bg:#fef3c7;       /* .qs-1/2/3, #staleBanner */
   --warn-fg:#78350f;       /* .qs-1/2/3, #staleBanner */
   --good-hot:#007a00;      /* .c-cq -- brighter green, decode text for a fresh CQ; 5.5:1 on white (was #00c800, ~2.3:1; webapp.md, The CQ row) */
@@ -92,8 +92,8 @@
   --muted-strong:#a3a3a3;
 }
 /* padding-bottom reserves the fixed tab bar. border-box so the column ends
-   at the bar instead of running underneath it. The dock is Operate-only, so
-   its clearance is on #view-operate, not here. */
+   at the bar instead of running underneath it. Operate's pinned regions are
+   Operate-only, so their clearance is on #view-operate, not here. */
 body{font-family:system-ui;margin:0;height:100dvh;overflow:hidden;display:flex;flex-direction:column;box-sizing:border-box;padding-bottom:var(--tabbar-h,3.75rem);line-height:1.35;background:Canvas;color:CanvasText}
 h1{font-size:1.15rem;margin:0}
 label{display:block;font-size:.7rem;color:GrayText;text-transform:uppercase;letter-spacing:.04em;margin-top:0}
@@ -126,11 +126,11 @@ button:disabled{opacity:.45}
 #viewport{flex:1 1 auto;min-height:0;overflow:hidden;position:relative}
 #viewTrack{display:flex;height:100%;min-height:0;width:300%}
 #viewTrack>section{flex:0 0 33.3333%;width:33.3333%;height:100%;min-height:0;max-height:100%;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;-webkit-overflow-scrolling:touch}
-/* The dock covers the bottom of this strip only. Shorten the panel by
-   --dock-h (kept while the dock is hidden, so leaving Operate does not
-   resize it and clamp the decode scroll) instead of letting rows slide
-   under the dock. */
-#viewTrack>#view-operate{height:calc(100% - var(--dock-h,0px));max-height:calc(100% - var(--dock-h,0px))}
+/* Operate's pinned regions cover the top and bottom of this strip only.
+   Start the panel below the top (--optop-h) and shorten it by both (kept while
+   they are hidden, so leaving Operate does not resize it and clamp the decode
+   scroll) instead of letting rows slide under them. */
+#viewTrack>#view-operate{margin-top:var(--optop-h,0px);height:calc(100% - var(--optop-h,0px) - var(--dock-h,0px));max-height:calc(100% - var(--optop-h,0px) - var(--dock-h,0px))}
 .row{display:flex;gap:.5rem}
 .row>*{flex:1}
 .row button{margin-top:.5rem}
@@ -171,26 +171,36 @@ button:disabled{opacity:.45}
 #tabbar button.on{color:CanvasText;font-weight:700}
 #tabbar svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
-/* ---- operate: state header ---- */
-#opHeader{padding:.75rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
-#opHeader .top{display:flex;justify-content:space-between;align-items:flex-end}
+/* ---- operate: the pinned top (webapp.md, Operate's pinned regions) ---- */
+/* Inside #viewport but outside #viewTrack, so the track's transform does not
+   carry it away; #view-operate starts below it (--optop-h, layoutDock()). */
+#opTop{position:absolute;left:0;right:0;top:0;z-index:2;background:Canvas;padding:.45rem 1rem .4rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+body:not(.on-operate) #opTop{display:none}
+.slotrow{display:flex;align-items:center;gap:.6rem}
+/* E or O: the parity of the slot now. The bar's colour no longer carries it. */
+#opParity{flex:none;width:1.5rem;height:1.5rem;border-radius:.35rem;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;background:var(--accent);color:Canvas}
+#opParity.tx{background:var(--danger)}
+#opParity:empty{background:color-mix(in srgb, GrayText 30%, transparent)}
+#opActLine{margin-top:.35rem;font-family:ui-monospace,monospace;font-size:.72rem;display:flex;flex-wrap:wrap;gap:.15rem .9rem}
+#opActLine .ref{font-weight:700}
+#opActLine .cnt{color:GrayText}
+#opActLine .done .cnt{color:var(--good-fg)}
 
-/* ---- operate: slot bar (fills
-   left-to-right over the slot period, green=even/red=odd/amber=TX halted,
-   small cursor dot at the TX offset frequency) ---- */
-#opSlotBar{position:relative;height:6px;border-radius:3px;overflow:hidden;background:#141428;margin:.35rem 0 0}
-#opSlotBarFill{height:100%;width:0%;background:#1a8a1a;transition:width .2s linear,background-color .2s linear}
-#opSlotBarFill.odd{background:#a51818}
+/* ---- operate: slot bar (fills left-to-right over the slot period: accent,
+   red while we transmit, amber while TX is halted; small cursor dot at the TX
+   offset frequency) ---- */
+#opSlotBar{position:relative;flex:1;height:6px;border-radius:3px;overflow:hidden;background:#141428}
+#opSlotBarFill{height:100%;width:0%;background:#3b82f6;transition:width .2s linear,background-color .2s linear}
+#opSlotBarFill.tx{background:#dc2626}
 #opSlotBarFill.halt{background:#c98a10}
-#opSlotBarCursor{position:absolute;top:-1px;width:5px;height:8px;border-radius:1px;background:#1478c8;transition:left .2s linear}
+#opSlotBarCursor{position:absolute;top:-1px;width:5px;height:8px;border-radius:1px;background:#e5e7eb;transition:left .2s linear}
 .pill{display:inline-block;font-size:.7rem;font-weight:700;padding:.15rem .5rem;border-radius:999px}
-#opDots{display:flex;flex-wrap:wrap;row-gap:.3rem;gap:.9rem;margin-top:.6rem;font-size:.7rem;color:GrayText}
 /* Glyph, not just a color, on purpose (operator feedback: colorblind-hostile
    to signal state with a plain colored dot). Shape carries the meaning --
    check/ellipsis/cross read the same regardless of color vision; color is a
    reinforcing cue only. Default (no class) is "unknown" -- never confirmed
    good or bad, e.g. before the first successful poll. */
-.dot{display:inline-block;width:1em;text-align:center;margin-right:.3rem;font-weight:700;font-size:.85em;line-height:1;color:GrayText}
+.dot{display:inline-block;width:1em;text-align:center;margin-right:.2rem;font-weight:700;font-size:.85em;line-height:1;color:GrayText}
 .dot::before{content:"\2013"}
 .dot.up{color:var(--accent)}
 .dot.up::before{content:"\2713"}
@@ -198,57 +208,76 @@ button:disabled{opacity:.45}
 .dot.stale::before{content:"\2026"}
 .dot.bad{color:var(--danger-strong)}
 .dot.bad::before{content:"\2715"}
-#opConnRow{align-items:center}
-#opConnRow button{font-size:.85rem}
-/* The radio chip (RFC 0009 3.7): a glyph as well as a color, like .dot. */
-#opRadioChip{display:inline-flex;align-items:center;gap:.4rem;border-radius:999px;font-size:.8rem;font-weight:700;padding:.3rem .8rem;border:1px solid color-mix(in srgb, GrayText 50%, transparent);background:transparent;color:GrayText}
-#opRadioChip .glyph::before{content:"\2013"}
-#opRadioChip.ready{color:var(--accent);border-color:var(--accent)}
-#opRadioChip.ready .glyph::before{content:"\2713"}
-#opRadioChip.found,#opRadioChip.drift{color:var(--warn);border-color:var(--warn)}
-#opRadioChip.found .glyph::before,#opRadioChip.drift .glyph::before{content:"\2026"}
-#opRadioChip.drift .glyph::before{content:"!"}
-#opRadioChip.lost,#opRadioChip.nodecode{color:var(--danger-strong);border-color:var(--danger-strong)}
-#opRadioChip.lost .glyph::before,#opRadioChip.nodecode .glyph::before{content:"\2715"}
-#opRadioPanel{margin-top:.6rem;padding:.6rem .8rem;border:1px solid color-mix(in srgb, GrayText 30%, transparent);border-radius:8px;font-size:.8rem}
-#opRadioPanel dl{display:grid;grid-template-columns:auto 1fr;gap:.2rem .8rem;margin:0 0 .5rem}
-#opRadioPanel dt{color:GrayText}
-#opRadioPanel dd{margin:0}
-#opRadioPanel .row{gap:.5rem;flex-wrap:wrap}
-#opRadioTuneMeter{font-family:ui-monospace,monospace;font-size:1.4rem;font-weight:700;margin:.4rem 0}
-#opRadioNote{margin:.3rem 0;color:GrayText}
 
-/* ---- operate: TX HUD ---- */
-#opTxHud{padding:.6rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent);background:color-mix(in srgb, var(--bad) 8%, transparent)}
-#opTxHud .hd{font-size:.7rem;color:var(--danger);text-transform:uppercase;letter-spacing:.04em;font-weight:700}
-#opTxHud.aborted{background:color-mix(in srgb, var(--warn) 14%, transparent)}
-#opTxHud.aborted .hd{color:var(--warn)}
-#opTxHudText{font-family:ui-monospace,monospace;font-weight:700;font-size:1rem;margin-top:.2rem;min-height:1.2em}
-#opTxHudMeta{font-family:ui-monospace,monospace;font-size:.8rem;color:GrayText;margin-top:.15rem}
-#opTxHud.notkeyed{background:color-mix(in srgb, var(--warn) 14%, transparent)}
-#opTxHud.notkeyed .hd{color:var(--warn)}
-#opTxHud.notkeyed #opTxHudText{text-decoration:line-through;color:GrayText}
-#opTxHudBig{font-family:ui-monospace,monospace;font-size:1.6rem;font-weight:700;margin-top:.3rem}
-#opTxHudProg{height:5px;border-radius:3px;overflow:hidden;background:color-mix(in srgb, GrayText 25%, transparent);margin-top:.4rem}
-#opTxHudProgFill{height:100%;width:0%;background:var(--danger)}
-#opTxCancel{margin-top:.5rem;font-size:.8rem;padding:.35rem .7rem}
+/* ---- operate: the radio bar and its drawer (webapp.md, The radio bar) ---- */
+/* One state at a time (radioBarState()): a tone class tints it, and a glyph
+   as well as the colour says which (same reasoning as .dot). */
+#opRadioBar{display:flex;align-items:stretch;gap:.4rem;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+#rbToggle{flex:1;min-width:0;display:flex;align-items:center;gap:.7rem;border:0;border-radius:0;background:transparent;color:CanvasText;padding:.5rem 0;text-align:left;font:inherit}
+#rbChevron{flex:none;width:2.4rem;height:2.4rem;border-radius:50%;border:2px solid var(--accent);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:1rem;line-height:1}
+#rbChevron::before{content:"\2303"}
+#rbLines{flex:1;min-width:0;display:block}
+#rbMain{display:block;font-family:ui-monospace,monospace;font-weight:700;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#rbSub{display:block;font-size:.75rem;color:GrayText;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#rbSub .glyph{font-weight:700;margin-right:.25rem}
+#rbLabel{flex:none;font-size:.85rem;font-weight:700;color:var(--accent)}
+#rbStop{flex:none;align-self:center;font-size:.9rem;font-weight:700;padding:.55rem .9rem;min-height:44px;border:1.5px solid var(--danger);color:var(--danger);background:Canvas}
+#opRadioBar.t-red{background:color-mix(in srgb, var(--danger) 9%, Canvas);border-top:2px solid var(--danger)}
+#opRadioBar.t-red #rbChevron,#opRadioBar.t-red #rbLabel,#opRadioBar.t-red #rbSub{color:var(--danger);border-color:var(--danger)}
+#opRadioBar.t-amber{background:color-mix(in srgb, var(--warn) 12%, Canvas);border-top:2px solid var(--warn)}
+#opRadioBar.t-amber #rbChevron,#opRadioBar.t-amber #rbLabel,#opRadioBar.t-amber #rbSub{color:var(--warn);border-color:var(--warn)}
+#opRadioBar.t-grey #rbChevron,#opRadioBar.t-grey #rbLabel{color:GrayText;border-color:GrayText}
+#opRadioBar.open{background:color-mix(in srgb, var(--accent) 10%, Canvas);border-top:2px solid var(--accent)}
+#opRadioBar.open #rbChevron{background:var(--accent);color:Canvas;border-color:var(--accent)}
+#opRadioBar.open #rbChevron::before{content:"\2304"}
+#opRadioBar.open #rbLabel{color:var(--accent)}
+#opDrawer{padding:.6rem 0 .5rem;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent);font-size:.8rem}
+#opRadioProblem{margin-bottom:.6rem}
+#opRadioNote{margin:0 0 .4rem}
+#opRadioProblem .row{gap:.5rem;flex-wrap:wrap}
+#opRadioProblem .row button{margin-top:0;min-height:44px}
+#opFreqRow{display:flex;gap:.4rem;align-items:center;margin-top:.5rem}
+#opFreqRow button{flex:none;min-width:44px;min-height:44px;font-size:1rem;padding:.2rem .6rem}
+#opFreqInput{flex:1;min-width:0;margin-top:0;min-height:44px;text-align:center;font-family:ui-monospace,monospace;font-weight:700;font-size:1.05rem}
+#opDrawerStatus{display:flex;align-items:center;gap:.7rem;margin-top:.55rem;color:GrayText;font-size:.75rem}
+#opDrawerStatus .stationlink{margin-left:auto;font-size:.85rem;font-weight:700}
+#opRadioMore{margin-top:.45rem;color:GrayText}
+#opRadioMore .morerow{display:flex;align-items:center;gap:.4rem}
+#opRadioSummary{flex:1;min-width:0;font-size:.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#opRadioMore .morerow button{flex:none;font-size:.75rem;padding:.3rem .6rem;min-height:36px}
+#opRadioMore dl{display:grid;grid-template-columns:auto 1fr;gap:.1rem .8rem;margin:0 0 .3rem}
+#opRadioMore dd{margin:0;color:CanvasText}
+#opRadioTuneMeter{font-family:ui-monospace,monospace;font-size:1.4rem;font-weight:700;margin:.3rem 0;color:CanvasText}
+
+/* The Undo toast after a tap-to-reply (renderUndoToast()), above the bottom region. */
+#opToast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabbar-h,3.375rem) + var(--dock-h,0px) + .6rem);z-index:6;width:calc(100% - 2rem);max-width:24rem;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:.6rem;padding:.6rem .6rem .6rem 1rem;border-radius:.6rem;background:#141414;color:#fafafa;font-size:.9rem;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+#opToast button{border:0;background:transparent;color:#93c5fd;font-weight:700;font-size:.9rem;min-height:44px;padding:0 .6rem}
+body:not(.on-operate) #opToast{display:none}
+
+/* ---- operate: the pinned bottom (webapp.md, Operate's pinned regions) ---- */
+/* Fixed above the tab bar and shown only on Operate (body.on-operate): queue,
+   CQ row, tries stepper, drawer, radio bar. Outside #viewTrack, so the track's
+   transform does not carry it; layoutDock() keeps --tabbar-h and --dock-h
+   current, and #view-operate is shortened by --dock-h, so the last decode is
+   never hidden behind it. */
+#opDock{position:fixed;left:0;right:0;bottom:var(--tabbar-h,3.375rem);z-index:5;background:Canvas;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent);border-radius:14px 14px 0 0;box-shadow:0 -4px 14px rgba(0,0,0,.07)}
+#opDock .dockinner{max-width:26rem;margin:0 auto;padding:0 1rem;box-sizing:border-box}
+body:not(.on-operate) #opDock{display:none}
 
 /* ---- operate: queue ---- */
-#opQueue{border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
-/* Only the QSO rows scroll, so the CQ row below them never takes their space. */
-#opQueueRows{max-height:9.5rem;overflow-y:auto}
-#opQueue .hd{padding:.6rem 1rem .2rem;font-size:.7rem;color:GrayText;text-transform:uppercase;letter-spacing:.04em}
-.qrow{display:flex;align-items:center;gap:.5rem;padding:.4rem 1rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
-.qrow .call{font-family:ui-monospace,monospace;font-weight:700;flex:1}
+/* Only the QSO rows scroll, about two of them, so the CQ row below never takes their space. */
+#opQueueRows{max-height:5.4rem;overflow-y:auto}
+.qrow{display:flex;align-items:center;gap:.5rem;padding:.25rem 0;min-height:2.2rem;border-bottom:1px solid color-mix(in srgb, GrayText 15%, transparent)}
+.qrow .call{font-family:ui-monospace,monospace;font-weight:700}
+.qrow .qgap{flex:1}
 /* A row's count is a button: a tap opens the tries stepper (#opTriesEdit). */
-.qtries{display:block;font-size:.7rem;color:GrayText;background:transparent;padding:.05rem .35rem;margin-top:.15rem;border-color:color-mix(in srgb, GrayText 45%, transparent)}
+.qtries{display:inline-block;font-size:.7rem;color:GrayText;background:transparent;padding:.05rem .35rem;margin:0;border-color:color-mix(in srgb, GrayText 45%, transparent)}
 .qtries.custom{color:var(--accent);border-color:var(--accent)}
 .qstate{font-size:.65rem;font-weight:700;padding:.15rem .4rem;border-radius:.3rem;white-space:nowrap}
 .qs-0{background:var(--info-bg);color:var(--info-fg)}                    /* CALLING */
 .qs-1,.qs-2,.qs-3{background:var(--warn-bg);color:var(--warn-fg)}          /* REPLYING/REPORT/ROGER_REPORT */
 .qs-4,.qs-5{background:var(--good-bg);color:var(--good-fg)}                /* ROGERS/SIGNOFF */
-.qcancel{background:transparent;border:0;color:GrayText;font-size:1rem;padding:0 .2rem}
-#opQueueEmpty{padding:.6rem 1rem;font-size:.8rem;color:GrayText}
+.qcancel{background:transparent;border:0;color:GrayText;font-size:1.1rem;padding:0;min-width:36px;min-height:36px}
 
 /* ---- operate: the CQ row (webapp.md, The CQ row) ---- */
 /* Always last: below #opQueueRows' scroll box rather than inside it, so a long
@@ -258,13 +287,17 @@ button:disabled{opacity:.45}
    under an operator mid-tap the same way rebuilding #opBandGrid's buttons
    would (see buildDockBandGrid()/syncDockBandGrid()). The tries stepper
    (#opTriesEdit) is static for the same reason. */
-#opCqRow{padding:.5rem 1rem .6rem;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+#opCqRow{display:flex;align-items:center;gap:.5rem;padding:.45rem 0}
+#opCqRow .cqleft{flex:1;min-width:0}
+#cqStatusLine{display:block;font-size:.75rem;color:GrayText;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#opCqRow .cqctl{flex:none;display:flex;align-items:center;gap:.35rem}
+#cqCallBtn{font-size:.85rem;padding:.35rem .8rem;white-space:nowrap;min-height:40px}
+#cqParityBtn{font-size:.75rem;padding:.25rem .5rem;white-space:nowrap;min-height:36px}
+#cqTriesBtn{white-space:nowrap;min-height:36px}
+#cqSettingsBtn{flex:none;border:0;background:transparent;color:var(--accent);padding:0;min-width:40px;min-height:40px;display:flex;align-items:center;justify-content:center}
+#cqSettingsBtn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .cqline{display:flex;justify-content:space-between;align-items:center;gap:.5rem}
-.cqline+.cqline{margin-top:.3rem;font-size:.75rem;color:GrayText}
-#cqCallBtn{font-size:.85rem;padding:.35rem .8rem;white-space:nowrap}
-#cqParityBtn{font-size:.75rem;padding:.25rem .5rem;white-space:nowrap}
-#cqTriesBtn{display:inline-block;margin-top:0;white-space:nowrap}
-#opTriesEdit{padding:.5rem 1rem .6rem;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent);font-size:.8rem}
+#opTriesEdit{padding:.5rem 0 .6rem;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent);font-size:.8rem}
 .stepper{display:flex;align-items:center;gap:.6rem;margin-top:.4rem}
 .stepper button:not(.dlink){min-width:44px;min-height:44px;font-size:1.1rem;padding:.2rem .6rem}
 /* Two quick taps on - or + are a double-tap to iOS, which zooms the page;
@@ -274,72 +307,55 @@ button{touch-action:manipulation}
 .stepper .stepval{font-family:ui-monospace,monospace;font-weight:700;font-size:1.1rem;min-width:2.5ch;text-align:center}
 #triesWarn{margin:.4rem 0 0;color:var(--warn-fg)}
 #triesWarn button{margin-left:.4rem;font-size:.8rem;padding:.3rem .6rem}
-.cqsends{font-family:ui-monospace,monospace;font-weight:700;font-size:.85rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cqsends{display:block;font-family:ui-monospace,monospace;font-weight:700;font-size:.85rem;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* ---- operate: the dock (webapp.md, The dock) ---- */
-/* Fixed above the tab bar and shown only on Operate (body.on-operate), so band
-   is one tap however long the decode list gets. layoutDock() keeps --tabbar-h
-   and --dock-h current; #view-operate is shortened by --dock-h, so the last
-   decode is never hidden behind the dock. */
-#opDock{position:fixed;left:0;right:0;bottom:var(--tabbar-h,3.375rem);z-index:5;background:Canvas;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent)}
-#opDock .dockinner{max-width:26rem;margin:0 auto;padding:.6rem 2rem .7rem;box-sizing:border-box}
-body:not(.on-operate) #opDock{display:none}
+/* ---- operate: the drawer's band grid (webapp.md, The radio bar) ---- */
 /* Columns == band count up to 7; buildDockBandGrid() sets grid-template-columns
    to min(count,7) so an 8th+ band wraps to a second row on its own, no manual
    row-splitting logic needed. */
 .bandgrid{display:grid;gap:.4rem}
 .bandbtn{min-height:44px;font-size:.8rem;font-family:ui-monospace,monospace;background:ButtonFace;color:ButtonText;border:1px solid GrayText;border-radius:.4rem;padding:.2rem}
-.bandbtn.on{color:var(--accent);border-color:var(--accent);font-weight:700}
-.dockline{display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-top:.6rem;font-size:.8rem}
-.dockfreq{font-family:ui-monospace,monospace;font-weight:700;font-size:.9rem}
-.dockmeta{color:GrayText;font-size:.75rem;text-align:right}
-/* Above the band grid, inside the dock: opening it grows the dock upward, and
-   #view-operate shortens to match (layoutDock()). */
-#opFreqEditor{margin-bottom:.6rem}
-#opFreqEditor .row{display:flex;gap:.4rem;align-items:center;margin-top:0}
-#opFreqEditor .row+.row{margin-top:.4rem}
-#opFreqInput{flex:1;margin-top:0}
-#opFreqEditor button{font-size:.8rem;padding:.4rem .5rem}
-#opFreqEditor .freqclose{background:transparent;border:0;color:GrayText;font-size:1.3rem;line-height:1;padding:0;min-width:44px;min-height:44px}
-/* .row shares its width equally among children; here the input takes it, and
-   Set and the close button keep at least a 44 px touch target. */
-#opFreqEditor #opFreqSet,#opFreqEditor .freqclose{flex:none}
-#opFreqEditor #opFreqSet{min-width:4rem;min-height:44px}
+.bandbtn.on{color:Canvas;background:var(--accent);border-color:var(--accent);font-weight:700}
 
 /* ---- operate: decode stream ---- */
 #opDecodes{padding-bottom:.5rem}
-#dvBar{display:flex;flex-wrap:nowrap;gap:.4rem;align-items:center;padding:.2rem 1rem .4rem}
-#dvBar select,#dvBar button{font-size:.75rem;padding:.25rem .65rem;width:auto;flex:none;margin:0;border-radius:999px;border:1px solid GrayText;background:ButtonFace;color:ButtonText}
+/* The Decodes bar stays at the top of the one scrolling area. */
+#dvBar{position:sticky;top:0;z-index:1;background:Canvas;display:flex;flex-wrap:nowrap;gap:.3rem;align-items:center;padding:.45rem 1rem .45rem;border-bottom:1px solid color-mix(in srgb, GrayText 20%, transparent)}
+#dvBar .dvlabel{font-size:.65rem;color:GrayText;text-transform:uppercase;letter-spacing:.03em;font-weight:700}
+#dvBar select,#dvBar button{font-size:.75rem;padding:.25rem .5rem;width:auto;flex:none;margin:0;border-radius:999px;border:1px solid GrayText;background:ButtonFace;color:ButtonText}
 #dvBar select{appearance:none;-webkit-appearance:none}
 #dvBar button[aria-pressed=true],#dvBar select.on{background:var(--accent);border-color:var(--accent);color:Canvas;font-weight:700}
 #dvHidden{font-size:.7rem;color:GrayText;margin-left:auto;white-space:nowrap}
-#opDecodes .hd{padding:.6rem 1rem .2rem;font-size:.7rem;color:GrayText;text-transform:uppercase;letter-spacing:.04em}
-.drow{padding:.4rem 1rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
-/* DT and Hz are fixed-width, left-justified columns (each column's leading
-   character shares an x down the whole decode list). Hz's column starts
-   wide -- centered in the row, not hugging DT -- per operator direction.
-   dB is the *last* column, 1fr so it claims all remaining row width, and
-   right-justified so it lands flush at the row's right margin instead of
-   bunching up right after Hz with dead space trailing it. */
-.drow .meta{font-family:ui-monospace,monospace;font-size:.7rem;color:GrayText;display:grid;grid-template-columns:15em 5em 1fr}
-.drow .meta span:last-child{text-align:right}
-.drow-body{display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;margin-top:.1rem}
-.replyBtn.done{color:var(--accent);border-color:var(--accent)}
-.rfail{font-size:.7rem;color:var(--danger);padding:0 1rem .3rem}
-.qrow.pending{border-top-style:dashed;opacity:.75}
+#opDecodes .day{padding:.35rem 1rem .25rem;align-items:center;background:color-mix(in srgb, GrayText 7%, Canvas)}
+#opDecodes .day .ago{font-weight:400}
+/* Two lines (webapp.md, Decode rows and tap to reply): the message left, a fixed 172 px column of two
+   mono lines right (DT and SNR; grid and place, distance and bearing), then
+   the reply chevron. The whole row is the reply target when it is
+   replyable (decodeTapAction()); its callsign and grid links keep their own
+   taps. */
+.drow{display:grid;grid-template-columns:minmax(0,1fr) 172px 1rem;gap:.15rem .45rem;align-items:center;padding:.35rem 1rem;min-height:2.95rem;box-sizing:border-box;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
+.drow.tap{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.drow.tap:active{background:color-mix(in srgb, var(--accent) 8%, transparent)}
+.drow.queued{background:color-mix(in srgb, var(--accent) 9%, transparent)}
+.drow .txt{font-size:.95rem;line-height:1.25;min-width:0;overflow-wrap:anywhere}
+.drow.quiet .txt{opacity:.72}
+.drow .dcol{font-family:ui-monospace,monospace;font-size:.68rem;color:GrayText;line-height:1.45}
+.drow .dcol>div{display:flex;justify-content:space-between;gap:.3rem;white-space:nowrap}
+.drow .dcol>div>span:first-child{overflow:hidden;text-overflow:ellipsis}
+.drow .dchev{color:var(--accent);font-size:1.3rem;font-weight:700;line-height:1;text-align:center}
+.drow .rbadge{display:inline-block;margin-top:.15rem;font-size:.65rem;font-weight:700;padding:.05rem .4rem;border-radius:.3rem;background:var(--info-bg);color:var(--info-fg)}
+/* A link inside a tappable row gets a bigger hit area without moving the text. */
+.drow .callink,.drow .gridlink{padding:.45rem .15rem;margin:-.45rem -.15rem}
+.rfail{font-size:.75rem;color:var(--danger);padding:.1rem 1rem .4rem;display:flex;align-items:center;gap:.6rem}
+.rfail button{font-size:.75rem;padding:.25rem .6rem;min-height:36px}
+.qrow.pending{border-bottom-style:dashed;opacity:.75}
 .qrow.flash{background:color-mix(in srgb, var(--accent) 15%, transparent)}
-.replyBtn{flex:none;font-size:.7rem;padding:.15rem .5rem;background:ButtonFace;color:ButtonText;border:1px solid GrayText;border-radius:.3rem}
-.drow .txt{font-size:.85rem;flex:1;min-width:0}
 /* Decode-row color precedence: to_me red, else recent_qso gray,
    else cq green, else default text color. */
 .drow .txt.c-me{color:var(--danger-strong);font-weight:700}
 .drow .txt.c-recent{color:var(--muted-strong)}
 .drow .txt.c-cq{color:var(--good-hot)}
-.drow .me{font-size:.65rem;font-weight:700;color:var(--accent);border:1px solid var(--accent-border);border-radius:.3rem;padding:0 .3rem;margin-left:.3rem}
-/* Exactly two fields (their grid, our distance/bearing to them) -- plain
-   flex space-between is already stable full-width left/right with only
-   two items (no middle item to drift, unlike the 3-field .meta above). */
-.ddist{font-size:.7rem;color:GrayText;font-family:ui-monospace,monospace;margin-top:.1rem;display:flex;justify-content:space-between}
+.drow .me{font-size:.65rem;font-weight:700;color:var(--accent);border:1px solid var(--accent-border);border-radius:.3rem;padding:0 .3rem;margin-left:.3rem;white-space:nowrap}
 .dslotdiv{border-top:2px dashed color-mix(in srgb, GrayText 45%, transparent);margin:.35rem 1rem}
 
 /* ---- log ---- */
@@ -478,97 +494,25 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
   <p id=m></p>
 
 <div id=viewport>
+<!-- Operate's pinned top (webapp.md, Operate's pinned regions): the slot bar with the parity of the
+     slot now, and at an activation each reference against its target. Outside
+     #viewTrack for the reason #opDock is: the track slides with a transform. -->
+<div id=opTop>
+  <div class=slotrow>
+    <span id=opParity aria-label="Slot parity"></span>
+    <div id=opSlotBar>
+      <div id=opSlotBarFill></div>
+      <div id=opSlotBarCursor hidden></div>
+    </div>
+  </div>
+  <div id=opActLine hidden></div>
+</div>
 <div id=viewTrack>
   <!-- ================= OPERATE ================= -->
   <section id=view-operate>
-    <div id=opHeader>
-      <div id=opSlotBar>
-        <div id=opSlotBarFill></div>
-        <div id=opSlotBarCursor hidden></div>
-      </div>
-      <div id=opDots>
-        <span><span id=dotCat class=dot></span>CAT</span>
-        <span><span id=dotAudio class=dot></span>Audio</span>
-        <span title="PORTA link quality (CRC errors / dropped frames) -- see Settings for the raw counts"><span id=dotLink class=dot></span>Link</span>
-        <span title="Decodes in the last 5 minutes -- is the band actually alive right now">Decodes <span id=decodeRateCount>—</span></span>
-      </div>
-      <div id=opConnRow class=row>
-        <button id=opRadioChip type=button class=chip aria-expanded=false aria-controls=opRadioPanel>
-          <span class=glyph aria-hidden=true></span><span id=opRadioChipText>No radio</span>
-        </button>
-      </div>
-      <!-- The radio chip's details (RFC 0009 3.7). What it holds depends on the chip's state;
-           renderRadioChip() fills it. Tune lives here, not in the header. -->
-      <div id=opRadioPanel hidden>
-        <dl id=opRadioRows></dl>
-        <div id=opRadioNote></div>
-        <div id=opRadioTuneMeter hidden></div>
-        <div class=row>
-          <button id=opRadioRetune type=button disabled hidden>Retune VFO</button>
-          <button id=opRadioUse type=button disabled hidden>Use it</button>
-          <button id=opTune type=button disabled>Tune: Off</button>
-        </div>
-      </div>
-    </div>
-
-    <div id=opTxHud hidden>
-      <div class=hd>Transmitting</div>
-      <div id=opTxHudText></div>
-      <div id=opTxHudMeta></div>
-      <div id=opTxHudBig hidden></div>
-      <div id=opTxHudProg hidden><div id=opTxHudProgFill></div></div>
-      <!-- Retired from /log's viewer.html (the one control there that wasn't
-           otherwise replicated here) -- a manual abort for a stuck or
-           errant TX, not just the automatic band-change cancel changeBand()
-           already fires. Same /api/tx/cancel, gated the same way every
-           other write is (enableWrites()). Label is set live by
-           renderTxHud(): "Stop CQ" while this TX is our own CQ (webapp.md,
-           The CQ row), which also ends the CQ; "Stop TX" otherwise,
-           cancelling only this transmission. -->
-      <button id=opTxCancel type=button disabled>Stop TX</button>
-    </div>
-
-    <div id=opQueue>
-      <div class=hd>Queue</div>
-      <div id=opQueueEmpty>No active QSOs</div>
-      <div id=opQueueRows></div>
-      <!-- Always present (webapp.md, The CQ row): Call CQ when no CQ is queued;
-           otherwise the queued CQ, with its parity, its tries and its x. See
-           the CSS comment above #opCqRow for why this is static markup rather
-           than part of opQueueRows. -->
-      <div id=opCqRow>
-        <div class=cqline>
-          <span id=cqSendsText class="cqsends callink">—</span>
-          <button id=cqCallBtn type=button disabled>Call CQ</button>
-          <button id=cqParityBtn type=button disabled hidden>Even</button>
-          <button id=cqTriesBtn type=button class=qtries disabled hidden></button>
-          <button id=cqCancelBtn type=button class=qcancel disabled hidden>&times;</button>
-        </div>
-        <div class=cqline>
-          <span id=cqStatusLine>Not calling</span>
-          <button id=cqSettingsBtn type=button class=dlink>Settings &rsaquo;</button>
-        </div>
-      </div>
-      <!-- The tries stepper for one queue entry (webapp.md, Tries on a queue
-           row), opened from a row's count. -->
-      <div id=opTriesEdit hidden>
-        <div class=cqline>
-          <span id=triesEditWho></span>
-          <button id=triesEditDone type=button class=dlink>Done</button>
-        </div>
-        <div class=stepper>
-          <button id=triesDown type=button disabled>&minus;</button>
-          <span id=triesValue class=stepval></span>
-          <button id=triesUp type=button disabled>+</button>
-          <button id=triesDefault type=button class=dlink disabled>Use default</button>
-        </div>
-        <p id=triesWarn hidden><span id=triesWarnText></span><button id=triesEnd type=button disabled>End it</button></p>
-      </div>
-    </div>
-
     <div id=opDecodes>
-      <div class=hd>Decodes &middot; tap a callsign for info</div>
       <div id=dvBar>
+        <span class=dvlabel>Decodes</span>
         <select id=dvSort aria-label="Sort within each slot">
           <option value=default>Sort</option>
           <option value=snr>Strongest</option>
@@ -729,7 +673,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     </div>
     <p class=setnote>An amplifier that picks its filter from the RF it senses can trip the QMX's SWR protection on the first transmission on a new band, and the QMX then sends nothing until it is cleared. On: the main board clears the lock and sends that message again in its next slot. A second trip in a row ends your CQ and cancels your QSOs until you call CQ, reply or press Tune. Needs QMX firmware 1_04_004 or later.</p>
     <div class=hd>Bands</div>
-    <p class=setnote>Which bands appear. Band and frequency are set from Operate's dock.</p>
+    <p class=setnote>Which bands appear. Band and frequency are set from Operate's radio bar.</p>
     <div id=bandList></div>
     <div class=setrow>
       <label>Protocol
@@ -832,7 +776,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 
 <!-- ================= STATION SHEET ================= -->
 <!-- docs/architecture/webapp.md ("The Station sheet"): opened
-     from the CQ row's Settings > and the dock's Station >. Each control here
+     from the CQ row's gear and the radio drawer's Station >. Each control here
      writes its own key with putConfigLine() the moment it changes -- there is
      no Save button -- which is exactly why Settings' own FIELDS (below) drops
      these keys: an all-keys Settings save must never overwrite a value one of
@@ -916,30 +860,106 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
   </div>
 </div>
 
-<!-- The dock (webapp.md, The dock): band grid and frequency, pinned above the
+<!-- Operate's pinned bottom (webapp.md, Operate's pinned regions): the queue, the CQ row, the radio bar and its drawer, above the
      tab bar and shown only on Operate. Outside #viewTrack on purpose: the track
      slides with a transform, which would be the containing block for a fixed
-     descendant, so the dock would slide away with the panel. -->
+     descendant, so this would slide away with the panel. -->
 <div id=opDock>
   <div class=dockinner>
-    <div id=opFreqEditor hidden>
-      <div class=row>
-        <input id=opFreqInput type=number step=0.1 inputmode=decimal enterkeyhint=done placeholder="MHz or kHz">
-        <button id=opFreqSet type=button disabled>Set</button>
-        <button id=opFreqClose type=button class=freqclose aria-label="Close the frequency editor">&times;</button>
+    <div id=opQueue>
+      <div id=opQueueRows></div>
+      <!-- Always present (webapp.md, The CQ row): Call CQ when no CQ is queued;
+           otherwise the queued CQ, with its parity, its tries and its x. See
+           the CSS comment above #opCqRow for why this is static markup rather
+           than part of opQueueRows. -->
+      <div id=opCqRow>
+        <div class=cqleft>
+          <span id=cqSendsText class="cqsends callink">—</span>
+          <span id=cqStatusLine>Not calling</span>
+        </div>
+        <div class=cqctl>
+          <button id=cqCallBtn type=button disabled>Call CQ</button>
+          <button id=cqParityBtn type=button disabled hidden>Even</button>
+          <button id=cqTriesBtn type=button class=qtries disabled hidden></button>
+          <button id=cqCancelBtn type=button class=qcancel disabled hidden aria-label="End the CQ">&times;</button>
+        </div>
+        <button id=cqSettingsBtn type=button aria-label="CQ settings">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 01-4 0v-.09A1.7 1.7 0 009 19.4a1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.7 1.7 0 004.6 15a1.7 1.7 0 00-1.55-1H3a2 2 0 010-4h.09A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06A1.7 1.7 0 009 4.6a1.7 1.7 0 001-1.55V3a2 2 0 014 0v.09A1.7 1.7 0 0015 4.6a1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06A1.7 1.7 0 0019.4 9a1.7 1.7 0 001.55 1H21a2 2 0 010 4h-.09a1.7 1.7 0 00-1.55 1z"/></svg>
+        </button>
       </div>
-      <div class=row>
-        <button id=opFreqDown type=button disabled>&minus;1 kHz</button>
-        <button id=opFreqStd type=button disabled>Standard</button>
-        <button id=opFreqUp type=button disabled>+1 kHz</button>
+      <!-- The tries stepper for one queue entry (webapp.md, Tries on a queue
+           row), opened from a row's count. -->
+      <div id=opTriesEdit hidden>
+        <div class=cqline>
+          <span id=triesEditWho></span>
+          <button id=triesEditDone type=button class=dlink>Done</button>
+        </div>
+        <div class=stepper>
+          <button id=triesDown type=button disabled>&minus;</button>
+          <span id=triesValue class=stepval></span>
+          <button id=triesUp type=button disabled>+</button>
+          <button id=triesDefault type=button class=dlink disabled>Use default</button>
+        </div>
+        <p id=triesWarn hidden><span id=triesWarnText></span><button id=triesEnd type=button disabled>End it</button></p>
       </div>
     </div>
-    <div id=opBandGrid class=bandgrid></div>
-    <div class=dockline>
-      <button id=opDockFreqBtn type=button class="dlink dockfreq">&mdash;</button>
-      <button id=opDockMetaBtn type=button class="dlink dockmeta">&mdash;</button>
+
+    <!-- The radio bar's drawer (webapp.md, The radio bar): a problem's actions
+         first, then band, frequency, the status line and the rest of what the
+         radio said. Opens above the bar. -->
+    <div id=opDrawer hidden>
+      <div id=opRadioProblem hidden>
+        <p id=opRadioNote></p>
+        <div class=row>
+          <button id=opRadioRetune type=button disabled hidden>Retune VFO</button>
+          <button id=opRadioUse type=button disabled hidden>Use it</button>
+        </div>
+      </div>
+      <div id=opBandGrid class=bandgrid></div>
+      <div id=opFreqRow>
+        <button id=opFreqDown type=button disabled aria-label="Down 1 kHz">&minus;</button>
+        <input id=opFreqInput type=number step=0.001 inputmode=decimal enterkeyhint=done aria-label="Frequency, MHz or kHz" placeholder="MHz or kHz">
+        <button id=opFreqUp type=button disabled aria-label="Up 1 kHz">+</button>
+        <button id=opFreqSet type=button disabled>Set</button>
+      </div>
+      <div id=opDrawerStatus>
+        <span><span id=dotCat class=dot></span>CAT</span>
+        <span><span id=dotAudio class=dot></span>Audio</span>
+        <span title="PORTA link quality (CRC errors / dropped frames) -- see Settings for the raw counts"><span id=dotLink class=dot></span>Link</span>
+        <span title="Decodes in the last 5 minutes -- is the band actually alive right now"><span id=decodeRateCount>—</span></span>
+        <button id=opStationBtn type=button class="dlink stationlink">Station &rsaquo;</button>
+      </div>
+      <div id=opRadioMore>
+        <dl id=opRadioRows></dl>
+        <div class=morerow>
+          <span id=opRadioSummary></span>
+          <button id=opRadioRetuneReady type=button disabled hidden>Retune VFO</button>
+          <button id=opTune type=button disabled hidden>Tune: Off</button>
+        </div>
+        <div id=opRadioTuneMeter hidden></div>
+      </div>
+    </div>
+
+    <div id=opRadioBar class=t-grey>
+      <button id=rbToggle type=button aria-expanded=false aria-controls=opDrawer>
+        <span id=rbChevron aria-hidden=true></span>
+        <span id=rbLines>
+          <span id=rbMain>&mdash;</span>
+          <span id=rbSub><span class=glyph aria-hidden=true></span><span id=rbSubText>No radio</span></span>
+        </span>
+        <span id=rbLabel>Band &amp; radio</span>
+      </button>
+      <!-- Its own tap target, never the drawer toggle: Stop CQ while our CQ is
+           on the air (it also ends the CQ, webapp.md, The CQ row), Stop TX
+           during a QSO message, Stop Tune while tuning. -->
+      <button id=rbStop type=button disabled hidden>Stop TX</button>
     </div>
   </div>
+</div>
+
+<div id=opToast role=status hidden>
+  <span id=opToastText></span>
+  <button id=opToastUndo type=button>Undo</button>
 </div>
 
 <nav id=tabbar>
@@ -1284,7 +1304,7 @@ document.getElementById('navSettings').onclick = openSettings;
 document.getElementById('settingsOverlayBack').onclick = closeSettings;
 
 // ===================== the Station sheet (webapp.md, The Station sheet) ====
-// Opened from the CQ row's Settings > and the dock's Station >. Same overlay
+// Opened from the CQ row's gear and the radio drawer's Station >. Same overlay
 // mechanics as Settings above -- see that CSS rule -- and its own fields are
 // populated by setStationSheetForm() below, called from setForm() alongside
 // the rest so a reload after any write (this sheet's own, or a plain
@@ -1363,8 +1383,8 @@ function bandFreq(cfg, idx) {
 // parseActiveBands() lives in bands.js (shared with swr.html).
 
 // One row per band: a checkbox for active_bands membership only. Band and
-// frequency (band_sel, band<N>/ft4_band<N>) left Settings for the dock's
-// band grid and frequency editor (webapp.md, The dock).
+// frequency (band_sel, band<N>/ft4_band<N>) left Settings for the radio
+// drawer's band grid and frequency row (webapp.md, Band and frequency).
 function buildBandRows(cfg) {
   var parsed = parseActiveBands(cfg.active_bands);
   var container = document.getElementById('bandList');
@@ -1410,7 +1430,7 @@ function khzToMhzLabel(khz) {
   return s.slice(-1) === '0' ? s.slice(0, -1) : s;
 }
 
-// The dock's band grid (webapp.md, The dock): one button per active band, up to
+// The drawer's band grid (webapp.md, Band and frequency): one button per active band, up to
 // seven columns -- an 8th+ band wraps to a second row on its own (see the
 // .bandgrid CSS comment). Rebuilds the buttons themselves; only called at
 // boot/after an explicit action (setForm()), never the periodic poll -- same
@@ -1446,62 +1466,58 @@ function syncDockBandGrid(cfg) {
     btn.classList.toggle('on', btn.dataset.i === cur);
   });
 }
-// The dock is fixed above the tab bar (see its CSS). --tabbar-h shortens the
-// page column; --dock-h shortens #view-operate. A hidden dock reports 0; keep
-// the last real height so leaving Operate does not resize that panel and
-// clamp the decode list's scroll position. The height changes with a second
-// band row or the open frequency editor.
+// Operate's pinned regions (webapp.md): #opTop sits at the top of
+// #viewport and #opDock is fixed above the tab bar (see their CSS).
+// --tabbar-h shortens the page column; --optop-h and --dock-h place and
+// shorten #view-operate. A hidden region reports 0; keep the last real height
+// so leaving Operate does not resize that panel and clamp the decode list's
+// scroll position. The heights change with the queue, the tries stepper, the
+// drawer, a second band row and the activation line.
 function layoutDock() {
   var root = document.documentElement.style;
   root.setProperty('--tabbar-h', document.getElementById('tabbar').offsetHeight + 'px');
   var dockH = document.getElementById('opDock').offsetHeight;
   if (dockH) root.setProperty('--dock-h', dockH + 'px');
+  var topH = document.getElementById('opTop').offsetHeight;
+  if (topH) root.setProperty('--optop-h', topH + 'px');
 }
 if (window.ResizeObserver) {
   var dockResize = new ResizeObserver(layoutDock);
   dockResize.observe(document.getElementById('opDock'));
+  dockResize.observe(document.getElementById('opTop'));
   dockResize.observe(document.getElementById('tabbar'));
 }
 window.addEventListener('resize', layoutDock);
 layoutDock();
 
+// A band is two taps: open the drawer, tap the band. The drawer closes once
+// the change goes ahead; a declined confirmation leaves it open.
 document.getElementById('opBandGrid').onclick = function (ev) {
   var btn = ev.target.closest('.bandbtn');
   if (!btn || btn.disabled) return;
-  changeBand(btn.dataset.i);
+  if (changeBand(btn.dataset.i)) setDrawerOpen(false);
 };
 
-// The TX offset setting as the dock line shows it: offset_src 0 is Random,
-// 1 is RX, 2 is Fixed at cfg.offset (the Settings select's values).
-function offsetSettingLabel(cfg) {
-  var src = parseInt(cfg.offset_src, 10);
-  if (src === 0) return 'Random offset';
-  if (src === 1) return 'RX offset';
-  return (cfg.offset !== undefined && cfg.offset !== null && cfg.offset !== '') ? cfg.offset + ' Hz' : '—';
-}
-
-// The dock's second line: the frequency, then "Tries N · <offset> ·
-// Station ›", a preview of the Station settings that part of the line opens
-// (operator decision 2026-09-28: the setting, not the armed TX's offset,
-// which the TX banner shows).
-function renderDockLine(cfg) {
+// The drawer's frequency field shows the operating frequency, except while the
+// operator is editing it: a poll never overwrites a value being typed.
+var freqDirty = false;
+function syncFreqInput(cfg) {
+  var input = document.getElementById('opFreqInput');
+  if (freqDirty || document.activeElement === input) return;
   var khz = currentDockFreqKhz(cfg);
-  document.getElementById('opDockFreqBtn').textContent =
-    (khz != null ? khzToMhzLabel(khz) + ' MHz' : '—') + ' ›';
-  var tries = (cfg.tries !== undefined && cfg.tries !== null) ? cfg.tries : '—';
-  document.getElementById('opDockMetaBtn').textContent =
-    'Tries ' + tries + ' · ' + offsetSettingLabel(cfg) + ' · Station ›';
+  input.value = khz != null ? khzToMhzLabel(khz) : '';
 }
+document.getElementById('opFreqInput').addEventListener('input', function () { freqDirty = true; });
 
 function setForm(cfg) {
   // Rebuilding while the operator has a control open would yank it out from
   // under them -- same reason loadConfig() only ever runs at boot or right
   // after an explicit action, never on the periodic poll (see
   // pollLiveStatus()/applyOperateLive() below). Same reasoning covers
-  // rebuilding the band checkboxes and the dock's band grid.
+  // rebuilding the band checkboxes and the drawer's band grid.
   buildBandRows(cfg);
   buildDockBandGrid(cfg);
-  renderDockLine(cfg);
+  syncFreqInput(cfg);
   setStationSheetForm(cfg);
   FIELDS.forEach(function (k) {
     var el = document.getElementById(k);
@@ -1639,7 +1655,7 @@ document.getElementById('actRefAddBtn').onclick = function () {
 // Each control below writes its own key the moment it changes (webapp.md,
 // The Station sheet) -- no Save button for this sheet. putConfigLine()
 // reloads the whole station on success or failure either way, which is what
-// brings every field here (and the CQ row's Sends text, and the dock line)
+// brings every field here (and the CQ row's Sends text, and the radio bar)
 // back in sync with what the station actually holds.
 // A press on a stepper button steps once, then repeats while it is held
 // (after 450 ms, every 100 ms). The pointer events do the stepping so a
@@ -1675,8 +1691,8 @@ document.getElementById('cq_type').onchange = function () {
 document.getElementById('free_text').onchange = function () {
   sheetPutLine('free_text=' + this.value, 'Setting CQ text…');
 };
-// Malformed input is refused client-side, in a dialog, same as the dock's
-// frequency editor (webapp.md, The dock) -- station_parse() would otherwise
+// Malformed input is refused client-side, in a dialog, same as the drawer's
+// frequency row (webapp.md, Band and frequency) -- station_parse() would otherwise
 // just silently keep the old grid (StationKey::Grid in
 // components/station/station.cpp) and report the write as ok anyway.
 document.getElementById('grid').onchange = function () {
@@ -1868,17 +1884,18 @@ function updateApInfo(cfg) {
   }
 }
 
-// Operate's header and dock: CAT/audio/link dots, Connect/Tune labels, and
-// the dock's band grid/frequency line. Safe to call on every poll tick --
-// never touches Settings' inputs, and never rebuilds the band grid's
-// *buttons* (that only happens in setForm(), same reasoning as the comment
-// there: rebuilding while the operator has a control open would yank it out
-// from under them). syncDockBandGrid() only re-classes the already-built
-// buttons, which is what makes a band changed some other way than this page show up here without a reload. renderDockLine() reruns for
-// the same reason: its Tries/frequency text can change from either side
-// too. One gap this doesn't close: if the device also changed active_bands
-// so the new band isn't among the buttons already built, the highlight
-// silently fails to apply until the next full setForm().
+// applyOperateLive(), below: Operate's live state -- the radio bar, the
+// drawer's CAT/audio/link dots, band grid and frequency field. Safe to call on
+// every poll tick -- never touches Settings' inputs, and never rebuilds the
+// band grid's *buttons* (that only happens in setForm(), same reasoning as the
+// comment there: rebuilding while the operator has a control open would yank
+// it out from under them). syncDockBandGrid() only re-classes the
+// already-built buttons, which is what makes a band changed some other way
+// than this page show up here without a reload; syncFreqInput() refreshes the
+// frequency unless it is being edited. One gap this doesn't close: if the
+// device also changed active_bands so the new band isn't among the buttons
+// already built, the highlight silently fails to apply until the next full
+// setForm().
 // Space left on the main board's log storage, from the live storage_*_kb lines. Hidden while the
 // main board has not said (not answering, or USB mass storage has the filesystem). Turns red
 // under 10% free, when the daily logs are close to filling it.
@@ -1893,7 +1910,7 @@ function updateLogFree(cfg) {
   el.hidden = false;
 }
 
-// ===================== Operate: the radio chip (RFC 0009 3.7) =====================
+// ===================== Operate: radio state (webapp.md, The radio bar) =====================
 
 // The last USB_STATUS event: {present, kind, vid, pid}, or null before any. Pushed the instant the
 // main board's USB host sees a device, so Found shows before CAT opens.
@@ -1947,21 +1964,162 @@ function fmtRadioFirmware(vn) {
 
 function fmtHzMHz(hz) { return (hz / 1e6).toFixed(4).replace(/0+$/, '').replace(/\.$/, '.0'); }
 
-function renderRadioChip(cfg) {
-  var st = radioChipState(cfg);
-  var chip = document.getElementById('opRadioChip');
-  chip.className = 'chip ' + st;
-  var band = cfg.band_name && cfg.band_name !== '?' ? cfg.band_name : '';
-  var text = { none: 'No radio', unknown: 'Unknown USB', found: 'Found · syncing',
-               ready: 'Ready' + (band ? ' · ' + band : ''), drift: 'Radio moved',
-               lost: 'CAT lost', nodecode: 'Not decoding' }[st];
-  document.getElementById('opRadioChipText').textContent = text;
+// ===================== Operate: the radio bar (webapp.md, The radio bar) =====================
+// One state at a time, highest first:
+//   1. on the air: Transmitting (or Tuning), red, with power and SWR, and Stop as its own target;
+//   2. a transmission that did not go: SWR protection tripped (once, or twice in a row), TX
+//      aborted for another reason, or Not keyed;
+//   3. a radio problem from radioChipState();
+//   4. ready.
+// CAT lost while a transmission is on the air keeps Transmitting, so Stop stays where the
+// operator's thumb is, and the sub-line says CAT is lost (decided 2026-10-25).
+// chip: radioChipState()'s answer. hud: the last TX HUD event, or null. ctx: {tune (Tune is on),
+// ourCq (txIsOurCq()), band, freq ("14.074"), radio ("QMX"), swrTrips (tripped transmissions in a
+// row, noteTxHud()), act (" · 3 refs · 0000Z 3h12m" or ''), wantMHz (the drift's reading)}.
+// Returns {state, tone: 'red'|'amber'|'grey'|'quiet', main, sub, glyph, label, stop}; stop is the
+// Stop button's text, '' when there is nothing on the air to stop.
+function radioBarState(chip, hud, ctx) {
+  var where = (ctx.band || '—') + ' · ' + (ctx.freq ? ctx.freq + ' MHz' : '—');
+  var radio = ctx.radio || 'Radio';
+  var on = hud && hud.active;
+  if (on && !hud.aborted && !hud.nk) {
+    var tuning = ctx.tune || hud.x === 'TUNE';
+    var meter = hud.wrblk ? 'Write blocked'
+      : (hud.pw > -1 ? (hud.pw / 10).toFixed(1) + ' W' : '— W') + ' · ' +
+        (hud.swr > -1 ? 'SWR ' + (hud.swr / 100).toFixed(2) : 'SWR —');
+    var bits = [tuning ? 'Tuning' : (hud.x || 'Transmitting')];
+    if (hud.hz) bits.push(hud.hz + ' Hz');
+    if (ctx.band) bits.push(ctx.band);
+    if (hud.batt > -1) bits.push(hud.batt + '%' + (hud.batt <= 20 ? ' battery low' : ' battery'));
+    if (chip === 'lost') bits.push('CAT lost');
+    return { state: tuning ? 'tune' : 'tx', tone: 'red', main: meter, sub: bits.join(' · '), glyph: '●',
+             label: '', stop: tuning ? 'Stop Tune' : (ctx.ourCq ? 'Stop CQ' : 'Stop TX') };
+  }
+  if (on && /swr/i.test(hud.reason || '')) {
+    if ((ctx.swrTrips | 0) >= 2 || hud.nk) {
+      return { state: 'trip2', tone: 'red', main: 'Stopped: SWR tripped twice',
+               sub: 'CQ ended · queue cleared · check the antenna', glyph: '✕', label: 'Radio ›', stop: '' };
+    }
+    return { state: 'trip', tone: 'red', main: 'SWR protection tripped',
+             sub: 'Stopped, not sent · ' + (String(hud.x || '').trim().split(/\s+/)[0] || 'it') +
+               ' tries next slot', glyph: '✕', label: 'Radio ›', stop: '' };
+  }
+  if (on && hud.aborted) {
+    return { state: 'aborted', tone: 'red', main: 'TX aborted', sub: hud.reason || 'unknown reason',
+             glyph: '✕', label: 'Radio ›', stop: '' };
+  }
+  if (on && hud.nk) {
+    return { state: 'notkeyed', tone: 'amber', main: 'Not keyed',
+             sub: 'Not counted: ' + (hud.reason || 'could not key') + (hud.x ? ' · ' + hud.x : ''),
+             glyph: '!', label: 'Radio ›', stop: '' };
+  }
+  // Not on the air, but the last two transmissions tripped: the main board has ended the CQ and
+  // the queue and stays stopped until the operator calls CQ, replies or tunes (radio.md, SWR
+  // protection trips on a QMX), so the bar keeps saying so until the next transmission.
+  if ((ctx.swrTrips | 0) >= 2) {
+    return { state: 'trip2', tone: 'red', main: 'Stopped: SWR tripped twice',
+             sub: 'CQ ended · queue cleared · check the antenna', glyph: '✕', label: 'Radio ›', stop: '' };
+  }
+  var problem = {
+    found: { tone: 'amber', sub: radio + ' found · syncing', glyph: '…', label: 'Band & radio' },
+    drift: { tone: 'amber', sub: 'Radio is on ' + (ctx.wantMHz || 'another frequency') + ' · tap to fix', glyph: '!', label: 'Review ›' },
+    lost: { tone: 'red', sub: 'CAT lost · cannot retune', glyph: '✕', label: 'Radio ›' },
+    nodecode: { tone: 'red', sub: 'Not decoding · the decoder could not start', glyph: '✕', label: 'Radio ›' },
+    unknown: { tone: 'grey', sub: 'Unknown USB device', glyph: '?', label: 'Radio ›' },
+    none: { tone: 'grey', sub: 'No radio', glyph: '–', label: 'Radio ›' }
+  }[chip];
+  if (problem) {
+    return { state: chip, tone: problem.tone, main: chip === 'none' ? (ctx.band || '—') + ' · —' : where,
+             sub: problem.sub, glyph: problem.glyph, label: problem.label, stop: '' };
+  }
+  return { state: 'ready', tone: 'quiet', main: where, sub: radio + ' ready' + (ctx.act || ''), glyph: '✓',
+           label: 'Band & radio', stop: '' };
+}
 
+// Counts SWR-tripped transmissions in a row, as the main board does (components/swr_trip): a
+// transmission that ends without a trip resets it, a trip adds one, and the count is kept per
+// transmission, not per event (the HUD repeats every ~500 ms). hud is the new TX HUD event; track
+// is {count, cur: {tripped}|null}, changed in place.
+function noteTxHud(track, hud) {
+  if (hud.active && !hud.nk) {
+    if (!track.cur) track.cur = { tripped: false };
+    if (hud.aborted && /swr/i.test(hud.reason || '') && !track.cur.tripped) {
+      track.cur.tripped = true;
+      track.count++;
+    }
+  } else if (!hud.active && track.cur) {
+    if (!track.cur.tripped) track.count = 0;
+    track.cur = null;
+  }
+}
+var swrTrack = { count: 0, cur: null };
+
+// Minutes to 0000Z as "3h12m", when a POTA activation's day starts over.
+function utcDayLeft(nowMs) {
+  var d = new Date(nowMs);
+  var mins = Math.ceil((Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1) - nowMs) / 60000);
+  return Math.floor(mins / 60) + 'h' + String(mins % 60).padStart(2, '0') + 'm';
+}
+
+// The operating band's name ("20m"), from band_sel, else what the main board calls it.
+function operatingBandName(cfg) {
+  var b = BANDS[parseInt(cfg.band_sel, 10)];
+  if (b) return b.name;
+  return cfg.band_name && cfg.band_name !== '?' ? cfg.band_name : '';
+}
+
+function radioNameOf() {
+  return usbState && usbState.present && usbState.kind === 0 ? 'QMX' : 'Radio';
+}
+
+var drawerOpen = false;
+function setDrawerOpen(open) {
+  drawerOpen = open;
+  document.getElementById('opDrawer').hidden = !open;
+  document.getElementById('rbToggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    freqDirty = false;
+    syncFreqInput(lastCfg);
+    readRadioBack();
+  }
+  renderRadioBar();
+}
+
+function renderRadioBar() {
+  var cfg = lastCfg;
+  var chip = radioChipState(cfg);
+  var khz = currentDockFreqKhz(cfg);
+  var rs = radioReadBack(cfg);
+  var refs = parseActRefs(cfg);
+  var hud = txHud && txHud.active ? txHud : null;
+  var st = radioBarState(chip, hud, {
+    tune: yn(cfg.tune) === 'yes', ourCq: txIsOurCq(),
+    band: operatingBandName(cfg),
+    freq: khz != null ? khzToMhzLabel(khz) : '', radio: radioNameOf(), swrTrips: swrTrack.count,
+    act: refs.length ? ' · ' + refs.length + (refs.length === 1 ? ' ref' : ' refs') + ' · 0000Z ' + utcDayLeft(Date.now()) : '',
+    wantMHz: rs ? fmtHzMHz(rs.hz) : ''
+  });
+  var bar = document.getElementById('opRadioBar');
+  bar.className = 't-' + st.tone + (drawerOpen ? ' open' : '');
+  document.getElementById('rbMain').textContent = st.main;
+  bar.querySelector('#rbSub .glyph').textContent = st.glyph;
+  document.getElementById('rbSubText').textContent = st.sub;
+  var label = document.getElementById('rbLabel');
+  label.textContent = drawerOpen ? 'Close' : st.label;
+  label.hidden = !!st.stop;
+  var stop = document.getElementById('rbStop');
+  stop.hidden = !st.stop;
+  stop.textContent = st.stop || 'Stop TX';
+  renderRadioDrawer(cfg, chip);
+}
+
+// The drawer's radio half: a problem state's note and actions first, the read-back rows, Tune.
+function renderRadioDrawer(cfg, st) {
   var rows = [], note = '';
   var dev = usbState && usbState.present ? fmtUsbDevice(usbState.kind, usbState.vid, usbState.pid) : '';
   var cat = yn(cfg.cat_ready) === 'yes', audio = yn(cfg.audio_rx) === 'yes';
   if (st === 'none') {
-    note = 'Plug the radio into the main board\u2019s USB-C port. A charge-only cable shows nothing.';
+    note = 'Plug the radio into the main board’s USB-C port. A charge-only cable shows nothing.';
   } else if (st === 'unknown') {
     rows.push(['USB device', dev]);
     note = 'Not a radio Micro-FT8 knows. It supports the QMX and QDX.';
@@ -1970,34 +2128,47 @@ function renderRadioChip(cfg) {
               ['VFO', 'set once CAT is up']);
     note = 'The radio takes about ten seconds to be ready after it is plugged in. Nothing to press.';
   } else if (st === 'nodecode') {
-    rows.push(['USB', dev || 'QMX/QDX radio'], ['CAT', 'up'], ['Audio in', 'up'], ['Decoder', 'could not start']);
+    rows.push(['USB', dev || 'QMX/QDX radio'], ['Decoder', 'could not start']);
     if (cfg.radio_fw) rows.push(['Radio firmware', fmtRadioFirmware(cfg.radio_fw)]);
     note = 'The radio is connected but the main board could not start its decoder (out of memory), so nothing will decode. It retries every 10 seconds. Restart the main board; if it keeps happening, report it.';
   } else if (st === 'lost') {
     rows.push(['USB', dev || 'seen'], ['CAT', 'stopped answering']);
     note = 'A slot that cannot be keyed is skipped and not counted. It transmits again once CAT answers.';
   } else {
-    rows.push(['USB', dev || 'QMX/QDX radio'], ['CAT', cat ? 'up' : 'down'], ['Audio in', audio ? 'up' : 'down']);
+    rows.push(['USB', dev || 'QMX/QDX radio']);
     // The version the radio reports (VN;), as the QRP Labs release names it: 1_04_004 reads 1.04.004.
     if (cfg.radio_fw) rows.push(['Radio firmware', fmtRadioFirmware(cfg.radio_fw)]);
     var rs = radioReadBack(cfg);
     if (rs) {
-      rows.push(['Radio reports', fmtHzMHz(rs.hz) + ' MHz · ' + (MD_NAMES[rs.mode] || 'mode ' + rs.mode) +
+      rows.push(['Radio reports', (st === 'ready' ? 'on ' : '') + fmtHzMHz(rs.hz) + ' MHz · ' + (MD_NAMES[rs.mode] || 'mode ' + rs.mode) +
                  (rs.split ? ' · split' : '') + (rs.tx ? ' · transmitting' : '')]);
-      if (rs.want) rows.push(['Micro-FT8 set', fmtHzMHz(rs.want) + ' MHz · Digi']);
+      if (rs.want && st !== 'ready') rows.push(['Micro-FT8 set', fmtHzMHz(rs.want) + ' MHz · Digi']);
     } else {
-      rows.push(['Radio reports', '\u2014']);
+      rows.push(['Radio reports', '—']);
     }
     if (st === 'drift') note = 'The radio is not where Micro-FT8 put it: a knob was turned, or another program changed it.';
   }
+  // Ready says it in one line, so the drawer stays short; a problem state lists the rows.
+  var summary = '';
+  if (st === 'ready') {
+    summary = rows.map(function (r) { return r[0] === 'USB' ? r[1] : r[0] === 'Radio firmware' ? 'FW ' + r[1] : r[1]; })
+      .filter(function (t) { return t && t !== '\u2014'; }).join(' \u00b7 ');
+    rows = [];
+  }
+  document.getElementById('opRadioSummary').textContent = summary;
   var dl = document.getElementById('opRadioRows');
   dl.innerHTML = rows.map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('');
   document.getElementById('opRadioNote').textContent = note;
   var retune = document.getElementById('opRadioRetune');
-  retune.hidden = !(st === 'ready' || st === 'drift' || st === 'lost' || st === 'nodecode');
+  retune.hidden = !(st === 'drift' || st === 'lost' || st === 'nodecode');
   retune.textContent = st === 'drift' ? 'Put it back' : (st === 'lost' ? 'Retry now' : 'Retune VFO');
   document.getElementById('opRadioUse').hidden = st !== 'drift';
-  document.getElementById('opTune').hidden = st !== 'ready' && st !== 'drift';
+  // A problem's note and actions come first; Ready keeps Retune VFO with the rest, below.
+  document.getElementById('opRadioProblem').hidden = !note && retune.hidden;
+  var tune = document.getElementById('opTune');
+  tune.hidden = st !== 'ready' && st !== 'drift';
+  tune.textContent = 'Tune: ' + (yn(cfg.tune) === 'yes' ? 'On' : 'Off');
+  document.getElementById('opRadioRetuneReady').hidden = st !== 'ready';
 
   // Tune: power and SWR large enough to read while adjusting a tuner.
   var meter = document.getElementById('opRadioTuneMeter');
@@ -2014,20 +2185,19 @@ function tuneReadout() {
 }
 
 // Asks the radio for its state; the answer arrives in the next config read. Quiet: no status
-// message, and a refusal (TX on the air, CAT down) just leaves the chip as it was.
+// message, and a refusal (TX on the air, CAT down) just leaves the drawer as it was.
 async function readRadioBack() {
   if (!MicroFT8Pairing.getToken()) return;
   try {
     var r = await MicroFT8Pairing.authFetch('/api/radio/read', { method: 'POST' });
     if (r.ok) setTimeout(function () { loadConfig(true); }, 400);
-  } catch (e) { /* the chip keeps its last reading */ }
+  } catch (e) { /* the drawer keeps its last reading */ }
 }
 
 function applyOperateLive(cfg) {
-  renderRadioChip(cfg);
   updateLogFree(cfg);
   syncDockBandGrid(cfg);
-  renderDockLine(cfg);
+  syncFreqInput(cfg);
   // "bad" (not just "unknown") only once we've had at least one real answer
   // from the main board this session -- otherwise a cold boot reading the localStorage
   // cache before the first live poll would flash every dot red for no reason.
@@ -2048,9 +2218,8 @@ function applyOperateLive(cfg) {
   updateNetInfo(cfg);
   checkLinkCounterReset(cfg);
 
-  document.getElementById('opTune').textContent = 'Tune: ' + (yn(cfg.tune) === 'yes' ? 'On' : 'Off');
-
-  renderTxHud();
+  renderRadioBar();
+  renderActLine();
   renderCqRow();
 }
 
@@ -2487,8 +2656,8 @@ function waitForSetupPage(opts) {
 // picking a band applies immediately and never touches any other field.
 // Resolves true when the station took every line. A refusal can still mean
 // "saved, but" (a band or frequency the radio could not reach), so the form
-// is re-read either way. alertOnFail: the dock's actions also show a refusal
-// in a dialog, since the operator is looking at the dock, not the status line.
+// is re-read either way. alertOnFail: the drawer's actions also show a refusal
+// in a dialog, since the operator is looking at the drawer, not the status line.
 async function putConfigLine(line, busyMsg, alertOnFail) {
   if (!MicroFT8Pairing.getToken()) {
     setMsg('Press the sidekick button to pair first.');
@@ -2538,7 +2707,7 @@ async function authPostQuiet(path, body) {
 // What moving the radio would end: queued QSOs (their partners are listening
 // on the old frequency) and a transmission on the air. Shared by a band change
 // and a frequency change, which both confirm first and then end these
-// (webapp.md, The dock).
+// (webapp.md, Band and frequency).
 function retuneEnds() {
   var calls = Object.keys(queue)
     .filter(function (id) { return queue[id].dxcall !== 'CQ'; })
@@ -2583,7 +2752,7 @@ function standardKhz(band) {
 // old band, and an in-flight TX on the old frequency should not continue
 // once the operator has already moved on -- so a band change cancels both
 // before writing, the last thing sent once the rest have landed. A "no"
-// leaves everything as it was: the dock's band grid never shows the new band
+// leaves everything as it was: the drawer's band grid never shows the new band
 // until the write actually lands (see buildDockBandGrid()/syncDockBandGrid()),
 // so there is nothing to revert here.
 //
@@ -2595,29 +2764,27 @@ function standardKhz(band) {
 // that goes ahead closes the frequency editor (operator feedback 2026-09-28).
 function changeBand(idx) {
   var band = BANDS[parseInt(idx, 10)];
-  if (!band) return;
+  if (!band) return false;
   var std = standardKhz(band);
-  if (String(band.i) === String(lastCfg.band_sel) && currentDockFreqKhz(lastCfg) === std) {
-    closeFreqEditor();
-    return;
-  }
-  if (!confirmRetune('Change band')) return;
-  closeFreqEditor();
+  if (String(band.i) === String(lastCfg.band_sel) && currentDockFreqKhz(lastCfg) === std) return true;
+  if (!confirmRetune('Change band')) return false;
+  freqDirty = false;
   var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + band.i;
   setMsg('Changing band…');
   cancelQsosAndTx().then(function () {
     return putConfigLine(key + '=' + std + '\nband_sel=' + band.i, 'Changing band…', true);
   }).catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+  return true;
 }
 
-// ===================== Operate: the dock's frequency editor (webapp.md, The dock) =====================
+// ===================== Operate: the drawer's frequency row (webapp.md, The radio bar) =====================
 
 // A same-band edit (a nudge, Standard, or a typed value in the band already
 // operating) ends queued QSOs and stops a transmission on the air, after the
 // same confirmation a band change asks (operator decision 2026-09-28). The
 // stop comes first because a frequency the VFO cannot reach mid-TX is still
 // saved: the main board refuses the write ("frequency saved, VFO not moved
-// (TX active)") but nothing retunes the radio when the TX ends, so the dock
+// (TX active)") but nothing retunes the radio when the TX ends, so the bar
 // would show a frequency the radio is not on. With nothing to end, no cancel
 // is sent: a cancel also blocks a TX armed for this slot.
 // Returns false when the operator declined the confirmation, so a typed value
@@ -2631,21 +2798,16 @@ function setOperatingBandFreq(khz) {
   setMsg('Setting frequency…');
   (stopping ? cancelQsosAndTx() : Promise.resolve()).then(function () {
     return putConfigLine(key + '=' + khz, 'Setting frequency…', true);
-  }).then(refreshFreqInputIfOpen)
+  }).then(refreshFreqInput)
     .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
   return true;
 }
 
-// The nudge/Standard buttons leave the editor open (only a typed Set/Enter
-// closes it), so their input needs its own refresh once the write actually
-// lands -- unlike renderDockLine() (every poll tick), this only runs right
-// after our own explicit write, so it never overwrites a value the operator
-// is still typing.
-function refreshFreqInputIfOpen() {
-  var editor = document.getElementById('opFreqEditor');
-  if (editor.hidden) return;
-  var khz = currentDockFreqKhz(lastCfg);
-  document.getElementById('opFreqInput').value = khz != null ? khz : '';
+// The − and + buttons leave the drawer open, so the field shows what landed
+// once the write does.
+function refreshFreqInput() {
+  freqDirty = false;
+  syncFreqInput(lastCfg);
 }
 
 // A value in another active band is a band change, so it always asks, even
@@ -2668,27 +2830,13 @@ function switchToBandWithFreq(band, khz) {
   return true;
 }
 
-function openFreqEditor() {
-  freqAppliedValue = null;
-  var khz = currentDockFreqKhz(lastCfg);
-  document.getElementById('opFreqInput').value = khz != null ? khz : '';
-  document.getElementById('opFreqEditor').hidden = false;
-}
-function closeFreqEditor() {
-  document.getElementById('opFreqEditor').hidden = true;
-}
-document.getElementById('opDockFreqBtn').onclick = function () {
-  var editor = document.getElementById('opFreqEditor');
-  if (editor.hidden) openFreqEditor(); else closeFreqEditor();
-};
-// "Tries N · <offset> · Station ›" opens the Station sheet (webapp.md,
-// The Station sheet), which is what it previews -- band and frequency are
-// the other half of the dock line, opDockFreqBtn above, not this one.
-document.getElementById('opDockMetaBtn').onclick = openStationSheet;
+// The drawer's status line ends in Station ›, the Station sheet (webapp.md,
+// The Station sheet).
+document.getElementById('opStationBtn').onclick = openStationSheet;
 
 // A typed value under 1000 is MHz, otherwise kHz, kept to 0.1 kHz (the
 // station file already stores tenths).
-// A refusal shows in a dialog, where the operator is looking, and the editor
+// A refusal shows in a dialog, where the operator is looking, and the drawer
 // stays open with the typed value to fix (operator feedback 2026-09-28).
 function refuseDockFreq(why) {
   setMsg(why);
@@ -2716,7 +2864,11 @@ function applyDockFreqInput() {
   }
   var curIdx = parseInt(lastCfg.band_sel, 10);
   var went = (band.i === curIdx) ? setOperatingBandFreq(khz) : switchToBandWithFreq(band, khz);
-  if (went) closeFreqEditor();
+  if (went) {
+    freqDirty = false;
+    document.getElementById('opFreqInput').blur();
+    setDrawerOpen(false);
+  }
 }
 document.getElementById('opFreqSet').onclick = applyDockFreqInput;
 document.getElementById('opFreqInput').onkeydown = function (ev) {
@@ -2724,10 +2876,10 @@ document.getElementById('opFreqInput').onkeydown = function (ev) {
     ev.preventDefault();
     applyDockFreqInput();
   } else if (ev.key === 'Escape') {
-    closeFreqEditor();
+    refreshFreqInput();
+    this.blur();
   }
 };
-document.getElementById('opFreqClose').onclick = closeFreqEditor;
 
 // The phone keyboard's ✓ / Done acts like Set (operator request 2026-09-28).
 // On iOS it sends no key event: it only closes the keyboard, so the input
@@ -2737,11 +2889,12 @@ document.getElementById('opFreqClose').onclick = closeFreqEditor;
 // confirmation or refusal dialog that Set or Enter opened takes the focus.
 var lastTapMs = 0;
 var freqAppliedValue = null;
+document.getElementById('opFreqInput').addEventListener('focus', function () { freqAppliedValue = null; });
 ['pointerdown', 'touchstart'].forEach(function (type) {
   document.addEventListener(type, function () { lastTapMs = Date.now(); }, { capture: true, passive: true });
 });
 document.getElementById('opFreqInput').onchange = function () {
-  if (document.getElementById('opFreqEditor').hidden) return;
+  if (!drawerOpen || !freqDirty) return;
   if (Date.now() - lastTapMs < 600) return;
   if (this.value === freqAppliedValue) return;
   applyDockFreqInput();
@@ -2753,11 +2906,6 @@ function nudgeDockFreq(deltaKhz) {
 }
 document.getElementById('opFreqDown').onclick = function () { nudgeDockFreq(-1); };
 document.getElementById('opFreqUp').onclick = function () { nudgeDockFreq(1); };
-document.getElementById('opFreqStd').onclick = function () {
-  var band = BANDS[parseInt(lastCfg.band_sel, 10)];
-  if (!band) return;
-  setOperatingBandFreq(standardKhz(band));
-};
 
 // quiet: a reload after an action, whose own result message must stay on
 // screen; only a failure is reported. Otherwise (boot, pairing) progress and
@@ -2914,7 +3062,7 @@ async function autoSyncClock() {
 }
 
 // Resolves true/false so a caller can chain a follow-up action on success
-// only (opTxCancel's onclick, below) -- every existing caller before that one
+// only (rbStop's onclick, below) -- every existing caller before that one
 // just .catch()es the promise and ignores what it resolves to, so this is
 // safe to add without touching them.
 async function radioPost(path, body, busyMsg) {
@@ -2946,9 +3094,10 @@ var writesEnabled = false;
 function enableWrites(on) {
   writesEnabled = on;
   document.getElementById('opRadioRetune').disabled = !on;
+  document.getElementById('opRadioRetuneReady').disabled = !on;
   document.getElementById('opRadioUse').disabled = !on;
   document.getElementById('opTune').disabled = !on;
-  document.getElementById('opTxCancel').disabled = !on;
+  document.getElementById('rbStop').disabled = !on;
   ['cqCallBtn', 'cqParityBtn', 'cqTriesBtn', 'cqCancelBtn',
    'triesDown', 'triesUp', 'triesDefault', 'triesEnd'].forEach(function (id) {
     document.getElementById(id).disabled = !on;
@@ -2956,7 +3105,6 @@ function enableWrites(on) {
   document.getElementById('opFreqSet').disabled = !on;
   document.getElementById('opFreqDown').disabled = !on;
   document.getElementById('opFreqUp').disabled = !on;
-  document.getElementById('opFreqStd').disabled = !on;
   document.querySelectorAll('#opBandGrid .bandbtn').forEach(function (b) { b.disabled = !on; });
   document.getElementById('netForget').disabled = !on;
   document.getElementById('netModeSwitch').disabled = !on;
@@ -2981,12 +3129,12 @@ document.getElementById('opRadioUse').onclick = function () {
   var curIdx = parseInt(lastCfg.band_sel, 10);
   if (band.i === curIdx) setOperatingBandFreq(khz); else switchToBandWithFreq(band, khz);
 };
-document.getElementById('opRadioChip').onclick = function () {
-  var panel = document.getElementById('opRadioPanel');
-  panel.hidden = !panel.hidden;
-  this.setAttribute('aria-expanded', panel.hidden ? 'false' : 'true');
-  if (!panel.hidden) readRadioBack();
+document.getElementById('opRadioRetuneReady').onclick = function () {
+  document.getElementById('opRadioRetune').onclick();
 };
+// The bar's chevron, body and label open and close the drawer; opening asks
+// the radio for its state. Stop is a separate button (rbStop, below).
+document.getElementById('rbToggle').onclick = function () { setDrawerOpen(!drawerOpen); };
 document.getElementById('opTune').onclick = function () {
   var next = (yn(lastCfg.tune) === 'yes') ? '0' : '1';
   radioPost('/api/radio/tune', next, 'Tune…')
@@ -2999,7 +3147,7 @@ document.getElementById('opTune').onclick = function () {
 // visible message stays "Stopping CQ… ok." from the cancel itself, and only
 // fires once that cancel actually succeeded. Decided at the tap, from what is
 // on the air (txIsOurCq()).
-document.getElementById('opTxCancel').onclick = function () {
+document.getElementById('rbStop').onclick = function () {
   // Tune is not a queued transmission: ending it is the Tune control's own off.
   if (yn(lastCfg.tune) === 'yes') {
     radioPost('/api/radio/tune', '0', 'Stopping Tune…')
@@ -3047,17 +3195,19 @@ function radioLive() {
 }
 
 // Drives #opSlotBar: fills left-to-right over the slot period (fraction
-// elapsed, not remaining), green for an even slot and red for odd, amber
-// when TX is halted, plus a small cursor dot at the current TX offset --
-// same fraction/color/cursor logic, just a CSS width/left instead of a
-// framebuffer fill.
+// elapsed, not remaining), red while we transmit, amber when TX is halted,
+// plus a small cursor dot at the current TX offset. The parity of the slot
+// now is the E or O tag at its left, not the bar's colour.
 function renderCountdown() {
   var fill = document.getElementById('opSlotBarFill');
   var cursor = document.getElementById('opSlotBarCursor');
+  var tag = document.getElementById('opParity');
   if (!radioLive()) {
     fill.style.width = '0%';
     fill.className = '';
     cursor.hidden = true;
+    tag.textContent = '';
+    tag.className = '';
     return;
   }
   var p = periodMs();
@@ -3065,8 +3215,12 @@ function renderCountdown() {
   var intoSlot = now % p;
   var parity = Math.floor(now / p) % 2;
   var frac = intoSlot / p;
+  var onAir = txHud && txHud.active && !txHud.nk;
   fill.style.width = (frac * 100).toFixed(1) + '%';
-  fill.className = (txHud && txHud.active && txHud.aborted) ? 'halt' : (parity ? 'odd' : '');
+  fill.className = onAir && txHud.aborted ? 'halt' : (onAir ? 'tx' : '');
+  tag.textContent = parity ? 'O' : 'E';
+  tag.className = onAir && !txHud.aborted ? 'tx' : '';
+  tag.setAttribute('aria-label', (parity ? 'Odd' : 'Even') + ' slot');
   var hz = slotState && slotState.hz;
   if (typeof hz === 'number' && hz >= PASSBAND_HZ_MIN && hz <= PASSBAND_HZ_MAX) {
     cursor.hidden = false;
@@ -3076,8 +3230,6 @@ function renderCountdown() {
   }
 }
 setInterval(renderCountdown, 250);
-// The banner's progress and time left follow the same clock.
-setInterval(function () { if (txHud && txHud.active) renderTxHud(); }, 500);
 
 // ===================== Operate: the CQ row (webapp.md, The CQ row) =====================
 
@@ -3255,7 +3407,7 @@ document.getElementById('cqSettingsBtn').onclick = openStationSheet;
 // with a final active:false event the instant the banner would come down --
 // no timeout to guess at on this side.
 
-var txHud = null; // last TX_HUD event: {active, aborted, wrblk, pw, swr, batt, reason, x}
+var txHud = null; // last TX_HUD event: {active, aborted, wrblk, pw, swr, batt, reason, x}; the radio bar shows it (radioBarState())
 
 // TX_HUD's falling edge (active:false) is sent exactly once by the main board, not
 // repeated -- see porta_p4_tx_hud_tick() in poe_p4/main/porta_host.cpp. That one frame
@@ -3275,67 +3427,9 @@ var TX_HUD_STALE_MS = 3000;
 function expireStaleTxHud() {
   if (txHud && txHud.active && (Date.now() - lastTxHudEventMs) > TX_HUD_STALE_MS) {
     txHud.active = false;
-    renderTxHud();
+    noteTxHud(swrTrack, txHud);
+    renderRadioBar();
   }
-}
-
-function renderTxHud() {
-  var el = document.getElementById('opTxHud');
-  if (!txHud || !txHud.active) {
-    el.hidden = true;
-    return;
-  }
-  el.hidden = false;
-  el.classList.toggle('aborted', txHud.aborted);
-  el.classList.toggle('notkeyed', txHud.nk);
-  document.getElementById('opTxHudText').textContent = txHud.x || '(empty)';
-  var isTune = yn(lastCfg.tune) === 'yes' || txHud.x === 'TUNE';
-  document.getElementById('opTxHudBig').hidden = !isTune || txHud.nk;
-  document.getElementById('opTxHudBig').textContent = isTune ? tuneReadout() : '';
-  // Progress and time left from the slot clock the page already runs; Tune has no slot.
-  var prog = document.getElementById('opTxHudProg');
-  prog.hidden = isTune || txHud.nk || txHud.aborted;
-  if (!prog.hidden) {
-    var p = periodMs(), into = Date.now() % p;
-    document.getElementById('opTxHudProgFill').style.width = (into / p * 100).toFixed(1) + '%';
-  }
-  document.getElementById('opTxHud').firstElementChild.textContent =
-    txHud.nk ? 'Not keyed' : (isTune ? 'Tuning' : 'Transmitting');
-
-  var parts = [];
-  if (txHud.wrblk) {
-    parts.push('WRITE BLOCKED');
-  } else {
-    if (txHud.pw > -1) parts.push((txHud.pw / 10).toFixed(1) + 'W');
-    if (txHud.swr > -1) parts.push('SWR ' + (txHud.swr / 100).toFixed(2));
-  }
-  if (txHud.batt > -1) parts.push(txHud.batt + '% ' + (txHud.batt <= 20 ? '🪫' : '🔋'));
-  // The reason string comes from the firmware's actual abort site
-  // (porta_emit_tx_hud()'s `reason` field), not a guess here -- so a future
-  // second abort cause shows up as itself instead of always reading
-  // "low battery". Falls back to a generic label only if the firmware ever
-  // sends aborted:true with no reason at all (should not happen).
-  var slotBits = [];
-  if (!isTune) {
-    var pm = periodMs(), left = Math.max(0, Math.ceil((pm - Date.now() % pm) / 1000));
-    slotBits.push((Math.floor(Date.now() / pm) % 2 ? 'Odd' : 'Even') + ' slot');
-    if (txHud.hz) slotBits.push(txHud.hz + ' Hz');
-    if (!txHud.nk && !txHud.aborted) slotBits.push(left + ' s left');
-  } else if (txHud.hz) {
-    slotBits.push(txHud.hz + ' Hz');
-  }
-  var meta = txHud.aborted
-    ? ('TX ABORTED: ' + (txHud.reason || 'unknown reason'))
-    : txHud.nk
-      ? ('Not counted: ' + (txHud.reason || 'could not key') + ' \u00b7 ' + slotBits.join(' \u00b7 '))
-      : slotBits.concat(isTune ? [] : parts).join(' \u00b7 ');
-  document.getElementById('opTxHudMeta').textContent = meta || '\u2014';
-  // Stop CQ while this transmission is our own CQ (it also ends the CQ, see
-  // opTxCancel's onclick), Stop TX during a QSO message (cancels only this
-  // transmission). webapp.md, The CQ row.
-  var cancel = document.getElementById('opTxCancel');
-  cancel.textContent = isTune ? 'Stop Tune' : (txIsOurCq() ? 'Stop CQ' : 'Stop TX');
-  cancel.hidden = txHud.nk;  // nothing is on the air to stop; the CQ row ends the CQ
 }
 
 // Whether the transmission on the air is our CQ, from its text: autoseq's CQ
@@ -3420,22 +3514,23 @@ function renderQueue() {
     if (queue[id].dxcall !== 'CQ' && ids.indexOf(id) < 0) ids.push(id);
   });
   var rows = document.getElementById('opQueueRows');
-  document.getElementById('opQueueEmpty').hidden = ids.length > 0;
   if (reconcileReplies()) renderDecodes();
   var pending = pendingReplyCalls().filter(function (c) { return !queueHasCall(c); });
-  document.getElementById('opQueueEmpty').hidden = ids.length > 0 || pending.length > 0;
+  // One line a row (webapp.md, Operate's pinned regions): call, its count, state, ×. No "Queue"
+  // label and no empty line: with nothing queued the CQ row is the first row.
   var placeholders = pending.map(function (c) {
-    return '<div class="qrow pending"><div><span class=call>' + esc(c) + '</span></div>' +
+    return '<div class="qrow pending"><span class=call>' + esc(c) + '</span><span class=qgap></span>' +
       '<span class="qstate">Queued\u2026</span></div>';
   }).join('');
   rows.innerHTML = placeholders + ids.map(function (id) {
     var q = queue[id];
     return '<div class="qrow' + (flashCalls[q.dxcall] ? ' flash' : '') + '">' +
-      '<div><span class="call callink" data-call="' + esc(q.dxcall) + '">' + esc(q.dxcall) + '</span>' +
+      '<span class="call callink" data-call="' + esc(q.dxcall) + '">' + esc(q.dxcall) + '</span>' +
       '<button type=button class="qtries' + (q.custom ? ' custom' : '') + '" data-id="' + id + '"' +
-      (writesEnabled ? '' : ' disabled') + '>' + esc(triesLabel(q)) + '</button></div>' +
+      (writesEnabled ? '' : ' disabled') + '>' + esc(triesLabel(q)) + '</button>' +
+      '<span class=qgap></span>' +
       '<span class="qstate qs-' + q.state + '">' + esc(QUEUE_STATE_NAMES[q.state] || '?') + '</span>' +
-      '<button type=button class=qcancel data-id="' + id + '">&times;</button>' +
+      '<button type=button class=qcancel data-id="' + id + '" aria-label="Cancel ' + esc(q.dxcall) + '">&times;</button>' +
       '</div>';
   }).join('');
   rows.querySelectorAll('.qcancel').forEach(function (b) {
@@ -3571,7 +3666,7 @@ function slotBandName(slot) {
 // so a replyable CQ is trivially "at the top" there -- nothing stale competes
 // for the position. This app keeps a rolling history across many slots
 // (decodeSlots), where the plain to_me/cq/other/recent_qso grouping let a
-// non-replyable to-me line (a mid-exchange report or RRR, no Reply button)
+// non-replyable to-me line (a mid-exchange report or RRR, nothing to reply to)
 // outrank a replyable one -- a CQ, or someone else's closing 73/RR73 (also
 // replyable, isReplyableDecode() below, but previously fell into "other").
 // to_me still sorts first: a message addressed to the operator, even one
@@ -3608,7 +3703,7 @@ function decodeColorClass(d) {
 // green-codes -- reuse it rather than re-deriving "is this a CQ" a second
 // way), or a closing 73/RR73 (the other party signing -- worth logging a
 // reply to even though the exchange itself is done). Everything in between
-// (signal reports, RRR) has no useful reply target, so no button.
+// (signal reports, RRR) has no useful reply target, so the row is not a tap target.
 // Reply is offered by the clock, not by position in the list (operator
 // decisions 2026-09-28): only on a slot that ended less than two slot lengths
 // ago, which is the current and the previous slot (30 s on FT8, 15 s on FT4).
@@ -3723,7 +3818,7 @@ function utcDayFile() {
 }
 
 // Follows today's file for new QSOs while Operate is showing and the station has references;
-// xe2j counts from opLog.rows too. A day with no file yet reads as no rows.
+// activationCounts() counts from opLog.rows too. A day with no file yet reads as no rows.
 async function refreshOpLog() {
   if (opLog.busy || currentView !== 'operate' || !parseActRefs(lastCfg).length) return;
   opLog.busy = true;
@@ -3740,7 +3835,7 @@ async function refreshOpLog() {
       opLog.rows = opLog.rows.concat(page);
       if (page.length < 50) break;
     }
-    if (opLog.rows.length !== before) renderDecodes();
+    if (opLog.rows.length !== before) { renderDecodes(); renderActLine(); }
   } catch (e) { /* next tick */ } finally {
     opLog.busy = false;
   }
@@ -3782,6 +3877,51 @@ document.getElementById('dvPark').onclick = function () {
   decodeView.park = !decodeView.park; saveDecodeView(); renderDecodeControls(); renderDecodes();
 };
 
+// ===================== Operate: activation progress (webapp.md, Activation progress) =====================
+// Only while the station has references: each one's count of today's QSOs (opLog.rows, today's UTC
+// day file) against its target, on the line under the slot bar. A QSO counts for every reference on
+// its record, so an n-fer counts for each. A park counts calls unique by band and mode, to 10; a
+// summit counts different calls, to 4 (SOTA's "four different stations").
+function activationCounts(rows, refs) {
+  return refs.map(function (r) {
+    var seen = {}, n = 0;
+    rows.forEach(function (q) {
+      if (!q.call || !refsOverlap(q, [r])) return;
+      var k = r.program === 'SOTA' ? String(q.call).toUpperCase() : dupeKey(q.call, q.band || '', q.mode || '');
+      if (!seen[k]) { seen[k] = true; n++; }
+    });
+    return { ref: r.ref, program: r.program, n: n, target: r.program === 'SOTA' ? 4 : 10 };
+  });
+}
+
+function renderActLine() {
+  var el = document.getElementById('opActLine');
+  var refs = parseActRefs(lastCfg);
+  el.hidden = !refs.length;
+  if (!refs.length) { el.innerHTML = ''; return; }
+  el.innerHTML = activationCounts(opLog.rows, refs).map(function (c) {
+    var done = c.n >= c.target;
+    return '<span' + (done ? ' class=done' : '') + '><span class=ref>' + esc(c.ref) + '</span> ' +
+      '<span class=cnt>' + c.n + '/' + c.target + (done ? ' ✓' : '') + '</span></span>';
+  }).join('');
+}
+
+// ===================== Operate: decode rows and tap to reply (webapp.md) =====================
+// Whether a tap on a decode row replies: a replyable message (isReplyableDecode()) on a slot still
+// open for a reply (slotReplyOpen()), and not already sending or queued from that row. A refused
+// reply can be tried again.
+function decodeRowReplyable(d, slot, nowMs, st) {
+  if (!slotReplyOpen(slot, nowMs) || !isReplyableDecode(d)) return false;
+  return !st || st.phase === 'refused';
+}
+
+// What a tap on a decode row does: on a callsign or grid link it is the link's ('link': the card,
+// or the map), elsewhere on a replyable row it replies ('reply'), otherwise nothing ('none').
+function decodeTapAction(onLink, replyable) {
+  if (onLink) return 'link';
+  return replyable ? 'reply' : 'none';
+}
+
 function renderDecodes() {
   var rows = document.getElementById('opDecodeRows');
   var nowMs = Date.now();
@@ -3799,14 +3939,12 @@ function renderDecodes() {
   rows.innerHTML = shownSlots.map(function (entry, i) {
     var slot = entry.slot;
     var divider = i > 0 ? '<div class=dslotdiv></div>' : '';
-    var replyOpen = slotReplyOpen(slot, nowMs);
     var slotBand = slotBandName(slot), slotModeName = slotMode(slot);
-    // .day's own flex/space-between (Log's day dividers use the same class)
-    // puts band+frequency left, date/time right, with no extra CSS needed.
+    // One line: band and frequency left, the slot's time and age right.
     var freqMHz = fmtSlotFreqMHz(slot.freqKhz);
     var header = '<div class=day><span>' +
-      esc(slotBandName(slot)) + (freqMHz ? ' · ' + freqMHz + ' MHz' : '') +
-      '</span><span class=daytime><span>' + fmtSlotSpan(slot) + '</span>' +
+      esc(slotBand) + (freqMHz ? ' · ' + freqMHz + ' MHz' : '') +
+      '</span><span>' + fmtSlotTime(slot) + ' · ' +
       '<span class=ago data-ts="' + slot.ts + '">' + fmtAgo(slot.ts) + '</span></span></div>';
     return divider + header + entry.shown.map(function (d) {
       // Looked up from the opportunistic callsign->grid cache, not this
@@ -3827,61 +3965,123 @@ function renderDecodes() {
         var badge = spotBadgeLabel(CallInfo.activeSpotFor(senderCall), actRefs);
         if (badge) flags += '<span class="wflag wflag-act">' + esc(badge) + '</span>';
       }
-      return '<div class=drow data-id="' + d.id + '">' +
-        '<div class=meta><span>DT ' + fmtDt(d.dt) + '</span><span>' + d.hz + ' Hz</span><span>' +
-        (d.snr > 0 ? '+' : '') + d.snr + ' dB</span></div>' +
-        '<div class=drow-body>' +
-          '<div class="txt ' + decodeColorClass(d) + '">' + highlightCallInText(d.x, allCalls) +
+      var st = replyState[d.id];
+      var tap = decodeRowReplyable(d, slot, nowMs, st);
+      var phase = st && st.phase !== 'refused' ? (st.undo ? 'Cancelling…' : st.phase === 'sending' ? 'Sending…' : 'Queued') : '';
+      var cls = 'drow' + (tap ? ' tap' : '') + (phase ? ' queued' : '') +
+        (!tap && !phase && !d.me && !(st && st.phase === 'refused') ? ' quiet' : '');
+      var a11y = tap ? ' role=button tabindex=0 aria-label="Reply to ' + esc(senderCall || 'this station') + ': ' + esc(d.x) + '"' : '';
+      return '<div class="' + cls + '" data-id="' + d.id + '"' + a11y + '>' +
+        '<div class=dmsg><span class="txt ' + decodeColorClass(d) + '">' + highlightCallInText(d.x, allCalls) +
           (d.me ? '<span class=me>&rarr; ME</span>' : '') +
-          (flags ? '<span class=dflags>' + flags + '</span>' : '') + '</div>' +
-          (replyOpen && isReplyableDecode(d) ? replyButtonHtml(d.id) : '') +
-        '</div>' +
-        replyFailHtml(d.id) +
-        (distBearing ? '<div class=ddist><span>' + CallInfo.gridLink(theirGrid) +
-          (shortLoc ? ' · ' + esc(shortLoc) : '') + '</span><span>' + esc(distBearing) + '</span></div>' : '') +
-        '</div>';
+          (flags ? '<span class=dflags>' + flags + '</span>' : '') + '</span>' +
+          (phase ? '<br><span class=rbadge>' + phase + '</span>' : '') + '</div>' +
+        '<div class=dcol><div><span>DT ' + fmtDt(d.dt) + '</span><span>' + (d.snr > 0 ? '+' : '') + d.snr + ' dB</span></div>' +
+          '<div><span>' + (theirGrid ? CallInfo.gridLink(theirGrid) + (shortLoc ? ' · ' + esc(shortLoc) : '') : '') +
+          '</span><span>' + esc(distBearing) + '</span></div></div>' +
+        '<span class=dchev aria-hidden=true>' + (tap ? '›' : '') + '</span>' +
+        '</div>' + replyFailHtml(d.id);
     }).join('');
   }).join('');
-  rows.querySelectorAll('.callink').forEach(function (el) {
-    el.onclick = function (ev) {
-      ev.stopPropagation();
-      showCallInfo(el.getAttribute('data-call'));
-    };
-  });
-  rows.querySelectorAll('.replyBtn').forEach(function (el) {
-    el.onclick = function (ev) {
-      ev.stopPropagation();
-      var why = replyTooOld(el.getAttribute('data-id')) || replyFrequencyMismatch(el.getAttribute('data-id'));
-      if (why) {
-        setMsg(why);
-        alert(why);
-        return;
-      }
-      sendReply(el.getAttribute('data-id'));
-    };
-  });
 }
 
-// ===================== Operate: reply feedback (RFC 0009 3.13) =====================
-// replyState[decodeId] = {phase: 'sending' | 'queued' | 'refused', call, reason, ts, seen}.
+// The slot header's time: the span without the date ("14:02:30–45z"), so a
+// WSJT-X-style start and an age counted from the end both read true, on one line.
+function fmtSlotTime(slot) {
+  return fmtSlotSpan(slot).replace(/^\d{4}-\d{2}-\d{2} /, '');
+}
+
+function tryReply(id) {
+  var why = replyTooOld(id) || replyFrequencyMismatch(id);
+  if (why) {
+    setMsg(why);
+    alert(why);
+    return;
+  }
+  sendReply(id);
+}
+
+// One listener for every row, so a row rebuilt by a poll never loses its tap.
+(function () {
+  var list = document.getElementById('opDecodeRows');
+  list.addEventListener('click', function (ev) {
+    var retry = ev.target.closest('.rretry');
+    if (retry) { tryReply(retry.getAttribute('data-id')); return; }
+    var link = ev.target.closest('.callink, .gridlink');
+    var row = ev.target.closest('.drow');
+    var act = decodeTapAction(!!link, !!(row && row.classList.contains('tap')));
+    if (act === 'link') {
+      // A grid link is an anchor to the map and navigates on its own.
+      if (link.classList.contains('callink')) showCallInfo(link.getAttribute('data-call'));
+    } else if (act === 'reply') {
+      tryReply(row.getAttribute('data-id'));
+    }
+  });
+  list.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    var row = ev.target.closest && ev.target.closest('.drow.tap');
+    if (!row || ev.target !== row) return;
+    ev.preventDefault();
+    tryReply(row.getAttribute('data-id'));
+  });
+})();
+
+// ===================== Operate: reply feedback (webapp.md, Decode rows and tap to reply) =====================
+// replyState[decodeId] = {phase: 'sending' | 'queued' | 'refused', call, reason, ts, seen, undo}.
 // The sidekick holds the POST until the main board accepts or refuses, so the answer takes
-// about a second; the button says so at once, and a dashed placeholder stands in the queue
+// about a second; the row says "Sending…" at once, and a dashed placeholder stands in the queue
 // until the main board's QUEUE_ENTRY for the same call arrives (matched on the call, no
 // protocol change). No entry within REPLY_ENTRY_WAIT_MS is a refusal, shown with Retry.
 var replyState = {};
 var REPLY_ENTRY_WAIT_MS = 10000;
 
-function replyButtonHtml(id) {
-  var st = replyState[id];
-  var label = !st || st.phase === 'refused' ? (st ? 'Retry' : 'Reply') : (st.phase === 'sending' ? 'Sending\u2026' : 'Queued \u2713');
-  return '<button type=button class="replyBtn' + (st && st.phase === 'queued' ? ' done' : '') + '" data-id="' + id + '"' +
-    (st && st.phase !== 'refused' ? ' disabled' : '') + '>' + label + '</button>';
-}
-
 function replyFailHtml(id) {
   var st = replyState[id];
-  return st && st.phase === 'refused' ? '<div class=rfail>' + esc(st.reason) + '</div>' : '';
+  return st && st.phase === 'refused'
+    ? '<div class=rfail><span>' + esc(st.reason) + '</span><button type=button class=rretry data-id="' + id + '"' +
+      (writesEnabled ? '' : ' disabled') + '>Retry</button></div>'
+    : '';
 }
+
+// "Queued K4XYZ · Undo" for a few seconds after a reply is taken. Undo cancels that entry
+// (POST /api/queue/cancel); one not in the queue yet is cancelled the moment it arrives
+// (reconcileReplies()).
+var UNDO_TOAST_MS = 5000;
+var undoToast = null; // {id, timer}
+function showUndoToast(id, call) {
+  if (undoToast) clearTimeout(undoToast.timer);
+  undoToast = { id: id, timer: setTimeout(hideUndoToast, UNDO_TOAST_MS) };
+  document.getElementById('opToastText').textContent = 'Queued ' + call;
+  document.getElementById('opToast').hidden = false;
+}
+function hideUndoToast() {
+  if (undoToast) clearTimeout(undoToast.timer);
+  undoToast = null;
+  document.getElementById('opToast').hidden = true;
+}
+function queueEntryIdFor(call) {
+  var ids = Object.keys(queue).filter(function (id) { return queue[id].dxcall === call; });
+  return ids.length ? ids[0] : '';
+}
+function cancelReplyEntry(eid, call) {
+  radioPost('/api/queue/cancel', eid, 'Cancelling ' + call + '…')
+    .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+}
+document.getElementById('opToastUndo').onclick = function () {
+  var id = undoToast && undoToast.id;
+  hideUndoToast();
+  var st = id != null && replyState[id];
+  if (!st || st.phase !== 'queued') return;
+  var eid = queueEntryIdFor(st.call);
+  if (eid) {
+    delete replyState[id];
+    cancelReplyEntry(eid, st.call);
+  } else {
+    st.undo = true;
+  }
+  renderDecodes();
+  renderQueue();
+};
 
 function decodeById(id) {
   for (var i = 0; i < decodeSlots.length; i++) {
@@ -3924,9 +4124,11 @@ async function sendReply(id) {
     renderDecodes();
     return;
   }
-  // Accepted. A call already in the queue is highlighted instead of getting a placeholder.
+  // Accepted. A call already in the queue is highlighted instead of getting a placeholder, and
+  // gets no Undo: cancelling would end the QSO that was already there.
   replyState[id] = { phase: 'queued', call: call, reason: '', ts: Date.now(), seen: queueHasCall(call) };
   if (replyState[id].seen) flashQueueCall(call);
+  else showUndoToast(id, call || 'reply');
   renderDecodes();
   renderQueue();
 }
@@ -3936,7 +4138,7 @@ function pendingReplyCalls() {
   var calls = [];
   Object.keys(replyState).forEach(function (id) {
     var st = replyState[id];
-    if (st.phase === 'queued' && !st.seen && st.call && calls.indexOf(st.call) < 0) calls.push(st.call);
+    if (st.phase === 'queued' && !st.seen && !st.undo && st.call && calls.indexOf(st.call) < 0) calls.push(st.call);
   });
   return calls;
 }
@@ -3947,15 +4149,21 @@ function flashQueueCall(call) {
   setTimeout(function () { delete flashCalls[call]; renderQueue(); }, 1500);
 }
 
-// Runs on every queue render and once a second: the entry arriving retires the placeholder;
-// the entry going away frees the Reply button; no entry in time is a refusal.
+// Runs on every queue render and once a second: the entry arriving retires the placeholder (or,
+// after Undo, is cancelled); the entry going away makes the row tappable again; no entry in time
+// is a refusal, or after Undo simply nothing to cancel.
 function reconcileReplies() {
   var changed = false, now = Date.now();
   Object.keys(replyState).forEach(function (id) {
     var st = replyState[id];
     if (st.phase !== 'queued') return;
     var has = queueHasCall(st.call);
-    if (has && !st.seen) { st.seen = true; changed = true; }
+    if (st.undo && (has || now - st.ts > REPLY_ENTRY_WAIT_MS)) {
+      if (has) cancelReplyEntry(queueEntryIdFor(st.call), st.call);
+      delete replyState[id];
+      changed = true;
+    }
+    else if (has && !st.seen) { st.seen = true; changed = true; }
     else if (!has && st.seen) { delete replyState[id]; changed = true; }
     else if (!has && !st.seen && now - st.ts > REPLY_ENTRY_WAIT_MS) {
       replyState[id] = { phase: 'refused', call: st.call, reason: 'The main board did not queue it.',
@@ -4118,13 +4326,14 @@ function applyEvent(e) {
     txHud = { active: !!e.active, aborted: !!e.aborted, wrblk: !!e.wrblk, nk: !!e.nk,
              pw: e.pw, swr: e.swr, batt: e.batt, hz: e.hz, reason: e.reason || '', x: e.x };
     lastTxHudEventMs = Date.now();
+    noteTxHud(swrTrack, txHud);
     if (txHud.active) PskrLive.noteTx();
   } else if (e.d === 7) {
     // The radio told the main board its state changed (AI2;): a knob turn, a mode or split change,
-    // TX starting or ending. Put it where the poll would, so the chip follows at once; the next
+    // TX starting or ending. Put it where the poll would, so the bar follows at once; the next
     // poll carries the same values.
     applyRadioPush(lastCfg, e);
-    renderRadioChip(lastCfg);
+    renderRadioBar();
   } else if (e.d === 5) {
     // Pushed the instant the main board's own USB host sees it -- not inferred from
     // cat_ready/audio_rx going stale on the next poll, and not a string match
@@ -4134,8 +4343,8 @@ function applyEvent(e) {
     // is exactly the case worth a name-or-vid/pid banner for, same as the
     // radio disconnecting is.
     usbState = { present: !!e.present, kind: e.kind, vid: e.vid, pid: e.pid };
-    renderRadioChip(lastCfg);
-    // vid 0 is "something is there, not named yet": the chip says it, a banner would not.
+    renderRadioBar();
+    // vid 0 is "something is there, not named yet": the bar says it, a banner would not.
     if (e.vid) {
       showLinkBanner('usb', (e.present ? 'USB attached: ' : 'USB detached: ') +
         fmtUsbDevice(e.kind, e.vid, e.pid));
@@ -4210,7 +4419,7 @@ async function pollEvents() {
       // The CQ row reads `queue` (webapp.md, The CQ row), so it runs after
       // sweepStaleQueue() too, not only when an event arrived.
       renderCqRow();
-      renderTxHud();
+      renderRadioBar();
     }
     evSeq = j.seq;
     if (gotEvents || queueChanged) saveStateCache();
@@ -4796,8 +5005,8 @@ PskrLive.start({
 // ---- Callsign info modal (Operate + QSOs) ----
 // Wraps every callsign token (from extractAllCallsigns -- sender and, when
 // present, addressee) within a decode's own text in its own clickable span.
-// Reply is now its own button (see renderDecodes()), so this no longer has
-// to coexist with a full-row click handler. Every other token is still
+// On a decode row the whole row replies (decodeTapAction()), and a tap on one
+// of these spans is the callsign's instead. Every other token is still
 // individually escaped same as before, so this can't reopen the class of
 // hole esc() exists to close.
 function highlightCallInText(text, calls) {
@@ -4828,10 +5037,11 @@ function heardThisSessionFor(call) {
   var heard = [];
   decodeSlots.forEach(function (slot) {
     slot.forEach(function (d) {
-      if (extractSenderCall(d.x) === call) heard.push({ x: d.x, snr: d.snr, ts: slot.ts, band: slot.band });
+      if (extractSenderCall(d.x) === call) heard.push({ x: d.x, snr: d.snr, hz: d.hz, ts: slot.ts, band: slot.band });
     });
   });
-  return heard.map(function (h) { return { when: fmtSlotDateTime(h.ts), band: h.band, snr: h.snr, text: h.x }; });
+  // Each decode's audio offset (hz) shows here, since decode rows do not carry it (webapp.md, Decode rows and tap to reply).
+  return heard.map(function (h) { return { when: fmtSlotDateTime(h.ts), band: h.band, snr: h.snr, hz: h.hz, text: h.x }; });
 }
 function showCallInfo(call) {
   if (!call) return;
@@ -5571,7 +5781,8 @@ renderQueue();
 loadDecodeView();
 renderDecodeControls();
 renderDecodes();
-renderTxHud();
+renderRadioBar();
+renderActLine();
 
 // Cheap per-second text update for every "X ago" in the view currently on
 // screen -- avoids rebuilding a whole row list just to keep an age counting.
@@ -5609,6 +5820,7 @@ function tick() {
   refreshVisibleAgo();
   updateLinkFreshness();
   expireStaleTxHud();
+  renderRadioBar();
   updateLinkLostBanner();
   updateDecodeRate();
   setTimeout(tick, 1000);

@@ -4,7 +4,7 @@
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:**
   - the Operate view's layout, and a CQ row in the queue;
-  - the dock's band and frequency controls, and one Station sheet;
+  - band and frequency controls, and one Station sheet;
   - adding a park or summit, from a list or the map;
   - radio status in place of Connect, and the TX HUD;
   - decode sort and filter, and reply feedback;
@@ -13,7 +13,7 @@
 * **Does not cover:** the activation's data, store, log and export (RFC 0008); the QSOs and Tools tabs.
 * **Mockups** (both private to the operator):
   - **"Operate Dock Options"** (https://claude.ai/artifact/HazeSpixV3UbDfUJDKqzGD). Its **chosen** page is this design; its **Explored** page keeps the rejected dock variants.
-  - **"Operate Redesign"** (https://claude.ai/artifact/GsMDrsrNLEtnUC7aVNxptF), the first pass. It is still the reference for decode sort and filter, reply feedback, the radio chip and the TX HUD states, drawn in the rejected A/B/C chrome.
+  - **"Operate Redesign"** (https://claude.ai/artifact/GsMDrsrNLEtnUC7aVNxptF), the first pass. Its decode sort and filter, reply feedback and radio states are built, drawn there in the rejected A/B/C chrome.
 
 ---
 
@@ -33,7 +33,7 @@ Stated by the operator, 2026-09-26 and 2026-09-27:
 
 ## 2. What exists
 
-What the unbuilt slices start from, checked against the code on 2026-10-14. Operate as O1 left it (the status header, the queue and its CQ row, decodes, the dock): [webapp.md](../architecture/webapp.md), **Screens**.
+What the unbuilt slices start from, checked against the code on 2026-10-14. Operate as built: [webapp.md](../architecture/webapp.md), **Screens**.
 
 * **Reply.** The button posts `/api/queue/reply` and does not change. The queue row appears only when a `QUEUE_ENTRY` event is polled, which the P4 emits once a second (`porta_p4_companion_status_tick()`), plus the browser's poll interval. A "Queueing…" message line is the only feedback.
 * **The map** (`map.html`):
@@ -56,7 +56,7 @@ Found while tracing the operator's retries report (5 changed to 8, a new reply s
 
 ### 3.1 The principle: the station is the context, references are optional
 
-There is no mode. An activation is the station having references (RFC 0008 §4.1). The references appear in the Station sheet and as a progress line in the dock; the rest of Operate reads them where they matter:
+There is no mode. An activation is the station having references (RFC 0008 §4.1). The references appear in the Station sheet and as a progress line under the slot bar; the rest of Operate reads them where they matter:
 
 * P2P and S2S badges on decode rows.
 * A "worked on this reference today" dupe cue.
@@ -64,20 +64,16 @@ There is no mode. An activation is the station having references (RFC 0008 §4.1
 
 Clearing the references is the whole of ending an activation.
 
-### 3.2 The layout: a bottom dock (decided 2026-09-27)
+### 3.2 The layout
 
-Top to bottom:
+Built: the dock layout (O1, 2026-09-28), then layout v2 (O8, §3.14), whose regions are [webapp.md](../architecture/webapp.md), **Operate's pinned regions**.
 
-1. **Status strip:** the slot bar and parity, plus the radio chip (§3.7).
-2. **Queue:** QSO rows (call, tries, state, ×), each count changeable in place ([webapp.md](../architecture/webapp.md), **Tries on a queue row**). Then the **CQ row**, always last ([webapp.md](../architecture/webapp.md), **The CQ row**).
-3. **Decodes:**
-   - **Rows exactly as today's app:** a mono meta line with DT and Hz in fixed left columns and dB right-justified; the message, with callsigns as links and the → ME badge; then grid · location on the left and distance and bearing on the right.
-   - **The Reply button is the new style:** a 36 px outlined button.
-   - Sort and filter sit in the Decodes header (§3.8).
-4. **Dock:** the band grid and one line with the frequency and a Station link ([webapp.md](../architecture/webapp.md), **The dock**). At an activation, a progress line is added (§3.10).
-5. **Tab bar.**
+### 3.14 Layout v2: status on top, controls at the bottom
 
-**Why the dock layout.** Decodes are the scarce resource on a phone, and the dock keeps its height fixed. Band is one tap. Every control touched mid-QSO is in thumb reach or in the queue. The rejected variants are in §4.
+Shipped as O8, 2026-10-25: [webapp.md](../architecture/webapp.md), **Operate's pinned regions**, **The radio bar**, **Decode rows and tap to reply** and **Band and frequency**; the phone check is in TEST_PLAN Pending. Its two open items, decided at the build (§7):
+
+* **CAT lost mid-transmission:** Transmitting wins, so Stop stays where it was; the sub-line adds "CAT lost", and the bar shows CAT lost once the transmission ends.
+* **Where Hz shows:** on the station's card, beside each decode heard this session.
 
 ### 3.5 The Station sheet: what's still to add
 
@@ -88,7 +84,7 @@ Built as O1c ([webapp.md](../architecture/webapp.md), **The Station sheet**). St
 
 ### 3.7 Radio status replaces Connect
 
-Shipped as O2: [webapp.md](../architecture/webapp.md), **The radio chip and the TX banner**. Choosing the radio model stays in Settings, and the P4 ignores it today (row `cgc4`).
+Shipped as O2, now on the radio bar: [webapp.md](../architecture/webapp.md), **The radio bar**. Choosing the radio model stays in Settings, and the P4 ignores it today (row `cgc4`).
 
 ### 3.8 Decode sort and filter
 
@@ -120,20 +116,20 @@ The UI half of RFC 0008 §4.2–4.3. Dock Options canvas: `Add a park or summit`
 
 Only when references exist (RFC 0008 §4.6):
 
-* **A progress line in the dock:** each reference against its threshold (POTA 10, SOTA 4), and the countdown to 0000Z.
+* **A progress line under the slot bar:** each reference against its threshold (POTA 10, SOTA 4); the countdown to 0000Z is on the radio bar. Built with O8 ([webapp.md](../architecture/webapp.md), **Activation progress**).
 * The references themselves live in the Station sheet (§3.5).
 * P2P and S2S badges on decodes that carry a spotted reference, and a partner reference on queue rows.
 * A dupe cue on decodes worked on this reference today.
 
-Nothing moves between home and activation: the dock grows by one line, and the CQ row's text changes.
+Nothing moves between home and activation: the top grows by one line, and the CQ row's text changes.
 
 ### 3.12 The TX HUD
 
-Shipped as O2: [webapp.md](../architecture/webapp.md), **The radio chip and the TX banner**. Stop CQ / Stop TX shipped with O1a ([webapp.md](../architecture/webapp.md), **The CQ row**).
+Shipped as O2, now the radio bar's Transmitting state: [webapp.md](../architecture/webapp.md), **The radio bar**. Stop CQ / Stop TX shipped with O1a ([webapp.md](../architecture/webapp.md), **The CQ row**).
 
 ### 3.13 Reply feedback
 
-Shipped as O3: [webapp.md](../architecture/webapp.md), **Reply feedback**. The already-built refusal of a reply to a decode heard on another frequency is in **The dock**.
+Shipped as O3, on the decode row since O8: [webapp.md](../architecture/webapp.md), **Decode rows and tap to reply**. The refusal of a reply to a decode heard on another frequency is in **Band and frequency**.
 
 ## 4. Rejected alternatives
 
@@ -141,11 +137,12 @@ Shipped as O3: [webapp.md](../architecture/webapp.md), **Reply feedback**. The a
 * **A: a station card under the status strip.** At an activation the card grows by about 290 px and pushes decodes off screen when the activation is busiest.
 * **C: a sideways tile rail.** It hides state off screen.
 * **A one-row dock** with a band chip, and **a pull-up dock.** Both put band two taps away, and the pull-up dock, open, leaves about two decode rows visible.
+* **A one-row dock** and **a pull-up dock** were rejected on 2026-09-27; the operator took the pull-up shape back on 2026-10-25 for the radio drawer, accepting band as two taps (§3.14).
 * **Swiping the band row** past six bands. It hides bands behind a swipe, which undoes band as a one-tap action.
 * **CQ controls in the dock** (the dock layout's first version) and **a separate CQ settings sheet.** CQ's status belongs with the queue it waits on, and two sheets split one set of settings.
-* **Keeping Connect as a button.** Autodetect and the P4's sync on CAT open already do its job; a manual retune survives behind the radio chip.
+* **Keeping Connect as a button.** Autodetect and the P4's sync on CAT open already do its job; a manual retune survives in the radio drawer.
 * **A Save button for Operate controls.** Mid-QSO a control should take effect when touched, and batching is what caused §2.1.
-* **A dialog confirming a reply was taken.** It needs a tap to dismiss on a 15 s clock and covers the decodes, while the Reply button is where the operator is already looking (§3.13).
+* **A dialog confirming a reply was taken.** It needs a tap to dismiss on a 15 s clock and covers the decodes, while the row tapped is where the operator is already looking (§3.13).
 * **A high-SWR warning in the TX HUD** (dropped 2026-09-27). The QMX protects itself, and a browser warning adds nothing to that. The HUD still shows the SWR reading.
 
 ## 5. Later phases
@@ -162,15 +159,16 @@ Shipped as O3: [webapp.md](../architecture/webapp.md), **Reply feedback**. The a
 O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); they are the Now rows. O5 and O6 became one slice, the CQ's tries (§7). The combined order with RFC 0008 is RFC 0008 §7.
 
 * **O1a: the CQ row**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The CQ row**).
-* **O1b: the dock**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The dock**).
+* **O1b: the dock**, shipped 2026-09-28; its band and frequency rules moved to the radio drawer with O8 ([webapp.md](../architecture/webapp.md), **Band and frequency**).
 * **O1c: the Station sheet**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The Station sheet**).
-* **O2: radio status replaces Connect, the read-back, and the TX HUD**, shipped 2026-10-24 ([webapp.md](../architecture/webapp.md), **The radio chip and the TX banner**); its field check is in TEST_PLAN Pending.
-* **O3: reply feedback**, shipped 2026-10-24 ([webapp.md](../architecture/webapp.md), **Reply feedback**); its bench check is in TEST_PLAN Pending.
+* **O2: radio status replaces Connect, the read-back, and the TX HUD**, shipped 2026-10-24, on the radio bar since O8 ([webapp.md](../architecture/webapp.md), **The radio bar**); its field check is in TEST_PLAN Pending.
+* **O3: reply feedback**, shipped 2026-10-24, on the decode row since O8 ([webapp.md](../architecture/webapp.md), **Decode rows and tap to reply**); its check is O8's TEST_PLAN row.
 * **O4: decode sort and filter**, shipped 2026-10-24 ([webapp.md](../architecture/webapp.md), **Decode sort and filter**); the phone check is in TEST_PLAN Pending.
 * **O5 and O6: the CQ's tries and tries on every queue row**, shipped 2026-10-14 ([autoseq.md](../architecture/autoseq.md), **Tries**; [webapp.md](../architecture/webapp.md), **The CQ row** and **Tries on a queue row**).
 * **The Activation section and the add screen ship with RFC 0008's slices:**
   - A1 brings typed references.
   - A3 brings the store, the nearby list and search, and the map's pick mode.
+* **O8: layout v2**, shipped 2026-10-25 (§3.14), with RFC 0008's A2 progress line; the phone check is in TEST_PLAN Pending.
 * **O7, later:** auto-reply (§5), row `r2bu`.
 
 ## 7. Decisions
@@ -207,3 +205,21 @@ O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); th
 
 * **Every row counts tries, transmissions,** not retries. The Station key `tries` (default 6, the sends that 5 retries gave) replaces `autoseq_max_retry`.
 * **One setting** bounds each QSO message and is what Call CQ starts with; there is no separate CQ count.
+
+**2026-10-25, layout v2:**
+
+* Status on top, controls at the bottom (§3.14): the slot bar alone is pinned above the decodes; queue, CQ row and a radio bar are pinned below.
+* The radio bar carries radio state, transmit power and SWR, and Stop; band and frequency move into its drawer, so band is two taps.
+* Decode rows are two lines, with no Reply button and no Hz; a tap on a replyable row replies, with an Undo toast.
+* O8 ships as one slice and one commit; a bug found later is fixed forward.
+
+**2026-10-25, building layout v2 (O8):**
+
+* **CAT lost mid-transmission keeps Transmitting** and its Stop; the sub-line says CAT is lost, and the CAT lost state shows once the transmission ends. Stop stays where the thumb already is.
+* **Hz shows on the station's card,** beside each decode heard this session: it is a detail of one station.
+* **The app header and status line stay** above the slot bar; the canvas left them out, so the built decode list is about 66 pt shorter than drawn ([webapp.md](../architecture/webapp.md), **Operate's pinned regions**, measured).
+* **The activation line ships with its counts** (RFC 0008 A2), since §3.14's top region is its home.
+* **No Standard button** in the frequency row: a tap on the selected band already returns to its standard.
+* **The slot header keeps the slot's span**, without the date ("14:02:30–45z · 6s ago"), per the 2026-09-28 decision that a start and an age counted from the end both read true.
+* **Undo lasts 5 s,** and a reply to a call already queued gets none, since cancelling would end that QSO.
+* **SWR tripped twice stays on the bar until the next transmission,** matching the main board, which stays stopped until the operator calls CQ, replies or tunes.
