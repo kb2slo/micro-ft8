@@ -31,7 +31,7 @@ Facts are from the working tree at `f24182a`.
   - `porta_rx` is not pinned (`components/porta/porta.cpp:1037`).
 * **Memory.** PSRAM is not enabled. DMA buffers cannot use it anyway ([main_board.md](../architecture/main_board.md)). The 161 KB waterfall is a heap malloc, and t4/f2's 322 KB waterfall already cannot allocate ([decode.md](../architecture/decode.md)).
 * **Ethernet.** The board has an Ethernet PHY and 802.3at PoE; "neither is used, by decision" (2026-09-16, [main_board.md](../architecture/main_board.md)).
-* **Port A cannot carry audio.** It runs at 115200 baud, about 11.5 kB/s, and 230400 gave CRC errors and sequence drops ([main_board.md](../architecture/main_board.md)). Even the 6 kHz decimated stream as 16-bit samples is 12 kB/s.
+* **Port A cannot carry this stream.** It rests at 2,500,000 baud, about 250 kB/s ([sidekick.md](../architecture/sidekick.md), **Port A**). The 48 kHz stream §3 taps is 192 kB/s as float or 144 kB/s packed (§7, question 4), most of the link, beside the control traffic the station runs on. An 8 kHz listening stream fits (row fc6w), but it is not what this RFC needs.
 * **Instruments.**
   - `SLOT … dec… left…` (`components/decode_pipeline/decode_pipeline.cpp:277`) and `BDRY … lost… drop…` (`components/ft8_audio_pipeline/ft8_audio_pipeline.cpp:192`) per slot.
   - The waterfall allocation size in the log.
