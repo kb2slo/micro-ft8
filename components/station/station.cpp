@@ -194,6 +194,7 @@ enum class StationKey {
     IgnorePrefixes,
     RxtxLog,
     AmpSwrGuard,
+    AmpPrimeOnBandChange,
     SkipTx1,
     ActiveBand,
     ActiveBands,
@@ -219,6 +220,7 @@ StationKey key_from_name(const std::string& name)
     if (name == "ignore_prefixes") return StationKey::IgnorePrefixes;
     if (name == "rxtx_log") return StationKey::RxtxLog;
     if (name == "amp_swr_guard") return StationKey::AmpSwrGuard;
+    if (name == "amp_prime_on_band_change") return StationKey::AmpPrimeOnBandChange;
     if (name == "skiptx1") return StationKey::SkipTx1;
     if (name == "active_band") return StationKey::ActiveBand;
     if (name == "active_bands") return StationKey::ActiveBands;
@@ -294,6 +296,11 @@ void apply_key(StationSettings* io, StationKey key, const std::string& value)
         case StationKey::AmpSwrGuard:
             if (sscanf(value.c_str(), "%d", &val) == 1) {
                 io->amp_swr_guard = (val != 0);
+            }
+            break;
+        case StationKey::AmpPrimeOnBandChange:
+            if (sscanf(value.c_str(), "%d", &val) == 1) {
+                io->amp_prime_on_band_change = (val != 0);
             }
             break;
         case StationKey::SkipTx1:
@@ -427,6 +434,7 @@ std::string station_serialize(const StationSettings& in)
     out << "tries=" << in.tries << "\n";
     out << "tx_min_delay_ms=" << in.tx_min_delay_ms << "\n";
     out << "amp_swr_guard=" << (in.amp_swr_guard ? 1 : 0) << "\n";
+    out << "amp_prime_on_band_change=" << (in.amp_prime_on_band_change ? 1 : 0) << "\n";
     if (in.protocol_ft4) {
         out << "protocol_mode=FT4\n";
     }

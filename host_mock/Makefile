@@ -22,6 +22,7 @@ INCLUDES = -I. \
            -I../components/rtc_core/include \
            -I../components/decode_pipeline/include \
            -I../components/dial_history/include \
+           -I../components/amp_band_prime/include \
            -I../components/swr_sweep/include \
            -I../components/swr_trip/include \
            -I../components/ft8_lib -I../components/ft8_lib/vendor \
@@ -62,6 +63,7 @@ ROGERS_ONCE_TARGET = host_test_rogers_once
 DIAL_HISTORY_TARGET = host_test_dial_history
 ADIF_LOGGER_TARGET = host_test_adif_logger
 CAT_REPLY_PARSER_TARGET = host_test_cat_reply_parser
+AMP_BAND_PRIME_TARGET = host_test_amp_band_prime
 SWR_SWEEP_TARGET = host_test_swr_sweep
 SWR_TRIP_TARGET = host_test_swr_trip
 SLOT_DEFICIT_TARGET = host_test_slot_deficit
@@ -81,7 +83,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARG
      $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
      $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(BUNDLE_HOST_TARGET) \
      $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(ROGERS_ONCE_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
-     $(CAT_REPLY_PARSER_TARGET) $(SWR_SWEEP_TARGET) $(SWR_TRIP_TARGET) \
+     $(CAT_REPLY_PARSER_TARGET) $(AMP_BAND_PRIME_TARGET) $(SWR_SWEEP_TARGET) $(SWR_TRIP_TARGET) \
      $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(CORE_BUSY_TARGET) \
      $(DECODE_RETRY_TARGET) $(DECODE_SYNC_TARGET) $(DECODE_SNR_TARGET) \
      $(PORTA_OUT_QUEUE_TARGET) $(HEARD_GRID_TARGET) $(DECODE_FIELDS_TARGET) $(RTC_CORE_TARGET) \
@@ -145,6 +147,12 @@ CAT_REPLY_PARSER_OBJ = cat_reply_parser.o test_cat_reply_parser.o
 cat_reply_parser.o: ../components/radio_control/cat_reply_parser.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 $(CAT_REPLY_PARSER_TARGET): $(CAT_REPLY_PARSER_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+AMP_BAND_PRIME_OBJ = amp_band_prime.o test_amp_band_prime.o
+amp_band_prime.o: ../components/amp_band_prime/amp_band_prime.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+$(AMP_BAND_PRIME_TARGET): $(AMP_BAND_PRIME_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 SWR_SWEEP_OBJ = swr_sweep.o test_swr_sweep.o
@@ -331,6 +339,7 @@ clean:
 	      $(DIAL_HISTORY_OBJ) $(DIAL_HISTORY_TARGET) \
 	      $(ADIF_LOGGER_OBJ) $(ADIF_LOGGER_TARGET) \
 	      $(CAT_REPLY_PARSER_OBJ) $(CAT_REPLY_PARSER_TARGET) \
+	      $(AMP_BAND_PRIME_OBJ) $(AMP_BAND_PRIME_TARGET) \
 	      $(SWR_SWEEP_OBJ) $(SWR_SWEEP_TARGET) \
 	      $(PORTA_PROTO_OBJ) $(PORTA_PROTO_TARGET) \
 	      $(PORTA_OUT_QUEUE_OBJ) $(PORTA_OUT_QUEUE_TARGET) \

@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "amp_band_prime.h"
 #include "callsign_hashtable.h"
 #include "debug_log.h"
 #include "decode_pipeline.h"
@@ -67,6 +68,8 @@ static int64_t s_sr_probe_deadline_ms = 0;
 static constexpr int64_t kSrProbeMs = 1000;
 static bool s_sr_readback_pending = false;
 static SwrTrip s_swr_trip;
+static bool s_swr_operator_start_pending = false;
+static bool s_swr_operator_clear_anyway = false;
 // Slot a trip or a Tune trip ended a transmission in; the TX HUD shows it for the rest of it.
 static int64_t s_swr_abort_slot_idx = -1;
 static constexpr const char *kSwrReason = "SWR protection";
@@ -196,6 +199,10 @@ static TxStart tx_start(int skip_tones, std::string &skip_reason) {
         skip_reason = "TX already active";
         return TxStart::Skipped;
     }
+    if (amp_band_prime_busy()) {
+        skip_reason = "amplifier band prime running";
+        return TxStart::Skipped;
+    }
     if (swr_sweep_busy()) {
         // An SWR sweep has the radio (docs/architecture/radio.md, The SWR sweep). It refuses to start over a queued QSO or
         // CQ, but the operator can queue one after; that slot is skipped.
@@ -317,6 +324,11 @@ void tx_scheduler_swr_operator_start(bool clear_anyway) {
     if (!swr_lock_known() || decode_tx_state_get_tx_active()) {
         return;
     }
+    if (amp_band_prime_busy()) {
+        s_swr_operator_start_pending = true;
+        s_swr_operator_clear_anyway = s_swr_operator_clear_anyway || clear_anyway;
+        return;
+    }
     if (swr_trip_operator_start(s_swr_trip) || clear_anyway) {
         swr_lock_clear("operator start");
     }
@@ -383,6 +395,8 @@ static void swr_lock_tick(void) {
         s_sr_was_ready = false;
         s_sr_probe = SrProbe::Idle;
         s_sr_readback_pending = false;
+        s_swr_operator_start_pending = false;
+        s_swr_operator_clear_anyway = false;
         return;
     }
     const radio_swr_lock_t *lock = radio_control_swr_lock();
@@ -402,11 +416,22 @@ static void swr_lock_tick(void) {
             s_sr_readback_pending = false;
             s_sr_probe = SrProbe::Idle;
         }
+        s_swr_operator_start_pending = false;
+        s_swr_operator_clear_anyway = false;
         return;
     }
-    if (decode_tx_state_get_tx_active() || swr_sweep_busy()) {
+    if (decode_tx_state_get_tx_active() || amp_band_prime_busy() || swr_sweep_busy()) {
         if (s_sr_probe == SrProbe::Waiting) {
             s_sr_probe = SrProbe::Idle;
+        }
+        return;
+    }
+    if (s_swr_operator_start_pending) {
+        const bool clear_anyway = s_swr_operator_clear_anyway;
+        s_swr_operator_start_pending = false;
+        s_swr_operator_clear_anyway = false;
+        if (swr_trip_operator_start(s_swr_trip) || clear_anyway) {
+            swr_lock_clear("deferred operator start");
         }
         return;
     }
@@ -549,6 +574,7 @@ static void check_slot_boundary(void) {
     if (s_qso_xmit && s_target_slot_parity == slot_parity && slot_idx != s_tx_cancel_slot_idx &&
         slot_idx != s_tx_skip_slot_idx &&
         slot_ms < (g_protocol->slot_time_ms * 4 / 15) && !decode_tx_state_get_tx_active() &&
+        !amp_band_prime_busy() &&
         !decode_tx_state_get_decode_in_progress() &&
         decode_tx_state_get_decode_applied_slot_idx() >= slot_idx - 1 &&
         !decode_pipeline_result_pending()) {

@@ -80,15 +80,22 @@ int main()
         StationSettings s;
         station_settings_init(&s);
         expect_true(!s.amp_swr_guard, "SWR protection recovery is off by default");
+        expect_true(!s.amp_prime_on_band_change, "amp band-change prime is off by default");
         station_parse("amp_swr_guard=1\n", &s);
         expect_true(s.amp_swr_guard, "amp_swr_guard parsed");
+        station_parse("amp_prime_on_band_change=1\n", &s);
+        expect_true(s.amp_prime_on_band_change, "amp_prime_on_band_change parsed");
         StationSettings t;
         station_settings_init(&t);
         station_parse(station_serialize(s), &t);
         expect_true(t.amp_swr_guard, "amp_swr_guard round-trips");
+        expect_true(t.amp_prime_on_band_change, "amp_prime_on_band_change round-trips");
         station_parse("amp_swr_guard=0\n", &s);
         expect_true(!s.amp_swr_guard, "and turns off");
         expect_true(station_key_known("amp_swr_guard"), "key known to CONFIG");
+        station_parse("amp_prime_on_band_change=0\n", &s);
+        expect_true(!s.amp_prime_on_band_change, "amp prime turns off");
+        expect_true(station_key_known("amp_prime_on_band_change"), "amp prime key known to CONFIG");
     }
 
     {

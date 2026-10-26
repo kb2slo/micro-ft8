@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "amp_band_prime.h"
 #include "autoseq.h"
 #include "callsign_hashtable.h"
 #include "decode_pipeline.h"
@@ -89,6 +90,7 @@ extern "C" void app_main(void) {
         // and the armed TX (docs/architecture/main_board.md, P4).
         decode_pipeline_apply();
         tx_scheduler_tick();
+        amp_band_prime_tick(esp_timer_get_time() / 1000);
         // A sweep request accepted just before a TX started waits for it to end; one already
         // running is always ticked, so it can de-key.
         if (!decode_tx_state_get_tx_active() || swr_sweep_active()) {
@@ -97,7 +99,7 @@ extern "C" void app_main(void) {
         vTaskDelay(pdMS_TO_TICKS(10));
         // Set by qmx_transport on every CAT open; retried until it lands.
         if (decode_tx_state_get_cdc_initial_sync_pending() && radio_control_ready() &&
-            !decode_tx_state_get_tx_active() && !swr_sweep_busy() &&
+            !decode_tx_state_get_tx_active() && !amp_band_prime_busy() && !swr_sweep_busy() &&
             porta_p4_sync_vfo("QMX connect") == nullptr) {
             decode_tx_state_set_cdc_initial_sync_pending(false);
         }

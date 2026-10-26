@@ -6,6 +6,7 @@
 
 #include "adif_delete.h"
 #include "adif_logger.h"
+#include "amp_band_prime.h"
 #include "autoseq.h"
 #include "decode_pipeline.h"
 #include "decode_tx_state.h"
@@ -35,6 +36,7 @@ extern std::string g_call;
 static StationSettings s_station;
 static bool s_seeded = false;
 static bool s_tune = false;
+static std::atomic<uint32_t> s_amp_prime_end_ms{0};
 
 extern const ProtocolConfig *g_protocol;
 extern AdifLoggerDedupe s_adif_logger_dedupe;
@@ -149,6 +151,49 @@ static int station_freq_hz(void) {
     return (int)(s_station.band_freq[idx] * 1000.0f + 0.5f);
 }
 
+static void amp_band_prime_event(const amp_band_prime_event_t *event, void * /*user*/) {
+    s_amp_prime_end_ms.store((uint32_t)(esp_timer_get_time() / 1000));
+    if (event->kind == AMP_BAND_PRIME_DONE) {
+        ESP_LOGI(TAG, "amplifier band prime: %d ms SWR Tune pulse complete",
+                 AMP_BAND_PRIME_PULSE_MS);
+        return;
+    }
+    const char *why = "cancelled";
+    switch (event->abort_reason) {
+        case AMP_BAND_PRIME_ABORT_CANCELLED:
+            why = "cancelled";
+            break;
+        case AMP_BAND_PRIME_ABORT_CAT_LOST:
+            why = "CAT failed";
+            break;
+        case AMP_BAND_PRIME_ABORT_STALLED:
+            why = "main loop stalled";
+            break;
+    }
+    ESP_LOGW(TAG, "amplifier band prime aborted: %s", why);
+}
+
+static void request_amp_band_prime() {
+    if (!s_station.amp_prime_on_band_change) {
+        return;
+    }
+    if (s_tune || swr_sweep_busy() || amp_band_prime_busy()) {
+        ESP_LOGW(TAG, "amplifier band prime skipped: another radio operation is active");
+        return;
+    }
+    switch (amp_band_prime_request_start(radio_control_swr_io(), amp_band_prime_event, nullptr)) {
+        case AMP_BAND_PRIME_START_OK:
+            ESP_LOGI(TAG, "amplifier band prime queued");
+            break;
+        case AMP_BAND_PRIME_START_BUSY:
+            ESP_LOGW(TAG, "amplifier band prime skipped: already busy");
+            break;
+        case AMP_BAND_PRIME_START_UNSUPPORTED:
+            ESP_LOGW(TAG, "amplifier band prime skipped: radio has no SWR Tune mode");
+            break;
+    }
+}
+
 // A sync sets the radio in several commands and the radio answers each with its state (AI2;), so
 // the pushed states in between are not the radio's own doing. The push tick waits out a sync and
 // kRadioPushQuietMs after it, then sends the state the radio settled on.
@@ -185,6 +230,15 @@ static const char *sync_vfo(const char *reason) {
     if (decode_tx_state_get_tx_active()) {
         ESP_LOGW(TAG, "VFO sync skipped (%s): TX active", reason ? reason : "");
         return "TX active";
+    }
+    if (s_tune) {
+        return "Tune active";
+    }
+    if (swr_sweep_busy()) {
+        return "SWR sweep active";
+    }
+    if (amp_band_prime_busy()) {
+        return "amp band prime active";
     }
     radio_control_end_tx();  // RX mode first (idempotent)
     const esp_err_t err = radio_control_sync_frequency_mode(freq_hz);
@@ -347,7 +401,9 @@ void porta_p4_radio_push_tick(void) {
         return;
     }
     s_last_ms = now_ms;
-    if (s_syncing.load() > 0 || now_ms - s_sync_end_ms.load() < kRadioPushQuietMs) {
+    if (s_syncing.load() > 0 || amp_band_prime_busy() ||
+        now_ms - s_sync_end_ms.load() < kRadioPushQuietMs ||
+        now_ms - s_amp_prime_end_ms.load() < kRadioPushQuietMs) {
         return;
     }
     const uint32_t changes = radio_control_state_changes();
@@ -442,6 +498,11 @@ const char *porta_host_set_clock(uint32_t epoch_secs, uint16_t millis) {
 
 void porta_host_tx_cancel(void) {
     tx_scheduler_cancel();
+    if (s_tune) {
+        s_tune = false;
+        (void)radio_control_set_tune(false, 0, 0);
+    }
+    amp_band_prime_request_cancel();
     // A sweep is a transmission too: the one stop control ends it (docs/architecture/radio.md, The SWR sweep). The ticking
     // task does the de-key on its next tick, at most 10 ms away.
     swr_sweep_request_cancel();
@@ -499,6 +560,9 @@ const char *porta_host_sweep_start(const porta_sweep_range_t *ranges, size_t cou
     }
     if (s_tune) {
         return "tune is on";
+    }
+    if (amp_band_prime_busy()) {
+        return "amp band prime is running";
     }
     const int restore_hz = station_freq_hz();
     if (restore_hz <= 0) {
@@ -618,7 +682,21 @@ const char *porta_host_config_set(const char *key, const char *value) {
         }
     }
 
+    if (station_key_names_operating_band(key, s_station.band_sel,
+                                         g_protocol == &kProtocolFT4)) {
+        if (s_tune) {
+            return "Tune is on";
+        }
+        if (swr_sweep_busy()) {
+            return "SWR sweep is running";
+        }
+        if (amp_band_prime_busy()) {
+            return "amp band prime is running";
+        }
+    }
+
     std::string line = std::string(key) + "=" + value + "\n";
+    const int band_was = s_station.band_sel;
     const bool act_refs_was_empty = s_station.act_refs.empty();
     station_parse(line, &s_station);
     s_station.serialize_ft4_band_keys = s_station.protocol_ft4;
@@ -653,7 +731,13 @@ const char *porta_host_config_set(const char *key, const char *value) {
         if (why && station_key_names_operating_band(key, s_station.band_sel,
                                                       g_protocol == &kProtocolFT4)) {
             ESP_LOGI(TAG, "config %s=%s (saved, VFO not moved: %s)", key, value, why);
-            return station_vfo_refusal(key, strcmp(why, "TX active") == 0);
+            if (strcmp(why, "TX active") == 0 || strcmp(why, "CAT not ready") == 0) {
+                return station_vfo_refusal(key, strcmp(why, "TX active") == 0);
+            }
+            return why;
+        }
+        if (!why && strcmp(key, "band_sel") == 0 && s_station.band_sel != band_was) {
+            request_amp_band_prime();
         }
     }
 
@@ -678,6 +762,9 @@ const char *porta_host_tune(bool on) {
     ensure_seeded();
     if (on && swr_sweep_busy()) {
         return "a sweep is running";
+    }
+    if (on && amp_band_prime_busy()) {
+        return "amp band prime is running";
     }
     if (on && !radio_control_ready()) {
         return "CAT not ready";

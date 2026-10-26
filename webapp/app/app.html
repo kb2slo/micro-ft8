@@ -660,6 +660,15 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       </label>
     </div>
     <p class=setnote>An amplifier that picks its filter from the RF it senses can trip the QMX's SWR protection on the first transmission on a new band, and the QMX then sends nothing until it is cleared. On: the main board clears the lock and sends that message again in its next slot. A second trip in a row ends your CQ and cancels your QSOs until you call CQ, reply or press Tune. Needs QMX firmware 1_04_004 or later.</p>
+    <div class=setrow>
+      <label>Prime RF-sensing amp on band change
+        <select id=amp_prime_on_band_change>
+          <option value=0>Off</option>
+          <option value=1>On</option>
+        </select>
+      </label>
+    </div>
+    <p class=setnote>On: after you select a different band, the QMX sends a 0.5-second carrier at its SWR Tune power so the amplifier can select its filter before the next FT8 transmission. This transmits on every band change; leave it Off unless your amplifier senses its band from RF.</p>
     <div class=hd>Bands</div>
     <p class=setnote>Which bands appear. Band and frequency are set from Operate's radio bar.</p>
     <div id=bandList></div>
@@ -1036,7 +1045,8 @@ var stationSheetMsg = document.getElementById('stationSheetMsg');
 // never resend them. Settings' own fields (below) autosave one key each.
 var FIELDS = [
   'call','comment1','ignore_prefixes',
-  'radio','protocol_mode','skiptx1','rxtx_log','tx_min_delay_ms','amp_swr_guard'
+  'radio','protocol_mode','skiptx1','rxtx_log','tx_min_delay_ms','amp_swr_guard',
+  'amp_prime_on_band_change'
 ];
 var CQ_TYPE_NAMES = ['CQ', 'SOTA', 'POTA', 'QRP', 'FD', 'FreeText'];
 // AutoseqState wire values (main/autoseq.h). 6 = IDLE = remove from display.

@@ -6,7 +6,7 @@ idf_component_register(
          "porta_host.cpp"
          "tx_scheduler.cpp"
     INCLUDE_DIRS "."
-    REQUIRES usb usb_host_cdc_acm usb_host_uac esp_timer radio_control swr_sweep swr_trip
+    REQUIRES usb usb_host_cdc_acm usb_host_uac esp_timer radio_control amp_band_prime swr_sweep swr_trip
              autoseq callsign_hashtable protocol ft8_audio_pipeline decode_pipeline
              rtc_core resample porta porta_proto debug_log
              storage_service station qso_log adif

@@ -28,6 +28,25 @@ The QMX takes its tones over CAT, so the main board sets the timing (`tx_schedul
 * **Both waits are states of the 10 ms tick**, not sleeps, and `tx_active` stays true from `TX;` to `RX;`.
 * **A radio with CPFSK audio (QDX) is unchanged:** `radio_control_tone_lead_ms()` is 0 where `begin_cpfsk_tx` exists, so neither the 0.5 s start nor the minimum delay applies, and with no `key_up` it goes straight to `RX;`.
 
+## Prime an RF-sensing amplifier on a band change
+
+Station `amp_prime_on_band_change` is Settings > Amplifier > **Prime RF-sensing amp on band change**,
+off by default. After an explicit `band_sel` change has successfully moved the QMX, the P4 sends `MD8;`,
+waits 500 ms, then sends `RX;` and `MD6;`. QMX SWR Tune uses the radio's configured Tune %, so this gives
+an RF-sensing amplifier a low-power carrier on the new band before the next FT8 transmission. It does not
+run on boot, reconnect, a same-band frequency edit or a pushed radio state.
+
+`components/amp_band_prime` owns the bounded state machine. While a request is pending or keyed, normal TX,
+manual Tune, a sweep, another VFO sync and the SWR-lock probe stay out; a TX due then waits and starts late in
+the same slot once the pulse ends. A CAT error still goes through `RX;` and `MD6;`, and a main-loop tick delayed
+by more than a second while keyed aborts the pulse.
+If the loop stops altogether, the QMX's own CAT timeout is the last-resort de-key, as for an SWR sweep.
+
+This is an opt-in transmission, not an FT8 message. Bench-verified 2026-10-26 on QMX 1_04_003 at Tune 25%
+with a PA100+: 20→40, 40→10, 10→80 and 80→20 m each selected the amplifier's new filter during the 500 ms
+pulse, did not show the QMX protection lock, and returned to Digi receive; a queued CQ waited for the pulse
+and then transmitted normally. The tested image was local `cd17cd0-dirty`.
+
 ## SWR protection trips on a QMX
 
 The P4 reads the radio's SWR-protection lock (**The SWR-protection latch**, below) and handles a trip itself, so a trip costs one slot rather than every slot until someone presses a button on the radio. The policy is `components/swr_trip` (host-tested); the radio side is `radio_swr_lock_t` in `radio_control.h`; the sequencing is `poe_p4/main/tx_scheduler.cpp`.
