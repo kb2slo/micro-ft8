@@ -43,6 +43,8 @@ would run and why. CI runs the same script. Without `idf.py` on the PATH the two
 - Work on a branch. One change per pull request; a feature and an unrelated fix are two.
 - A commit's subject is one sentence of at most 72 characters saying what changed, then a blank line
   and the why in the body. CI checks the shape.
+- A squash merge makes the pull request's title the commit's subject, or its one commit's subject
+  when it has just one, and adds ` (#N)`. Keep that within 72 too; CI checks it.
 - The pull request template asks what the change is, how it was verified, which checks ran, the field
   checks, the doc audits, and the one to three places most worth a reviewer's eyes. The maintainer
   reviews and merges.
