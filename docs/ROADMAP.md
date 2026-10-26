@@ -4,8 +4,6 @@ Living plan for this fork. How it is kept: [maintainer/roadmap.md](maintainer/ro
 
 How things work now: `architecture/` (start at [architecture/system.md](architecture/system.md)). [RFC 0003](rfcs/rejected/0003-m32-pocket-port-and-ble-time.md) (Pocket+CTS bundle) is **rejected**. When a row needs an RFC, and what happens to it: [rfcs/README.md](rfcs/README.md).
 
-Ship on `origin/main`. Talk through changes before a local commit (see [README.md](README.md)). No `upstream` remote exists; never push or open a PR to Wei's `wcheng95/Mini-FT8` unless explicitly asked.
-
 ## Next groom
 
 * **Read cost is 42 KB against a 40 KB budget.** The 2026-10-24 focused groom made four Operate rows ready and added syb2 and w5nj, about 3 KB. Trim first: Ideas rows that still carry history, and p5ft (1,047 characters, over the limit).

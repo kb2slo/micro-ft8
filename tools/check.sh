@@ -154,7 +154,7 @@ skip() { echo "SKIP: $*"; exit 3; }
 
 need_submodule() {
   [ -e components/ft8_lib/vendor/ft8 ] ||
-    { echo "components/ft8_lib/vendor is empty: run git submodule update --init (AGENTS.md, Clone)"; exit 1; }
+    { echo "components/ft8_lib/vendor is empty: run git submodule update --init (CONTRIBUTING.md, Setup)"; exit 1; }
 }
 
 need_npm() {

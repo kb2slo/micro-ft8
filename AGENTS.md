@@ -1,10 +1,14 @@
 # Working agreement (any agent)
 
-This repo is tool-agnostic, and this file is the working agreement for every agent, whoever it works
-for. Tool-specific files (`CLAUDE.md`, which imports this file, `.cursor/rules/`, and any future
-equivalent) load it and carry no rules of their own; if one disagrees with this file, the stub is the bug. Supporting a new tool means adding a stub,
-never copying or moving rules into it. Do not adopt a vendor-specific format for anything that belongs
-here or in `docs/` — workflow, style, roadmap, or RFCs.
+This repo is tool-agnostic, and this file is the working agreement for every agent, whoever it works for.
+Tool-specific files (`CLAUDE.md`, which imports this file, `.cursor/rules/`, and any future equivalent) load
+it and carry no rules of their own; if one disagrees with this file, the stub is the bug. Supporting a new
+tool means adding a stub, never copying or moving rules into it. Do not adopt a vendor-specific format for
+anything that belongs here or in `docs/` — workflow, style, roadmap, or RFCs.
+
+**Workflow matches documentation.** Committed docs are the workflow: this file, `ROADMAP.md`, `STYLE.md`, RFCs, and the architecture notes. Cite the relevant doc when proposing or making a change.
+
+**A line earns its place here if it changes what an agent does.** If it only explains how a rule came about, it belongs in the commit message, not in this file.
 
 ## Who you work for
 
@@ -23,10 +27,6 @@ Read `docs/ROADMAP.md` (what is next) and the architecture doc or RFC for the ar
 [CONTRIBUTING.md](CONTRIBUTING.md). `tools/check.sh` runs every check CI runs; `--changed`, the ones a
 change can affect. Working for the maintainer (they say so, or `git config user.name` is theirs), also read
 [docs/maintainer/README.md](docs/maintainer/README.md) and do its **Session start**.
-
-**Workflow matches documentation.** Committed docs are the workflow: this file, `ROADMAP.md`, `STYLE.md`, RFCs, and the architecture notes. Cite the relevant doc when proposing or making a change.
-
-**A line earns its place here if it changes what an agent does.** If it only explains how a rule came about, it belongs in the commit message, not in this file.
 
 ## The work
 
@@ -55,7 +55,8 @@ An unproven fix is still worth making. Pretending it is proven is not.
 
 1. **Mechanical, low blast radius** — `git mv`-shaped extracts, renames, doc formatting, running `tools/check.sh` and reporting the result, applying a change the person you work for already fully specified. Verified by the compiler or a host test regardless of which model did it — use whatever is fast and cheap.
 2. **Judgment under ambiguity** — RFC drafting, sizing a memory/timing budget, choosing an extract boundary, RFC graduation, changes to this process, anything **Push back before tools** above would stop for. Use the strongest available model. Nothing mechanical catches a wrong call here, which is exactly what makes it expensive.
-3. **Field-only, no model tier substitutes** — USB/CDC/CAT, UAC timing, TX behaviour, anything [TEST_PLAN.md](docs/TEST_PLAN.md) marks Pending. This is category 2/3 of the verifiability rubric above wearing a model-choice hat: a bigger model does not turn a hardware-only check into something an agent can close. Say so plainly rather than picking a bigger model and reporting more confidence than the check supports.
+
+No model tier turns a hardware-only check into one an agent can close (**Never report a field check as passed**, below).
 
 **Test plan matches the work too.** [TEST_PLAN.md](docs/TEST_PLAN.md) is a ledger, not a manual, and is updated in the **same turn** as the work:
 
@@ -75,19 +76,9 @@ State which of these you did in the turn you report the work, and in the pull re
 
 **Triggers, stated so they cannot be missed.** Audit that section when a change adds, alters, or **removes** any of: a web-app screen or control; an on-screen string the README quotes; a documented workflow (log offload, flashing, time sync); or a supported radio/board. **Removal counts, and is the easy one to miss** — a README documenting a key that now does nothing is worse than one that never mentioned it. If Wei’s original below the delimiter documents the same thing, do **not** edit it: put the correction in the fork note and let the delimiter rule (“use the fork notes above where they disagree”) carry it. When it genuinely does not apply, say so explicitly in that turn, as above.
 
-Keep new logic out of `poe_p4/main/` ([STYLE.md](docs/STYLE.md)). Radio and `ft8_lib` boundaries: [architecture/radio.md](docs/architecture/radio.md), [architecture/ft8_lib.md](docs/architecture/ft8_lib.md). Read the current Now from `ROADMAP.md` rather than trusting a name written here — this line has gone stale before.
+What belongs in `poe_p4/main/`: [STYLE.md](docs/STYLE.md). Radio and `ft8_lib` boundaries: [architecture/radio.md](docs/architecture/radio.md), [architecture/ft8_lib.md](docs/architecture/ft8_lib.md).
 
 Changes reach `main` (`kb2slo/micro-ft8`) through a pull request ([CONTRIBUTING.md](CONTRIBUTING.md)). There is no `upstream` git remote: Wei's `wcheng95/Mini-FT8` is watched for portable fixes ([docs/maintainer/upstream.md](docs/maintainer/upstream.md)), not tracked as a fork. Never push to, or open a pull request on, any repo but this one unless the person you work for asks in so many words.
-
-## Clone (submodules)
-
-`ft8_lib` is the git submodule `components/ft8_lib/vendor`. Host `tx_e2e` and `idf.py build` need it. GitHub’s default clone does not fetch it. The repo is private — clone needs your own GitHub auth (SSH key or PAT), not just the URL.
-
-```bash
-git clone --recurse-submodules git@github.com:kb2slo/micro-ft8.git
-```
-
-Existing trees: `git submodule update --init`. Pin and bump path: [architecture/ft8_lib.md](docs/architecture/ft8_lib.md).
 
 ## Reproducibility
 
@@ -105,7 +96,7 @@ The person you work for reviews in chat, then green-lights each step. A good pre
 
 4. **Commit / push only when asked.** Local edits are fine when they asked for the work. `git commit` waits until they have seen the plan or diff and said to commit. `git push` waits until they said to push, and so does opening a pull request. “Commit and push” is both, using the agreed message. Do not treat “ship on main”, a green host test, or “local commits are fine” as standing permission.
 
-   **A scope instruction is not a push instruction, even mid-session.** Field-found 2026-09-17: after several rounds of the operator explicitly saying "commit and push" earlier in one long session, an agent then received "yes fix it now" — approval to make a specific correction — and pushed it without being asked, reasoning from the session's *pattern* rather than that turn's actual words. The rule above already said not to do this ("a good previous turn is not permission to skip a gate," restated here because it still happened): each push needs its own explicit trigger in that turn — "push", "commit and push", or equivalent — not inferred from momentum, from how the last few turns went, or from the change being correct and well-tested. Being right about the fix does not retroactively authorize the push.
+   **A scope instruction is not a push instruction, even mid-session.** Each push needs its own explicit trigger in that turn — "push", "commit and push", or equivalent — not inferred from momentum, from how the last few turns went, or from the change being correct and well-tested.
 
 5. **Undo with git, not a second edit.** Do not invert your last turn by re-editing files. That is slow and easy to get wrong when other uncommitted work is in the same tree.
    - Already a commit: `git revert` (or drop a *local, unpushed* commit only if they asked).
@@ -116,14 +107,15 @@ The person you work for reviews in chat, then green-lights each step. A good pre
 ## Review before commit — nominate what is worth the reviewer's eyes
 
 Reviewers trade review time for speed and do not read every line. So do the triage: **with every commit
-proposal, and in every pull request's Worth your eyes section, give a list of one to three items**, each a `file.cpp:line` and one sentence on
-what could be wrong, then say plainly that the rest is mechanical. An unranked diff handed over is the same as
-handing over nothing.
+proposal, and in every pull request's Worth your eyes section, give a list of one to three items**, each a
+`file.cpp:line` and one sentence on what could be wrong, then say plainly that the rest is mechanical. An
+unranked diff handed over is the same as handing over nothing.
 
 Prefer, in this order:
 
 1. **What needs the reviewer's domain knowledge and not the agent's** — what a real ADIF consumer accepts,
-   what an operator expects a control to do, whether a report format is right. The agent cannot grade these at all.
+   what an operator expects a control to do, whether a report format is right. The agent cannot grade these at
+   all.
 2. **What compiles, passes, and is still wrong** — encoding, units, a flash offset, a label paired with the
    wrong action.
 3. **Choices made unilaterally**, where another call was reasonable.
@@ -145,39 +137,34 @@ the only place every agent and every person can see them — see "Memory lives i
 
 - **Build locally; do not round-trip CI for a test binary.** `idf.py build` is ~40 s against ~5 min for the
   firmware CI job, and during bench debugging that latency dominates. The merged image is
-  `poe_p4/build/poe_p4_merged.bin`. CI is for pre-merge
-  verification, where its value is real: it builds the PR *merge commit*, which is what actually lands, and
-  it runs the sidekick and host-test jobs too. Stated 2026-09-04. A **field check** may run on either a local
-  build or a CI image (`continuous` asset) — the call of whoever runs it. The pass records which: the SHA
-  (and whether `-dirty`), or the asset name.
+  `poe_p4/build/poe_p4_merged.bin`. CI is for pre-merge verification, where its value is real: it builds the
+  PR *merge commit*, which is what actually lands, and it runs the sidekick and host-test jobs too. A **field
+  check** may run on either a local build or a CI image (`continuous` asset) — the call of whoever runs it.
+  The pass records which: the SHA (and whether `-dirty`), or the asset name.
 
 - **Before patching a vendored library, diff a working reference.** When a bug traces into vendored or managed
-  code (e.g. `usb_host_uac`), first compare how a working reference drives it (`poe_p4/main/qmx_transport.cpp` against the cited project
-  (`SteffenLav/qmx-panadapter`). Patch the library only if those comparisons still point at it. The P4 UAC crash
-  (2026-09-18) looked like a library bug but was our port running UAC open/start on the same task as the USB
-  event pump. Stated 2026-09-18.
+  code (e.g. `usb_host_uac`), first compare how a working reference drives it (our
+  `poe_p4/main/qmx_transport.cpp` against `SteffenLav/qmx-panadapter`). Patch the library only if those
+  comparisons still point at it.
 
 - **`webapp/app/` is source; what ships is its build** (`python3 webapp/tools/build.py`, after
-  `npm ci --prefix webapp/tools` once per clone): minified into `webapp/dist/app/`, manifest written from the
-  output, size budget checked ([architecture/webapp.md](docs/architecture/webapp.md), **Build**). Never commit a
+  `npm ci --prefix webapp/tools` once per clone): minified into `webapp/dist/app/`, manifest written from the output,
+  size budget checked ([architecture/webapp.md](docs/architecture/webapp.md), **Build**). Never commit a
   manifest or build output; both are ignored. Pages, CI's Host tests and `desk_push.py` each build, so an edit
-  under `webapp/app/` needs no extra step. Before pushing one, run `tools/check.sh --changed`: it runs that build, as CI does.
-  The committed manifest this replaced went stale on 2026-09-25 and again 2026-09-27, failing Pages both times.
+  under `webapp/app/` needs no extra step. Before pushing one, run `tools/check.sh --changed`: it runs that
+  build, as CI does.
 
 - **Gloss roadmap IDs in chat.** Write "u4dw (a watchdog that stops a runaway transmitter)", not "u4dw".
-  Nobody holds the ID-to-topic mapping in their head, and a bare ID makes them go look it up
-  mid-conversation. Applies to every row ID (the four-character ones and the older `B*`/`I*`) and RFC
-  section numbers. Test-plan
+  Nobody holds the ID-to-topic mapping in their head, and a bare ID makes them go look it up mid-conversation.
+  Applies to every row ID (the four-character ones and the older `B*`/`I*`) and RFC section numbers. Test-plan
   row IDs are fine bare when the surrounding text already says what the check does. Inside `ROADMAP.md` and
-  commit messages the bare ID is correct — this is about chat. Stated 2026-09-10. **When asking for a
-  decision, put all the context it needs in the chat itself** — what the row said, what was found, what each
-  option does — so the person you work for never has to open a row, an RFC, or an earlier message to answer. Stated
-  2026-09-24.
+  commit messages the bare ID is correct — this is about chat. **When asking for a decision, put all the
+  context it needs in the chat itself** — what the row said, what was found, what each option does — so the
+  person you work for never has to open a row, an RFC, or an earlier message to answer.
 
 - **WSJT-X is the on-air standard.** Where our behaviour on the air differs from WSJT-X's (the message
   sequence, a message's format, what a tap sends), WSJT-X's is the default, and we differ only by a recorded
   decision. Check its source first: the `WSJTX/wsjtx` mirror, `widgets/mainwindow.cpp` for sequencing.
-  Stated 2026-10-14.
 
 - **Prose is authoritative; a diagram is derived.** Never let a fact live only in a diagram. Agents read
   the prose and may not reconstruct a constraint that exists only as an arrow, and a diagram that is the sole
@@ -185,14 +172,15 @@ the only place every agent and every person can see them — see "Memory lives i
   **mermaid in the markdown**: GitHub renders it for humans, its source *is* the graph semantics rather than
   coordinates an agent has to re-derive, and a changed edge is a one-line diff instead of two pictures to
   compare. Do not commit SVG or raster diagrams to `docs/` — SVG costs an agent far more to read than the
-  content is worth, and images diff and grep not at all. Stated 2026-09-10.
+  content is worth, and images diff and grep not at all.
 
 ## Pre-alpha: do not carry the past
 
 This project is **pre-alpha**. No promise to anyone — a contributor, or an operator trying an early build —
-that anything keeps working across a commit; [CONTRIBUTING.md](CONTRIBUTING.md) and the site say so. Act accordingly: when something changes, change it and delete what it replaced. Do
-not write migration notes, deprecation notes, or "was X, now Y" bookkeeping, and do not keep code whose only
-job is accepting an older state.
+that anything keeps working across a commit; [CONTRIBUTING.md](CONTRIBUTING.md) and the site say so. Act
+accordingly: when something changes, change it and delete what it replaced. Do not write migration notes,
+deprecation notes, or "was X, now Y" bookkeeping, and do not keep code whose only job is accepting an older
+state.
 
 The boundary matters, because over-applying this would delete the reasoning the rest of these docs are built
 on:
@@ -222,10 +210,7 @@ are the memory: `AGENTS.md` for working agreement and operating notes, `ROADMAP.
 
 **Why:** a private store is scoped to one machine and one account. It is invisible to the person you work for, to a
 second agent on another machine, to a future maintainer, and to code review — so it silently diverges from the
-repo and cannot be corrected by anyone who has not got it. Four such notes existed on 2026-09-10 and were
-migrated here; one of them duplicated a `ROADMAP.md` row and said so in its own text, and another stated a
-commit-hygiene rule that the agent holding it broke twice the same day. A rule only one agent can read is
-not a rule.
+repo and cannot be corrected by anyone who has not got it. A rule only one agent can read is not a rule.
 
 **How to apply:** when the maintainer states a preference worth keeping, put it in the right doc in the same
 turn and propose the commit. A contributor's preference about how this repo works is a pull request to that
@@ -234,9 +219,7 @@ filing it somewhere the maintainer cannot see: write everything here as if it we
 
 ## Local IDF build / flash
 
-**Local build first. CI is not an iteration loop.** Iterate with a local `idf.py build` in `poe_p4/` and hand the person you work for the merged image straight from `poe_p4/build/poe_p4_merged.bin`. Do **not** push a branch and wait on a CI artifact merely to produce a test binary: during bench debugging that latency dominates the session. CI is for **pre-merge verification** (see the bullet above).
-
-Clone with submodules first (see **Clone (submodules)** above). After `source` of `esp-idf/export.sh` (v5.5.5):
+Iterate with a local build (**Build locally**, above). Clone with submodules first ([CONTRIBUTING.md](CONTRIBUTING.md), **Setup**). When they ask you to flash, after `source` of `esp-idf/export.sh` (v5.5.5):
 
 ```bash
 cd poe_p4
@@ -246,5 +229,3 @@ idf.py build flash
 Do not split into separate `build` then `flash` unless they ask. Flash over the **PROG** USB-C port next to the RJ45; the QMX stays on the Host port, so `idf.py monitor` works with the radio attached ([architecture/main_board.md](docs/architecture/main_board.md), **Two USB-C ports**).
 
 The sidekick is its own project: `cd sidekick && idf.py build flash`. `tools/merge_sidekick_bin.sh` merges its build into one `0x0` image.
-
-Loader stubs (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, and similar) exist only so a given tool loads this agreement. They point here. Do not duplicate the plan in those files. `AGENTS.md` states the rule; adding a tool means adding a stub, never moving rules into it.
