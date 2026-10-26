@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ROADMAP.md hygiene (docs/README.md "Doc types" > "Roadmap rows").
+# ROADMAP.md hygiene (docs/maintainer/roadmap.md, "Roadmap rows").
 #
 #   tools/roadmap_rows.sh                  rows over the size limit, median length, long-ok count
 #   tools/roadmap_rows.sh new              print a fresh random row ID never seen in git history

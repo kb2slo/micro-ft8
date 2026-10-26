@@ -193,7 +193,7 @@ def main():
           + ('' if base else ' (no --base, so none is counted as new)'))
     if new:
         print('A dropped row is cited by what replaced it, or the citation goes '
-              '(docs/README.md, Roadmap rows).')
+              '(docs/maintainer/roadmap.md, Roadmap rows).')
     return 1 if failures or new else 0
 
 

@@ -1,6 +1,6 @@
 # Release process (kb2slo fork)
 
-How a build becomes something an operator can download and flash. Companion to [README.md](README.md): that
+How a build becomes something an operator can download and flash. Companion to [AGENTS.md](../AGENTS.md): that
 file is the working agreement, this one is what CI publishes and what a human must still do by hand.
 
 Two paths, both defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). Nothing else publishes.
@@ -104,7 +104,7 @@ says so on stdout). Then it prints the tag and commit and asks before pushing;
 `--yes` skips the prompt.
 
 Cutting a release is also the event that ends pre-alpha — **Pre-alpha: do not carry the past** in
-[README.md](README.md) — because a version aimed at anyone but the operator is the first time back-compat
+[AGENTS.md](../AGENTS.md) — because a version aimed at anyone but the operator is the first time back-compat
 becomes an obligation rather than a choice. None have been cut under this process yet.
 
 Version tags are immovable by convention: re-pointing one breaks the single guarantee a version number

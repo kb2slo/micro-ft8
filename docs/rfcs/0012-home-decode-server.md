@@ -184,7 +184,7 @@ This is decided only after S2's data shows a gap worth closing and a round trip 
 
 ## 5. Slices
 
-Each slice states which verifiability category from [README.md](../README.md) applies.
+Each slice states which verifiability category from [AGENTS.md](../../AGENTS.md) applies.
 
 1. **S1: Ethernet up, nothing sent.** The switch, DHCP, a link, the §3.2 priorities and pinning, and the heap log. Nothing is sent.
    - It measures what being on a LAN costs, apart from what sending costs.
