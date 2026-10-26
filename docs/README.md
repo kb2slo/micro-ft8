@@ -43,6 +43,8 @@ Each document answers one question. Put content where its question is answered.
 
 **The site describes what ships.** Nothing unbuilt, unmeasured, or upstream-only goes on it.
 
+**Docs point at what exists.** `tools/check_docs.py` (part of `tools/check.sh`) fails on a relative link or a repo path in `code` that no longer resolves, and on a row ID that newly dangles. A file in another repo is written as a link to it.
+
 #### RFC lifecycle
 
 An RFC is warranted when a row's design will not fit in the row (**Row size** below), when work spans several rows or boards, or when real alternatives are still undecided.
@@ -113,7 +115,7 @@ An unproven fix is still worth making. Pretending it is proven is not.
 2. **Judgment under ambiguity** — RFC drafting, sizing a memory/timing budget, choosing an extract boundary, RFC graduation, changes to this process, anything **Push back before tools** above would stop for. Use the strongest available model. Nothing mechanical catches a wrong call here, which is exactly what makes it expensive.
 3. **Field-only, no model tier substitutes** — USB/CDC/CAT, UAC timing, TX behaviour, anything [TEST_PLAN.md](TEST_PLAN.md) marks Pending. This is category 2/3 of the verifiability rubric above wearing a model-choice hat: a bigger model does not turn an operator-only or hardware-only check into something an agent can close. Say so plainly rather than picking a bigger model and reporting more confidence than the check supports.
 
-**Slices handed to Sonnet** (operator decision 2026-09-28). A fully specified slice goes to a fresh Sonnet session from a seed prompt; Sonnet builds it, reviews it itself, commits locally, and the operator benches it. An Opus review is for firmware, the Port A protocol, and anything that keys or retunes the radio, and only there: a fresh, short session with the diff and the build notes, reporting findings for Sonnet to fix, never fixing in a long session. An app-only slice gets no Opus review unless the bench fails and Sonnet cannot fix it. The seed prompt's self-review: cite `file:line` for every claim about firmware or the main board; say what the code does after every confirmation or message; `git grep` the citations of any graduated RFC section; `tools/roadmap_rows.sh dangling` shows nothing new. One slice per session, no push, and no bench check recorded that the operator has not reported step by step.
+**Slices handed to Sonnet** (operator decision 2026-09-28). A fully specified slice goes to a fresh Sonnet session from a seed prompt; Sonnet builds it, reviews it itself, commits locally, and the operator benches it. An Opus review is for firmware, the Port A protocol, and anything that keys or retunes the radio, and only there: a fresh, short session with the diff and the build notes, reporting findings for Sonnet to fix, never fixing in a long session. An app-only slice gets no Opus review unless the bench fails and Sonnet cannot fix it. The seed prompt's self-review: cite `file:line` for every claim about firmware or the main board; say what the code does after every confirmation or message; `git grep` the citations of any graduated RFC section; `tools/check.sh --changed` passes. One slice per session, no push, and no bench check recorded that the operator has not reported step by step.
 
 **Grooming spans tiers.** Running `tools/roadmap_rows.sh`, deleting history from rows, and applying decisions the operator already made are tier 1. Triage recommendations are tier 2 by default. The risk is not a wrong recommendation — the operator overrides it — but a finding never surfaced: a defect hiding in a row, a row contradicting a rule here, a stale reference. Weigh the model observations below when choosing, and ask for `file:line` or commit evidence behind every claim; verification, more than model size, is what surfaced findings.
 
@@ -138,7 +140,7 @@ State which of these you did in the turn you report the work. **"No test-plan ch
 
 **Architecture docs match the code too.** A `docs/architecture/<area>.md` describes how things work now, so a change that alters behaviour one of them describes updates it in the **same commit**. As with the README audit, say it out loud when nothing needs changing: "no architecture-doc change needed". An RFC slice does this through graduation (**RFC lifecycle** above); this rule covers changes that come through no RFC. A doc may describe a decided but unbuilt design only under a label naming the roadmap rows that build it — "**not yet built: rows v697, hstv**" — so that when those rows ship and are dropped, `tools/roadmap_rows.sh dangling` flags the stale label.
 
-**Never report a field check as passed.** An agent runs `host_mock`, `tx_e2e`, and `idf.py build` and reports those honestly. Anything needing the P4, a radio, or an antenna is the operator's to run: propose it, put it in **Pending**, and wait. A green build is evidence about linkage, not about whether the radio transmitted.
+**Never report a field check as passed.** An agent runs `tools/check.sh` and reports its summary honestly, a SKIP as a skip. Anything needing the P4, a radio, or an antenna is the operator's to run: propose it, put it in **Pending**, and wait. A green build is evidence about linkage, not about whether the radio transmitted.
 
 **Fork README stays current.** The top of [`README.md`](../README.md) (above the Wei delimiter) is the public “why this fork” copy. When work is operator-visible (TX UX, meters, logging, flashing, CQ, radios, …), audit that section in the **same turn**: propose the add, change, or drop in chat with the test plan and commit message. Include the accepted edit in the same commit and push as the feature. Do not rewrite Wei’s original below the delimiter. Skip agent, RFC, extract-only, or other work operators cannot feel on the radio.
 
@@ -168,9 +170,9 @@ The operator reviews in chat, then green-lights each step. A good previous turn 
 
 1. **Design in chat.** Architecture and “should we” questions get an answer first. Do not implement until they say to (e.g. “go”, “do it”). Docs and roadmap questions do not need that wait.
 
-2. **Test plan with the result.** When work is done, the reply includes a short test plan: host command(s) they can run, and a field check if the path is field-only. They often run tests and flash themselves and will say when it is solid. Do not flash the device unless they ask.
+2. **Test plan with the result.** When work is done, the reply includes a short test plan: host command(s) they can run (`tools/check.sh --changed` runs every host check the change can affect), and a field check if the path is field-only. They often run tests and flash themselves and will say when it is solid. Do not flash the device unless they ask.
 
-3. **Commit message in chat.** Propose the message here (match recent `git log`: one sentence, why). For operator-visible work, also propose the fork-README delta (or say why that section needs no change). Wait for them to accept or edit. Do not commit in the same turn as the proposal unless they already asked to commit.
+3. **Commit message in chat.** Propose the message here: a subject of one sentence, at most 72 characters, saying what changed, then a blank line and the why in the body. `tools/check_commits.py` holds commits to that shape, in CI on pull requests. For operator-visible work, also propose the fork-README delta (or say why that section needs no change). Wait for them to accept or edit. Do not commit in the same turn as the proposal unless they already asked to commit.
 
 4. **Commit / push only when asked.** Local edits are fine when they asked for the work. `git commit` waits until they have seen the plan or diff and said to commit. `git push origin` waits until they said to push. “Commit and push” is both, using the agreed message. Do not treat “ship on main”, a green host test, or “local commits are fine” as standing permission.
 
@@ -230,7 +232,7 @@ every agent and every operator can see them — see "Memory lives in this repo" 
   `npm ci --prefix webapp/tools` once per clone): minified into `webapp/dist/app/`, manifest written from the
   output, size budget checked ([architecture/webapp.md](architecture/webapp.md), **Build**). Never commit a
   manifest or build output; both are ignored. Pages, CI's Host tests and `desk_push.py` each build, so an edit
-  under `webapp/app/` needs no extra step. Before pushing one, run the build locally: it is the check CI runs.
+  under `webapp/app/` needs no extra step. Before pushing one, run `tools/check.sh --changed`: it runs that build, as CI does.
   The committed manifest this replaced went stale on 2026-09-25 and again 2026-09-27, failing Pages both times.
 
 - **Assume another agent may be in this worktree.** The operator sometimes runs a second Claude Code session
@@ -357,7 +359,7 @@ git -C components/ft8_lib/vendor merge-base --is-ancestor <kgoba-sha> HEAD
 
 If the submodule is missing, skip. If Karlis’s SHA **is** an ancestor of the pin, we already have him. If it is **not**, he moved.
 
-**Wei** — the other parent. Do **not** watch `wcheng95/ft8_lib`: that repo is stale at `bb3d94d` (2026-03) and already fully absorbed into the pin. His protocol fixes land in Micro-FT8’s *in-tree* `components/ft8_lib/ft8/` instead, and reach us only by hand — his tree has no submodule, so merging `upstream/main` cannot move our pin:
+**Wei** — the other parent. Do **not** watch `wcheng95/ft8_lib`: that repo is stale at `bb3d94d` (2026-03) and already fully absorbed into the pin. His protocol fixes land in Micro-FT8’s *in-tree* [`components/ft8_lib/ft8/`](https://github.com/wcheng95/Mini-FT8/tree/main/components/ft8_lib/ft8) instead, and reach us only by hand — his tree has no submodule, so merging `upstream/main` cannot move our pin:
 
 ```bash
 git fetch https://github.com/wcheng95/Mini-FT8.git main
@@ -392,7 +394,7 @@ If the date above is more than **7 days** old, run it even though it repeats wha
 
 **Last checked:** 2026-10-14 — v1.16.9 to v1.18.0 (2026-09-30 to 10-12). **Its licence changed from MIT to GPL-3 on 2026-10-09**, for JS8's coding tables, which exist only in JS8Call. What it says about QMX CAT is in [architecture/radio.md](architecture/radio.md). Earlier finding, 2026-09-12 — large overlap with several open roadmap items, worth the operator's attention rather than an agent's judgment call. This is a shipping FT8/FT4 station on the **M5Stack Tab5 (ESP32-P4)**: QMX as a USB host (UAC audio + CAT), on-device FT8/FT4 decode and TX, a browser-streamed panadapter UI, ADIF logging with upload to QRZ/eQSL/LoTW/Cloudlog/Wavelog, POTA/SOTA activation logging, and live PSK Reporter/DX-cluster/POTA spotting. That bears directly on [B26](ROADMAP.md) (does a P4 host a QMX at all — this project says yes, in production), [I27](ROADMAP.md) (P4 headless design), [I26](ROADMAP.md) (decode headroom on P4), and [I28](ROADMAP.md)/[B48](ROADMAP.md) (headless web app, QRZ/PSKReporter from the browser). **Resolved 2026-09-16:** the operator accepted this project's production use as B26's feasibility answer rather than running B26's own bench test — since confirmed on our own U213 in daily use ([architecture/main_board.md](architecture/main_board.md), **P4**).
 
-Check for anything new via the repo's own version history (`docs/version-history.md` in that repo) rather than a git remote — it is not a fork parent, just a project worth watching for ideas:
+Check for anything new via the repo's own version history ([`docs/version-history.md`](https://github.com/SteffenLav/qmx-panadapter/blob/main/docs/version-history.md) in that repo) rather than a git remote — it is not a fork parent, just a project worth watching for ideas:
 
 ```bash
 gh repo view SteffenLav/qmx-panadapter --json pushedAt,description

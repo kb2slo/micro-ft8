@@ -1,14 +1,18 @@
 // Builds the getting-started page from its one source, webapp/getting-started.md, into
 // webapp/getting-started.html: a page of the site on screen, and the one-page sheet that goes in the
 // box when printed (webapp/tools/getting-started.css). Generated, never committed; pages.yml builds it
-// before deploying and CI's Host tests run it. Rules for the source are in its own header comment.
+// before deploying. Rules for the source are in its own header comment.
 //
-//   node webapp/tools/getting_started.mjs         check, then write the page
-//   node webapp/tools/getting_started.mjs --pdf   also print webapp/dist/getting-started.pdf through
-//                                                 headless Chrome (CHROME=/path to choose one) and
-//                                                 hold it to the source's `pages:` limit
+//   node webapp/tools/getting_started.mjs                 check, then write the page
+//   node webapp/tools/getting_started.mjs --pdf           also print webapp/dist/getting-started.pdf
+//                                                         through headless Chrome (CHROME=/path to
+//                                                         choose one) and hold it to the source's
+//                                                         `pages:` limit
+//   node webapp/tools/getting_started.mjs --pdf-if-chrome  --pdf where Chrome is found, and say so
+//                                                         where it is not (tools/check.sh, locally)
 //
-// CI runs --pdf on every push and posts the PDF with the firmware images (docs/RELEASE_PROCESS.md).
+// CI's Getting-started sheet job runs --pdf on every push and posts the PDF with the firmware images
+// (docs/RELEASE_PROCESS.md).
 
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -288,11 +292,13 @@ function pdfPages(pdfPath) {
 }
 
 async function main() {
-  const wantPdf = process.argv.slice(2).includes('--pdf');
-  const chrome = wantPdf ? findChrome() : null;
-  if (wantPdf && !chrome) {
+  const args = process.argv.slice(2);
+  const pdfIfChrome = args.includes('--pdf-if-chrome');
+  const chrome = args.includes('--pdf') || pdfIfChrome ? findChrome() : null;
+  if (args.includes('--pdf') && !chrome) {
     throw new Error('No Chrome or Chromium found. Install one, or set CHROME=/path/to/chrome.');
   }
+  const wantPdf = Boolean(chrome);
 
   const src = readFileSync(SOURCE, 'utf8');
   const { meta, body } = frontMatter(src);
@@ -310,7 +316,10 @@ async function main() {
   const html = renderBody(tokens);
   writeFileSync(PAGE, page(meta, html, stamp));
   console.log(`${relative(ROOT, PAGE)}: on-screen text checked, ${stamp}`);
-  if (!wantPdf) return;
+  if (!wantPdf) {
+    if (pdfIfChrome) console.log('No Chrome or Chromium found, so the page limit was not checked (CHROME=/path to check it).');
+    return;
+  }
 
   mkdirSync(dirname(PDF), { recursive: true });
   writeFileSync(PRINT_PAGE, page(meta, html, stamp, `${sheetFontCss()}\n`));

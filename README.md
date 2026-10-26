@@ -32,7 +32,7 @@ Pushes and pull requests run GitHub Actions (ESP-IDF **v5.5.5**): the P4 (`poe_p
 esptool.py --chip esp32p4 write_flash 0x0 20261002-microft8-poe-p4-60b64e3.bin
 ```
 
-Host autoseq (`host_mock`) and `tests/tx_e2e` CTest run in a separate job. Hardware CAT and flashing are still local.
+The host checks (`host_mock`, `tests/tx_e2e`, the web app's build and tests, decode recall, the docs) run in separate jobs, each a step of `tools/check.sh`. Run the same script locally, or `tools/check.sh --changed` for only what your change can affect. Hardware CAT and flashing are still local.
 
 ---
 

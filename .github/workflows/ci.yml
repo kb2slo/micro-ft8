@@ -41,8 +41,13 @@ jobs:
               - 'poe_p4/**'
               - '**/idf_component.yml'
               - 'tools/**/*.cmake'
+              - 'tools/check_ram_budget.py'
               - '.github/workflows/ci.yml'
 
+  # Each step is one check of tools/check.sh, which says what it runs; a
+  # contributor runs the same script locally. pages.yml only runs the web
+  # build when a deploy is attempted; the first step here fails on the
+  # first push instead.
   host-tests:
     name: Host tests
     runs-on: ubuntu-latest
@@ -51,99 +56,46 @@ jobs:
         with:
           submodules: true
 
-      # The same build pages.yml deploys (docs/architecture/webapp.md
-      # (Build)): minify, compile-check every script, write the manifest,
-      # hold the size budget. pages.yml only runs when a deploy is
-      # attempted; this fails on the first push instead.
       - name: Web bundle build
-        run: |
-          npm ci --prefix webapp/tools
-          python3 webapp/tools/build.py
+        run: tools/check.sh --only web
 
-      # Extracts and runs the real batching functions out of app.html (no
-      # separate re-implementation to drift from the source) -- see the
-      # test's own header comment.
-      - name: Webapp decode-batching test
-        run: node webapp/tests/test_decode_batching.js
-
-      - name: Webapp decode sort and filter test
-        run: node webapp/tests/test_decode_view.js
-
-      - name: Webapp activation cues test
-        run: node webapp/tests/test_activation_cues.js
-
-      # Operate layout v2 (docs/architecture/webapp.md, The radio bar and Decode rows and tap to reply).
-      - name: Webapp radio bar and tap-to-reply tests
-        run: |
-          node webapp/tests/test_radio_bar.js
-          node webapp/tests/test_decode_tap.js
-          node webapp/tests/test_queue_cues.js
-
-      # The n-fer export (architecture/logging.md) and the SWR sweep's plan and plot (docs/architecture/webapp.md, The SWR sweep).
-      - name: Webapp n-fer export test
-        run: node webapp/tests/test_nfer_export.js
-
-      - name: Webapp SWR sweep test
-        run: node webapp/tests/test_swr_core.js
-
-      # Who hears me (docs/architecture/webapp.md): the MQTT packets, the reader, spots and gaps.
-      - name: Webapp who-hears-me test
-        run: |
-          node webapp/tests/test_pskr_core.js
-          node webapp/tests/test_pskr_live.js
-
-      - name: Webapp callsign card test
-        run: node webapp/tests/test_callinfo_qrz.js
+      - name: Webapp tests
+        run: tools/check.sh --only webapp
 
       - name: Autoseq host_mock
-        working-directory: host_mock
-        run: |
-          make -j"$(nproc)"
-          failed=0
-          # Scenario runner: one pass per JSON fixture.
-          for f in test_*.json; do
-            echo "===== $f ====="
-            ./host_test "$f" || failed=1
-          done
-          # Every other host_test_* binary the Makefile produced. Globbed on
-          # purpose: this list used to be maintained by hand, and four tests
-          # (station, decode_sort, power_hysteresis, qso_browse) had silently
-          # never run in CI because nobody added them here when they landed.
-          ran=0
-          for t in host_test_*; do
-            [ -x "$t" ] || continue
-            [ -d "$t" ] && continue
-            case "$t" in *.exe) continue;; esac
-            echo "===== $t ====="
-            ./"$t" || failed=1
-            ran=$((ran + 1))
-          done
-          echo "ran $ran host_test_* binaries"
-          # A Makefile or glob change that silently stops running the suite
-          # should fail loudly rather than pass with zero tests.
-          if [ "$ran" -lt 15 ]; then
-            echo "::error::expected at least 15 host_test_* binaries, ran $ran"
-            failed=1
-          fi
-          exit "$failed"
+        run: tools/check.sh --only host_mock
 
-      - name: Station simulator HTTP
-        run: node webapp/tests/test_sim_station.js
-
-      - name: Station simulator SWR sweep
-        run: node webapp/tests/test_sim_sweep.js
+      - name: Station simulator
+        run: tools/check.sh --only sim
 
       - name: TX e2e (CTest)
-        working-directory: tests/tx_e2e
-        run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build -j"$(nproc)"
-          ctest --test-dir build --output-on-failure
+        run: tools/check.sh --only tx_e2e
 
-      # RFC 0006 P1. Truth is committed; this does not run jt9. It clones
-      # howard0su/ft8_lib at the pinned SHA for the 20m_busy WAVs.
       - name: Decode recall
-        run: python3 tools/decode_recall/report.py
+        run: tools/check.sh --only decode_recall
+
+  # Links and repo paths in the docs still resolve, and no row ID newly
+  # dangles (tools/check_docs.py); on a pull request, its commit messages
+  # (tools/check_commits.py). The whole history, which both read.
+  docs-and-commits:
+    name: Docs and commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Docs
+        run: tools/check.sh --only docs --base "$BASE"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+
+      - name: Commit messages
+        if: github.event_name == 'pull_request'
+        run: tools/check.sh --only commits --base "$BASE" --head "$HEAD"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
 
   # The printed getting-started sheet (webapp/getting-started.md), printed by
   # headless Chrome on every push: it fails when the sheet runs past its page
@@ -156,9 +108,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Print the sheet
-        run: |
-          npm ci --prefix webapp/tools
-          node webapp/tools/getting_started.mjs --pdf
+        run: tools/check.sh --only getting_started
 
       - name: Upload the sheet
         uses: actions/upload-artifact@v6
