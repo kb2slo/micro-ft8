@@ -1,4 +1,4 @@
-# Upstream watches (session start)
+# Upstream watches (maintainer sessions)
 
 Three watches, different cadences. Network fail → skip (any of them); do not interrupt an in-progress coding task.
 
@@ -48,7 +48,7 @@ If the date above is more than **7 days** old, run it even though it repeats wha
 
 ## QMX panadapter project (`SteffenLav/qmx-panadapter`) — at least weekly
 
-**Last checked:** 2026-10-14 — v1.16.9 to v1.18.0 (2026-09-30 to 10-12). **Its licence changed from MIT to GPL-3 on 2026-10-09**, for JS8's coding tables, which exist only in JS8Call. What it says about QMX CAT is in [architecture/radio.md](../architecture/radio.md). Earlier finding, 2026-09-12 — large overlap with several open roadmap items, worth the operator's attention rather than an agent's judgment call. This is a shipping FT8/FT4 station on the **M5Stack Tab5 (ESP32-P4)**: QMX as a USB host (UAC audio + CAT), on-device FT8/FT4 decode and TX, a browser-streamed panadapter UI, ADIF logging with upload to QRZ/eQSL/LoTW/Cloudlog/Wavelog, POTA/SOTA activation logging, and live PSK Reporter/DX-cluster/POTA spotting. That bears directly on [B26](../ROADMAP.md) (does a P4 host a QMX at all — this project says yes, in production), [I27](../ROADMAP.md) (P4 headless design), [I26](../ROADMAP.md) (decode headroom on P4), and [I28](../ROADMAP.md)/[B48](../ROADMAP.md) (headless web app, QRZ/PSKReporter from the browser). **Resolved 2026-09-16:** the operator accepted this project's production use as B26's feasibility answer rather than running B26's own bench test — since confirmed on our own U213 in daily use ([architecture/main_board.md](../architecture/main_board.md), **P4**).
+**Last checked:** 2026-10-14 — v1.16.9 to v1.18.0 (2026-09-30 to 10-12). **Its licence changed from MIT to GPL-3 on 2026-10-09**, for JS8's coding tables, which exist only in JS8Call. What it says about QMX CAT is in [architecture/radio.md](../architecture/radio.md). Earlier finding, 2026-09-12 — large overlap with several open roadmap items, worth the maintainer's attention rather than an agent's judgment call. This is a shipping FT8/FT4 station on the **M5Stack Tab5 (ESP32-P4)**: QMX as a USB host (UAC audio + CAT), on-device FT8/FT4 decode and TX, a browser-streamed panadapter UI, ADIF logging with upload to QRZ/eQSL/LoTW/Cloudlog/Wavelog, POTA/SOTA activation logging, and live PSK Reporter/DX-cluster/POTA spotting. That bears directly on [B26](../ROADMAP.md) (does a P4 host a QMX at all — this project says yes, in production), [I27](../ROADMAP.md) (P4 headless design), [I26](../ROADMAP.md) (decode headroom on P4), and [I28](../ROADMAP.md)/[B48](../ROADMAP.md) (headless web app, QRZ/PSKReporter from the browser). **Resolved 2026-09-16:** the maintainer accepted this project's production use as B26's feasibility answer rather than running B26's own bench test — since confirmed on our own U213 in daily use ([architecture/main_board.md](../architecture/main_board.md), **P4**).
 
 Check for anything new via the repo's own version history ([`docs/version-history.md`](https://github.com/SteffenLav/qmx-panadapter/blob/main/docs/version-history.md) in that repo) rather than a git remote — it is not a fork parent, just a project worth watching for ideas:
 
@@ -56,4 +56,4 @@ Check for anything new via the repo's own version history ([`docs/version-histor
 gh repo view SteffenLav/qmx-panadapter --json pushedAt,description
 ```
 
-If the date above is more than **7 days** old, look at what changed since the last check (the linked version history is newest-last) and update the date and one-line finding regardless of outcome. Insight, not code — do not port or copy from it without the operator's own read of the license and the code.
+If the date above is more than **7 days** old, look at what changed since the last check (the linked version history is newest-last) and update the date and one-line finding regardless of outcome. Insight, not code — do not port or copy from it without the maintainer's own read of the license and the code.

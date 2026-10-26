@@ -18,7 +18,7 @@ How [ROADMAP.md](../ROADMAP.md) is kept.
 - Facts about current code → an architecture doc.
 - History ("built…", "extended…", "note, same day…") → delete; git has it.
 
-What stays is ID, name, a line of why, Done-when, and a link. A row stays long only on the operator's say-so, marked `` `long-ok` `` so the script counts it. Each grooming retro reads the script's output: many `long-ok` rows mean `LIMIT` is too low; rows under it that still needed trimming mean it is too high.
+What stays is ID, name, a line of why, Done-when, and a link. A row stays long only on the maintainer's say-so, marked `` `long-ok` `` so the script counts it. Each grooming retro reads the script's output: many `long-ok` rows mean `LIMIT` is too low; rows under it that still needed trimming mean it is too high.
 
 Update `ROADMAP.md` in the **same turn** as the work:
 
@@ -33,38 +33,38 @@ Each row is an ID plus a name.
 
 ## Roadmap intake (ideas)
 
-If the operator asks to add an idea or “add to the backlog”:
+If the maintainer asks to add an idea or “add to the backlog”:
 1. Draft the `docs/ROADMAP.md` row in chat. Do not commit yet.
 2. New items go in **Ideas**. Use **Backlog** only when they give a Done-when or say it is sequenced.
-3. After they approve, commit that row on `main`. Push `origin` only when they ask to push. Never `upstream` unless they explicitly ask.
+3. After they approve, commit that row. Push `origin` only when they ask to push. Never `upstream` unless they explicitly ask.
 
 ## Backlog grooming
 
 **A groom is a timeboxed session.**
 
-1. **Open:** ask the operator for a rough timebox (e.g. 30 min, 1 h) and tune the pace to it. Read `ROADMAP.md`'s **Next groom** section — carried items come first. Run `tools/roadmap_rows.sh health` if you can and state the budget in one line.
+1. **Open:** ask the maintainer for a rough timebox (e.g. 30 min, 1 h) and tune the pace to it. Read `ROADMAP.md`'s **Next groom** section — carried items come first. Run `tools/roadmap_rows.sh health` if you can and state the budget in one line.
 2. **Passes, in order, until the timebox runs out:** ① Now — drop what shipped, move out what is not the one theme; ② Backlog — drops, demotions, splits, missing Done-whens, over-size rows, then order; ③ Blocked — does each condition still hold; ④ Ideas — drops, Declined, over-size rows; ⑤ pick Now (one theme).
-3. **Wrap:** re-run `health`; rewrite **Next groom** in `ROADMAP.md` with what was not reached (delete the section's items, or the section, when nothing carries over); a short retro — what in this process to change, applied to this file in the same wrap; propose the commits (process changes separate from the groom). **Nothing is queued in chat:** each follow-up becomes a row or is done in the wrap. Carry-over state lives in the file every agent reads, never only in a commit message.
+3. **Wrap:** re-run `health`; rewrite **Next groom** in `ROADMAP.md` with what was not reached (delete the section's items, or the section, when nothing carries over); a short retro — what in this process to change, applied to the doc it changes in the same wrap; propose the commits (process changes separate from the groom). **Nothing is queued in chat:** each follow-up becomes a row or is done in the wrap. Carry-over state lives in the file every agent reads, never only in a commit message.
 
 **A groom may focus on one area** (stated 2026-10-14), such as one RFC's rows. The passes then run over that area's rows and the rows that bear on them; the rest waits for a full groom.
 
-**"Timebox"** — the operator can say it at any point. Stop proposing, apply nothing not yet accepted, and go straight to the wrap. An open proposal is listed as not reached, not applied.
+**"Timebox"** — the maintainer can say it at any point. Stop proposing, apply nothing not yet accepted, and go straight to the wrap. An open proposal is listed as not reached, not applied.
 
-**Grooming is a conversation, not a sweep.** Propose one change at a time — or a small group of the same kind — with the evidence, and wait for the operator to accept or change it before moving on. A full-roadmap triage may be prepared as input, but it is never applied as a batch; the operator walks through it.
+**Grooming is a conversation, not a sweep.** Propose one change at a time — or a small group of the same kind — with the evidence, and wait for the maintainer to accept or change it before moving on. A full-roadmap triage may be prepared as input, but it is never applied as a batch; the maintainer walks through it.
 
-**Inline work** (stated 2026-10-14). When a groom turns up a row small enough to finish on the spot, the operator may say to build it then. It qualifies when the compiler or a host test proves it (a field check still goes to [TEST_PLAN.md](../TEST_PLAN.md) Pending), it needs no design decision, and it is small. The operator saying so is the exception **Push back before tools** ([AGENTS.md](../../AGENTS.md)) asks for. The groom pauses while it is built; the work is committed on its own, never inside the groom commit, and its row is dropped in that commit rather than moved through Backlog. A defect it uncovers that needs a decision is asked in chat before the groom resumes. Anything field-only or still needing design becomes a row instead.
+**Inline work** (stated 2026-10-14). When a groom turns up a row small enough to finish on the spot, the maintainer may say to build it then. It qualifies when the compiler or a host test proves it (a field check still goes to [TEST_PLAN.md](../TEST_PLAN.md) Pending), it needs no design decision, and it is small. The maintainer saying so is the exception **Push back before tools** ([AGENTS.md](../../AGENTS.md)) asks for. The groom pauses while it is built; the work is committed on its own, never inside the groom commit, and its row is dropped in that commit rather than moved through Backlog. A defect it uncovers that needs a decision is asked in chat before the groom resumes. Anything field-only or still needing design becomes a row instead.
 
 **Health, not the calendar, decides when.** The backlog may drift from ideal for velocity; `tools/roadmap_rows.sh health` measures how far. Its budget constants live in the script, like `LIMIT`.
 
-- Once per session start, run `tools/roadmap_rows.sh health`. If the budget reads **OVER**, tell the operator once, with the numbers, that grooming comes before feature work. The operator may defer — that is allowed drift, chosen explicitly; say so and move on.
+- Once per maintainer session ([README.md](README.md), **Session start**), run `tools/roadmap_rows.sh health`. If the budget reads **OVER**, tell the maintainer once, with the numbers, that grooming comes before feature work. The maintainer may defer — that is allowed drift, chosen explicitly; say so and move on.
 - `health --at <sha>` gives any past state, so trends need no stored data.
 - Owed field checks are part of the budget (standing row `swsu`). After a bench session, drop the Pending rows that passed — no archive, git is the record.
-- While grooming, run `tools/roadmap_rows.sh` and apply **Row size** above — name each row it flags and let the operator decide; do not trim or extract unprompted.
-- The groom commit's subject is `ROADMAP: groom YYYY-MM-DD` (the script finds the last groom by it). Its body carries the `health` output before and after, lineage (splits, merges, drops, declines), the model that made the recommendations, and how many recommendations the operator overrode.
+- While grooming, run `tools/roadmap_rows.sh` and apply **Row size** above — name each row it flags and let the maintainer decide; do not trim or extract unprompted.
+- The groom commit's subject is `ROADMAP: groom YYYY-MM-DD` (the script finds the last groom by it). Its body carries the `health` output before and after, lineage (splits, merges, drops, declines), the model that made the recommendations, and how many recommendations the maintainer overrode.
 - Each grooming retro asks whether each metric still tracks something worth caring about. A metric no retro uses gets deleted. Never game one — declining a good idea to improve flow is not health.
 - Do not repeat the reminder in later turns of the same session, and do not interrupt an in-progress coding task.
 
-**Grooming spans tiers.** Running `tools/roadmap_rows.sh`, deleting history from rows, and applying decisions the operator already made are tier 1. Triage recommendations are tier 2 by default. The risk is not a wrong recommendation — the operator overrides it — but a finding never surfaced: a defect hiding in a row, a row contradicting a rule here, a stale reference. Weigh the model observations below when choosing, and ask for `file:line` or commit evidence behind every claim; verification, more than model size, is what surfaced findings.
+**Grooming spans tiers.** Running `tools/roadmap_rows.sh`, deleting history from rows, and applying decisions the maintainer already made are tier 1 ([AGENTS.md](../../AGENTS.md), **Tier the model to the task**). Triage recommendations are tier 2 by default. The risk is not a wrong recommendation — the maintainer overrides it — but a finding never surfaced: a defect hiding in a row, a row contradicting a rule here, a stale reference. Weigh the model observations below when choosing, and ask for `file:line` or commit evidence behind every claim; verification, more than model size, is what surfaced findings.
 
 **Model observations (triage).** One blind triage of the same roadmap per model, 2026-09-24 — a single sample each, so treat as leads, not verdicts. Add a line when a groom shows something new; delete a line a later groom contradicts.
 

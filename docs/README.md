@@ -4,11 +4,12 @@ Human- and tool-readable project memory. Prefer this tree over editor-specific r
 
 | File | Role |
 |---|---|
-| [../AGENTS.md](../AGENTS.md) | The working agreement: how any agent works in this repo. |
+| [../AGENTS.md](../AGENTS.md) | The working agreement: how any agent works in this repo, whoever it works for. |
+| [../CONTRIBUTING.md](../CONTRIBUTING.md) | How a change gets from a branch onto `main`: setup, checks, the pull request, field checks. |
 | [ROADMAP.md](ROADMAP.md) | Plan: Next groom / Now / Backlog / Blocked / Ideas / Declined. Chat is intake; this file is truth. Shipped work is dropped, not archived — git history is the record. |
 | [../README.md](../README.md) | Operator landing. Fork notes (why this tree) above the Wei delimiter; Wei’s original below. |
 | [STYLE.md](STYLE.md) | Coding standard for our C/C++ (not vendored `M5*` / `ft8_lib`). |
-| [TEST_PLAN.md](TEST_PLAN.md) | Ledger: what automation checks, what it cannot see, and the field checks still owed (**Pending**). |
+| [TEST_PLAN.md](TEST_PLAN.md) | Ledger: what automation checks, what it cannot see, and the field checks still owed (**Pending**), with how one is asked for and closed. |
 | [RELEASE_PROCESS.md](RELEASE_PROCESS.md) | How a build becomes a download: the rolling `continuous` tag, versioned `v*` releases, what a version tag does **not** set, and what a rename/de-fork would break. |
 | `architecture/` | How it works now, and why, one doc per area. Start at [system.md](architecture/system.md); it links the rest. Doc type: **Doc types** below. |
 | [FT8 Free-Text Reference Extension.md](FT8%20Free-Text%20Reference%20Extension.md) | Free-text / SOTA-style payload notes. |

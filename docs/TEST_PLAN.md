@@ -50,11 +50,12 @@ A green run is not coverage of these:
 
 ## Pending
 
-Field checks owed on shipped work. Only the operator can run these. Add one when a change touches a
+Field checks owed on shipped work. Only someone with the hardware can run these: the maintainer, or a
+contributor with a P4, a QMX and a sidekick. Add one when a change touches a
 field-only path, naming the change and the exact check. **Drop it when the check passes.**
 
-- **Asking the operator to run a check → put the check itself in chat, never just its row's name.** For each owed row being asked for, give its numbered steps and expected results, and first how to get the build onto the device (the flash or `desk_push.py` command). "Run the O1a row in TEST_PLAN" sends the operator to a file in the middle of a bench session. Ask for a result per step. **Label each step with its number in the row, as text ("Step 5:"), never as a Markdown numbered list:** a list renumbers from its first item, so asking for steps 2, 5, 6 and 7 displays 2, 3, 4, 5, and the operator's answers then map to the wrong steps (found 2026-09-28, twice). Stated 2026-09-28.
-- The operator reports a pass **for every step** → drop the row in the **same turn**. The commit that drops it names the build that passed. A summary "it passed", or a step with no result, keeps the row: say which step is still open. A failure keeps the row and becomes a fix. Found 2026-09-28: a check reported as run, but not step by step, dropped the O1a row, and the skipped step would have caught a bug.
+- **Asking someone to run a check → put the check itself in chat, never just its row's name.** For each owed row being asked for, give its numbered steps and expected results, and first how to get the build onto the device (the flash or `desk_push.py` command). "Run the O1a row in TEST_PLAN" sends them to a file in the middle of a bench session. Ask for a result per step. **Label each step with its number in the row, as text ("Step 5:"), never as a Markdown numbered list:** a list renumbers from its first item, so asking for steps 2, 5, 6 and 7 displays 2, 3, 4, 5, and their answers then map to the wrong steps (found 2026-09-28, twice). Stated 2026-09-28.
+- The person who ran it reports a pass **for every step** → drop the row in the **same turn**. The commit that drops it names the build that passed. A summary "it passed", or a step with no result, keeps the row: say which step is still open. A failure keeps the row and becomes a fix. Found 2026-09-28: a check reported as run, but not step by step, dropped the O1a row, and the skipped step would have caught a bug.
 
 | From | Check | Status |
 | --- | --- | --- |

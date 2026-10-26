@@ -15,6 +15,8 @@ Jeff KB2SLO’s continuation of Wei AG6AQ’s Micro-FT8, which was written for t
 
 ## Clone and CI firmware
 
+How to contribute, from setup to a pull request: [CONTRIBUTING.md](CONTRIBUTING.md).
+
 To build from source, clone with the `ft8_lib` submodule. GitHub’s default clone leaves `components/ft8_lib/vendor` empty, and host `tx_e2e` / `idf.py build` will fail.
 
 ```

@@ -104,7 +104,7 @@ says so on stdout). Then it prints the tag and commit and asks before pushing;
 `--yes` skips the prompt.
 
 Cutting a release is also the event that ends pre-alpha — **Pre-alpha: do not carry the past** in
-[AGENTS.md](../AGENTS.md) — because a version aimed at anyone but the operator is the first time back-compat
+[AGENTS.md](../AGENTS.md) — because a version aimed at anyone but the maintainer is the first time back-compat
 becomes an obligation rather than a choice. None have been cut under this process yet.
 
 Version tags are immovable by convention: re-pointing one breaks the single guarantee a version number

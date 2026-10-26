@@ -1,13 +1,13 @@
 # RFCs
 
-Design for work not yet built ([../README.md](../README.md), **Doc types**).
+Design for work not yet built ([../README.md](../README.md), **Doc types**). Anyone may draft one, in a pull request; the maintainer accepts or rejects it.
 
 ## RFC lifecycle
 
 An RFC is warranted when a row's design will not fit in the row ([maintainer/roadmap.md](../maintainer/roadmap.md), **Row size**), when work spans several rows or boards, or when real alternatives are still undecided.
 
 1. **Draft** — open questions, alternatives, an *Ask*. Changes freely. An RFC gets its number when its file is created, never earlier: a row for an unwritten RFC says "an RFC", not a number that could go stale or collide.
-2. **Accepted** — the operator says so. Backlog/Now rows point at its sections. After this it changes only by dated decision.
+2. **Accepted** — the maintainer says so. Backlog/Now rows point at its sections. After this it changes only by dated decision.
 3. **Graduate as each slice ships**, in the same commit as the slice:
    - Move what is still true into an architecture doc (new or existing): how it works, the constraints, measurements that still hold, rejected alternatives as short "why not X" notes.
    - Delete the rest — the Ask, phase plans, status history, resolved open questions. Git keeps them.
