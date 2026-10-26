@@ -3767,6 +3767,17 @@ function involvementLabel(inv) {
            called: 'Called by ' + inv.other, you: '\u2192 you' }[inv.kind];
 }
 
+// The CQ we answered is not "CQ again": a CQ counts only from a slot that began after the station
+// was queued. Other involvement (working, done, called) is unaffected.
+function queueInvolvementAt(text, queued, myCall, slotTs) {
+  var inv = queueInvolvement(text, queued, myCall);
+  if (inv && inv.kind === 'cq') {
+    var id = Object.keys(queue).filter(function (k) { return queue[k].dxcall === inv.call; })[0];
+    if (id !== undefined && !(slotTs > queue[id].since)) return null;
+  }
+  return inv;
+}
+
 // The queued calls, not our CQ entry.
 function queuedCalls() {
   return Object.keys(queue).map(function (id) { return queue[id].dxcall; })
@@ -3783,7 +3794,7 @@ function queueLastHeard(call, nowMs) {
     if (!slotReplyOpen(slot, nowMs)) break;
     var best = null;
     for (var k = 0; k < slot.length; k++) {
-      var inv = queueInvolvement(slot[k].x, [call], me);
+      var inv = queueInvolvementAt(slot[k].x, [call], me, slot.ts);
       if (inv && (!best || (best.kind === 'called' && inv.kind !== 'called'))) best = inv;
     }
     if (best) return involvementLabel(best) + ' \u00b7 ' + Math.max(0, Math.round((nowMs - slot.ts) / 1000)) + 's';
@@ -3996,8 +4007,8 @@ function renderDecodesNow() {
   var actRefs = parseActRefs(lastCfg);
   var dupes = dupeIndex(opLog.rows, actRefs);
   var qcalls = showQueueMarks ? queuedCalls() : [], myCall = lastCfg.call;
-  var involves = function (d) { var v = queueInvolvement(d.x, qcalls, myCall); return !!v && v.kind !== 'you'; };
   var shownSlots = decodeSlots.map(function (slot) {
+    var involves = function (d) { var v = queueInvolvementAt(d.x, qcalls, myCall, slot.ts); return !!v && v.kind !== 'you'; };
     var shown = decodeViewOf(slot, decodeView, decodeDistKm, involves);
     hidden += slot.length - shown.length;
     return { slot: slot, shown: shown };
@@ -4039,7 +4050,7 @@ function renderDecodesNow() {
       }
       // A station in our queue: an accent bar, its call in bold, and what this says about it on the
       // second line in place of the place. A message to us already stands out and gets none of it.
-      var inv = queueInvolvement(d.x, qcalls, myCall);
+      var inv = queueInvolvementAt(d.x, qcalls, myCall, slot.ts);
       if (inv && inv.kind === 'you') inv = null;
       var st = replyState[d.id];
       var tap = decodeRowReplyable(d, slot, nowMs, st);
@@ -4402,7 +4413,8 @@ function applyEvent(e) {
       delete queue[e.eid]; // IDLE is the removal signal (docs/architecture/webapp.md (Screens))
     } else {
       queue[e.eid] = { dxcall: e.x, state: e.st, tries_sent: e.ts, try_limit: e.tl,
-                       parity: e.p | 0, custom: !!e.cu, lastSeenMs: Date.now() };
+                       parity: e.p | 0, custom: !!e.cu, lastSeenMs: Date.now(),
+                       since: queue[e.eid] && queue[e.eid].dxcall === e.x ? queue[e.eid].since : Date.now() };
     }
   } else if (e.d === 3) {
     slotState = { sp: e.sp, hz: e.hz };
