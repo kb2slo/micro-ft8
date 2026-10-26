@@ -4293,8 +4293,23 @@ function fmtUsbDevice(kind, vid, pid) {
   return USB_KIND_NAMES[kind] || ('VID ' + hex4(vid) + ' PID ' + hex4(pid));
 }
 
+// A decode already on screen or waiting in this poll's batch. A reload restores the shown slots
+// from the cache (loadStateCache()) and then reads the sidekick's event ring from its start
+// (since=0), which carries the same decodes again. Matched on the decode's id and text, and on
+// its slot's end when the host names the slot (Port A v2): the main board numbers decodes from 1
+// at each boot, so an id alone can come back as a different decode.
+function decodeAlreadyShown(e) {
+  var endMs = e.si ? (e.si + 1) * (e.sl || 150) * 100 : 0;
+  var same = function (d) { return d.id === e.id && d.x === e.x; };
+  if (pendingDecodes.some(same)) return true;
+  return decodeSlots.some(function (slot) {
+    return (!endMs || slot.ts === endMs) && slot.some(same);
+  });
+}
+
 function applyEvent(e) {
   if (e.d === 1) {
+    if (decodeAlreadyShown(e)) return;
     // A v2 host names the slot each decode was recorded in (e.si), so a new
     // slot starts a new batch exactly. Without it, a flip of SLOT_STATE's
     // parity is the only sign of a new slot.
