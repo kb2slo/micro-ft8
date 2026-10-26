@@ -3,8 +3,8 @@
 
   python3 tools/check_docs.py [--base REV]
 
-Reads every tracked .md file of ours (not the vendored M5 libraries or ft8_lib), outside fenced
-code blocks, and fails on:
+Reads every .md file of ours, tracked or not yet added (not the vendored M5 libraries or ft8_lib),
+outside fenced code blocks, and fails on:
 
   - a relative Markdown link whose file or directory is gone;
   - a repo path in `code` that is gone: a token that starts with one of our top-level directories,
@@ -50,8 +50,10 @@ def ours(path):
 class Repo:
     def __init__(self):
         tracked = git('ls-files', '-z').split('\0')
+        # A doc written but not yet added is checked too, so a new doc passes before its commit.
+        untracked = git('ls-files', '-z', '--others', '--exclude-standard').split('\0')
         self.top = {p.split('/', 1)[0] for p in tracked if '/' in p}
-        self.docs = sorted(p for p in tracked if ours(p))
+        self.docs = sorted({p for p in tracked + untracked if ours(p)})
         self.submodules = [line.split('\t', 1)[1] for line in git('ls-files', '-s').splitlines()
                            if line.startswith('160000 ')]
 
@@ -191,7 +193,7 @@ def main():
           + ('' if base else ' (no --base, so none is counted as new)'))
     if new:
         print('A dropped row is cited by what replaced it, or the citation goes '
-              '(docs/README.md, Roadmap rows).')
+              '(docs/maintainer/roadmap.md, Roadmap rows).')
     return 1 if failures or new else 0
 
 

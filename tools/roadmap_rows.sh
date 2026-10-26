@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ROADMAP.md hygiene (docs/README.md "Doc types" > "Roadmap rows").
+# ROADMAP.md hygiene (docs/maintainer/roadmap.md, "Roadmap rows").
 #
 #   tools/roadmap_rows.sh                  rows over the size limit, median length, long-ok count
 #   tools/roadmap_rows.sh new              print a fresh random row ID never seen in git history
@@ -86,7 +86,10 @@ dangling() {
   if (( worktree )); then text="$(cat "$ROADMAP")"; else text="$(git show "$rev:$ROADMAP")"; fi
   re="$(dead_ids "${rev:-HEAD}" "$text" | paste -sd'|' -)"
   [[ -z "$re" ]] && return 0
-  git grep -owE "($re)" ${rev:+"$rev"} -- 'docs/*.md' ':!docs/TEST_PLAN.md' ':!docs/rfcs/rejected/*' \
+  # In the worktree, a doc not yet added counts too (tools/check_docs.py reads it before its commit).
+  local untracked=""
+  (( worktree )) && untracked="--untracked"
+  git grep ${untracked:+"$untracked"} -owE "($re)" ${rev:+"$rev"} -- 'docs/*.md' ':!docs/TEST_PLAN.md' ':!docs/rfcs/rejected/*' \
     | sed "s|^${rev:+$rev:}||" \
     | awk -F: '!seen[$1 FS $2]++ { ids[$1] = ids[$1] " " $2 } END { for (f in ids) print f ":" ids[f] }' | sort
 }

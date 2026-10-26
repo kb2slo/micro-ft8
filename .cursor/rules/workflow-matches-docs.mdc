@@ -1,6 +1,6 @@
 ---
-description: Follow docs/README.md (working agreement)
+description: Follow AGENTS.md (working agreement)
 alwaysApply: true
 ---
 
-Follow `docs/README.md`. That file is the working agreement for every agent. Do not duplicate it here.
+Follow `AGENTS.md`. That file is the working agreement for every agent. Do not duplicate it here.

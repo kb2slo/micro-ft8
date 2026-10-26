@@ -1,10 +1,8 @@
 # Micro-FT8 roadmap (kb2slo fork)
 
-Living plan for this fork. How to use it, and the rest of `docs/`, is in [README.md](README.md).
+Living plan for this fork. How it is kept: [maintainer/roadmap.md](maintainer/roadmap.md). The rest of `docs/`: [README.md](README.md).
 
-How things work now: `architecture/` (start at [architecture/system.md](architecture/system.md)). [RFC 0003](rfcs/rejected/0003-m32-pocket-port-and-ble-time.md) (Pocket+CTS bundle) is **rejected**. When a row needs an RFC, and what happens to it: [README.md](README.md) **Doc types**.
-
-Ship on `origin/main`. Talk through changes before a local commit (see [README.md](README.md)). No `upstream` remote exists; never push or open a PR to Wei's `wcheng95/Mini-FT8` unless explicitly asked.
+How things work now: `architecture/` (start at [architecture/system.md](architecture/system.md)). [RFC 0003](rfcs/rejected/0003-m32-pocket-port-and-ble-time.md) (Pocket+CTS bundle) is **rejected**. When a row needs an RFC, and what happens to it: [rfcs/README.md](rfcs/README.md).
 
 ## Next groom
 
@@ -68,7 +66,7 @@ Decided or conditional, not to be picked up until the named condition clears; th
 
 ## Ideas
 
-Not scheduled. Move to Backlog with a Done-when before implementing. When an idea needs an RFC first: [README.md](README.md) **Doc types**.
+Not scheduled. Move to Backlog with a Done-when before implementing. When an idea needs an RFC first: [rfcs/README.md](rfcs/README.md).
 
 
 | ID | Item | Notes |

@@ -1,5 +1,5 @@
 # Claude Code
 
-Follow `docs/README.md`. That file is the working agreement for every agent.
+@AGENTS.md
 
-Loader stub only, like `AGENTS.md` and `.cursor/rules/`. Do not put rules here.
+Loader stub only, like `.cursor/rules/`: it imports `AGENTS.md`, the working agreement. Do not put rules here.

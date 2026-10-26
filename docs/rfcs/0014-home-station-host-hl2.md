@@ -16,7 +16,7 @@
 
 * **One codebase.** The home station runs the same autoseq, log, station settings and web app as the field station. Nothing the P4 or the sidekick does gets a second copy on the host (§3.2): [RFC 0011](rejected/0011-station-core.md) records what two copies of station logic did.
 * **The field station is unchanged.** [system.md](../architecture/system.md)'s offline and AP-mode constraints keep applying to it. The home station is home-only.
-* **Each QSO on the air is a WSJT-X QSO** ([README.md](../README.md), **WSJT-X is the on-air standard**). The station chooses the band; the messages and their sequence do not change.
+* **Each QSO on the air is a WSJT-X QSO** ([AGENTS.md](../../AGENTS.md), **WSJT-X is the on-air standard**). The station chooses the band; the messages and their sequence do not change.
 * **Transmit ships off,** behind the requirements in §3.8.
 
 ## 2. What exists
@@ -190,7 +190,7 @@ flowchart LR
 
 ## 5. Slices
 
-Each slice states which verifiability category from [README.md](../README.md) applies.
+Each slice states which verifiability category from [AGENTS.md](../../AGENTS.md) applies.
 
 0. **S0: a host spike on the real HL2.** The codec component and a small host program: discovery, one and four receivers, IQ and 12 kHz WAV recording, golden frames, telemetry readings. `radio-utils-emu` as a smoke test in CI.
    - Verification: codec host tests (category 1). What the HL2 does is field (category 2).

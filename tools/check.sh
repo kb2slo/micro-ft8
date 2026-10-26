@@ -26,7 +26,7 @@ CHECKS="web webapp host_mock sim tx_e2e decode_recall getting_started docs commi
 HOST_CHECKS="web webapp host_mock sim tx_e2e decode_recall getting_started"
 LOG_DIR="build/check"
 JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
-IDF_VERSION="v5.5.5"  # docs/README.md, Local IDF build / flash
+IDF_VERSION="v5.5.5"  # AGENTS.md, Local IDF build / flash
 
 # What a changed path can affect, as case patterns (a * also crosses /). A
 # changed .md file counts only for a pattern that names it. A tracked path no
@@ -154,7 +154,7 @@ skip() { echo "SKIP: $*"; exit 3; }
 
 need_submodule() {
   [ -e components/ft8_lib/vendor/ft8 ] ||
-    { echo "components/ft8_lib/vendor is empty: run git submodule update --init (docs/README.md, Clone)"; exit 1; }
+    { echo "components/ft8_lib/vendor is empty: run git submodule update --init (CONTRIBUTING.md, Setup)"; exit 1; }
 }
 
 need_npm() {

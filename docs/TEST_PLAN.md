@@ -1,8 +1,8 @@
 # Micro-FT8 test plan (kb2slo fork)
 
 A ledger, not a manual: what automation checks, what it cannot see, and which field checks are still owed.
-How a field check is asked for, run and closed is in [README.md](README.md) (**Test plan matches the work
-too**). Git history records every check that passed.
+How a field check is asked for and closed is under **Pending** below; when the ledger changes, in
+[AGENTS.md](../AGENTS.md) (**Test plan matches the work too**). Git history records every check that passed.
 
 ## Automated
 
@@ -50,8 +50,12 @@ A green run is not coverage of these:
 
 ## Pending
 
-Field checks owed on shipped work. Only the operator can run these. Add one when a change touches a
+Field checks owed on shipped work. Only someone with the hardware can run these: the maintainer, or a
+contributor with a P4, a QMX and a sidekick. Add one when a change touches a
 field-only path, naming the change and the exact check. **Drop it when the check passes.**
+
+- **Asking someone to run a check → put the check itself in chat, never just its row's name.** For each owed row being asked for, give its numbered steps and expected results, and first how to get the build onto the device (the flash or `desk_push.py` command). "Run the O1a row in TEST_PLAN" sends them to a file in the middle of a bench session. Ask for a result per step. **Label each step with its number in the row, as text ("Step 5:"), never as a Markdown numbered list:** a list renumbers from its first item, so asking for steps 2, 5, 6 and 7 displays 2, 3, 4, 5, and their answers then map to the wrong steps.
+- The person who ran it reports a pass **for every step** → drop the row in the **same turn**. The commit that drops it names the build that passed. A summary "it passed", or a step with no result, keeps the row: say which step is still open. A failure keeps the row and becomes a fix.
 
 | From | Check | Status |
 | --- | --- | --- |

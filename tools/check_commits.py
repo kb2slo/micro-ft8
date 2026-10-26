@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fails when a commit message is not in the shape docs/README.md (Chat gates, 3) asks for.
+"""Fails when a commit message is not in the shape AGENTS.md (Chat gates, 3) asks for.
 
   python3 tools/check_commits.py [RANGE]     default: origin/main..HEAD
 
@@ -44,7 +44,7 @@ def main():
 
     print(f'{len(commits)} commit(s) in {rng}, {failures} to fix')
     if failures:
-        print('Say what changed in the subject and put the why in the body (docs/README.md, Chat gates, 3). '
+        print('Say what changed in the subject and put the why in the body (AGENTS.md, Chat gates, 3). '
               'Reword the last commit with `git commit --amend`; an earlier one, with an interactive rebase '
               'before it is pushed.')
     return 1 if failures else 0

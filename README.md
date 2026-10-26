@@ -15,13 +15,7 @@ Jeff KB2SLO’s continuation of Wei AG6AQ’s Micro-FT8, which was written for t
 
 ## Clone and CI firmware
 
-To build from source, clone with the `ft8_lib` submodule. GitHub’s default clone leaves `components/ft8_lib/vendor` empty, and host `tx_e2e` / `idf.py build` will fail.
-
-```
-git clone --recurse-submodules git@github.com:kb2slo/micro-ft8.git
-```
-
-Existing trees: `git submodule update --init`.
+How to contribute, from setup to a pull request: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Pushes and pull requests run GitHub Actions (ESP-IDF **v5.5.5**): the P4 (`poe_p4/`, target **esp32p4**) and the sidekick (`sidekick/`, target **esp32s3**). When firmware sources change, the jobs upload flashable merged images as artifacts. Docs-only commits (roadmap, README, and similar) skip the IDF builds and do not refresh the rolling images.
 

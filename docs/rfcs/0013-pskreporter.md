@@ -138,14 +138,14 @@ The app cannot load once the sidekick is packed away (§2). A page on the releas
 
 ## 5. Slices
 
-Each slice states which verifiability category from [README.md](../README.md) applies.
+Each slice states which verifiability category from [AGENTS.md](../../AGENTS.md) applies.
 
 0. **S0: ask Philip, and tell M0LTE** (Ask 1). No code. S1's gap-fill waits on the answer; its live half does not.
 1. **S1 (I37): the card, the live feed, gap-fill, and the route changes.**
    - Verification: host tests for the MQTT packet code and the gap and merge logic (category 1). Field: a CQ from the station, with the phone locked through it (category 2).
    - **Done-when:** a CQ shows its receiving stations with band, SNR and distance within minutes; a ten-minute lock is filled after unlocking; offline, the card says so.
 2. **S2: the map layer.** Built 2026-10-08 with S1's live half. Category 1 for the listener (`test_pskr_live.js`); the operator looks at the drawing.
-3. **S3: `heard.html` on the release host,** if Ask 3 is yes. Graduates in the next commit, once the Pages and Worker deploy is green ([README.md](../README.md), **RFC lifecycle**).
+3. **S3: `heard.html` on the release host,** if Ask 3 is yes. Graduates in the next commit, once the Pages and Worker deploy is green ([README.md](README.md), **RFC lifecycle**).
 4. **S4 (f4kb): batches from the browser, and the Worker's TCP sender, opt-in.** No firmware.
    - Verification: a host test of the Worker's encoder against the golden message, and of the browser's batching and pacing (category 1). Field: with the option on, a session's decodes appear on pskreporter.info with our call as the receiver (category 2). The Worker half graduates once its deploy is green.
 5. **S5 (f4kb, optional): the sidekick's UDP sender** (§4), only if Ask 4 chooses it. This is a firmware slice.

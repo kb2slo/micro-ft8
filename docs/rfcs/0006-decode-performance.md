@@ -694,7 +694,7 @@ crowded slots, and enough files for a held-out set.
   not our audio path.
 - **Storage:** 48 kHz 16-bit mono is ~1.4 MB per slot, ~345 MB per hour — not git. A checked-in manifest
   (file list, SHA-256, truth provenance) plus a download location, so a fresh clone can rebuild the corpus
-  per `docs/README.md`'s reproducibility rule. Location undecided.
+  per `AGENTS.md`'s reproducibility rule. Location undecided.
 - **Consensus truth:** add a second independent decoder (JTDX is the obvious one) to reach tier 5.
 
 **Done-when:** a corpus large enough to hold out a test set, and P2's winner re-scored against it.
