@@ -81,19 +81,17 @@ static esp_err_t qmx_key_up(void) {
     return qmx_send_cmd("TA0;", 10);
 }
 
-static esp_err_t qmx_set_tune(bool enable, int freq_hz, int tone_hz) {
+static esp_err_t qmx_set_tune(bool enable, int freq_hz, int /*tone_hz*/) {
     if (!enable) {
-        return qmx_end_tx();
+        esp_err_t err = qmx_end_tx();
+        if (err != ESP_OK) return err;
+        return qmx_send_cmd("MD6;", 200);
     }
 
     esp_err_t err = qmx_sync_frequency_mode(freq_hz);
     if (err != ESP_OK) return err;
 
-    const char* tx = "TX;";
-    err = qmx_send_cmd(tx, 200);
-    if (err != ESP_OK) return err;
-
-    return qmx_set_tone_hz((float)tone_hz);
+    return qmx_send_cmd("MD8;", 200);
 }
 
 static esp_err_t qmx_on_audio_start(void) {

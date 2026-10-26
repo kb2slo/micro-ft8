@@ -65,6 +65,12 @@ The P4 reads the radio's SWR-protection lock (**The SWR-protection latch**, belo
 Measured on a QMX at firmware 1_04_003 with `tools/qmx_swr_probe.py` (2026-09-30); `tools/qmx_swr_sweep.py` and `tools/qmx_swr_plot.py` are the bench prototype of the sweep and its plot. The sweep is built on it: see **The SWR sweep on the main board** below.
 
 * **`MD8;` enters SWR Tune and keys the radio by itself** (`KD;`/`TQ;` read `1`; `MD;` then reads `3`). `SW;` returns the SWR in hundredths while keyed, and an empty `SW;` in receive. No `TX;` is needed, and a plain `TX;` does not measure: `KD;` stays `0` and `SW;` returns noisy, meaningless values.
+* **Operate's manual Tune uses SWR Tune on a QMX.** Start syncs the operating frequency and sends `MD8;`;
+  Stop sends `RX;` then `MD6;`, so the carrier uses the QMX's configured Tune % and the radio returns to
+  digital mode. A QDX keeps its CPFSK Tune path. The SWR sweep and optional amplifier band-prime pulse above
+  use the same QMX mode through their own bounded state machines. Bench-verified 2026-10-26 on QMX 1_04_003,
+  local `cd17cd0-dirty`: 25% produced the reduced Tune carrier and stable SWR, 10% produced lower power, and
+  Stop returned to Digi receive with decoding resumed.
 * **`TX;` asserts PTT and emits no RF; the first `TA` does (bench-verified, QMX 1_04_003, Micro PA100+ keyed from the QMX's grounded PTT output).** After `TX;` the PA relay clicks and both radios read ~0 W. RF appears on the first `TA`, `TA0;` keys down, and `RX;` releases PTT. With a gap between `TX;` and the first `TA` the QMX no longer trips SWR protection on the relay's switching transient. Found by test; the CAT manual for 1_04_004 says the same ("The first TA command does key-down"). Its PDF text extracts with macOS PDFKit (`PDFDocument(url:).string`, a few lines of Swift).
 * **The frequency is taken when SWR Tune is entered.** `FA` while keyed is refused (`?;`), and `MD8;` sent while already in SWR Tune keeps the old frequency. Per point: `RX;`, `MD6;`, `FA<hz>;`, `MD8;`, then read `SW;`. Afterwards `RX;`, `MD6;` and the original `FA`.
 * **Timing:** setters return nothing, and the next query answers within a few ms, so the radio's own latency is small. With a 300 ms discard after `MD8;` the first read was already steady, and three reads 50 ms apart plus a median absorb the odd outlier (one in ~20 reads strays 0.1-0.3). A point costs about 0.7 s keyed: 15 points in 11 s.
