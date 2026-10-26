@@ -118,11 +118,12 @@ button:disabled{opacity:.45}
 #viewport{flex:1 1 auto;min-height:0;overflow:hidden;position:relative}
 #viewTrack{display:flex;height:100%;min-height:0;width:400%}
 #viewTrack>section{flex:0 0 25%;width:25%;height:100%;min-height:0;max-height:100%;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;-webkit-overflow-scrolling:touch}
-/* Operate's pinned regions cover the top and bottom of this strip only.
-   Start the panel below the top (--optop-h) and shorten it by both (kept while
-   they are hidden, so leaving Operate does not resize it and clamp the decode
-   scroll) instead of letting rows slide under them. */
-#viewTrack>#view-operate{margin-top:var(--optop-h,0px);height:calc(100% - var(--optop-h,0px) - var(--dock-h,0px));max-height:calc(100% - var(--optop-h,0px) - var(--dock-h,0px))}
+/* The pinned top (slot bar, activation line) covers the top of this strip on every tab, so every
+   panel starts below it (--optop-h); Operate's pinned bottom covers the bottom of Operate only,
+   so that panel is also shortened by --dock-h (kept while the bottom is hidden, so leaving
+   Operate does not resize it and clamp the decode scroll). */
+#viewTrack>section{margin-top:var(--optop-h,0px);height:calc(100% - var(--optop-h,0px));max-height:calc(100% - var(--optop-h,0px))}
+#viewTrack>#view-operate{height:calc(100% - var(--optop-h,0px) - var(--dock-h,0px));max-height:calc(100% - var(--optop-h,0px) - var(--dock-h,0px))}
 .row{display:flex;gap:.5rem}
 .row>*{flex:1}
 .row button{margin-top:.5rem}
@@ -167,11 +168,10 @@ button:disabled{opacity:.45}
 /* Not paired: a dot on the Settings tab, beside the radio bar's Not paired state. */
 .tabdot{position:absolute;top:.35rem;left:calc(50% + 6px);width:8px;height:8px;border-radius:50%;background:var(--warn)}
 
-/* ---- operate: the pinned top (webapp.md, Operate's pinned regions) ---- */
+/* ---- the pinned top, on every tab (webapp.md, Operate's pinned regions) ---- */
 /* Inside #viewport but outside #viewTrack, so the track's transform does not
-   carry it away; #view-operate starts below it (--optop-h, layoutDock()). */
+   carry it away; every panel starts below it (--optop-h, layoutDock()). */
 #opTop{position:absolute;left:0;right:0;top:0;z-index:2;background:Canvas;padding:.45rem 1rem .4rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
-body:not(.on-operate) #opTop{display:none}
 .slotrow{display:flex;align-items:center;gap:.6rem}
 /* E or O: the parity of the slot now. The bar's colour no longer carries it. */
 #opParity{flex:none;width:1.5rem;height:1.5rem;border-radius:.35rem;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;background:var(--accent);color:Canvas}
@@ -185,11 +185,14 @@ body:not(.on-operate) #opTop{display:none}
 /* ---- operate: slot bar (fills left-to-right over the slot period: accent,
    red while we transmit, amber while TX is halted; small cursor dot at the TX
    offset frequency) ---- */
-#opSlotBar{position:relative;flex:1;height:6px;border-radius:3px;overflow:hidden;background:#141428}
+/* 18 px always, keyed or not, so the row never changes height; while we transmit the
+   readout sits inside it (txReadout(), RFC 0009 §7 2026-10-26). */
+#opSlotBar{position:relative;flex:1;height:18px;border-radius:5px;overflow:hidden;background:#141428}
+#opSlotText{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:ui-monospace,monospace;font-size:.7rem;font-weight:700;color:#fff;white-space:nowrap;pointer-events:none}
 #opSlotBarFill{height:100%;width:0%;background:#3b82f6;transition:width .2s linear,background-color .2s linear}
 #opSlotBarFill.tx{background:#dc2626}
-#opSlotBarFill.halt{background:#c98a10}
-#opSlotBarCursor{position:absolute;top:-1px;width:5px;height:8px;border-radius:1px;background:#e5e7eb;transition:left .2s linear}
+#opSlotBarFill.halt,#opSlotBarFill.dead{background:#c98a10}
+#opSlotBarCursor{position:absolute;top:0;width:3px;height:100%;border-radius:1px;background:#e5e7eb;opacity:.7;transition:left .2s linear}
 .pill{display:inline-block;font-size:.7rem;font-weight:700;padding:.15rem .5rem;border-radius:999px}
 /* Glyph, not just a color, on purpose (operator feedback: colorblind-hostile
    to signal state with a plain colored dot). Shape carries the meaning --
@@ -208,7 +211,9 @@ body:not(.on-operate) #opTop{display:none}
 /* ---- operate: the radio bar and its drawer (webapp.md, The radio bar) ---- */
 /* One state at a time (radioBarState()): a tone class tints it, and a glyph
    as well as the colour says which (same reasoning as .dot). */
-#opRadioBar{display:flex;align-items:stretch;gap:.4rem;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+/* Full width of the bottom panel (out through .dockinner's padding and back in), so a tinted
+   state's colour has a margin round the label and the Stop button instead of ending at them. */
+#opRadioBar{display:flex;align-items:stretch;gap:.4rem;margin:0 -1rem;padding:0 1rem;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent)}
 #rbToggle{flex:1;min-width:0;display:flex;align-items:center;gap:.7rem;border:0;border-radius:0;background:transparent;color:CanvasText;padding:.5rem 0;text-align:left;font:inherit}
 #rbChevron{flex:none;width:2.4rem;height:2.4rem;border-radius:50%;border:2px solid var(--accent);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:1rem;line-height:1}
 #rbChevron::before{content:"\2303"}
@@ -280,6 +285,8 @@ body:not(.on-operate) #opDock{display:none}
 .qrow{display:flex;align-items:center;gap:.5rem;padding:.25rem 0;min-height:2.2rem;border-bottom:1px solid color-mix(in srgb, GrayText 15%, transparent)}
 .qrow .call{font-family:ui-monospace,monospace;font-weight:700}
 .qrow .qgap{flex:1}
+/* What the newest decode said about this station (queueLastHeard()). */
+.qrow .qcue{flex:1;min-width:0;font-size:.7rem;color:GrayText;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* A row's count is a button: a tap opens the tries stepper (#opTriesEdit). */
 .qtries{display:inline-block;font-size:.7rem;color:GrayText;background:transparent;padding:.05rem .35rem;margin:0;border-color:color-mix(in srgb, GrayText 45%, transparent)}
 .qtries.custom{color:var(--accent);border-color:var(--accent)}
@@ -349,6 +356,11 @@ button{touch-action:manipulation}
 .drow.tap{cursor:pointer;-webkit-tap-highlight-color:transparent}
 .drow.tap:active{background:color-mix(in srgb, var(--accent) 8%, transparent)}
 .drow.queued{background:color-mix(in srgb, var(--accent) 9%, transparent)}
+/* A station in our queue (queueInvolvement()): a bar at the left edge, its call bold, and what
+   the message says about it on the second line. */
+.drow.involved{box-shadow:inset 3px 0 0 var(--accent)}
+.drow .callink.qcall{font-weight:700}
+.drow .qtag{color:var(--accent);font-weight:700}
 .drow .dmsg{grid-column:1;grid-row:1;min-width:0}
 .drow .txt{font-size:1.05rem;line-height:1.25;min-width:0;overflow-wrap:anywhere}
 .drow.quiet .txt{opacity:.72}
@@ -480,8 +492,8 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 
 <div class=wrap>
 <div id=viewport>
-<!-- Operate's pinned top (webapp.md, Operate's pinned regions): the slot bar with the parity of the
-     slot now, and at an activation each reference against its target. Outside
+<!-- The pinned top, on every tab (webapp.md, Operate's pinned regions): the slot bar with the
+     parity of the slot now, and at an activation each reference against its target. Outside
      #viewTrack for the reason #opDock is: the track slides with a transform. -->
 <div id=opTop>
   <div class=slotrow>
@@ -489,6 +501,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <div id=opSlotBar>
       <div id=opSlotBarFill></div>
       <div id=opSlotBarCursor hidden></div>
+      <span id=opSlotText></span>
     </div>
   </div>
   <div id=opActLine hidden></div>
@@ -687,6 +700,9 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     </div>
     <div class=setrow>
       <label class=bandcheck><input type=checkbox id=show_bearing> Show the bearing on decode rows</label>
+    </div>
+    <div class=setrow>
+      <label class=bandcheck><input type=checkbox id=show_queue_marks> Mark decodes about stations in the queue</label>
     </div>
     <div class=setrow>
       <label>Theme
@@ -1875,16 +1891,13 @@ function radioBarState(chip, hud, ctx) {
   var radio = ctx.radio || 'Radio';
   var on = hud && hud.active;
   if (on && !hud.aborted && !hud.nk) {
+    // Power and SWR are in the slot bar (txReadout()); here, what is on the air and Stop.
     var tuning = ctx.tune || hud.x === 'TUNE';
-    var meter = hud.wrblk ? 'Write blocked'
-      : (hud.pw > -1 ? (hud.pw / 10).toFixed(1) + ' W' : '— W') + ' · ' +
-        (hud.swr > -1 ? 'SWR ' + (hud.swr / 100).toFixed(2) : 'SWR —');
-    var bits = [tuning ? 'Tuning' : (hud.x || 'Transmitting')];
+    var bits = [tuning ? 'Tuning' : 'Sending ' + (hud.x || '')];
     if (hud.hz) bits.push(hud.hz + ' Hz');
-    if (ctx.band) bits.push(ctx.band);
     if (hud.batt > -1) bits.push(hud.batt + '%' + (hud.batt <= 20 ? ' battery low' : ' battery'));
     if (chip === 'lost') bits.push('CAT lost');
-    return { state: tuning ? 'tune' : 'tx', tone: 'red', main: meter, sub: bits.join(' · '), glyph: '●',
+    return { state: tuning ? 'tune' : 'tx', tone: 'red', main: where, sub: bits.join(' · '), glyph: '●',
              label: '', stop: tuning ? 'Stop Tune' : (ctx.ourCq ? 'Stop CQ' : 'Stop TX') };
   }
   if (on && /swr/i.test(hud.reason || '')) {
@@ -1938,6 +1951,20 @@ function radioBarState(chip, hud, ctx) {
            label: 'Band & radio', stop: '' };
 }
 
+// The readout inside the slot bar while we transmit: "4.9 W · SWR 1.30", "Tune · …" while tuning,
+// and "0.0 W · no RF" once a transmission keyed keyedMs ago still reads 0 W past its first tone
+// and first meter reply (the first poll comes before the first tone, so it reads 0 on every
+// transmission): the radio is keyed but sending nothing, and the SWR it reports then means
+// nothing. hud: the TX HUD event. {text, dead}.
+var TX_NO_RF_AFTER_MS = 1500;
+function txReadout(hud, tuning, keyedMs) {
+  if (hud.wrblk) return { text: 'Write blocked', dead: false };
+  if (hud.pw === 0 && keyedMs > TX_NO_RF_AFTER_MS) return { text: '0.0 W \u00b7 no RF', dead: true };
+  var meter = (hud.pw > -1 ? (hud.pw / 10).toFixed(1) + ' W' : '\u2014 W') + ' \u00b7 ' +
+    (hud.swr > -1 ? 'SWR ' + (hud.swr / 100).toFixed(2) : 'SWR \u2014');
+  return { text: (tuning ? 'Tune \u00b7 ' : '') + meter, dead: false };
+}
+
 // Counts SWR-tripped transmissions in a row, as the main board does (components/swr_trip): a
 // transmission that ends without a trip resets it, a trip adds one, and the count is kept per
 // transmission, not per event (the HUD repeats every ~500 ms). hud is the new TX HUD event; track
@@ -1955,6 +1982,7 @@ function noteTxHud(track, hud) {
   }
 }
 var swrTrack = { count: 0, cur: null };
+var txKeyedAt = 0; // when the TX HUD last went active: txReadout()'s keyedMs
 
 // Minutes to 0000Z as "3h12m", when a POTA activation's day starts over.
 function utcDayLeft(nowMs) {
@@ -3026,6 +3054,7 @@ function enableWrites(on) {
 }
 document.getElementById('dist_unit').onchange = function () { setDistUnit(this.value); };
 document.getElementById('show_bearing').onchange = function () { setShowBearing(this.checked); };
+document.getElementById('show_queue_marks').onchange = function () { setShowQueueMarks(this.checked); };
 document.getElementById('theme_pref').onchange = function () { setTheme(this.value); };
 document.getElementById('opRadioRetune').onclick = function () {
   radioPost('/api/radio/connect', undefined, 'Retuning the radio…')
@@ -3107,7 +3136,8 @@ function radioLive() {
 }
 
 // Drives #opSlotBar: fills left-to-right over the slot period (fraction
-// elapsed, not remaining), red while we transmit, amber when TX is halted,
+// elapsed, not remaining), red while we transmit with the readout inside
+// (txReadout()), amber when TX is halted or a keyed slot sends no RF,
 // plus a small cursor dot at the current TX offset. The parity of the slot
 // now is the E or O tag at its left, not the bar's colour.
 function renderCountdown() {
@@ -3118,6 +3148,7 @@ function renderCountdown() {
     fill.style.width = '0%';
     fill.className = '';
     cursor.hidden = true;
+    document.getElementById('opSlotText').textContent = '';
     tag.textContent = '';
     tag.className = '';
     return;
@@ -3128,8 +3159,11 @@ function renderCountdown() {
   var parity = Math.floor(now / p) % 2;
   var frac = intoSlot / p;
   var onAir = txHud && txHud.active && !txHud.nk;
+  var readout = onAir && !txHud.aborted
+    ? txReadout(txHud, yn(lastCfg.tune) === 'yes' || txHud.x === 'TUNE', now - txKeyedAt) : null;
+  document.getElementById('opSlotText').textContent = readout ? readout.text : '';
   fill.style.width = (frac * 100).toFixed(1) + '%';
-  fill.className = onAir && txHud.aborted ? 'halt' : (onAir ? 'tx' : '');
+  fill.className = onAir && txHud.aborted ? 'halt' : readout && readout.dead ? 'dead' : (onAir ? 'tx' : '');
   tag.textContent = parity ? 'O' : 'E';
   tag.className = onAir && !txHud.aborted ? 'tx' : '';
   tag.setAttribute('aria-label', (parity ? 'Odd' : 'Even') + ' slot');
@@ -3434,13 +3468,14 @@ function renderQueue() {
     return '<div class="qrow pending"><span class=call>' + esc(c) + '</span><span class=qgap></span>' +
       '<span class="qstate">Queued\u2026</span></div>';
   }).join('');
+  var nowMs = Date.now();
   rows.innerHTML = placeholders + ids.map(function (id) {
     var q = queue[id];
     return '<div class="qrow' + (flashCalls[q.dxcall] ? ' flash' : '') + '">' +
       '<span class="call callink" data-call="' + esc(q.dxcall) + '">' + esc(q.dxcall) + '</span>' +
       '<button type=button class="qtries' + (q.custom ? ' custom' : '') + '" data-id="' + id + '"' +
       (writesEnabled ? '' : ' disabled') + '>' + esc(triesLabel(q)) + '</button>' +
-      '<span class=qgap></span>' +
+      '<span class=qcue>' + (showQueueMarks ? esc(queueLastHeard(q.dxcall, nowMs)) : '') + '</span>' +
       '<span class="qstate qs-' + q.state + '">' + esc(QUEUE_STATE_NAMES[q.state] || '?') + '</span>' +
       '<button type=button class=qcancel data-id="' + id + '" aria-label="Cancel ' + esc(q.dxcall) + '">&times;</button>' +
       '</div>';
@@ -3666,16 +3701,21 @@ function decodeIsPark(d) {
   return /^CQ (POTA|SOTA)\b/.test(String(d.x || '').trim().toUpperCase());
 }
 
-function decodePassesView(d, view) {
-  if (d.me) return true;
+// involved: the decode concerns a station in our queue (queueInvolvement()), which no filter
+// hides, the same as a message to us.
+function decodePassesView(d, view, involved) {
+  if (d.me || involved) return true;
   if (view.reply && !isReplyableDecode(d)) return false;
   if (view.park && !decodeIsPark(d)) return false;
   return true;
 }
 
-function decodeViewOf(slot, view, distKmOf) {
+// involves(d): whether a decode concerns a station in our queue; optional. Those rows come right
+// after messages to us, in their own order, whatever the sort.
+function decodeViewOf(slot, view, distKmOf, involves) {
+  var inv = function (d) { return !!(involves && involves(d)); };
   var items = slot.map(function (d, i) { return { d: d, i: i }; })
-    .filter(function (it) { return decodePassesView(it.d, view); });
+    .filter(function (it) { return decodePassesView(it.d, view, inv(it.d)); });
   if (view.sort === 'snr' || view.sort === 'near' || view.sort === 'far') {
     var key = function (d) {
       if (view.sort === 'snr') return -d.snr;
@@ -3691,7 +3731,64 @@ function decodeViewOf(slot, view, distKmOf) {
       return ka === kb ? a.i - b.i : (ka < kb ? -1 : 1);
     });
   }
+  var rank = function (d) { return d.me ? 0 : inv(d) ? 1 : 2; };
+  items = items.map(function (it, k) { return { d: it.d, k: k }; })
+    .sort(function (a, b) { return (rank(a.d) - rank(b.d)) || (a.k - b.k); });
   return items.map(function (it) { return it.d; });
+}
+
+// ===================== Operate: the queue in the decodes (webapp.md, Decode rows and tap to reply) =====================
+// What a decode says about a station in our queue (never our CQ entry): it is calling CQ again,
+// working someone else, done with someone else (73 or RR73), being called by someone else, or
+// sending to us. null when it names no queued station. queued: the queued calls; myCall: ours.
+// {call, kind: 'cq'|'busy'|'done'|'called'|'you', other}.
+function queueInvolvement(text, queued, myCall) {
+  if (!text || !queued || !queued.length) return null;
+  var tokens = String(text).trim().toUpperCase().split(/\s+/).map(function (t) { return t.replace(/^<|>$/g, ''); });
+  var me = String(myCall || '').toUpperCase();
+  var sender = extractSenderCall(text);
+  var cq = tokens[0] === 'CQ';
+  var to = !cq && looksLikeCallsign(tokens[0]) ? tokens[0] : '';
+  var last = tokens[tokens.length - 1];
+  if (sender && queued.indexOf(sender) !== -1) {
+    if (cq) return { call: sender, kind: 'cq', other: '' };
+    if (to && to === me) return { call: sender, kind: 'you', other: '' };
+    if (to) return { call: sender, kind: last === '73' || last === 'RR73' ? 'done' : 'busy', other: to };
+    return null;
+  }
+  if (to && queued.indexOf(to) !== -1 && sender && sender !== me) {
+    return { call: to, kind: 'called', other: sender };
+  }
+  return null;
+}
+
+function involvementLabel(inv) {
+  return { cq: 'CQ again', busy: 'Working ' + inv.other, done: 'Done with ' + inv.other,
+           called: 'Called by ' + inv.other, you: '\u2192 you' }[inv.kind];
+}
+
+// The queued calls, not our CQ entry.
+function queuedCalls() {
+  return Object.keys(queue).map(function (id) { return queue[id].dxcall; })
+    .filter(function (c) { return c && c !== 'CQ'; });
+}
+
+// A queue row's cue: what the newest slot that names that station said about it, while that slot
+// is recent (two slot lengths), as "Working W1XYZ · 6s". Within a slot, what the station sent
+// itself outranks someone else calling it. '' when nothing recent names it.
+function queueLastHeard(call, nowMs) {
+  var me = lastCfg.call;
+  for (var i = 0; i < decodeSlots.length; i++) {
+    var slot = decodeSlots[i];
+    if (!slotReplyOpen(slot, nowMs)) break;
+    var best = null;
+    for (var k = 0; k < slot.length; k++) {
+      var inv = queueInvolvement(slot[k].x, [call], me);
+      if (inv && (!best || (best.kind === 'called' && inv.kind !== 'called'))) best = inv;
+    }
+    if (best) return involvementLabel(best) + ' \u00b7 ' + Math.max(0, Math.round((nowMs - slot.ts) / 1000)) + 's';
+  }
+  return '';
 }
 
 function decodeDistKm(d) {
@@ -3748,10 +3845,11 @@ function utcDayFile() {
          String(t.getUTCDate()).padStart(2, '0') + '.adi';
 }
 
-// Follows today's file for new QSOs while Operate is showing and the station has references;
-// activationCounts() counts from opLog.rows too. A day with no file yet reads as no rows.
+// Follows today's file for new QSOs while the station has references, on any tab, since the
+// activation line under the slot bar is on every tab; activationCounts() counts from opLog.rows
+// too. A day with no file yet reads as no rows.
 async function refreshOpLog() {
-  if (opLog.busy || currentView !== 'operate' || !parseActRefs(lastCfg).length) return;
+  if (opLog.busy || !parseActRefs(lastCfg).length) return;
   opLog.busy = true;
   try {
     var file = utcDayFile();
@@ -3897,8 +3995,10 @@ function renderDecodesNow() {
   var hidden = 0;
   var actRefs = parseActRefs(lastCfg);
   var dupes = dupeIndex(opLog.rows, actRefs);
+  var qcalls = showQueueMarks ? queuedCalls() : [], myCall = lastCfg.call;
+  var involves = function (d) { var v = queueInvolvement(d.x, qcalls, myCall); return !!v && v.kind !== 'you'; };
   var shownSlots = decodeSlots.map(function (slot) {
-    var shown = decodeViewOf(slot, decodeView, decodeDistKm);
+    var shown = decodeViewOf(slot, decodeView, decodeDistKm, involves);
     hidden += slot.length - shown.length;
     return { slot: slot, shown: shown };
   }).filter(function (s) { return s.shown.length > 0; });
@@ -3937,14 +4037,18 @@ function renderDecodesNow() {
         var badge = spotBadgeLabel(CallInfo.activeSpotFor(senderCall), actRefs);
         if (badge) flags += '<span class="wflag wflag-act">' + esc(badge) + '</span>';
       }
+      // A station in our queue: an accent bar, its call in bold, and what this says about it on the
+      // second line in place of the place. A message to us already stands out and gets none of it.
+      var inv = queueInvolvement(d.x, qcalls, myCall);
+      if (inv && inv.kind === 'you') inv = null;
       var st = replyState[d.id];
       var tap = decodeRowReplyable(d, slot, nowMs, st);
       var phase = st && st.phase !== 'refused' ? (st.undo ? 'Cancelling…' : st.phase === 'sending' ? 'Sending…' : 'Queued') : '';
-      var cls = 'drow' + (tap ? ' tap' : '') + (phase ? ' queued' : '') +
+      var cls = 'drow' + (tap ? ' tap' : '') + (phase ? ' queued' : '') + (inv ? ' involved' : '') +
         (!tap && !phase && !d.me && !(st && st.phase === 'refused') ? ' quiet' : '');
       var a11y = tap ? ' role=button tabindex=0 aria-label="Reply to ' + esc(senderCall || 'this station') + ': ' + esc(d.x) + '"' : '';
       return '<div class="' + cls + '" data-id="' + d.id + '"' + a11y + '>' +
-        '<div class=dmsg><span class="txt ' + decodeColorClass(d) + '">' + highlightCallInText(d.x, allCalls) +
+        '<div class=dmsg><span class="txt ' + decodeColorClass(d) + '">' + highlightCallInText(d.x, allCalls, inv ? [inv.call] : null) +
           (d.me ? '<span class=me>&rarr; ME</span>' : '') +
           (flags ? '<span class=dflags>' + flags + '</span>' : '') + '</span>' +
           (phase ? '<span class=rbadge>' + phase + '</span>' : '') + '</div>' +
@@ -3952,7 +4056,8 @@ function renderDecodesNow() {
         '<div class=dmeta><span>DT ' + fmtDt(d.dt) + '</span>' +
           // The place, not the grid (operator request 2026-10-26): the grid is on the station's card,
           // and the place still opens the map at that grid.
-          '<span>' + (theirGrid && shortLoc ? '<a class=gridlink href="map.html?grid=' + encodeURIComponent(theirGrid) + '">' +
+          '<span>' + (inv ? '<span class=qtag>' + esc(involvementLabel(inv)) + '</span>'
+            : theirGrid && shortLoc ? '<a class=gridlink href="map.html?grid=' + encodeURIComponent(theirGrid) + '">' +
             esc(shortLoc) + '</a>' : '') + '</span><span>' + esc(dist) + '</span></div>' +
         '<span class=dchev aria-hidden=true>' + (tap ? '›' : '') + '</span>' +
         '</div>' + replyFailHtml(d.id);
@@ -4302,6 +4407,7 @@ function applyEvent(e) {
   } else if (e.d === 3) {
     slotState = { sp: e.sp, hz: e.hz };
   } else if (e.d === 4) {
+    if (e.active && !(txHud && txHud.active)) txKeyedAt = Date.now();
     txHud = { active: !!e.active, aborted: !!e.aborted, wrblk: !!e.wrblk, nk: !!e.nk,
              pw: e.pw, swr: e.swr, batt: e.batt, hz: e.hz, reason: e.reason || '', x: e.x };
     lastTxHudEventMs = Date.now();
@@ -4550,6 +4656,20 @@ function setShowBearing(on) {
   showBearing = !!on;
   try { localStorage.setItem(BEARING_KEY, showBearing ? '1' : '0'); } catch (e) { /* applies live even if not persisted */ }
   renderDecodes();
+}
+
+// On by default: decodes about a queued station are marked, never filtered, sorted next, and
+// echoed on the queue row (queueInvolvement()). Off, none of it.
+var QUEUE_MARKS_KEY = 'microft8_queue_marks_v1';
+var showQueueMarks = true;
+function loadShowQueueMarks() {
+  try { showQueueMarks = localStorage.getItem(QUEUE_MARKS_KEY) !== '0'; } catch (e) { /* default stands */ }
+}
+function setShowQueueMarks(on) {
+  showQueueMarks = !!on;
+  try { localStorage.setItem(QUEUE_MARKS_KEY, showQueueMarks ? '1' : '0'); } catch (e) { /* applies live even if not persisted */ }
+  renderDecodes();
+  renderQueue();
 }
 
 function setDistUnit(v) {
@@ -4994,12 +5114,13 @@ PskrLive.start({
 // of these spans is the callsign's instead. Every other token is still
 // individually escaped same as before, so this can't reopen the class of
 // hole esc() exists to close.
-function highlightCallInText(text, calls) {
+// strong: calls drawn bold as well (a station in our queue).
+function highlightCallInText(text, calls, strong) {
   if (!calls || !calls.length) return esc(text);
   return text.split(/(\s+)/).map(function (tok) {
     var bare = tok.replace(/^<|>$/g, '').toUpperCase();
     return calls.indexOf(bare) !== -1
-      ? '<span class=callink data-call="' + esc(bare) + '">' + esc(tok) + '</span>'
+      ? '<span class="callink' + (strong && strong.indexOf(bare) !== -1 ? ' qcall' : '') + '" data-call="' + esc(bare) + '">' + esc(tok) + '</span>'
       : esc(tok);
   }).join('');
 }
@@ -5732,6 +5853,8 @@ renderDecodeControls();
 document.getElementById('dist_unit').value = distUnit;
 loadShowBearing();
 document.getElementById('show_bearing').checked = showBearing;
+loadShowQueueMarks();
+document.getElementById('show_queue_marks').checked = showQueueMarks;
 loadTheme();
 document.getElementById('theme_pref').value = themePref;
 if (Object.keys(lastCfg).length) {

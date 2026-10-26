@@ -55,6 +55,13 @@ eq(ids(view({ sort: 'far' })), [1, 4, 2, 6, 3, 5], 'Farthest: the message to us 
 eq(ids(view({ reply: true })), [1, 2, 3, 6, 5], 'Replyable keeps a CQ, a closing 73 or RR73, and the message to us; a report is out');
 eq(ids(view({ park: true })), [1, 3, 5], 'POTA/SOTA filter');
 eq(ids(view({ reply: true, park: true })), [1, 3, 5], 'filters combine');
+// A row about a station in our queue passes every filter and comes right after the message to us.
+const involves = (d) => d.id === 4;  // W2AAA W3BBB R-10, with W3BBB queued
+const idsQ = (v) => sandbox.decodeViewOf(slot, v, distKmOf, involves).map((d) => d.id);
+eq(idsQ(view()), [1, 4, 2, 3, 6, 5], 'the queued station\'s row moves up under the message to us');
+eq(idsQ(view({ reply: true })), [1, 4, 2, 3, 6, 5], 'Replyable does not hide it');
+eq(idsQ(view({ park: true })), [1, 4, 3, 5], 'nor does POTA/SOTA');
+eq(idsQ(view({ sort: 'far' })), [1, 4, 2, 6, 3, 5], 'any sort: after the message to us');
 assert.strictEqual(sandbox.decodeIsPark({ x: 'cq pota k1abc fn42' }), true);
 assert.strictEqual(sandbox.decodeIsPark({ x: 'CQ POTAX K1ABC' }), false, 'a word boundary, not a prefix');
 assert.strictEqual(sandbox.decodeIsPark({ x: 'CQ DX K1ABC' }), false);

@@ -235,4 +235,7 @@ O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); th
 * **No confirm before a reply is queued:** the held redraws and the 5 s Undo cover a mis-tap; revisit if mis-taps still happen on the phone.
 * **Settings is a fourth tab and the title row goes;** not paired is a radio bar state and a dot on the Settings tab.
 * **The bearing is a per-phone Settings option,** off by default.
+* **Power and SWR move into the slot bar** while we transmit, which is 18 px whether keyed or not; the radio bar keeps the band, what is being sent, and Stop where the thumb is (2026-10-26). A keyed slot that sends no RF reads "0.0 W · no RF" in amber.
+* **The slot bar and the activation line show on all four tabs,** not the map or SWR pages (2026-10-26).
+* **Decodes about a queued station are marked and never filtered** (2026-10-26): CQ again, Working, Done with, or Called by, on the row and on that station's queue row; a per-phone Settings option, on by default, turns it off.
 * **The decode message's line holds only it and the SNR,** right-justified, at 1.05rem; DT, the place and the distance go on one line under it, and the grid and the bearing are on the station's card (2026-10-26): beside §3.14's 172 pt column, most messages wrapped at any readable size.
