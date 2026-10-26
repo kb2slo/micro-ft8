@@ -42,26 +42,26 @@ You need the main board and sidekick on their Grove cable, your QMX (tested on f
 
 ## 3. Pair your phone
 
-- The bar at the bottom of **Operate** says **Not paired**, and the **Settings** tab has a dot. Press the button on top of the sidekick; within a few seconds both go.
+- **Operate**'s bottom bar says **Not paired** until you press the button on top of the sidekick.
 - A paired browser can transmit and change settings; anyone on the network can watch. It also sets the station's clock from the phone, which FT8 needs (the main board has no clock), so open the app once after every power-up, with the phone's time set automatically.
 
 ## 4. Set up your station
 
 A new or reset station is set to `YOURCALL` in grid `CM97`. Set yours before you transmit.
 
-- Tap **Settings** in the tab bar. Enter your **Call** and tick the **Bands** your QMX covers; they save as you go.
-- On **Operate**, tap **Band & radio** at the bottom, then **Station ›**, and enter your **Grid**; it saves when you leave the field. **Set from GPS →** uses the phone's location, and needs internet.
+- Tap **Settings**. Enter your **Call** and tick the **Bands** your QMX covers; they save as you go.
+- On **Operate**, tap the bottom bar, then **Station ›**, and enter your **Grid**; it saves when you leave the field. **Set from GPS →** uses the phone's location, and needs internet.
 
 ## 5. Check that it hears
 
-- The bar at the bottom of **Operate** says when the QMX is ready. Tap it: **CAT** and **Audio** show ✓ once the QMX is connected (– not known yet, ✕ down).
-- Tap a band there. The QMX tunes to its FT8 frequency, the bar at the top fills every 15 seconds, and decodes arrive after each slot.
+- Tap **Operate**'s bottom bar: **CAT** and **Audio** show ✓ once the QMX is connected (– not known yet, ✕ down).
+- Tap a band there. The QMX tunes to its FT8 frequency, the top bar fills every 15 seconds, and decodes arrive after each slot.
 
 ## Work some stations
 
-- *Answer a CQ:* tap the decode. A row you can answer ends in a blue ›, for about 30 seconds after its slot; a tap on its callsign shows the station instead. The row says **Queued**, and **Undo** takes it back for a few seconds. The station works the exchange and logs it.
+- *Answer a CQ:* tap a decode that ends in a blue ›, for about 30 seconds after its slot (**Undo** takes it back). The station works the exchange and logs it.
 - *Call CQ:* tap **Call CQ** on the last row of the queue. It sends as many CQs as **Tries** in the Station sheet (6 to start), every other slot, then stops. Stations that answer are worked first. On the row, tap the count to change it, or the slot to move the CQ to the other one.
-- *Stop:* **Stop TX**, on the bar at the bottom, ends the transmission on the air (**Stop CQ** also ends the CQ), and × on a queue row ends that QSO or the CQ. **Tune**, under the bands, sends a carrier until you tap it again.
+- *Stop:* **Stop TX** ends the transmission on the air (**Stop CQ** also ends the CQ), and × on a queue row ends that QSO or the CQ. **Tune** sends a carrier until you tap it again.
 - Close the app or lock the phone, and the station keeps working. Open it again to see what it did.
 
 ## Your log
