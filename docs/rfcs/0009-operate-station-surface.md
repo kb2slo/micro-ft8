@@ -70,7 +70,7 @@ Built: the dock layout (O1, 2026-09-28), then layout v2 (O8, §3.14), whose regi
 
 ### 3.14 Layout v2: status on top, controls at the bottom
 
-Shipped as O8, 2026-10-25: [webapp.md](../architecture/webapp.md), **Operate's pinned regions**, **The radio bar**, **Decode rows and tap to reply** and **Band and frequency**; the phone check is in TEST_PLAN Pending. Its two open items, decided at the build (§7):
+Shipped as O8, 2026-10-25: [webapp.md](../architecture/webapp.md), **Operate's pinned regions**, **The radio bar**, **Decode rows and tap to reply** and **Band and frequency**; it passed the operator's phone check on 2026-10-26, with the §7 follow-ups. Its two open items, decided at the build (§7):
 
 * **CAT lost mid-transmission:** Transmitting wins, so Stop stays where it was; the sub-line adds "CAT lost", and the bar shows CAT lost once the transmission ends.
 * **Where Hz shows:** on the station's card, beside each decode heard this session.
@@ -162,13 +162,13 @@ O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); th
 * **O1b: the dock**, shipped 2026-09-28; its band and frequency rules moved to the radio drawer with O8 ([webapp.md](../architecture/webapp.md), **Band and frequency**).
 * **O1c: the Station sheet**, shipped 2026-09-28 ([webapp.md](../architecture/webapp.md), **The Station sheet**).
 * **O2: radio status replaces Connect, the read-back, and the TX HUD**, shipped 2026-10-24, on the radio bar since O8 ([webapp.md](../architecture/webapp.md), **The radio bar**); its field check is in TEST_PLAN Pending.
-* **O3: reply feedback**, shipped 2026-10-24, on the decode row since O8 ([webapp.md](../architecture/webapp.md), **Decode rows and tap to reply**); its check is O8's TEST_PLAN row.
+* **O3: reply feedback**, shipped 2026-10-24, on the decode row since O8 ([webapp.md](../architecture/webapp.md), **Decode rows and tap to reply**); checked on the phone with O8, 2026-10-26.
 * **O4: decode sort and filter**, shipped 2026-10-24 ([webapp.md](../architecture/webapp.md), **Decode sort and filter**); the phone check is in TEST_PLAN Pending.
 * **O5 and O6: the CQ's tries and tries on every queue row**, shipped 2026-10-14 ([autoseq.md](../architecture/autoseq.md), **Tries**; [webapp.md](../architecture/webapp.md), **The CQ row** and **Tries on a queue row**).
 * **The Activation section and the add screen ship with RFC 0008's slices:**
   - A1 brings typed references.
   - A3 brings the store, the nearby list and search, and the map's pick mode.
-* **O8: layout v2**, shipped 2026-10-25 (§3.14), with RFC 0008's A2 progress line; the phone check is in TEST_PLAN Pending.
+* **O8: layout v2**, shipped 2026-10-25 (§3.14), with RFC 0008's A2 progress line; passed on the phone 2026-10-26.
 * **O7, later:** auto-reply (§5), row `r2bu`.
 
 ## 7. Decisions
