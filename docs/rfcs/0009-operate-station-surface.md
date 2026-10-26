@@ -223,3 +223,16 @@ O1 ships as three pieces, each bench-checked on its own (decided 2026-09-27); th
 * **The slot header keeps the slot's span**, without the date ("14:02:30–45z · 6s ago"), per the 2026-09-28 decision that a start and an age counted from the end both read true.
 * **Undo lasts 5 s,** and a reply to a call already queued gets none, since cancelling would end that QSO.
 * **SWR tripped twice stays on the bar until the next transmission,** matching the main board, which stays stopped until the operator calls CQ, replies or tunes.
+
+**2026-10-25, operator feedback on the phone:**
+
+* **No swipe between tabs;** the tab bar alone switches them.
+* **The drawer opens below the radio bar,** so the bar rides up to the top of the open section, and it animates open and closed.
+* **No messages at the top of Operate:** no status line and no banners. A failure is a toast at the bottom; a lost link is a red radio-bar state; a newer app build is offered on Settings' App line. Settings and the Station sheet keep their own lines.
+* **The Decodes count reads "N/M",** not "N of M".
+* **A queue longer than its two visible rows says so:** a fade and a count at the edge where rows are hidden.
+* **Decode rows never move under a finger,** and slot headers stick under the Decodes bar.
+* **No confirm before a reply is queued:** the held redraws and the 5 s Undo cover a mis-tap; revisit if mis-taps still happen on the phone.
+* **Settings is a fourth tab and the title row goes;** not paired is a radio bar state and a dot on the Settings tab.
+* **The bearing is a per-phone Settings option,** off by default.
+* **The decode message's line holds only it and the SNR,** right-justified, at 1.05rem; DT, the place and the distance go on one line under it, and the grid and the bearing are on the station's card (2026-10-26): beside §3.14's 172 pt column, most messages wrapped at any readable size.

@@ -42,14 +42,14 @@ You need the main board and sidekick on their Grove cable, your QMX (tested on f
 
 ## 3. Pair your phone
 
-- The app says **Unpaired** at the top right. Press the button on top of the sidekick, and it says **Paired**.
+- The bar at the bottom of **Operate** says **Not paired**, and the **Settings** tab has a dot. Press the button on top of the sidekick; within a few seconds both go.
 - A paired browser can transmit and change settings; anyone on the network can watch. It also sets the station's clock from the phone, which FT8 needs (the main board has no clock), so open the app once after every power-up, with the phone's time set automatically.
 
 ## 4. Set up your station
 
 A new or reset station is set to `YOURCALL` in grid `CM97`. Set yours before you transmit.
 
-- Tap the gear at the top right. Enter your **Call** and tick the **Bands** your QMX covers; they save as you go.
+- Tap **Settings** in the tab bar. Enter your **Call** and tick the **Bands** your QMX covers; they save as you go.
 - On **Operate**, tap **Band & radio** at the bottom, then **Station ›**, and enter your **Grid**; it saves when you leave the field. **Set from GPS →** uses the phone's location, and needs internet.
 
 ## 5. Check that it hears

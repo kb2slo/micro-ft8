@@ -1984,10 +1984,9 @@ function handleLogMapTap(clientX, clientY) {
 
 // ---- gesture handling: identical to the original Log-tab map (single-
 // finger drag pans, two-finger pinch zooms anchored at the pinch midpoint,
-// a tap under DRAG_CLAIM_PX inspects a pin) -- this page has no swipe-tab
-// track to fight over touches with, so the stopPropagation() calls the
-// original needed for that reason are no longer load-bearing, but are kept
-// anyway since they're harmless and this is otherwise a verbatim port. ----
+// a tap under DRAG_CLAIM_PX inspects a pin). The stopPropagation() calls are
+// kept from the original, where a tab gesture competed for touches; they are
+// harmless here. ----
 //
 // Real bug found and fixed 2026-09-22, operator-reported from an actual
 // iPhone ("tapping POTA POIs is definitely still not working ... is there a

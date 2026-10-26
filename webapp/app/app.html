@@ -46,8 +46,8 @@
   --danger:#b91c1c;        /* .dlink-danger, #opRadioBar.t-red */
   --danger-strong:#ff0000; /* .c-me -- decode text addressed to me; .dot.bad's glyph */
   --warn:#b45309;          /* #opRadioBar.t-amber; .dot.stale's glyph */
-  --warn-bg:#fef3c7;       /* .qs-1/2/3, #staleBanner */
-  --warn-fg:#78350f;       /* .qs-1/2/3, #staleBanner */
+  --warn-bg:#fef3c7;       /* .qs-1/2/3 */
+  --warn-fg:#78350f;       /* .qs-1/2/3, #triesWarn */
   --good-hot:#007a00;      /* .c-cq -- brighter green, decode text for a fresh CQ; 5.5:1 on white (was #00c800, ~2.3:1; webapp.md, The CQ row) */
   --good-bg:#dcfce7;       /* .qs-4/5 */
   --good-fg:#14532d;       /* .qs-4/5 */
@@ -100,32 +100,24 @@ label{display:block;font-size:.7rem;color:GrayText;text-transform:uppercase;lett
 input,select{width:100%;box-sizing:border-box;padding:.45rem;font-size:1rem;margin-top:.15rem;background:Field;color:FieldText}
 button{padding:.6rem;font-size:.95rem;background:ButtonFace;color:ButtonText;border:1px solid GrayText;border-radius:.4rem}
 button:disabled{opacity:.45}
-/* Fills the screen under #bannerArea. align-self + max-width centers it;
+/* Fills the screen. align-self + max-width centers it;
    min-height:0 lets #viewport shrink instead of the page growing. */
 .wrap{width:100%;max-width:26rem;margin:0 auto;align-self:center;padding:0 1rem;box-sizing:border-box;display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
 
-/* ---- header: title, pairing badge, settings gear ---- */
-/* Above the scrolling tabs, so the title stays put. */
-#appHeader{background:Canvas;display:flex;align-items:center;gap:.5rem;padding:.6rem 0 .4rem}
-#appHeader h1{flex:1}
-.badge{font-size:.7rem;font-weight:700;padding:.25rem .6rem;border-radius:999px;border:1px solid var(--accent-border);background:transparent;color:var(--accent)}
-.badge.paired{border-color:transparent;background:var(--good-bg);color:var(--good-fg)}
-#navSettings{border:0;background:transparent;padding:.3rem;margin:0;color:GrayText;display:flex;line-height:0}
-#navSettings svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-#pairHint{font-size:.8rem;color:GrayText;margin:0 0 .4rem}
-#m{color:GrayText;font-size:.85rem;min-height:1.2em;margin:0 0 .5rem}
+/* No title row: Operate's slot bar is the top of the screen, and Settings is a tab
+   (operator decision 2026-10-25). */
+.wrap{padding-top:.4rem}
 
-/* ---- swipeable tab track ---- */
+/* ---- tab track ---- */
 /* The page does not scroll. #viewport is a fixed strip, and each tab scrolls
    inside it, so Operate's decode list cannot leave QSOs or Tools parked
    below their own content. min-height:0 is load-bearing: without it a flex
    child won't shrink below its content, and the tallest panel would grow
-   the strip. Three panels (Operate/QSOs/Tools, docs/architecture/webapp.md
-   (Screens)). Settings is an overlay (#settingsOverlay below), reached from
-   the header gear rather than swiped to. */
+   the strip. Four panels (Operate/QSOs/Tools/Settings, docs/architecture/webapp.md
+   (Screens)), switched only from the tab bar. */
 #viewport{flex:1 1 auto;min-height:0;overflow:hidden;position:relative}
-#viewTrack{display:flex;height:100%;min-height:0;width:300%}
-#viewTrack>section{flex:0 0 33.3333%;width:33.3333%;height:100%;min-height:0;max-height:100%;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;-webkit-overflow-scrolling:touch}
+#viewTrack{display:flex;height:100%;min-height:0;width:400%}
+#viewTrack>section{flex:0 0 25%;width:25%;height:100%;min-height:0;max-height:100%;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;-webkit-overflow-scrolling:touch}
 /* Operate's pinned regions cover the top and bottom of this strip only.
    Start the panel below the top (--optop-h) and shorten it by both (kept while
    they are hidden, so leaving Operate does not resize it and clamp the decode
@@ -136,20 +128,21 @@ button:disabled{opacity:.45}
 .row button{margin-top:.5rem}
 [hidden]{display:none!important}
 
-/* ---- settings overlay, and the Station sheet (same motion language) ---- */
+/* ---- the Station sheet and Who hears me's list (same motion language) ---- */
 /* Bottom-sheet motion language, same as #callInfoModal, but full-screen: a
-   destination you navigate to and back from, not a transient popover. The
-   Station sheet (webapp.md, "The Station sheet") is a second, independent
-   overlay built the same way -- grouped into these same rules rather than
-   duplicated, since the two never need to look different. */
-#settingsOverlay,#stationSheet,#pskrList{position:fixed;inset:0;z-index:12;background:Canvas;color:CanvasText;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .25s ease}
-#settingsOverlay.open,#stationSheet.open,#pskrList.open{transform:translateY(0)}
-#settingsOverlayHead,#stationSheetHead,#pskrListHead{flex:none;display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
-#settingsOverlayHead h2,#stationSheetHead h2,#pskrListHead h2{flex:1;font-size:1.05rem;margin:0}
-#settingsOverlayBack,#stationSheetBack,#pskrListBack{border:0;background:transparent;color:var(--accent);font-size:.95rem;padding:.3rem .2rem .3rem 0}
-#settingsOverlayBody,#stationSheetBody,#pskrListBody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
-/* #m sits under the page header, which either overlay covers, so the same
-   text also shows here, outside the scrolling body (setMsg()). */
+   destination you navigate to and back from, not a transient popover. Both
+   are built the same way -- grouped into these same rules rather than
+   duplicated, since they never need to look different. */
+#stationSheet,#pskrList{position:fixed;inset:0;z-index:12;background:Canvas;color:CanvasText;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .25s ease}
+#stationSheet.open,#pskrList.open{transform:translateY(0)}
+#stationSheetHead,#pskrListHead{flex:none;display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+#stationSheetHead h2,#pskrListHead h2{flex:1;font-size:1.05rem;margin:0}
+#stationSheetBack,#pskrListBack{border:0;background:transparent;color:var(--accent);font-size:.95rem;padding:.3rem .2rem .3rem 0}
+#stationSheetBody,#pskrListBody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+/* Settings' and the Station sheet's own status line (setMsg()): progress, results and failures
+   while open; Settings' sticks to the top of its tab. Operate has no status line; its failures
+   are toasts. */
+#settingsMsg{position:sticky;top:0;z-index:1}
 #settingsMsg,#stationSheetMsg{flex:none;margin:0;padding:.45rem 1rem;font-size:.85rem;background:color-mix(in srgb, var(--accent) 12%, transparent)}
 #settingsMsg:empty,#stationSheetMsg:empty{display:none}
 
@@ -170,6 +163,9 @@ button:disabled{opacity:.45}
 #tabbar button{flex:1;border:0;border-radius:0;background:transparent;padding:.5rem 0 .6rem;font-size:.7rem;display:flex;flex-direction:column;align-items:center;gap:.15rem;color:GrayText}
 #tabbar button.on{color:CanvasText;font-weight:700}
 #tabbar svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#tabbar button{position:relative}
+/* Not paired: a dot on the Settings tab, beside the radio bar's Not paired state. */
+.tabdot{position:absolute;top:.35rem;left:calc(50% + 6px);width:8px;height:8px;border-radius:50%;background:var(--warn)}
 
 /* ---- operate: the pinned top (webapp.md, Operate's pinned regions) ---- */
 /* Inside #viewport but outside #viewTrack, so the track's transform does not
@@ -231,7 +227,13 @@ body:not(.on-operate) #opTop{display:none}
 #opRadioBar.open #rbChevron{background:var(--accent);color:Canvas;border-color:var(--accent)}
 #opRadioBar.open #rbChevron::before{content:"\2304"}
 #opRadioBar.open #rbLabel{color:var(--accent)}
-#opDrawer{padding:.6rem 0 .5rem;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent);font-size:.8rem}
+/* Opens and closes by animating its one grid row from 0fr to 1fr, so no height is measured;
+   the clip hides the body while the row is shorter than it. */
+#opDrawer{display:grid;grid-template-rows:0fr;transition:grid-template-rows .25s ease;font-size:.8rem}
+#opDrawer.open{grid-template-rows:1fr}
+#opDrawer .drawerclip{overflow:hidden;min-height:0}
+#opDrawer .drawerbody{padding:.6rem 0 .5rem;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+@media (prefers-reduced-motion: reduce){#opDrawer{transition:none}}
 #opRadioProblem{margin-bottom:.6rem}
 #opRadioNote{margin:0 0 .4rem}
 #opRadioProblem .row{gap:.5rem;flex-wrap:wrap}
@@ -249,10 +251,12 @@ body:not(.on-operate) #opTop{display:none}
 #opRadioMore dd{margin:0;color:CanvasText}
 #opRadioTuneMeter{font-family:ui-monospace,monospace;font-size:1.4rem;font-weight:700;margin:.3rem 0;color:CanvasText}
 
-/* The Undo toast after a tap-to-reply (renderUndoToast()), above the bottom region. */
-#opToast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabbar-h,3.375rem) + var(--dock-h,0px) + .6rem);z-index:6;width:calc(100% - 2rem);max-width:24rem;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:.6rem;padding:.6rem .6rem .6rem 1rem;border-radius:.6rem;background:#141414;color:#fafafa;font-size:.9rem;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+/* The toast (showToast()): a failure's reason, or the Undo after a tap-to-reply. Above the tab
+   bar, and on Operate above its pinned bottom. */
+#opToast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabbar-h,3.375rem) + .6rem);z-index:6;width:calc(100% - 2rem);max-width:24rem;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:.6rem;padding:.6rem .6rem .6rem 1rem;border-radius:.6rem;background:#141414;color:#fafafa;font-size:.9rem;box-shadow:0 6px 20px rgba(0,0,0,.25)}
 #opToast button{border:0;background:transparent;color:#93c5fd;font-weight:700;font-size:.9rem;min-height:44px;padding:0 .6rem}
-body:not(.on-operate) #opToast{display:none}
+body.on-operate #opToast{bottom:calc(var(--tabbar-h,3.375rem) + var(--dock-h,0px) + .6rem)}
+#opToast.err{border-left:4px solid #f87171}
 
 /* ---- operate: the pinned bottom (webapp.md, Operate's pinned regions) ---- */
 /* Fixed above the tab bar and shown only on Operate (body.on-operate): queue,
@@ -267,6 +271,12 @@ body:not(.on-operate) #opDock{display:none}
 /* ---- operate: queue ---- */
 /* Only the QSO rows scroll, about two of them, so the CQ row below never takes their space. */
 #opQueueRows{max-height:5.4rem;overflow-y:auto}
+/* Rows hidden past an edge: a fade into the background and a count, over the edge row. They
+   take no taps, so the row under them still works. */
+#opQueueBox{position:relative}
+.qmore{position:absolute;left:0;right:0;height:1.5rem;display:flex;justify-content:center;pointer-events:none;font-size:.7rem;font-weight:700;color:var(--accent)}
+#opQueueBelow{bottom:0;align-items:flex-end;background:linear-gradient(to bottom, transparent, Canvas 75%)}
+#opQueueAbove{top:0;align-items:flex-start;background:linear-gradient(to top, transparent, Canvas 75%)}
 .qrow{display:flex;align-items:center;gap:.5rem;padding:.25rem 0;min-height:2.2rem;border-bottom:1px solid color-mix(in srgb, GrayText 15%, transparent)}
 .qrow .call{font-family:ui-monospace,monospace;font-weight:700}
 .qrow .qgap{flex:1}
@@ -320,30 +330,33 @@ button{touch-action:manipulation}
 /* ---- operate: decode stream ---- */
 #opDecodes{padding-bottom:.5rem}
 /* The Decodes bar stays at the top of the one scrolling area. */
-#dvBar{position:sticky;top:0;z-index:1;background:Canvas;display:flex;flex-wrap:nowrap;gap:.3rem;align-items:center;padding:.45rem 1rem .45rem;border-bottom:1px solid color-mix(in srgb, GrayText 20%, transparent)}
+#dvBar{position:sticky;top:0;z-index:2;background:Canvas;display:flex;flex-wrap:nowrap;gap:.3rem;align-items:center;padding:.45rem 1rem .45rem;border-bottom:1px solid color-mix(in srgb, GrayText 20%, transparent)}
 #dvBar .dvlabel{font-size:.65rem;color:GrayText;text-transform:uppercase;letter-spacing:.03em;font-weight:700}
 #dvBar select,#dvBar button{font-size:.75rem;padding:.25rem .5rem;width:auto;flex:none;margin:0;border-radius:999px;border:1px solid GrayText;background:ButtonFace;color:ButtonText}
 #dvBar select{appearance:none;-webkit-appearance:none}
 #dvBar button[aria-pressed=true],#dvBar select.on{background:var(--accent);border-color:var(--accent);color:Canvas;font-weight:700}
 #dvHidden{font-size:.7rem;color:GrayText;margin-left:auto;white-space:nowrap}
-#opDecodes .day{padding:.35rem 1rem .25rem;align-items:center;background:color-mix(in srgb, GrayText 7%, Canvas)}
+/* Sticky under the Decodes bar (--dvbar-h, layoutDock()), so the slot being read keeps its
+   time and age in view; each sits in its .dslot box and lets go when that slot ends. */
+#opDecodes .day{position:sticky;top:var(--dvbar-h,2.45rem);z-index:1;padding:.35rem 1rem .25rem;align-items:center;background:color-mix(in srgb, GrayText 7%, Canvas)}
 #opDecodes .day .ago{font-weight:400}
-/* Two lines (webapp.md, Decode rows and tap to reply): the message left, a fixed 172 px column of two
-   mono lines right (DT and SNR; grid and place, distance and bearing), then
-   the reply chevron. The whole row is the reply target when it is
+/* Two lines (webapp.md, Decode rows and tap to reply): the message, with the SNR right-justified
+   on the same line; DT, the place (a link to the map) and the distance in one mono line under
+   it; the reply chevron at the right of both. The whole row is the reply target when it is
    replyable (decodeTapAction()); its callsign and grid links keep their own
    taps. */
-.drow{display:grid;grid-template-columns:minmax(0,1fr) 172px 1rem;gap:.15rem .45rem;align-items:center;padding:.35rem 1rem;min-height:2.95rem;box-sizing:border-box;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
+.drow{display:grid;grid-template-columns:minmax(0,1fr) auto 1rem;gap:.1rem .45rem;align-items:center;padding:.35rem 1rem;min-height:2.95rem;box-sizing:border-box;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
 .drow.tap{cursor:pointer;-webkit-tap-highlight-color:transparent}
 .drow.tap:active{background:color-mix(in srgb, var(--accent) 8%, transparent)}
 .drow.queued{background:color-mix(in srgb, var(--accent) 9%, transparent)}
-.drow .txt{font-size:.95rem;line-height:1.25;min-width:0;overflow-wrap:anywhere}
+.drow .dmsg{grid-column:1;grid-row:1;min-width:0}
+.drow .txt{font-size:1.05rem;line-height:1.25;min-width:0;overflow-wrap:anywhere}
 .drow.quiet .txt{opacity:.72}
-.drow .dcol{font-family:ui-monospace,monospace;font-size:.68rem;color:GrayText;line-height:1.45}
-.drow .dcol>div{display:flex;justify-content:space-between;gap:.3rem;white-space:nowrap}
-.drow .dcol>div>span:first-child{overflow:hidden;text-overflow:ellipsis}
-.drow .dchev{color:var(--accent);font-size:1.3rem;font-weight:700;line-height:1;text-align:center}
-.drow .rbadge{display:inline-block;margin-top:.15rem;font-size:.65rem;font-weight:700;padding:.05rem .4rem;border-radius:.3rem;background:var(--info-bg);color:var(--info-fg)}
+.drow .dsnr{grid-column:2;grid-row:1;font-family:ui-monospace,monospace;font-size:.8rem;font-weight:700;text-align:right;white-space:nowrap}
+.drow .dmeta{grid-column:1/3;grid-row:2;display:grid;grid-template-columns:4.5em minmax(0,1fr) auto;gap:.8em;font-family:ui-monospace,monospace;font-size:.68rem;color:GrayText;line-height:1.35;white-space:nowrap}
+.drow .dmeta>span:nth-child(2){overflow:hidden;text-overflow:ellipsis}
+.drow .dchev{grid-column:3;grid-row:1/3;color:var(--accent);font-size:1.3rem;font-weight:700;line-height:1;text-align:center}
+.drow .rbadge{display:inline-block;margin-left:.4rem;vertical-align:.1em;font-size:.65rem;font-weight:700;padding:.05rem .4rem;border-radius:.3rem;background:var(--info-bg);color:var(--info-fg)}
 /* A link inside a tappable row gets a bigger hit area without moving the text. */
 .drow .callink,.drow .gridlink{padding:.45rem .15rem;margin:-.45rem -.15rem}
 .rfail{font-size:.75rem;color:var(--danger);padding:.1rem 1rem .4rem;display:flex;align-items:center;gap:.6rem}
@@ -457,8 +470,6 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 .setnote{padding:0 1rem;font-size:.8rem;color:GrayText;margin-top:0}
 .bandcheck{display:flex;align-items:center;gap:.4rem;font-size:.85rem;text-transform:none;letter-spacing:normal;color:CanvasText;margin:0}
 .bandcheck input{width:auto;margin:0}
-#staleBanner,#linkBanner{background:var(--warn-bg);color:var(--warn-fg);padding:.5rem 1rem;font-size:.85rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem}
-#staleBanner button,#linkBanner button{padding:.3rem .6rem;font-size:.8rem}
 .callink{text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
 .gridlink{text-decoration:underline;text-decoration-style:dotted;cursor:pointer;color:inherit}
 .qrow .call,.frow .call{cursor:pointer;text-decoration:underline;text-decoration-style:dotted}
@@ -467,32 +478,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
    time we select a callsign anywhere in the web app"), not defined here. */
 </style>
 
-<!-- One slot, one at a time: linkBanner (something's actually wrong right
-     now) takes priority over staleBanner (informational, not urgent) --
-     see renderBanners(). Never both -- two independently-toggled banners
-     stacking is exactly the "which message am I even looking at" problem
-     this app's header/status redesign set out to fix. -->
-<div id=bannerArea>
-<div id=staleBanner hidden>
-  <span>A newer version is available.</span>
-  <button id=staleBannerReload type=button>Reload</button>
-</div>
-<div id=linkBanner hidden>
-  <span id=linkBannerText></span>
-  <button id=linkBannerDismiss type=button>Dismiss</button>
-</div>
-</div>
 <div class=wrap>
-  <header id=appHeader>
-    <h1>Micro-FT8</h1>
-    <button id=pairBadge type=button class=badge>—</button>
-    <button id=navSettings type=button aria-label=Settings>
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 01-4 0v-.09A1.7 1.7 0 009 19.4a1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.7 1.7 0 004.6 15a1.7 1.7 0 00-1.55-1H3a2 2 0 010-4h.09A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06A1.7 1.7 0 009 4.6a1.7 1.7 0 001-1.55V3a2 2 0 014 0v.09A1.7 1.7 0 0015 4.6a1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06A1.7 1.7 0 0019.4 9a1.7 1.7 0 001.55 1H21a2 2 0 010 4h-.09a1.7 1.7 0 00-1.55 1z"/></svg>
-    </button>
-  </header>
-  <p id=pairHint hidden></p>
-  <p id=m></p>
-
 <div id=viewport>
 <!-- Operate's pinned top (webapp.md, Operate's pinned regions): the slot bar with the parity of the
      slot now, and at an activation each reference against its target. Outside
@@ -568,22 +554,11 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <div class=toolsnote>Transmits a short carrier at each point, to tune an antenna.</div>
   </section>
 
-</div>
-</div>
-</div>
-
-<!-- ================= SETTINGS ================= -->
-<!-- Full-screen overlay, not a third swipe panel -- reached from the header
-     gear (#navSettings), not flipped to mid-QSO the way Operate/Log are.
-     Same flat hairline-row list language throughout (.hd + .setrow). -->
-<div id=settingsOverlay>
-  <div id=settingsOverlayHead>
-    <button id=settingsOverlayBack type=button aria-label=Back>&larr;</button>
-    <h2>Settings</h2>
-  </div>
-  <p id=settingsMsg role=status></p>
-  <div id=settingsOverlayBody>
+  <!-- ================= SETTINGS ================= -->
+  <!-- The fourth tab (operator decision 2026-10-25). Same flat hairline-row
+       list language throughout (.hd + .setrow). -->
   <section id=view-settings>
+    <p id=settingsMsg role=status></p>
     <!-- Retired from status.html (docs/architecture/system.md (Who may key the transmitter)): the one place this app
          previously split into a second, unstyled page. sk_* keys are
          sidekick-local (host_link.c's config_json_add(), PORTA_MSG_CONFIG_GET
@@ -711,6 +686,9 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       </label>
     </div>
     <div class=setrow>
+      <label class=bandcheck><input type=checkbox id=show_bearing> Show the bearing on decode rows</label>
+    </div>
+    <div class=setrow>
       <label>Theme
         <select id=theme_pref>
           <option value=system>Match phone</option>
@@ -769,9 +747,11 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       <a href=/update>Install / update</a> ·
       <a href=/storage.html>Storage (debug)</a>
     </nav>
-    <div style="padding:0 1rem 1rem;font-size:.75rem;color:GrayText">App: <span id=appVersion>—</span></div>
+    <div style="padding:0 1rem 1rem;font-size:.75rem;color:GrayText">App: <span id=appVersion>—</span><span id=appStale hidden> · A newer version is available. <button id=appReload type=button class=dlink>Reload</button></span></div>
   </section>
-  </div>
+
+</div>
+</div>
 </div>
 
 <!-- ================= STATION SHEET ================= -->
@@ -781,9 +761,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
      no Save button -- which is exactly why Settings' own FIELDS (below) drops
      these keys: an all-keys Settings save must never overwrite a value one of
      these controls just wrote (RFC 0009 §2.1). Same overlay mechanics as
-     #settingsOverlay (see that CSS rule) -- a second, independent instance,
-     never open at the same time (openSettings()/openStationSheet() each close
-     the other first). -->
+     #pskrList (see that CSS rule), never open at the same time as it. -->
 <div id=stationSheet>
   <div id=stationSheetHead>
     <button id=stationSheetBack type=button aria-label=Back>&larr;</button>
@@ -867,7 +845,13 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 <div id=opDock>
   <div class=dockinner>
     <div id=opQueue>
-      <div id=opQueueRows></div>
+      <!-- The QSO rows scroll in place past about two; a fade and a count at
+           an edge say rows are hidden there (renderQueueMore()). -->
+      <div id=opQueueBox>
+        <div id=opQueueRows></div>
+        <div id=opQueueAbove class=qmore aria-hidden=true hidden></div>
+        <div id=opQueueBelow class=qmore aria-hidden=true hidden></div>
+      </div>
       <!-- Always present (webapp.md, The CQ row): Call CQ when no CQ is queued;
            otherwise the queued CQ, with its parity, its tries and its x. See
            the CSS comment above #opCqRow for why this is static markup rather
@@ -904,42 +888,6 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       </div>
     </div>
 
-    <!-- The radio bar's drawer (webapp.md, The radio bar): a problem's actions
-         first, then band, frequency, the status line and the rest of what the
-         radio said. Opens above the bar. -->
-    <div id=opDrawer hidden>
-      <div id=opRadioProblem hidden>
-        <p id=opRadioNote></p>
-        <div class=row>
-          <button id=opRadioRetune type=button disabled hidden>Retune VFO</button>
-          <button id=opRadioUse type=button disabled hidden>Use it</button>
-        </div>
-      </div>
-      <div id=opBandGrid class=bandgrid></div>
-      <div id=opFreqRow>
-        <button id=opFreqDown type=button disabled aria-label="Down 1 kHz">&minus;</button>
-        <input id=opFreqInput type=number step=0.001 inputmode=decimal enterkeyhint=done aria-label="Frequency, MHz or kHz" placeholder="MHz or kHz">
-        <button id=opFreqUp type=button disabled aria-label="Up 1 kHz">+</button>
-        <button id=opFreqSet type=button disabled>Set</button>
-      </div>
-      <div id=opDrawerStatus>
-        <span><span id=dotCat class=dot></span>CAT</span>
-        <span><span id=dotAudio class=dot></span>Audio</span>
-        <span title="PORTA link quality (CRC errors / dropped frames) -- see Settings for the raw counts"><span id=dotLink class=dot></span>Link</span>
-        <span title="Decodes in the last 5 minutes -- is the band actually alive right now"><span id=decodeRateCount>—</span></span>
-        <button id=opStationBtn type=button class="dlink stationlink">Station &rsaquo;</button>
-      </div>
-      <div id=opRadioMore>
-        <dl id=opRadioRows></dl>
-        <div class=morerow>
-          <span id=opRadioSummary></span>
-          <button id=opRadioRetuneReady type=button disabled hidden>Retune VFO</button>
-          <button id=opTune type=button disabled hidden>Tune: Off</button>
-        </div>
-        <div id=opRadioTuneMeter hidden></div>
-      </div>
-    </div>
-
     <div id=opRadioBar class=t-grey>
       <button id=rbToggle type=button aria-expanded=false aria-controls=opDrawer>
         <span id=rbChevron aria-hidden=true></span>
@@ -954,12 +902,53 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
            during a QSO message, Stop Tune while tuning. -->
       <button id=rbStop type=button disabled hidden>Stop TX</button>
     </div>
+
+    <!-- The radio bar's drawer (webapp.md, The radio bar): a problem's actions
+         first, then band, frequency, the status line and the rest of what the
+         radio said. It opens below the bar, which rides up with it, and its
+         height animates (the grid row in its CSS); inert while closed. -->
+    <div id=opDrawer inert>
+      <div class=drawerclip>
+        <div class=drawerbody>
+          <div id=opRadioProblem hidden>
+            <p id=opRadioNote></p>
+            <div class=row>
+              <button id=opRadioRetune type=button disabled hidden>Retune VFO</button>
+              <button id=opRadioUse type=button disabled hidden>Use it</button>
+            </div>
+          </div>
+          <div id=opBandGrid class=bandgrid></div>
+          <div id=opFreqRow>
+            <button id=opFreqDown type=button disabled aria-label="Down 1 kHz">&minus;</button>
+            <input id=opFreqInput type=number step=0.001 inputmode=decimal enterkeyhint=done aria-label="Frequency, MHz or kHz" placeholder="MHz or kHz">
+            <button id=opFreqUp type=button disabled aria-label="Up 1 kHz">+</button>
+            <button id=opFreqSet type=button disabled>Set</button>
+          </div>
+          <div id=opDrawerStatus>
+            <span><span id=dotCat class=dot></span>CAT</span>
+            <span><span id=dotAudio class=dot></span>Audio</span>
+            <span title="PORTA link quality (CRC errors / dropped frames) -- see Settings for the raw counts"><span id=dotLink class=dot></span>Link</span>
+            <span title="Decodes in the last 5 minutes -- is the band actually alive right now"><span id=decodeRateCount>—</span></span>
+            <button id=opStationBtn type=button class="dlink stationlink">Station &rsaquo;</button>
+          </div>
+          <div id=opRadioMore>
+            <dl id=opRadioRows></dl>
+            <div class=morerow>
+              <span id=opRadioSummary></span>
+              <button id=opRadioRetuneReady type=button disabled hidden>Retune VFO</button>
+              <button id=opTune type=button disabled hidden>Tune: Off</button>
+            </div>
+            <div id=opRadioTuneMeter hidden></div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
 <div id=opToast role=status hidden>
   <span id=opToastText></span>
-  <button id=opToastUndo type=button>Undo</button>
+  <button id=opToastAction type=button hidden></button>
 </div>
 
 <nav id=tabbar>
@@ -975,6 +964,10 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
     Tools
   </button>
+  <button type=button data-view=settings>
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 01-4 0v-.09A1.7 1.7 0 009 19.4a1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.7 1.7 0 004.6 15a1.7 1.7 0 00-1.55-1H3a2 2 0 010-4h.09A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06A1.7 1.7 0 009 4.6a1.7 1.7 0 001-1.55V3a2 2 0 014 0v.09A1.7 1.7 0 0015 4.6a1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06A1.7 1.7 0 0019.4 9a1.7 1.7 0 001.55 1H21a2 2 0 010 4h-.09a1.7 1.7 0 00-1.55 1z"/></svg>
+    Settings<span id=tabUnpaired class=tabdot aria-label="Not paired" hidden></span>
+  </button>
 </nav>
 
 <div id=resetWait role=alertdialog aria-modal=true aria-labelledby=resetWaitTitle hidden>
@@ -988,7 +981,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 </div>
 
 <!-- Who hears me's list (docs/architecture/webapp.md, Who hears me), opened from its Tools card. Same overlay
-     mechanics as #settingsOverlay; its rows are built only while it is open, and each open closes the others. -->
+     mechanics as #stationSheet; its rows are built only while it is open, and each open closes the other. -->
 <div id=pskrList>
   <div id=pskrListHead>
     <button id=pskrListBack type=button aria-label=Back>&larr;</button>
@@ -1017,7 +1010,6 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 <script src=pskr_live.js></script>
 <script src=geo_handoff.js></script>
 <script>
-var m = document.getElementById('m');
 var settingsMsg = document.getElementById('settingsMsg');
 var stationSheetMsg = document.getElementById('stationSheetMsg');
 // BANDS and BAND_EDGES_KHZ live in bands.js (shared with swr.html).
@@ -1036,7 +1028,36 @@ var QUEUE_STATE_NAMES = ['CALLING', 'REPLYING', 'REPORT', 'ROGER REPORT', 'ROGER
 
 // All three: #m is hidden behind whichever overlay (Settings, the Station
 // sheet) is open, and each repeats the same text under its own header.
-function setMsg(t) { m.textContent = t; settingsMsg.textContent = t; stationSheetMsg.textContent = t; }
+// An action's progress and result, on the open overlay's own line. Operate has no status line:
+// what changed shows where it changed (the radio bar, a row), and a failure is failMsg()'s.
+function setMsg(t) { settingsMsg.textContent = t; stationSheetMsg.textContent = t; }
+// A failure: the overlay's line too, and a toast wherever the operator is.
+function failMsg(t) { setMsg(t); showToast(t, '', null, FAIL_TOAST_MS, true); }
+
+// One toast at a time (#opToast): text, an optional action, gone after ms.
+var FAIL_TOAST_MS = 6000;
+var toastState = null; // {timer, onAction}
+function showToast(text, actionLabel, onAction, ms, isError) {
+  if (toastState) clearTimeout(toastState.timer);
+  toastState = { timer: setTimeout(hideToast, ms), onAction: onAction };
+  var el = document.getElementById('opToast');
+  el.classList.toggle('err', !!isError);
+  document.getElementById('opToastText').textContent = text;
+  var btn = document.getElementById('opToastAction');
+  btn.hidden = !actionLabel;
+  btn.textContent = actionLabel || '';
+  el.hidden = false;
+}
+function hideToast() {
+  if (toastState) clearTimeout(toastState.timer);
+  toastState = null;
+  document.getElementById('opToast').hidden = true;
+}
+document.getElementById('opToastAction').onclick = function () {
+  var act = toastState && toastState.onAction;
+  hideToast();
+  if (act) act();
+};
 // "Changing band…" -> "Changing band", for "<action> ok." / "<action> failed: …".
 function actionName(busyMsg) { return busyMsg.replace(/(\.\.\.|…)$/, ''); }
 
@@ -1107,29 +1128,12 @@ window.addEventListener('pageshow', function (ev) {
 
 // Checks when the tab regains focus -- this is the common case, an operator
 // stepping away and a desk_push landing meanwhile, and it's free (no network
-// traffic while backgrounded). Offers a reload rather than forcing one,
-// unlike the bfcache case above: the operator may be mid-QSO, and reloading
-// unprompted would be worse than a stale-version banner.
-// One slot, one priority order: linkBanner (something's actually wrong right
-// now) beats staleBanner (informational, not urgent) -- see #bannerArea's own
-// comment. Tracking appIsStale as state rather than toggling staleBanner's
-// hidden attribute directly means a link banner appearing mid-staleness
-// doesn't lose track of it -- it reappears the moment the link recovers,
-// next time renderBanners() runs.
+// traffic while backgrounded). Offers a reload on Settings' App line rather
+// than forcing one, unlike the bfcache case above: the operator may be
+// mid-QSO, and reloading unprompted would be worse than a stale version.
 var appIsStale = false;
-function renderBanners() {
-  var stale = document.getElementById('staleBanner');
-  var link = document.getElementById('linkBanner');
-  if (linkBannerReason) {
-    link.hidden = false;
-    stale.hidden = true;
-  } else {
-    link.hidden = true;
-    stale.hidden = !appIsStale;
-  }
-}
 
-// Field-found 2026-09-21: the banner could pin itself on permanently after a
+// Field-found 2026-09-21: the stale notice could pin itself on permanently after a
 // single transient glitch (a dropped/retried fetch on a weak AP-mode link, or
 // this landing mid-desk_push while the file was only half-written) and never
 // let go, even though a Reload's own fresh fetch would have matched fine --
@@ -1139,8 +1143,8 @@ function renderBanners() {
 // just as readily as a real change would have. Fixed on both counts: a
 // non-2xx response is treated the same as the existing catch-all (not a
 // staleness signal, try again next tick), and a real match now clears
-// appIsStale explicitly -- self-healing, same pattern updateLinkLostBanner()
-// already uses for the same class of "was this a blip or real" question.
+// appIsStale explicitly -- self-healing, same pattern linkLost() uses for the
+// same class of "was this a blip or real" question.
 async function checkAppStale() {
   if (document.visibilityState !== 'visible' || !loadedAppHash) return;
   try {
@@ -1148,11 +1152,11 @@ async function checkAppStale() {
     if (!r.ok) return;
     var bytes = new TextEncoder().encode(await r.text());
     appIsStale = fnv1a(bytes) !== loadedAppHash;
-    renderBanners();
+    document.getElementById('appStale').hidden = !appIsStale;
   } catch (e) { /* offline or similar -- not a staleness signal */ }
 }
 document.addEventListener('visibilitychange', checkAppStale);
-document.getElementById('staleBannerReload').onclick = function () { location.reload(); };
+document.getElementById('appReload').onclick = function () { location.reload(); };
 // Also on a slow timer (operator-requested 2026-09-19): a tab left open and
 // visible through an entire desk_push never fires visibilitychange at all,
 // so that path alone can miss it indefinitely. The guard above already
@@ -1163,97 +1167,41 @@ document.getElementById('staleBannerReload').onclick = function () { location.re
 // is a much bigger request far less often, not the same shape of load.
 setInterval(checkAppStale, 60000);
 
-// ===================== Operate: lost-link / device-reset banner =====================
-// Operator-requested (2026-09-19): the header dots are deliberately quiet (a
-// glance, not an alarm) and self-heal from a brief blip on their own -- see
-// lastConfigOkMs's comment. This banner is the louder signal for when that
-// blip turns out not to be brief, or for an event worth knowing about even
-// though it's already over by the time anyone could look.
-var linkBannerReason = null; // null | 'lost' | 'reset'
-var linkLostDismissed = false; // operator dismissed *this* lost-contact episode
-var LINK_LOST_BANNER_MS = 30000; // well past the dots' own 12s STALE_AFTER_MS --
-                                  // this is "sustained", not "a blip", on purpose
-
-function showLinkBanner(reason, text) {
-  linkBannerReason = reason;
-  document.getElementById('linkBannerText').textContent = text;
-  renderBanners();
-}
-function hideLinkBanner() {
-  linkBannerReason = null;
-  renderBanners();
-}
-document.getElementById('linkBannerDismiss').onclick = function () {
-  if (linkBannerReason === 'lost') linkLostDismissed = true;
-  hideLinkBanner();
-};
-
-// Sustained loss: covers both "sidekick can't reach the main board" and "browser
-// can't reach the sidekick at all" -- lastConfigOkMs stops advancing either
-// way, and from here there's no way to tell which, so the message doesn't
-// guess. Auto-clears the moment a poll succeeds again; a reset banner (see
-// below) is left alone since it describes something already over, not an
-// ongoing condition to auto-resolve.
-function updateLinkLostBanner() {
-  var lost = lastConfigOkMs > 0 && (Date.now() - lastConfigOkMs) > LINK_LOST_BANNER_MS;
-  if (lost) {
-    if (!linkLostDismissed) {
-      showLinkBanner('lost', 'Lost contact with the sidekick or main board. Check the connection.');
-    }
-  } else {
-    linkLostDismissed = false; // condition cleared -- re-arm for a future episode
-    if (linkBannerReason === 'lost') hideLinkBanner();
-  }
+// ===================== Operate: lost contact =====================
+// The drawer's dots are deliberately quiet (a glance, not an alarm) and
+// self-heal from a brief blip on their own -- see lastConfigOkMs's comment.
+// A loss that lasts is the radio bar's No contact state (radioBarState()):
+// "the sidekick can't reach the main board" and "the browser can't reach the
+// sidekick" look the same from here (lastConfigOkMs stops advancing either
+// way), so it does not guess which. It clears the moment a poll succeeds.
+var LINK_LOST_MS = 30000; // well past the dots' own 12s STALE_AFTER_MS --
+                          // this is "sustained", not "a blip", on purpose
+function linkLost() {
+  return lastConfigOkMs > 0 && (Date.now() - lastConfigOkMs) > LINK_LOST_MS;
 }
 
-// Device reset: any link-health counter reading *lower* than it did last
-// poll is unambiguous -- these only ever count up while a device keeps
-// running, so a drop means that side rebooted (found on the bench: a Grove
-// power cut reset the sidekick's frames_ok to 0 with nothing telling the
-// operator it had happened). Which family dropped says which side.
-var lastLinkCounters = null; // null until the first successful poll
-var LINK_COUNTER_KEYS_MAIN = ['porta_crc_errors', 'porta_frames_ok', 'porta_dropped'];
-var LINK_COUNTER_KEYS_SK = ['sk_crc_errors', 'sk_frames_ok', 'sk_ring_gaps', 'sk_config_retries'];
-
-function checkLinkCounterReset(cfg) {
-  if (lastLinkCounters) {
-    var mainReset = LINK_COUNTER_KEYS_MAIN.some(function (k) { return cfgNum(cfg, k) < lastLinkCounters[k]; });
-    var skReset = LINK_COUNTER_KEYS_SK.some(function (k) { return cfgNum(cfg, k) < lastLinkCounters[k]; });
-    if (mainReset) {
-      showLinkBanner('reset', 'The main board restarted. Link counters reset to 0.');
-    } else if (skReset) {
-      showLinkBanner('reset', 'The sidekick restarted. Link counters reset to 0.');
-    }
-  }
-  lastLinkCounters = {};
-  LINK_COUNTER_KEYS_MAIN.concat(LINK_COUNTER_KEYS_SK).forEach(function (k) {
-    lastLinkCounters[k] = cfgNum(cfg, k);
-  });
-}
-
-// ===================== tabs (swipeable track) =====================
+// ===================== tabs (the track behind the tab bar) =====================
 // Three panels laid out side by side in #viewTrack (300% wide, each panel
 // 33.3333% = one viewport-width); #viewport clips to one panel at a time. A
 // percent transform is relative to the transformed element's own box, so
 // -idx*(100/VIEWS.length)% always lands on panel idx regardless of actual
-// pixel width -- no resize listener needed to keep it correct. Settings is
-// not a panel here -- it's a full-screen overlay (#settingsOverlay), reached
-// from the header gear, not swiped to: it isn't a screen you flip to mid-QSO
-// the way Operate/Log/Tools are, so it doesn't belong in the same gesture
+// pixel width -- no resize listener needed to keep it correct. Only the tab
+// bar moves it: there is no swipe between tabs (operator decision 2026-10-25),
+// and the switch is instant. Settings is the fourth panel
 // (docs/architecture/webapp.md (Screens)).
 
-var VIEWS = ['operate', 'log', 'tools'];
+var VIEWS = ['operate', 'log', 'tools', 'settings'];
 var currentView = 'operate';
 document.body.classList.add('on-operate');
 var viewIndex = 0;
 var viewTrack = document.getElementById('viewTrack');
 
 // One #view-<name> section per VIEWS entry is already load-bearing for the
-// swipe track (each panel's position comes from its index in VIEWS) -- this
+// track (each panel's position comes from its index in VIEWS) -- this
 // just makes that pairing explicit and checked once, instead of every
 // consumer re-deriving '#view-' + name and finding out only when a query
 // silently matches nothing. A VIEWS entry with no matching section is
-// already a broken build (the swipe track would be missing a panel), so
+// already a broken build (the track would be missing a panel), so
 // failing here is not a new failure mode, just an earlier, clearer one.
 var VIEW_CONTAINERS = {};
 VIEWS.forEach(function (name) {
@@ -1264,19 +1212,18 @@ VIEWS.forEach(function (name) {
 
 function trackPercentFor(idx) { return -idx * (100 / VIEWS.length); }
 
-function setTrackTransform(percent, animate) {
-  viewTrack.style.transition = animate ? 'transform .25s ease' : 'none';
+function setTrackTransform(percent) {
   viewTrack.style.transform = 'translateX(' + percent + '%)';
 }
 
-function showView(name, animate) {
+function showView(name) {
   currentView = name;
   document.body.classList.toggle('on-operate', name === 'operate');
   viewIndex = VIEWS.indexOf(name);
   document.querySelectorAll('#tabbar button').forEach(function (b) {
     b.classList.toggle('on', b.getAttribute('data-view') === name);
   });
-  setTrackTransform(trackPercentFor(viewIndex), animate !== false);
+  setTrackTransform(trackPercentFor(viewIndex));
   if (name === 'log' && !logLoadedOnce) {
     logLoadedOnce = true;
     document.getElementById('logList').innerHTML = '<p style="padding:0 1rem;color:GrayText">Loading…</p>';
@@ -1293,79 +1240,21 @@ document.querySelectorAll('#tabbar button').forEach(function (b) {
   b.onclick = function () { showView(b.getAttribute('data-view')); };
 });
 
-// ===================== settings (full-screen overlay, not a swipe panel) ====
-
-var settingsOverlay = document.getElementById('settingsOverlay');
-// Never both open: the Station sheet is a second overlay of its own (below),
-// and each open closes the other first, so the two never stack.
-function openSettings() { closeStationSheet(); closePskrList(); settingsMsg.textContent = ''; settingsOverlay.classList.add('open'); }
-function closeSettings() { settingsOverlay.classList.remove('open'); }
-document.getElementById('navSettings').onclick = openSettings;
-document.getElementById('settingsOverlayBack').onclick = closeSettings;
+// ===================== settings (the fourth tab) ====
+// Its status line starts empty each time it is opened, so it never shows an old result.
+function openSettings() { closeStationSheet(); closePskrList(); settingsMsg.textContent = ''; showView('settings'); }
 
 // ===================== the Station sheet (webapp.md, The Station sheet) ====
 // Opened from the CQ row's gear and the radio drawer's Station >. Same overlay
-// mechanics as Settings above -- see that CSS rule -- and its own fields are
+// mechanics as Who hears me's list -- see that CSS rule -- and its own fields are
 // populated by setStationSheetForm() below, called from setForm() alongside
 // the rest so a reload after any write (this sheet's own, or a plain
 // Settings save) refreshes what it shows.
 var stationSheet = document.getElementById('stationSheet');
-function openStationSheet() { closeSettings(); closePskrList(); stationSheetMsg.textContent = ''; stationSheet.classList.add('open'); }
+function openStationSheet() { closePskrList(); stationSheetMsg.textContent = ''; stationSheet.classList.add('open'); }
 function closeStationSheet() { stationSheet.classList.remove('open'); }
 document.getElementById('stationSheetBack').onclick = closeStationSheet;
 
-// Live drag: the track follows the finger 1:1 (no transition -- it would
-// fight the live position), then snaps on release to whichever panel is
-// closer, animated. A drag commits past COMMIT_FRACTION of the viewport
-// width; short of that it springs back to where it started. The gesture is
-// only claimed as a horizontal swipe once it has moved more horizontally
-// than DRAG_CLAIM_PX than vertically -- short of that, it's left alone so a
-// panel's own vertical scroll (Log's list in particular) works normally.
-// Dragging past the first/last panel gets resistance rather than a hard
-// stop, same as most native pagers.
-(function () {
-  var COMMIT_FRACTION = 0.28, DRAG_CLAIM_PX = 12;
-  var viewport = document.getElementById('viewport');
-  var startX = 0, startY = 0, dx = 0, dragging = null; // null=undecided, true=horizontal, false=vertical/other
-
-  viewport.addEventListener('touchstart', function (e) {
-    if (e.touches.length !== 1) { dragging = false; return; }
-    startX = e.touches[0].clientX;
-    startY = e.touches[0].clientY;
-    dx = 0;
-    dragging = null;
-  }, { passive: true });
-
-  viewport.addEventListener('touchmove', function (e) {
-    if (dragging === false) return;
-    var t = e.touches[0];
-    dx = t.clientX - startX;
-    var dy = t.clientY - startY;
-    if (dragging === null) {
-      if (Math.abs(dx) < DRAG_CLAIM_PX && Math.abs(dy) < DRAG_CLAIM_PX) return;
-      dragging = Math.abs(dx) > Math.abs(dy);
-      if (!dragging) return; // vertical -- let the panel scroll, touch it no further
-    }
-    e.preventDefault(); // claimed as a horizontal drag: no vertical scroll fighting it
-    var atStart = viewIndex === 0 && dx > 0;
-    var atEnd = viewIndex === VIEWS.length - 1 && dx < 0;
-    var effDx = (atStart || atEnd) ? dx / 3 : dx; // rubber-band past the ends
-    var w = viewport.clientWidth || 1;
-    setTrackTransform(trackPercentFor(viewIndex) + (effDx / w) * (100 / VIEWS.length), false);
-  }, { passive: false });
-
-  viewport.addEventListener('touchend', function () {
-    if (dragging) {
-      var w = viewport.clientWidth || 1;
-      var frac = dx / w;
-      var idx = viewIndex;
-      if (frac <= -COMMIT_FRACTION && viewIndex < VIEWS.length - 1) idx = viewIndex + 1;
-      else if (frac >= COMMIT_FRACTION && viewIndex > 0) idx = viewIndex - 1;
-      showView(VIEWS[idx]);
-    }
-    dragging = null;
-  }, { passive: true });
-})();
 
 // ===================== config (shared: Operate live header + Settings form) =====================
 
@@ -1480,6 +1369,8 @@ function layoutDock() {
   if (dockH) root.setProperty('--dock-h', dockH + 'px');
   var topH = document.getElementById('opTop').offsetHeight;
   if (topH) root.setProperty('--optop-h', topH + 'px');
+  var barH = document.getElementById('dvBar').offsetHeight;
+  if (barH) root.setProperty('--dvbar-h', barH + 'px');
 }
 if (window.ResizeObserver) {
   var dockResize = new ResizeObserver(layoutDock);
@@ -1683,7 +1574,7 @@ function holdRepeat(btn, fn) {
 }
 
 function sheetPutLine(line, busyMsg) {
-  putConfigLine(line, busyMsg, true).catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+  putConfigLine(line, busyMsg, true).catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
 }
 document.getElementById('cq_type').onchange = function () {
   sheetPutLine('cq_type=' + this.value, 'Setting CQ type…');
@@ -1741,7 +1632,7 @@ FIELDS.forEach(function (k) {
     if (k === 'protocol_mode') v = (v === 'FT4') ? 'FT4' : 'FT8';
     else if (this.tagName === 'INPUT') v = v.trim();
     putConfigLine(k + '=' + v, 'Setting ' + k.replace(/_/g, ' ') + '…', false)
-      .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+      .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
   };
 });
 document.getElementById('bandList').addEventListener('change', function (e) {
@@ -1751,7 +1642,7 @@ document.getElementById('bandList').addEventListener('change', function (e) {
     if (cb.checked) active.push(cb.getAttribute('data-n'));
   });
   putConfigLine('active_bands=' + active.join(' '), 'Setting bands…', false)
-    .catch(function (e2) { setMsg(String(e2 && e2.message ? e2.message : e2)); });
+    .catch(function (e2) { failMsg(String(e2 && e2.message ? e2.message : e2)); });
 });
 
 // Shared by the header dots: "up" (confirmed good), "bad" (confirmed
@@ -1969,13 +1860,14 @@ function fmtHzMHz(hz) { return (hz / 1e6).toFixed(4).replace(/0+$/, '').replace(
 //   1. on the air: Transmitting (or Tuning), red, with power and SWR, and Stop as its own target;
 //   2. a transmission that did not go: SWR protection tripped (once, or twice in a row), TX
 //      aborted for another reason, or Not keyed;
-//   3. a radio problem from radioChipState();
+//   3. no contact with the station (linkLost()), not paired, then a radio problem from radioChipState();
 //   4. ready.
 // CAT lost while a transmission is on the air keeps Transmitting, so Stop stays where the
 // operator's thumb is, and the sub-line says CAT is lost (decided 2026-10-25).
 // chip: radioChipState()'s answer. hud: the last TX HUD event, or null. ctx: {tune (Tune is on),
 // ourCq (txIsOurCq()), band, freq ("14.074"), radio ("QMX"), swrTrips (tripped transmissions in a
-// row, noteTxHud()), act (" · 3 refs · 0000Z 3h12m" or ''), wantMHz (the drift's reading)}.
+// row, noteTxHud()), act (" · 3 refs · 0000Z 3h12m" or ''), wantMHz (the drift's reading),
+// linkLost (linkLost()), unpaired (!paired())}.
 // Returns {state, tone: 'red'|'amber'|'grey'|'quiet', main, sub, glyph, label, stop}; stop is the
 // Stop button's text, '' when there is nothing on the air to stop.
 function radioBarState(chip, hud, ctx) {
@@ -2012,6 +1904,16 @@ function radioBarState(chip, hud, ctx) {
     return { state: 'notkeyed', tone: 'amber', main: 'Not keyed',
              sub: 'Not counted: ' + (hud.reason || 'could not key') + (hud.x ? ' · ' + hud.x : ''),
              glyph: '!', label: 'Radio ›', stop: '' };
+  }
+  // No answer from the sidekick or the main board for LINK_LOST_MS: nothing below can be trusted.
+  if (ctx.linkLost) {
+    return { state: 'nolink', tone: 'red', main: 'No contact with the station',
+             sub: 'No answer from the sidekick or main board', glyph: '✕', label: 'Radio ›', stop: '' };
+  }
+  // Not paired: this phone can watch but not transmit or change anything.
+  if (ctx.unpaired) {
+    return { state: 'unpaired', tone: 'amber', main: where, sub: 'Not paired \u00b7 press the sidekick\u2019s button',
+             glyph: '!', label: 'Pair \u203a', stop: '' };
   }
   // Not on the air, but the last two transmissions tripped: the main board has ended the CQ and
   // the queue and stays stopped until the operator calls CQ, replies or tunes (radio.md, SWR
@@ -2068,14 +1970,19 @@ function operatingBandName(cfg) {
   return cfg.band_name && cfg.band_name !== '?' ? cfg.band_name : '';
 }
 
+// The model the radio names in its VN reply ("1_04_003QMX" is a QMX), else from the USB event.
 function radioNameOf() {
+  var m = /^\d+_\d+_\d+([A-Z]+)$/.exec(String(lastCfg.radio_fw || ''));
+  if (m) return m[1];
   return usbState && usbState.present && usbState.kind === 0 ? 'QMX' : 'Radio';
 }
 
 var drawerOpen = false;
 function setDrawerOpen(open) {
   drawerOpen = open;
-  document.getElementById('opDrawer').hidden = !open;
+  var drawer = document.getElementById('opDrawer');
+  drawer.classList.toggle('open', open);
+  drawer.inert = !open;
   document.getElementById('rbToggle').setAttribute('aria-expanded', open ? 'true' : 'false');
   if (open) {
     freqDirty = false;
@@ -2097,8 +2004,9 @@ function renderRadioBar() {
     band: operatingBandName(cfg),
     freq: khz != null ? khzToMhzLabel(khz) : '', radio: radioNameOf(), swrTrips: swrTrack.count,
     act: refs.length ? ' · ' + refs.length + (refs.length === 1 ? ' ref' : ' refs') + ' · 0000Z ' + utcDayLeft(Date.now()) : '',
-    wantMHz: rs ? fmtHzMHz(rs.hz) : ''
+    wantMHz: rs ? fmtHzMHz(rs.hz) : '', linkLost: linkLost(), unpaired: !paired()
   });
+  document.getElementById('tabUnpaired').hidden = paired();
   var bar = document.getElementById('opRadioBar');
   bar.className = 't-' + st.tone + (drawerOpen ? ' open' : '');
   document.getElementById('rbMain').textContent = st.main;
@@ -2110,7 +2018,7 @@ function renderRadioBar() {
   var stop = document.getElementById('rbStop');
   stop.hidden = !st.stop;
   stop.textContent = st.stop || 'Stop TX';
-  renderRadioDrawer(cfg, chip);
+  renderRadioDrawer(cfg, st.state === 'nolink' || st.state === 'unpaired' ? st.state : chip);
 }
 
 // The drawer's radio half: a problem state's note and actions first, the read-back rows, Tune.
@@ -2118,7 +2026,11 @@ function renderRadioDrawer(cfg, st) {
   var rows = [], note = '';
   var dev = usbState && usbState.present ? fmtUsbDevice(usbState.kind, usbState.vid, usbState.pid) : '';
   var cat = yn(cfg.cat_ready) === 'yes', audio = yn(cfg.audio_rx) === 'yes';
-  if (st === 'none') {
+  if (st === 'unpaired') {
+    note = 'This phone is not paired, so it can watch but not transmit or change anything. Press the button on top of the sidekick; this clears within a few seconds.';
+  } else if (st === 'nolink') {
+    note = 'Nothing has answered for 30 seconds. Check that the phone is still on the station’s WiFi, that the sidekick is powered, and the Port A cable between the sidekick and the main board. This clears by itself once it answers.';
+  } else if (st === 'none') {
     note = 'Plug the radio into the main board’s USB-C port. A charge-only cable shows nothing.';
   } else if (st === 'unknown') {
     rows.push(['USB device', dev]);
@@ -2216,7 +2128,6 @@ function applyOperateLive(cfg) {
   setDotState('dotLink', haveLiveConfig && !linkFaultRecent, linkFaultRecent);
   updateDiagCounters(cfg);
   updateNetInfo(cfg);
-  checkLinkCounterReset(cfg);
 
   renderRadioBar();
   renderActLine();
@@ -2660,7 +2571,7 @@ function waitForSetupPage(opts) {
 // in a dialog, since the operator is looking at the drawer, not the status line.
 async function putConfigLine(line, busyMsg, alertOnFail) {
   if (!MicroFT8Pairing.getToken()) {
-    setMsg('Press the sidekick button to pair first.');
+    failMsg('Press the sidekick button to pair first.');
     MicroFT8Pairing.needsReauth();
     return false;
   }
@@ -2672,7 +2583,7 @@ async function putConfigLine(line, busyMsg, alertOnFail) {
   });
   if (r.status == 401) {
     MicroFT8Pairing.needsReauth();
-    setMsg('Press the sidekick button to pair');
+    failMsg('Press the sidekick button to pair');
     return false;
   }
   var j = await r.json().catch(function () { return {}; });
@@ -2773,7 +2684,7 @@ function changeBand(idx) {
   setMsg('Changing band…');
   cancelQsosAndTx().then(function () {
     return putConfigLine(key + '=' + std + '\nband_sel=' + band.i, 'Changing band…', true);
-  }).catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+  }).catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
   return true;
 }
 
@@ -2799,7 +2710,7 @@ function setOperatingBandFreq(khz) {
   (stopping ? cancelQsosAndTx() : Promise.resolve()).then(function () {
     return putConfigLine(key + '=' + khz, 'Setting frequency…', true);
   }).then(refreshFreqInput)
-    .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+    .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
   return true;
 }
 
@@ -2826,7 +2737,7 @@ function switchToBandWithFreq(band, khz) {
   setMsg('Changing band…');
   cancelQsosAndTx().then(function () {
     return putConfigLine(key + '=' + khz + '\nband_sel=' + band.i, 'Changing band…', true);
-  }).catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+  }).catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
   return true;
 }
 
@@ -2939,7 +2850,7 @@ async function loadConfig(quiet) {
       if (Object.prototype.hasOwnProperty.call(cfg, k) && k.indexOf('sk_') !== 0) n++;
     }
     if (n === 0) {
-      setMsg('The main board returned an empty config — is Port A linked?');
+      failMsg('The main board returned an empty config — is Port A linked?');
       return;
     }
     if (quiet) return;
@@ -2955,7 +2866,7 @@ async function loadConfig(quiet) {
     var msg = (e && e.name === 'AbortError')
       ? 'Config timed out — no answer from the sidekick'
       : String(e && e.message ? e.message : e);
-    setMsg(msg);
+    failMsg(msg);
     throw e;
   }
 }
@@ -3067,7 +2978,7 @@ async function autoSyncClock() {
 // safe to add without touching them.
 async function radioPost(path, body, busyMsg) {
   if (!MicroFT8Pairing.getToken()) {
-    setMsg('Press the sidekick button to pair first.');
+    failMsg('Press the sidekick button to pair first.');
     MicroFT8Pairing.needsReauth();
     return false;
   }
@@ -3077,12 +2988,12 @@ async function radioPost(path, body, busyMsg) {
   var r = await MicroFT8Pairing.authFetch(path, opts);
   if (r.status == 401) {
     MicroFT8Pairing.needsReauth();
-    setMsg('Press the sidekick button to pair');
+    failMsg('Press the sidekick button to pair');
     return false;
   }
   var j = await r.json().catch(function () { return {}; });
   if (!r.ok || j.ok === false) {
-    setMsg(actionName(busyMsg) + ' failed: ' + (j.why || r.status));
+    failMsg(actionName(busyMsg) + ' failed: ' + (j.why || r.status));
     return false;
   }
   await loadConfig(true);
@@ -3114,18 +3025,19 @@ function enableWrites(on) {
   document.getElementById('apReset').disabled = !on;
 }
 document.getElementById('dist_unit').onchange = function () { setDistUnit(this.value); };
+document.getElementById('show_bearing').onchange = function () { setShowBearing(this.checked); };
 document.getElementById('theme_pref').onchange = function () { setTheme(this.value); };
 document.getElementById('opRadioRetune').onclick = function () {
   radioPost('/api/radio/connect', undefined, 'Retuning the radio…')
     .then(function () { return readRadioBack(); })
-    .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+    .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
 };
 document.getElementById('opRadioUse').onclick = function () {
   var rs = radioReadBack(lastCfg);
   if (!rs) return;
   var khz = Math.round(rs.hz / 100) / 10;
   var band = bandForKhz(khz);
-  if (!band) { setMsg(khzToMhzLabel(khz) + ' MHz is outside every amateur band.'); return; }
+  if (!band) { failMsg(khzToMhzLabel(khz) + ' MHz is outside every amateur band.'); return; }
   var curIdx = parseInt(lastCfg.band_sel, 10);
   if (band.i === curIdx) setOperatingBandFreq(khz); else switchToBandWithFreq(band, khz);
 };
@@ -3138,7 +3050,7 @@ document.getElementById('rbToggle').onclick = function () { setDrawerOpen(!drawe
 document.getElementById('opTune').onclick = function () {
   var next = (yn(lastCfg.tune) === 'yes') ? '0' : '1';
   radioPost('/api/radio/tune', next, 'Tune…')
-    .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+    .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
 };
 // Stop during our own CQ ends the CQ too (webapp.md, The CQ row) -- otherwise
 // it stays queued and the next CQ just goes out a cycle later, exactly the
@@ -3151,7 +3063,7 @@ document.getElementById('rbStop').onclick = function () {
   // Tune is not a queued transmission: ending it is the Tune control's own off.
   if (yn(lastCfg.tune) === 'yes') {
     radioPost('/api/radio/tune', '0', 'Stopping Tune…')
-      .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+      .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
     return;
   }
   var stoppingCq = txIsOurCq();
@@ -3160,7 +3072,7 @@ document.getElementById('rbStop').onclick = function () {
     .then(function (ok) {
       if (ok && stoppingCq && cqId) return authPostQuiet('/api/queue/cancel', cqId);
     })
-    .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+    .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
 };
 // ===================== Operate: countdown + parity (client clock, no wire dependency) =====================
 
@@ -3290,14 +3202,14 @@ function renderCqRow() {
 // key) and the tries (the Tries setting); both show on the row once queued.
 document.getElementById('cqCallBtn').onclick = function () {
   radioPost('/api/cq', undefined, 'Calling CQ…')
-    .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+    .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
 };
 // A tap moves the queued CQ to the other period, for a strong station nearby.
 document.getElementById('cqParityBtn').onclick = function () {
   var id = cqEntryId();
   if (!id) return;
   radioPost('/api/queue/parity', id + ' ' + (queue[id].parity ? 0 : 1), 'Moving CQ…')
-    .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+    .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
 };
 document.getElementById('cqTriesBtn').onclick = function () { openTriesEdit(cqEntryId()); };
 // The CQ row's x drops the CQ; one on the air stops at once (porta_host_queue_cancel()).
@@ -3305,7 +3217,7 @@ document.getElementById('cqCancelBtn').onclick = function () {
   var id = cqEntryId();
   if (!id) return;
   radioPost('/api/queue/cancel', id, 'Ending CQ…')
-    .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+    .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
 };
 
 // ===================== Operate: the tries stepper (webapp.md, Tries on a queue row) =====================
@@ -3332,7 +3244,7 @@ function closeTriesEdit() {
 function sendTries(value) {
   var id = triesEdit.id;
   radioPost('/api/queue/tries', id + ' ' + value, 'Setting tries…')
-    .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+    .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
 }
 
 function renderTriesEdit() {
@@ -3536,13 +3448,14 @@ function renderQueue() {
   rows.querySelectorAll('.qcancel').forEach(function (b) {
     b.onclick = function () {
       radioPost('/api/queue/cancel', b.getAttribute('data-id'), 'Cancel…')
-        .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+        .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
     };
   });
   rows.querySelectorAll('.qtries').forEach(function (b) {
     b.onclick = function () { openTriesEdit(b.getAttribute('data-id')); };
   });
   renderTriesEdit();
+  renderQueueMore();
   rows.querySelectorAll('.callink').forEach(function (el) {
     el.onclick = function (ev) {
       ev.stopPropagation();
@@ -3550,6 +3463,24 @@ function renderQueue() {
     };
   });
 }
+
+// How many queue rows are scrolled out of sight above and below, shown as a fade and a count
+// at that edge. A row counts as hidden once less than half of it shows.
+function renderQueueMore() {
+  var box = document.getElementById('opQueueRows');
+  var top = box.scrollTop, bottom = top + box.clientHeight, above = 0, below = 0;
+  Array.prototype.forEach.call(box.children, function (row) {
+    var mid = row.offsetTop - box.offsetTop + row.offsetHeight / 2;
+    if (mid < top) above++;
+    else if (mid > bottom) below++;
+  });
+  var up = document.getElementById('opQueueAbove'), down = document.getElementById('opQueueBelow');
+  up.hidden = !above;
+  up.textContent = above + ' above \u25b4';
+  down.hidden = !below;
+  down.textContent = '+' + below + ' more \u25be';
+}
+document.getElementById('opQueueRows').addEventListener('scroll', renderQueueMore, { passive: true });
 
 // ===================== Operate: decode stream =====================
 
@@ -3922,7 +3853,45 @@ function decodeTapAction(onLink, replyable) {
   return replyable ? 'reply' : 'none';
 }
 
-function renderDecodes() {
+// A redraw never moves rows under a finger (operator request 2026-10-25): new decodes arrive
+// at the top, and a tap that lands as the list shifts would reply to a different station. While
+// a finger is on the list, for DECODE_HOLD_MS after it lifts (the tap's click comes after the
+// lift), and while the list still coasts from a flick, a redraw waits; it runs once the hold
+// ends. force: a redraw the operator's own tap asked for (Sending…), which runs at once.
+var DECODE_HOLD_MS = 600;
+var decodeTouch = { down: false, upAt: 0, scrollAt: 0 };
+var decodesDeferred = false;
+function decodeRedrawHeld(nowMs, touch) {
+  return touch.down || nowMs - touch.upAt < DECODE_HOLD_MS || nowMs - touch.scrollAt < DECODE_HOLD_MS;
+}
+function renderDecodes(force) {
+  if (!force && decodeRedrawHeld(Date.now(), decodeTouch)) {
+    decodesDeferred = true;
+    return;
+  }
+  decodesDeferred = false;
+  renderDecodesNow();
+}
+function flushDeferredDecodes() {
+  if (decodesDeferred && !decodeRedrawHeld(Date.now(), decodeTouch)) renderDecodes();
+}
+(function () {
+  var list = document.getElementById('opDecodeRows'), timer = null;
+  var later = function () { clearTimeout(timer); timer = setTimeout(flushDeferredDecodes, DECODE_HOLD_MS + 20); };
+  var down = function () { decodeTouch.down = true; };
+  var up = function () { decodeTouch.down = false; decodeTouch.upAt = Date.now(); later(); };
+  list.addEventListener('touchstart', down, { passive: true });
+  list.addEventListener('touchend', up, { passive: true });
+  list.addEventListener('touchcancel', up, { passive: true });
+  list.addEventListener('mousedown', down);
+  window.addEventListener('mouseup', function () { if (decodeTouch.down) up(); });
+  document.getElementById('view-operate').addEventListener('scroll', function () {
+    decodeTouch.scrollAt = Date.now();
+    later();
+  }, { passive: true });
+})();
+
+function renderDecodesNow() {
   var rows = document.getElementById('opDecodeRows');
   var nowMs = Date.now();
   var hidden = 0;
@@ -3935,7 +3904,7 @@ function renderDecodes() {
   }).filter(function (s) { return s.shown.length > 0; });
   var total = hidden;
   shownSlots.forEach(function (e) { total += e.shown.length; });
-  document.getElementById('dvHidden').textContent = total ? (total - hidden) + ' of ' + total : '';
+  document.getElementById('dvHidden').textContent = total ? (total - hidden) + '/' + total : '';
   rows.innerHTML = shownSlots.map(function (entry, i) {
     var slot = entry.slot;
     var divider = i > 0 ? '<div class=dslotdiv></div>' : '';
@@ -3946,7 +3915,8 @@ function renderDecodes() {
       esc(slotBand) + (freqMHz ? ' · ' + freqMHz + ' MHz' : '') +
       '</span><span>' + fmtSlotTime(slot) + ' · ' +
       '<span class=ago data-ts="' + slot.ts + '">' + fmtAgo(slot.ts) + '</span></span></div>';
-    return divider + header + entry.shown.map(function (d) {
+    // Each slot in its own box, so its sticky header lets go when the slot ends.
+    return '<div class=dslot>' + divider + header + entry.shown.map(function (d) {
       // Looked up from the opportunistic callsign->grid cache, not this
       // row's own message -- most decodes (signal reports, RRR/73) never
       // carry a grid themselves. '' whenever the sender is unclear or was
@@ -3954,7 +3924,9 @@ function renderDecodes() {
       var senderCall = extractSenderCall(d.x);
       var allCalls = extractAllCallsigns(d.x);
       var theirGrid = senderCall && CallInfo.cachedGrid(senderCall);
-      var distBearing = theirGrid ? fmtDistBearing(lastCfg.grid, theirGrid) : '';
+      // Distance only unless Settings asks for the bearing (operator request 2026-10-25).
+      var dist = !theirGrid ? '' : showBearing ? fmtDistBearing(lastCfg.grid, theirGrid)
+        : (decodeDistKm(d) == null ? '' : fmtKm(decodeDistKm(d)));
       // '' whenever the shared geo lookup hasn't finished loading yet or the
       // grid doesn't resolve -- shortLocation() never blocks this render on
       // its own fetch, so the badge just appears on a later redraw.
@@ -3975,13 +3947,16 @@ function renderDecodes() {
         '<div class=dmsg><span class="txt ' + decodeColorClass(d) + '">' + highlightCallInText(d.x, allCalls) +
           (d.me ? '<span class=me>&rarr; ME</span>' : '') +
           (flags ? '<span class=dflags>' + flags + '</span>' : '') + '</span>' +
-          (phase ? '<br><span class=rbadge>' + phase + '</span>' : '') + '</div>' +
-        '<div class=dcol><div><span>DT ' + fmtDt(d.dt) + '</span><span>' + (d.snr > 0 ? '+' : '') + d.snr + ' dB</span></div>' +
-          '<div><span>' + (theirGrid ? CallInfo.gridLink(theirGrid) + (shortLoc ? ' · ' + esc(shortLoc) : '') : '') +
-          '</span><span>' + esc(distBearing) + '</span></div></div>' +
+          (phase ? '<span class=rbadge>' + phase + '</span>' : '') + '</div>' +
+        '<span class=dsnr>' + (d.snr > 0 ? '+' : '') + d.snr + ' dB</span>' +
+        '<div class=dmeta><span>DT ' + fmtDt(d.dt) + '</span>' +
+          // The place, not the grid (operator request 2026-10-26): the grid is on the station's card,
+          // and the place still opens the map at that grid.
+          '<span>' + (theirGrid && shortLoc ? '<a class=gridlink href="map.html?grid=' + encodeURIComponent(theirGrid) + '">' +
+            esc(shortLoc) + '</a>' : '') + '</span><span>' + esc(dist) + '</span></div>' +
         '<span class=dchev aria-hidden=true>' + (tap ? '›' : '') + '</span>' +
         '</div>' + replyFailHtml(d.id);
-    }).join('');
+    }).join('') + '</div>';
   }).join('');
 }
 
@@ -4047,17 +4022,8 @@ function replyFailHtml(id) {
 // (POST /api/queue/cancel); one not in the queue yet is cancelled the moment it arrives
 // (reconcileReplies()).
 var UNDO_TOAST_MS = 5000;
-var undoToast = null; // {id, timer}
 function showUndoToast(id, call) {
-  if (undoToast) clearTimeout(undoToast.timer);
-  undoToast = { id: id, timer: setTimeout(hideUndoToast, UNDO_TOAST_MS) };
-  document.getElementById('opToastText').textContent = 'Queued ' + call;
-  document.getElementById('opToast').hidden = false;
-}
-function hideUndoToast() {
-  if (undoToast) clearTimeout(undoToast.timer);
-  undoToast = null;
-  document.getElementById('opToast').hidden = true;
+  showToast('Queued ' + call, 'Undo', function () { undoReply(id); }, UNDO_TOAST_MS, false);
 }
 function queueEntryIdFor(call) {
   var ids = Object.keys(queue).filter(function (id) { return queue[id].dxcall === call; });
@@ -4065,12 +4031,10 @@ function queueEntryIdFor(call) {
 }
 function cancelReplyEntry(eid, call) {
   radioPost('/api/queue/cancel', eid, 'Cancelling ' + call + '…')
-    .catch(function (e) { setMsg(String(e && e.message ? e.message : e)); });
+    .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
 }
-document.getElementById('opToastUndo').onclick = function () {
-  var id = undoToast && undoToast.id;
-  hideUndoToast();
-  var st = id != null && replyState[id];
+function undoReply(id) {
+  var st = replyState[id];
   if (!st || st.phase !== 'queued') return;
   var eid = queueEntryIdFor(st.call);
   if (eid) {
@@ -4081,7 +4045,7 @@ document.getElementById('opToastUndo').onclick = function () {
   }
   renderDecodes();
   renderQueue();
-};
+}
 
 function decodeById(id) {
   for (var i = 0; i < decodeSlots.length; i++) {
@@ -4098,14 +4062,14 @@ function queueHasCall(call) {
 
 async function sendReply(id) {
   if (!MicroFT8Pairing.getToken()) {
-    setMsg('Press the sidekick button to pair first.');
+    failMsg('Press the sidekick button to pair first.');
     MicroFT8Pairing.needsReauth();
     return;
   }
   var d = decodeById(id);
   var call = (d && extractSenderCall(d.x)) || '';
   replyState[id] = { phase: 'sending', call: call, reason: '', ts: Date.now(), seen: false };
-  renderDecodes();
+  renderDecodes(true);
   var reason = '';
   try {
     var r = await MicroFT8Pairing.authFetch('/api/queue/reply', { method: 'POST', body: String(id) });
@@ -4121,7 +4085,7 @@ async function sendReply(id) {
   }
   if (reason) {
     replyState[id] = { phase: 'refused', call: call, reason: reason, ts: Date.now(), seen: false };
-    renderDecodes();
+    renderDecodes(true);
     return;
   }
   // Accepted. A call already in the queue is highlighted instead of getting a placeholder, and
@@ -4129,7 +4093,7 @@ async function sendReply(id) {
   replyState[id] = { phase: 'queued', call: call, reason: '', ts: Date.now(), seen: queueHasCall(call) };
   if (replyState[id].seen) flashQueueCall(call);
   else showUndoToast(id, call || 'reply');
-  renderDecodes();
+  renderDecodes(true);
   renderQueue();
 }
 
@@ -4359,11 +4323,6 @@ function applyEvent(e) {
     // radio disconnecting is.
     usbState = { present: !!e.present, kind: e.kind, vid: e.vid, pid: e.pid };
     renderRadioBar();
-    // vid 0 is "something is there, not named yet": the bar says it, a banner would not.
-    if (e.vid) {
-      showLinkBanner('usb', (e.present ? 'USB attached: ' : 'USB detached: ') +
-        fmtUsbDevice(e.kind, e.vid, e.pid));
-    }
   }
 }
 
@@ -4581,6 +4540,18 @@ function loadDistUnit() {
     if (v === 'km' || v === 'mi') distUnit = v;
   } catch (e) { /* default stands */ }
 }
+// Off by default: a decode row shows the distance only, and the station's card has the bearing.
+var BEARING_KEY = 'microft8_show_bearing_v1';
+var showBearing = false;
+function loadShowBearing() {
+  try { showBearing = localStorage.getItem(BEARING_KEY) === '1'; } catch (e) { /* default stands */ }
+}
+function setShowBearing(on) {
+  showBearing = !!on;
+  try { localStorage.setItem(BEARING_KEY, showBearing ? '1' : '0'); } catch (e) { /* applies live even if not persisted */ }
+  renderDecodes();
+}
+
 function setDistUnit(v) {
   if (v !== 'km' && v !== 'mi') return;
   distUnit = v;
@@ -4897,7 +4868,6 @@ var PSKR_NOTE = { connecting: 'connecting…', listening: 'listening', offline: 
                   unreachable: 'can’t reach PSKReporter', refused: 'PSKReporter refused the connection' };
 function pskrListOpen() { return document.getElementById('pskrList').classList.contains('open'); }
 function openPskrList() {
-  closeSettings();
   closeStationSheet();
   document.getElementById('pskrList').classList.add('open');
   PskrLive.tick(); // draws the rows now that the list is open
@@ -5483,7 +5453,7 @@ async function downloadAllAdif(linkEl) {
 // could be removed.
 async function clearAllAdif() {
   if (!MicroFT8Pairing.getToken()) {
-    setMsg('Press the sidekick button to pair');
+    failMsg('Press the sidekick button to pair');
     return;
   }
   if (!window.confirm('Delete all ADI log files on the radio?')) return;
@@ -5492,12 +5462,12 @@ async function clearAllAdif() {
     var r = await MicroFT8Pairing.authFetch('/api/log/files', { method: 'DELETE' });
     if (r.status === 401) {
       MicroFT8Pairing.needsReauth();
-      setMsg('Press the sidekick button to pair');
+      failMsg('Press the sidekick button to pair');
       return;
     }
     var j = await r.json().catch(function () { return {}; });
     if (!r.ok || j.ok === false) {
-      setMsg('Clear failed: ' + (j.why || r.status));
+      failMsg('Clear failed: ' + (j.why || r.status));
       return;
     }
     logFiles = [];
@@ -5648,43 +5618,26 @@ setInterval(refreshLogHead, LOG_REFRESH_MS);
 
 // ===================== boot =====================
 
-// Pairing state now lives in its own persistent header badge, not the shared
-// #m action-feedback line -- the two were conflated before (field-found
-// 2026-09-21: a script-halting error elsewhere left #m stuck on its
-// placeholder forever with no way to tell pairing state from "still
-// loading"). pairHint carries pairing.js's own live "press the button"
-// polling text, tap-to-reveal only while unpaired.
-var pairBadge = document.getElementById('pairBadge');
-var pairHint = document.getElementById('pairHint');
-pairBadge.onclick = function () {
-  if (pairBadge.classList.contains('paired')) return;
-  pairHint.hidden = !pairHint.hidden;
-};
-function setPaired(yes) {
-  pairBadge.textContent = yes ? 'Paired' : 'Unpaired';
-  pairBadge.classList.toggle('paired', yes);
-  if (yes) pairHint.hidden = true;
-}
+// Pairing shows where everything else does: not paired is a radio bar state
+// (radioBarState()) and a dot on the Settings tab, both read from whether a
+// token is stored (paired()), so a token the sidekick rejects
+// (needsReauth() drops it) shows at once. pairing.js polls for the button
+// press on its own; its status text is not shown.
+function paired() { return !!MicroFT8Pairing.getToken(); }
 
 MicroFT8Pairing.boot({
-  status: pairHint,
   onPaired: function () {
-    setPaired(true);
     enableWrites(true);
     setMsg('Paired — edit and save');
+    renderRadioBar();
     autoSyncClock();
   }
 });
-if (MicroFT8Pairing.getToken()) {
-  setPaired(true);
-  autoSyncClock();
-} else {
-  setPaired(false);
-}
+if (paired()) autoSyncClock();
 
 // Deep links: #network (from status.html's old / -> now a 303 to here, and
 // any other "take me to network settings" link) opens Settings straight to
-// the Network section; #tools (docs/architecture/webapp.md (Tools)) swipes straight to the Tools
+// the Network section; #tools (docs/architecture/webapp.md (Tools)) switches straight to the Tools
 // tab; #stationsheet (operator-requested 2026-09-23, the geolocation
 // handoff's own return route -- see handleGeoReturn() below) opens the
 // Station sheet, where Grid now lives (webapp.md, The Station sheet). All
@@ -5777,6 +5730,8 @@ loadStateCache();
 loadDistUnit();
 renderDecodeControls();
 document.getElementById('dist_unit').value = distUnit;
+loadShowBearing();
+document.getElementById('show_bearing').checked = showBearing;
 loadTheme();
 document.getElementById('theme_pref').value = themePref;
 if (Object.keys(lastCfg).length) {
@@ -5836,7 +5791,6 @@ function tick() {
   updateLinkFreshness();
   expireStaleTxHud();
   renderRadioBar();
-  updateLinkLostBanner();
   updateDecodeRate();
   setTimeout(tick, 1000);
 }

@@ -2,7 +2,7 @@
 // The radio bar's state priority (webapp.md, The radio bar): runs app.html's own
 // radioBarState() and noteTxHud(). On the air outranks everything, a radio problem included (CAT
 // lost mid-transmission keeps Transmitting and its Stop); a transmission that did not go outranks
-// a radio problem; a problem outranks Ready. Stop is offered only while something is on the air.
+// no contact with the station, which outranks a radio problem; a problem outranks Ready. Stop is offered only while something is on the air.
 'use strict';
 const vm = require('vm');
 const fs = require('fs');
@@ -34,7 +34,7 @@ vm.createContext(sb);
 vm.runInContext(['radioBarState', 'noteTxHud', 'utcDayLeft'].map((n) => extractFunction(src, n)).join('\n'), sb);
 
 const ctx = (o) => Object.assign({ tune: false, ourCq: false, band: '20m', freq: '14.074', radio: 'QMX',
-                                   swrTrips: 0, act: '', wantMHz: '' }, o || {});
+                                   swrTrips: 0, act: '', wantMHz: '', linkLost: false, unpaired: false }, o || {});
 const tx = (o) => Object.assign({ active: true, aborted: false, nk: false, wrblk: false, pw: 49, swr: 130,
                                   batt: -1, hz: 1500, reason: '', x: 'K9ABC KB2SLO R-09' }, o || {});
 const bar = (chip, hud, o) => sb.radioBarState(chip, hud, ctx(o));
@@ -83,6 +83,23 @@ for (const chip of ['lost', 'drift', 'found', 'nodecode', 'none']) {
 }
 assert(/· CAT lost$/.test(bar('lost', tx()).sub), 'and the sub-line says CAT is lost');
 assert(!/CAT lost/.test(bar('ready', tx()).sub));
+
+// 3, first: no contact with the station outranks a radio problem and Ready, but not the air.
+s = bar('lost', null, { linkLost: true });
+assert.strictEqual(s.state, 'nolink');
+assert.strictEqual(s.tone, 'red');
+assert.strictEqual(s.main, 'No contact with the station');
+assert.strictEqual(bar('ready', null, { linkLost: true }).state, 'nolink');
+assert.strictEqual(bar('ready', tx(), { linkLost: true }).state, 'tx', 'on the air keeps its Stop');
+assert.strictEqual(bar('ready', null, { linkLost: false }).state, 'ready');
+
+// Not paired comes after no contact and before a radio problem; on the air still wins.
+s = bar('lost', null, { unpaired: true });
+assert.strictEqual(s.state, 'unpaired');
+assert.strictEqual(s.tone, 'amber');
+assert.strictEqual(s.sub, 'Not paired · press the sidekick’s button');
+assert.strictEqual(bar('ready', null, { unpaired: true, linkLost: true }).state, 'nolink');
+assert.strictEqual(bar('ready', tx(), { unpaired: true }).state, 'tx');
 
 // 2. A transmission that did not go outranks a radio problem, and offers no Stop.
 s = bar('lost', tx({ aborted: true, reason: 'SWR protection' }), { swrTrips: 1 });

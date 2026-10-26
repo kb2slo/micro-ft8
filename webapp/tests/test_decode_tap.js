@@ -31,8 +31,8 @@ function extractFunction(text, name) {
 
 const sb = { lastCfg: {} };
 vm.createContext(sb);
-vm.runInContext(['slotReplyOpen', 'isReplyableDecode', 'decodeRowReplyable', 'decodeTapAction']
-  .map((n) => extractFunction(src, n)).join('\n'), sb);
+vm.runInContext([/var DECODE_HOLD_MS = \d+;/.exec(src)[0]].concat(['slotReplyOpen', 'isReplyableDecode',
+  'decodeRowReplyable', 'decodeTapAction', 'decodeRedrawHeld'].map((n) => extractFunction(src, n))).join('\n'), sb);
 
 const now = Date.UTC(2026, 9, 25, 14, 2, 36);
 const slot = (endMs, lenMs) => Object.assign([], { ts: endMs, lenMs: lenMs || 15000 });
@@ -64,5 +64,17 @@ assert.strictEqual(sb.decodeTapAction(false, false), 'none', 'a row that is not 
 assert(/role=button tabindex=0 aria-label="Reply to /.test(src), 'a replyable row is a button for assistive technology');
 assert(/function tryReply\(id\) \{\s*var why = replyTooOld\(id\) \|\| replyFrequencyMismatch\(id\);/.test(src),
   'a tap is refused for an aged slot or another frequency, as Reply was');
+
+// A redraw never moves rows under a finger: held while touched, just after the lift (the tap's
+// click comes after it), and while a flick coasts; free once all three have passed.
+const HOLD = sb.DECODE_HOLD_MS, t0 = 1e6;
+const held = (o) => sb.decodeRedrawHeld(t0, Object.assign({ down: false, upAt: 0, scrollAt: 0 }, o));
+assert(held({ down: true }), 'finger on the list');
+assert(held({ upAt: t0 - HOLD + 50 }), 'just lifted: the click has not landed yet');
+assert(held({ scrollAt: t0 - 100 }), 'still coasting');
+assert(!held({ upAt: t0 - HOLD - 1, scrollAt: t0 - HOLD - 1 }), 'free after the hold');
+assert(!held({}), 'never touched');
+assert(/async function sendReply\(id\) \{[\s\S]*?renderDecodes\(true\);/.test(src),
+  'the operator\'s own reply redraws at once (Sending…), not after the hold');
 
 console.log('PASS: decode tap to reply');
