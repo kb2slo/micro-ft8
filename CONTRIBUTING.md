@@ -9,8 +9,9 @@ forward ([AGENTS.md](AGENTS.md), **Pre-alpha**). The maintainer is Jeff, KB2SLO.
 
 ## Before you start
 
-- **A bug fix, or a change a host test proves,** can go straight to a pull request.
-- **A feature** starts as an issue the maintainer has agreed to. `docs/ROADMAP.md` is the plan; an idea
+- **A bug fix** can go straight to a pull request.
+- **Anything else** — a feature, a renamed label, a changed behaviour — starts as an issue the maintainer
+  has agreed to, even when a host test proves it. `docs/ROADMAP.md` is the plan; an idea
   that is not on it is an issue first, not a pull request.
 
 ## Setup
