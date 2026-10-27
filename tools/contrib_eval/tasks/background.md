@@ -1,0 +1,1 @@
+I'm a licensed ham with a QMX, and I found Micro-FT8 through its website. I cloned the repo into this folder to contribute. I haven't contributed here before, and I don't have a PoE-P4 or a sidekick yet, only the radio.
