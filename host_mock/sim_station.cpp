@@ -647,6 +647,17 @@ int main(int argc, char** argv)
             swr_sweep_tick(sweep_ms);
         }
         if (now >= next_beat) {
+            {
+                static int64_t last_activity_ms = 0;
+                const int64_t wall_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                            std::chrono::system_clock::now().time_since_epoch())
+                                            .count();
+                if (last_activity_ms == 0) {
+                    last_activity_ms = wall_ms - 1000;
+                }
+                scenario_emit_activity(g_scenario, last_activity_ms, wall_ms);
+                last_activity_ms = wall_ms;
+            }
             scenario_emit_status(g_scenario);
             scenario_emit_hud(g_scenario);
             next_beat = clock::now() + std::chrono::seconds(1);

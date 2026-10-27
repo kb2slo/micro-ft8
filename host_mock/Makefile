@@ -69,6 +69,7 @@ SWR_SWEEP_TARGET = host_test_swr_sweep
 SWR_TRIP_TARGET = host_test_swr_trip
 SLOT_DEFICIT_TARGET = host_test_slot_deficit
 SAMPLE_RING_TARGET = host_test_sample_ring
+BLOCK_ACTIVITY_TARGET = host_test_block_activity
 CORE_BUSY_TARGET = host_test_core_busy
 DECODE_RETRY_TARGET = host_test_decode_retry
 DECODE_SYNC_TARGET = host_test_decode_sync
@@ -85,7 +86,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARG
      $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(EVENT_STATE_TARGET) $(BUNDLE_HOST_TARGET) \
      $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(ROGERS_ONCE_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
      $(CAT_REPLY_PARSER_TARGET) $(AMP_BAND_PRIME_TARGET) $(SWR_SWEEP_TARGET) $(SWR_TRIP_TARGET) \
-     $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(CORE_BUSY_TARGET) \
+     $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(BLOCK_ACTIVITY_TARGET) $(CORE_BUSY_TARGET) \
      $(DECODE_RETRY_TARGET) $(DECODE_SYNC_TARGET) $(DECODE_SNR_TARGET) \
      $(PORTA_OUT_QUEUE_TARGET) $(HEARD_GRID_TARGET) $(DECODE_FIELDS_TARGET) $(RTC_CORE_TARGET) \
      $(SIM_TARGET)
@@ -182,6 +183,14 @@ ft8_sample_ring.o: ../components/ft8_audio_pipeline/ft8_sample_ring.c
 test_sample_ring.o: test_sample_ring.cpp
 	$(CXX) $(CXXFLAGS) -I../components/ft8_audio_pipeline/include -c $< -o $@
 $(SAMPLE_RING_TARGET): $(SAMPLE_RING_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+BLOCK_ACTIVITY_OBJ = ft8_block_activity.o test_block_activity.o
+ft8_block_activity.o: ../components/ft8_audio_pipeline/ft8_block_activity.c
+	$(CC) $(CFLAGS) -I../components/ft8_audio_pipeline/include -c $< -o $@
+test_block_activity.o: test_block_activity.cpp
+	$(CXX) $(CXXFLAGS) -I../components/ft8_audio_pipeline/include -c $< -o $@
+$(BLOCK_ACTIVITY_TARGET): $(BLOCK_ACTIVITY_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 CORE_BUSY_OBJ = decode_core_busy.o test_core_busy.o
@@ -356,6 +365,7 @@ clean:
 	      $(DECODE_RETRY_OBJ) $(DECODE_RETRY_TARGET) \
 	      $(DECODE_SYNC_OBJ) $(DECODE_SYNC_TARGET) \
 	      $(DECODE_SNR_OBJ) $(DECODE_SNR_TARGET) \
+	      $(BLOCK_ACTIVITY_OBJ) $(BLOCK_ACTIVITY_TARGET) \
 	      $(ROGERS_ONCE_OBJ) $(ROGERS_ONCE_TARGET) \
 	      $(HEARD_GRID_OBJ) $(HEARD_GRID_TARGET) \
 	      $(DECODE_FIELDS_OBJ) $(DECODE_FIELDS_TARGET) \

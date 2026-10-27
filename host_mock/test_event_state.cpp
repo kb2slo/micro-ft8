@@ -209,6 +209,8 @@ static void test_singles_and_cursor()
     event_state_note(&s, &e, 0);
     e = single(PORTA_EVT_SWEEP);
     event_state_note(&s, &e, 0);
+    e = single(PORTA_EVT_ACTIVITY);
+    event_state_note(&s, &e, 0);
 
     std::vector<event_t> got = walk(s, EVENT_STATE_SLOTS_CAP, 0);
     check(count_kind(got, PORTA_EVT_TX_HUD) == 1, "one TX HUD: the last");
@@ -217,8 +219,9 @@ static void test_singles_and_cursor()
     check(count_kind(got, PORTA_EVT_SLOT_STATE) == 1 && count_kind(got, PORTA_EVT_USB_STATUS) == 1 &&
               count_kind(got, PORTA_EVT_RADIO_STATE) == 1,
           "slot state, USB status and radio state are kept");
-    check(count_kind(got, PORTA_EVT_LOG) == 0 && count_kind(got, PORTA_EVT_SWEEP) == 0,
-          "log lines and sweep progress are not state");
+    check(count_kind(got, PORTA_EVT_LOG) == 0 && count_kind(got, PORTA_EVT_SWEEP) == 0 &&
+              count_kind(got, PORTA_EVT_ACTIVITY) == 0,
+          "log lines, sweep progress and band activity are not state");
     check(got.size() == 5 && in_seq_order(got), "five events, in the order they happened");
 
     // Nothing at or past the cursor the reply hands back: the next poll carries it.

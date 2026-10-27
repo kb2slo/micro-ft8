@@ -12,6 +12,7 @@
 #include "debug_log.h"
 #include "decode_tx_state.h"
 #include "ft8_audio_pipeline.h"
+#include "ft8_block_activity.h"
 #include "porta.h"
 #include "porta_host.h"
 #include "protocol.h"
@@ -31,6 +32,17 @@ const ProtocolConfig* g_protocol = &kProtocolFT8;
 // Default until Station.txt loads; porta_host overwrites on CONFIG_SET.
 std::string g_call = "YOURCALL";
 
+static_assert(FT8_ACTIVITY_BATCH_MAX <= PORTA_ACTIVITY_LEVELS_MAX,
+              "an activity batch must fit one ACTIVITY event");
+static_assert(FT8_ACTIVITY_CELLS == PORTA_ACTIVITY_CELLS && FT8_ACTIVITY_MASK_BYTES == PORTA_ACTIVITY_MASK_BYTES,
+              "the pipeline's frequency mask is the event's");
+
+static void send_activity(void * /*ctx*/, int64_t slot_idx, int block_ms, int first,
+                          const uint8_t *levels, const uint8_t *masks, int n, int lo_hz, int hi_hz) {
+    porta_emit_activity((uint32_t)slot_idx, (uint8_t)block_ms, (uint8_t)first, levels, masks,
+                        (uint8_t)n, (uint16_t)lo_hz, (uint16_t)hi_hz);
+}
+
 static void decode_audio_task(void * /*arg*/) {
     ft8_audio_pipeline_config_t pipe_cfg = {
         .tag = TAG,
@@ -38,6 +50,7 @@ static void decode_audio_task(void * /*arg*/) {
         .read = qmx_audio_read_ft8_samples,
         .should_stop = qmx_audio_should_stop,
         .on_block_processed = nullptr,
+        .on_activity = send_activity,
     };
     // QMX CAT/UAC comes back only after a radio power cycle (QMX quirk);
     // keep this task alive so a replug restarts decode without resetting P4.

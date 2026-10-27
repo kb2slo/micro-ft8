@@ -1483,6 +1483,9 @@ static void porta_rx_task(void *arg)
             } else if (porta_proto_parse_radio_state(&frame, &e.u.radio)) {
                 e.kind = PORTA_EVT_RADIO_STATE;
                 ring_push(&e);
+            } else if (porta_proto_parse_activity(&frame, &e.u.activity)) {
+                e.kind = PORTA_EVT_ACTIVITY;
+                ring_push(&e);
             } else if (porta_proto_parse_sweep_event(&frame, &e.u.sweep)) {
                 e.kind = PORTA_EVT_SWEEP;
                 ring_push(&e);

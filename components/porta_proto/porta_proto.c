@@ -443,6 +443,59 @@ bool porta_proto_parse_radio_state(const porta_frame_t *f, porta_radio_state_eve
     return true;
 }
 
+// subtype | epoch(4) | slot_idx(4) | block_ms(1) | first(1) | n(1) | lo_hz(2) | hi_hz(2)
+// | n x (level(1) | mask(PORTA_ACTIVITY_MASK_BYTES))
+#define ACTIVITY_HEADER_LEN (EVENT_HEADER_LEN + 4u + 1u + 1u + 1u + 2u + 2u)
+#define ACTIVITY_BLOCK_LEN (1u + PORTA_ACTIVITY_MASK_BYTES)
+
+size_t porta_proto_encode_activity(const porta_activity_event_t *a, uint8_t *out, size_t out_cap)
+{
+    if (!a || a->n == 0 || a->n > PORTA_ACTIVITY_LEVELS_MAX) {
+        return 0;
+    }
+    uint8_t payload[ACTIVITY_HEADER_LEN + PORTA_ACTIVITY_LEVELS_MAX * ACTIVITY_BLOCK_LEN];
+    payload[0] = PORTA_EVT_ACTIVITY;
+    put_u32(&payload[1], a->epoch_secs);
+    put_u32(&payload[5], a->slot_idx);
+    payload[9] = a->block_ms;
+    payload[10] = a->first;
+    payload[11] = a->n;
+    put_u16(&payload[12], a->lo_hz);
+    put_u16(&payload[14], a->hi_hz);
+    for (uint8_t i = 0; i < a->n; ++i) {
+        uint8_t *blk = &payload[ACTIVITY_HEADER_LEN + i * ACTIVITY_BLOCK_LEN];
+        blk[0] = a->level[i];
+        memcpy(&blk[1], a->mask[i], PORTA_ACTIVITY_MASK_BYTES);
+    }
+    return porta_proto_encode(PORTA_MSG_EVENT, payload,
+                              (uint8_t)(ACTIVITY_HEADER_LEN + a->n * ACTIVITY_BLOCK_LEN), out, out_cap);
+}
+
+bool porta_proto_parse_activity(const porta_frame_t *f, porta_activity_event_t *out)
+{
+    if (!f || !out || f->type != PORTA_MSG_EVENT || f->len < ACTIVITY_HEADER_LEN ||
+        f->payload[0] != PORTA_EVT_ACTIVITY) {
+        return false;
+    }
+    const uint8_t n = f->payload[11];
+    if (n == 0 || n > PORTA_ACTIVITY_LEVELS_MAX || f->len != ACTIVITY_HEADER_LEN + n * ACTIVITY_BLOCK_LEN) {
+        return false;
+    }
+    out->epoch_secs = get_u32(&f->payload[1]);
+    out->slot_idx   = get_u32(&f->payload[5]);
+    out->block_ms   = f->payload[9];
+    out->first      = f->payload[10];
+    out->n          = n;
+    out->lo_hz      = get_u16(&f->payload[12]);
+    out->hi_hz      = get_u16(&f->payload[14]);
+    for (uint8_t i = 0; i < n; ++i) {
+        const uint8_t *blk = &f->payload[ACTIVITY_HEADER_LEN + i * ACTIVITY_BLOCK_LEN];
+        out->level[i] = blk[0];
+        memcpy(out->mask[i], &blk[1], PORTA_ACTIVITY_MASK_BYTES);
+    }
+    return true;
+}
+
 // subtype | epoch(4) | kind(1) | range_index(1) | freq_hz(4) | swr_c(2) | reason(1)
 #define SWEEP_EVENT_LEN (EVENT_HEADER_LEN + 1u + 1u + 4u + 2u + 1u)
 
