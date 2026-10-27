@@ -76,7 +76,8 @@ jobs:
 
   # Links and repo paths in the docs still resolve, and no row ID newly
   # dangles (tools/check_docs.py); on a pull request, its commit messages
-  # (tools/check_commits.py). The whole history, which both read.
+  # and the subject a squash merge would write (tools/check_commits.py).
+  # The whole history, which both read.
   docs-and-commits:
     name: Docs and commits
     runs-on: ubuntu-latest
@@ -93,9 +94,12 @@ jobs:
       - name: Commit messages
         if: github.event_name == 'pull_request'
         run: tools/check.sh --only commits --base "$BASE" --head "$HEAD"
+        # The title goes through the environment, never into the script itself.
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
 
   # The printed getting-started sheet (webapp/getting-started.md), printed by
   # headless Chrome on every push: it fails when the sheet runs past its page

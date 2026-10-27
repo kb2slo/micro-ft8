@@ -259,8 +259,14 @@ check_docs() {
   python3 tools/check_docs.py --base "$BASE"
 }
 
+# On a pull request, CI also passes its title and number (PR_TITLE, PR_NUMBER),
+# so the subject a squash merge would write is held to the same limit.
 check_commits() {
-  python3 tools/check_commits.py "$BASE..$HEAD_REV"
+  if [ -n "${PR_TITLE:-}" ] && [ -n "${PR_NUMBER:-}" ]; then
+    python3 tools/check_commits.py "$BASE..$HEAD_REV" --pr-title "$PR_TITLE" --pr-number "$PR_NUMBER"
+  else
+    python3 tools/check_commits.py "$BASE..$HEAD_REV"
+  fi
 }
 
 check_sidekick() {
