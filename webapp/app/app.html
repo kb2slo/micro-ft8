@@ -4383,23 +4383,8 @@ function fmtUsbDevice(kind, vid, pid) {
   return USB_KIND_NAMES[kind] || ('VID ' + hex4(vid) + ' PID ' + hex4(pid));
 }
 
-// A decode already on screen or waiting in this poll's batch. A reload restores the shown slots
-// from the cache (loadStateCache()) and then reads the sidekick's event ring from its start
-// (since=0), which carries the same decodes again. Matched on the decode's id and text, and on
-// its slot's end when the host names the slot (Port A v2): the main board numbers decodes from 1
-// at each boot, so an id alone can come back as a different decode.
-function decodeAlreadyShown(e) {
-  var endMs = e.si ? (e.si + 1) * (e.sl || 150) * 100 : 0;
-  var same = function (d) { return d.id === e.id && d.x === e.x; };
-  if (pendingDecodes.some(same)) return true;
-  return decodeSlots.some(function (slot) {
-    return (!endMs || slot.ts === endMs) && slot.some(same);
-  });
-}
-
 function applyEvent(e) {
   if (e.d === 1) {
-    if (decodeAlreadyShown(e)) return;
     // A v2 host names the slot each decode was recorded in (e.si), so a new
     // slot starts a new batch exactly. Without it, a flip of SLOT_STATE's
     // parity is the only sign of a new slot.
@@ -4498,10 +4483,29 @@ function updateResetHold(hold, of) {
   }
 }
 
+// The first poll after the page loads reads the station as it is now from the sidekick
+// (/api/state, docs/architecture/sidekick.md (Port A)): the newest DECODE_SLOTS_MAX slots, the
+// live queue, and the last slot state and TX HUD, in /api/events' shape. That replaces whatever
+// loadStateCache() seeded, however old, and later polls follow from its `seq`.
+function resetLiveState() {
+  decodeSlots = [];
+  pendingDecodes = [];
+  pendingDecodesSp = null;
+  pendingDecodesSi = 0;
+  pendingDecodesSl = 0;
+  queue = {};
+  queueOrder = [];
+  slotState = null;
+  txHud = null;
+}
+
 async function pollEvents() {
   try {
-    var r = await fetch('/api/events?since=' + evSeq, { cache: 'no-store' });
+    var fresh = !evSeq;
+    var r = await fetch(fresh ? '/api/state?slots=' + DECODE_SLOTS_MAX : '/api/events?since=' + evSeq,
+                        { cache: 'no-store' });
     var j = await r.json();
+    if (fresh) resetLiveState();
     var gotEvents = j.events && j.events.length;
     if (gotEvents) {
       j.events.forEach(applyEvent);
@@ -4510,13 +4514,13 @@ async function pollEvents() {
       // still shows up within a poll of being decoded. applyEvent() already
       // flushed early if this poll's events crossed a real slot boundary.
       flushDecodeBatch();
-      renderDecodes();
     }
+    if (gotEvents || fresh) renderDecodes();
     // Runs every tick, not just when this poll carried events -- a quiet
     // poll (nothing new) is exactly when a previously-missed IDLE needs to
     // still be caught by the staleness sweep.
     var queueChanged = sweepStaleQueue();
-    if (queueChanged || gotEvents) {
+    if (queueChanged || gotEvents || fresh) {
       renderQueue();
       // The CQ row reads `queue` (webapp.md, The CQ row), so it runs after
       // sweepStaleQueue() too, not only when an event arrived.
@@ -4524,7 +4528,7 @@ async function pollEvents() {
       renderRadioBar();
     }
     evSeq = j.seq;
-    if (gotEvents || queueChanged) saveStateCache();
+    if (gotEvents || queueChanged || fresh) saveStateCache();
     updateResetHold(j.hold | 0, j.hold_of | 0);
   } catch (e) {
     // The sidekick restarting out from under a hold card is the reset itself.
@@ -5808,12 +5812,11 @@ window.addEventListener('hashchange', applyHashRoute);
 // fetch/poll lands, so a reload or a fresh desk_push doesn't flash blank/
 // "Loading..." for state the browser already knows -- operator-requested,
 // prompted by trying the new "reload available" banner for the first time.
-// Never a substitute for the wire: loadConfig()/pollEvents() below overwrite
-// all of this within about a second when the main board answers; when it does
+// Never a substitute for the wire: the first pollEvents() replaces the decodes,
+// queue, slot state and TX HUD with the sidekick's own (resetLiveState()), and
+// loadConfig() overwrites the config when the main board answers; when it does
 // not, Settings says the station values are cached (setMainBoardLive()), and
-// the sidekick's own facts are never cached at all. Decode slots already
-// carry their own date/time header, so a stale cached slot reads as exactly
-// what it is (old) rather than pretending to be fresh. saveStateCache() is
+// the sidekick's own facts are never cached at all. saveStateCache() is
 // called after every place these variables actually change -- loadConfig(),
 // pollLiveStatus(), pollEvents() -- not on a separate timer.
 var STATE_CACHE_KEY = 'microft8_state_v1';

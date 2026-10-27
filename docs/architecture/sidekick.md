@@ -105,7 +105,9 @@ Everything the app needs crosses Port A: decodes at slot cadence, TX control, co
 
 * **The sidekick's build identity** is its exact git SHA plus a dirty flag, from `tools/git_version.cmake`. CI pins `MICROFT8_GIT_SHA`, because a pull request builds a synthesized merge commit that is not the SHA anyone can check out.
 * **Asymmetric traffic**: commands are rare and want low latency; decodes arrive every 15 s and tolerate hundreds of milliseconds. A full slot of decodes is about 3 KB, so sustained load is a couple of hundred bytes per second.
-* **The browser polls** `GET /api/events?since=<seq>`; the sidekick keeps a ring of recent events so a client can catch up after a short gap. Config is `GET /api/config` (open) and `PUT /api/config` (token-guarded).
+* **The browser polls** `GET /api/events?since=<seq>`; the sidekick keeps a ring of the last 64 events so a client can catch up after a short gap. Config is `GET /api/config` (open) and `PUT /api/config` (token-guarded).
+* **A page that has just loaded reads `GET /api/state?slots=<n>` first** (open): the station as it is now, in `/api/events`' shape, and then polls from its `seq`. The sidekick builds it from the same events, in the same critical section as the ring (`event_state.c`, host-tested by `host_test_event_state`): the newest `n` decode slots (the page sends its `DECODE_SLOTS_MAX`; at most `EVENT_STATE_SLOTS_CAP`, 4), every live queue entry, and the last slot state, TX HUD, USB status and radio state. Log lines and sweep progress are not state. **Why:** the ring cannot do it. The main board re-sends every live queue entry each second, so on a busy band the ring holds less than a slot, and a reload replayed it over the browser's own cache, which could be hours old. **Queue entries** leave on IDLE, or when not re-sent for 4 s (a lost IDLE, a main-board restart). After a sidekick restart the snapshot is empty until the main board next sends; the page shows that rather than its cache. **Memory:** about 19 KB of static RAM, room for four full slots (`RX_MAX_DECODES` each) and `AUTOSEQ_MAX_QUEUE` entries.
+* **Ring entries are the Port A structs themselves** (`event_t`): a frame is parsed straight into one, so every field it carries reaches the browser. A field-by-field copy once dropped the TX HUD's `not_keyed`.
 * **The sidekick answers for itself without the main board.** Every `GET /api/config` reply carries its own facts (`sk_*`: firmware version, WiFi mode, network, IP, uptime, its link counters), built at reply time (`send_config_reply()` in `host_link.c`), including the `{"ok":false,...}` reply when the main board does not answer. The web app shows them only from a live reply, never from its browser cache.
 
 ## Tasks and cores
@@ -115,11 +117,11 @@ Nothing of ours is pinned to a core: FreeRTOS places our tasks, and ESP-IDF pins
 | Task | Created by | Priority | Core | Stack | Job |
 |---|---|---|---|---|---|
 | main loop | `app_main` (`main.c`) | 1 | CPU0 | 3.5 KB | Once a second: Port A HELLO, marking a new image valid, the pairing-button disclosure |
-| `porta_rx` | `host_link.c` | 5 | any | 6 KB | Reads Port A, parses frames, fills the event ring and the reply state, and pumps the link test |
+| `porta_rx` | `host_link.c` | 5 | any | 6 KB | Reads Port A, parses frames, fills the event ring, the state snapshot and the reply state, and pumps the link test |
 | `httpd` | `wifi_prov.c` (`httpd_start`) | 5 | any | 8 KB | Every HTTP handler; control requests wait on `porta_rx` for the main board's reply |
 | `scan_fresh` | `wifi_prov.c` | 3 | any | 3 KB | AP mode only: keeps the WiFi scan list fresh for provisioning |
 | WiFi driver, mDNS, `esp_timer` | ESP-IDF | IDF defaults (mDNS 1) | CPU0 | — | |
 | lwIP `tcpip` | ESP-IDF | 18 | any | — | |
 
-* **The action reply** (verb, OK, reason) is one slot under `s_lock`, the same mutex as the event ring. `porta_rx` stores OK and the reason before the verb, and a CONFIG_GET retry resets its gather buffer under that lock, so a handler that sees its verb has this reply's OK and reason.
+* **The action reply** (verb, OK, reason) is one slot under `s_lock`, the same mutex as the event ring and the state snapshot. `porta_rx` stores OK and the reason before the verb, and a CONFIG_GET retry resets its gather buffer under that lock, so a handler that sees its verb has this reply's OK and reason.
 * **Not yet built: row wgjx** — pin the latency-sensitive work (main loop, `porta_rx`) to one core and the bursty work (HTTP, DNS, scanning) to the other. Its bench compares timeout rates against the 2026-10-02 sidekick session (no wrong-result replies and no new timeouts).

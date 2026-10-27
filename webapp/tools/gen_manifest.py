@@ -16,7 +16,7 @@ import hashlib
 import json
 from pathlib import Path
 
-API_MIN = 1
+API_MIN = 2
 MANIFEST_NAME = "manifest.json"
 
 

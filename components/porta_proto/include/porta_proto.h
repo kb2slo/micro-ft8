@@ -288,6 +288,8 @@ bool porta_proto_parse_decode(const porta_frame_t *f, porta_decode_event_t *out)
 
 #define PORTA_CALLSIGN_MAX 16u
 
+#define PORTA_QUEUE_STATE_IDLE 6u  // AutoseqState::IDLE's wire value: the entry is gone
+
 #define PORTA_QUEUE_ODD    0x01u  // the entry transmits on odd slots
 #define PORTA_QUEUE_CUSTOM 0x02u  // its count is its own, not the station default
 

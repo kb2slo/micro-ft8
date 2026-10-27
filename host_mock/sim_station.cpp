@@ -370,6 +370,12 @@ static std::string handle(const std::string& method, const std::string& url,
         return "{\"ok\":false,\"why\":\"unauthorized\"}";
     }
 
+    // The sidekick's /api/state is its snapshot of the station now; the simulator
+    // keeps every event it played, so the whole log is that state, and the page
+    // keeps its own DECODE_SLOTS_MAX of the slots in it.
+    if (method == "GET" && path == "/api/state") {
+        return events_json(0);
+    }
     if (method == "GET" && path == "/api/events") {
         const unsigned long since = query.count("since") ? std::strtoul(query.at("since").c_str(), nullptr, 10) : 0;
         return events_json((uint32_t)since);
