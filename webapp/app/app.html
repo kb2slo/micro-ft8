@@ -192,6 +192,10 @@ button:disabled{opacity:.45}
 #opSlotBarFill{height:100%;width:0%;background:#3b82f6;transition:width .2s linear,background-color .2s linear}
 #opSlotBarFill.tx{background:#dc2626}
 #opSlotBarFill.halt,#opSlotBarFill.dead{background:#c98a10}
+#opSlotText.warn{color:#fbbf24}
+/* Dark edge so the text reads over the activity bars and the fill alike. */
+#opSlotText{text-shadow:0 0 2px #000,0 0 3px #000}
+#opSlotBarAct{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 #opSlotBarCursor{position:absolute;top:0;width:3px;height:100%;border-radius:1px;background:#e5e7eb;opacity:.7;transition:left .2s linear}
 .pill{display:inline-block;font-size:.7rem;font-weight:700;padding:.15rem .5rem;border-radius:999px}
 /* Glyph, not just a color, on purpose (operator feedback: colorblind-hostile
@@ -500,6 +504,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <span id=opParity aria-label="Slot parity"></span>
     <div id=opSlotBar>
       <div id=opSlotBarFill></div>
+      <canvas id=opSlotBarAct aria-hidden=true></canvas>
       <div id=opSlotBarCursor hidden></div>
       <span id=opSlotText></span>
     </div>
@@ -3145,11 +3150,140 @@ function radioLive() {
   return yn(lastCfg.cat_ready) === 'yes' && yn(lastCfg.audio_rx) === 'yes';
 }
 
+// Band activity (webapp.md, The slot bar's activity trace): the main board's ACTIVITY events
+// (d 8) for the slot being received, one level per block, drawn as bars rising from the slot
+// bar's floor. A level is about how many signals that block held. Not state: a reload starts from
+// the next event.
+var ACTIVITY_FULL = 40; // a level this high or more fills the bar's height
+// Above this the count flattens: signals that close merge into one (decode.md, Band activity).
+var ACTIVITY_COUNT_CAP = 30;
+// The span the label reads, inside every signal's in both modes: from 0.8 s (they start at 0.5 s)
+// to 70% of the slot (FT8 signals end at 13.1 s of 15, FT4's at 5.5 s of 7.5).
+var ACTIVITY_LABEL_FROM_MS = 800, ACTIVITY_LABEL_TO = 0.7;
+// The QMX's own noise reads 1 or 2 with the antenna off (2026-10-27): that and less is Quiet.
+var ACTIVITY_QUIET_MAX = 2;
+// The clock cue (I15's gross layer): this many signals or more in a received slot, and decodes of
+// a quarter of them or fewer, in two received slots running. A real band decoded 0.6 to 1.2 of
+// its signals on 20 m and 40 m (2026-10-27); a clock 1.6 s off decoded 0 to 2 of about 20.
+var CLOCK_CUE_MIN_SIGNALS = 8, CLOCK_CUE_SLOTS = 2;
+// act: the slot being received (noteActivity()); tallies: the newest received slots, oldest
+// first, {si, sig, dec, paused}; decodes: si -> decodes heard for it; paused: si -> true when the
+// main board did not decode it (PAUSED).
+var band = { act: { si: 0, bm: 0, lv: [] }, tallies: [], decodes: {}, paused: {} };
+
+// Folds one ACTIVITY event into `act`: a later slot starts over, an earlier one is dropped.
+function noteActivity(act, e) {
+  var si = e.si | 0, v = e.v || [];
+  if (si < act.si) return act;
+  if (si > act.si) act = { si: si, bm: e.bm | 0, lv: [] };
+  for (var i = 0; i < v.length; i++) act.lv[(e.b | 0) + i] = v[i] | 0;
+  return act;
+}
+
+// The bars to draw `now`: each a block's span across the bar (x0, x1) and its height (h), all
+// 0..1. None unless `act` is the slot the bar is showing.
+function activityBars(act, now, period) {
+  var bars = [];
+  if (!act.bm || act.si !== Math.floor(now / period)) return bars;
+  for (var k = 0; k < act.lv.length; k++) {
+    if (act.lv[k] === undefined) continue;
+    bars.push({ x0: k * act.bm / period, x1: (k + 1) * act.bm / period,
+                h: Math.min(act.lv[k], ACTIVITY_FULL) / ACTIVITY_FULL });
+  }
+  return bars;
+}
+
+// About how many signals `act`'s slot held: the median of its blocks inside the signals' span, so
+// a block between stations or one burst does not move it. Null until one of those blocks is in.
+function activityCount(act, period) {
+  if (!act.bm) return null;
+  var v = [], first = Math.ceil(ACTIVITY_LABEL_FROM_MS / act.bm);
+  var last = Math.floor(period * ACTIVITY_LABEL_TO / act.bm) - 1;
+  for (var k = first; k <= last && k < act.lv.length; k++) {
+    if (act.lv[k] !== undefined) v.push(act.lv[k]);
+  }
+  if (!v.length) return null;
+  v.sort(function (a, b) { return a - b; });
+  return v[Math.floor(v.length / 2)];
+}
+
+// The slot bar's text while we receive: "≈N signals", or Quiet. '' until there is a count, or
+// when `act` is not the slot the bar shows.
+function activityLabel(act, now, period) {
+  if (act.si !== Math.floor(now / period)) return '';
+  var n = activityCount(act, period);
+  if (n === null) return '';
+  if (n <= ACTIVITY_QUIET_MAX) return 'Quiet';
+  if (n >= ACTIVITY_COUNT_CAP) return '≈' + ACTIVITY_COUNT_CAP + '+ signals';
+  return '≈' + n + ' signals';
+}
+
+// The clock cue: '' or the bar's text when the newest CLOCK_CUE_SLOTS received slots each heard
+// CLOCK_CUE_MIN_SIGNALS or more and decoded a quarter of them or fewer. Signals heard is what
+// tells a clock from an empty band, an unplugged antenna or no audio, which also decode nothing
+// (ROADMAP I15). A slot the main board did not decode (PAUSED) breaks the run.
+function clockCue(tallies) {
+  if (tallies.length < CLOCK_CUE_SLOTS) return '';
+  var run = tallies.slice(-CLOCK_CUE_SLOTS);
+  for (var i = 0; i < run.length; i++) {
+    var t = run[i];
+    if (t.paused || t.sig < CLOCK_CUE_MIN_SIGNALS || t.dec * 4 > t.sig) return '';
+  }
+  var last = run[run.length - 1];
+  return 'Clock? ' + last.dec + ' decoded of ≈' + last.sig + ' signals';
+}
+
+// Closes the received slot `act` held, once a later slot's activity arrives: by then its decodes
+// are in, since the main board sends them before it reads on. A slot with no count (we sent in it)
+// is not a received slot and is left out.
+function tallySlot(tallies, act, period, decodes, paused) {
+  var n = activityCount(act, period);
+  if (n === null) return tallies;
+  tallies = tallies.concat([{ si: act.si, sig: n, dec: decodes[act.si] || 0, paused: !!paused[act.si] }]);
+  return tallies.slice(-4);
+}
+
+// Folds one event into `st` (the shape of `band`): a decode counts toward its slot, PAUSED marks
+// one, and an ACTIVITY event from a later slot closes the one before it (tallySlot()).
+function noteBandEvent(st, e, period) {
+  if (e.d === 1 && e.si) {
+    st.decodes[e.si] = (st.decodes[e.si] || 0) + 1;
+  } else if (e.d === 0 && /^PAUSED \d+/.test(e.x || '')) {
+    st.paused[e.x.split(' ')[1]] = true;
+  } else if (e.d === 8) {
+    if ((e.si | 0) > st.act.si && st.act.si) {
+      st.tallies = tallySlot(st.tallies, st.act, period, st.decodes, st.paused);
+      // Older slots are done with; this one's own, should any have come first, stay.
+      [st.decodes, st.paused].forEach(function (m) {
+        Object.keys(m).forEach(function (k) { if (+k < (e.si | 0)) delete m[k]; });
+      });
+    }
+    st.act = noteActivity(st.act, e);
+  }
+  return st;
+}
+
+function drawActivity(bars) {
+  var c = document.getElementById('opSlotBarAct');
+  var dpr = window.devicePixelRatio || 1;
+  var w = Math.round(c.clientWidth * dpr), h = Math.round(c.clientHeight * dpr);
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  var g = c.getContext('2d');
+  g.clearRect(0, 0, w, h);
+  g.fillStyle = 'rgba(229,231,235,.6)';
+  for (var i = 0; i < bars.length; i++) {
+    // Edges rounded, not each width: translucent bars that overlap by a pixel draw a seam.
+    var b = bars[i], bh = Math.round(b.h * h), xa = Math.round(b.x0 * w);
+    if (bh > 0) g.fillRect(xa, h - bh, Math.max(1, Math.round(b.x1 * w) - xa), bh);
+  }
+}
+
 // Drives #opSlotBar: fills left-to-right over the slot period (fraction
 // elapsed, not remaining), red while we transmit with the readout inside
 // (txReadout()), amber when TX is halted or a keyed slot sends no RF,
-// plus a small cursor dot at the current TX offset. The parity of the slot
-// now is the E or O tag at its left, not the bar's colour.
+// plus a small cursor dot at the current TX offset. While we receive, the
+// band activity trace (activityBars()) rises from its floor. The parity of the
+// slot now is the E or O tag at its left, not the bar's colour.
 function renderCountdown() {
   var fill = document.getElementById('opSlotBarFill');
   var cursor = document.getElementById('opSlotBarCursor');
@@ -3158,6 +3292,7 @@ function renderCountdown() {
     fill.style.width = '0%';
     fill.className = '';
     cursor.hidden = true;
+    drawActivity([]);
     document.getElementById('opSlotText').textContent = '';
     tag.textContent = '';
     tag.className = '';
@@ -3171,9 +3306,13 @@ function renderCountdown() {
   var onAir = txHud && txHud.active && !txHud.nk;
   var readout = onAir && !txHud.aborted
     ? txReadout(txHud, yn(lastCfg.tune) === 'yes' || txHud.x === 'TUNE', now - txKeyedAt) : null;
-  document.getElementById('opSlotText').textContent = readout ? readout.text : '';
+  var cue = readout || onAir ? '' : clockCue(band.tallies);
+  var slotText = document.getElementById('opSlotText');
+  slotText.textContent = readout ? readout.text : onAir ? '' : cue || activityLabel(band.act, now, p);
+  slotText.className = cue ? 'warn' : '';
   fill.style.width = (frac * 100).toFixed(1) + '%';
   fill.className = onAir && txHud.aborted ? 'halt' : readout && readout.dead ? 'dead' : (onAir ? 'tx' : '');
+  drawActivity(onAir ? [] : activityBars(band.act, now, p));
   tag.textContent = parity ? 'O' : 'E';
   tag.className = onAir && !txHud.aborted ? 'tx' : '';
   tag.setAttribute('aria-label', (parity ? 'Odd' : 'Even') + ' slot');
@@ -4397,6 +4536,7 @@ function applyEvent(e) {
     pendingDecodesSp = sp;
     pendingDecodesSi = si;
     pendingDecodesSl = e.sl || 0;
+    noteBandEvent(band, e, periodMs()); // counts toward the clock cue
     // fq: the dial, in kHz to 0.1, at the middle of this decode's signal; 0
     // when the host does not know it.
     pendingDecodes.push({ id: e.id, dt: e.dt, hz: e.hz, snr: e.snr, x: e.x,
@@ -4420,6 +4560,8 @@ function applyEvent(e) {
     lastTxHudEventMs = Date.now();
     noteTxHud(swrTrack, txHud);
     if (txHud.active) PskrLive.noteTx();
+  } else if (e.d === 8 || e.d === 0) {
+    noteBandEvent(band, e, periodMs());
   } else if (e.d === 7) {
     // The radio told the main board its state changed (AI2;): a knob turn, a mode or split change,
     // TX starting or ending. Put it where the poll would, so the bar follows at once; the next

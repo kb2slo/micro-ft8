@@ -106,6 +106,11 @@ void porta_emit_usb_status(bool present, uint8_t kind, uint16_t vid, uint16_t pi
 // MD digit, split. Not for a state the main board set itself; the caller sends what the radio said.
 void porta_emit_radio_state(uint32_t freq_hz, bool tx, uint8_t mode, bool split);
 
+// Band activity for `n` blocks of `block_ms`, the first at block `first` of slot `slot_idx`
+// (ACTIVITY, see porta_proto.h). More than PORTA_ACTIVITY_LEVELS_MAX levels are cut there.
+void porta_emit_activity(uint32_t slot_idx, uint8_t block_ms, uint8_t first,
+                         const uint8_t* levels, uint8_t n);
+
 // One SWR sweep progress event (docs/architecture/radio.md, The SWR sweep): `kind` and `reason` are porta_sweep_kind_t and
 // porta_sweep_reason_t wire values. `swr_hundredths` is -1 where there is no reading.
 void porta_emit_sweep(uint8_t kind, uint8_t range_index, uint32_t freq_hz, int swr_hundredths,

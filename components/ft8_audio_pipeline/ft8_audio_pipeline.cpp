@@ -1,6 +1,7 @@
 #include "ft8_audio_pipeline.h"
 #include "ft8_sample_ring.h"
 #include "ft8_slot_deficit.h"
+#include "ft8_block_activity.h"
 #include "decode_tx_state.h"
 #include "debug_log.h"
 
@@ -105,6 +106,7 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
 
     const int64_t slot_ms      = g_protocol->slot_time_ms;
     const int     target_blocks = g_protocol->total_symbols + 1;
+    const int     block_ms      = (int)lroundf(g_protocol->symbol_period * 1000.0f);
 
     int64_t now_ms = rtc_now_ms();
     int64_t rem = now_ms % slot_ms;
@@ -138,6 +140,12 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
     int64_t slot_idx = rtc_now_ms() / slot_ms;
     int64_t slot_start_ms = slot_idx * slot_ms;
     (void)slot_start_ms;
+    ft8_activity_batch_t activity;
+    ft8_activity_batch_t activity_out;
+    ft8_activity_batch_init(&activity, block_ms);
+    auto send_activity = [&](const ft8_activity_batch_t& b) {
+        cfg->on_activity(cfg->ctx, b.slot_idx, block_ms, b.first, b.level, b.n);
+    };
 
     while (!cfg->should_stop(cfg->ctx)) {
         int samples_dec = (int)ft8_sample_ring_read(&ring, temp_dec, 512);
@@ -166,9 +174,18 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                     ft8_buffer[j] *= gain;
                 }
 
+                // Band activity from the column this block adds: its first time and frequency
+                // subdivision, the 6.25 Hz grid. Not while we transmit: that audio is not the band.
+                int activity_level = -1;
                 if (mon.wf.num_blocks < target_blocks && mon.wf.num_blocks < mon.wf.max_blocks) {
                     block_gain[mon.wf.num_blocks] = gain;
                     monitor_process(&mon, ft8_buffer);
+                    if (cfg->on_activity && !decode_tx_state_get_tx_active() &&
+                        !decode_tx_state_get_was_txing()) {
+                        activity_level = ft8_block_activity(
+                            mon.wf.mag + (mon.wf.num_blocks - 1) * mon.wf.block_stride,
+                            mon.wf.num_bins);
+                    }
                 }
 
                 if (cfg->on_block_processed) {
@@ -185,8 +202,17 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                 // Date the block by its audio, not by when it is processed.
                 const int64_t queued =
                     (int64_t)ft8_sample_ring_count(&ring) + (samples_dec - i - 1);
+                const int64_t block_now_ms = rtc_now_ms();
                 int64_t now_idx =
-                    ft8_block_slot_idx(rtc_now_ms(), queued, (int)slot_ms, FT8_SAMPLE_RATE);
+                    ft8_block_slot_idx(block_now_ms, queued, (int)slot_ms, FT8_SAMPLE_RATE);
+                if (activity_level >= 0) {
+                    const int pos = ft8_block_pos(block_now_ms, queued, (int)slot_ms, block_ms,
+                                                  FT8_SAMPLE_RATE);
+                    if (ft8_activity_batch_add(&activity, now_idx, pos, (uint8_t)activity_level,
+                                               &activity_out)) {
+                        send_activity(activity_out);
+                    }
+                }
                 if (now_idx != slot_idx) {
                     const int64_t lost = ft8_slot_sample_deficit(
                         slot_samples, now_idx - slot_idx, (int)slot_ms, FT8_SAMPLE_RATE);
@@ -221,6 +247,10 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                            mon.wf.num_blocks >= g_protocol->total_symbols) {
                     ESP_LOGD(tag, "Triggering decode at slot %lld blocks=%d wf=%d",
                              (long long)slot_idx, slot_blocks, mon.wf.num_blocks);
+                    // The decode holds this task for about 2 s: send the slot's last blocks first.
+                    if (cfg->on_activity && ft8_activity_batch_take(&activity, &activity_out)) {
+                        send_activity(activity_out);
+                    }
                     // tx_slot_idx outlives was_txing. The slot loop clears that
                     // flag ~10 ms after the tones end, and the tones end at the
                     // 79th block, so the flag is often already false here.

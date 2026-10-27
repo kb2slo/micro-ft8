@@ -21,6 +21,8 @@ size_t event_json(const event_t *e, char *out, size_t cap)
         return porta_event_json_sweep(out, cap, e->seq, &e->u.sweep);
     case PORTA_EVT_RADIO_STATE:
         return porta_event_json_radio(out, cap, e->seq, &e->u.radio);
+    case PORTA_EVT_ACTIVITY:
+        return porta_event_json_activity(out, cap, e->seq, &e->u.activity);
     }
     return 0;
 }
@@ -131,6 +133,7 @@ void event_state_note(event_state_t *s, const event_t *e, uint32_t now_ms)
         break;
     case PORTA_EVT_LOG:
     case PORTA_EVT_SWEEP:
+    case PORTA_EVT_ACTIVITY:
         break;
     }
 }

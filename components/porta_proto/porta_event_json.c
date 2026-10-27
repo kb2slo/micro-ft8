@@ -160,3 +160,21 @@ size_t porta_event_json_radio(char *out, size_t cap, uint32_t seq,
                            ev->split ? 1u : 0u);
     return finish(out, cap, n);
 }
+
+size_t porta_event_json_activity(char *out, size_t cap, uint32_t seq,
+                                 const porta_activity_event_t *ev)
+{
+    if (!ev || ev->n == 0 || ev->n > PORTA_ACTIVITY_LEVELS_MAX) {
+        return 0;
+    }
+    char levels[PORTA_ACTIVITY_LEVELS_MAX * 4 + 1];
+    size_t w = 0;
+    for (uint8_t i = 0; i < ev->n; ++i) {
+        w += (size_t)snprintf(&levels[w], sizeof(levels) - w, i ? ",%u" : "%u", ev->level[i]);
+    }
+    const int n = snprintf(out, cap,
+                           "{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":8,"
+                           "\"si\":%" PRIu32 ",\"bm\":%u,\"b\":%u,\"v\":[%s]}",
+                           seq, ev->epoch_secs, ev->slot_idx, ev->block_ms, ev->first, levels);
+    return finish(out, cap, n);
+}

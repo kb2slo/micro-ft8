@@ -999,6 +999,21 @@ void porta_emit_radio_state(uint32_t freq_hz, bool tx, uint8_t mode, bool split)
   enqueue(buf, n);
 }
 
+void porta_emit_activity(uint32_t slot_idx, uint8_t block_ms, uint8_t first,
+                         const uint8_t* levels, uint8_t n) {
+  if (!s_running || !levels || n == 0) return;
+  porta_activity_event_t a = {};
+  a.epoch_secs = host_epoch_secs();
+  a.slot_idx = slot_idx;
+  a.block_ms = block_ms;
+  a.first = first;
+  a.n = n > PORTA_ACTIVITY_LEVELS_MAX ? PORTA_ACTIVITY_LEVELS_MAX : n;
+  memcpy(a.level, levels, a.n);
+  uint8_t buf[PORTA_PROTO_MAX_FRAME];
+  const size_t len = porta_proto_encode_activity(&a, buf, sizeof(buf));
+  enqueue(buf, len);
+}
+
 void porta_emit_sweep(uint8_t kind, uint8_t range_index, uint32_t freq_hz, int swr_hundredths,
                       uint8_t reason) {
   if (!s_running) return;

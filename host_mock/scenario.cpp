@@ -578,3 +578,41 @@ void scenario_emit_sweep(Scenario& s, uint8_t kind, uint8_t range_index, uint32_
         push_raw(s, row);
     }
 }
+
+void scenario_emit_activity(Scenario& s, int64_t from_ms, int64_t now_ms)
+{
+    const int64_t slot_ms = 15000, block_ms = 160;
+    porta_activity_event_t a;
+    memset(&a, 0, sizeof(a));
+    a.block_ms = (uint8_t)block_ms;
+    auto flush = [&]() {
+        if (a.n == 0) {
+            return;
+        }
+        a.epoch_secs = (uint32_t)(now_ms / 1000);
+        char row[256];
+        if (porta_event_json_activity(row, sizeof(row), s.next_seq, &a) > 0) {
+            push_raw(s, row);
+        }
+        a.n = 0;
+    };
+    for (int64_t end = (from_ms / block_ms + 1) * block_ms; end <= now_ms; end += block_ms) {
+        const uint32_t slot = (uint32_t)(end / slot_ms);
+        const int pos = (int)(((end % slot_ms) - block_ms / 2) / block_ms);
+        if (pos < 0) {
+            continue;
+        }
+        if (a.n > 0 && (slot != a.slot_idx || pos != a.first + a.n || a.n == PORTA_ACTIVITY_LEVELS_MAX)) {
+            flush();
+        }
+        if (a.n == 0) {
+            a.slot_idx = slot;
+            a.first = (uint8_t)pos;
+        }
+        const double t = pos * block_ms / 1000.0;
+        const int base = (int)(slot % 4) * 6 + 2;  // quieter and busier slots in turn
+        const int wobble = (int)((pos * 7 + slot * 3) % 5);
+        a.level[a.n++] = (uint8_t)((t < 0.5 || t > 13.2) ? 0 : base + wobble);
+    }
+    flush();
+}

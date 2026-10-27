@@ -91,10 +91,13 @@ function freshSandbox() {
     // Deliberate stubs for state/functions applyEvent touches that are
     // unrelated to batching correctness: the live config cache (only
     // band/freq are read), the rolling decode-rate counter, and the
-    // opportunistic callsign->grid cache.
+    // opportunistic callsign->grid cache, and the slot bar's band tally.
     lastCfg: { band_name: '15m', freq_khz: '21074' },
     recordDecodeBatch: function () {},
     learnCallsignGrid: function () {},
+    band: {},
+    noteBandEvent: function () {},
+    periodMs: function () { return 15000; },
   };
   vm.createContext(sandbox);
   vm.runInContext(extracted, sandbox, { filename: 'app.html (extracted)' });

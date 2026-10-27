@@ -80,6 +80,16 @@ Why not:
 * **The signal's own unused tones as the noise:** sd 10.5 dB. GFSK transitions and neighbouring stations leak into them.
 * **Summing the neighbouring frequency sub-bins, or a baseline per tone:** no change in the result. The baseline is taken once, at the middle tone, which is 8× cheaper.
 
+## Band activity
+
+While a slot is received, each 160 ms block (48 ms in FT4) also yields one number for the page's slot bar ([webapp.md](webapp.md), **The slot bar's activity trace**): about how many signals the column it just added to the waterfall holds (`ft8_block_activity()`). A bin is active at 10 dB or more above that column's median (`FT8_ACTIVITY_THRESHOLD_CODES`), and active bins with at most two inactive bins between them (`FT8_ACTIVITY_GAP_BINS`) are one signal. It reads the first time and frequency subdivision only. The AGC scales a whole block, so a level measured against the median does not move with it. Noise alone passes about 0.1% of bins. A tone 10 dB up in one bin is about −16 dB SNR in 2500 Hz, so the weakest stations the decoder finds do not show, and signals too weak to decode do.
+
+**Why clusters, not bins.** A station's tone spreads over about four 6.25 Hz bins, more when it is strong, so a count of active bins measured how loud the band was more than how many were on it. The first build counted bins: on 20 m (2026-10-27) slots of 21–23 decodes read 85–110 in every block. On the 38 slots of the recall corpora (`tools/decode_recall`, with `jt9`'s decode count as the reference), bins read about 30 at 10 decodes and 100–130 at 20–34. Clusters read about 13 at 10 decodes and 23–30 at 20–34: close to the station count up to about 25, then flat, because signals that close merge. A gap of one bin and of three gave the same counts. It costs a pass over about 432 codes per block, in the capture task, and a 512-byte histogram on its stack: no static RAM.
+
+**The time axis says little on a busy band.** Every FT8 station transmits for the whole 12.6 s, so after the rise at about 0.5 s the level is flat until the signals end. What it carries is how busy the band is, and when the signals start and stop.
+
+**Dated and batched like the decode.** A block's place in its slot comes from the audio-dated clock (`ft8_block_pos()`, the same dating as `ft8_block_slot_idx()`). Levels go out in batches of about a second (`ft8_activity_batch_*`: 7 FT8 blocks, 21 FT4 blocks) as one `ACTIVITY` Port A event, so the sidekick's 64-row event ring takes about one row a second more. A batch also closes at a new slot, at a skipped position, and just before the decode trigger, because the decode holds the capture task for about 2 s. The blocks queued during that decode are then processed in a burst, so on the page the first ~2 s of each slot arrive about 2 s late. Not computed while we transmit (`tx_active` or `was_txing`): that audio is not the band. Host-tested by `host_test_block_activity`. The page's scale and the threshold are set from the corpora and one live session, not yet checked across bands (TEST_PLAN, Pending).
+
 ## Measuring decode yield on the air
 
 The bench measures time. Any change claiming to decode *more* is measured on the air, this way, not by impression:

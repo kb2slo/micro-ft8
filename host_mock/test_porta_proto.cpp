@@ -557,6 +557,67 @@ static void test_radio_state_event()
     }
 }
 
+static void test_activity_event()
+{
+    porta_decoder_t d;
+    porta_decoder_init(&d);
+    uint8_t buf[PORTA_PROTO_MAX_FRAME];
+
+    porta_activity_event_t in = {};
+    in.epoch_secs = 1789012345u;
+    in.slot_idx = 119267489u;
+    in.block_ms = 160;
+    in.first = 77;
+    in.n = 7;
+    for (uint8_t i = 0; i < in.n; ++i) in.level[i] = (uint8_t)(i * 40);
+    size_t n = porta_proto_encode_activity(&in, buf, sizeof(buf));
+    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1, "activity event decodes");
+    if (got.size() == 1) {
+        porta_activity_event_t out;
+        check(porta_proto_parse_activity(&got[0], &out), "activity event parses");
+        check(out.epoch_secs == 1789012345u && out.slot_idx == 119267489u &&
+                  out.block_ms == 160 && out.first == 77 && out.n == 7,
+              "activity header round-trips");
+        check(std::memcmp(out.level, in.level, 7) == 0, "activity levels round-trip");
+        porta_radio_state_event_t radio;
+        check(!porta_proto_parse_radio_state(&got[0], &radio),
+              "an activity event is not a radio_state event");
+        char json[256];
+        check(porta_event_json_activity(json, sizeof(json), 9, &out) > 0 &&
+                  std::string(json) == "{\"s\":9,\"t\":1789012345,\"d\":8,\"si\":119267489,"
+                                       "\"bm\":160,\"b\":77,\"v\":[0,40,80,120,160,200,240]}",
+              "activity row is the app's shape");
+    }
+
+    in.n = PORTA_ACTIVITY_LEVELS_MAX;
+    for (uint8_t i = 0; i < in.n; ++i) in.level[i] = 255;
+    n = porta_proto_encode_activity(&in, buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    porta_activity_event_t full;
+    check(got.size() == 1 && porta_proto_parse_activity(&got[0], &full) &&
+              full.n == PORTA_ACTIVITY_LEVELS_MAX && full.level[PORTA_ACTIVITY_LEVELS_MAX - 1] == 255,
+          "a full batch round-trips");
+    char json[256];
+    check(got.size() == 1 && porta_event_json_activity(json, sizeof(json), 1, &full) > 0,
+          "a full batch of 255s fits a row");
+
+    in.n = 0;
+    check(porta_proto_encode_activity(&in, buf, sizeof(buf)) == 0, "no levels is not encoded");
+    in.n = PORTA_ACTIVITY_LEVELS_MAX + 1;
+    check(porta_proto_encode_activity(&in, buf, sizeof(buf)) == 0, "too many levels is not encoded");
+
+    // A count that disagrees with the frame's length is malformed.
+    in.n = 3;
+    n = porta_proto_encode_activity(&in, buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    if (got.size() == 1) {
+        got[0].payload[11] = 4;
+        porta_activity_event_t out;
+        check(!porta_proto_parse_activity(&got[0], &out), "a count past the frame is refused");
+    }
+}
+
 static void test_tx_hud_event()
 {
     porta_decoder_t d;
@@ -1692,6 +1753,7 @@ int main()
     test_slot_state_event();
     test_usb_status_event();
     test_radio_state_event();
+    test_activity_event();
     test_sweep_event();
     test_tx_hud_event();
     test_action_set_clock();

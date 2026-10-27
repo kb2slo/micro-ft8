@@ -67,6 +67,9 @@ void scenario_emit_hud(Scenario& s);
 void scenario_clear_hud(Scenario& s);
 
 void scenario_emit_usb(Scenario& s, bool present);
+// Band activity (ACTIVITY) for the FT8 blocks that ended in (from_ms, now_ms], wall-clock ms: a
+// made-up band that wakes at 0.5 s and goes quiet once the signals end, so the slot bar draws.
+void scenario_emit_activity(Scenario& s, int64_t from_ms, int64_t now_ms);
 
 // One SWR sweep event row (the same JSON the sidekick serves; docs/architecture/radio.md, The SWR sweep).
 void scenario_emit_sweep(Scenario& s, uint8_t kind, uint8_t range_index, uint32_t freq_hz, int swr_c,

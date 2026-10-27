@@ -443,6 +443,45 @@ bool porta_proto_parse_radio_state(const porta_frame_t *f, porta_radio_state_eve
     return true;
 }
 
+// subtype | epoch(4) | slot_idx(4) | block_ms(1) | first(1) | n(1) | level(n)
+#define ACTIVITY_HEADER_LEN (EVENT_HEADER_LEN + 4u + 1u + 1u + 1u)
+
+size_t porta_proto_encode_activity(const porta_activity_event_t *a, uint8_t *out, size_t out_cap)
+{
+    if (!a || a->n == 0 || a->n > PORTA_ACTIVITY_LEVELS_MAX) {
+        return 0;
+    }
+    uint8_t payload[ACTIVITY_HEADER_LEN + PORTA_ACTIVITY_LEVELS_MAX];
+    payload[0] = PORTA_EVT_ACTIVITY;
+    put_u32(&payload[1], a->epoch_secs);
+    put_u32(&payload[5], a->slot_idx);
+    payload[9] = a->block_ms;
+    payload[10] = a->first;
+    payload[11] = a->n;
+    memcpy(&payload[ACTIVITY_HEADER_LEN], a->level, a->n);
+    return porta_proto_encode(PORTA_MSG_EVENT, payload, (uint8_t)(ACTIVITY_HEADER_LEN + a->n),
+                              out, out_cap);
+}
+
+bool porta_proto_parse_activity(const porta_frame_t *f, porta_activity_event_t *out)
+{
+    if (!f || !out || f->type != PORTA_MSG_EVENT || f->len < ACTIVITY_HEADER_LEN ||
+        f->payload[0] != PORTA_EVT_ACTIVITY) {
+        return false;
+    }
+    const uint8_t n = f->payload[11];
+    if (n == 0 || n > PORTA_ACTIVITY_LEVELS_MAX || f->len != ACTIVITY_HEADER_LEN + n) {
+        return false;
+    }
+    out->epoch_secs = get_u32(&f->payload[1]);
+    out->slot_idx   = get_u32(&f->payload[5]);
+    out->block_ms   = f->payload[9];
+    out->first      = f->payload[10];
+    out->n          = n;
+    memcpy(out->level, &f->payload[ACTIVITY_HEADER_LEN], n);
+    return true;
+}
+
 // subtype | epoch(4) | kind(1) | range_index(1) | freq_hz(4) | swr_c(2) | reason(1)
 #define SWEEP_EVENT_LEN (EVENT_HEADER_LEN + 1u + 1u + 4u + 2u + 1u)
 
