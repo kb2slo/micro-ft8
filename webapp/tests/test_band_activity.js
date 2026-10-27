@@ -1,8 +1,10 @@
 #!/usr/bin/env node
-// The slot bar's band-activity trace: runs app.html's own noteActivity(), activityBars() and
-// activityLabel(), so ACTIVITY events (d 8) land in the right slot and block, a later slot starts
-// over, an earlier one is dropped, bars and the "≈N signals" label show only for the slot the bar
-// is showing, and the label reads the signals' span, not their edges.
+// The slot bar's band activity: runs app.html's own noteActivity(), activityStrip(),
+// activityLabel() and the clock cue's functions, so ACTIVITY events (d 8) land in the right slot
+// and block, a later slot starts over, an earlier one is dropped, the frequency strip puts each
+// cell where the TX cursor would be for that frequency, as tall as the share of the slot it was
+// heard, the strip and the "≈N signals" label show only for the slot the bar is showing, and the
+// label and strip read the signals' span, not their edges.
 'use strict';
 const vm = require('vm');
 const fs = require('fs');
@@ -30,44 +32,74 @@ function extractFunction(text, name) {
 }
 
 const ctx = {};
-for (const name of ['ACTIVITY_FULL', 'ACTIVITY_COUNT_CAP', 'ACTIVITY_LABEL_FROM_MS', 'ACTIVITY_LABEL_TO',
+for (const name of ['PASSBAND_HZ_MIN', 'PASSBAND_HZ_MAX', 'ACTIVITY_STRIP_MIN', 'ACTIVITY_COUNT_CAP', 'ACTIVITY_LABEL_FROM_MS', 'ACTIVITY_LABEL_TO',
                     'ACTIVITY_QUIET_MAX', 'CLOCK_CUE_MIN_SIGNALS', 'CLOCK_CUE_SLOTS']) {
   const m = new RegExp('\\b' + name + ' = ([0-9.]+)').exec(src);
   assert(m, name + ' not found in app.html');
   ctx[name] = Number(m[1]);
 }
 vm.createContext(ctx);
-vm.runInContext(['noteActivity', 'activityBars', 'activityCount', 'activityLabel', 'clockCue', 'tallySlot', 'noteBandEvent'].map((n) => extractFunction(src, n)).join('\n'), ctx);
+vm.runInContext(['noteActivity', 'activityStrip', 'activityCount', 'activityLabel', 'clockCue', 'tallySlot', 'noteBandEvent'].map((n) => extractFunction(src, n)).join('\n'), ctx);
 
 const P = 15000;
 const SI = 119267489;
 const t0 = SI * P;
 
-let act = { si: 0, bm: 0, lv: [] };
-assert.strictEqual(ctx.activityBars(act, t0 + 5000, P).length, 0, 'nothing before any event');
+// A mask (96 cells, hex in wire byte order) with the given cells on.
+const mask = (...cells) => {
+  const b = new Array(12).fill(0);
+  for (const c of cells) b[c >> 3] |= 1 << (c & 7);
+  return b.map((x) => x.toString(16).padStart(2, '0')).join('');
+};
+// Cells span 200..2900 Hz (28.125 Hz each); the bar spans PASSBAND_HZ_MIN..MAX.
+const ev = (si, b, v, m, bm) => ({ d: 8, si: si, bm: bm || 160, b: b, lo: 200, hi: 2900, v: v, m: m });
+const xOf = (hz) => (hz - ctx.PASSBAND_HZ_MIN) / (ctx.PASSBAND_HZ_MAX - ctx.PASSBAND_HZ_MIN);
 
-act = ctx.noteActivity(act, { d: 8, si: SI, bm: 160, b: 0, v: [0, 1, ctx.ACTIVITY_FULL] });
-act = ctx.noteActivity(act, { d: 8, si: SI, bm: 160, b: 3, v: [ctx.ACTIVITY_FULL * 4] });
-let bars = ctx.activityBars(act, t0 + 5000, P);
-assert.strictEqual(bars.length, 4, 'one bar per block heard');
-assert.strictEqual(bars[0].h, 0, 'level 0 is no height');
-assert.strictEqual(bars[1].h, 1 / ctx.ACTIVITY_FULL, 'height is linear in the level');
-assert.strictEqual(bars[2].h, 1, 'ACTIVITY_FULL fills the height');
-assert.strictEqual(bars[3].h, 1, 'past ACTIVITY_FULL still fills, no more');
-assert.strictEqual(bars[3].x0, 3 * 160 / P, 'block 3 starts 480 ms into the slot');
-assert.strictEqual(bars[3].x1, 4 * 160 / P, 'and spans one block');
+let act = { si: 0, bm: 0, lv: [], mk: [] };
+assert.strictEqual(ctx.activityStrip(act, t0 + 5000, P).length, 0, 'nothing before any event');
 
-assert.strictEqual(ctx.activityBars(act, t0 + P + 100, P).length, 0,
+// Blocks 0-4 are before the span (0.8 s); 5-8 inside it. Cell 10 on in all four; cell 40 in two;
+// cell 95 only in block 4, before the span; cell 70 in one of four, a quarter.
+act = ctx.noteActivity(act, ev(SI, 0, [1, 1, 1, 1, 1], [mask(), mask(), mask(), mask(), mask(95)]));
+assert.strictEqual(ctx.activityStrip(act, t0 + 5000, P).length, 0, 'nothing from before the span');
+act = ctx.noteActivity(act, ev(SI, 5, [2, 2, 1, 1], [mask(10, 40), mask(10, 40), mask(10, 70), mask(10)]));
+let bars = ctx.activityStrip(act, t0 + 5000, P);
+const at = (c) => bars.find((b) => Math.abs(b.x0 - xOf(200 + c * 28.125)) < 1e-9);
+assert.strictEqual(bars.length, 9, 'each of cells 10, 40 and 70 stands on itself and the two beside it');
+assert.ok(at(9) && at(10) && at(11), 'cell 10 and its neighbours');
+assert.strictEqual(at(10).h, 1, 'a cell on in every block heard stands full height');
+assert.strictEqual(at(9).h, 1, 'and so does its neighbour: one signal hopping between cells');
+assert.strictEqual(at(40).h, 0.5, 'one on in half the blocks, half height');
+assert.ok(!at(95), 'nothing from before the span');
+assert.ok(Math.abs(at(40).x1 - at(40).x0 - 28.125 / 2800) < 1e-9, 'a cell is 28.125 Hz wide');
+assert.ok(at(70), 'a cell on a quarter of the slot is drawn');
+const hop = ctx.noteActivity({ si: 0, bm: 0, lv: [], mk: [] },
+  ev(SI, 5, [1, 1, 1, 1], [mask(30), mask(31), mask(30), mask(31)]));
+bars = ctx.activityStrip(hop, t0 + 5000, P);
+assert.strictEqual(at(30).h, 1, 'a station hopping between two cells stands full height');
+const speck = [];
+for (let k = 0; k < 10; k++) speck.push(k === 3 ? mask(60) : mask());
+const noisy = ctx.noteActivity({ si: 0, bm: 0, lv: [], mk: [] }, ev(SI, 5, new Array(10).fill(1), speck));
+assert.strictEqual(ctx.activityStrip(noisy, t0 + 5000, P).length, 0,
+  'a cell lit in one block of ten is noise, under ACTIVITY_STRIP_MIN, and not drawn');
+act = ctx.noteActivity({ si: 0, bm: 0, lv: [], mk: [] }, ev(SI, 5, [2, 2, 1, 1], [mask(10, 40), mask(10, 40), mask(10), mask(10)]));
+assert.strictEqual(act.lv[6], 2, 'levels still land for the count');
+
+assert.strictEqual(ctx.activityStrip(act, t0 + P + 100, P).length, 0,
   'the next slot shows nothing until its own events arrive');
 
-const later = ctx.noteActivity(act, { d: 8, si: SI + 1, bm: 160, b: 2, v: [5] });
-bars = ctx.activityBars(later, t0 + P + 1000, P);
-assert.strictEqual(bars.length, 1, 'a later slot starts over');
-assert.strictEqual(bars[0].x0, 2 * 160 / P, 'at its own block');
+const later = ctx.noteActivity(act, ev(SI + 1, 6, [1], [mask(10)]));
+bars = ctx.activityStrip(later, t0 + P + 3000, P);
+assert.strictEqual(bars.length, 3, 'a later slot starts over');
+assert.ok(at(10), 'with its own cells');
 
-const stale = ctx.noteActivity(later, { d: 8, si: SI, bm: 160, b: 10, v: [9] });
+const stale = ctx.noteActivity(later, ev(SI, 10, [9], [mask(50)]));
 assert.strictEqual(stale.si, SI + 1, 'an earlier slot is dropped');
-assert.strictEqual(ctx.activityBars(stale, t0 + P + 1000, P).length, 1, 'and adds no bar');
+assert.strictEqual(ctx.activityStrip(stale, t0 + P + 3000, P).length, 3, 'and adds no bar');
+
+const noMask = ctx.noteActivity({ si: 0, bm: 0, lv: [], mk: [] }, { d: 8, si: SI, bm: 160, b: 5, v: [3] });
+assert.strictEqual(ctx.activityStrip(noMask, t0 + 5000, P).length, 0, 'levels without masks draw no strip');
+assert.strictEqual(noMask.lv[5], 3, 'but still count');
 
 // The label: the median of the blocks inside the signals' span.
 const lab = (lv, si) => ctx.activityLabel({ si: si || SI, bm: 160, lv: lv }, t0 + 9000, P);
@@ -86,12 +118,13 @@ const tail = []; tail[90] = 25;
 assert.strictEqual(lab(tail), '', 'blocks after the signals end are not read');
 assert.strictEqual(lab(lv, SI - 1), '', 'no label for another slot');
 
-// FT4: 7.5 s slots of 48 ms blocks.
+// FT4: 7.5 s slots of 48 ms blocks; the span starts at block 17 (0.8 s).
 const P4 = 7500, SI4 = 2 * SI;
-const ft4 = ctx.noteActivity({ si: 0, bm: 0, lv: [] }, { d: 8, si: SI4, bm: 48, b: 20, v: [3, 4] });
-bars = ctx.activityBars(ft4, SI4 * P4 + 1500, P4);
-assert.strictEqual(bars.length, 2, 'FT4 blocks land');
-assert.strictEqual(bars[0].x0, 20 * 48 / P4, 'at FT4 block width');
+const ft4 = ctx.noteActivity({ si: 0, bm: 0, lv: [], mk: [] }, ev(SI4, 20, [3, 4], [mask(5), mask(5, 6)], 48));
+bars = ctx.activityStrip(ft4, SI4 * P4 + 3000, P4);
+assert.strictEqual(bars.length, 4, 'FT4 blocks land: cells 4 to 7');
+assert.strictEqual(at(5).h, 1, 'cell 5 in both FT4 blocks');
+assert.strictEqual(at(7).h, 0.5, 'cell 7 beside cell 6, in one');
 
 // The clock cue: signals heard but almost nothing decoded, two received slots running.
 const T = (sig, dec, paused) => ({ si: 1, sig: sig, dec: dec, paused: !!paused });

@@ -91,7 +91,9 @@ extern "C" {
 // Both ends are flashed together.
 // v11 (2026-10-27): the ACTIVITY event, band activity per block during a receive slot. An older
 // sidekick ignores it. Both ends are flashed together.
-#define PORTA_PROTO_VERSION 11u
+// v12 (2026-10-27): ACTIVITY carries a frequency mask per block and the span it covers, for the
+// slot bar's strip. A v11 peer refuses the longer frame. Both ends are flashed together.
+#define PORTA_PROTO_VERSION 12u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -362,11 +364,13 @@ size_t porta_proto_encode_radio_state(const porta_radio_state_event_t *r,
                                       uint8_t *out, size_t out_cap);
 bool porta_proto_parse_radio_state(const porta_frame_t *f, porta_radio_state_event_t *out);
 
-// ACTIVITY (docs/architecture/decode.md, Band activity): `n` levels, one per block of `block_ms`,
-// the first at block `first` of slot `slot_idx` (UTC slot index, as DECODE's). A level is how many
-// 6.25 Hz bins stood 10 dB over the block's median (ft8_block_activity()). Not sent while we
-// transmit.
-#define PORTA_ACTIVITY_LEVELS_MAX 24u  // ft8_block_activity.h's FT8_ACTIVITY_BATCH_MAX; main.cpp asserts it
+// ACTIVITY (docs/architecture/decode.md, Band activity): `n` blocks of `block_ms`, the first at
+// block `first` of slot `slot_idx` (UTC slot index, as DECODE's). Per block, `level` is about how
+// many signals it held (ft8_block_activity()), and `mask` which of PORTA_ACTIVITY_CELLS equal
+// cells spanning lo_hz..hi_hz held one, cell 0 in bit 0 of byte 0. Not sent while we transmit.
+#define PORTA_ACTIVITY_LEVELS_MAX 12u  // ft8_block_activity.h's FT8_ACTIVITY_BATCH_MAX; main.cpp asserts it
+#define PORTA_ACTIVITY_CELLS 96u       // FT8_ACTIVITY_CELLS, asserted with it
+#define PORTA_ACTIVITY_MASK_BYTES (PORTA_ACTIVITY_CELLS / 8u)
 
 typedef struct {
     uint32_t epoch_secs;
@@ -374,7 +378,10 @@ typedef struct {
     uint8_t  block_ms;
     uint8_t  first;
     uint8_t  n;
+    uint16_t lo_hz;
+    uint16_t hi_hz;
     uint8_t  level[PORTA_ACTIVITY_LEVELS_MAX];
+    uint8_t  mask[PORTA_ACTIVITY_LEVELS_MAX][PORTA_ACTIVITY_MASK_BYTES];
 } porta_activity_event_t;
 
 size_t porta_proto_encode_activity(const porta_activity_event_t *a, uint8_t *out, size_t out_cap);

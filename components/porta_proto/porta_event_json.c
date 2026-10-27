@@ -167,14 +167,23 @@ size_t porta_event_json_activity(char *out, size_t cap, uint32_t seq,
     if (!ev || ev->n == 0 || ev->n > PORTA_ACTIVITY_LEVELS_MAX) {
         return 0;
     }
+    // Levels as numbers; each mask as hex, its bytes in wire order, two digits each.
     char levels[PORTA_ACTIVITY_LEVELS_MAX * 4 + 1];
-    size_t w = 0;
+    char masks[PORTA_ACTIVITY_LEVELS_MAX * (PORTA_ACTIVITY_MASK_BYTES * 2 + 3) + 1];
+    size_t w = 0, m = 0;
     for (uint8_t i = 0; i < ev->n; ++i) {
         w += (size_t)snprintf(&levels[w], sizeof(levels) - w, i ? ",%u" : "%u", ev->level[i]);
+        m += (size_t)snprintf(&masks[m], sizeof(masks) - m, i ? ",\"" : "\"");
+        for (unsigned j = 0; j < PORTA_ACTIVITY_MASK_BYTES; ++j) {
+            m += (size_t)snprintf(&masks[m], sizeof(masks) - m, "%02x", ev->mask[i][j]);
+        }
+        m += (size_t)snprintf(&masks[m], sizeof(masks) - m, "\"");
     }
     const int n = snprintf(out, cap,
                            "{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":8,"
-                           "\"si\":%" PRIu32 ",\"bm\":%u,\"b\":%u,\"v\":[%s]}",
-                           seq, ev->epoch_secs, ev->slot_idx, ev->block_ms, ev->first, levels);
+                           "\"si\":%" PRIu32 ",\"bm\":%u,\"b\":%u,\"lo\":%u,\"hi\":%u,"
+                           "\"v\":[%s],\"m\":[%s]}",
+                           seq, ev->epoch_secs, ev->slot_idx, ev->block_ms, ev->first,
+                           ev->lo_hz, ev->hi_hz, levels, masks);
     return finish(out, cap, n);
 }

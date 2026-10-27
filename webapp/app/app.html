@@ -196,7 +196,8 @@ button:disabled{opacity:.45}
 /* Dark edge so the text reads over the activity bars and the fill alike. */
 #opSlotText{text-shadow:0 0 2px #000,0 0 3px #000}
 #opSlotBarAct{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-#opSlotBarCursor{position:absolute;top:0;width:3px;height:100%;border-radius:1px;background:#e5e7eb;opacity:.7;transition:left .2s linear}
+/* Cyan, not the strip's white: the cursor is our offset, the strip's ticks are other stations. */
+#opSlotBarCursor{position:absolute;top:0;width:3px;height:100%;border-radius:1px;background:#22d3ee;transition:left .2s linear}
 .pill{display:inline-block;font-size:.7rem;font-weight:700;padding:.15rem .5rem;border-radius:999px}
 /* Glyph, not just a color, on purpose (operator feedback: colorblind-hostile
    to signal state with a plain colored dot). Shape carries the meaning --
@@ -3151,17 +3152,20 @@ function radioLive() {
 }
 
 // Band activity (webapp.md, The slot bar's activity trace): the main board's ACTIVITY events
-// (d 8) for the slot being received, one level per block, drawn as bars rising from the slot
-// bar's floor. A level is about how many signals that block held. Not state: a reload starts from
-// the next event.
-var ACTIVITY_FULL = 40; // a level this high or more fills the bar's height
+// (d 8) for the slot being received: per block, about how many signals it held and which
+// frequency cells held one. The cells are drawn on the bar's frequency axis, the TX cursor's, so
+// the strip shows where the stations are and whether our offset sits among them. Not state: a
+// reload starts from the next event.
 // Above this the count flattens: signals that close merge into one (decode.md, Band activity).
 var ACTIVITY_COUNT_CAP = 30;
-// The span the label reads, inside every signal's in both modes: from 0.8 s (they start at 0.5 s)
-// to 70% of the slot (FT8 signals end at 13.1 s of 15, FT4's at 5.5 s of 7.5).
+// The span the label and the strip read, inside every signal's in both modes: from 0.8 s (they
+// start at 0.5 s) to 70% of the slot (FT8 signals end at 13.1 s of 15, FT4's at 5.5 s of 7.5).
 var ACTIVITY_LABEL_FROM_MS = 800, ACTIVITY_LABEL_TO = 0.7;
 // The QMX's own noise reads 1 or 2 with the antenna off (2026-10-27): that and less is Quiet.
 var ACTIVITY_QUIET_MAX = 2;
+// A strip cell held less of the slot than this is noise, not drawn: noise lights a cell and its
+// neighbours a few percent of blocks, a decoded station 56% or more.
+var ACTIVITY_STRIP_MIN = 0.2;
 // The clock cue (I15's gross layer): this many signals or more in a received slot, and decodes of
 // a quarter of them or fewer, in two received slots running. A real band decoded 0.6 to 1.2 of
 // its signals on 20 m and 40 m (2026-10-27); a clock 1.6 s off decoded 0 to 2 of about 20.
@@ -3169,26 +3173,54 @@ var CLOCK_CUE_MIN_SIGNALS = 8, CLOCK_CUE_SLOTS = 2;
 // act: the slot being received (noteActivity()); tallies: the newest received slots, oldest
 // first, {si, sig, dec, paused}; decodes: si -> decodes heard for it; paused: si -> true when the
 // main board did not decode it (PAUSED).
-var band = { act: { si: 0, bm: 0, lv: [] }, tallies: [], decodes: {}, paused: {} };
+var band = { act: { si: 0, bm: 0, lv: [], mk: [] }, tallies: [], decodes: {}, paused: {} };
 
-// Folds one ACTIVITY event into `act`: a later slot starts over, an earlier one is dropped.
+// Folds one ACTIVITY event into `act`: a later slot starts over, an earlier one is dropped. Each
+// block's mask (hex, wire byte order) is kept as its bytes; lo..hi is the span its cells cover.
 function noteActivity(act, e) {
-  var si = e.si | 0, v = e.v || [];
+  var si = e.si | 0, v = e.v || [], m = e.m || [];
   if (si < act.si) return act;
-  if (si > act.si) act = { si: si, bm: e.bm | 0, lv: [] };
-  for (var i = 0; i < v.length; i++) act.lv[(e.b | 0) + i] = v[i] | 0;
+  if (si > act.si) act = { si: si, bm: e.bm | 0, lv: [], mk: [], lo: e.lo | 0, hi: e.hi | 0 };
+  for (var i = 0; i < v.length; i++) {
+    act.lv[(e.b | 0) + i] = v[i] | 0;
+    if (typeof m[i] !== 'string') continue;
+    var bytes = [];
+    for (var j = 0; j + 1 < m[i].length; j += 2) bytes.push(parseInt(m[i].substr(j, 2), 16) | 0);
+    act.mk[(e.b | 0) + i] = bytes;
+  }
   return act;
 }
 
-// The bars to draw `now`: each a block's span across the bar (x0, x1) and its height (h), all
-// 0..1. None unless `act` is the slot the bar is showing.
-function activityBars(act, now, period) {
+// The strip to draw `now`: one bar per frequency cell, across the bar where that frequency is on
+// the TX cursor's axis (PASSBAND_HZ_MIN..MAX), x0 and x1, and as tall (h) as the share of the
+// signals' span heard so far that the cell, or a cell next to it, held a signal, all 0..1. An FT8
+// signal hops among 8 tones over 50 Hz, so a 28 Hz cell holds it about half the time and a steady
+// station drew as two or three half-height ticks; counting the neighbours stands it full height,
+// about 85 Hz wide (2026-10-27, 40 m: decodes under a tick of half height or more went from 18 of
+// 29 to 27). Cells under ACTIVITY_STRIP_MIN are noise and left out. None unless `act` is the slot
+// the bar shows, or before a block of that span is in.
+function activityStrip(act, now, period) {
   var bars = [];
-  if (!act.bm || act.si !== Math.floor(now / period)) return bars;
-  for (var k = 0; k < act.lv.length; k++) {
-    if (act.lv[k] === undefined) continue;
-    bars.push({ x0: k * act.bm / period, x1: (k + 1) * act.bm / period,
-                h: Math.min(act.lv[k], ACTIVITY_FULL) / ACTIVITY_FULL });
+  if (!act.bm || !act.mk || act.si !== Math.floor(now / period) || !(act.hi > act.lo)) return bars;
+  var first = Math.ceil(ACTIVITY_LABEL_FROM_MS / act.bm);
+  var last = Math.floor(period * ACTIVITY_LABEL_TO / act.bm) - 1;
+  var heard = 0, cells = 0, on = [];
+  for (var k = first; k <= last && k < act.mk.length; k++) {
+    var b = act.mk[k];
+    if (!b) continue;
+    heard++;
+    cells = b.length * 8;
+    var bit = function (c) { return c >= 0 && c < cells && (b[c >> 3] >> (c & 7)) & 1; };
+    for (var c = 0; c < cells; c++) {
+      if (bit(c - 1) || bit(c) || bit(c + 1)) on[c] = (on[c] || 0) + 1;
+    }
+  }
+  if (!heard || !cells) return bars;
+  var span = PASSBAND_HZ_MAX - PASSBAND_HZ_MIN, w = (act.hi - act.lo) / cells;
+  for (var c2 = 0; c2 < on.length; c2++) {
+    if (!on[c2] || on[c2] / heard < ACTIVITY_STRIP_MIN) continue;
+    bars.push({ x0: (act.lo + c2 * w - PASSBAND_HZ_MIN) / span,
+                x1: (act.lo + (c2 + 1) * w - PASSBAND_HZ_MIN) / span, h: on[c2] / heard });
   }
   return bars;
 }
@@ -3270,7 +3302,7 @@ function drawActivity(bars) {
   if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
   var g = c.getContext('2d');
   g.clearRect(0, 0, w, h);
-  g.fillStyle = 'rgba(229,231,235,.6)';
+  g.fillStyle = 'rgba(255,255,255,.8)';
   for (var i = 0; i < bars.length; i++) {
     // Edges rounded, not each width: translucent bars that overlap by a pixel draw a seam.
     var b = bars[i], bh = Math.round(b.h * h), xa = Math.round(b.x0 * w);
@@ -3282,7 +3314,7 @@ function drawActivity(bars) {
 // elapsed, not remaining), red while we transmit with the readout inside
 // (txReadout()), amber when TX is halted or a keyed slot sends no RF,
 // plus a small cursor dot at the current TX offset. While we receive, the
-// band activity trace (activityBars()) rises from its floor. The parity of the
+// band activity strip (activityStrip()) rises from its floor. The parity of the
 // slot now is the E or O tag at its left, not the bar's colour.
 function renderCountdown() {
   var fill = document.getElementById('opSlotBarFill');
@@ -3312,7 +3344,7 @@ function renderCountdown() {
   slotText.className = cue ? 'warn' : '';
   fill.style.width = (frac * 100).toFixed(1) + '%';
   fill.className = onAir && txHud.aborted ? 'halt' : readout && readout.dead ? 'dead' : (onAir ? 'tx' : '');
-  drawActivity(onAir ? [] : activityBars(band.act, now, p));
+  drawActivity(onAir ? [] : activityStrip(band.act, now, p));
   tag.textContent = parity ? 'O' : 'E';
   tag.className = onAir && !txHud.aborted ? 'tx' : '';
   tag.setAttribute('aria-label', (parity ? 'Odd' : 'Even') + ' slot');

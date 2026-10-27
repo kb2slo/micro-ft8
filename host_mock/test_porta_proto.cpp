@@ -568,8 +568,13 @@ static void test_activity_event()
     in.slot_idx = 119267489u;
     in.block_ms = 160;
     in.first = 77;
-    in.n = 7;
-    for (uint8_t i = 0; i < in.n; ++i) in.level[i] = (uint8_t)(i * 40);
+    in.n = 3;
+    in.lo_hz = 200;
+    in.hi_hz = 2900;
+    for (uint8_t i = 0; i < in.n; ++i) {
+        in.level[i] = (uint8_t)(i * 40);
+        for (unsigned j = 0; j < PORTA_ACTIVITY_MASK_BYTES; ++j) in.mask[i][j] = (uint8_t)(i * 16 + j);
+    }
     size_t n = porta_proto_encode_activity(&in, buf, sizeof(buf));
     auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
     check(got.size() == 1, "activity event decodes");
@@ -577,35 +582,49 @@ static void test_activity_event()
         porta_activity_event_t out;
         check(porta_proto_parse_activity(&got[0], &out), "activity event parses");
         check(out.epoch_secs == 1789012345u && out.slot_idx == 119267489u &&
-                  out.block_ms == 160 && out.first == 77 && out.n == 7,
+                  out.block_ms == 160 && out.first == 77 && out.n == 3 &&
+                  out.lo_hz == 200 && out.hi_hz == 2900,
               "activity header round-trips");
-        check(std::memcmp(out.level, in.level, 7) == 0, "activity levels round-trip");
+        check(std::memcmp(out.level, in.level, 3) == 0, "activity levels round-trip");
+        check(std::memcmp(out.mask, in.mask, 3 * PORTA_ACTIVITY_MASK_BYTES) == 0,
+              "activity masks round-trip");
         porta_radio_state_event_t radio;
         check(!porta_proto_parse_radio_state(&got[0], &radio),
               "an activity event is not a radio_state event");
         char json[256];
         check(porta_event_json_activity(json, sizeof(json), 9, &out) > 0 &&
                   std::string(json) == "{\"s\":9,\"t\":1789012345,\"d\":8,\"si\":119267489,"
-                                       "\"bm\":160,\"b\":77,\"v\":[0,40,80,120,160,200,240]}",
-              "activity row is the app's shape");
+                                       "\"bm\":160,\"b\":77,\"lo\":200,\"hi\":2900,\"v\":[0,40,80],"
+                                       "\"m\":[\"000102030405060708090a0b\",\"101112131415161718191a1b\","
+                                       "\"202122232425262728292a2b\"]}",
+              "activity row is the app's shape: levels, then each mask as hex in wire order");
     }
 
+    // The largest batch, all 255s and every cell on: one frame, and a row the sidekick's row
+    // buffer (send_event_row(), PORTA_EVENT_TEXT_MAX * 6 + 224) holds.
     in.n = PORTA_ACTIVITY_LEVELS_MAX;
-    for (uint8_t i = 0; i < in.n; ++i) in.level[i] = 255;
+    in.lo_hz = 65535;
+    in.hi_hz = 65535;
+    std::memset(in.level, 255, sizeof(in.level));
+    std::memset(in.mask, 0xFF, sizeof(in.mask));
+    in.epoch_secs = 4294967295u;
+    in.slot_idx = 4294967295u;
     n = porta_proto_encode_activity(&in, buf, sizeof(buf));
+    check(n > 0, "a full batch fits one frame");
     got = run(&d, std::vector<uint8_t>(buf, buf + n));
     porta_activity_event_t full;
     check(got.size() == 1 && porta_proto_parse_activity(&got[0], &full) &&
-              full.n == PORTA_ACTIVITY_LEVELS_MAX && full.level[PORTA_ACTIVITY_LEVELS_MAX - 1] == 255,
+              full.n == PORTA_ACTIVITY_LEVELS_MAX &&
+              full.mask[PORTA_ACTIVITY_LEVELS_MAX - 1][PORTA_ACTIVITY_MASK_BYTES - 1] == 0xFF,
           "a full batch round-trips");
-    char json[256];
-    check(got.size() == 1 && porta_event_json_activity(json, sizeof(json), 1, &full) > 0,
-          "a full batch of 255s fits a row");
+    char row[PORTA_EVENT_TEXT_MAX * 6 + 224];
+    check(got.size() == 1 && porta_event_json_activity(row, sizeof(row), 4294967295u, &full) > 0,
+          "a full batch's row fits the sidekick's row buffer");
 
     in.n = 0;
-    check(porta_proto_encode_activity(&in, buf, sizeof(buf)) == 0, "no levels is not encoded");
+    check(porta_proto_encode_activity(&in, buf, sizeof(buf)) == 0, "no blocks is not encoded");
     in.n = PORTA_ACTIVITY_LEVELS_MAX + 1;
-    check(porta_proto_encode_activity(&in, buf, sizeof(buf)) == 0, "too many levels is not encoded");
+    check(porta_proto_encode_activity(&in, buf, sizeof(buf)) == 0, "too many blocks is not encoded");
 
     // A count that disagrees with the frame's length is malformed.
     in.n = 3;

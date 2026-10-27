@@ -143,8 +143,13 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
     ft8_activity_batch_t activity;
     ft8_activity_batch_t activity_out;
     ft8_activity_batch_init(&activity, block_ms);
+    // The waterfall's span: bins are tone-spacing wide, from min_bin up to max_bin.
+    const int activity_lo_hz = (int)lroundf(mon.min_bin / mon.symbol_period);
+    const int activity_hi_hz = (int)lroundf(mon.max_bin / mon.symbol_period);
+    uint8_t activity_mask[FT8_ACTIVITY_MASK_BYTES];
     auto send_activity = [&](const ft8_activity_batch_t& b) {
-        cfg->on_activity(cfg->ctx, b.slot_idx, block_ms, b.first, b.level, b.n);
+        cfg->on_activity(cfg->ctx, b.slot_idx, block_ms, b.first, b.level, &b.mask[0][0], b.n,
+                         activity_lo_hz, activity_hi_hz);
     };
 
     while (!cfg->should_stop(cfg->ctx)) {
@@ -184,7 +189,7 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                         !decode_tx_state_get_was_txing()) {
                         activity_level = ft8_block_activity(
                             mon.wf.mag + (mon.wf.num_blocks - 1) * mon.wf.block_stride,
-                            mon.wf.num_bins);
+                            mon.wf.num_bins, activity_mask);
                     }
                 }
 
@@ -209,7 +214,7 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                     const int pos = ft8_block_pos(block_now_ms, queued, (int)slot_ms, block_ms,
                                                   FT8_SAMPLE_RATE);
                     if (ft8_activity_batch_add(&activity, now_idx, pos, (uint8_t)activity_level,
-                                               &activity_out)) {
+                                               activity_mask, &activity_out)) {
                         send_activity(activity_out);
                     }
                 }

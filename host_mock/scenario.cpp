@@ -585,12 +585,14 @@ void scenario_emit_activity(Scenario& s, int64_t from_ms, int64_t now_ms)
     porta_activity_event_t a;
     memset(&a, 0, sizeof(a));
     a.block_ms = (uint8_t)block_ms;
+    a.lo_hz = 200;
+    a.hi_hz = 2900;
     auto flush = [&]() {
         if (a.n == 0) {
             return;
         }
         a.epoch_secs = (uint32_t)(now_ms / 1000);
-        char row[256];
+        char row[1024];
         if (porta_event_json_activity(row, sizeof(row), s.next_seq, &a) > 0) {
             push_raw(s, row);
         }
@@ -602,17 +604,31 @@ void scenario_emit_activity(Scenario& s, int64_t from_ms, int64_t now_ms)
         if (pos < 0) {
             continue;
         }
-        if (a.n > 0 && (slot != a.slot_idx || pos != a.first + a.n || a.n == PORTA_ACTIVITY_LEVELS_MAX)) {
+        if (a.n > 0 && (slot != a.slot_idx || pos != a.first + a.n || a.n == 7)) {
             flush();
         }
         if (a.n == 0) {
             a.slot_idx = slot;
             a.first = (uint8_t)pos;
         }
+        // A made-up band: quieter and busier slots in turn, stations at cells that move each slot.
+        // Under the page's CLOCK_CUE_MIN_SIGNALS (8), since the script decodes only a few a slot
+        // and more heard than that would read as a clock off.
         const double t = pos * block_ms / 1000.0;
-        const int base = (int)(slot % 4) * 6 + 2;  // quieter and busier slots in turn
-        const int wobble = (int)((pos * 7 + slot * 3) % 5);
-        a.level[a.n++] = (uint8_t)((t < 0.5 || t > 13.2) ? 0 : base + wobble);
+        const bool on = t >= 0.5 && t <= 13.2;
+        const int stations = (int)(slot % 4) * 2 + 1;
+        uint8_t* mask = a.mask[a.n];
+        memset(mask, 0, PORTA_ACTIVITY_MASK_BYTES);
+        if (on) {
+            for (int k = 0; k < stations; ++k) {
+                const int cell = (int)((slot * 37u + (uint32_t)k * 53u) % PORTA_ACTIVITY_CELLS);
+                mask[cell / 8] |= (uint8_t)(1u << (cell % 8));
+                if (k % 3 == 0 && cell + 1 < (int)PORTA_ACTIVITY_CELLS) {
+                    mask[(cell + 1) / 8] |= (uint8_t)(1u << ((cell + 1) % 8));  // a loud one spreads
+                }
+            }
+        }
+        a.level[a.n++] = (uint8_t)(on ? stations : 0);
     }
     flush();
 }

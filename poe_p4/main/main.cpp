@@ -34,10 +34,13 @@ std::string g_call = "YOURCALL";
 
 static_assert(FT8_ACTIVITY_BATCH_MAX <= PORTA_ACTIVITY_LEVELS_MAX,
               "an activity batch must fit one ACTIVITY event");
+static_assert(FT8_ACTIVITY_CELLS == PORTA_ACTIVITY_CELLS && FT8_ACTIVITY_MASK_BYTES == PORTA_ACTIVITY_MASK_BYTES,
+              "the pipeline's frequency mask is the event's");
 
 static void send_activity(void * /*ctx*/, int64_t slot_idx, int block_ms, int first,
-                          const uint8_t *levels, int n) {
-    porta_emit_activity((uint32_t)slot_idx, (uint8_t)block_ms, (uint8_t)first, levels, (uint8_t)n);
+                          const uint8_t *levels, const uint8_t *masks, int n, int lo_hz, int hi_hz) {
+    porta_emit_activity((uint32_t)slot_idx, (uint8_t)block_ms, (uint8_t)first, levels, masks,
+                        (uint8_t)n, (uint16_t)lo_hz, (uint16_t)hi_hz);
 }
 
 static void decode_audio_task(void * /*arg*/) {
