@@ -1,4 +1,4 @@
-# Release process (kb2slo fork)
+# Release process
 
 How a build becomes something an operator can download and flash. Companion to [AGENTS.md](../AGENTS.md): that
 file is the working agreement, this one is what CI publishes and what a human must still do by hand.
@@ -57,7 +57,7 @@ Corollaries an agent should not re-derive:
 
 ## Public Cloudflare mirror (anonymous downloads)
 
-The GitHub `continuous` release is on a **private** repo, so visitors cannot download those assets. After
+GitHub's `continuous` assets carry dated names that change every run, so nothing can link to them for long. After
 each successful `release-main`, CI also mirrors the four rolling payloads to Cloudflare **R2** bucket
 `micro-ft8-downloads`, served under the site origin by [`webapp/worker.js`](../webapp/worker.js):
 
@@ -72,7 +72,7 @@ each successful `release-main`, CI also mirrors the four rolling payloads to Clo
 Human entry: [`https://micro-ft8.kalikstein.com/downloads.html`](https://micro-ft8.kalikstein.com/downloads.html).
 
 **This is a public copy of what `release-main` just published, not a second source of truth.** GitHub
-remains the operator/dev record; R2 exists so the sneak-peek audience can GET without a GitHub login.
+remains the operator/dev record; R2 exists so the site and the printed sheet can link to names that never change.
 Stable keys are overwritten every run. Firmware merges do **not** redeploy the Worker (`pages.yml` stays
 path-filtered to `webapp/**`).
 

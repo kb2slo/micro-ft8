@@ -22,7 +22,8 @@
 
 - Test plan:
 - Architecture docs:
-- README and site:
+- README:
+- Site:
 - Roadmap:
 
 ## Worth your eyes

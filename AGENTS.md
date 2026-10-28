@@ -66,15 +66,26 @@ No model tier turns a hardware-only check into one an agent can close (**Never r
 - Shipped something no check is planned for → add it to **Unverified**, so it is not mistaken for proven.
 - Removed code that was provably never in the image (linker map plus `nm` on the ELF, byte-identical `poe_p4.bin`) → say so and add no row. That evidence *is* the test.
 
-State which of these you did in the turn you report the work, and in the pull request's **Audits**. **"No test-plan change needed" is a valid answer and must be said out loud**, exactly like the README audit — an audit you skipped and an audit you did are otherwise indistinguishable.
+State which of these you did in the turn you report the work, and in the pull request's **Audits**. **"No test-plan change needed" is a valid answer and must be said out loud**, exactly like the README and site audits — an audit you skipped and an audit you did are otherwise indistinguishable.
 
-**Architecture docs match the code too.** A `docs/architecture/<area>.md` describes how things work now, so a change that alters behaviour one of them describes updates it in the **same commit**. As with the README audit, say it out loud when nothing needs changing: "no architecture-doc change needed". An RFC slice does this through graduation ([docs/rfcs/README.md](docs/rfcs/README.md), **RFC lifecycle**); this rule covers changes that come through no RFC. **An accepted RFC records decisions, not current state:** do not edit one to match a change, even a renamed label. It changes only by a dated decision, and what is true now goes in the architecture doc. A doc may describe a decided but unbuilt design only under a label naming the roadmap rows that build it — "**not yet built: rows v697, hstv**" — so that when those rows ship and are dropped, `tools/roadmap_rows.sh dangling` flags the stale label.
+**Architecture docs match the code too.** A `docs/architecture/<area>.md` describes how things work now, so a change that alters behaviour one of them describes updates it in the **same commit**. As with the README and site audits, say it out loud when nothing needs changing: "no architecture-doc change needed". An RFC slice does this through graduation ([docs/rfcs/README.md](docs/rfcs/README.md), **RFC lifecycle**); this rule covers changes that come through no RFC. **An accepted RFC records decisions, not current state:** do not edit one to match a change, even a renamed label. It changes only by a dated decision, and what is true now goes in the architecture doc. A doc may describe a decided but unbuilt design only under a label naming the roadmap rows that build it — "**not yet built: rows v697, hstv**" — so that when those rows ship and are dropped, `tools/roadmap_rows.sh dangling` flags the stale label.
 
 **Never report a field check as passed.** An agent runs `tools/check.sh` and reports its summary honestly, a SKIP as a skip. Anything needing the P4, a radio, or an antenna is for someone with the hardware to run: propose it, put it in **Pending**, and wait for their result, step by step. A green build is evidence about linkage, not about whether the radio transmitted.
 
-**Fork README stays current.** The top of [`README.md`](README.md) (above the Wei delimiter) is the public “why this fork” copy. When work is operator-visible (TX UX, meters, logging, flashing, CQ, radios, …), audit that section in the **same turn**: propose the add, change, or drop in chat with the test plan and commit message. Include the accepted edit in the same commit and push as the feature. Do not rewrite Wei’s original below the delimiter. Skip agent, RFC, extract-only, or other work operators cannot feel on the radio.
+**README and site stay current.** Two front doors, two readers, one home for each fact:
 
-**Triggers, stated so they cannot be missed.** Audit that section when a change adds, alters, or **removes** any of: a web-app screen or control; an on-screen string the README quotes; a documented workflow (log offload, flashing, time sync); or a supported radio/board. **Removal counts, and is the easy one to miss** — a README documenting a key that now does nothing is worse than one that never mentioned it. If Wei’s original below the delimiter documents the same thing, do **not** edit it: put the correction in the fork note and let the delimiter rule (“use the fork notes above where they disagree”) carry it. When it genuinely does not apply, say so explicitly in that turn, as above.
+- **[`README.md`](README.md) is for contributors:** what the project is, its status, the hardware, how it works in one paragraph, the repository layout, build and test, how to contribute, acknowledgements, license.
+- **The site (`webapp/`, published at micro-ft8.kalikstein.com) is for operators:** what it does, screenshots, what is verified on the air, downloads. Setup is [`webapp/getting-started.md`](webapp/getting-started.md), which is also the printed sheet.
+
+**The README restates nothing that has another home.** It says a thing in a sentence and links to where it lives: setup to `CONTRIBUTING.md`, what is verified to `TEST_PLAN.md`, how an area works to its architecture doc, features to the site. No feature list, changelog, release notes, on-screen labels, or numbers that live in code. Every line it holds is a line that can go stale, so the cheapest way to keep it current is to keep it short. `tools/check_docs.py` fails on a broken link or path in it, and on an ESP-IDF version CI does not build with.
+
+**Audit the README in the same turn** when a change adds, alters, or **removes** any of: a supported board or radio, or one first verified on hardware; a build, flash, or check command; the toolchain version; a top-level directory; the project's status (a release cut, pre-alpha ending); the contribution path (`CONTRIBUTING.md`, the issue rule); or a dependency, a submodule, or a project whose code or design we drew on (**Acknowledgements**).
+
+**Audit the site in the same turn** when a change adds, alters, or **removes** any of: a web-app screen or control; an on-screen string the site or Getting started quotes; a documented workflow (log offload, flashing, time sync, pairing); a supported radio or board; or what is verified (a field check that passes moves a claim to **Verified on the air**, and one that fails takes it down). `webapp/tools/getting_started.mjs` fails when a label Getting started quotes leaves the UI; nothing checks the landing page, so read it. **The site describes what ships** ([docs/README.md](docs/README.md)): nothing unbuilt beyond its **Coming soon** list, nothing unmeasured, nothing only upstream had.
+
+**Removal counts, and is the easy one to miss**: a page documenting a control that now does nothing is worse than one that never mentioned it. For either audit, propose the add, change, or drop in chat with the test plan and commit message, and put the accepted edit in the same commit as the work. When it does not apply, say so in that turn: "README: no change needed", "site: no change needed". Agent, RFC, extract-only and other work nobody outside the repo can see triggers neither.
+
+**Credit what we use, and never copy GPL code.** This repository is MIT. Code from a permissively licensed project keeps its copyright notice and is credited in the README's **Acknowledgements** in the same change. A GPL project, such as WSJT-X or qmx-panadapter, may be read to learn how something works and credited as a reference, but none of its code is copied or translated line by line into this tree; write from the behaviour, not the source.
 
 What belongs in `poe_p4/main/`: [STYLE.md](docs/STYLE.md). Radio and `ft8_lib` boundaries: [architecture/radio.md](docs/architecture/radio.md), [architecture/ft8_lib.md](docs/architecture/ft8_lib.md).
 
@@ -92,7 +103,7 @@ The person you work for reviews in chat, then green-lights each step. A good pre
 
 2. **Test plan with the result.** When work is done, the reply includes a short test plan: host command(s) they can run (`tools/check.sh --changed` runs every host check the change can affect), and a field check if the path is field-only. They often run tests and flash themselves and will say when it is solid. Do not flash the device unless they ask.
 
-3. **Commit message in chat.** Propose the message here: a subject of one sentence, at most 72 characters, saying what changed, then a blank line and the why in the body. `tools/check_commits.py` holds commits to that shape, in CI on pull requests, and with them a pull request's title: a squash merge makes it, or a lone commit's subject, the subject on `main`, with ` (#N)` added. For operator-visible work, also propose the fork-README delta (or say why that section needs no change). Wait for them to accept or edit. Do not commit in the same turn as the proposal unless they already asked to commit.
+3. **Commit message in chat.** Propose the message here: a subject of one sentence, at most 72 characters, saying what changed, then a blank line and the why in the body. `tools/check_commits.py` holds commits to that shape, in CI on pull requests, and with them a pull request's title: a squash merge makes it, or a lone commit's subject, the subject on `main`, with ` (#N)` added. Also propose the README and site deltas, or say why neither needs a change (**README and site stay current**). Wait for them to accept or edit. Do not commit in the same turn as the proposal unless they already asked to commit.
 
 4. **Commit / push only when asked.** Local edits are fine when they asked for the work. `git commit` waits until they have seen the plan or diff and said to commit. `git push` waits until they said to push, and so does opening a pull request. “Commit and push” is both, using the agreed message. Do not treat “ship on main”, a green host test, or “local commits are fine” as standing permission.
 
@@ -193,10 +204,11 @@ on:
 The test: **would a fresh clone and a fresh flash need this line?** If only an existing install needs it, it
 goes.
 
-**The one exception is upstream.** Deltas from Wei's Micro-FT8 stay documented — the fork section of
-[`README.md`](README.md) above the delimiter, and divergence notes in RFCs and roadmap rows. Someone
-arriving from upstream needs to know what is different here, and an agent needs it to avoid "fixing" a
-deliberate divergence back to upstream behaviour.
+**The one exception is upstream.** Where code here still shares lineage with Wei's Mini-FT8 (the
+sequencer, logging, the ft8_lib integration), a deliberate divergence stays documented in the architecture
+doc, RFC or roadmap row for that area, so an agent porting a fix from upstream does not "fix" it back to
+upstream behaviour ([docs/maintainer/upstream.md](docs/maintainer/upstream.md)). The README credits
+Mini-FT8; it does not list what changed since.
 
 **This ends when we cut a versioned release meant for someone other than the maintainer**
 ([RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md)). From then on back-compat is a real obligation and this section

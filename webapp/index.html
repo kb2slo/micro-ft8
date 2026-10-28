@@ -711,7 +711,7 @@
   </section>
 
   <section>
-    <h2>Also new since Mini-FT8</h2>
+    <h2>What it does</h2>
     <ul>
       <li>
         <strong>An SWR sweep for tuning an antenna in the field.</strong> Tick the bands
@@ -744,9 +744,19 @@
       <li>
         <strong>Logs are safer, and easier to get off the station.</strong> Download a
         day’s <code>.adi</code> file straight to your phone and upload it to whatever
-        logging software you use. Direct QRZ.com logging is coming soon. Copying to SD
-        now merges instead of overwriting, and very low battery stops TX before the
-        filesystem can be damaged.
+        logging software you use. Direct QRZ.com logging is coming soon. A QSO logs the
+        other station’s grid even when the exchange never carried one, from the last
+        grid it sent in the past four hours.
+      </li>
+      <li>
+        <strong>It never logs what didn’t go out.</strong> If the radio can’t be keyed when
+        your slot starts, nothing is sent, no try is used, and the message goes out in its
+        next slot once the radio is back. Stop ends a transmission on the air at once.
+      </li>
+      <li>
+        <strong>Plays well with an amplifier.</strong> Settings › Amplifier sets how long
+        the radio waits after keying before RF, and can recover from the QMX’s SWR
+        protection tripping on an amplifier’s first transmission on a new band.
       </li>
     </ul>
   </section>
@@ -778,8 +788,8 @@
         once we’ve measured them.
       </li>
       <li>
-        <strong>QMX and QDX only.</strong> KH1 support was dropped until someone with a
-        KH1 can test it.
+        <strong>QDX hasn’t been tried.</strong> The firmware has a QDX backend, but it has
+        never run against a real QDX; every QSO so far was with a QMX. KH1 isn’t supported.
       </li>
       <li>
         <strong>Calling CQ a set number of times</strong> is new and hasn’t been checked
@@ -800,8 +810,8 @@
     <h2>Coming soon</h2>
     <ul>
       <li>
-        <strong>Deeper decode on P4</strong> — using the ESP32-P4’s headroom (the receive
-        ceiling Mini-FT8 hits on the S3) for better recall on busy bands.
+        <strong>Deeper decode</strong> — using more of the ESP32-P4’s headroom for better
+        recall on busy bands.
       </li>
       <li>
         <strong>Per-band conditions</strong> — a band-by-band read alongside the space
@@ -836,12 +846,15 @@
 
   <footer>
     <p>
-      Micro-FT8 continues Wei&nbsp;AG6AQ’s
-      <a href="https://github.com/wcheng95/Mini-FT8">Mini-FT8</a>
-      for the Cardputer ADV, and decodes with Karlis Goba’s
-      <a href="https://github.com/kgoba/ft8_lib">ft8_lib</a>. Credit for proving the P4
+      Micro-FT8 began as a fork of Wei&nbsp;AG6AQ’s
+      <a href="https://github.com/wcheng95/Mini-FT8">Mini-FT8</a> for the Cardputer ADV,
+      and decodes with Karlis Goba’s
+      <a href="https://github.com/kgoba/ft8_lib">ft8_lib</a>. On the air it follows
+      <a href="https://wsjt.sourceforge.io/wsjtx.html">WSJT-X</a>. Credit for proving the P4
       could do this goes to
       <a href="https://github.com/SteffenLav/qmx-panadapter">SteffenLav’s qmx-panadapter</a>.
+      The source is on <a href="https://github.com/kb2slo/micro-ft8">GitHub</a>, and
+      contributions are welcome.
     </p>
     <p>73, Jeff Kalikstein&nbsp;KB2SLO · September 2026</p>
   </footer>

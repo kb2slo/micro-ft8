@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Using a station
+    url: https://micro-ft8.kalikstein.com/getting-started.html
+    about: Setup, operating and downloads are on the site.
+  - name: Question or feedback
+    url: https://micro-ft8.kalikstein.com/#contact
+    about: Not a bug or a proposal? Reach the maintainer directly.

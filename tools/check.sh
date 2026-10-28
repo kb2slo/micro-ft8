@@ -45,7 +45,7 @@ triggers() {
     sidekick|p4)     echo 'components/* sidekick/* poe_p4/* idf_component.yml */idf_component.yml tools/*.cmake tools/check_ram_budget.py .github/workflows/ci.yml' ;;
   esac
 }
-NO_CHECK='*.md docs/* LICENSE *.jpeg *.jpg *.png *.svg .gitignore */.gitignore .cursor/* YouTube_Video_Scripts/*'
+NO_CHECK='*.md docs/* LICENSE *.jpeg *.jpg *.png *.svg .gitignore */.gitignore .cursor/*'
 ALL_HOST='.github/workflows/ci.yml'  # claimed by the firmware checks, and also what runs the host ones
 
 usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
