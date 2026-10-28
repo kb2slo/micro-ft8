@@ -18,8 +18,7 @@ forward ([AGENTS.md](AGENTS.md), **Pre-alpha**). The maintainer is Jeff, KB2SLO.
 
 ## Setup
 
-While the repo is private, cloning needs access from the maintainer. `ft8_lib` is a submodule, which
-GitHub's default clone leaves empty:
+`ft8_lib` is a submodule, which GitHub's default clone leaves empty:
 
 ```bash
 git clone --recurse-submodules git@github.com:kb2slo/micro-ft8.git
