@@ -4,6 +4,8 @@ Micro-FT8 is a headless FT8 station: a [PoE-P4](docs/architecture/main_board.md)
 and an AtomS3 Lite sidekick serves the web app you operate it from. How the pieces fit:
 [docs/architecture/system.md](docs/architecture/system.md).
 
+Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
+
 It is **pre-alpha**: anything can change or break between commits, and nothing carries an old state
 forward ([AGENTS.md](AGENTS.md), **Pre-alpha**). The maintainer is Jeff, KB2SLO.
 

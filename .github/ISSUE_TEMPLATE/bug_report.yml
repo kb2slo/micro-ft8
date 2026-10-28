@@ -1,0 +1,35 @@
+name: Bug report
+description: Something the station, the app or a tool does wrong.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you tapped or ran, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: textarea
+    id: when
+    attributes:
+      label: When, and how often
+      description: The UTC time it happened, if you know it, and whether it happens every time.
+  - type: textarea
+    id: versions
+    attributes:
+      label: Firmware and App
+      description: Copy the Firmware and App lines from the app's Settings. A build from source gives its commit.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: radio
+    attributes:
+      label: Radio and its firmware
+      placeholder: QMX 1_04_003
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Console output from `idf.py monitor`, or the browser console, if you have it.
+      render: text

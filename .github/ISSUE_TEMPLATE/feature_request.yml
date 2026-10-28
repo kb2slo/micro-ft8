@@ -1,0 +1,27 @@
+name: Feature or change
+description: Propose a feature or a change in behaviour. It is agreed here before anyone builds it.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Anything other than a bug fix starts as an issue the maintainer has agreed to ([CONTRIBUTING.md](https://github.com/kb2slo/micro-ft8/blob/main/CONTRIBUTING.md)). Check [docs/ROADMAP.md](https://github.com/kb2slo/micro-ft8/blob/main/docs/ROADMAP.md) first: it may already be planned.
+  - type: textarea
+    id: what
+    attributes:
+      label: What
+      description: The change, as an operator or contributor would see it.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: The problem it solves, or what it makes possible. Where WSJT-X does it differently, say how.
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: How we will know it is finished, as a check someone could run.

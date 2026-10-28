@@ -1,0 +1,31 @@
+name: Field check result
+description: You ran a Pending check from docs/TEST_PLAN.md on real hardware.
+labels: [field-check]
+body:
+  - type: input
+    id: check
+    attributes:
+      label: Which check
+      description: Its name in TEST_PLAN.md's Pending table.
+    validations:
+      required: true
+  - type: textarea
+    id: build
+    attributes:
+      label: Build
+      description: The Firmware and App lines from Settings, or the release asset name.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Result of each step
+      description: Step by step, what happened against what the check expects. A step you skipped says so.
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware
+      placeholder: PoE-P4, AtomS3 Lite, QMX 1_04_003, 40 m EFHW

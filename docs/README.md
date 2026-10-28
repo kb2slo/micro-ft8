@@ -6,6 +6,8 @@ Human- and tool-readable project memory. Prefer this tree over editor-specific r
 |---|---|
 | [../AGENTS.md](../AGENTS.md) | The working agreement: how any agent works in this repo, whoever it works for. |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | How a change gets from a branch onto `main`: setup, checks, the pull request, field checks. |
+| [../CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | How people treat each other here, and how to report a problem. |
+| [../SECURITY.md](../SECURITY.md) | How to report a vulnerability privately, and what is in scope. |
 | [ROADMAP.md](ROADMAP.md) | Plan: Next groom / Now / Backlog / Blocked / Ideas / Declined. Chat is intake; this file is truth. Shipped work is dropped, not archived — git history is the record. |
 | [../README.md](../README.md) | Contributor landing: what it is, status, hardware, layout, build and test, contributing, acknowledgements. Operators go to the site. What it holds and when to audit it: [AGENTS.md](../AGENTS.md), **README and site stay current**. |
 | [STYLE.md](STYLE.md) | Coding standard for our C/C++ (not vendored `M5*` / `ft8_lib`). |

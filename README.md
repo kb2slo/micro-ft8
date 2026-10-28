@@ -96,7 +96,8 @@ path from setup to a merged pull request. In short:
 - **AI coding agents are welcome.** [AGENTS.md](AGENTS.md) is the working agreement, and most agents read
   it on their own.
 
-C and C++ follow [docs/STYLE.md](docs/STYLE.md). How things work, area by area:
+Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md). C and C++ follow
+[docs/STYLE.md](docs/STYLE.md). How things work, area by area:
 [docs/architecture/](docs/architecture/system.md).
 
 ## Acknowledgements
