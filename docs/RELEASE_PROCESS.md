@@ -1,4 +1,4 @@
-# Release process (kb2slo fork)
+# Release process
 
 How a build becomes something an operator can download and flash. Companion to [AGENTS.md](../AGENTS.md): that
 file is the working agreement, this one is what CI publishes and what a human must still do by hand.

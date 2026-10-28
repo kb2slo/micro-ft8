@@ -10,7 +10,10 @@ outside fenced code blocks, and fails on:
   - a repo path in `code` that is gone: a token that starts with one of our top-level directories,
     such as `poe_p4/main/main.cpp:386`. A path in another repo is written as a link to it;
   - a row ID cited after its row left docs/ROADMAP.md, when REV's docs did not already cite it
-    (tools/roadmap_rows.sh dangling). Citations REV already had are counted, not failed.
+    (tools/roadmap_rows.sh dangling). Citations REV already had are counted, not failed;
+  - an ESP-IDF version (a vX.Y.Z on a line that names IDF) that CI does not build with, so README.md,
+    CONTRIBUTING.md and AGENTS.md cannot keep an old version after a toolchain bump. RFCs are skipped,
+    since an RFC may cite the version it was written against.
 
 A gitignored path passes (a build output need not exist yet), and so does a path inside a
 submodule that is not checked out. #anchors and web links are not checked. RFCs get the link check
@@ -35,6 +38,9 @@ SCHEME = re.compile(r'^[A-Za-z][A-Za-z0-9+.-]*:')
 EXTERNAL_LINK = re.compile(r'!?\[(?:[^\[\]]|\[[^\]]*\])*\]\(\s*<?[A-Za-z][A-Za-z0-9+.-]*:[^)]*\)')
 PATH_TOKEN = re.compile(r'^[A-Za-z0-9_.@+-]+(?:/[A-Za-z0-9_.@+-]*)+$')
 LINE_SUFFIX = re.compile(r'^(.*?):\d+(?:-\d+)?$')
+IDF_LINE = re.compile(r'idf', re.IGNORECASE)
+VERSION = re.compile(r'\bv(\d+\.\d+\.\d+)\b')
+CI_IDF = re.compile(r'^\s*esp_idf_version:\s*v(\S+)', re.MULTILINE)
 
 
 def git(*args):
@@ -146,16 +152,33 @@ def dangling(rev=None):
     return pairs
 
 
+def idf_mismatches(doc, text, built):
+    """(line, version) for each ESP-IDF version in text that is not one CI builds with."""
+    if doc.startswith('docs/rfcs/'):
+        return []
+    found = []
+    for n, line in enumerate(text.splitlines(), 1):
+        if IDF_LINE.search(line):
+            found += [(n, v) for v in VERSION.findall(line) if v not in built]
+    return found
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--base', help='fail only on dangling row IDs this commit did not cite')
     args = parser.parse_args()
 
     repo = Repo()
+    with open(os.path.join(ROOT, '.github/workflows/ci.yml'), encoding='utf-8') as f:
+        built = set(CI_IDF.findall(f.read()))
     found = []  # (doc, line, kind, target, path)
+    stale_idf = 0
     for doc in repo.docs:
         with open(os.path.join(ROOT, doc), encoding='utf-8') as f:
             text = f.read()
+        for n, v in idf_mismatches(doc, text, built):
+            print(f'{doc}:{n}: ESP-IDF v{v}, but CI builds with {", ".join("v" + b for b in sorted(built))}')
+            stale_idf += 1
         for n, kind, target in references(text):
             if kind == 'code' and doc.startswith('docs/rfcs/'):
                 continue
@@ -174,7 +197,7 @@ def main():
     for doc, n, kind, target, path in broken:
         what = f'link {target!r}' if kind == 'link' else f'path `{target}`'
         print(f'{doc}:{n}: {what} does not exist ({path})')
-    failures = len(broken) + found.count(None)
+    failures = len(broken) + found.count(None) + stale_idf
     print(f'{len(repo.docs)} docs, {len(refs)} references checked, {failures} broken')
     if failures:
         print('Fix the path, or drop the reference if the thing is gone. A file in another '

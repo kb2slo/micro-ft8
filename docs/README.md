@@ -7,7 +7,7 @@ Human- and tool-readable project memory. Prefer this tree over editor-specific r
 | [../AGENTS.md](../AGENTS.md) | The working agreement: how any agent works in this repo, whoever it works for. |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | How a change gets from a branch onto `main`: setup, checks, the pull request, field checks. |
 | [ROADMAP.md](ROADMAP.md) | Plan: Next groom / Now / Backlog / Blocked / Ideas / Declined. Chat is intake; this file is truth. Shipped work is dropped, not archived — git history is the record. |
-| [../README.md](../README.md) | Operator landing. Fork notes (why this tree) above the Wei delimiter; Wei’s original below. |
+| [../README.md](../README.md) | Contributor landing: what it is, status, hardware, layout, build and test, contributing, acknowledgements. Operators go to the site. What it holds and when to audit it: [AGENTS.md](../AGENTS.md), **README and site stay current**. |
 | [STYLE.md](STYLE.md) | Coding standard for our C/C++ (not vendored `M5*` / `ft8_lib`). |
 | [TEST_PLAN.md](TEST_PLAN.md) | Ledger: what automation checks, what it cannot see, and the field checks still owed (**Pending**), with how one is asked for and closed. |
 | [RELEASE_PROCESS.md](RELEASE_PROCESS.md) | How a build becomes a download: the rolling `continuous` tag, versioned `v*` releases, what a version tag does **not** set, and what a rename/de-fork would break. |
@@ -27,6 +27,7 @@ Each document answers one question. Put content where its question is answered.
 | What next? | `ROADMAP.md` | Plan rows |
 | Should we, and how? (not built yet) | `docs/rfcs/NNNN-*.md` | RFC |
 | How does this work now, and why? | `docs/architecture/<area>.md` | Architecture doc |
+| What is this project, and how do I start contributing? | `README.md` | Contributor landing |
 | How do I build, flash, or use this part? | That directory's `README.md` | How-to |
 | What must two codebases agree on? | The code | One source of truth, plus a test holding the other side to it |
 | What can an operator do with it? | `webapp/` → `micro-ft8.kalikstein.com` | Public site |
