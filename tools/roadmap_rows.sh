@@ -11,6 +11,8 @@
 # The constants below are the only place these numbers live. Each grooming retro
 # re-reads the output and decides whether any of them should move.
 set -euo pipefail
+# Byte order for sort and comm: under a UTF-8 collation comm can reject what sort produced.
+export LC_ALL=C
 
 LIMIT=1000              # row size, characters, padding collapsed -- every section, Blocked included
 BUDGET_READ_KB=40       # ROADMAP.md size; the session-start read cost (also a trigger for row c9yz)
