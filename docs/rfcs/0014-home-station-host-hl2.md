@@ -1,6 +1,6 @@
 # RFC 0014: Home station — a host main board with a Hermes-Lite 2
 
-* **Status:** Draft 2026-10-20. Decided in discussion the same day: §8. The Ask: §7.
+* **Status:** Draft 2026-10-20; prior art (§2.4) added 2026-10-30. Decided in discussion: §8. The Ask: §7.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** a third main board: the station core (capture, decode, autoseq, log, station settings, the event model) built for a computer on the home LAN, a Mac mini or a Raspberry Pi 5, serving the web app and its API itself; a Hermes-Lite 2 (HL2) backend for it, receive and transmit; listening on 3–4 bands at once and replying on the band a station was heard on; `jt9` as an optional second decode engine; the safety requirements for HL2 transmit; the Micro PA100+ last.
 * **Does not cover:** an HL2 backend on the P4 (§4); the field station (P4, sidekick, QMX), which this RFC must leave unchanged; streaming P4 audio to a home host ([RFC 0012](0012-home-decode-server.md)); PSKReporter, beyond one question in §7 ([RFC 0013](0013-pskreporter.md)); renaming the project ([ROADMAP.md](../ROADMAP.md) I6).
@@ -69,6 +69,22 @@ Read from the [HL2 wiki](https://github.com/softerhardware/Hermes-Lite2/wiki), t
 * The PA100+ keys when its 3.5 mm PTT input is grounded; today the QMX's PTT output does it (bench-verified, [radio.md](../architecture/radio.md)). It senses the band from RF and has its own SWR protection.
 * The host: a Mac mini (M4) or a Raspberry Pi 5. No published `jt9` timing for a Pi 5 was found.
 
+### 2.4 Prior art: RigPi
+
+RigPi (Howard Nurse, W6HN; MIT) is the nearest existing product: a Raspberry Pi serving a station to a browser. Read on 2026-10-30 from `hlnurse/rigpi` (RigPi 4, `5671683`) and `hlnurse/rigpi-sdr` (RigPi 5 with RigPi-SDR, a snapshot of a live Pi, `7c0c913`). The vendor pages (rigpi.net, rigpi.com) were read only through search results.
+
+| Fact | Source |
+|---|---|
+| **No HL2 code.** The vendor's pages list "Hermes Lite" among supported SDRs; the source has no Protocol 1 client and no `hermes`, `hpsdr` or `hl2` outside cached data files. Local SDRs are SoapySDR drivers (Airspy HF+, RX888, HackRF, RTL-SDR, SDRplay); remote ones are KiwiSDR, OpenWebRX and SDRconnect clients. An HL2 reaches RigPi only receive-only, through an OpenWebRX that owns the radio. | `rigpi-sdr` tree; `pi/sdr_web/sdr_web_server_minimal.py` |
+| **FT8 is receive-only on one band per SDR.** Audio goes over UDP to KK5JY's `ft8modem`, which runs `jt9`; decoding starts only when the dial is within 2 kHz of a calling frequency. Transmitting FT8 means WSJT-X on the Pi's desktop, sharing rig control. No autonomous sequencing. `ft8modem`'s licence: not found. | `pi/sdr_web/ft8modem_manager.py:23`, `:57`, `:202`; RigPi 4 `README.md` |
+| **Control goes through the database.** The browser writes a value and a "changed" flag (`MainOut`, `MainOutCk`, `PTTOut`, `PTTOutCk`, …); one PHP process per radio polls the row every 500 ms and drives a Hamlib `rigctld` on port 4530 + 2n, which external programs share. The PTT delay is a `usleep` inside that loop. | `html/Databases/station.sql:7384`; `html/RigDo.php:119`; `html/classes/RigServer.class.php:374`–`:403` |
+| **Who may key the transmitter.** Request values reach shell commands without validation, most endpoints check no session, and the SDR server listens on `0.0.0.0`: anything on the LAN that can reach the Pi can drive the radio. | `html/programs/`; `sdr_web_server_minimal.py:7529` |
+| **A guarded transmitter (HackRF, voice).** Off unless an administrator enables it; frequency within an amateur-band list; USB/LSB modes only; one transmission at a time; a 5 s heartbeat from the browser; a 600 s maximum; a shared secret compared in constant time. Missing audio is filled with zero IQ to keep the stream running. | `sdr_web_server_minimal.py:3745`–`:3975` |
+| **One captured span per device,** shared by its users. A Pi 4 throttles the spectrum for an Airspy at 768 kS/s in Python. | `sdr_web_server_minimal.py:2304`; rigpi.net, "RigPi-SDR" |
+| **Platform.** RigPi 4: Pi 3B+ or 4B on Bullseye, a 5 GB image. RigPi 5: aarch64; receive audio to the browser over WebRTC (aiortc). | RigPi 4 `README.md`; `sdr_web_server_minimal.py:33` |
+
+**What it means here:** nothing to reuse for the codec (§3.3), and RigPi and this host cannot share one HL2, since Protocol 1 streams IQ to one client (§2.2). The HL2's four receivers tune independently in gateware, so the host handles four 48 kHz streams, not a wide span. The transmit guard informs §3.8 (11, 12); `ft8modem` is a candidate for §3.6; the control and keying findings are what §3.2 and §3.9 avoid.
+
 ## 3. Design
 
 ### 3.1 Shape
@@ -128,7 +144,7 @@ flowchart LR
 ### 3.6 Decode engines: ft8_lib and `jt9`
 
 * **ft8_lib always,** the field station's decoder.
-* **`jt9` optional:** a separate, unmodified process from the operator's WSJT-X install, which is also how WSJT-X runs it. Nothing GPL goes in our tree or is linked into our binary (RFC 0012 §3.5). One WAV per slot and band to start; shared memory later if start-up cost matters.
+* **`jt9` optional:** a separate, unmodified process from the operator's WSJT-X install, which is also how WSJT-X runs it. Nothing GPL goes in our tree or is linked into our binary (RFC 0012 §3.5). One WAV per slot and band to start; shared memory later if start-up cost matters. A third way: KK5JY's `ft8modem`, which RigPi-SDR runs as one process per receiver, fed audio over UDP and printing decode lines (§2.4). It is a process boundary like `jt9`'s, but its licence and its handling of QSO context are unread; S0 reads them before it is a candidate.
 * **QSO context** (`-c`, `-x`, `-g`, `-Q`) for the band with a QSO in progress gives WSJT-X's a-priori decoding at home, the gain row qauk (AP decoding during a QSO) describes.
 * **Merge:** the union of both engines, keyed on normalised text, each decode tagged with the engine that found it (RFC 0012 §3.6). The SLOT line carries per-engine counts, which is continuous paired data for RFC 0006.
 * **Time budget.** A decode must land in time for a reply in the next slot. On an M4, `jt9 -d 3` is about 1.45 s of one core per band, and four bands run on four cores. On a Pi 5 it is unmeasured; scaled naively it is several seconds a busy slot. If it is too slow: `-d 3` on the QSO band only and `-d 1` or ft8_lib on the others, `jt9`'s threads (`-m`), or an early pass on a partial slot as WSJT-X makes. S0 measures it.
@@ -154,6 +170,8 @@ flowchart LR
 8. **A dedicated link to the radio** (§3.9).
 9. **The PA's keying (S5).** Before EXTTR is connected, measure the PA's PTT line: the voltage with nothing connected and the current with it shorted to ground, against EXTTR's 28 V and 1 W. A relay buffer if it is over, or as the group recommends.
 10. **The bench procedure (S2):** a dummy load through an attenuator; the occupied bandwidth of a transmission against WSJT-X's; harmonics and spurs through each band's LPF; RF start and stop against the slot boundary.
+11. **A transmit frequency outside the allowed band is refused.** Replying on the band heard lets a decode choose the TX NCO (§3.10), so before key-down the backend checks the dial plus the audio offset, and the signal's bandwidth, against a band table, and refuses to key otherwise. Host-tested, including an entry whose band and frequency disagree. Which edges: §7. RigPi's HackRF path has the same check (§2.4).
+12. **A gap in transmit samples ends the transmission.** The client never fills a gap with samples that carry PTT: that would hold the transmitter keyed and defeat the gateware's first dead-man layer (§2.2), which is what RigPi's zero-IQ fill would do on an HL2 (§2.4). If the writer falls behind by more than a set time, or the HL2 reports a transmit-buffer underflow (§3.11), the transmission stops, PTT drops, and the slot is counted and marked unclean. Host-tested against a stalled writer. No browser heartbeat: transmission is autonomous by design (§1), so the station-side bound is item 6.
 
 ### 3.9 Who may key the transmitter
 
@@ -181,6 +199,7 @@ flowchart LR
 * **An HL2 backend on the P4.** One band fits: 381 packets/s, and ESP-IDF 5.5.5 has the board's IP101 PHY and the P4's EMAC. Several bands do not without PSRAM (about 230 KB a band against a largest free block of about 51 KB), decoding past the slot boundary (about 8 s of one core for four busy bands), and reversing [main_board.md](../architecture/main_board.md)'s 2026-09-16 Ethernet decision; and the P4 decodes about 70% of what `jt9` does and cannot run it. At home none of the P4's reasons apply (USB host for the QMX, working offline). Kept open: the codec and the receive source are portable.
 * **The host does the radio and decode; the P4 and the sidekick serve the UI.** Two boxes holding station state, a new protocol between them, and the P4 adding nothing.
 * **Other software** (WSJT-X or SparkSDR with a remote front end). Not this project: it loses our autoseq, log and phone UI.
+* **RigPi with the HL2** (§2.4). It has no HL2 client, so the radio would reach it only receive-only through OpenWebRX; its FT8 is receive-only on one band, with transmit left to WSJT-X on the Pi's desktop and no autonomous sequencing; control goes through a polled database; and anything on the LAN can drive the radio. It would also hold the HL2's one IQ stream, so it cannot run beside this host.
 * **WSJT-X's decoder linked into our binary.** The host binary would become GPL-3, and the decoder is Fortran inside a Qt build. As a process it is unmodified and replaceable.
 * **A complex FFT in place of real audio.** It replaces the front of the monitor stage, refits the SNR constant and moves the recall floors, and `jt9` takes real audio anyway.
 * **Receiving on other bands while we transmit.** The front end and the ADC see our own 5 W; WSJT-X is half-duplex too.
@@ -232,6 +251,7 @@ Each slice states which verifiability category from [AGENTS.md](../../AGENTS.md)
 8. **The HL2:** which build, enclosure and I/O board? Its gateware version (S0 reads it).
 9. **Bench instruments** for the §3.8 procedure: dummy load, attenuator, a second receiver or a spectrum analyser?
 10. **PSKReporter from the host** ([RFC 0013](0013-pskreporter.md) Ask 4): the host has internet and can send UDP. Allow it as an exception to the inversion, at home only?
+11. **The transmit band table** (§3.8, 11): the full allocations for the operator's licence class, or only the FT8 segments around each calling frequency?
 
 ## 8. Decisions
 
