@@ -35,7 +35,7 @@ def static_ram(elf):
     return sizes
 
 
-def biggest_statics(elf, count=8):
+def biggest_statics(elf, count=15):
     out = subprocess.run(['riscv32-esp-elf-nm', '-S', '--size-sort', '-C', elf], check=True,
                          capture_output=True, text=True).stdout
     rows = [l.split(None, 3) for l in out.splitlines() if len(l.split(None, 3)) == 4]
@@ -50,14 +50,15 @@ def main():
     total = sum(sizes.values())
     print('static DRAM %d bytes (%s), budget %d' % (
         total, ', '.join('%s %d' % kv for kv in sorted(sizes.items())), BUDGET_BYTES))
+    # Every build, not only a failing one: an unused buffer passes the budget and shows only here.
+    print('Largest statics:')
+    for size, name in biggest_statics(sys.argv[1]):
+        print('  %7d  %s' % (size, name))
     if total <= BUDGET_BYTES:
         return 0
     print('FAIL: static RAM is %d bytes over budget. Every static byte is heap the station '
           'loses; see docs/architecture/memory.md before raising BUDGET_BYTES.'
           % (total - BUDGET_BYTES))
-    print('Largest statics:')
-    for size, name in biggest_statics(sys.argv[1]):
-        print('  %7d  %s' % (size, name))
     return 1
 
 

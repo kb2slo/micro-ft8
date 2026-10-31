@@ -31,7 +31,7 @@ Sizes come from the build: `check_ram_budget.py` prints the total, and `riscv32-
 
 ## How it is checked
 
-* **At build time:** `check_ram_budget.py` runs after every `poe_p4` build, local and CI. It counts static DRAM only; the code in internal RAM comes from the same memory and is not in its figure.
+* **At build time:** `check_ram_budget.py` runs after every `poe_p4` build, local and CI, and prints the total and the 15 largest statics. It counts static DRAM only; the code in internal RAM comes from the same memory and is not in its figure. A buffer nobody uses passes the budget, so read the list when a change adds to it.
 * **On the device:** the boot log's `HEAP:` lines (`log_heap()`, `components/debug_log`) give free, minimum-free and largest-block figures at `AUDIO_PIPE_BEFORE_MONITOR_INIT`, `AUDIO_PIPE_AFTER_MONITOR_INIT` and `AUDIO_PIPE_AFTER_SAMPLE_BUFFERS`. No reading has been taken since the waterfall went static ([TEST_PLAN.md](../TEST_PLAN.md), **Pending**).
 
 ## Why not
