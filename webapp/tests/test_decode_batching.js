@@ -71,6 +71,9 @@ const extracted = [
   extractVarLine(src, 'slotState'),
   extractVarLine(src, 'decodeSlots'),
   extractVarLine(src, 'DECODE_SLOTS_MAX'),
+  extractVarLine(src, 'queue'),
+  extractVarLine(src, 'queueOrder'),
+  extractVarLine(src, 'txHud'),
   extractFunction(src, 'isReplyableDecode'),
   extractFunction(src, 'decodeSortGroup'),
   extractFunction(src, 'decodeSortCmp'),
@@ -78,7 +81,7 @@ const extracted = [
   extractFunction(src, 'fmtSlotDateTime'),
   extractFunction(src, 'fmtSlotSpan'),
   extractFunction(src, 'slotReplyOpen'),
-  extractFunction(src, 'decodeAlreadyShown'),
+  extractFunction(src, 'resetLiveState'),
   extractFunction(src, 'applyEvent'),
 ].join('\n\n');
 
@@ -88,10 +91,13 @@ function freshSandbox() {
     // Deliberate stubs for state/functions applyEvent touches that are
     // unrelated to batching correctness: the live config cache (only
     // band/freq are read), the rolling decode-rate counter, and the
-    // opportunistic callsign->grid cache.
+    // opportunistic callsign->grid cache, and the slot bar's band tally.
     lastCfg: { band_name: '15m', freq_khz: '21074' },
     recordDecodeBatch: function () {},
     learnCallsignGrid: function () {},
+    band: {},
+    noteBandEvent: function () {},
+    periodMs: function () { return 15000; },
   };
   vm.createContext(sandbox);
   vm.runInContext(extracted, sandbox, { filename: 'app.html (extracted)' });
@@ -366,43 +372,27 @@ check('a CQ from a recently-worked station now sorts with the replyable lines, n
   assert.strictEqual(sorted[0], cqAgain, 'is_cq (replyable) now outranks is_recent_qso');
 });
 
-// ---- A reload replays the sidekick's ring over the slots restored from the cache ----------
-check('a reload replaying decodes already shown adds no second copy (v2 host)', () => {
+// ---- A reload replaces the slots restored from the cache with the sidekick's ----------
+check("a reload's /api/state reply replaces the cached slots, queue and TX HUD", () => {
   const sb = freshSandbox();
-  const ring = [
+  // What loadStateCache() restored: a slot from long ago, a finished QSO, a transmission.
+  sb.applyEvent(decodeEvt(7, 0.1, 900, -5, 'CQ OLD1 FN42', { si: SLOT - 400, sl: 150, fq: 14074000 }));
+  sb.flushDecodeBatch();
+  sb.queue = { 9: { dxcall: 'OLD1', state: 2 } };
+  sb.queueOrder = ['9'];
+  sb.txHud = { active: true };
+
+  sb.resetLiveState();
+  [
     decodeEvt(1, 0.1, 900, -5, 'CQ N6HAN CM87', { si: SLOT, sl: 150, fq: 14074000 }),
     decodeEvt(2, 0.0, 1200, -12, 'AG6AQ N6HAN -12', { si: SLOT + 1, sl: 150, fq: 14074000 }),
-  ];
-  ring.forEach((e) => { sb.applyEvent(e); sb.flushDecodeBatch(); });
-  assert.strictEqual(sb.decodeSlots.length, 2);
-  ring.forEach((e) => { sb.applyEvent(e); sb.flushDecodeBatch(); }); // since=0 after the reload
-  assert.strictEqual(sb.decodeSlots.length, 2, 'the replay made new batches');
-  assert.strictEqual(sb.decodeSlots.map((sl) => sl.length).join(), '1,1');
-  sb.applyEvent(decodeEvt(3, 0.1, 900, -4, 'CQ N6HAN CM87', { si: SLOT + 2, sl: 150, fq: 14074000 }));
+  ].forEach(sb.applyEvent);
   sb.flushDecodeBatch();
-  assert.strictEqual(sb.decodeSlots.length, 3, 'a new decode after the replay still shows');
-});
 
-check('a reload replay is caught without slot fields too (v1 host)', () => {
-  const sb = freshSandbox();
-  sb.applyEvent(slotStateEvt(0));
-  sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ N6HAN CM87'));
-  sb.flushDecodeBatch();
-  sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ N6HAN CM87'));
-  sb.flushDecodeBatch();
-  assert.strictEqual(sb.decodeSlots.length, 1);
-  assert.strictEqual(sb.decodeSlots[0].length, 1);
-});
-
-check('after a main-board reboot an id that comes back as another decode, or in another slot, shows', () => {
-  const sb = freshSandbox();
-  sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ N6HAN CM87', { si: SLOT, sl: 150, fq: 14074000 }));
-  sb.flushDecodeBatch();
-  sb.applyEvent(decodeEvt(1, 0.2, 1100, -9, 'CQ W2DEF FN20', { si: SLOT + 8, sl: 150, fq: 14074000 }));
-  sb.flushDecodeBatch();
-  sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ N6HAN CM87', { si: SLOT + 9, sl: 150, fq: 14074000 }));
-  sb.flushDecodeBatch();
-  assert.strictEqual(sb.decodeSlots.length, 3, 'only the same id, text and slot is a repeat');
+  assert.strictEqual(sb.decodeSlots.length, 2, 'only the slots the sidekick has');
+  assert.strictEqual(sb.decodeSlots.map((sl) => sl[0].x).join('|'), 'AG6AQ N6HAN -12|CQ N6HAN CM87');
+  assert.strictEqual(Object.keys(sb.queue).length, 0, 'no cached queue entry survives');
+  assert.strictEqual(sb.txHud, null, 'no cached transmission survives');
 });
 
 if (failures > 0) {

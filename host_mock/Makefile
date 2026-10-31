@@ -56,6 +56,7 @@ PORTA_PROTO_TARGET = host_test_porta_proto
 PAIRING_TOKEN_TARGET = host_test_pairing_token
 WEB_PAGE_TARGET = host_test_web_page
 WEB_MANIFEST_TARGET = host_test_web_manifest
+EVENT_STATE_TARGET = host_test_event_state
 BUNDLE_HOST_TARGET = host_test_bundle_host
 RECENT_QSO_TARGET = host_test_recent_qso
 QUEUE_HEAD_TARGET = host_test_queue_head
@@ -68,6 +69,7 @@ SWR_SWEEP_TARGET = host_test_swr_sweep
 SWR_TRIP_TARGET = host_test_swr_trip
 SLOT_DEFICIT_TARGET = host_test_slot_deficit
 SAMPLE_RING_TARGET = host_test_sample_ring
+BLOCK_ACTIVITY_TARGET = host_test_block_activity
 CORE_BUSY_TARGET = host_test_core_busy
 DECODE_RETRY_TARGET = host_test_decode_retry
 DECODE_SYNC_TARGET = host_test_decode_sync
@@ -81,10 +83,10 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARG
      $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) \
      $(FILE_LIST_TARGET) \
      $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
-     $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(BUNDLE_HOST_TARGET) \
+     $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(EVENT_STATE_TARGET) $(BUNDLE_HOST_TARGET) \
      $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(ROGERS_ONCE_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
      $(CAT_REPLY_PARSER_TARGET) $(AMP_BAND_PRIME_TARGET) $(SWR_SWEEP_TARGET) $(SWR_TRIP_TARGET) \
-     $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(CORE_BUSY_TARGET) \
+     $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(BLOCK_ACTIVITY_TARGET) $(CORE_BUSY_TARGET) \
      $(DECODE_RETRY_TARGET) $(DECODE_SYNC_TARGET) $(DECODE_SNR_TARGET) \
      $(PORTA_OUT_QUEUE_TARGET) $(HEARD_GRID_TARGET) $(DECODE_FIELDS_TARGET) $(RTC_CORE_TARGET) \
      $(SIM_TARGET)
@@ -181,6 +183,14 @@ ft8_sample_ring.o: ../components/ft8_audio_pipeline/ft8_sample_ring.c
 test_sample_ring.o: test_sample_ring.cpp
 	$(CXX) $(CXXFLAGS) -I../components/ft8_audio_pipeline/include -c $< -o $@
 $(SAMPLE_RING_TARGET): $(SAMPLE_RING_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+BLOCK_ACTIVITY_OBJ = ft8_block_activity.o test_block_activity.o
+ft8_block_activity.o: ../components/ft8_audio_pipeline/ft8_block_activity.c
+	$(CC) $(CFLAGS) -I../components/ft8_audio_pipeline/include -c $< -o $@
+test_block_activity.o: test_block_activity.cpp
+	$(CXX) $(CXXFLAGS) -I../components/ft8_audio_pipeline/include -c $< -o $@
+$(BLOCK_ACTIVITY_TARGET): $(BLOCK_ACTIVITY_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 CORE_BUSY_OBJ = decode_core_busy.o test_core_busy.o
@@ -286,6 +296,14 @@ test_web_manifest.o: test_web_manifest.cpp
 $(WEB_MANIFEST_TARGET): $(WEB_MANIFEST_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
+EVENT_STATE_OBJ = event_state.o porta_event_json.o test_event_state.o
+event_state.o: ../sidekick/main/event_state.c
+	$(CC) $(CFLAGS) -I../components/porta_proto/include -c $< -o $@
+test_event_state.o: test_event_state.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -I../sidekick/main -c $< -o $@
+$(EVENT_STATE_TARGET): $(EVENT_STATE_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
 BUNDLE_HOST_OBJ = bundle_host.o test_bundle_host.o
 bundle_host.o: ../sidekick/main/bundle_host.c
 	$(CC) $(CFLAGS) -I../sidekick/main -c $< -o $@
@@ -335,6 +353,7 @@ clean:
 	      $(PAIRING_TOKEN_OBJ) $(PAIRING_TOKEN_TARGET) \
 	      $(WEB_PAGE_OBJ) $(WEB_PAGE_TARGET) \
 	      $(WEB_MANIFEST_OBJ) $(WEB_MANIFEST_TARGET) \
+	      $(EVENT_STATE_OBJ) $(EVENT_STATE_TARGET) \
 	      $(BUNDLE_HOST_OBJ) $(BUNDLE_HOST_TARGET) \
 	      $(DIAL_HISTORY_OBJ) $(DIAL_HISTORY_TARGET) \
 	      $(ADIF_LOGGER_OBJ) $(ADIF_LOGGER_TARGET) \
@@ -346,6 +365,7 @@ clean:
 	      $(DECODE_RETRY_OBJ) $(DECODE_RETRY_TARGET) \
 	      $(DECODE_SYNC_OBJ) $(DECODE_SYNC_TARGET) \
 	      $(DECODE_SNR_OBJ) $(DECODE_SNR_TARGET) \
+	      $(BLOCK_ACTIVITY_OBJ) $(BLOCK_ACTIVITY_TARGET) \
 	      $(ROGERS_ONCE_OBJ) $(ROGERS_ONCE_TARGET) \
 	      $(HEARD_GRID_OBJ) $(HEARD_GRID_TARGET) \
 	      $(DECODE_FIELDS_OBJ) $(DECODE_FIELDS_TARGET) \

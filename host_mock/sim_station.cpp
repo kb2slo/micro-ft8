@@ -370,6 +370,12 @@ static std::string handle(const std::string& method, const std::string& url,
         return "{\"ok\":false,\"why\":\"unauthorized\"}";
     }
 
+    // The sidekick's /api/state is its snapshot of the station now; the simulator
+    // keeps every event it played, so the whole log is that state, and the page
+    // keeps its own DECODE_SLOTS_MAX of the slots in it.
+    if (method == "GET" && path == "/api/state") {
+        return events_json(0);
+    }
     if (method == "GET" && path == "/api/events") {
         const unsigned long since = query.count("since") ? std::strtoul(query.at("since").c_str(), nullptr, 10) : 0;
         return events_json((uint32_t)since);
@@ -641,6 +647,17 @@ int main(int argc, char** argv)
             swr_sweep_tick(sweep_ms);
         }
         if (now >= next_beat) {
+            {
+                static int64_t last_activity_ms = 0;
+                const int64_t wall_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                            std::chrono::system_clock::now().time_since_epoch())
+                                            .count();
+                if (last_activity_ms == 0) {
+                    last_activity_ms = wall_ms - 1000;
+                }
+                scenario_emit_activity(g_scenario, last_activity_ms, wall_ms);
+                last_activity_ms = wall_ms;
+            }
             scenario_emit_status(g_scenario);
             scenario_emit_hud(g_scenario);
             next_beat = clock::now() + std::chrono::seconds(1);
