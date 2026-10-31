@@ -29,6 +29,7 @@
 #include "rtc_core.h"
 
 extern "C" {
+#include "common/decode_psram.h"
 #include "ft8/constants.h"
 #include "ft8/decode.h"
 #include "ft8/message.h"
@@ -133,10 +134,11 @@ bool find_decode_for_reply(uint32_t decode_id, UiRxLine* out) {
 #define DEC_FIELD_MAX RX_FIELD_MAX         // 20
 typedef RxDecodeEntry DecodeMsg;
 
-static DecodeMsg s_dec[DEC_MAX];
+// Decode working sets in PSRAM on the P4 (row p3x6, memory.md); internal on host.
+static DECODE_PSRAM_BSS DecodeMsg s_dec[DEC_MAX];
 static int       s_dec_count;
 // Each s_dec[] entry's ft8_lib FTX_MESSAGE_TYPE_STANDARD, for heard_grid_note().
-static bool      s_dec_standard[DEC_MAX];
+static DECODE_PSRAM_BSS bool s_dec_standard[DEC_MAX];
 
 // ---- The decode task's hand-off to the main loop (docs/architecture/main_board.md, P4).
 // The main loop owns autoseq, the armed TX, the decode-id ring and the
@@ -329,9 +331,9 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
 
   s_dec_count = 0;
 
-  static ftx_candidate_t candidates[max_cand];
-  static float seen_hz[DECODE_MAX_CANDIDATES];
-  static decode_retry_t retry;
+  static DECODE_PSRAM_BSS ftx_candidate_t candidates[DECODE_MAX_CANDIDATES];
+  static DECODE_PSRAM_BSS float seen_hz[DECODE_MAX_CANDIDATES];
+  static DECODE_PSRAM_BSS decode_retry_t retry;
   decode_retry_reset(&retry);
   const int n_tones = (mon->wf.protocol == FTX_PROTOCOL_FT4) ? 4 : 8;
   int num_candidates = 0;
@@ -347,7 +349,7 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
   }
 
   // ---- per-frequency noise for the SNR, before any subtraction (decode.md, SNR) ----
-  static decode_snr_slot_t s_snr_slot;
+  static DECODE_PSRAM_BSS decode_snr_slot_t s_snr_slot;
   if (!decode_snr_prepare(&s_snr_slot, mon, block_gain)) {
     ESP_LOGW(TAG, "SNR not prepared: waterfall %d bins x freq_osr %d; SNRs read the floor",
              mon->wf.num_bins, mon->wf.freq_osr);
@@ -362,8 +364,8 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
 
   // ---- decode candidates into static s_dec[] ----
   const int kMaxDecoded = 50;
-  static ftx_message_t decoded[kMaxDecoded];
-  static ftx_message_t* decoded_hashtable[kMaxDecoded];
+  static DECODE_PSRAM_BSS ftx_message_t decoded[kMaxDecoded];
+  static DECODE_PSRAM_BSS ftx_message_t* decoded_hashtable[kMaxDecoded];
   for (int i = 0; i < kMaxDecoded; ++i) decoded_hashtable[i] = nullptr;
   int num_decoded = 0;
 

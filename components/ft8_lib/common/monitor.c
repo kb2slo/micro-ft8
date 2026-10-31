@@ -1,5 +1,6 @@
 #include "monitor.h"
 #include "common.h"
+#include "decode_psram.h"
 
 #define LOG_LEVEL LOG_INFO
 #include "ft8/debug.h"
@@ -62,12 +63,13 @@ static void waterfall_init(ftx_waterfall_t* me, int max_blocks, int num_bins, in
 
 // The waterfall (docs/architecture/memory.md). A device build sets MONITOR_WF_STATIC_BYTES to
 // the largest waterfall it runs, and the waterfall is that one static buffer: the linker places
-// it or the build fails, and heap fragmentation cannot take it away. A configuration that needs
-// more is refused, never moved to the heap; a silent fallback is how a static buffer once sat
-// unused in the image. Host tools run any configuration, so without the define the waterfall is
+// it or the build fails, and heap fragmentation cannot take it away. On the P4 it lives in
+// PSRAM (DECODE_PSRAM_BSS / row p3x6); DMA buffers never do. A configuration that needs more
+// is refused, never moved to the heap; a silent fallback is how a static buffer once sat unused
+// in the image. Host tools run any configuration, so without the define the waterfall is
 // malloc'd to size and freed by monitor_free().
 #ifdef MONITOR_WF_STATIC_BYTES
-static WF_ELEM_T waterfall_static_buf[MONITOR_WF_STATIC_BYTES / sizeof(WF_ELEM_T)];
+static DECODE_PSRAM_BSS WF_ELEM_T waterfall_static_buf[MONITOR_WF_STATIC_BYTES / sizeof(WF_ELEM_T)];
 #endif
 
 static void waterfall_free(ftx_waterfall_t* me)

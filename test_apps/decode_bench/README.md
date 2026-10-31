@@ -26,18 +26,31 @@ make -C test_apps/decode_bench/host && test_apps/decode_bench/host/decode_bench_
 ## 3. Device
 
 Build inside the ESP-IDF environment, from `test_apps/decode_bench`. `-Og` is how the firmware ships, and
-`-O2` is docs/architecture/decode.md, Build:
+`-O2` is docs/architecture/decode.md, Build. The default image puts the waterfall and decode working
+sets in PSRAM, as the firmware does:
 
 ```bash
 idf.py -B build_og -D SDKCONFIG=build_og/sdkconfig set-target esp32p4 build
 idf.py -B build_o2 -D SDKCONFIG=build_o2/sdkconfig -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.o2" set-target esp32p4 build
 ```
 
+Internal-RAM A/B (same `-O2`, waterfall in DRAM) to re-check PSRAM cost:
+
+```bash
+idf.py -B build_o2_internal -D SDKCONFIG=build_o2_internal/sdkconfig \
+  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.o2;sdkconfig.internal_ram" \
+  set-target esp32p4 build
+```
+
 Flash **the app slot only** and capture the output:
 
 ```bash
-python tools/run_on_device.py /dev/cu.usbmodemXXXX build_o2/decode_bench.bin p4_O2.log
+python tools/run_on_device.py /dev/cu.usbmodemXXXX build_o2/decode_bench.bin p4_O2_psram.log
+python tools/run_on_device.py /dev/cu.usbmodemXXXX build_o2_internal/decode_bench.bin p4_O2_internal.log
 ```
+
+Diff the `MSG` lines for identical decodes; compare `RESULT` `total_ms` (and the `BENCH` line's
+`wf=psram|internal`) for whether PSRAM slowed the search.
 
 The P4 build uses `poe_p4/partitions.csv`, so writing only `0x10000` leaves the bootloader, `nvs` and the
 `storage` partition (Station.txt) alone. The firmware's app is overwritten, so reflash it afterwards.

@@ -1,0 +1,3 @@
+# Overlay for the internal-RAM half of the p3x6 A/B (README.md). Disables
+# SPIRAM so DECODE_PSRAM_BSS is empty and the waterfall stays in DRAM.
+# CONFIG_SPIRAM is not set

@@ -49,7 +49,7 @@ dependencies:
     - linux
     version: 2.2.0
   espressif/usb_host_uac:
-    component_hash: 61be58265c2adf3b9f4429f68f82a548c40659ef561a1ee6841bf21425c50a1c
+    component_hash: 329ee15599a523e279e34751304396d5482d5081c10df14cb5fdaa121323fa02
     dependencies:
     - name: espressif/cmake_utilities
       registry_url: https://components.espressif.com
@@ -71,10 +71,11 @@ dependencies:
     targets:
     - esp32s2
     - esp32s3
+    - esp32s31
     - esp32p4
     - esp32h4
     - linux
-    version: 1.3.3
+    version: 1.4.0
   idf:
     source:
       type: idf
@@ -95,6 +96,6 @@ direct_dependencies:
 - espressif/usb_host_uac
 - idf
 - joltwallet/littlefs
-manifest_hash: cde3e08fd2e6922c17c57c550fe10032f3819a6b2cc39a86d2160738697ab27f
+manifest_hash: 31425903aabb2ce3bb4fd7a2f85695a575fe2a86fc85aa0311c596058dab7ad2
 target: esp32p4
 version: 2.0.0

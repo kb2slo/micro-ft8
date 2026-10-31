@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "common/decode_psram.h"
 #include "common/monitor.h"
 #include "decode_retry.h"
 #include "decode_snr.h"
@@ -16,9 +17,10 @@
 
 #define BENCH_HASH_SLOTS     128
 
-static ftx_candidate_t s_candidates[BENCH_MAX_CANDIDATES];
-static ftx_message_t s_decoded[BENCH_HASH_SLOTS];
-static ftx_message_t* s_decoded_table[BENCH_HASH_SLOTS];
+// Same placement as the firmware's decode working sets (row p3x6).
+static DECODE_PSRAM_BSS ftx_candidate_t s_candidates[BENCH_MAX_CANDIDATES];
+static DECODE_PSRAM_BSS ftx_message_t s_decoded[BENCH_HASH_SLOTS];
+static DECODE_PSRAM_BSS ftx_message_t* s_decoded_table[BENCH_HASH_SLOTS];
 
 // No callsign hash table: hashed calls unpack as "<...>", which is how the scorer normalises them anyway.
 static bool bench_lookup_hash(ftx_callsign_hash_type_t hash_type, uint32_t hash, char* callsign)
@@ -184,11 +186,11 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
     int64_t find_us = 0;
     int64_t decode_us = 0;
     // On the decode clock, as in decode_monitor_results().
-    static decode_snr_slot_t snr_slot;
+    static DECODE_PSRAM_BSS decode_snr_slot_t snr_slot;
     int64_t snr_t0 = clock_us();
     decode_snr_prepare(&snr_slot, &monitor, block_gain);
     decode_us += clock_us() - snr_t0;
-    static decode_retry_t retry;
+    static DECODE_PSRAM_BSS decode_retry_t retry;
     decode_retry_reset(&retry);
     const int n_tones = (monitor.wf.protocol == FTX_PROTOCOL_FT4) ? 4 : 8;
     for (int pass = 0; pass < passes && decoded < config->max_decodes; ++pass) {

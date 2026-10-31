@@ -10,5 +10,7 @@ dependencies:
   # USB Host UAC for QMX RX decode audio (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213))). Pinned exact for the same reason:
   # this is a field-only path, not something to re-verify against a moving
   # dependency on every component-manager resolve.
-  espressif/usb_host_uac: 1.3.3
+  # 1.4.0: "Fixed build with PSRAM enabled" (esp_ptr_in_psram → esp_ptr_external_ram).
+  # Needed once CONFIG_SPIRAM is on for row p3x6. 1.5.0 breaks uac_host_dev_alt_param_t layout.
+  espressif/usb_host_uac: 1.4.0
   espressif/usb: 1.1.0
