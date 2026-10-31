@@ -90,6 +90,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      # A pull request into another branch merges there and never reaches main.
+      - name: Base branch is main
+        if: github.event_name == 'pull_request'
+        run: |
+          if [ "$BASE_REF" != main ]; then
+            echo "::error::This pull request targets '$BASE_REF'. Every pull request targets main: merge the first one, then branch from the new main."
+            exit 1
+          fi
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+
       - name: Docs
         run: tools/check.sh --only docs --base "$BASE"
         env:

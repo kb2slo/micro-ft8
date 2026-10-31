@@ -56,6 +56,7 @@ the gap takes `--allow-skip <check>`, and the result is still reported as not ve
 ## Commits and pull requests
 
 - Work on a branch. One change per pull request; a feature and an unrelated fix are two.
+- Every pull request targets `main`, never another branch. Work that builds on an open pull request waits for it to merge, then branches from the new `main`. CI fails any other base.
 - A commit's subject is one sentence of at most 72 characters saying what changed, then a blank line
   and the why in the body. CI checks the shape.
 - A squash merge makes the pull request's title the commit's subject, or its one commit's subject

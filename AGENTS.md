@@ -89,7 +89,7 @@ State which of these you did in the turn you report the work, and in the pull re
 
 What belongs in `poe_p4/main/`: [STYLE.md](docs/STYLE.md). Radio and `ft8_lib` boundaries: [architecture/radio.md](docs/architecture/radio.md), [architecture/ft8_lib.md](docs/architecture/ft8_lib.md).
 
-Changes reach `main` (`kb2slo/micro-ft8`) through a pull request ([CONTRIBUTING.md](CONTRIBUTING.md)). There is no `upstream` git remote: Wei's `wcheng95/Mini-FT8` is watched for portable fixes ([docs/maintainer/upstream.md](docs/maintainer/upstream.md)), not tracked as a fork. Never push to, or open a pull request on, any repo but this one unless the person you work for asks in so many words.
+Changes reach `main` (`kb2slo/micro-ft8`) through a pull request ([CONTRIBUTING.md](CONTRIBUTING.md)). Its base is always `main`: never stack a pull request on another branch (a merge there never reaches `main`), and state the base in chat before opening one. There is no `upstream` git remote: Wei's `wcheng95/Mini-FT8` is watched for portable fixes ([docs/maintainer/upstream.md](docs/maintainer/upstream.md)), not tracked as a fork. Never push to, or open a pull request on, any repo but this one unless the person you work for asks in so many words.
 
 ## Reproducibility
 

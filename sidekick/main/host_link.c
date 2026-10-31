@@ -8,6 +8,7 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_random.h"
+#include "event_state.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -60,69 +61,17 @@ static bool porta_send(const uint8_t *frame, size_t n)
 }
 
 // Ring of recent events. 64 is a couple of FT8 slots' worth of decodes plus
-// their log lines -- enough that a browser polling once a second never misses
-// anything, and small enough to sit in RAM without thought (~6 KB).
+// their log lines when nothing else is happening -- but the main board also
+// re-sends every live queue entry each second, so on a busy band it can be well
+// under one slot. A page that has been away reads /api/state (s_state below)
+// instead of relying on this.
 #define RING_LEN 64
 
-typedef enum {
-    ENTRY_LOG = 0,
-    ENTRY_DECODE = 1,
-    ENTRY_QUEUE_ENTRY = 2,  // I28d, docs/architecture/webapp.md (Screens)
-    ENTRY_SLOT_STATE = 3,
-    ENTRY_TX_HUD = 4,       // I28d, docs/architecture/webapp.md (Screens)
-    ENTRY_USB_STATUS = 5,   // host's own USB-C host port: device attached/detached
-    ENTRY_SWEEP = 6,        // SWR sweep progress (docs/architecture/radio.md)
-    ENTRY_RADIO_STATE = 7,  // the radio's own state changed (IF; pushed by AI2;)
-} entry_kind_t;
-
-typedef struct {
-    uint32_t seq;
-    uint32_t epoch_secs;   // host's clock at the moment of the event, 0 if unset
-    entry_kind_t kind;
-    char     text[PORTA_EVENT_TEXT_MAX + 1];  // LOG, DECODE, TX_HUD
-    int8_t   snr;                             // DECODE
-    uint16_t offset_hz;                       // DECODE; SLOT_STATE's resolved_offset_hz;
-                                               // TX_HUD's own offset_hz (what's on air)
-    int16_t  dt_centis;                       // DECODE
-    bool     is_cq;                           // DECODE
-    bool     is_to_me;                        // DECODE
-    bool     is_recent_qso;                   // DECODE
-    uint32_t decode_id;                       // DECODE -- names it for QUEUE_REPLY
-    uint32_t slot_idx;                        // DECODE: the UTC slot heard in, 0 unknown
-    uint8_t  slot_len_ds;                     // DECODE: slot length, tenths of a second
-    uint32_t dial_hz;                         // DECODE: dial at the signal's middle, 0 unknown
-    uint16_t entry_id;                        // QUEUE_ENTRY
-    uint8_t  state;                           // QUEUE_ENTRY (AutoseqState wire value)
-    uint8_t  tries_sent;                      // QUEUE_ENTRY
-    uint8_t  try_limit;                       // QUEUE_ENTRY
-    uint8_t  queue_flags;                     // QUEUE_ENTRY: PORTA_QUEUE_*
-    char     dxcall[PORTA_CALLSIGN_MAX + 1];  // QUEUE_ENTRY
-    uint8_t  slot_parity;                     // SLOT_STATE
-    bool     tx_active;                       // TX_HUD
-    bool     tx_aborted;                      // TX_HUD
-    bool     tx_writes_blocked;               // TX_HUD
-    int16_t  tx_power_dw;                     // TX_HUD, deciwatts
-    int16_t  tx_swr_c;                        // TX_HUD, SWR * 100
-    int8_t   tx_battery_pct;                  // TX_HUD
-    char     tx_reason[PORTA_TX_HUD_REASON_MAX + 1];  // TX_HUD, why tx_aborted
-    bool     usb_present;                     // USB_STATUS: true = attach, false = detach
-    uint8_t  usb_kind;                        // USB_STATUS: UsbCKind wire value
-    uint16_t usb_vid;                         // USB_STATUS
-    uint16_t usb_pid;                         // USB_STATUS
-    uint8_t  sweep_kind;                      // SWEEP: porta_sweep_kind_t
-    uint8_t  sweep_range;                     // SWEEP: which requested range
-    uint32_t sweep_hz;                        // SWEEP: POINT's frequency
-    int16_t  sweep_swr_c;                     // SWEEP: SWR * 100, -1 none
-    uint8_t  sweep_reason;                    // SWEEP: porta_sweep_reason_t
-    uint32_t radio_hz;                        // RADIO_STATE
-    uint8_t  radio_tx;                        // RADIO_STATE
-    uint8_t  radio_mode;                      // RADIO_STATE: the MD digit
-    uint8_t  radio_split;                     // RADIO_STATE
-} entry_t;
-
-static entry_t s_ring[RING_LEN];
+static event_t s_ring[RING_LEN];
 static uint32_t s_next_seq = 1;     // 0 is "before anything", so a new client gets all
 static SemaphoreHandle_t s_lock;
+// The station as it is now, built from the same events (event_state.h); s_lock covers it.
+static event_state_t s_state;
 
 // Ring-buffer gaps (get_events() below): the browser's `since` cursor landed
 // behind the oldest event the ring still has, so at least one event -- worst
@@ -146,12 +95,19 @@ static void lock_give(void)
     xSemaphoreGive(s_lock);
 }
 
-static void ring_push(const entry_t *e)
+static uint32_t now_ms(void)
+{
+    return (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+}
+
+// The snapshot is noted in the same critical section as the ring, so a reader
+// that sees the new head also sees the event in /api/state.
+static void ring_push(event_t *e)
 {
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    entry_t *slot = &s_ring[s_next_seq % RING_LEN];
-    *slot = *e;
-    slot->seq = s_next_seq++;
+    e->seq = s_next_seq++;
+    s_ring[e->seq % RING_LEN] = *e;
+    event_state_note(&s_state, e, now_ms());
     xSemaphoreGive(s_lock);
 }
 
@@ -176,6 +132,35 @@ static void json_escape(const char *in, char *out, size_t out_cap)
     out[w] = '\0';
 }
 
+// One /api/events row, comma-led after the first. Not under s_lock: `e` is the
+// caller's copy.
+static void send_event_row(httpd_req_t *req, const event_t *e, bool *first)
+{
+    // Worst case: text fully \u-escaped (6 bytes a char) plus a DECODE's
+    // fixed fields, the largest (~165 bytes with v2's slot and dial).
+    char row[PORTA_EVENT_TEXT_MAX * 6 + 224];
+    if (event_json(e, row, sizeof(row)) == 0) {
+        return;
+    }
+    if (!*first) {
+        httpd_resp_sendstr_chunk(req, ",");
+    }
+    httpd_resp_sendstr_chunk(req, row);
+    *first = false;
+}
+
+static esp_err_t send_events_tail(httpd_req_t *req, uint32_t head)
+{
+    // `hold`: seconds the sidekick button has been held toward the AP reset (0
+    // when not), `hold_of`: the seconds that complete it. It rides here because this is the one reply the page reads
+    // every second.
+    char tail[80];
+    snprintf(tail, sizeof(tail), "],\"seq\":%" PRIu32 ",\"hold\":%d,\"hold_of\":%d}", head,
+             wifi_prov_ap_reset_hold(), WIFI_PROV_AP_RESET_HOLD_SECS);
+    httpd_resp_sendstr_chunk(req, tail);
+    return httpd_resp_send_chunk(req, NULL, 0);
+}
+
 // GET /api/events?since=<seq>
 //
 // Polling rather than server-sent events: ESP-IDF's httpd dispatches handlers
@@ -198,9 +183,6 @@ static esp_err_t get_events(httpd_req_t *req)
     httpd_resp_sendstr_chunk(req, "{\"events\":[");
 
     bool first = true;
-    // Worst case: text fully \u-escaped (6 bytes a char) plus a DECODE's
-    // fixed fields, the largest (~165 bytes with v2's slot and dial).
-    char row[PORTA_EVENT_TEXT_MAX * 6 + 224];
     uint32_t head;
 
     xSemaphoreTake(s_lock, portMAX_DELAY);
@@ -221,129 +203,56 @@ static esp_err_t get_events(httpd_req_t *req)
         from = since;
     }
     for (uint32_t s = from; s < head; ++s) {
-        entry_t e = s_ring[s % RING_LEN];
+        event_t e = s_ring[s % RING_LEN];
         if (e.seq != s) {
             continue;   // overwritten while we walked; skip rather than lie
         }
         xSemaphoreGive(s_lock);
-
-        size_t n = 0;
-        switch (e.kind) {
-        case ENTRY_DECODE: {
-            porta_decode_event_t d;
-            memset(&d, 0, sizeof(d));
-            d.epoch_secs = e.epoch_secs;
-            d.decode_id = e.decode_id;
-            strncpy(d.text, e.text, sizeof(d.text) - 1);
-            d.snr = e.snr;
-            d.offset_hz = e.offset_hz;
-            d.dt_centis = e.dt_centis;
-            d.is_cq = e.is_cq;
-            d.is_to_me = e.is_to_me;
-            d.is_recent_qso = e.is_recent_qso;
-            d.slot_idx = e.slot_idx;
-            d.slot_len_ds = e.slot_len_ds;
-            d.dial_hz = e.dial_hz;
-            n = porta_event_json_decode(row, sizeof(row), e.seq, &d);
-            break;
-        }
-        case ENTRY_QUEUE_ENTRY: {
-            porta_queue_entry_event_t q;
-            memset(&q, 0, sizeof(q));
-            q.epoch_secs = e.epoch_secs;
-            q.entry_id = e.entry_id;
-            q.state = e.state;
-            q.tries_sent = e.tries_sent;
-            q.try_limit = e.try_limit;
-            q.flags = e.queue_flags;
-            strncpy(q.dxcall, e.dxcall, sizeof(q.dxcall) - 1);
-            n = porta_event_json_queue(row, sizeof(row), e.seq, &q);
-            break;
-        }
-        case ENTRY_SLOT_STATE: {
-            porta_slot_state_event_t ss;
-            memset(&ss, 0, sizeof(ss));
-            ss.epoch_secs = e.epoch_secs;
-            ss.slot_parity = e.slot_parity;
-            ss.resolved_offset_hz = e.offset_hz;
-            n = porta_event_json_slot(row, sizeof(row), e.seq, &ss);
-            break;
-        }
-        case ENTRY_TX_HUD: {
-            porta_tx_hud_event_t hud;
-            memset(&hud, 0, sizeof(hud));
-            hud.epoch_secs = e.epoch_secs;
-            hud.active = e.tx_active;
-            hud.aborted = e.tx_aborted;
-            hud.writes_blocked = e.tx_writes_blocked;
-            hud.power_dw = e.tx_power_dw;
-            hud.swr_c = e.tx_swr_c;
-            hud.battery_pct = e.tx_battery_pct;
-            hud.offset_hz = e.offset_hz;
-            strncpy(hud.reason, e.tx_reason, sizeof(hud.reason) - 1);
-            strncpy(hud.text, e.text, sizeof(hud.text) - 1);
-            n = porta_event_json_tx_hud(row, sizeof(row), e.seq, &hud);
-            break;
-        }
-        case ENTRY_USB_STATUS: {
-            porta_usb_status_event_t usb;
-            memset(&usb, 0, sizeof(usb));
-            usb.epoch_secs = e.epoch_secs;
-            usb.present = e.usb_present;
-            usb.kind = e.usb_kind;
-            usb.vid = e.usb_vid;
-            usb.pid = e.usb_pid;
-            n = porta_event_json_usb(row, sizeof(row), e.seq, &usb);
-            break;
-        }
-        case ENTRY_SWEEP: {
-            porta_sweep_event_t sw;
-            memset(&sw, 0, sizeof(sw));
-            sw.epoch_secs = e.epoch_secs;
-            sw.kind = e.sweep_kind;
-            sw.range_index = e.sweep_range;
-            sw.freq_hz = e.sweep_hz;
-            sw.swr_c = e.sweep_swr_c;
-            sw.reason = e.sweep_reason;
-            n = porta_event_json_sweep(row, sizeof(row), e.seq, &sw);
-            break;
-        }
-        case ENTRY_RADIO_STATE: {
-            porta_radio_state_event_t rs;
-            memset(&rs, 0, sizeof(rs));
-            rs.epoch_secs = e.epoch_secs;
-            rs.freq_hz = e.radio_hz;
-            rs.tx = e.radio_tx;
-            rs.mode = e.radio_mode;
-            rs.split = e.radio_split;
-            n = porta_event_json_radio(row, sizeof(row), e.seq, &rs);
-            break;
-        }
-        case ENTRY_LOG:
-        default:
-            n = porta_event_json_log(row, sizeof(row), e.seq, e.epoch_secs, e.text);
-            break;
-        }
-        if (n > 0) {
-            if (!first) {
-                httpd_resp_sendstr_chunk(req, ",");
-            }
-            httpd_resp_sendstr_chunk(req, row);
-            first = false;
-        }
-
+        send_event_row(req, &e, &first);
         xSemaphoreTake(s_lock, portMAX_DELAY);
     }
     xSemaphoreGive(s_lock);
 
-    // `hold`: seconds the sidekick button has been held toward the AP reset (0
-    // when not), `hold_of`: the seconds that complete it. It rides here because this is the one reply the page reads
-    // every second.
-    char tail[80];
-    snprintf(tail, sizeof(tail), "],\"seq\":%" PRIu32 ",\"hold\":%d,\"hold_of\":%d}", head,
-             wifi_prov_ap_reset_hold(), WIFI_PROV_AP_RESET_HOLD_SECS);
-    httpd_resp_sendstr_chunk(req, tail);
-    return httpd_resp_send_chunk(req, NULL, 0);
+    return send_events_tail(req, head);
+}
+
+// GET /api/state?slots=<n>
+//
+// What a page that has just loaded needs to draw the station as it is now
+// (event_state.h): the newest `n` decode slots (the page's own count, at most
+// EVENT_STATE_SLOTS_CAP), every live queue entry, and the last slot state, TX
+// HUD, USB status and radio state, in the order they happened. Same shape as
+// /api/events, so the page applies it the same way and then polls
+// /api/events?since= from its `seq`: anything newer than the snapshot is past
+// that cursor, including a queue entry that changed while this was written.
+static esp_err_t get_state(httpd_req_t *req)
+{
+    unsigned slots = 0;
+    char query[64];
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char val[24];
+        if (httpd_query_key_value(query, "slots", val, sizeof(val)) == ESP_OK) {
+            slots = (unsigned)strtoul(val, NULL, 10);
+        }
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr_chunk(req, "{\"events\":[");
+
+    bool first = true;
+    event_t e;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    const uint32_t head = s_next_seq;
+    uint32_t after = 0;
+    while (event_state_next(&s_state, after, head, slots, now_ms(), &e)) {
+        xSemaphoreGive(s_lock);
+        after = e.seq;
+        send_event_row(req, &e, &first);
+        xSemaphoreTake(s_lock, portMAX_DELAY);
+    }
+    xSemaphoreGive(s_lock);
+
+    return send_events_tail(req, head);
 }
 
 // Last reply the host sent to an action, so the browser learns whether its
@@ -1385,11 +1294,6 @@ static int s_link_cmd;  // 1 rx, 3 stop
 static uint32_t s_link_pass;
 static uint32_t s_link_last_baud;
 
-static uint32_t link_now_ms(void)
-{
-    return (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-}
-
 static void link_publish(uint32_t crc_errors)
 {
     if (!s_lock || xSemaphoreTake(s_lock, pdMS_TO_TICKS(20)) != pdTRUE) {
@@ -1417,7 +1321,7 @@ static void link_set_uart_baud(porta_decoder_t *dec, uint32_t baud)
 static void link_apply_baud(porta_decoder_t *dec, uint32_t baud)
 {
     link_set_uart_baud(dec, baud);
-    porta_link_run_applied(&s_link, link_now_ms());
+    porta_link_run_applied(&s_link, now_ms());
 }
 
 // The TX ring holds 4096 bytes. A 50 ms wait returns while that ring, and the
@@ -1473,7 +1377,7 @@ static void link_take_cmd(porta_decoder_t *dec)
             }
         }
         // The UART test does not key the radio (operator, 2026-10-01).
-        porta_link_run_begin(&s_link, esp_random(), pass, true, false, last, link_now_ms());
+        porta_link_run_begin(&s_link, esp_random(), pass, true, false, last, now_ms());
         (void)dec;
     }
 }
@@ -1489,7 +1393,7 @@ static void link_pump(porta_decoder_t *dec)
             break;
         }
         uint32_t apply = 0;
-        const size_t n = porta_link_run_next(&s_link, link_now_ms(), dec->crc_errors, frame,
+        const size_t n = porta_link_run_next(&s_link, now_ms(), dec->crc_errors, frame,
                                              sizeof(frame), &apply);
         if (n == 0) {
             break;
@@ -1512,7 +1416,7 @@ static void link_pump(porta_decoder_t *dec)
 static void link_on_frame(porta_decoder_t *dec, const porta_frame_t *frame)
 {
     uint32_t switch_baud = 0;
-    porta_link_run_on_frame(&s_link, frame, link_now_ms(), dec->crc_errors, &switch_baud);
+    porta_link_run_on_frame(&s_link, frame, now_ms(), dec->crc_errors, &switch_baud);
     if (switch_baud != 0) {
         s_link_pending_baud = switch_baud;
     }
@@ -1528,14 +1432,6 @@ static void porta_rx_task(void *arg)
 
     uint8_t buf[256];
     porta_frame_t frame;
-    char text[PORTA_EVENT_TEXT_MAX + 1];
-    porta_decode_event_t ev;
-    porta_queue_entry_event_t qe;
-    porta_slot_state_event_t ss;
-    porta_tx_hud_event_t hud;
-    porta_usb_status_event_t usb;
-    porta_sweep_event_t sweep;
-    porta_radio_state_event_t radio;
     char file_name[PORTA_FILENAME_MAX + 1];
     porta_qso_entry_row_t qrow;
     uint32_t reported_crc = 0;
@@ -1551,87 +1447,47 @@ static void porta_rx_task(void *arg)
                 link_on_frame(&s_rx_dec, &frame);
                 continue;
             }
-            entry_t e = {0};
-            if (porta_proto_parse_log(&frame, &e.epoch_secs, text)) {
-                e.kind = ENTRY_LOG;
-                strncpy(e.text, text, sizeof(e.text) - 1);
+            // Parsed straight into the event, so every field the frame carries
+            // reaches the browser: a field-by-field copy here once dropped the TX
+            // HUD's not_keyed.
+            event_t e;
+            memset(&e, 0, sizeof(e));
+            if (porta_proto_parse_log(&frame, &e.u.log.epoch_secs, e.u.log.text)) {
+                e.kind = PORTA_EVT_LOG;
                 // Tag "adv" so USB-C logs are not mistaken for sidekick ESP_LOG.
-                ESP_LOGI("adv", "%s", e.text);
+                ESP_LOGI("adv", "%s", e.u.log.text);
                 ring_push(&e);
-            } else if (porta_proto_parse_decode(&frame, &ev)) {
-                e.kind = ENTRY_DECODE;
-                e.epoch_secs = ev.epoch_secs;
-                e.decode_id = ev.decode_id;
-                strncpy(e.text, ev.text, sizeof(e.text) - 1);
-                e.snr = ev.snr;
-                e.offset_hz = ev.offset_hz;
-                e.dt_centis = ev.dt_centis;
-                e.is_cq = ev.is_cq;
-                e.is_to_me = ev.is_to_me;
-                e.is_recent_qso = ev.is_recent_qso;
-                e.slot_idx = ev.slot_idx;
-                e.slot_len_ds = ev.slot_len_ds;
-                e.dial_hz = ev.dial_hz;
+            } else if (porta_proto_parse_decode(&frame, &e.u.decode)) {
+                const porta_decode_event_t *d = &e.u.decode;
+                e.kind = PORTA_EVT_DECODE;
                 ESP_LOGI("adv", "decode %+d dB %4u Hz %+.2f s %s%s%s%s",
-                         e.snr, e.offset_hz, e.dt_centis / 100.0,
-                         e.is_to_me ? "[me] " : "", e.is_cq ? "[cq] " : "",
-                         e.is_recent_qso ? "[qso] " : "", e.text);
+                         d->snr, d->offset_hz, d->dt_centis / 100.0,
+                         d->is_to_me ? "[me] " : "", d->is_cq ? "[cq] " : "",
+                         d->is_recent_qso ? "[qso] " : "", d->text);
                 ring_push(&e);
-            } else if (porta_proto_parse_queue_entry(&frame, &qe)) {
-                e.kind = ENTRY_QUEUE_ENTRY;
-                e.epoch_secs = qe.epoch_secs;
-                e.entry_id = qe.entry_id;
-                e.state = qe.state;
-                e.tries_sent = qe.tries_sent;
-                e.try_limit = qe.try_limit;
-                e.queue_flags = qe.flags;
-                strncpy(e.dxcall, qe.dxcall, sizeof(e.dxcall) - 1);
+            } else if (porta_proto_parse_queue_entry(&frame, &e.u.queue)) {
+                e.kind = PORTA_EVT_QUEUE_ENTRY;
                 ring_push(&e);
-            } else if (porta_proto_parse_slot_state(&frame, &ss)) {
-                e.kind = ENTRY_SLOT_STATE;
-                e.epoch_secs = ss.epoch_secs;
-                e.slot_parity = ss.slot_parity;
-                e.offset_hz = ss.resolved_offset_hz;
+            } else if (porta_proto_parse_slot_state(&frame, &e.u.slot)) {
+                e.kind = PORTA_EVT_SLOT_STATE;
                 ring_push(&e);
-            } else if (porta_proto_parse_tx_hud(&frame, &hud)) {
-                e.kind = ENTRY_TX_HUD;
-                e.epoch_secs = hud.epoch_secs;
-                e.tx_active = hud.active;
-                e.tx_aborted = hud.aborted;
-                e.tx_writes_blocked = hud.writes_blocked;
-                e.tx_power_dw = hud.power_dw;
-                e.tx_swr_c = hud.swr_c;
-                e.tx_battery_pct = hud.battery_pct;
-                e.offset_hz = hud.offset_hz;
-                strncpy(e.tx_reason, hud.reason, sizeof(e.tx_reason) - 1);
-                strncpy(e.text, hud.text, sizeof(e.text) - 1);
+            } else if (porta_proto_parse_tx_hud(&frame, &e.u.tx_hud)) {
+                e.kind = PORTA_EVT_TX_HUD;
                 ring_push(&e);
-            } else if (porta_proto_parse_usb_status(&frame, &usb)) {
-                e.kind = ENTRY_USB_STATUS;
-                e.epoch_secs = usb.epoch_secs;
-                e.usb_present = usb.present;
-                e.usb_kind = usb.kind;
-                e.usb_vid = usb.vid;
-                e.usb_pid = usb.pid;
+            } else if (porta_proto_parse_usb_status(&frame, &e.u.usb)) {
+                const porta_usb_status_event_t *usb = &e.u.usb;
+                e.kind = PORTA_EVT_USB_STATUS;
                 ESP_LOGI("adv", "USB %s: kind=%u vid=%04x pid=%04x",
-                         usb.present ? "attach" : "detach", usb.kind, usb.vid, usb.pid);
+                         usb->present ? "attach" : "detach", usb->kind, usb->vid, usb->pid);
                 ring_push(&e);
-            } else if (porta_proto_parse_radio_state(&frame, &radio)) {
-                e.kind = ENTRY_RADIO_STATE;
-                e.epoch_secs = radio.epoch_secs;
-                e.radio_hz = radio.freq_hz;
-                e.radio_tx = radio.tx;
-                e.radio_mode = radio.mode;
-                e.radio_split = radio.split;
+            } else if (porta_proto_parse_radio_state(&frame, &e.u.radio)) {
+                e.kind = PORTA_EVT_RADIO_STATE;
                 ring_push(&e);
-            } else if (porta_proto_parse_sweep_event(&frame, &sweep)) {
-                e.kind = ENTRY_SWEEP;
-                e.epoch_secs = sweep.epoch_secs;
-                e.sweep_kind = sweep.kind;
-                e.sweep_range = sweep.range_index;
-                e.sweep_hz = sweep.freq_hz;
-                e.sweep_swr_c = sweep.swr_c;
-                e.sweep_reason = sweep.reason;
+            } else if (porta_proto_parse_activity(&frame, &e.u.activity)) {
+                e.kind = PORTA_EVT_ACTIVITY;
+                ring_push(&e);
+            } else if (porta_proto_parse_sweep_event(&frame, &e.u.sweep)) {
+                e.kind = PORTA_EVT_SWEEP;
                 ring_push(&e);
             } else if (porta_proto_parse_file_name_row(&frame, file_name)) {
                 file_list_json_add(file_name);
@@ -1820,6 +1676,7 @@ void host_link_start(void)
     if (!s_lock) {
         s_lock = xSemaphoreCreateMutex();
     }
+    event_state_init(&s_state);
     porta_link_run_init(&s_link);
     xTaskCreate(porta_rx_task, "porta_rx", 6144, NULL, 5, NULL);
 }
@@ -1831,6 +1688,9 @@ void host_link_register_uris(httpd_handle_t server)
     }
     static const httpd_uri_t events = {
         .uri = "/api/events", .method = HTTP_GET, .handler = get_events,
+    };
+    static const httpd_uri_t state = {
+        .uri = "/api/state", .method = HTTP_GET, .handler = get_state,
     };
     static const httpd_uri_t settime = {
         .uri = "/api/time", .method = HTTP_POST, .handler = post_time,
@@ -1886,7 +1746,7 @@ void host_link_register_uris(httpd_handle_t server)
     static const httpd_uri_t log_entries = {
         .uri = "/api/log/entries", .method = HTTP_GET, .handler = get_log_entries,
     };
-    // The event feed is a read of radio data: open on principle, since anyone
+    // The event feed (and /api/state, the same events) is a read of radio data: open on principle, since anyone
     // may listen to what is on the air. Setting the host clock or keying the
     // transmitter changes the device, so those need the token. Station config
     // read is open (call/grid are on the air); writes are guarded. Connect /
@@ -1901,6 +1761,7 @@ void host_link_register_uris(httpd_handle_t server)
         pairing_policy_t policy;
     } routes[] = {
         { &events, PAIRING_OPEN },
+        { &state, PAIRING_OPEN },
         { &settime, PAIRING_REQUIRED },
         { &tx_cancel, PAIRING_REQUIRED },
         { &config_get, PAIRING_OPEN },
