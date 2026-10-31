@@ -40,8 +40,10 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(poe_p4)
 
 # B25: freq_osr 2 needs nfft 1920. The default in monitor.c stays 960.
+# The waterfall is one static buffer (docs/architecture/memory.md), sized for the largest the P4
+# runs: FT8 at t2/f2, 93 blocks x 2 x 2 x 433 bins. FT4 needs less (156 x 2 x 2 x 131 = 81,744).
 idf_component_get_property(ft8_lib_target ft8_lib COMPONENT_LIB)
-target_compile_definitions(${ft8_lib_target} PRIVATE MONITOR_NFFT_MAX=1920)
+target_compile_definitions(${ft8_lib_target} PRIVATE MONITOR_NFFT_MAX=1920 MONITOR_WF_STATIC_BYTES=161076)
 
 # Single flashable image -- a release should be able to ship
 # one file, not three offsets an operator has to know by hand.
@@ -51,9 +53,9 @@ add_custom_command(TARGET app POST_BUILD
     COMMENT "Generating merged image poe_p4_merged.bin"
 )
 
-# Static RAM budget (tools/check_ram_budget.py): the waterfall needs one 161076-byte block of
-# internal RAM when the radio's audio starts, and static data comes out of it. Fails the build, so a
-# local `idf.py build` and CI both stop a change that would silence every decode.
+# Static RAM budget (tools/check_ram_budget.py): static data and the heap share internal RAM, so
+# static growth is heap the running station loses. Fails the build, so a local `idf.py build` and
+# CI both stop growth nobody decided on.
 add_custom_command(TARGET app POST_BUILD
     COMMAND ${PYTHON} "${CMAKE_CURRENT_LIST_DIR}/../tools/check_ram_budget.py" "${CMAKE_BINARY_DIR}/poe_p4.elf"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}

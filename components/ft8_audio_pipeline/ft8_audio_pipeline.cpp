@@ -31,8 +31,8 @@ int64_t rtc_now_ms();
 
 // 2.7 s at 6 kHz. The 20 m run dropped about 2 s of audio while decode held
 // the capture task; the ingest task fills this while that decode runs.
-// Static: after the 161 KB waterfall the largest free block is about 51 KB,
-// and this ring is 64 KB. Only the P4 links this component.
+// Static, as long-lived large buffers are (docs/architecture/memory.md). Only
+// the P4 links this component.
 static constexpr unsigned kIngestRingSamples = 16384;
 static float s_ring_storage[kIngestRingSamples];
 

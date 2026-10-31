@@ -27,9 +27,9 @@ What these settle:
 
 * **Host and device decode identically.** Every configuration and slot that ran, at both optimisation levels, produced exactly the host's messages, including frequency and DT. Sweeping decoder settings on the host is therefore sound for this decoder.
 * **A desktop core is ~50× a P4 core on light work and ~100× on the LDPC-heavy candidate loop**. So `jt9`-class decoders do not fit on the P4 (RFC 0006 §4.1).
-* **The P4 bench fits the shipped t2/f2 decode inside the guard on one core**, at 1,747 ms on the busiest slots. That is the search the firmware runs (`s_freq_osr` 2, `MONITOR_NFFT_MAX` 1920 on the P4), before the second subtraction pass below. The 161 KB waterfall is a malloc; the static arena stays 80,538 B. The FFT plan is static, sized for `MONITOR_NFFT_MAX`, so it does not split the one heap block that malloc needs (`components/ft8_lib/common/monitor.c`). The firmware heap took the waterfall (`waterfall=161076`).
+* **The P4 bench fits the shipped t2/f2 decode inside the guard on one core**, at 1,747 ms on the busiest slots. That is the search the firmware runs (`s_freq_osr` 2, `MONITOR_NFFT_MAX` 1920 on the P4), before the second subtraction pass below. The bench `malloc`s its waterfall, since it runs configurations the firmware does not; the firmware's is static ([memory.md](memory.md)).
 * **Failing candidates are the cost.** Nearly all the time added by 256 candidates is LDPC spent on candidates that never decode.
-* **Large waterfalls are a contiguous-RAM question.** t4/f2's 322 KB waterfall cannot allocate; it would need PSRAM, which the build leaves off ([main_board.md](main_board.md), **P4**). t2/f2's 161 KB fits the firmware heap.
+* **Large waterfalls are a RAM question.** t4/f2's 322 KB waterfall did not allocate on the bench; it would need PSRAM, which the build leaves off ([main_board.md](main_board.md), **P4**; row n2e7). t2/f2's 161 KB is the firmware's static waterfall ([memory.md](memory.md)).
 
 ## Recall against jt9
 

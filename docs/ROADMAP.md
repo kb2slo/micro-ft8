@@ -12,7 +12,7 @@ How things work now: `architecture/` (start at [architecture/system.md](architec
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| p3x6 | Decode from PSRAM | The P4 has 32 MB PSRAM per the datasheet and the build leaves it off (`CONFIG_SPIRAM` unset); internal RAM has 2.7 KB to spare beside the decoder's 161,076-byte block ([main_board.md](architecture/main_board.md), **P4**). Enable it; allocate the waterfall and decode working sets there, never DMA buffers. **Prerequisite of** n2e7 (the larger decode search) and of [RFC 0014](rfcs/0014-hl2-two-p4.md) acceptance (a second band needs it). The QMX build changes too, so its decodes stay byte-identical. **Done-when:** decode time per busy slot recorded internal RAM against PSRAM (`test_apps/decode_bench`, busy 20 m corpus), decodes identical, and whether PSRAM is headroom or a slowdown stated here. Field check (needs a P4). |
+| p3x6 | Decode from PSRAM | The P4 has 32 MB PSRAM per the datasheet and the build leaves it off (`CONFIG_SPIRAM` unset); internal RAM holds one band's static waterfall, with about 80 KB of statics to spare under the budget's estimated ceiling ([memory.md](architecture/memory.md)). Enable it; allocate the waterfall and decode working sets there, never DMA buffers. **Prerequisite of** n2e7 (the larger decode search) and of [RFC 0014](rfcs/0014-hl2-two-p4.md) acceptance (a second band needs it). The QMX build changes too, so its decodes stay byte-identical. **Done-when:** decode time per busy slot recorded internal RAM against PSRAM (`test_apps/decode_bench`, busy 20 m corpus), decodes identical, and whether PSRAM is headroom or a slowdown stated here. Field check (needs a P4). |
 
 ## Backlog
 

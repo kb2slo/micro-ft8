@@ -15,9 +15,8 @@ struct HeardGrid {
     bool used;
 };
 
-// Allocated on first use, not static: 5 KB of the internal RAM the decode pipeline's waterfall
-// needs in one block, and the first note comes after the waterfall is allocated. Null when
-// there is no RAM for it: nothing is noted and nothing is found.
+// Allocated on first use from the heap (docs/architecture/memory.md lists it). Null when there
+// is no RAM for it: nothing is noted and nothing is found.
 HeardGrid* s_table_ptr = nullptr;
 
 HeardGrid* table()
