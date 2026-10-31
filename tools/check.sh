@@ -11,13 +11,20 @@
 #   --base REV   what --changed, docs and commits compare against
 #                (default: the merge base of HEAD and origin/main)
 #   --head REV   the last commit the commits check reads (default: HEAD)
+#   --allow-skip a,b
+#                accept a named check that cannot run here; it is still
+#                reported SKIP, as not verified. Only the person running the
+#                checks passes this (AGENTS.md, Never report a field check
+#                as passed)
 #   -v           every check's output as it runs (the default under CI);
 #                otherwise it goes to build/check/<name>.log, and a failing
 #                check prints its last lines
 #
 # The firmware builds (p4, sidekick) need idf.py on PATH (source
-# esp-idf/export.sh), and the web checks need Node and npm. Without the tool a
-# check is reported SKIP, which is not a pass.
+# esp-idf/export.sh), and the web checks need Node and npm. A selected check
+# whose tool is missing stops the run before it starts and exits 2, and a
+# SKIP that gets past that (or one --allow-skip accepted) is never a pass:
+# an unallowed one exits 1.
 # CI builds firmware in its own jobs, in ESP-IDF's container.
 set -euo pipefail
 
@@ -51,12 +58,13 @@ ALL_HOST='.github/workflows/ci.yml'  # claimed by the firmware checks, and also 
 
 usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
-MODE=all ONLY="" BASE="" HEAD_REV=HEAD LIST=0 VERBOSE=0
+MODE=all ONLY="" ALLOW_SKIP="" BASE="" HEAD_REV=HEAD LIST=0 VERBOSE=0
 [ -n "${CI:-}" ] && VERBOSE=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --changed) MODE=changed ;;
     --only) [ $# -ge 2 ] || usage; MODE=only ONLY="$(echo "$2" | tr ',' ' ')"; shift ;;
+    --allow-skip) [ $# -ge 2 ] || usage; ALLOW_SKIP="$(echo "$2" | tr ',' ' ')"; shift ;;
     --base) [ $# -ge 2 ] || usage; BASE="$2"; shift ;;
     --head) [ $# -ge 2 ] || usage; HEAD_REV="$2"; shift ;;
     --list) LIST=1 ;;
@@ -78,7 +86,7 @@ else
   BASE="$(git rev-parse HEAD)"
 fi
 
-for name in $ONLY; do
+for name in $ONLY $ALLOW_SKIP; do
   case " $CHECKS " in *" $name "*) ;; *) echo "check.sh: no check named $name (checks: $CHECKS)" >&2; exit 2 ;; esac
 done
 
@@ -146,6 +154,45 @@ if [ "$LIST" = 1 ]; then
   done
   exit 0
 fi
+
+# ---- tools ----------------------------------------------------------------
+
+tools_for() {  # the commands a check cannot run without
+  case "$1" in
+    web|getting_started) echo "node npm" ;;
+    webapp|sim)          echo "node" ;;
+    sidekick|p4)         echo "idf.py" ;;
+  esac
+}
+
+# A selected check whose tool is missing stops the run here, in a second, with
+# everything that is missing named at once, instead of after the checks that
+# could run. The need_* functions below still skip, for a tool found here that
+# fails there.
+preflight() {
+  local name tool missing="" hint=""
+  for name in $CHECKS; do
+    case "$SELECTED" in *" $name "*) ;; *) continue ;; esac
+    case " $ALLOW_SKIP " in *" $name "*) continue ;; esac
+    for tool in $(tools_for "$name"); do
+      command -v "$tool" >/dev/null && continue
+      missing="$missing  $name: $tool not on PATH"$'\n'
+      case "$tool" in
+        idf.py) hint="$hint  idf.py: source esp-idf/export.sh (ESP-IDF $IDF_VERSION)"$'\n' ;;
+        *)      hint="$hint  $tool: install it (CONTRIBUTING.md, Setup)"$'\n' ;;
+      esac
+    done
+  done
+  [ -z "$missing" ] && return 0
+  {
+    echo "check.sh: NOT RUNNING. These checks cannot run on this machine, so a green result would verify nothing:"
+    printf '%s' "$missing"
+    echo "Fix:"
+    printf '%s' "$hint" | sort -u
+    echo "Only the person running the checks may accept the gap: --allow-skip <check>[,<check>]."
+  } >&2
+  exit 2
+}
 
 # ---- the checks -----------------------------------------------------------
 # Each runs in a subshell under set -e. Exit 3 with a "SKIP: why" line means
@@ -292,8 +339,10 @@ check_p4() {
 
 # ---- run ------------------------------------------------------------------
 
+preflight
+
 mkdir -p "$LOG_DIR"
-SUMMARY="" FAILED=0
+SUMMARY="" FAILED=0 UNVERIFIED="" ALLOWED=""
 for name in $CHECKS; do
   case "$SELECTED" in *" $name "*) ;; *) [ "$MODE" = changed ] && SUMMARY="$SUMMARY--    $name"$'\n'; continue ;; esac
   log="$LOG_DIR/$name.log"
@@ -311,7 +360,11 @@ for name in $CHECKS; do
   took="$((SECONDS - start)) s"
   case "$status" in
     0) line="PASS  $name ($took)" ;;
-    3) line="SKIP  $name: $(sed -n 's/^SKIP: //p' "$log" | tail -1)" ;;
+    3) why="$(sed -n 's/^SKIP: //p' "$log" | tail -1)"
+       case " $ALLOW_SKIP " in
+         *" $name "*) line="SKIP  $name: $why (allowed by --allow-skip)"; ALLOWED="$ALLOWED $name" ;;
+         *)           line="SKIP  $name: $why"; UNVERIFIED="$UNVERIFIED $name"; FAILED=1 ;;
+       esac ;;
     *) line="FAIL  $name ($took, $log)"; FAILED=1
        [ "$VERBOSE" = 1 ] || { tail -n 40 "$log"; echo; } ;;
   esac
@@ -322,4 +375,12 @@ done
 echo
 echo "== summary: base $(git rev-parse --short "$BASE")$( [ "$MODE" = changed ] && echo ", --changed") =="
 printf '%s' "$SUMMARY"
+if [ -n "$UNVERIFIED" ]; then
+  echo
+  echo "NOT VERIFIED:$UNVERIFIED did not run. This is a failure, not a pass."
+fi
+if [ -n "$ALLOWED" ]; then
+  echo
+  echo "NOT VERIFIED, allowed by --allow-skip:$ALLOWED. Say so wherever this result is reported."
+fi
 exit "$FAILED"

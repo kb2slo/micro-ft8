@@ -25,7 +25,7 @@ git clone --recurse-submodules git@github.com:kb2slo/micro-ft8.git
 ```
 
 An existing tree: `git submodule update --init`. The checks need Python 3, Node, `make`, a C/C++
-compiler and CMake; a check whose tool is missing reports SKIP, which is not a pass. The firmware needs
+compiler and CMake; `tools/check.sh` refuses to run a check whose tool is missing, rather than call it a pass. The firmware needs
 ESP-IDF v5.5.5, installed for both boards (`./install.sh esp32p4,esp32s3`): source its `export.sh`, then
 [poe_p4/README.md](poe_p4/README.md) and [sidekick/README.md](sidekick/README.md) say how to build and
 flash each board.
@@ -48,8 +48,9 @@ tools/check.sh --changed
 ```
 
 runs every check your change can affect; `tools/check.sh` runs all of them, and `--list` says which
-would run and why. CI runs the same script. Without `idf.py` on the PATH the two firmware builds report
-**SKIP**, which is not a pass. What each check covers, and what no check can see:
+would run and why. CI runs the same script. A selected check whose tool is missing (Node for the web
+checks, `idf.py` for the firmware builds) stops the run with exit 2 and names what to install; accepting
+the gap takes `--allow-skip <check>`, and the result is still reported as not verified. What each check covers, and what no check can see:
 [docs/TEST_PLAN.md](docs/TEST_PLAN.md).
 
 ## Commits and pull requests
