@@ -1,7 +1,8 @@
 /*
  * decode_fields_fill() (decode_fields.h): a decode's text split into the
  * fields autoseq and the heard-grid table read. Pins that field2 is the sender
- * and field3 what it sent, with or without a CQ modifier.
+ * and field3 what it sent, with or without a CQ modifier. Also
+ * decode_dxpedition_rewrite(): a fox's two-hound message reduced to our half.
  */
 #include <cstdio>
 #include <cstring>
@@ -18,6 +19,18 @@ static void expect(const char* text, const char* f1, const char* f2, const char*
     if (strcmp(d.field1, f1) != 0 || strcmp(d.field2, f2) != 0 || strcmp(d.field3, f3) != 0) {
         fprintf(stderr, "FAIL: \"%s\" -> [%s|%s|%s], expected [%s|%s|%s]\n", text, d.field1,
                 d.field2, d.field3, f1, f2, f3);
+        s_failed = 1;
+    }
+}
+
+static void expect_fox(const char* text, const char* me, const char* want)
+{
+    char out[RX_TEXT_MAX] = "untouched";
+    const bool got = decode_dxpedition_rewrite(text, me, out, sizeof(out));
+    const bool rewrites = want != nullptr;
+    if (got != rewrites || strcmp(out, rewrites ? want : "untouched") != 0) {
+        fprintf(stderr, "FAIL: fox \"%s\" as %s -> %d \"%s\", expected %s\n", text, me, got, out,
+                rewrites ? want : "no rewrite");
         s_failed = 1;
     }
 }
@@ -51,7 +64,23 @@ int main()
     expect("TNX BOB 73 GL", "TNX", "BOB", "73 GL");
     expect("", "", "", "");
 
+    // Fox messages: the half meant for us, as the fox printed the calls.
+    expect_fox("K1ABC RR73; W9XYZ <KH1/KH7Z> -12", "K1ABC", "K1ABC <KH1/KH7Z> RR73");
+    expect_fox("K1ABC RR73; W9XYZ <KH1/KH7Z> -12", "W9XYZ", "W9XYZ <KH1/KH7Z> -12");
+    expect_fox("<K1ABC> RR73; W9XYZ KH1 -05", "K1ABC", "<K1ABC> KH1 RR73");
+    expect_fox("k1abc RR73; W9XYZ KH1 -05", "K1ABC", "k1abc KH1 RR73");
+    expect_fox("K1ABC  RR73;  W9XYZ KH1 -05", "K1ABC", "K1ABC KH1 RR73");
+    // Not for us, not a fox message, or no call set: no rewrite.
+    expect_fox("K1ABC RR73; W9XYZ KH1 -05", "N0CALL", nullptr);
+    expect_fox("K1ABC RR73; W9XYZ KH1 -05", "", nullptr);
+    expect_fox("K1ABC RR73 W9XYZ KH1 -05", "K1ABC", nullptr);
+    expect_fox("K1ABC RR73; W9XYZ KH1", "K1ABC", nullptr);
+    expect_fox("K1ABC RR73; W9XYZ KH1 -05 X", "K1ABC", nullptr);
+    expect_fox("<> RR73; K1ABC KH1 +03", "K1ABC", nullptr);
+    expect_fox("CQ K1ABC FN42", "K1ABC", nullptr);
+
     if (s_failed) return 1;
-    printf("PASS: decode fields: field2 is the sender, with or without a CQ modifier\n");
+    printf("PASS: decode fields: field2 is the sender, with or without a CQ modifier; "
+           "a fox message reduces to our half\n");
     return 0;
 }

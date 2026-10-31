@@ -14,12 +14,12 @@ BUDGET_BYTES is the only place the number lives.
 import subprocess
 import sys
 
-# Static RAM (.bss + .data in DRAM) the build may use: the build's own figure when the waterfall
-# went static (352,996 bytes), plus a margin. The ceiling is not this number. With the waterfall
+# Static RAM (.bss + .data in DRAM) the build may use: the build's own figure (348,372 bytes, once
+# the waterfall was static and the C++ streams were gone), plus a margin. The ceiling is not this number. With the waterfall
 # on the heap, the station ran at 272,332 bytes of statics (2026-10-24), and that waterfall's
 # 161,076 bytes now sit in static RAM, so up to about 433,000 bytes the station keeps at least the
 # heap it ran with then. Raise BUDGET_BYTES only by a decision recorded in memory.md.
-BUDGET_BYTES = 356000
+BUDGET_BYTES = 352000
 
 DRAM_SECTIONS = ('.dram0.data', '.dram0.bss', '.dram1.data', '.dram1.bss')
 

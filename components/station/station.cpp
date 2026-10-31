@@ -4,7 +4,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <sstream>
 #include <string>
 
 namespace {
@@ -374,6 +373,23 @@ void apply_line(StationSettings* io, const std::string& raw)
     apply_key(io, key_from_name(line.substr(0, eq)), line.substr(eq + 1));
 }
 
+// key=value lines for station_serialize(). Plain appends, not an ostringstream: a stream links
+// the C++ locale machinery into the P4 image (docs/architecture/memory.md).
+void put_str(std::string& out, const char* key, const std::string& value)
+{
+    out += key;
+    out += '=';
+    out += value;
+    out += '\n';
+}
+
+void put_int(std::string& out, const char* key, int value)
+{
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d", value);
+    put_str(out, key, buf);
+}
+
 }  // namespace
 
 void station_settings_init(StationSettings* out)
@@ -405,7 +421,7 @@ void station_parse(const std::string& text, StationSettings* io)
 
 std::string station_serialize(const StationSettings& in)
 {
-    std::ostringstream out;
+    std::string out;
     const char* band_prefix = in.serialize_ft4_band_keys ? "ft4_band" : "band";
     const float* freqs = in.serialize_ft4_band_keys ? in.ft4_band_freq : in.band_freq;
     const bool* set = in.serialize_ft4_band_keys ? in.ft4_band_freq_set : in.band_freq_set;
@@ -413,33 +429,35 @@ std::string station_serialize(const StationSettings& in)
         if (!set[i]) {
             continue;
         }
+        char key[16];
+        snprintf(key, sizeof(key), "%s%d", band_prefix, i);
         char fbuf[16];
         format_freq(freqs[i], fbuf, sizeof(fbuf));
-        out << band_prefix << i << "=" << fbuf << "\n";
+        put_str(out, key, fbuf);
     }
-    out << "offset=" << in.offset_hz << "\n";
-    out << "band_sel=" << in.band_sel << "\n";
-    out << "cq_type=" << in.cq_type << "\n";
-    out << "skiptx1=" << (in.skip_tx1 ? 1 : 0) << "\n";
-    out << "free_text=" << in.free_text << "\n";
-    out << "call=" << in.call << "\n";
-    out << "grid=" << in.grid << "\n";
-    out << "offset_src=" << in.offset_src << "\n";
-    out << "radio=" << in.radio << "\n";
-    out << "gps_baud=" << normalize_gps_baud(in.gps_baud) << "\n";
-    out << "comment1=" << in.comment1 << "\n";
-    out << "ignore_prefixes=" << in.ignore_prefixes << "\n";
-    out << "rxtx_log=" << (in.rxtx_log ? 1 : 0) << "\n";
-    out << "active_bands=" << in.active_bands << "\n";
-    out << "tries=" << in.tries << "\n";
-    out << "tx_min_delay_ms=" << in.tx_min_delay_ms << "\n";
-    out << "amp_swr_guard=" << (in.amp_swr_guard ? 1 : 0) << "\n";
-    out << "amp_prime_on_band_change=" << (in.amp_prime_on_band_change ? 1 : 0) << "\n";
+    put_int(out, "offset", in.offset_hz);
+    put_int(out, "band_sel", in.band_sel);
+    put_int(out, "cq_type", in.cq_type);
+    put_int(out, "skiptx1", in.skip_tx1 ? 1 : 0);
+    put_str(out, "free_text", in.free_text);
+    put_str(out, "call", in.call);
+    put_str(out, "grid", in.grid);
+    put_int(out, "offset_src", in.offset_src);
+    put_int(out, "radio", in.radio);
+    put_int(out, "gps_baud", normalize_gps_baud(in.gps_baud));
+    put_str(out, "comment1", in.comment1);
+    put_str(out, "ignore_prefixes", in.ignore_prefixes);
+    put_int(out, "rxtx_log", in.rxtx_log ? 1 : 0);
+    put_str(out, "active_bands", in.active_bands);
+    put_int(out, "tries", in.tries);
+    put_int(out, "tx_min_delay_ms", in.tx_min_delay_ms);
+    put_int(out, "amp_swr_guard", in.amp_swr_guard ? 1 : 0);
+    put_int(out, "amp_prime_on_band_change", in.amp_prime_on_band_change ? 1 : 0);
     if (in.protocol_ft4) {
-        out << "protocol_mode=FT4\n";
+        out += "protocol_mode=FT4\n";
     }
-    out << "act_refs=" << in.act_refs << "\n";
-    return out.str();
+    put_str(out, "act_refs", in.act_refs);
+    return out;
 }
 
 bool act_refs_prefer_sota(const std::string& act_refs)

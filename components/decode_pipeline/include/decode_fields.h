@@ -11,3 +11,12 @@
 //                                                    or 4 letters takes CQ's place)
 // A callsign always mixes letters and digits, so it is never taken for a modifier.
 void decode_fields_fill(RxDecodeEntry* d);
+
+// A DXpedition (fox) message, "CALL1 RR73; CALL2 FOX RPT", answers two hounds at
+// once. When one of them is mycall_up (upper case), writes the half meant for
+// us to out, as a plain message autoseq can sequence:
+//   CALL1 is us -> "CALL1 FOX RR73"
+//   CALL2 is us -> "CALL2 FOX RPT"
+// <> around a hashed call and case are ignored when comparing. Returns false,
+// leaving out alone, for any other text or an empty mycall_up.
+bool decode_dxpedition_rewrite(const char* text, const char* mycall_up, char* out, size_t out_len);
