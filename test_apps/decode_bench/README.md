@@ -34,7 +34,7 @@ idf.py -B build_og -D SDKCONFIG=build_og/sdkconfig set-target esp32p4 build
 idf.py -B build_o2 -D SDKCONFIG=build_o2/sdkconfig -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.o2" set-target esp32p4 build
 ```
 
-Internal-RAM A/B (same `-O2`, waterfall in DRAM) to re-check PSRAM cost:
+Internal-RAM A/B (same `-O2`, the waterfall, decode working sets and capture path in DRAM) to re-check PSRAM cost:
 
 ```bash
 idf.py -B build_o2_internal -D SDKCONFIG=build_o2_internal/sdkconfig \
@@ -50,7 +50,9 @@ python tools/run_on_device.py /dev/cu.usbmodemXXXX build_o2_internal/decode_benc
 ```
 
 Diff the `MSG` lines for identical decodes; compare `RESULT` `total_ms` (and the `BENCH` line's
-`wf=psram|internal`) for whether PSRAM slowed the search.
+`wf=psram|internal`) for whether PSRAM slowed the search, and `process_ms` for whether it slowed the capture
+path. The bench runs the monitor back to back with a warm cache; the firmware's BDRY `mon` times it in place
+(docs/architecture/decode.md).
 
 The P4 build uses `poe_p4/partitions.csv`, so writing only `0x10000` leaves the bootloader, `nvs` and the
 `storage` partition (Station.txt) alone. The firmware's app is overwritten, so reflash it afterwards.

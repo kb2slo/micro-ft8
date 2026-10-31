@@ -14,11 +14,11 @@ BUDGET_BYTES is the only place the number lives.
 import subprocess
 import sys
 
-# Internal static RAM (.bss + .data in DRAM) the build may use. After p3x6 moved the
-# waterfall and decode working sets to PSRAM, the build sat at 176,756 bytes (2026-10-31);
-# 200,000 leaves about 23 KB of margin for small internal statics. Raise BUDGET_BYTES only
-# by a decision recorded in memory.md.
-BUDGET_BYTES = 200000
+# Internal static RAM (.bss + .data in DRAM) the build may use. After row tfyy moved the
+# capture path to PSRAM too, the build sat at about 61,000 bytes (2026-10-31); 85,000 keeps
+# the same ~24 KB margin for small internal statics. Raise BUDGET_BYTES only by a decision
+# recorded in memory.md.
+BUDGET_BYTES = 85000
 
 DRAM_SECTIONS = ('.dram0.data', '.dram0.bss', '.dram1.data', '.dram1.bss')
 EXT_RAM_BSS = '.ext_ram.bss'

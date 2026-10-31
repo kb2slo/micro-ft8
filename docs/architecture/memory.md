@@ -1,6 +1,6 @@
 # Memory on the P4
 
-Where the P4's RAM goes, who owns each large piece, and how a change adds to it without silencing the station. The board's facts (PSRAM on; waterfall and decode working sets there): [main_board.md](main_board.md), **P4**. The decoder that owns most of it: [decode.md](decode.md). The sidekick's RAM is in [sidekick.md](sidekick.md).
+Where the P4's RAM goes, who owns each large piece, and how a change adds to it without silencing the station. The board's facts (PSRAM on; the waterfall, decode working sets and capture path there): [main_board.md](main_board.md), **P4**. The decoder that owns most of it: [decode.md](decode.md). The sidekick's RAM is in [sidekick.md](sidekick.md).
 
 ## Adding a buffer
 
@@ -22,8 +22,8 @@ Sizes come from the build: `check_ram_budget.py` prints the total, and `riscv32-
 | --- | --- | --- |
 | The waterfall | `waterfall_static_buf`, `components/ft8_lib/common/monitor.c` | Static in PSRAM (`DECODE_PSRAM_BSS`). Sized by `MONITOR_WF_STATIC_BYTES` in `poe_p4/CMakeLists.txt` for the largest waterfall the P4 runs: FT8 at t2/f2. FT4 needs less, when the P4 runs it (row xph7). Host tools build without that define and `malloc` the waterfall to size, so they can run any configuration. |
 | Decode working sets | `s_dec`, candidates, retry, SNR slot, decoded tables in `decode_pipeline.cpp` (and the same set in `test_apps/decode_bench`) | Static in PSRAM (`DECODE_PSRAM_BSS`). Used only by the CPU during find/decode. |
-| The ingest ring | `s_ring_storage`, `components/ft8_audio_pipeline/ft8_audio_pipeline.cpp` | Static, internal. Holds audio while decode runs ([decode.md](decode.md), **The time budget**). |
-| FFT plan, window and frame buffers | `fft_work_static`, `window_static`, `last_frame_static`, `timedata`, `freqdata` in `monitor.c` | Static, internal, sized by `MONITOR_NFFT_MAX`. Capture-path; left out of PSRAM so a slowdown there is not paid every subblock. |
+| The ingest ring | `s_ring_storage`, `components/ft8_audio_pipeline/ft8_audio_pipeline.cpp` | Static in PSRAM (`DECODE_PSRAM_BSS`). Holds audio while decode runs ([decode.md](decode.md), **The time budget**). The CPU copies into it, so no DMA reaches it. |
+| FFT plan, window and frame buffers | `fft_work_static`, `window_static`, `last_frame_static`, `timedata`, `freqdata` in `monitor.c` | Static in PSRAM (`DECODE_PSRAM_BSS`), sized by `MONITOR_NFFT_MAX`. Touched every block, and PSRAM costs that about 0.6%: BDRY `mon` 323.0 against 324.8 ms a slot on 20 m (2026-10-31, [RFC 0014](../rfcs/0014-hl2-two-p4.md) §8). |
 | Port A's outbound queue | `s_out`, `components/porta/porta.cpp` | Static, sized for a busy slot's frames (`porta_out_queue.h`). |
 | A slot's decode results, two copies | `alloc_slot_result()`, `components/decode_pipeline/decode_pipeline.cpp` | Heap, internal (`MALLOC_CAP_INTERNAL`), on first use. |
 | The heard-grid table | `table()`, `components/decode_pipeline/heard_grid.cpp` | Heap, on first use; null when there is no RAM, and then nothing is noted. |

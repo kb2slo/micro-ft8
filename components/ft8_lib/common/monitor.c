@@ -111,7 +111,7 @@ void monitor_init(monitor_t* me, const monitor_config_t* cfg)
     // Sized from MONITOR_NFFT_MAX.
 #define KISS_FFTR_PLAN_BYTES(nfft) \
     (12 + (272 + 8 * ((nfft) / 2 - 1)) + 8 * (((nfft) / 2) * 3 / 2) + 32)
-    static uint8_t fft_work_static[KISS_FFTR_PLAN_BYTES(MONITOR_NFFT_MAX)]
+    static DECODE_PSRAM_BSS uint8_t fft_work_static[KISS_FFTR_PLAN_BYTES(MONITOR_NFFT_MAX)]
         __attribute__((aligned(16)));
     size_t fft_needed = 0;
     kiss_fftr_alloc(me->nfft, 0, NULL, &fft_needed);
@@ -158,8 +158,8 @@ void monitor_init(monitor_t* me, const monitor_config_t* cfg)
     me->wf.protocol = cfg->protocol;
 
     // Static window and analysis frame — avoids heap fragmentation
-    static float window_static[MONITOR_NFFT_MAX];
-    static float last_frame_static[MONITOR_NFFT_MAX];
+    static DECODE_PSRAM_BSS float window_static[MONITOR_NFFT_MAX];
+    static DECODE_PSRAM_BSS float last_frame_static[MONITOR_NFFT_MAX];
     if (me->nfft > MONITOR_NFFT_MAX)
     {
         LOG(LOG_ERROR, "Monitor nfft %d exceeds static buffer %d\n", me->nfft, MONITOR_NFFT_MAX);
@@ -227,8 +227,8 @@ void monitor_process(monitor_t* me, const float* frame)
     int frame_pos = 0;
 
     // Static FFT work buffers — avoids heap allocation in the hot path
-    static kiss_fft_scalar timedata[MONITOR_NFFT_MAX];
-    static kiss_fft_cpx   freqdata[MONITOR_NFFT_MAX / 2 + 1];
+    static DECODE_PSRAM_BSS kiss_fft_scalar timedata[MONITOR_NFFT_MAX];
+    static DECODE_PSRAM_BSS kiss_fft_cpx   freqdata[MONITOR_NFFT_MAX / 2 + 1];
     if (me->nfft > MONITOR_NFFT_MAX)
     {
         LOG(LOG_ERROR, "nfft %d exceeds static buffer %d\n", me->nfft, MONITOR_NFFT_MAX);
