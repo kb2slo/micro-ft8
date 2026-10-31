@@ -20,7 +20,7 @@ Sizes come from the build: `check_ram_budget.py` prints the total, and `riscv32-
 
 | Piece | Where | Static or heap, and why |
 | --- | --- | --- |
-| The waterfall | `waterfall_static_buf`, `components/ft8_lib/common/monitor.c` | Static. Sized by `MONITOR_WF_STATIC_BYTES` in `poe_p4/CMakeLists.txt` for the largest waterfall the P4 runs (FT8 at t2/f2; FT4 needs less). Host tools build without that define and `malloc` the waterfall to size, so they can run any configuration. |
+| The waterfall | `waterfall_static_buf`, `components/ft8_lib/common/monitor.c` | Static. Sized by `MONITOR_WF_STATIC_BYTES` in `poe_p4/CMakeLists.txt` for the largest waterfall the P4 runs: FT8 at t2/f2. FT4 needs less, when the P4 runs it (row xph7). Host tools build without that define and `malloc` the waterfall to size, so they can run any configuration. |
 | The ingest ring | `s_ring_storage`, `components/ft8_audio_pipeline/ft8_audio_pipeline.cpp` | Static. Holds audio while decode runs ([decode.md](decode.md), **The time budget**). |
 | FFT plan, window and frame buffers | `fft_work_static`, `window_static`, `last_frame_static`, `timedata`, `freqdata` in `monitor.c` | Static, sized by `MONITOR_NFFT_MAX`. |
 | Port A's outbound queue | `s_out`, `components/porta/porta.cpp` | Static, sized for a busy slot's frames (`porta_out_queue.h`). |
@@ -32,7 +32,8 @@ Sizes come from the build: `check_ram_budget.py` prints the total, and `riscv32-
 ## How it is checked
 
 * **At build time:** `check_ram_budget.py` runs after every `poe_p4` build, local and CI, and prints the total and the 15 largest statics. It counts static DRAM only; the code in internal RAM comes from the same memory and is not in its figure. A buffer nobody uses passes the budget, so read the list when a change adds to it.
-* **On the device:** the boot log's `HEAP:` lines (`log_heap()`, `components/debug_log`) give free, minimum-free and largest-block figures at `AUDIO_PIPE_BEFORE_MONITOR_INIT`, `AUDIO_PIPE_AFTER_MONITOR_INIT` and `AUDIO_PIPE_AFTER_SAMPLE_BUFFERS`. No reading has been taken since the waterfall went static ([TEST_PLAN.md](../TEST_PLAN.md), **Pending**).
+* **On the device:** the boot log's `HEAP:` lines (`log_heap()`, `components/debug_log`) give free, minimum-free and largest-block figures at `AUDIO_PIPE_BEFORE_MONITOR_INIT`, `AUDIO_PIPE_AFTER_MONITOR_INIT` and `AUDIO_PIPE_AFTER_SAMPLE_BUFFERS`. Measured 2026-10-30 on `continuous-8-g47a542d`, QMX attached: `free` 172,264 at BEFORE_MONITOR_INIT and 165,848 at AFTER_SAMPLE_BUFFERS, with the largest block 90,112 and 86,016; `monitor_init()` takes 132 bytes of heap. After a QMX power-cycle the pipeline restarted with `free` 154,960 and the largest block 65,536: the heap fragments across reconnects, which the static waterfall does not need to survive.
+* **Free heap and the largest block are different numbers.** Internal RAM is several regions (the boot log's `heap_init` lines), so the largest block is about half the free heap or less. A heap allocation over about 64 KB can fail with plenty free.
 
 ## Why not
 
