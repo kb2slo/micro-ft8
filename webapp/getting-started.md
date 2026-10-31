@@ -70,7 +70,7 @@ One ADIF file per UTC day, kept on the main board. On **QSOs**, **Download ADI**
 
 ## Good to know
 
-- *CAT or Audio not ✓:* unplug the QMX's USB at the main board and plug it back in. A restart of the main board can leave the QMX unconnected until you do.
+- *CAT or Audio not ✓:* unplug the QMX's USB at the main board and plug it back in, or switch the QMX off and on. A restart of the main board while the QMX is connected can leave it unable to reconnect until you do.
 - *A busy band but no decodes:* reload the app, so it sets the clock again.
 - *Asked to pair again:* a new phone, a cleared browser or another address each take one button press.
 - *Internet* is never needed to operate. When the phone has it, a tapped callsign shows QRZ details, and **Tools** adds space weather and, on its map, POTA and SOTA spots.
