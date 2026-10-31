@@ -189,9 +189,8 @@ struct DecodeSlotResult {
   bool standard[DEC_MAX];
 };
 // Both copies of a slot's result (this one and the main loop's in decode_pipeline_apply()) are
-// allocated on first use, not static: about 7 KB each, and as statics they took the internal
-// RAM the waterfall needs in one block (161076 bytes), so no decode ever started. First use
-// comes after the waterfall is allocated, from what is left.
+// allocated on first use from the heap, about 7 KB each (docs/architecture/memory.md lists
+// them).
 static DecodeSlotResult* s_result = nullptr;  // guarded by result_mutex()
 static bool s_result_pending = false;         // guarded by result_mutex()
 

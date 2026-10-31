@@ -9,9 +9,8 @@
 
 // Maximum nfft for static buffer sizing.
 // FT8 at 6 kHz, freq_osr=1: nfft = 6000 * 0.160 * 1 = 960
-// freq_osr=2 needs 1920. The P4 build sets that (poe_p4/CMakeLists.txt). This
-// default stays 960 so the sidekick, which links ft8_lib and does not decode,
-// does not grow the four analysis buffers.
+// freq_osr=2 needs 1920. The P4 build sets that (poe_p4/CMakeLists.txt). The
+// default suits tx_e2e, which decodes at freq_osr=1.
 #ifndef MONITOR_NFFT_MAX
 #define MONITOR_NFFT_MAX 960
 #endif
@@ -61,23 +60,23 @@ static void waterfall_init(ftx_waterfall_t* me, int max_blocks, int num_bins, in
     me->mag = waterfall_mag_buf;
 }
 
-// Static waterfall buffer avoids heap fragmentation during USB and DSP work.
-// Sized for FT8 at 6kHz: max_blocks=93, time_osr=2, freq_osr=1, num_bins=433
-#define WF_STATIC_SIZE  (93 * 2 * 1 * 433)  // 80,538 bytes
-static WF_ELEM_T waterfall_static_buf[WF_STATIC_SIZE];
-static bool waterfall_is_static = false;
-// A waterfall too big for the static buffer (the P4's 161076 bytes) is malloc'd once and kept for
-// the life of the program, reused by every later start. Freed at each stop, the heap's one block
-// that large was split by small allocations made while the radio was away, and the decoder never
-// restarted after a power cycle (2026-10-24: "Not decoding" until the P4 was reset).
-static WF_ELEM_T* waterfall_heap_cache = NULL;
-static size_t waterfall_heap_cache_bytes = 0;
+// The waterfall (docs/architecture/memory.md). A device build sets MONITOR_WF_STATIC_BYTES to
+// the largest waterfall it runs, and the waterfall is that one static buffer: the linker places
+// it or the build fails, and heap fragmentation cannot take it away. A configuration that needs
+// more is refused, never moved to the heap; a silent fallback is how a static buffer once sat
+// unused in the image. Host tools run any configuration, so without the define the waterfall is
+// malloc'd to size and freed by monitor_free().
+#ifdef MONITOR_WF_STATIC_BYTES
+static WF_ELEM_T waterfall_static_buf[MONITOR_WF_STATIC_BYTES / sizeof(WF_ELEM_T)];
+#endif
 
 static void waterfall_free(ftx_waterfall_t* me)
 {
     if (me && me->mag)
     {
-        if (!waterfall_is_static) free(me->mag);
+#ifndef MONITOR_WF_STATIC_BYTES
+        free(me->mag);
+#endif
         me->mag = NULL;
     }
 }
@@ -103,13 +102,11 @@ void monitor_init(monitor_t* me, const monitor_config_t* cfg)
     LOG(LOG_INFO, "Block size = %d\n", me->block_size);
     LOG(LOG_INFO, "Subblock size = %d\n", me->subblock_size);
 
-    // FFT work buffer in BSS, not the heap. The P4's one heap hole big enough
-    // for the 161 KB waterfall is only a little larger than that. A heap plan
-    // for nfft=1920 is ~19 KB and was splitting that hole, so the waterfall
-    // malloc then failed (largest 172032, need 161076). kiss_fftr_alloc's
-    // size, 32-bit float: 3 pointers + kiss_fft_state (272) + (nfft/2-1)
-    // twiddles + (nfft/2)*3/2 super-twiddles, each cpx 8 bytes. +32 for slack.
-    // Sized from MONITOR_NFFT_MAX so the sidekick (960) does not grow.
+    // FFT work buffer in BSS, not the heap: long-lived, so static
+    // (docs/architecture/memory.md). kiss_fftr_alloc's size, 32-bit float:
+    // 3 pointers + kiss_fft_state (272) + (nfft/2-1) twiddles +
+    // (nfft/2)*3/2 super-twiddles, each cpx 8 bytes. +32 for slack.
+    // Sized from MONITOR_NFFT_MAX.
 #define KISS_FFTR_PLAN_BYTES(nfft) \
     (12 + (272 + 8 * ((nfft) / 2 - 1)) + 8 * (((nfft) / 2) * 3 / 2) + 32)
     static uint8_t fft_work_static[KISS_FFTR_PLAN_BYTES(MONITOR_NFFT_MAX)]
@@ -134,37 +131,25 @@ void monitor_init(monitor_t* me, const monitor_config_t* cfg)
         return;
     }
 
-    // Allocate waterfall next — use static buffer to avoid heap fragmentation
     int block_stride = cfg->time_osr * cfg->freq_osr * num_bins;
     size_t wf_bytes = (size_t)max_blocks * block_stride * sizeof(WF_ELEM_T);
-    if (wf_bytes <= sizeof(waterfall_static_buf))
+#ifdef MONITOR_WF_STATIC_BYTES
+    if (wf_bytes > sizeof(waterfall_static_buf))
     {
-        waterfall_mag_buf = waterfall_static_buf;
-        waterfall_is_static = true;
-        LOG(LOG_INFO, "Waterfall using static buffer (%zu / %zu bytes)\n", wf_bytes, sizeof(waterfall_static_buf));
+        LOG(LOG_ERROR, "Waterfall needs %zu bytes, static buffer is %zu\n", wf_bytes, sizeof(waterfall_static_buf));
+        monitor_free(me);
+        return;
     }
-    else
+    waterfall_mag_buf = waterfall_static_buf;
+#else
+    waterfall_mag_buf = (WF_ELEM_T*)malloc(wf_bytes);
+    if (waterfall_mag_buf == NULL)
     {
-        if (waterfall_heap_cache && waterfall_heap_cache_bytes < wf_bytes)
-        {
-            free(waterfall_heap_cache);  // a bigger waterfall is wanted (another protocol)
-            waterfall_heap_cache = NULL;
-            waterfall_heap_cache_bytes = 0;
-        }
-        if (!waterfall_heap_cache)
-        {
-            waterfall_heap_cache = (WF_ELEM_T*)malloc(wf_bytes);
-            waterfall_heap_cache_bytes = waterfall_heap_cache ? wf_bytes : 0;
-        }
-        waterfall_mag_buf = waterfall_heap_cache;
-        waterfall_is_static = true;  // owned by the cache: waterfall_free() must not free it
-        if (waterfall_mag_buf == NULL)
-        {
-            LOG(LOG_ERROR, "Waterfall alloc failed (%zu bytes)\n", wf_bytes);
-            monitor_free(me);
-            return;
-        }
+        LOG(LOG_ERROR, "Waterfall alloc failed (%zu bytes)\n", wf_bytes);
+        monitor_free(me);
+        return;
     }
+#endif
 
     waterfall_init(&me->wf, max_blocks, num_bins, cfg->time_osr, cfg->freq_osr);
     me->wf.mag = waterfall_mag_buf;
