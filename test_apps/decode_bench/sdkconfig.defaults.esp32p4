@@ -4,3 +4,11 @@ CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
 CONFIG_ESP32P4_REV_MIN_100=y
 # Same table as the firmware, so flashing only the app slot leaves nvs and the storage partition alone.
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="../../poe_p4/partitions.csv"
+
+# PSRAM as the firmware (row p3x6): waterfall and decode working sets in
+# EXT_RAM_BSS. For the internal-RAM A/B image see sdkconfig.internal_ram and README.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_HEX=y
+CONFIG_SPIRAM_SPEED_200M=y
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y

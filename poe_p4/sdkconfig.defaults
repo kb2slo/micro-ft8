@@ -5,10 +5,15 @@
 # sidekick/sdkconfig.defaults.
 CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 
-# PSRAM is deliberately not enabled yet. Phase 0 is a boot-only skeleton with
-# no code that uses it; enabling it blind, before anything exercises it, is
-# exactly the kind of unverified config this project's docs warn against.
-# Revisit when Phase 2 (decode/TX port) actually needs it.
+# PSRAM holds the waterfall and decode working sets (row p3x6,
+# docs/architecture/memory.md). CAPS_ALLOC so malloc stays internal: DMA and
+# USB buffers must not land in PSRAM by accident. ALLOW_BSS so EXT_RAM_BSS_ATTR
+# (DECODE_PSRAM_BSS) places those statics in PSRAM at link time.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_HEX=y
+CONFIG_SPIRAM_SPEED_200M=y
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
 
 # Field-found 2026-09-17, ESP-IDF v5.5.5: <v3.0 and >=v3.0 ESP32-P4 silicon are
 # a hard Kconfig branch (esp_hw_support/port/esp32p4/Kconfig.hw_support --

@@ -9,7 +9,7 @@ Both boards run the same decode, autoseq, TX and Port A code from shared compone
 The daily station. Headless is the only mode: the module has no display, touch or keyboard.
 
 * **ESP32-P4, revision v1.3.** ESP-IDF treats pre-v3 P4 silicon as a separate hardware branch and defaults to v3+, whose bootloader refuses to boot on this board; `poe_p4/sdkconfig.defaults` selects `CONFIG_ESP32P4_SELECTS_REV_LESS_V3`. Newer P4 improvements (400 MHz, better PIE) do not apply to it.
-* **16 MB flash. 32 MB PSRAM per the datasheet, not enabled in our build** (`CONFIG_SPIRAM` unset). Plain CPU data (the waterfall buffer, decode working sets) could move there; DMA buffers still cannot.
+* **16 MB flash. 32 MB PSRAM** (`CONFIG_SPIRAM`, caps-only so `malloc` stays internal). The waterfall and decode working sets live there as `EXT_RAM_BSS` ([memory.md](memory.md)); DMA buffers stay in internal RAM.
 * **Internal RAM** holds the statics, the heap and some code, and the static part is budgeted at build time: [memory.md](memory.md).
 * **No WiFi and no BLE.** The board pairs the P4 with an Ethernet PHY and 802.3at PoE; **neither is used, by decision** (2026-09-16). The phone reaches the station only through the sidekick ([system.md](system.md)).
 * **No RTC chip, battery gauge or GPS.** `external_rtc_stub.cpp` and `board_power_stub.cpp` report them absent. The clock is unset at every boot until the web app sets it from the phone's clock over Port A ([time.md](time.md)).

@@ -78,10 +78,17 @@ static void bench_task(void* argument)
     vTaskDelay(pdMS_TO_TICKS(3000));
     esp_chip_info_t chip;
     esp_chip_info(&chip);
-    printf("BENCH target=%s rev=%d.%d cores=%d cpu_mhz=%d opt=%s free_internal=%u\n",
+#if defined(CONFIG_SPIRAM) && CONFIG_SPIRAM
+    const char* wf_place = "psram";
+    const unsigned free_spiram = (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+#else
+    const char* wf_place = "internal";
+    const unsigned free_spiram = 0;
+#endif
+    printf("BENCH target=%s rev=%d.%d cores=%d cpu_mhz=%d opt=%s wf=%s free_internal=%u free_spiram=%u\n",
            CONFIG_IDF_TARGET, chip.revision / 100, chip.revision % 100, chip.cores,
-           CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ, optimization_name(),
-           (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+           CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ, optimization_name(), wf_place,
+           (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL), free_spiram);
     printf("SLOTS\n%s\n", slots_txt_start);
 
     const int slot_count = (int)(sizeof(s_slots) / sizeof(s_slots[0]));

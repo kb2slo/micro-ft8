@@ -27,9 +27,10 @@ What these settle:
 
 * **Host and device decode identically.** Every configuration and slot that ran, at both optimisation levels, produced exactly the host's messages, including frequency and DT. Sweeping decoder settings on the host is therefore sound for this decoder.
 * **A desktop core is ~50× a P4 core on light work and ~100× on the LDPC-heavy candidate loop**. So `jt9`-class decoders do not fit on the P4 (RFC 0006 §4.1).
-* **The P4 bench fits the shipped t2/f2 decode inside the guard on one core**, at 1,747 ms on the busiest slots. That is the search the firmware runs (`s_freq_osr` 2, `MONITOR_NFFT_MAX` 1920 on the P4), before the second subtraction pass below. The bench `malloc`s its waterfall, since it runs configurations the firmware does not; the firmware's is static ([memory.md](memory.md)).
+* **The P4 bench fits the shipped t2/f2 decode inside the guard on one core**, at about 1.77 s mean on the busiest slots (worst about 1.82 s), with the waterfall and decode working sets in PSRAM. That is the search the firmware runs (`s_freq_osr` 2, `MONITOR_NFFT_MAX` 1920 on the P4), before the second subtraction pass below. Device `decode_bench` uses the same static waterfall size as the firmware; host tools `malloc` to size so they can run any configuration ([memory.md](memory.md)).
+* **PSRAM is headroom, not a slowdown.** On the same five busy slots, t2/f2 `total_ms` internal vs PSRAM (`build_o2_internal` vs `build_o2`, 2026-10-31) differed by about 3 ms (~0.2%); `MSG` lines matched each other and the host. Internal statics dropped enough that the DRAM budget was cut to 200 KB ([memory.md](memory.md)).
 * **Failing candidates are the cost.** Nearly all the time added by 256 candidates is LDPC spent on candidates that never decode.
-* **Large waterfalls are a RAM question.** t4/f2's 322 KB waterfall did not allocate on the bench; it would need PSRAM, which the build leaves off ([main_board.md](main_board.md), **P4**; row n2e7). t2/f2's 161 KB is the firmware's static waterfall ([memory.md](memory.md)).
+* **Large waterfalls need PSRAM.** t2/f2's 161 KB waterfall and the decode working sets live in PSRAM (`DECODE_PSRAM_BSS`). t4/f2's 322 KB waterfall is what n2e7 measures next ([main_board.md](main_board.md), **P4**).
 
 ## Recall against jt9
 
