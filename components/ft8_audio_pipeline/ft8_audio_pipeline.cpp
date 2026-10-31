@@ -12,12 +12,15 @@
 #include <cstring>
 
 #include "esp_heap_caps.h"
+#include "esp_memory_utils.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/portmacro.h"
 
 extern "C" {
+#include "common/decode_psram.h"
 #include "common/monitor.h"
 #include "ft8/constants.h"
 #include "ft8/decode.h"
@@ -32,10 +35,10 @@ int64_t rtc_now_ms();
 
 // 2.7 s at 6 kHz. The 20 m run dropped about 2 s of audio while decode held
 // the capture task; the ingest task fills this while that decode runs.
-// Static, as long-lived large buffers are (docs/architecture/memory.md). Only
-// the P4 links this component.
+// Static, as long-lived large buffers are, and in PSRAM: the CPU copies into it,
+// so no DMA reaches it (docs/architecture/memory.md). Only the P4 links this component.
 static constexpr unsigned kIngestRingSamples = 16384;
-static float s_ring_storage[kIngestRingSamples];
+static DECODE_PSRAM_BSS float s_ring_storage[kIngestRingSamples];
 
 struct AudioIngest {
     const ft8_audio_pipeline_config_t *cfg;
@@ -129,12 +132,17 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
         monitor_free(&mon);
         return false;
     }
-    ESP_LOGI(tag, "audio ingest ring=%u samples", kIngestRingSamples);
+    ESP_LOGI(tag, "audio ingest ring=%u samples in %s, fft frame in %s", kIngestRingSamples,
+             esp_ptr_external_ram(s_ring_storage) ? "psram" : "internal",
+             esp_ptr_external_ram(mon.last_frame) ? "psram" : "internal");
 
     int ft8_buffer_idx = 0;
     int slot_blocks = 0;
     int64_t slot_samples = 0;
     unsigned dropped_at_boundary = 0;
+    // monitor_process() time this slot, for BDRY's mon: the capture path's cost per band
+    // (RFC 0014 §3.5), timed in place, where the cache is not warm as in decode_bench.
+    int64_t slot_monitor_us = 0;
     // The first slot has no boundary behind it to vouch for its start.
     bool slot_clean = false;
     int64_t slot_idx = rtc_now_ms() / slot_ms;
@@ -184,7 +192,9 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                 int activity_level = -1;
                 if (mon.wf.num_blocks < target_blocks && mon.wf.num_blocks < mon.wf.max_blocks) {
                     block_gain[mon.wf.num_blocks] = gain;
+                    const int64_t monitor_t0 = esp_timer_get_time();
                     monitor_process(&mon, ft8_buffer);
+                    slot_monitor_us += esp_timer_get_time() - monitor_t0;
                     if (cfg->on_activity && !decode_tx_state_get_tx_active() &&
                         !decode_tx_state_get_was_txing()) {
                         activity_level = ft8_block_activity(
@@ -232,8 +242,9 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                     // Port A log, not the console UART: the sidekick prints it.
                     {
                         char buf[64];
-                        snprintf(buf, sizeof(buf), "BDRY %lld g%d lost%lld drop%u",
-                                 (long long)slot_idx, slot_blocks, (long long)lost, drop);
+                        snprintf(buf, sizeof(buf), "BDRY %lld g%d lost%lld drop%u mon%lld",
+                                 (long long)slot_idx, slot_blocks, (long long)lost, drop,
+                                 (long long)slot_monitor_us);
                         debug_log_line(buf);
                     }
                     if (slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
@@ -246,6 +257,7 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                     slot_start_ms = slot_idx * slot_ms;
                     slot_blocks = 0;
                     slot_samples = 0;
+                    slot_monitor_us = 0;
                     mon.wf.num_blocks = 0;
                     monitor_reset(&mon);
                 } else if (slot_blocks >= g_protocol->total_symbols &&
