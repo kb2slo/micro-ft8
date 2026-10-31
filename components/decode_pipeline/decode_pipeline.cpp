@@ -9,7 +9,6 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -122,40 +121,6 @@ bool find_decode_for_reply(uint32_t decode_id, UiRxLine* out) {
       *out = s_decode_ring[i].rx;
       return true;
     }
-  }
-  return false;
-}
-
-static void normalize_call_token(std::string& s) {
-  // trim <> wrappers used for hashed nonstd calls
-  if (!s.empty() && s.front() == '<') s.erase(s.begin());
-  if (!s.empty() && s.back()  == '>') s.pop_back();
-  for (auto& ch : s) ch = (char)toupper((unsigned char)ch);
-}
-
-static bool rewrite_dxpedition_for_mycall(const std::string& raw_text,
-                                          const std::string& mycall_up,
-                                          std::string& rewritten_text) {
-  std::istringstream iss(raw_text);
-  std::string call1, rr73_tok, call2, foxcall, rpt;
-  if (!(iss >> call1 >> rr73_tok >> call2 >> foxcall >> rpt)) return false;
-
-  std::string trailing;
-  if (iss >> trailing) return false;
-  if (rr73_tok != "RR73;") return false;
-
-  std::string call1_up = call1, call2_up = call2;
-  normalize_call_token(call1_up);
-  normalize_call_token(call2_up);
-  if (call1_up.empty() || call2_up.empty() || mycall_up.empty()) return false;
-
-  if (call1_up == mycall_up) {
-    rewritten_text = call1 + " " + foxcall + " RR73";
-    return true;
-  }
-  if (call2_up == mycall_up) {
-    rewritten_text = call2 + " " + foxcall + " " + rpt;
-    return true;
   }
   return false;
 }
@@ -483,16 +448,10 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
     decode_retry_note_subtracted(&retry, &candidates[i]);
     if (found_dup) continue;
 
-    // DXpedition rewrite (uses heap briefly via std::string — bounded, rare path)
     char final_text[DEC_TEXT_MAX];
-    {
-      std::string raw(text);
-      std::string rewritten(text);
-      if (rewrite_dxpedition_for_mycall(raw, mycall_up, rewritten)) {
-        ESP_LOGI(TAG, "DXpedition raw match: %s", text);
-      }
-      strncpy(final_text, rewritten.c_str(), DEC_TEXT_MAX - 1);
-      final_text[DEC_TEXT_MAX - 1] = '\0';
+    snprintf(final_text, sizeof(final_text), "%s", text);
+    if (decode_dxpedition_rewrite(text, mycall_up, final_text, sizeof(final_text))) {
+      ESP_LOGI(TAG, "DXpedition raw match: %s", text);
     }
 
     // UI text dedup (linear scan — 32 entries max, no hash map needed)

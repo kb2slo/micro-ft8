@@ -10,7 +10,7 @@ Read this before adding any buffer over about 1 KB to the P4 image.
 2. **Small or short-lived: heap.** Allocate it where it is used and free it there.
 3. **DMA buffers: internal RAM.** They cannot use PSRAM ([main_board.md](main_board.md)), which is off anyway.
 4. **No size-conditional fallback.** Never "use the static buffer if it fits, else `malloc`". When the configuration outgrows the static buffer, nothing fails: the buffer goes quiet and stays in the image. Refuse the configuration and log both sizes instead (`monitor_init()` does).
-5. **No library that brings hidden statics.** A header can pull in far more than its call: check the budget's figure before and after.
+5. **No library that brings hidden statics.** A header can pull in far more than its call: check the budget's figure before and after. C++ streams (`<sstream>`, `<iostream>`) are out: any one of them links the C++ locale machinery. Format with `snprintf` and append to a `std::string` (`station_serialize()`).
 6. **Static growth spends heap.** Statics and the heap share internal RAM. `tools/check_ram_budget.py` fails the build above `BUDGET_BYTES`, the one place that number lives; raising it is a decision recorded here, not a side effect of a change.
 7. **Name the owner in the comment** and why it is static or heap, and keep it true. A stale comment naming a user that no longer links the file is how an unused buffer looks needed.
 
@@ -38,4 +38,5 @@ Sizes come from the build: `check_ram_budget.py` prints the total, and `riscv32-
 
 * **The waterfall on the heap, allocated when audio starts.** It needed one contiguous block, and statics shrank the heap it came from, so a few KB of new statics stopped every decode at runtime, with nothing at build time (2026-10-24). Freed at each stop, the block was also split by small allocations made while the radio was away, and decoding did not restart after a power cycle. Kept for the program's life, it still hid from every build-time tool.
 * **A static buffer for the small configuration, `malloc` for the large.** The firmware's configuration outgrew the static buffer and the `malloc` always ran, so 80,538 bytes of BSS sat unused in the image while docs described them as the decoder's arena.
+* **C++ streams for parsing and formatting.** One `istringstream` in the decoder and one `ostringstream` in `station_serialize()` linked the C++ locale machinery: removing both took 4,624 bytes of statics and about 172 KB of flash out of the image (2026-10-30).
 * **Freeing a large buffer to lend its space to another mode.** The same fragmentation: a small allocation lands in the freed hole before the next large one. Two modes that never run together share one static buffer, with one owner at a time.

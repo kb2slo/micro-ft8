@@ -56,7 +56,7 @@ New files, include order: C/POSIX `<>`, then IDF, then other components, then ow
 
 New files: function opening brace on its own line; `if` / `switch` / `for` brace on the same line (ESP-IDF). Until a file is extracted, match that file.
 
-C++17. No exceptions, no RTTI. `std::string` / `std::vector` are fine in host-linkable units. Four spaces, LF, ~120 columns. No drive-by wrap of old lines.
+C++17. No exceptions, no RTTI, no streams (`<sstream>`, `<iostream>`: they link the C++ locale machinery, [memory.md](architecture/memory.md)). `std::string` / `std::vector` are fine in host-linkable units. Four spaces, LF, ~120 columns. No drive-by wrap of old lines.
 
 No formatter on `ft8_lib`. Optional `.clang-format` later, only on new extract directories.
 
