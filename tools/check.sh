@@ -16,7 +16,8 @@
 #                check prints its last lines
 #
 # The firmware builds (p4, sidekick) need idf.py on PATH (source
-# esp-idf/export.sh). Without it they are reported SKIP, which is not a pass.
+# esp-idf/export.sh), and the web checks need Node and npm. Without the tool a
+# check is reported SKIP, which is not a pass.
 # CI builds firmware in its own jobs, in ESP-IDF's container.
 set -euo pipefail
 
@@ -157,7 +158,13 @@ need_submodule() {
     { echo "components/ft8_lib/vendor is empty: run git submodule update --init (CONTRIBUTING.md, Setup)"; exit 1; }
 }
 
+need_node() {
+  command -v node >/dev/null || skip "node not on PATH (CONTRIBUTING.md, Setup)"
+}
+
 need_npm() {
+  need_node
+  command -v npm >/dev/null || skip "npm not on PATH (CONTRIBUTING.md, Setup)"
   local lock=webapp/tools/package-lock.json installed=webapp/tools/node_modules/.package-lock.json
   if [ ! -f "$installed" ] || [ "$lock" -nt "$installed" ]; then npm ci --prefix webapp/tools; fi
 }
@@ -181,6 +188,7 @@ check_web() {
 # not listed: a hand-kept list misses the test added next.
 check_webapp() {
   local t ran=0 failed=0
+  need_node
   for t in webapp/tests/test_*.js; do
     case "$t" in */test_sim_*) continue ;; esac
     echo "===== $t ====="
@@ -221,6 +229,7 @@ check_host_mock() {
 
 check_sim() {
   local t failed=0
+  need_node
   need_submodule
   make -C host_mock -j"$JOBS" sim_station
   for t in webapp/tests/test_sim_*.js; do

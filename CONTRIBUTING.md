@@ -25,9 +25,21 @@ git clone --recurse-submodules git@github.com:kb2slo/micro-ft8.git
 ```
 
 An existing tree: `git submodule update --init`. The checks need Python 3, Node, `make`, a C/C++
-compiler and CMake. The firmware needs ESP-IDF v5.5.5: source its `export.sh`, then
+compiler and CMake; a check whose tool is missing reports SKIP, which is not a pass. The firmware needs
+ESP-IDF v5.5.5, installed for both boards (`./install.sh esp32p4,esp32s3`): source its `export.sh`, then
 [poe_p4/README.md](poe_p4/README.md) and [sidekick/README.md](sidekick/README.md) say how to build and
 flash each board.
+
+Once per machine:
+
+- **Serial access on Linux.** The boards' USB ports belong to the `dialout` group:
+  `sudo usermod -aG dialout $USER`, then reboot. Logging out is not always enough: on a desktop whose
+  terminals are started by the systemd user manager, they keep the groups it started with.
+- **The sidekick's pairing token.** The first `python3 webapp/tools/desk_push.py` on a machine waits
+  for the sidekick's button, then caches the token.
+
+A bench board keeps whatever was last flashed or pushed to it, from any machine and any branch. Before a
+field check, check what it runs ([TEST_PLAN.md](docs/TEST_PLAN.md), **Pending**).
 
 ## Checks
 
