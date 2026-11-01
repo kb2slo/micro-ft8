@@ -3594,6 +3594,7 @@ var queueOrder = [];
 // entry still genuinely active is *reconfirmed* every ~1s regardless -- so
 // anything not reconfirmed for a few ticks is gone, IDLE or not.
 var QUEUE_STALE_MS = 4000;
+var QUEUE_STATE_IDLE = 6; // porta_proto.h PORTA_QUEUE_STATE_IDLE: the entry is gone
 function sweepStaleQueue() {
   var now = Date.now();
   var changed = false;
@@ -3616,7 +3617,7 @@ function rebuildQueueOrderFromEvents(events) {
   var order = [];
   for (var i = events.length - 1; i >= 0; i--) {
     var e = events[i];
-    if (e.d !== 2 || e.st === 6) continue;
+    if (e.d !== 2 || e.st === QUEUE_STATE_IDLE) continue;
     var id = String(e.eid);
     if (seen[id]) continue;
     seen[id] = true;
@@ -4576,7 +4577,7 @@ function applyEvent(e) {
                           fq: e.fq ? Math.round(e.fq / 100) / 10 : 0 });
     learnCallsignGrid(e.x); // opportunistic, regardless of who this was addressed to
   } else if (e.d === 2) {
-    if (e.st === 6) {
+    if (e.st === QUEUE_STATE_IDLE) {
       delete queue[e.eid]; // IDLE is the removal signal (docs/architecture/webapp.md (Screens))
     } else {
       queue[e.eid] = { dxcall: e.x, state: e.st, tries_sent: e.ts, try_limit: e.tl,
