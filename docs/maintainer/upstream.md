@@ -35,7 +35,7 @@ Then draft a Backlog row in chat. Do not commit it yet. Do not merge, bump the s
 
 Watched, not tracked: no `upstream` remote exists, so the check below fetches Wei's `main` straight from its URL into `FETCH_HEAD` rather than a persistent remote-tracking branch.
 
-**Last checked:** 2026-10-14 — nothing new on Wei's `main` since 2026-09-12: the same 11 commits not in ours, `491e757` (ported by hand) and his RX-1A test tooling. His last push, 2026-10-03, went to the `msc_export` branch. No row drafted.
+**Last checked:** 2026-11-01 — nothing new on Wei's `main` since 2026-09-07 (`491e757`, ported by hand); his in-tree `ft8/` differs from our pin only in our own `message.c`/`message.h` changes. No row drafted.
 
 General drift, not just the `ft8_lib` files this repo shares with Wei's tree (that's the watch above).
 
@@ -48,7 +48,7 @@ If the date above is more than **7 days** old, run it even though it repeats wha
 
 ## QMX panadapter project (`SteffenLav/qmx-panadapter`) — at least weekly
 
-**Last checked:** 2026-10-14 — v1.16.9 to v1.18.0 (2026-09-30 to 10-12). **Its licence changed from MIT to GPL-3 on 2026-10-09**, for JS8's coding tables, which exist only in JS8Call. What it says about QMX CAT is in [architecture/radio.md](../architecture/radio.md). It is a shipping FT8/FT4 station on the **M5Stack Tab5 (ESP32-P4)**: QMX as a USB host (UAC audio + CAT), on-device FT8/FT4 decode and TX, a browser-streamed panadapter UI, ADIF logging with upload to QRZ/eQSL/LoTW/Cloudlog/Wavelog, POTA/SOTA activation logging, and live PSK Reporter/DX-cluster/POTA spotting. So much of it overlaps open roadmap work that what it finds is worth the maintainer's attention rather than an agent's judgment call.
+**Last checked:** 2026-11-01 — v1.19.0 to v1.22.0 (2026-10-15 to 10-28): nothing on USB reconnect or heap; v1.19.0 asserts receive over CAT on every reconnect to the radio, in case it restarted keyed. Earlier: v1.16.9 to v1.18.0 (2026-09-30 to 10-12). **Its licence changed from MIT to GPL-3 on 2026-10-09**, for JS8's coding tables, which exist only in JS8Call. What it says about QMX CAT is in [architecture/radio.md](../architecture/radio.md). It is a shipping FT8/FT4 station on the **M5Stack Tab5 (ESP32-P4)**: QMX as a USB host (UAC audio + CAT), on-device FT8/FT4 decode and TX, a browser-streamed panadapter UI, ADIF logging with upload to QRZ/eQSL/LoTW/Cloudlog/Wavelog, POTA/SOTA activation logging, and live PSK Reporter/DX-cluster/POTA spotting. So much of it overlaps open roadmap work that what it finds is worth the maintainer's attention rather than an agent's judgment call.
 
 Check for anything new via the repo's own version history ([`docs/version-history.md`](https://github.com/SteffenLav/qmx-panadapter/blob/main/docs/version-history.md) in that repo) rather than a git remote — it is not a fork parent, just a project worth watching for ideas:
 
