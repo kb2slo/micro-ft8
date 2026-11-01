@@ -12,7 +12,6 @@ How things work now: `architecture/` (start at [architecture/system.md](architec
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| x8pa | Audit literals that should be named constants | A value written as a bare number, or copied by hand across C, C++ and JS, drifts silently when its source changes. Seen 2026-10-26: `e.st === 6` for IDLE in `app.html` (now `PORTA_QUEUE_STATE_IDLE` in C); `SHEET_TRIES_MAX = 20` and `TRIES_MAX_*` copying `autoseq.h`; `QUEUE_STALE_MS` in the app and `EVENT_STATE_QUEUE_STALE_MS` on the sidekick; `PORTA_EVENT_TEXT_MAX` "matches RX_TEXT_MAX". Where a language boundary stops one definition, a test asserts the copies agree, as `host_test_event_state` does for `RX_MAX_DECODES` and `AUTOSEQ_MAX_QUEUE`. **Done-when:** a sweep of `components/`, `poe_p4/main/`, `sidekick/main/` and `webapp/app/` leaves every protocol value, limit and timeout named once, and every cross-language copy pinned by a test. |
 
 ## Backlog
 
