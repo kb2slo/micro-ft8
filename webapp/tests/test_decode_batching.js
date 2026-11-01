@@ -74,6 +74,7 @@ const extracted = [
   extractVarLine(src, 'queue'),
   extractVarLine(src, 'queueOrder'),
   extractVarLine(src, 'txHud'),
+  extractVarLine(src, 'QUEUE_STATE_IDLE'),
   extractFunction(src, 'isReplyableDecode'),
   extractFunction(src, 'decodeSortGroup'),
   extractFunction(src, 'decodeSortCmp'),

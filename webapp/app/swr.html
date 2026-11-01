@@ -290,12 +290,14 @@ function loadPrev() {
   return null;
 }
 
+var QUEUE_STATE_IDLE = 6; // porta_proto.h PORTA_QUEUE_STATE_IDLE: the entry is gone
+
 // True when a row changed the run on screen.
 function applyRows(rows) {
   var changed = false;
   rows.forEach(function (e) {
     if (e.d === 2) {
-      if (e.st === 6) delete queue[e.eid]; else queue[e.eid] = { dxcall: e.x };
+      if (e.st === QUEUE_STATE_IDLE) delete queue[e.eid]; else queue[e.eid] = { dxcall: e.x };
     } else if (e.d === 4) {
       txOnAir = !!e.active;
     } else if (e.d === 6 && state && state.phase === 'running' && e.s >= startSeq) {
