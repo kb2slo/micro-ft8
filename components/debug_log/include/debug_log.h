@@ -25,7 +25,8 @@ void debug_log_line(const std::string& msg);
 // goes through this).
 void debug_log_line_public(const std::string& msg);
 
-// Log free / minimum-free / largest-block heap figures under `tag`.
+// Log free / minimum-free / largest-block heap figures under `tag`, internal RAM
+// and PSRAM separately.
 void log_heap(const char* tag);
 
 // Registers a relay called with every logged line. Pass nullptr to clear.

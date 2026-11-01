@@ -17,9 +17,13 @@ void debug_log_line_public(const std::string& msg) {
   debug_log_line(msg);
 }
 
+// Internal RAM and PSRAM apart: with CONFIG_SPIRAM_USE_CAPS_ALLOC, MALLOC_CAP_8BIT
+// spans both, and a figure that mixes them cannot show a leak in either.
 void log_heap(const char* tag) {
-  size_t free_sz = heap_caps_get_free_size(MALLOC_CAP_8BIT);
-  size_t min_free = heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT);
-  size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
-  ESP_LOGI(tag, "HEAP: free=%u min=%u largest=%u", (unsigned)free_sz, (unsigned)min_free, (unsigned)largest);
+  ESP_LOGI(tag, "HEAP: int free=%u min=%u largest=%u psram free=%u largest=%u",
+           (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+           (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+           (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+           (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+           (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
 }
