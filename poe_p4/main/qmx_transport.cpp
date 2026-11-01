@@ -6,7 +6,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "debug_log.h"
 #include "decode_tx_state.h"
+#include "esp_heap_caps.h"
 #include "porta.h"
 #include "qmx_transport.h"
 #include "cat_reply_parser.h"
@@ -82,6 +84,30 @@ static constexpr int64_t kUsbUnidentifiedAfterMs = 1500;
 // Port kind on the wire (porta_proto.h, UsbCKind): 0 = the QMX, 2 = other.
 static constexpr uint8_t kUsbKindRadio = 0;
 static constexpr uint8_t kUsbKindOther = 2;
+
+// Row qpw8 (free heap seemed to shrink per QMX reconnect): one Port A line per
+// device departure, with the heap read once the USB host has dropped the
+// device. The host core frees a device only after every client has closed it,
+// so the empty address list comes after both the CDC close and the deferred UAC
+// close; the settle lets the decode pipeline's own teardown on core 1 finish too.
+// A reading at the pipeline's start also holds what was allocated on first use
+// in the session before, so only this one compares cycle to cycle.
+static constexpr int64_t kUsbGoneHeapSettleMs = 2000;
+static bool s_usb_dev_listed = false;
+static int64_t s_usb_gone_at_ms = 0;
+static uint32_t s_usb_gone_count = 0;
+
+static void log_heap_after_usb_gone(void) {
+    char buf[96];
+    snprintf(buf, sizeof(buf), "USBC gone n%lu int %u/%u ps %u/%u",
+             (unsigned long)s_usb_gone_count,
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+    ESP_LOGI(TAG, "%s", buf);
+    debug_log_line_public(buf);
+}
 
 static uac_host_device_handle_t s_uac_handle = nullptr;
 // QMX can fire DISCONNECTED once per UAC logic iface; only queue one close.
@@ -211,6 +237,17 @@ static void track_usb_presence(void) {
         return;
     }
     const int64_t t = now_ms();
+    if (n > 0) {
+        s_usb_dev_listed = true;
+        s_usb_gone_at_ms = 0;
+    } else if (s_usb_dev_listed) {
+        s_usb_dev_listed = false;
+        s_usb_gone_count++;
+        s_usb_gone_at_ms = t;
+    } else if (s_usb_gone_at_ms != 0 && t - s_usb_gone_at_ms >= kUsbGoneHeapSettleMs) {
+        s_usb_gone_at_ms = 0;
+        log_heap_after_usb_gone();
+    }
     if (n > 0) {
         if (s_usb_announced || t < s_cdc_reconnect_after_ms) {
             return;  // told already, or a device that just left is still listed
