@@ -85,7 +85,7 @@ static constexpr int64_t kUsbUnidentifiedAfterMs = 1500;
 static constexpr uint8_t kUsbKindRadio = 0;
 static constexpr uint8_t kUsbKindOther = 2;
 
-// Row qpw8 (free heap seemed to shrink per QMX reconnect): one Port A line per
+// Heap across QMX reconnects (docs/architecture/memory.md): one Port A line per
 // device departure, with the heap read once the USB host has dropped the
 // device. The host core frees a device only after every client has closed it,
 // so the empty address list comes after both the CDC close and the deferred UAC
