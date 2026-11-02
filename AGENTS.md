@@ -99,6 +99,8 @@ Changes reach `main` (`kb2slo/micro-ft8`) through a pull request ([CONTRIBUTING.
 
 The full dev environment — build, test, and the sidekick field-flash workflow — must be reproducible from a fresh `git clone` (submodules included) plus a capable agent, with no dependency on state that exists only on one person's machine. When a step genuinely needs a one-time physical-hardware action (e.g. capturing a sidekick's factory-state backup before it is ever field-flashed), document the exact command in the relevant README/script rather than committing a derived artifact whose redistribution terms aren't ours to decide. `sidekick/README.md`'s stock-backup section is the current example of this pattern.
 
+**No workstation OS is assumed.** Tools, scripts and documented steps run on Linux, macOS and Windows alike: prefer cross-platform pieces (Python, pyserial, PortAudio) over one OS's own tools, and never name an OS where a step works on any. A step that truly needs one OS says which and why.
+
 ## Chat gates
 
 The person you work for reviews in chat, then green-lights each step. A good previous turn is not permission to skip a gate.
