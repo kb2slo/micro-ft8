@@ -12,9 +12,6 @@ dependencies:
   # dependency on every component-manager resolve. 1.5.0 changed the
   # uac_host_dev_alt_param_t layout; nothing here uses that struct.
   espressif/usb_host_uac: 1.5.0
-  # The USB host stack under both: espressif/usb 1.6.0, vendored to carry one
-  # patch (docs/architecture/main_board.md, USB host stack). Upgrading means
-  # replacing components/espressif__usb with the new release and re-applying it.
-  espressif/usb:
-    version: 1.6.0
-    override_path: ../../components/espressif__usb
+  # The USB host stack under both is not a dependency here: it is vendored in
+  # components/usb, which takes the place of ESP-IDF's own usb component
+  # (docs/architecture/main_board.md, USB host stack).

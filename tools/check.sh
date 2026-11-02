@@ -30,7 +30,7 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-CHECKS="web webapp host_mock sim tx_e2e decode_recall getting_started docs commits sidekick p4"
+CHECKS="web webapp host_mock sim tx_e2e decode_recall getting_started docs commits locks sidekick p4"
 HOST_CHECKS="web webapp host_mock sim tx_e2e decode_recall getting_started"
 LOG_DIR="build/check"
 JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
@@ -99,7 +99,7 @@ changed_files() {
   git ls-files --others --exclude-standard | sed 's/^/U	/'
 }
 
-SELECTED=" docs commits "
+SELECTED=" docs commits locks "
 select_check() {  # name, the path that selected it
   case "$SELECTED" in *" $1 "*) return ;; esac
   SELECTED="$SELECTED$1 "
@@ -323,6 +323,22 @@ check_commits() {
   else
     python3 tools/check_commits.py "$BASE..$HEAD_REV"
   fi
+}
+
+# A local path in a committed dependencies.lock names a directory on the machine that
+# resolved it: the component manager writes path and override_path dependencies there
+# as absolute paths, so every other checkout, CI's included, fails to configure.
+check_locks() {
+  local bad
+  bad="$(git ls-files -z '*dependencies.lock' | xargs -0 grep -n -E '^[[:space:]]+path:' || true)"
+  if [ -n "$bad" ]; then
+    echo "local path in a committed dependencies.lock:"
+    echo "$bad"
+    echo "Vendor a component under components/ in EXTRA_COMPONENT_DIRS, not as a path or"
+    echo "override_path dependency (docs/architecture/main_board.md, USB host stack)."
+    return 1
+  fi
+  echo "no local paths in $(git ls-files '*dependencies.lock' | wc -l | tr -d ' ') lock file(s)"
 }
 
 check_sidekick() {

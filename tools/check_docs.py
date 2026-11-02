@@ -3,7 +3,7 @@
 
   python3 tools/check_docs.py [--base REV]
 
-Reads every .md file of ours, tracked or not yet added (not the vendored M5 libraries, components/espressif__*, or ft8_lib),
+Reads every .md file of ours, tracked or not yet added (not the vendored M5 libraries, components/usb, or ft8_lib),
 outside fenced code blocks, and fails on:
 
   - a relative Markdown link whose file or directory is gone;
@@ -49,7 +49,7 @@ def git(*args):
 
 
 def ours(path):
-    return (path.endswith('.md') and not path.startswith(('components/M5', 'components/espressif__', 'docs/rfcs/rejected/'))
+    return (path.endswith('.md') and not path.startswith(('components/M5', 'components/usb/', 'docs/rfcs/rejected/'))
             and '/vendor/' not in path)
 
 
