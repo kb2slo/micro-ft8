@@ -4,7 +4,8 @@
 #   tools/roadmap_rows.sh                  rows over the size limit, median length, long-ok count
 #   tools/roadmap_rows.sh new              print a fresh random row ID never seen in git history
 #   tools/roadmap_rows.sh health [--at REV]
-#                                          backlog health and drift budget, now or as of REV
+#                                          backlog health and drift budget, now or as of REV,
+#                                          including how long since the dependency watch ran
 #   tools/roadmap_rows.sh dangling [--at REV]
 #                                          docs citing a row ID that is no longer a row (nor Declined)
 #
@@ -20,10 +21,12 @@ BUDGET_OVERSIZE_PCT=15  # rows over LIMIT, % of all rows
 BUDGET_NO_DONE_PCT=20   # Backlog rows with no Done-when, % of Backlog
 BUDGET_NOW_ROWS=3       # rows in Now (theme count is judged at grooming, not here)
 BUDGET_OWED=30          # owed field checks in TEST_PLAN Pending (standing row swsu)
+BUDGET_DEPS_DAYS=14     # days since the dependency watch last ran (docs/maintainer/upstream.md, Dependencies)
 FLOW_DAYS=14            # window for rows added vs removed
 
 ROADMAP="docs/ROADMAP.md"
 TEST_PLAN="docs/TEST_PLAN.md"
+UPSTREAM="docs/maintainer/upstream.md"
 
 cd "$(git rev-parse --show-toplevel)"
 
@@ -111,11 +114,12 @@ flow() {
 health() {
   local rev="HEAD" worktree=1
   if [[ "${1:-}" == "--at" ]]; then rev="$2"; worktree=0; fi
-  local text tp now since
+  local text tp up now since
   if (( worktree )); then
-    text="$(cat "$ROADMAP")"; tp="$(cat "$TEST_PLAN")"; now="$(date +%s)"
+    text="$(cat "$ROADMAP")"; tp="$(cat "$TEST_PLAN")"; up="$(cat "$UPSTREAM")"; now="$(date +%s)"
   else
     text="$(git show "$rev:$ROADMAP")"; tp="$(git show "$rev:$TEST_PLAN")"
+    up="$(git show "$rev:$UPSTREAM" 2>/dev/null || true)"
     now="$(git show -s --format=%ct "$rev")"
   fi
   since="$(( now - FLOW_DAYS * 86400 ))"
@@ -161,6 +165,12 @@ health() {
   printf '  flow %dd          +%d / -%d rows\n' "$FLOW_DAYS" "$added" "$removed"
   printf '  oldest Backlog   %s, %d days since intake\n' "${oldest_id:-none}" "$oldest_days"
   printf '  owed field checks %d (TEST_PLAN Pending)          budget %d\n' "$owed" "$BUDGET_OWED"
+  # The dependency watch's own record: the date on its Last checked line. Never run reads as over.
+  local deps_date deps_days=-1
+  deps_date="$(awk '/^## Dependencies/ { f = 1 } f && /^\*\*Last checked:\*\* [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ { print $3; exit }' <<<"$up")"
+  [[ -n "$deps_date" ]] && deps_days="$(( (now - $(date -d "$deps_date" +%s)) / 86400 ))"
+  printf '  dependency watch %s                    budget %d days\n' \
+    "$( (( deps_days >= 0 )) && echo "$deps_days days since $deps_date" || echo "never run" )" "$BUDGET_DEPS_DAYS"
   # Reported, not budgeted: most dead citations sit in RFCs awaiting graduation (row k7gc).
   local dang
   dang="$(if (( worktree )); then dangling; else dangling --at "$rev"; fi)"
@@ -173,6 +183,7 @@ health() {
   (( now_rows > BUDGET_NOW_ROWS )) && why+=("Now ${now_rows} rows")
   (( nodone_pct > BUDGET_NO_DONE_PCT )) && why+=("no Done-when ${nodone_pct}%")
   (( owed > BUDGET_OWED )) && why+=("owed field checks ${owed}")
+  (( deps_days < 0 || deps_days > BUDGET_DEPS_DAYS )) && why+=("dependency watch $( (( deps_days < 0 )) && echo "never run" || echo "${deps_days} days old")")
   # Inflow beating outflow only counts if the Backlog also grew since the last groom.
   local last_groom bl_then
   last_groom="$(git log -1 --format=%H --grep='^ROADMAP: groom' "$rev" -- "$ROADMAP" || true)"

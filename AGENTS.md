@@ -156,7 +156,8 @@ the only place every agent and every person can see them — see "Memory lives i
 - **Before patching a vendored library, diff a working reference.** When a bug traces into vendored or managed
   code (e.g. `usb_host_uac`), first compare how a working reference drives it (our
   `poe_p4/main/qmx_transport.cpp` against `SteffenLav/qmx-panadapter`). Patch the library only if those
-  comparisons still point at it.
+  comparisons still point at it. Read the library's changelog since our pin too (`tools/dep_watch.py` links
+  it): the fix may already be released.
 
 - **`webapp/app/` is source; what ships is its build** (`python3 webapp/tools/build.py`, after
   `npm ci --prefix webapp/tools` once per clone): minified into `webapp/dist/app/`, manifest written from the output,
