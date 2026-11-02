@@ -12,7 +12,6 @@ How things work now: `architecture/` (start at [architecture/system.md](architec
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| x8r5 | USB host asserts in `_buffer_parse` on a QMX power-off | 1 in 7 power-offs on usb 1.1.0 (2026-11-01, `continuous-23-gbfe7f83`) rebooted the P4: `hcd_dwc.c:2601 (buffer_to_parse->urb != NULL)`. A channel-error interrupt on a pipe with nothing in flight completes a buffer that is not running and parses an empty slot; upstream master has the same code. `components/espressif__usb` now drops such an error with a warning. On usb 1.6.0 with the patch, 20 power-offs gave no reset and no warning, so the patch is unproven on hardware ([main_board.md](architecture/main_board.md), **USB host stack**). **Done-when:** the patch is offered upstream as a pull request to `espressif/esp-usb`, with the 1.1.0 crash log and the mechanism; drop our copy if they ship a fix. |
 
 ## Backlog
 
