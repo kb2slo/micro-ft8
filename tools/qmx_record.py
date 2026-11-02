@@ -424,15 +424,38 @@ def list_devices():
                   f"default {d['default_samplerate']:.0f} Hz)")
 
 
+# When one radio shows up under several host APIs, the one that reaches the hardware most
+# directly: Linux lists the QMX as an ALSA device and again through PulseAudio/PipeWire, and
+# Windows lists it once per API (MME, DirectSound, WASAPI, WDM-KS).
+HOSTAPI_PREFERENCE = ("ALSA", "Windows WASAPI", "Core Audio")
+
+
+def pick_device(devices, hostapi_names, substring):
+    """The index of the one stereo input whose name holds substring, or (None, matches).
+
+    An output's `.monitor` loopback is never the radio. Of what is left, a device on the
+    most-preferred host API wins; a tie there is ambiguous."""
+    hits = [(i, d) for i, d in enumerate(devices)
+            if d["max_input_channels"] >= CHANNELS and substring.lower() in d["name"].lower()
+            and not d["name"].endswith(".monitor")]
+    if len(hits) > 1:
+        for api in HOSTAPI_PREFERENCE:
+            on_api = [h for h in hits if hostapi_names[h[1]["hostapi"]] == api]
+            if on_api:
+                hits = on_api
+                break
+    return (hits[0][0], hits) if len(hits) == 1 else (None, hits)
+
+
 def find_device(substring):
     import sounddevice as sd
-    hits = [(i, d) for i, d in enumerate(sd.query_devices())
-            if d["max_input_channels"] >= CHANNELS and substring.lower() in d["name"].lower()]
-    if len(hits) != 1:
+    apis = [a["name"] for a in sd.query_hostapis()]
+    index, hits = pick_device(sd.query_devices(), apis, substring)
+    if index is None:
         names = ", ".join(f"{i}: {d['name']}" for i, d in hits) or "none"
         sys.exit(f"--device {substring!r} must match exactly one stereo input (matched {names}); "
                  "see --list-devices, or pass its number")
-    return hits[0][0]
+    return index
 
 
 def main():

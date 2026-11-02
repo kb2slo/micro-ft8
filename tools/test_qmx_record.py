@@ -117,6 +117,32 @@ class AlternateTest(unittest.TestCase):
         self.assertEqual(qr.switch_plan(T0, 5, "iq", None), [])
 
 
+class PickDeviceTest(unittest.TestCase):
+    APIS = ["ALSA", "PulseAudio", "MME", "Windows WASAPI"]
+
+    def dev(self, name, api, ins=2):
+        return {"name": name, "hostapi": self.APIS.index(api), "max_input_channels": ins}
+
+    def test_linux_prefers_the_alsa_device_over_pulse_and_its_monitor(self):
+        devs = [self.dev("HDA Intel PCH: ALC257 Analog (hw:0,0)", "ALSA"),
+                self.dev("QMX Transceiver: USB Audio (hw:3,0)", "ALSA"),
+                self.dev("alsa_output.usb-QRP_Labs_QMX_Transceiver-02.analog-stereo.monitor", "PulseAudio"),
+                self.dev("alsa_input.usb-QRP_Labs_QMX_Transceiver-02.analog-stereo", "PulseAudio")]
+        self.assertEqual(qr.pick_device(devs, self.APIS, "QMX")[0], 1)
+
+    def test_windows_prefers_wasapi(self):
+        devs = [self.dev("Microphone (QMX Transceiver)", "MME"),
+                self.dev("Microphone (QMX Transceiver)", "Windows WASAPI")]
+        self.assertEqual(qr.pick_device(devs, self.APIS, "qmx")[0], 1)
+
+    def test_still_ambiguous_or_missing_gives_none(self):
+        devs = [self.dev("QMX A", "ALSA"), self.dev("QMX B", "ALSA"), self.dev("QMX mono", "ALSA", ins=1)]
+        index, hits = qr.pick_device(devs, self.APIS, "QMX")
+        self.assertIsNone(index)
+        self.assertEqual(len(hits), 2)
+        self.assertEqual(qr.pick_device(devs, self.APIS, "nothing"), (None, []))
+
+
 class SlotWriterTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
