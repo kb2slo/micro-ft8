@@ -1,6 +1,6 @@
 # RFC 0006: Decode performance — measure, then tune
 
-* **Status:** Accepted 2026-09-25, phase order in §5 as written. **Amended 2026-10-02:** the ADV was dropped. Where this RFC discusses the ADV, its measurements, its screens or its `ADV-only` work, it is history and no longer applies.
+* **Status:** Accepted 2026-09-25, phase order in §5 as written. **Amended 2026-10-02:** the ADV was dropped. Where this RFC discusses the ADV, its measurements, its screens or its `ADV-only` work, it is history and no longer applies. **Amended 2026-11-02:** recordings are stored as GitHub release assets, one prerelease per session tagged `corpus-YYYY-MM-DD` and never marked latest, with their manifests and SHA-256 in `tools/decode_bench/corpus/` (§5 P6, Storage; operator).
   [I26](../ROADMAP.md), [B85](../ROADMAP.md) and [B86](../ROADMAP.md) carry an ID, a name and a link
   here; the reasoning lives in this file.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
