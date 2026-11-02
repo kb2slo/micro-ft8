@@ -102,6 +102,21 @@ def read_wav(path):
                 w.readframes(w.getnframes()))
 
 
+class AlternateTest(unittest.TestCase):
+    def test_turns_of_n_slots_starting_with_the_first_tag(self):
+        self.assertEqual([qr.mode_for(i, "iq", 2) for i in range(6)],
+                         ["iq", "iq", "audio", "audio", "iq", "iq"])
+        self.assertEqual([qr.mode_for(i, "audio", 1) for i in range(3)], ["audio", "iq", "audio"])
+        self.assertEqual([qr.mode_for(i, "iq", None) for i in range(3)], ["iq"] * 3)
+
+    def test_switch_lands_before_each_turn_boundary(self):
+        plan = qr.switch_plan(T0, 5, "iq", 2)
+        self.assertEqual(plan, [(T0 - qr.SWITCH_LEAD_S, "iq"),
+                                (T0 + 2 * qr.SLOT_S - qr.SWITCH_LEAD_S, "audio"),
+                                (T0 + 4 * qr.SLOT_S - qr.SWITCH_LEAD_S, "iq")])
+        self.assertEqual(qr.switch_plan(T0, 5, "iq", None), [])
+
+
 class SlotWriterTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -143,6 +158,13 @@ class SlotWriterTest(unittest.TestCase):
         for k, n in enumerate(names):
             first = read_wav(os.path.join(self.dir, n))[4][:3]
             self.assertEqual(int.from_bytes(first, "little"), k * qr.FRAMES_PER_SLOT)
+
+    def test_alternate_tags_each_slot_and_warns_on_a_mode_mismatch(self):
+        w = self.writer(slots=4, alternate=2, cat=FakeCat(q9="Q9 1;"))
+        self.feed_all(w, 4 * qr.FRAMES_PER_SLOT)
+        self.assertEqual([r["mode_tag"] for r in w.written], ["iq", "iq", "audio", "audio"])
+        warned = [m for m in self.logs if m.startswith("warning: Q9;")]
+        self.assertEqual(len(warned), 2)  # the two audio slots, while the fake radio stays in IQ
 
     def test_24_bit_wav_headers(self):
         w = self.writer(slots=1)

@@ -2,9 +2,16 @@
 """Record a QMX's USB audio as one WAV per 15 s FT8 slot, for row y9bt's offline A/B.
 
 Stage 2 of row y9bt (docs/ROADMAP.md) records the QMX in IQ mode and in its normal audio
-mode in alternating hours, then scores both against `jt9`. This script is the recorder.
-It records whatever the QMX sends and never switches its mode: set IQ or audio mode on
-the radio by hand and say which with --mode-tag. It never sends `Q9 1;` or `Q9 0;`.
+mode, then scores both against `jt9`. This script is the recorder. By default it records
+whatever the QMX sends and never switches its mode: set IQ or audio mode on the radio by
+hand and say which with --mode-tag.
+
+With --alternate N (needs --port) it switches the mode itself, `Q9 1;` or `Q9 0;`, every N
+slots, starting with --mode-tag. The switch goes out 0.5 s before a slot boundary, in the
+tail of a slot that FT8 does not use, so no slot starts mid-switch. N=2 gives each mode an
+even and an odd slot in turn, so both hear the same stations under the same conditions.
+Bench-verified 2026-11-02 on QMX 1_04_010: the switch applies at once and the USB audio
+stream keeps every frame across it.
 
 Runs on any computer with the QMX's USB-C plugged straight in: it enumerates as an audio
 device and a serial port. Needs `sounddevice` (PortAudio) and `pyserial`:
@@ -23,6 +30,20 @@ One IQ hour, then one audio hour (the serial port is e.g. COM5, /dev/ttyACM0 or
   python3 tools/qmx_record.py --device QMX --port PORT --mode-tag iq    --minutes 60 --out DIR
   python3 tools/qmx_record.py --device QMX --port PORT --mode-tag audio --minutes 60 --out DIR
 
+Or both in one run, two slots of each in turn:
+
+  python3 tools/qmx_record.py --device QMX --port PORT --mode-tag iq --alternate 2 --minutes 30 --out DIR
+
+On Linux, ModemManager probes the QMX's serial ports when it connects, and CAT then gives no
+reply until the QMX restarts. Tell it to ignore the QMX (0483:a34c, which a QDX shares) once:
+
+  sudo tee /etc/udev/rules.d/99-qmx-no-modemmanager.rules <<'EOF'
+  ATTRS{idVendor}=="0483", ATTRS{idProduct}=="a34c", ENV{ID_MM_DEVICE_IGNORE}="1"
+  EOF
+  sudo udevadm control --reload-rules
+
+then power-cycle the QMX. macOS and Windows have no ModemManager.
+
 Without --port, pass the dial frequency with --dial-hz; it is recorded as given.
 
 48,000 Hz, 2 channels, 24-bit. The stream starts on the next 15 s UTC boundary and is cut
@@ -39,8 +60,8 @@ unfinished `.wav.part`.
 IQ ones through the front end and the audio ones with --real.
 
 `manifest.jsonl` in --out gets one line per finished slot. With --port, the IQ-mode
-state is read with `Q9;` at each slot start (documented by SteffenLav/qmx-panadapter,
-unverified on our unit, so the raw reply is stored) and the dial with `FA;`.
+state is read with `Q9;` at each slot start (documented by SteffenLav/qmx-panadapter and
+bench-verified here; the raw reply is stored) and the dial with `FA;`.
 
 Host test, no audio device needed:
 
@@ -88,6 +109,26 @@ def q9_mode(reply):
     return {"1": "iq", "0": "audio"}[m.group(1)] if m else None
 
 
+SWITCH_LEAD_S = 0.5  # --alternate: send Q9 this long before the boundary
+
+
+def mode_for(index, first_tag, alternate):
+    """The mode slot `index` is recorded in: first_tag, or turns of `alternate` slots each."""
+    if not alternate:
+        return first_tag
+    other = "audio" if first_tag == "iq" else "iq"
+    return first_tag if (index // alternate) % 2 == 0 else other
+
+
+def switch_plan(start, slots, first_tag, alternate):
+    """[(epoch seconds, mode)] for each switch: the first before slot 0, then one per turn."""
+    if not alternate:
+        return []
+    n = slots if slots is not None else 10**9
+    return [(start + i * SLOT_S - SWITCH_LEAD_S, mode_for(i, first_tag, alternate))
+            for i in range(0, n, alternate)]
+
+
 def recorder_version():
     here = os.path.dirname(os.path.abspath(__file__))
     try:
@@ -99,15 +140,25 @@ def recorder_version():
 
 
 class Cat:
-    """Read-only CAT over the QMX's serial port, as tools/qmx_swr_probe.py talks to it."""
+    """CAT over the QMX's serial port, as tools/qmx_swr_probe.py talks to it. Reads only,
+    except set_iq(), which --alternate uses. Both threads share it, hence the lock."""
 
     def __init__(self, port):
         import serial  # pyserial; imported here so the host test needs neither dependency
         self.ser = serial.Serial(port, 115200, timeout=0.05)
+        self.lock = threading.Lock()
         time.sleep(0.3)
+
+    def set_iq(self, mode):
+        """Q9 1; for 'iq', Q9 0; for 'audio'. The QMX sends no reply to a set."""
+        self.query("Q9 1;" if mode == "iq" else "Q9 0;", wait=0.1)
 
     def query(self, cmd, wait=0.5):
         """Send one command; return the reply up to the last ';', or '' if none came."""
+        with self.lock:
+            return self._query(cmd, wait)
+
+    def _query(self, cmd, wait):
         self.ser.reset_input_buffer()
         t0 = time.monotonic()
         self.ser.write(cmd.encode())
@@ -137,11 +188,12 @@ class SlotWriter:
     """
 
     def __init__(self, out_dir, first_start, slots, mode_tag, cat=None, dial_hz=None,
-                 version="unknown", log=print):
+                 version="unknown", log=print, alternate=None):
         self.out_dir = out_dir
         self.first_start = first_start
         self.slots = slots  # None: until stopped
-        self.mode_tag = mode_tag
+        self.mode_tag = mode_tag  # with alternate, the first turn's mode
+        self.alternate = alternate
         self.cat = cat
         self.dial_hz = dial_hz
         self.version = version
@@ -216,9 +268,11 @@ class SlotWriter:
             else:
                 self.log(f"warning: no FA; reply at {slot_name(nominal)}; "
                          + ("recording --dial-hz as given" if self.dial_hz is not None else "dial unknown"))
-            if q9_mode(q9) is not None and q9_mode(q9) != self.mode_tag:
-                self.log(f"warning: Q9; answered {q9!r} ({q9_mode(q9)}) but --mode-tag is {self.mode_tag}")
+            want = mode_for(self.index, self.mode_tag, self.alternate)
+            if q9_mode(q9) is not None and q9_mode(q9) != want:
+                self.log(f"warning: Q9; answered {q9!r} ({q9_mode(q9)}) but this slot is {want}")
         self.cur = {
+            "mode_tag": mode_for(self.index, self.mode_tag, self.alternate),
             "fh": fh, "wav": wav, "part": part, "final": final, "frames": 0, "overflows": 0,
             "nominal": nominal, "arrived": arrived, "q9": q9,
             "dial_hz": dial if dial is not None else self.dial_hz, "dial_source": dial_source,
@@ -238,7 +292,7 @@ class SlotWriter:
             "file": os.path.basename(c["final"]),
             "nominal_utc_start": utc_iso(c["nominal"]),
             "first_frame_arrived_utc": utc_iso(c["arrived"]),
-            "mode_tag": self.mode_tag,
+            "mode_tag": c["mode_tag"],
             "q9_reply": c["q9"],
             "dial_hz": c["dial_hz"],
             "dial_source": c["dial_source"],
@@ -314,16 +368,29 @@ class Recorder:
         finally:
             self.done.set()
 
+    def _switch_loop(self, plan, cat):
+        """--alternate: send each planned Q9 at its time, until recording is done."""
+        for when, mode in plan:
+            if self.done.wait(max(0.0, when - self.clock())):
+                return
+            cat.set_iq(mode)
+
     def run(self):
         """Record until the slot count is reached or Ctrl-C. Returns the manifest records."""
         self._started = False
         self.start_utc = next_boundary(self.clock() + LEAD_S)
         self.writer = SlotWriter(first_start=self.start_utc, **self.writer_args)
         log = self.writer.log
-        log(f"starting at {utc_iso(self.start_utc)} (mode tag {self.writer.mode_tag})")
+        w = self.writer
+        log(f"starting at {utc_iso(self.start_utc)} (mode tag {w.mode_tag}"
+            + (f", alternating every {w.alternate} slots)" if w.alternate else ")"))
         stream = self.open_stream(self.callback)
         thread = threading.Thread(target=self._write_loop, name="qmx-record-writer", daemon=True)
         thread.start()
+        if w.alternate:
+            plan = switch_plan(self.start_utc, w.slots, w.mode_tag, w.alternate)
+            threading.Thread(target=self._switch_loop, args=(plan, w.cat), name="qmx-record-switch",
+                             daemon=True).start()
         stream.start()
         interrupts = 0
         try:
@@ -376,6 +443,8 @@ def main():
     ap.add_argument("--mode-tag", choices=("iq", "audio"), help="the mode the QMX was set to by hand")
     ap.add_argument("--port", help="the QMX's serial port, for Q9; and FA; at each slot start")
     ap.add_argument("--dial-hz", type=int, help="dial frequency, recorded as given when CAT gives none")
+    ap.add_argument("--alternate", type=int, metavar="N",
+                    help="switch IQ mode over CAT every N slots, starting with --mode-tag (needs --port)")
     n = ap.add_mutually_exclusive_group()
     n.add_argument("--slots", type=int, help="stop after this many slots")
     n.add_argument("--minutes", type=float, help="stop after this many minutes of slots")
@@ -391,6 +460,8 @@ def main():
         math.ceil(args.minutes * 60 / SLOT_S) if args.minutes is not None else None)
     if slots is not None and slots < 1:
         ap.error("--slots/--minutes must give at least one slot")
+    if args.alternate is not None and (args.alternate < 1 or not args.port):
+        ap.error("--alternate needs N of 1 or more, and --port to switch the mode with")
 
     import sounddevice as sd
     device = int(args.device) if args.device.isdigit() else find_device(args.device)
@@ -402,7 +473,8 @@ def main():
                                  device=device, latency="high", callback=callback)
 
     rec = Recorder(open_stream, dict(out_dir=args.out, slots=slots, mode_tag=args.mode_tag, cat=cat,
-                                     dial_hz=args.dial_hz, version=recorder_version()))
+                                     dial_hz=args.dial_hz, version=recorder_version(),
+                                     alternate=args.alternate))
     try:
         written = rec.run()
     finally:
