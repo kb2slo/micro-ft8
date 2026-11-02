@@ -31,7 +31,7 @@ Each fact is from the code or docs at `9d0d704`.
 * **Reference data already fetched online.** `map.html` loads POTA parks per country (`api.pota.app/program/parks/{prefix}`) and SOTA summits per association region, driven by the viewport; `callinfo.js` and `map.html` read live activator spots. All of it is online-only today.
 * **Device storage.** Sidekick `web` partition: LittleFS, 1.9 MB, 512 KB per file, holding the app bundle. Main boards: `storage` 3 MB LittleFS. Port A: 2.5 Mbaud, 255-byte payloads ([sidekick.md](../architecture/sidekick.md), **Port A**).
 * **`/P`.** `ft8_lib` packs a `/P` suffix as message type i3=2, grid included (`components/ft8_lib/vendor/ft8/message.c:288`).
-* **No reference goes on the air today.** An upstream convention for sending one in place of the sign-off is documented but has no code, and Backlog row `nuvm` removes its doc.
+* **No reference goes on the air today.** An upstream convention for sending one in place of the sign-off had a doc here but no code, and the doc was removed 2026-11-02.
 
 ## 3. What the programs require
 
@@ -167,7 +167,7 @@ A later phase (§6). What the design keeps open:
 * **The active activation in browser storage only.** Evicted by Safari, invisible to a second phone, and absent while the phone sleeps. The main board logs the QSO, so the main board holds the references.
 * **References in `COMMENT`**, the WSJT-X workaround POTA's digital guide describes. No importer reads it; it defeats the top goal.
 * **N-fers as one file with comma lists.** POTA does not read `MY_POTA_REF` (§3), so the per-park files POTA asks for are built at export.
-* **Sending the reference over the air** as free text, whether after 73 or in place of the sign-off. The one written convention for this is being dropped (row `nuvm`). In practice POTA hunters take the park from spots, and a free-text slot costs a 15 s cycle per QSO. Reopen if P2P/S2S capture from spots and queue entries (§4.4) proves not to be enough.
+* **Sending the reference over the air** as free text, whether after 73 or in place of the sign-off. The one written convention for this was dropped 2026-11-02. In practice POTA hunters take the park from spots, and a free-text slot costs a 15 s cycle per QSO. Reopen if P2P/S2S capture from spots and queue entries (§4.4) proves not to be enough.
 * **Raw ADIF over Port A for export.** Reverses a recorded decision (`porta_proto.h:452`) for a problem the row's free space covers. Reopen if the row runs out of room.
 
 ## 6. Later phases

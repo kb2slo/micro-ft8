@@ -14,7 +14,6 @@ Human- and tool-readable project memory. Prefer this tree over editor-specific r
 | [TEST_PLAN.md](TEST_PLAN.md) | Ledger: what automation checks, what it cannot see, and the field checks still owed (**Pending**), with how one is asked for and closed. |
 | [RELEASE_PROCESS.md](RELEASE_PROCESS.md) | How a build becomes a download: the rolling `continuous` tag, versioned `v*` releases, what a version tag does **not** set, and what a rename/de-fork would break. |
 | `architecture/` | How it works now, and why, one doc per area. Start at [system.md](architecture/system.md); it links the rest. Doc type: **Doc types** below. |
-| [FT8 Free-Text Reference Extension.md](FT8%20Free-Text%20Reference%20Extension.md) | Free-text / SOTA-style payload notes. |
 | `rfcs/` | Design for work not yet built. Lifecycle and graduation: [rfcs/README.md](rfcs/README.md). |
 | `maintainer/` | What only the maintainer does: how the roadmap is kept and groomed, the upstream watches, how agents are run here. Start at [maintainer/README.md](maintainer/README.md). |
 
