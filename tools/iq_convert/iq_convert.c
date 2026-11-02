@@ -184,6 +184,8 @@ typedef struct {
     double level_db;
     int bits;
     const char* out;
+    int normalize;        // --normalize-db given
+    double normalize_db;  // output RMS, dBFS
 } options_t;
 
 static iq_frontend_config_t frontend_config(const options_t* o, double center, int input_rate)
@@ -227,9 +229,23 @@ static int receive(const options_t* o, const float* iq, size_t frames, int rate,
         size_t n = frames - at < CHUNK ? frames - at : CHUNK;
         written += (size_t)iq_frontend_process(frontend, iq + 2 * at, n, audio + written, iq_frontend_output_capacity(frontend, n));
     }
+    // A QMX's raw I/Q sits 30 dB or more under its demodulated audio, which in a 16-bit file
+    // leaves the band noise a few LSBs deep. --normalize-db scales the file to a set RMS first.
+    double out_gain_db = 0.0;
+    if (o->normalize && written > 0) {
+        double sum = 0.0;
+        for (size_t i = 0; i < written; ++i) sum += (double)audio[i] * audio[i];
+        double rms = sqrt(sum / (double)written);
+        if (rms > 0.0) {
+            double gain = pow(10.0, o->normalize_db / 20.0) / rms;
+            for (size_t i = 0; i < written; ++i) audio[i] = (float)(audio[i] * gain);
+            out_gain_db = 20.0 * log10(gain);
+        }
+    }
     long clipped = write_wav(path, audio, written, 1, o->output_rate, 16);
-    printf("OUT %s center_hz=%g if_trim_hz=%g nco_hz=%.4f audio_hz=%d-%d samples=%zu clipped=%ld\n", path, center,
-           o->if_trim_hz, iq_frontend_nco_hz(frontend), frontend->audio_low_hz, frontend->audio_high_hz, written, clipped);
+    printf("OUT %s center_hz=%g if_trim_hz=%g nco_hz=%.4f audio_hz=%d-%d samples=%zu out_gain_db=%.1f clipped=%ld\n",
+           path, center, o->if_trim_hz, iq_frontend_nco_hz(frontend), frontend->audio_low_hz, frontend->audio_high_hz,
+           written, out_gain_db, clipped);
     free(audio);
     free(frontend);
     return clipped < 0 ? -1 : 0;
@@ -389,8 +405,9 @@ static int synthesize(const options_t* o, const wav_t* in, const wav_t* mirror_i
 static void usage(void)
 {
     fprintf(stderr,
-            "usage: iq_convert [--center-hz F]... [--if-trim-hz T] [--swap-iq] [--negate-q] [--output-rate R] -o OUT.wav IQ.wav\n"
-            "       iq_convert --real [--output-rate R] -o OUT.wav AUDIO.wav\n"
+            "usage: iq_convert [--center-hz F]... [--if-trim-hz T] [--swap-iq] [--negate-q] [--output-rate R]\n"
+            "                  [--normalize-db L] -o OUT.wav IQ.wav\n"
+            "       iq_convert --real [--output-rate R] [--normalize-db L] -o OUT.wav AUDIO.wav\n"
             "       iq_convert --synth [--center-hz F] [--if-trim-hz T] [--swap-iq] [--negate-q] [--gain-db G]\n"
             "                  [--phase-deg P] [--dc-db D] [--mirror-tone-db L] [--alias-tone-db L]\n"
             "                  [--tone-offset-hz H] [--mirror-wav W] [--mirror-wav-db L] [--level-db L]\n"
@@ -417,6 +434,7 @@ int main(int argc, char** argv)
         {"tone-offset-hz", required_argument, 0, 'f'}, {"level-db", required_argument, 0, 'l'},
         {"mirror-wav", required_argument, 0, 'M'},    {"mirror-wav-db", required_argument, 0, 'D'},
         {"bits", required_argument, 0, 'b'},          {"out", required_argument, 0, 'o'},
+        {"normalize-db", required_argument, 0, 'z'},
         {0, 0, 0, 0},
     };
     int opt;
@@ -443,6 +461,7 @@ int main(int argc, char** argv)
             case 'D': o.mirror_wav_db = atof(optarg); break;
             case 'b': o.bits = atoi(optarg); break;
             case 'o': o.out = optarg; break;
+            case 'z': o.normalize = 1; o.normalize_db = atof(optarg); break;
             default: usage();
         }
     }
