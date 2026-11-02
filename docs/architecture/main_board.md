@@ -1,6 +1,6 @@
 # Main board
 
-The main board decodes, transmits, runs autoseq, keeps the log, and hosts the radio over USB. The **P4** is the only one: the daily, headless station. (The Cardputer ADV was dropped 2026-10-02, row za6n; `git log --diff-filter=D -- main/main.cpp` finds its last tree.) How it fits with the sidekick and the phone: [system.md](system.md). Radio control: [radio.md](radio.md).
+The main board decodes, transmits, runs autoseq, keeps the log, and hosts the radio over USB. The **P4** is the only one: the daily, headless station. (The Cardputer ADV was dropped 2026-10-02; `git log --diff-filter=D -- main/main.cpp` finds its last tree.) How it fits with the sidekick and the phone: [system.md](system.md). Radio control: [radio.md](radio.md).
 
 Both boards run the same decode, autoseq, TX and Port A code from shared components; how the source is shared between them is a rule in [STYLE.md](../STYLE.md) (**Two boards, one source**).
 

@@ -14,7 +14,7 @@ Both rolling and versioned publish the M5Stack Unit PoE-P4 merged image (esp32p4
 `storage` partition in `poe_p4/partitions.csv`). Rolling also publishes a **standalone merged sidekick** image
 (merged by `tools/merge_sidekick_bin.sh` in the sidekick job) and a **history-free source tarball**
 (vendored `ft8_lib`, no `.git`). The firmware artifacts are skipped entirely for docs-only commits (the
-`changes` path filter, D7), so a roadmap-only merge neither rebuilds nor re-tags any binary.
+`changes` path filter), so a roadmap-only merge neither rebuilds nor re-tags any binary.
 
 Both paths also publish the **getting-started sheet**, the one-page PDF that goes in the box with a unit.
 The `getting-started-sheet` job prints it from `webapp/getting-started.md` on every push, which is also
@@ -23,7 +23,7 @@ nothing, so the posted PDF can trail the site's Getting started page, which depl
 is set in fonts the build embeds (`webapp/tools/getting_started.mjs`), so CI's copy breaks the same way
 as one printed on a Mac.
 
-**No image carries a version identity.** The ADV's `rel`/`dev` build machinery went with the ADV (row za6n),
+**No image carries a version identity.** The ADV's `rel`/`dev` build machinery went with the ADV (dropped 2026-10-02),
 so every release ships whatever it builds to at that commit, with no version string in the image. The web
 app will show one once the P4 reports its version over Port A — which OTA updates need (row hstv,
 [RFC 0007](rfcs/0007-flash-and-update.md) §3.6).

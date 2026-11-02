@@ -95,7 +95,7 @@ With no WiFi credentials, after a sustained loss of its network, or when the ope
 
 ## First install
 
-USB-C is the only wire flash path: the ROM bootloader listens only on UART0's default pins, never on Grove ([`sidekick/README.md`](../../sidekick/README.md), B42). A new unit is flashed with the merged `0x0` image (`tools/merge_sidekick_bin.sh`, or the downloads page); after that it updates over WiFi (**Firmware updates**). Until the app bundle is installed it serves only the setup pages.
+USB-C is the only wire flash path: the ROM bootloader listens only on UART0's default pins, never on Grove ([`sidekick/README.md`](../../sidekick/README.md)). A new unit is flashed with the merged `0x0` image (`tools/merge_sidekick_bin.sh`, or the downloads page); after that it updates over WiFi (**Firmware updates**). Until the app bundle is installed it serves only the setup pages.
 
 ## Port A: the link to the main board
 

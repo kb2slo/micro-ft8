@@ -12,7 +12,7 @@
 
 * Karlis's files look like Karlis's files. Do not clang-format, re-indent or restructure the tree. ESP glue goes in our wrappers, never into the fork.
 * Contribute back only Karlis-shaped fixes (correctness, protocol). Never "make it compile on ESP32-S3".
-* **Wei patches his in-tree copy, not `wcheng95/ft8_lib`.** That repo is stale at `bb3d94d` (2026-03) and fully absorbed into the pin; his live protocol work lands in his Micro-FT8's [`components/ft8_lib/ft8/`](https://github.com/wcheng95/Mini-FT8/tree/main/components/ft8_lib/ft8), which has no submodule. His fixes reach us only by porting them by hand into the fork (B41 was the first). The session-start watch in [maintainer/upstream.md](../maintainer/upstream.md) diffs his tree against the pin.
+* **Wei patches his in-tree copy, not `wcheng95/ft8_lib`.** That repo is stale at `bb3d94d` (2026-03) and fully absorbed into the pin; his live protocol work lands in his Micro-FT8's [`components/ft8_lib/ft8/`](https://github.com/wcheng95/Mini-FT8/tree/main/components/ft8_lib/ft8), which has no submodule. His fixes reach us only by porting them by hand into the fork (the first was a telemetry-decode stack overflow, fixed 2026-09-08). The session-start watch in [maintainer/upstream.md](../maintainer/upstream.md) diffs his tree against the pin.
 
 ## Bumping the pin
 

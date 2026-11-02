@@ -1,6 +1,6 @@
 # RFC 0007: Flashing and updating Micro-FT8
 
-* **Status:** Accepted 2026-09-25. Amended 2026-10-02: the ADV was dropped (row za6n), so its table column, §3.10, slices S5 and S6, the Launcher row and the M5Launcher rejection are removed; `git show d9a12f9~1:docs/rfcs/0007-flash-and-update.md` has the earlier text.
+* **Status:** Accepted 2026-09-25. Amended 2026-10-02: the ADV was dropped, so its table column, §3.10, slices S5 and S6, the Launcher row and the M5Launcher rejection are removed; `git show d9a12f9~1:docs/rfcs/0007-flash-and-update.md` has the earlier text.
 
 ## 1. Goal
 
@@ -114,7 +114,7 @@ While an update is running, the webapp suppresses its lost-contact banner (30 s 
 
 ### 3.10 (Removed)
 
-The ADV's sidekick flashing went with the ADV (row za6n, 2026-10-02).
+The ADV's sidekick flashing went with the ADV (dropped 2026-10-02).
 
 ### 3.11 Port A speed
 
@@ -140,7 +140,7 @@ Not part of this design; each gets its own row or RFC when wanted.
 
 Each is a `ROADMAP.md` Backlog row.
 
-* **S0** (`v3hh`) — shipped 2026-10-01. Port A rests at 2500000 ([sidekick.md](../architecture/sidekick.md), **Port A**).
+* **S0** — shipped 2026-10-01. Port A rests at 2500000 ([sidekick.md](../architecture/sidekick.md), **Port A**).
 * **S1** (`wanw`) — CI publishes app-only images and the manifest's `ota` entries (§3.1).
 * **S2** (`v697`) — Sidekick self-update (§3.2, §3.4). Field check: update from the webapp, then a forced bad image rolls back.
 * **S3** (`hstv`) — Main-board HELLO (§3.6), update mode, the `FW_*` messages with resume, and the shared receiver, with `host_mock` tests; P4 partition table and rollback enabled (§3.5, §3.7). Field check: P4 updated from the webapp, transfer time measured, a forced bad image rolls back.

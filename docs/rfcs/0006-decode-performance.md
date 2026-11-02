@@ -1,7 +1,7 @@
 # RFC 0006: Decode performance — measure, then tune
 
-* **Status:** Accepted 2026-09-25, phase order in §5 as written. **Amended 2026-10-02:** the ADV was dropped (row za6n). Where this RFC discusses the ADV, its measurements, its screens or its `ADV-only` work, it is history and no longer applies.
-  [B54](../ROADMAP.md), [I26](../ROADMAP.md), [B85](../ROADMAP.md) and [B86](../ROADMAP.md) carry an ID, a name and a link
+* **Status:** Accepted 2026-09-25, phase order in §5 as written. **Amended 2026-10-02:** the ADV was dropped. Where this RFC discusses the ADV, its measurements, its screens or its `ADV-only` work, it is history and no longer applies.
+  [I26](../ROADMAP.md), [B85](../ROADMAP.md) and [B86](../ROADMAP.md) carry an ID, a name and a link
   here; the reasoning lives in this file.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** how decode quality is measured, the corpus and its ground truth, the host harness, what is
@@ -95,7 +95,7 @@ FPUs, is a clock ratio of 1.5× and an unknown IPC ratio. That is too coarse whe
 within a small factor of the guard. And paper cannot model what differs most: PSRAM latency on a
 waterfall sweep, cache behaviour, and `ft8_lib`'s static DIRAM arena against a PSRAM one.
 
-So the device benchmark is its own small deliverable, §5 P0 (B87, done: [decode.md](../architecture/decode.md)). Same input on both
+So the device benchmark is its own small deliverable, §5 P0 (done: [decode.md](../architecture/decode.md)). Same input on both
 boards, no radio, no USB audio. It serves four purposes at once: it replaces §4.1's guessed desktop-to-P4
 factor with a measured one, it is the host/device parity check above, it ranks ADV against P4 on identical
 work, and it is the A/B bench for §4.2's toolchain levers. The per-slot `SLOT … dec=…ms` line that
@@ -311,7 +311,7 @@ For three independent reasons:
 
 1. **CPU.** `jt9` spends ~0.44–1.45 s per slot on a desktop core. P0 measured the desktop-to-P4 factor at ~50×
    for light work and ~100× for LDPC-heavy work ([decode.md](../architecture/decode.md)), so that is ~22–145 s against a 2.36 s guard
-   band. Double-buffering (B54) does not rescue it: replying in the next slot still needs the decode inside
+   band. Double-buffering (the capture-path fix) does not rescue it: replying in the next slot still needs the decode inside
    roughly the guard.
 2. **Language.** It is Fortran, and the ESP-IDF toolchains have no Fortran front end. A port is a hand
    translation. `e04/ft8ts` shows that is doable (TypeScript), not that it is cheap.
@@ -350,7 +350,7 @@ fork wholesale would buy OSD and FST4 we may not want, a C++-leaning build, and 
   are `float` throughout (`log10f`, `fast_tanh`/`fast_atanh`). That matters because the S3 emulates `double`
   in software.
 - **The FFT is not on the decode clock.** `monitor_process()` runs once per block as audio arrives. A faster
-  FFT buys CPU headroom *during* the slot, which is B54's concern. The guard-band window is spent in
+  FFT buys CPU headroom *during* the slot, which is the capture path's concern. The guard-band window is spent in
   `ftx_find_candidates()` and the per-candidate LDPC, which is also where OSD and subtraction would land.
 - **The P4 build has PSRAM off** (`# CONFIG_SPIRAM is not set` in `poe_p4/sdkconfig`). Its linker map offers
   `sram_low` 0x2cbd0 + `sram_high` 0x60000, about **567 KB of internal RAM**, plus an 8 KB tightly-coupled
@@ -382,7 +382,7 @@ where the gap is usually larger. How much larger is a device measurement.
 3. **Placement.** Code runs from flash through a cache on both chips, and an in-order core pays for every
    miss. `IRAM_ATTR` on the candidate search and LDPC loops, and on the P4 the waterfall in internal RAM
    (above), and possibly the hottest loop in the 8 KB TCM.
-4. **`esp-dsp` FFT in place of `kiss_fft`.** Capture-time CPU headroom for B54, not decode time.
+4. **`esp-dsp` FFT in place of `kiss_fft`.** Capture-time CPU headroom for the capture path, not decode time.
 5. **SIMD, last. Both chips' vector units are integer-only (confirmed 2026-09-23).** Two independent checks:
    - The ESP-IDF toolchain's own assemblers (esp-14.2.0) accept integer vector ops and reject float ones.
      On the P4 (`riscv32-esp-elf-as -march=rv32imafc_xesppie`), `esp.vmul.s16`/`.s8`/`.u8`,
@@ -413,7 +413,7 @@ afford inside its guard band.
 
 **The 2.36 s guard is a property of today's design, not of FT8.** `ft8_audio_pipeline_run()` triggers decode
 after 79 blocks (12.64 s after the slot boundary) and decodes *inside the capture task*, so the decode has until
-the next boundary (15.0 s) before it eats the next slot's audio (B54). The TX trigger in `main/main.cpp` also
+the next boundary (15.0 s) before it eats the next slot's audio (the capture-path fix). The TX trigger in `main/main.cpp` also
 waits for `decode_in_progress` to clear, then starts late and drops the opening symbols (`skip_tones`).
 
 **The hard constraints are only two:**
@@ -423,7 +423,7 @@ waits for `decode_in_progress` to clear, then starts late and drops the opening 
 2. **Causality for an immediate reply.** A reply in slot N+1 depends on slot N's decode, so the *reply decision*
    must exist before our TX starts.
 
-Everything else is CPU and memory. Decoding slot N while capturing N+1 needs double buffering (B54's fix). When
+Everything else is CPU and memory. Decoding slot N while capturing N+1 needs double buffering (the capture-path fix). When
 we transmit in N+1 there is no capture at all, so the full decode of N has roughly a whole slot.
 
 **Stopping at 12.64 s cuts the tail of every signal.** Transmitters start ~0.5 s after the boundary, plus clock
@@ -463,7 +463,7 @@ The others are independent of each other unless stated.
 
 ### P0 — Device decode benchmark
 
-**Done 2026-09-24** on both boards (row B87). The tool, the measured timings, and what they settle: [decode.md](../architecture/decode.md). The results change P2's ADV arm from "256 candidates" to "the largest count that fits".
+**Done 2026-09-24** on both boards. The tool, the measured timings, and what they settle: [decode.md](../architecture/decode.md). The results change P2's ADV arm from "256 candidates" to "the largest count that fits".
 
 ### P1 — Host harness
 
@@ -477,7 +477,7 @@ Graduated 2026-10-02 → [decode.md](../architecture/decode.md) (**Subtraction**
 candidates, then two-pass subtraction, are in the firmware. t4/f2 did not allocate. The table below is the
 candidate round that chose t2/f2; subtraction's discordant counts are in decode.md.
 
-The S3 rows (the t1/f2 swap, 16-level t2/f2) left with the ADV (row za6n).
+The S3 rows (the t1/f2 swap, 16-level t2/f2) left with the ADV.
 
 **Host recall, 2026-10-02.** `python3 tools/decode_recall/report.py` against the committed `jt9 -8 -d 3` truth. Discordant counts are true `jt9` messages gained and lost versus the 50-candidate firmware this replaced. No configuration filled `DEC_MAX` 32 on any file, and raising it to 50 copied the row above it exactly. Device times are the P0 bench ([decode.md](../architecture/decode.md)), five busy slots, not re-run for this table.
 
@@ -608,7 +608,7 @@ Field-only. The SLOT and BDRY lines, including `b`, are in [decode.md](../archit
 
 On the corpora no slot filled the 32-decode list at 256 candidates, so a field `c` stuck far below 256 means the air is quieter than those files.
 
-**B54, two coupled defects.** The FT8 field read on 20 m (2026-10-02) was sick: `g` 2–4 and `lost` tracking `dec`, about 2 s of audio. The fix is an ingest task filling a static 16,384-sample ring (2.7 s at 6 kHz) while decode still runs in the capture task. The ring is static because the largest free block after the 161 KB waterfall is about 51 KB. The same afternoon, four busy slots read `g` 15–17, `lost` 0, `drop` 0, `dec` about 1.8 s, `left` 450–800 ms. The ring covered the gap, so decode stays in the capture task.
+**The capture path, two coupled defects** (shipped 2026-10-02). The FT8 field read on 20 m (2026-10-02) was sick: `g` 2–4 and `lost` tracking `dec`, about 2 s of audio. The fix is an ingest task filling a static 16,384-sample ring (2.7 s at 6 kHz) while decode still runs in the capture task. The ring is static because the largest free block after the 161 KB waterfall is about 51 KB. The same afternoon, four busy slots read `g` 15–17, `lost` 0, `drop` 0, `dec` about 1.8 s, `left` 450–800 ms. The ring covered the gap, so decode stays in the capture task.
 
 - **(a) The driver queue is 13.9 ms.** `qmx_audio_read_ft8_samples()` reads the driver directly.
   Total queue depth is `UAC_BUFFER_SIZE` 4000 B at 48 kHz / 24-bit / stereo. On ring-full, the vendored
@@ -699,7 +699,7 @@ crowded slots, and enough files for a held-out set.
 
 **Done-when:** a corpus large enough to hold out a test set, and P2's winner re-scored against it.
 
-### P7 — Two-pass decode ([B54](../ROADMAP.md) as the first slice)
+### P7 — Two-pass decode (the capture-path fix as the first slice)
 
 §4.3's design, after WSJT-X's multi-pass decode.
 
@@ -713,14 +713,14 @@ crowded slots, and enough files for a held-out set.
   (FT8 callers repeat).
 - **Memory decides the ADV's share.** Two waterfalls fit the P4. The ADV likely cannot hold two, so it would run
   pass B only in its own TX slots, or at cheaper settings.
-- **B54 becomes this phase's first slice.** Moving decode off the capture task with double buffering is what makes
-  pass B possible. That is a stronger reason for B54 than USB starvation alone.
+- **The capture-path fix becomes this phase's first slice.** Moving decode off the capture task with double buffering is what makes
+  pass B possible. That is a stronger reason for that fix than USB starvation alone.
 - **Operator-visible:** some decodes would appear up to a slot later, in two waves as in WSJT-X. Whether that is
   acceptable is the operator's call, and it is open (§8).
 
 It touches the sequencer and the decode list's UI timing, so it gets its own RFC when it is sequenced.
 
-**Done-when:** the RFC exists, and its first slice (B54) lands with pass A's reply decision measured against the TX
+**Done-when:** the RFC exists, and its first slice (the capture-path fix) lands with pass A's reply decision measured against the TX
 start on both boards.
 
 ## 6. Non-goals

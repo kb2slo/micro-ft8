@@ -18,7 +18,7 @@ FT8 needs UTC. Slots start on UTC boundaries (15 s for FT8, 7.5 s for FT4), and 
 | Browser | Automatically while a paired web app is open (**Browser sync** below) | milliseconds |
 | Decode auto-sync | Never sets, only nudges (**Decode auto-sync** below) | ≤320 ms per slot |
 
-The DS3231, GPS, BLE CTS and manual-entry sources went with the ADV (row za6n); `git log --diff-filter=D -- main/time` finds them.
+The DS3231, GPS, BLE CTS and manual-entry sources went with the ADV (dropped 2026-10-02); `git log --diff-filter=D -- main/time` finds them.
 
 Decode auto-sync removes the residue a whole-second set leaves, once there is traffic to decode.
 

@@ -72,7 +72,7 @@ No new host-testable logic in `poe_p4/main/`: wiring and board-only code only.
 
 **Where a module lives.** A `components/<name>/` directory with a `CMakeLists.txt` and an `include/` level. `host_mock/Makefile` compiles sources by path, so a component is host-tested directly. Board-only code (the entry point, the QMX USB transport, the TX scheduler, the Port A host actions) stays in `poe_p4/main/`. `ft8_lib` is vendored third-party: [architecture/ft8_lib.md](architecture/ft8_lib.md) vendor boundary — do not format, do not restructure.
 
-**One main board** (2026-10-02, after row za6n dropped the ADV). Logic that is not specific to this board's hardware goes in a component, so a host test can reach it, rather than in `poe_p4/main/`. `porta_proto` is also compiled by the sidekick, so it is a component for that reason too.
+**One main board** (2026-10-02, when the ADV was dropped). Logic that is not specific to this board's hardware goes in a component, so a host test can reach it, rather than in `poe_p4/main/`. `porta_proto` is also compiled by the sidekick, so it is a component for that reason too.
 
 **No HTML, CSS or JavaScript inside C or C++ source** (2026-09-12). A page is a `.html` file under `<project>/main/web/`. On the sidekick, CMake globs that directory into `EMBED_TXTFILES` and a generated seed table — drop a file in `web/` and it is embedded, hydrated onto LittleFS, and served at `/<filename>` (templated URLs like `/` and `/log` still need handlers). Values are interpolated with `{{name}}` placeholders, not `printf`. After `web_fs_init()` the LittleFS `web` partition is the sole HTTP origin ([architecture/sidekick.md](architecture/sidekick.md) (**Web root**)).
 
@@ -82,6 +82,6 @@ Two things stay in C: the choice of which page to serve, and the values substitu
 
 Dead code is deleted in the unit you are extracting. No repo-wide unused-function hunt mixed with a feature.
 
-Fixes that belong inside an extract go with that extract (B5 overlapping `sscanf` with Station parse). Unrelated fixes stay out.
+Fixes that belong inside an extract go with that extract (the overlapping `sscanf` buffers fixed in the Station parser's extract). Unrelated fixes stay out.
 
 Restyle and rename only the unit you are already changing.
