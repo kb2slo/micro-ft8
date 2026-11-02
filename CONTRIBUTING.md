@@ -24,7 +24,14 @@ forward ([AGENTS.md](AGENTS.md), **Pre-alpha**). The maintainer is Jeff, KB2SLO.
 git clone --recurse-submodules git@github.com:kb2slo/micro-ft8.git
 ```
 
-An existing tree: `git submodule update --init`. The checks need Python 3, Node, `make`, a C/C++
+An existing tree: `git submodule update --init`. Then, once per clone, turn on the hook that runs the
+checks before every push and refuses the push when they fail:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The checks need Python 3, Node, `make`, a C/C++
 compiler and CMake; `tools/check.sh` refuses to run a check whose tool is missing, rather than call it a pass. The firmware needs
 ESP-IDF v5.5.5, installed for both boards (`./install.sh esp32p4,esp32s3`): source its `export.sh`, then
 [poe_p4/README.md](poe_p4/README.md) and [sidekick/README.md](sidekick/README.md) say how to build and

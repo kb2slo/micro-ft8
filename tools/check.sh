@@ -170,6 +170,10 @@ tools_for() {  # the commands a check cannot run without
 # could run. The need_* functions below still skip, for a tool found here that
 # fails there.
 preflight() {
+  # Outside CI, say when this clone has not turned on the pre-push hook that runs these checks.
+  if [ -z "${CI:-}" ] && [ "$(git config core.hooksPath 2>/dev/null)" != ".githooks" ]; then
+    echo "check.sh: the pre-push hook is off in this clone; turn it on: git config core.hooksPath .githooks" >&2
+  fi
   local name tool missing="" hint=""
   for name in $CHECKS; do
     case "$SELECTED" in *" $name "*) ;; *) continue ;; esac
