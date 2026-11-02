@@ -343,7 +343,7 @@ fork wholesale would buy OSD and FST4 we may not want, a C++-leaning build, and 
 `ft8_lib` is portable C, and we build it the way ESP-IDF builds everything by default. What the tree shows
 (2026-09-23):
 
-- **Both targets compile at `-Og`**, ESP-IDF's default, **except the decoder**, which has been `-O2` since B89 ([decode.md](../architecture/decode.md)).
+- **Both targets compile at `-Og`**, ESP-IDF's default, **except the decoder**, which builds at `-O2` ([decode.md](../architecture/decode.md)).
 - **The FFT is `kiss_fft`**, generic C. `esp-dsp`, Espressif's library with FFTs tuned for both chips, is not
   a dependency.
 - **No hidden `double`.** The hot paths in `vendor/ft8/decode.c`, `vendor/ft8/ldpc.c` and `common/monitor.c`
@@ -374,11 +374,11 @@ where the gap is usually larger. How much larger is a device measurement.
 1. **`-O2` for the decoder only.** A `target_compile_options` line for `ft8_lib` and `decode_pipeline`; the
    rest of the image stays at `-Og` and debuggable. Output must be identical, so the benchmark's
    decode-set check is the whole test. **Measured on the P4: ~1.9× on the decode loop, with identical
-   output** ([decode.md](../architecture/decode.md)). That alone moves 256 candidates and t2/f2 inside the guard. **Shipped (B89).**
+   output** ([decode.md](../architecture/decode.md)). That alone moves 256 candidates and t2/f2 inside the guard. **Shipped.**
 2. **The second core.** Both chips are dual-core and decode runs on one. Per-candidate LDPC is independent
    per candidate, so the loop splits across cores naturally. That could approach 2× on exactly the window
    that decides how much of §4.1's feature list fits. The constraint is what already runs on the other core (the
-   UI on the ADV, USB host on both). Measure that core's load before assuming it is free. That measurement is the SLOT line's `b` field ([decode.md](../architecture/decode.md)). Row [bnhj](../ROADMAP.md) builds this lever.
+   UI on the ADV, USB host on both). Measure that core's load before assuming it is free. That measurement is the SLOT line's `b` field ([decode.md](../architecture/decode.md)). Row [vnz7](../ROADMAP.md) builds this lever.
 3. **Placement.** Code runs from flash through a cache on both chips, and an in-order core pays for every
    miss. `IRAM_ATTR` on the candidate search and LDPC loops, and on the P4 the waterfall in internal RAM
    (above), and possibly the hottest loop in the 8 KB TCM.
@@ -451,7 +451,7 @@ ones. So **the trigger and the candidate cap must be measured together**, and on
 
 **What follows:**
 
-- **Move the trigger to ~13.3–13.6 s** ([B90](../ROADMAP.md)), measured with the candidate cap raised. With
+- **Move the trigger to ~13.3–13.6 s** ([vnz7](../ROADMAP.md)), measured with the candidate cap raised. With
   the decoder's `-O2`, today's settings would end at ~13.9 s on the P4 and ~14.3 s on the ADV. On the ADV that spends that
   freed time on listening longer instead of on more candidates. P2 measures that trade on the full corpus.
 - **Two-pass decode** (§5 P7) removes the trade entirely.
@@ -668,8 +668,8 @@ on both corpora the same day.**
    | Cap at 10 | 9 / 14 | −57% |
 
    A stall rule beats a plain cap at equal time, but none is free. **Not shipped:** the decode fits the guard
-   today (decode.md), and the time is worth a decode only once something spends it. B90 (a later trigger,
-   up to ~4% more decodes on the host) and bnhj are the buyers; choose a row of this table when one of them
+   today (decode.md), and the time is worth a decode only once something spends it. A later trigger
+   (up to ~4% more decodes on the host) and the two-core split (both now row vnz7) are the buyers; choose a row of this table when one of them
    needs the time, then confirm on the P4. The change would be in `bp_decode()` (`vendor/ft8/ldpc.c`), so it
    ships as a commit on `kb2slo/ft8_lib` ([ft8_lib.md](../architecture/ft8_lib.md)).
 6. **The top of the search range.** The panadapter reports +6% decodes from opening the top end. That cannot
