@@ -6,11 +6,14 @@ dependencies:
   # manager resolve otherwise drifts this to the newest 2.x, and CAT is a
   # field-only path this row exists specifically to prove, not to re-verify
   # against a moving dependency.
-  espressif/usb_host_cdc_acm: 2.2.0
+  espressif/usb_host_cdc_acm: 2.4.1
   # USB Host UAC for QMX RX decode audio (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213))). Pinned exact for the same reason:
   # this is a field-only path, not something to re-verify against a moving
-  # dependency on every component-manager resolve.
-  # 1.4.0: "Fixed build with PSRAM enabled" (esp_ptr_in_psram → esp_ptr_external_ram).
-  # Needed once CONFIG_SPIRAM is on for row p3x6. 1.5.0 breaks uac_host_dev_alt_param_t layout.
-  espressif/usb_host_uac: 1.4.0
-  espressif/usb: 1.1.0
+  # dependency on every component-manager resolve. 1.5.0 changed the
+  # uac_host_dev_alt_param_t layout; nothing here uses that struct.
+  espressif/usb_host_uac: 1.5.0
+  # The USB host stack under both: espressif/usb 1.6.0, vendored unmodified.
+  # Upgrading means replacing components/espressif__usb with the new release.
+  espressif/usb:
+    version: 1.6.0
+    override_path: ../../components/espressif__usb
