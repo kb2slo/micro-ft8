@@ -28,7 +28,7 @@ Micro-FT8 is a headless FT8 station for your QMX. The *main board* (M5Stack Unit
 
 ## 1. Connect it
 
-You need the main board and sidekick on their Grove cable, your QMX (tested on firmware 1_04_003) with its power and antenna, a USB-C data cable for it, 5 V USB-C power for the main board, and a phone or laptop.
+You need the main board and sidekick on their Grove cable, your QMX (tested on firmware 1_04_010) with its power and antenna, a USB-C data cable for it, 5 V USB-C power for the main board, and a phone or laptop.
 
 1. Connect the antenna, then power the QMX and switch it on.
 2. Plug 5 V USB-C power (a charger or power bank) into the main board's *PROG* port, beside the network jack, which is not used. The sidekick starts with it.
