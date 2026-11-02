@@ -37,9 +37,11 @@ change can affect. Working for the maintainer (they say so, or `git config user.
 
 No open-ended codebase exploration to be helpful — that is exactly the token spend this rule exists to stop. A single cheap lookup (one grep, one file read, "where is X defined") can just be answered without the gate. Docs and roadmap questions are allowed without it.
 
+**Smallest fix first.** Do not build tooling, scanners, CI gates or config files nobody asked for. If a larger approach seems warranted, propose it in two or three sentences and wait for a yes before writing it. Throwaway scaffolding in a scratch directory, never committed, is not tooling.
+
 Do not mix a feature change with an unrelated fix in the same commit.
 
-**The roadmap is the maintainer's.** A change that ships a `ROADMAP.md` row drops the row in the same change. Any other roadmap edit — a new row, a new order, a move between sections — is the maintainer's ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md)). A contributor's new idea is an issue.
+**The roadmap is the maintainer's.** A change that ships a `ROADMAP.md` row drops the row in the same change. Any other roadmap edit — a new row, a new order, a move between sections — is the maintainer's ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md)), and goes on its own branch from `main` with its own pull request, never into a work branch and never pushed straight to `main` unless the maintainer says so for that change. A contributor's new idea is an issue.
 
 **Fix defects in the slice.** A defect found while working in an area gets fixed in that slice, not filed for later. What was wrong and why is still recorded — in a `ROADMAP.md` row when working for the maintainer, in the pull request otherwise — and it is not a promise to act later.
 
@@ -71,6 +73,8 @@ State which of these you did in the turn you report the work, and in the pull re
 **Architecture docs match the code too.** A `docs/architecture/<area>.md` describes how things work now, so a change that alters behaviour one of them describes updates it in the **same commit**. As with the README and site audits, say it out loud when nothing needs changing: "no architecture-doc change needed". An RFC slice does this through graduation ([docs/rfcs/README.md](docs/rfcs/README.md), **RFC lifecycle**); this rule covers changes that come through no RFC. **An accepted RFC records decisions, not current state:** do not edit one to match a change, even a renamed label. It changes only by a dated decision, and what is true now goes in the architecture doc. A doc may describe a decided but unbuilt design only under a label naming the roadmap rows that build it — "**not yet built: rows v697, hstv**" — so that when those rows ship and are dropped, `tools/roadmap_rows.sh dangling` flags the stale label.
 
 **Never report a field check as passed.** An agent runs `tools/check.sh` and reports its summary honestly. **A run is not clean unless it exits 0 with nothing skipped.** Before proposing a commit or a push, run `tools/check.sh --changed`; the pre-push hook (`.githooks/pre-push`, CONTRIBUTING.md **Setup**) runs it again on every push and refuses a push that fails it or would push something other than the checked-out commit, and `git push --no-verify` needs the same explicit say-so as `--allow-skip`. If it exits non-zero, or any check skipped or is allowed to skip, the first line of the reply says which checks did not run and why, and no commit or push is proposed until the cause is fixed. Pass `--allow-skip` only when the person you work for says to in so many words, and report what it left unverified wherever you report the result. Anything needing the P4, a radio, or an antenna is for someone with the hardware to run: propose it, put it in **Pending**, and wait for their result, step by step. A green build is evidence about linkage, not about whether the radio transmitted.
+
+**What the person you work for reports from the hardware is evidence.** When they say something works on the bench or in the field, treat it as verified: do not call it unverified in chat or in a doc because you have not run it yourself. A TEST_PLAN **Pending** row still closes only on a result for each step.
 
 **README and site stay current.** Two front doors, two readers, one home for each fact:
 
@@ -173,6 +177,14 @@ the only place every agent and every person can see them — see "Memory lives i
   commit messages the bare ID is correct — this is about chat. **When asking for a decision, put all the
   context it needs in the chat itself** — what the row said, what was found, what each option does — so the
   person you work for never has to open a row, an RFC, or an earlier message to answer.
+
+- **An agent cannot answer a password prompt.** For `sudo` or any command that asks for a password, give
+  the exact command, ask the person you work for to run it in their own terminal, and wait for them to say it
+  ran. Do not run it through the agent's shell.
+
+- **Long runs report as they go.** For an on-device test or any run longer than a few minutes, give a status
+  at each estimated checkpoint; when an estimate passes, say why and give a new one. Before starting, remind
+  the person you work for to keep their machine from sleeping; how is theirs to choose.
 
 - **WSJT-X is the on-air standard.** Where our behaviour on the air differs from WSJT-X's (the message
   sequence, a message's format, what a tap sends), WSJT-X's is the default, and we differ only by a recorded
