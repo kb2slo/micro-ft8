@@ -12,6 +12,7 @@ set(IDF_TARGET esp32p4)
 # Only the specific components this project needs, not the whole components/
 # tree.
 set(EXTRA_COMPONENT_DIRS
+    "${CMAKE_CURRENT_LIST_DIR}/../components/usb"
     "${CMAKE_CURRENT_LIST_DIR}/../components/porta_proto"
     "${CMAKE_CURRENT_LIST_DIR}/../components/porta"
     "${CMAKE_CURRENT_LIST_DIR}/../components/radio_control"

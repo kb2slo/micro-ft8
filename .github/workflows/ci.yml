@@ -106,6 +106,9 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
 
+      - name: Lock files
+        run: tools/check.sh --only locks
+
       - name: Commit messages
         if: github.event_name == 'pull_request'
         run: tools/check.sh --only commits --base "$BASE" --head "$HEAD"

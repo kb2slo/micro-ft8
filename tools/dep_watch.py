@@ -9,8 +9,8 @@ registry, GitHub tags or the submodule's remote what is newest. Prints one row p
 for each pin with a newer release, where its changelog is. Read-only; needs the network and no
 credentials. A pin it cannot reach prints "unreachable" and the rest still run.
 
-A vendored copy (override_path) is compared by the version its manifest names, so a vendored
-library falls behind visibly like any other.
+A vendored copy (VENDORED below) is compared by the version its own manifest names, so a
+vendored library falls behind visibly like any other.
 """
 import json
 import pathlib
@@ -21,6 +21,9 @@ import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 REGISTRY = 'https://components.espressif.com/api/components/'
+# Vendored registry components: our directory -> registry name. Each directory's own
+# idf_component.yml names the released version it holds.
+VENDORED = {'components/usb': 'espressif/usb'}
 TIMEOUT = 20
 
 
@@ -42,7 +45,7 @@ def vkey(v):
 def manifests():
     """Tracked idf_component.yml files that pin our dependencies (not vendored copies)."""
     for path in git('ls-files', '*idf_component.yml').split():
-        if '/managed_components/' in path or path.startswith('components/espressif__'):
+        if '/managed_components/' in path or any(path.startswith(d + '/') for d in VENDORED):
             continue
         yield path
 
@@ -120,6 +123,13 @@ def submodule_rows():
 def main():
     print(f'{"dependency":38} {"ours":10} {"newest":10} behind  where')
     stale = []
+    for path, name in VENDORED.items():
+        m = re.search(r'^version:\s*"?([\w.]+)', (ROOT / path / 'idf_component.yml').read_text(), re.M)
+        ours = m.group(1) if m else None
+        newest, behind = registry_row(name, ours)
+        print(f'{name:38} {ours or "-":10} {newest:10} {behind if behind is not None else "-":>6}  {path} (vendored)')
+        if behind:
+            stale.append(f'https://components.espressif.com/components/{name}/versions/{newest}/changelog')
     for path in manifests():
         for name, ours, vendored in pins(path):
             newest, behind = registry_row(name, ours)
