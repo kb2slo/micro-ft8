@@ -12,7 +12,6 @@ How things work now: `architecture/` (start at [architecture/system.md](architec
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| qpw8 | Free heap shrinks about 150 bytes per QMX reconnect | Across two power cycles with no P4 reset, free internal heap read 69,164 then 69,016 bytes at the pipeline's start (2026-10-24, after the waterfall was kept), which points at a small leak in the USB reconnect path. Not seen to matter yet. **Done-when:** twenty QMX power cycles in a row show free heap flat at the pipeline's start, or the leak is found and fixed (field). |
 
 ## Backlog
 
