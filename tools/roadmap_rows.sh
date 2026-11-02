@@ -94,7 +94,8 @@ dangling() {
   # In the worktree, a doc not yet added counts too (tools/check_docs.py reads it before its commit).
   local untracked=""
   (( worktree )) && untracked="--untracked"
-  git grep ${untracked:+"$untracked"} -owE "($re)" ${rev:+"$rev"} -- 'docs/*.md' ':!docs/TEST_PLAN.md' ':!docs/rfcs/rejected/*' \
+  # git grep exits 1 when nothing matches, which here means clean: not a failure.
+  { git grep ${untracked:+"$untracked"} -owE "($re)" ${rev:+"$rev"} -- 'docs/*.md' ':!docs/TEST_PLAN.md' ':!docs/rfcs/rejected/*' || [[ $? == 1 ]]; } \
     | sed "s|^${rev:+$rev:}||" \
     | awk -F: '!seen[$1 FS $2]++ { ids[$1] = ids[$1] " " $2 } END { for (f in ids) print f ":" ids[f] }' | sort
 }
