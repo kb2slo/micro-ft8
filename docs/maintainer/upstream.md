@@ -1,6 +1,6 @@
 # Upstream watches (maintainer sessions)
 
-Three watches, different cadences. Network fail → skip (any of them); do not interrupt an in-progress coding task.
+Four watches, different cadences. Network fail → skip (any of them); do not interrupt an in-progress coding task.
 
 ## `ft8_lib` pin — every maintainer session
 
@@ -57,3 +57,18 @@ gh repo view SteffenLav/qmx-panadapter --json pushedAt,description
 ```
 
 If the date above is more than **7 days** old, look at what changed since the last check (the linked version history is newest-last) and update the date and one-line finding regardless of outcome. Insight, not code — do not port or copy from it without the maintainer's own read of the license and the code.
+
+## Dependencies (`tools/dep_watch.py`) — every maintainer session
+
+**Last checked:** 2026-11-01 — first run, and everything behind was bumped the same day: `espressif/usb` 1.6.0 (vendored), `usb_host_cdc_acm` 2.4.1 (also in `test_apps/atoms3_qmx_host_poc`), `usb_host_uac` 1.5.0, `espressif/mdns` 1.14.1, `joltwallet/littlefs` 1.23.1 (sidekick and `components/storage_service`; LittleFS core and on-disk format unchanged, 2.11 and 2.1). Not bumped: ESP-IDF has a newer 5.5 patch release than ours (the watch prints it), release notes not yet read; a toolchain bump is its own decision.
+
+The libraries we ship, watched the way the peer projects above are. Run it every maintainer session; `tools/roadmap_rows.sh health` counts the days since the date above and goes over budget past 14.
+
+```bash
+python3 tools/dep_watch.py
+```
+
+It lists every pin in our `idf_component.yml` files (a vendored copy by the version its manifest names), the ESP-IDF version in `tools/check.sh`, and the submodules, against the newest release, with the changelog link for each pin that is behind. For each one behind, read the changelog's Fixed entries since our pin. A fix on a path we use (USB, WiFi, mDNS, the file system, Port A) → draft a row in chat citing the entry. Anything else goes in the date line above as seen, not needed. Never bump a pin in the same turn as the check: a bump is its own change, proved on the hardware it runs on. An ESP-IDF bump is a toolchain change and its own decision.
+
+Update the date and the one-line finding every run, whatever the outcome.
+
