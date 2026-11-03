@@ -39,4 +39,3 @@ typedef struct {
 } radio_control_ops_t;
 
 const radio_control_ops_t* radio_control_qmx_get_ops(void);
-const radio_control_ops_t* radio_control_qdx_get_ops(void);

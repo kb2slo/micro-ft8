@@ -32,9 +32,6 @@ checked on hardware is in [docs/TEST_PLAN.md](docs/TEST_PLAN.md).
 | Grove cable (ships with the PoE-P4) | The link between the two boards |
 | QRP Labs QMX | The radio, over one USB-C cable (audio and CAT) |
 
-A QDX backend exists but has never run against a real QDX. Testing it is a good first contribution if
-you own one.
-
 ## How it works
 
 The phone is the only screen, the sidekick is a peripheral, and the main board is the station. The
@@ -91,7 +88,7 @@ path from setup to a merged pull request. In short:
 - **Bug fixes** can go straight to a pull request.
 - **Features and behaviour changes** start as an issue, so we can agree on what and why before you build.
   [docs/ROADMAP.md](docs/ROADMAP.md) is the plan.
-- **Field reports** are as valuable as code. If you own a PoE-P4, an AtomS3 Lite and a QMX (or a QDX),
+- **Field reports** are as valuable as code. If you own a PoE-P4, an AtomS3 Lite and a QMX,
   the **Pending** checks in [docs/TEST_PLAN.md](docs/TEST_PLAN.md) are written to be run step by step.
 - **AI coding agents are welcome.** [AGENTS.md](AGENTS.md) is the working agreement, and most agents read
   it on their own.

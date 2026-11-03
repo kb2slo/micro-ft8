@@ -644,7 +644,6 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       <label>Radio
         <select id=radio>
           <option value=2>QMX</option>
-          <option value=5>QDX</option>
         </select>
       </label>
     </div>
@@ -2078,20 +2077,20 @@ function renderRadioDrawer(cfg, st) {
     note = 'Plug the radio into the main board’s USB-C port. A charge-only cable shows nothing.';
   } else if (st === 'unknown') {
     rows.push(['USB device', dev]);
-    note = 'Not a radio Micro-FT8 knows. It supports the QMX and QDX.';
+    note = 'Not a radio Micro-FT8 knows. It supports the QMX.';
   } else if (st === 'found') {
     rows.push(['USB', dev || 'seen'], ['CAT', cat ? 'up' : 'waiting'], ['Audio in', audio ? 'up' : 'waiting'],
               ['VFO', 'set once CAT is up']);
     note = 'The radio takes about ten seconds to be ready after it is plugged in. Nothing to press.';
   } else if (st === 'nodecode') {
-    rows.push(['USB', dev || 'QMX/QDX radio'], ['Decoder', 'could not start']);
+    rows.push(['USB', dev || 'QMX'], ['Decoder', 'could not start']);
     if (cfg.radio_fw) rows.push(['Radio firmware', fmtRadioFirmware(cfg.radio_fw)]);
     note = 'The radio is connected but the main board could not start its decoder (out of memory), so nothing will decode. It retries every 10 seconds. Restart the main board; if it keeps happening, report it.';
   } else if (st === 'lost') {
     rows.push(['USB', dev || 'seen'], ['CAT', 'stopped answering']);
     note = 'A slot that cannot be keyed is skipped and not counted. It transmits again once CAT answers.';
   } else {
-    rows.push(['USB', dev || 'QMX/QDX radio']);
+    rows.push(['USB', dev || 'QMX']);
     // The version the radio reports (VN;), as the QRP Labs release names it: 1_04_004 reads 1.04.004.
     if (cfg.radio_fw) rows.push(['Radio firmware', fmtRadioFirmware(cfg.radio_fw)]);
     var rs = radioReadBack(cfg);
@@ -4547,7 +4546,7 @@ function flushDecodeBatch() {
 // anything else is a device this app has no name for -- shown as vid/pid
 // (hex, matching how a USB descriptor is normally written) rather than
 // pretending "Other" means something to the operator.
-var USB_KIND_NAMES = { 0: 'QMX/QDX radio', 1: 'Sidekick (flash mode)' };
+var USB_KIND_NAMES = { 0: 'QMX', 1: 'Sidekick (flash mode)' };
 function hex4(n) {
   return ('0000' + ((n | 0) & 0xFFFF).toString(16)).slice(-4).toUpperCase();
 }

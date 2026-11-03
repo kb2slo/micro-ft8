@@ -134,7 +134,7 @@ The app cannot load once the sidekick is packed away (§2). A page on the releas
     - **a second named exception** to "third parties are reached by the phone, never by the device", beside the firmware fetch
   - **This is a later slice** (S5), worth it only if reporting while the phone is locked matters (Ask 4).
 * **f4kb from a UDP relay host of our own.** No longer needed now that TCP is accepted, and it would be a server we run.
-* **f4kb from the P4 over Ethernet.** It works at home only, and the P4's Ethernet is unused by decision ([main_board.md](../architecture/main_board.md)). [RFC 0012](0012-home-decode-server.md), a draft, proposes reversing that for the LAN.
+* **f4kb from the P4 over Ethernet.** It works at home only, and the P4's Ethernet is unused by decision ([main_board.md](../architecture/main_board.md)). [RFC 0012](rejected/0012-home-decode-server.md), a draft, proposes reversing that for the LAN.
 
 ## 5. Slices
 

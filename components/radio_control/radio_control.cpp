@@ -15,8 +15,6 @@ static const radio_control_capabilities_t k_capabilities_none = {};
 
 static const radio_control_ops_t* current_ops(void) {
     switch (s_backend) {
-    case RADIO_CONTROL_QDX:
-        return radio_control_qdx_get_ops();
     case RADIO_CONTROL_QMX:
         return radio_control_qmx_get_ops();
     }
@@ -37,8 +35,6 @@ const char* radio_control_backend_name(radio_control_backend_t backend) {
     switch (backend) {
     case RADIO_CONTROL_QMX:
         return "qmx";
-    case RADIO_CONTROL_QDX:
-        return "qdx";
     }
     return "unknown";
 }

@@ -1,16 +1,16 @@
 # RFC 0012: Home decode server — `jt9` beside the P4, data first
 
-* **Status:** Draft 2026-10-04. Decided in discussion the same day: §8. The Ask: §7.
+* **Status:** Rejected 2026-11-03 (drafted 2026-10-04). Its data goal, our own receive chain's audio scored against `jt9` on the same samples, is met without firmware streaming: the QMX is recorded on a computer and scored offline (row y9bt's stage 2; the `corpus-2026-11-02` release, [RFC 0006](../0006-decode-performance.md) §5 P6). Feeding `jt9`'s decodes to autoseq at home is not pursued: the HL2 direction keeps decode on the P4 ([RFC 0014](../0014-hl2-two-p4.md)). Kept whole as drafted (operator).
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** streaming the P4's receive audio over its Ethernet to a host on the home LAN; a host program that replays our decode and runs `jt9` on the same samples; the paired-comparison data that results; keeping today's decode safe while the stream runs; and, as a later slice, `jt9`'s decodes feeding autoseq at home.
-* **Does not cover:** the WSJT-X UDP protocol ([ROADMAP.md](../ROADMAP.md) I39); a Linux main board (I38), though its Pi could be the host here; PoE power; decoder changes themselves ([RFC 0006](0006-decode-performance.md)). Field operation is out of scope because this RFC must leave it unchanged.
-* **Row:** [p83e](../ROADMAP.md).
+* **Does not cover:** the WSJT-X UDP protocol ([ROADMAP.md](../../ROADMAP.md) I39); a Linux main board (I38), though its Pi could be the host here; PoE power; decoder changes themselves ([RFC 0006](../0006-decode-performance.md)). Field operation is out of scope because this RFC must leave it unchanged.
+* **Row:** [p83e](../../ROADMAP.md).
 
 ---
 
 ## 1. Goal
 
-**North star: better decodes on the air.** The P4 may not get there alone. Microcontroller decode tops out near 71% of `jt9 -d 3` (RFC 0006 §4.1), and the shipped two-pass decode finds 285/428 and 699/1,041 of `jt9`'s messages on the two corpora ([decode.md](../architecture/decode.md)).
+**North star: better decodes on the air.** The P4 may not get there alone. Microcontroller decode tops out near 71% of `jt9 -d 3` (RFC 0006 §4.1), and the shipped two-pass decode finds 285/428 and 699/1,041 of `jt9`'s messages on the two corpora ([decode.md](../../architecture/decode.md)).
 
 Two goals, in order:
 
@@ -23,24 +23,24 @@ Two goals, in order:
 
 Facts are from the working tree at `f24182a`.
 
-* **Time budget.** Decode starts after 79 blocks (12.64 s) inside the capture task and must finish by the 15.0 s boundary: a 2.36 s guard ([decode.md](../architecture/decode.md); trigger point is row vnz7). At that commit a no-message slot overran it by about 1 s and dropped samples. The fix is in [decode.md](../architecture/decode.md) (**Subtraction**), not yet confirmed on the air.
+* **Time budget.** Decode starts after 79 blocks (12.64 s) inside the capture task and must finish by the 15.0 s boundary: a 2.36 s guard ([decode.md](../../architecture/decode.md); trigger point is row vnz7). At that commit a no-message slot overran it by about 1 s and dropped samples. The fix is in [decode.md](../../architecture/decode.md) (**Subtraction**), not yet confirmed on the air.
 * **Receive path.** The QMX delivers 48 kHz, 24-bit stereo over UAC (`poe_p4/main/qmx_transport.cpp:44`). `components/resample` decimates 48 kHz mono to 6 kHz by taking every eighth sample, with no filter (`resample.h:22`; `FT8_SAMPLE_RATE` 6000, `ft8_audio_pipeline.cpp:29`). The ingest task writes into a 16,384-float ring, about 2.7 s at 6 kHz (`ft8_audio_pipeline.cpp:36`).
 * **Tasks and cores.**
   - Core 1: `decode_audio`, priority 4 (`poe_p4/main/main.cpp:68`), and `audio_ingest`, priority 5, pinned to the same core (`ft8_audio_pipeline.cpp:119`).
   - Core 0: `usb_lib` and `uac_lib`, priority 5 (`qmx_transport.cpp:500`, `:508`), and the main loop that ticks Port A, autoseq and the TX scheduler (`main.cpp:70` on; core 0 is ESP-IDF's default main-task affinity).
   - `porta_rx` is not pinned (`components/porta/porta.cpp:1037`).
-* **Memory.** PSRAM is not enabled. DMA buffers cannot use it anyway ([main_board.md](../architecture/main_board.md)). The 161 KB waterfall is a heap malloc, and t4/f2's 322 KB waterfall already cannot allocate ([decode.md](../architecture/decode.md)).
-* **Ethernet.** The board has an Ethernet PHY and 802.3at PoE; "neither is used, by decision" (2026-09-16, [main_board.md](../architecture/main_board.md)).
-* **Port A cannot carry this stream.** It rests at 2,500,000 baud, about 250 kB/s ([sidekick.md](../architecture/sidekick.md), **Port A**). The 48 kHz stream §3 taps is 192 kB/s as float or 144 kB/s packed (§7, question 4), most of the link, beside the control traffic the station runs on. An 8 kHz listening stream fits (row fc6w), but it is not what this RFC needs.
+* **Memory.** PSRAM is not enabled. DMA buffers cannot use it anyway ([main_board.md](../../architecture/main_board.md)). The 161 KB waterfall is a heap malloc, and t4/f2's 322 KB waterfall already cannot allocate ([decode.md](../../architecture/decode.md)).
+* **Ethernet.** The board has an Ethernet PHY and 802.3at PoE; "neither is used, by decision" (2026-09-16, [main_board.md](../../architecture/main_board.md)).
+* **Port A cannot carry this stream.** It rests at 2,500,000 baud, about 250 kB/s ([sidekick.md](../../architecture/sidekick.md), **Port A**). The 48 kHz stream §3 taps is 192 kB/s as float or 144 kB/s packed (§7, question 4), most of the link, beside the control traffic the station runs on. An 8 kHz listening stream fits (row fc6w), but it is not what this RFC needs.
 * **Instruments.**
   - `SLOT … dec… left…` (`components/decode_pipeline/decode_pipeline.cpp:277`) and `BDRY … lost… drop…` (`components/ft8_audio_pipeline/ft8_audio_pipeline.cpp:192`) per slot.
   - The waterfall allocation size in the log.
   - A per-core busy measurement, `decode_core_busy`, in progress in the working tree (not committed at `f24182a`).
 * **Offline measurement.**
   - `tools/decode_recall/report.py` scores the firmware's decode steps against pinned `jt9 -8 -d 3` truth. It matches on normalised message text, counts discordant decodes, and lists extras rather than scoring them false.
-  - Host and device decode identically for every configuration tried ([decode.md](../architecture/decode.md)).
+  - Host and device decode identically for every configuration tried ([decode.md](../../architecture/decode.md)).
   - RFC 0006 P6 (row B86) plans "our chain" recordings from the QMX on a Mac.
-  - The same report scores the firmware's SNR against `jt9`'s on the messages both decoded ([decode.md](../architecture/decode.md), **SNR**).
+  - The same report scores the firmware's SNR against `jt9`'s on the messages both decoded ([decode.md](../../architecture/decode.md), **SNR**).
 * **`jt9`.**
   - `jt9 -h` on the operator's Mac (2026-10-04) offers file mode, `-d` depth, and QSO context: `-c` my call, `-x` their call, `-G`/`-g` grids, `-Q` QSO progress.
   - RFC 0006 measured about 1,450 ms per slot for `-d 3` and 440 ms for `-d 1` on one Apple M4 core.
@@ -102,7 +102,7 @@ flowchart LR
 
 **What it also feeds:**
 
-* paired SNRs from our own receiver chain, beyond the two corpora `report.py` scores ([decode.md](../architecture/decode.md), **SNR**)
+* paired SNRs from our own receiver chain, beyond the two corpora `report.py` scores ([decode.md](../../architecture/decode.md), **SNR**)
 * DT comparison for row I15
 * hard cases for B86's corpus and for `decode_recall` regressions
 
@@ -110,14 +110,14 @@ flowchart LR
 
 **The runtime switch.**
 
-* It is a CONFIG key, token-guarded like every write ([system.md](../architecture/system.md)), and off by default.
+* It is a CONFIG key, token-guarded like every write ([system.md](../../architecture/system.md)), and off by default.
 * It is read at boot and takes effect on the next boot.
 * With it off, the Ethernet driver is never installed, lwIP never starts, and no network buffers exist. The field station runs today's code paths. The image carries the code (§8).
 
 **With the switch on:**
 
 1. **The network lives on core 0.** On core 1, below decode, it would be starved for the decode window. Buffering 2.4 s at 192 kB/s (48 kHz float) is about 460 KB of internal RAM, which does not fit with PSRAM off. On core 0 it drains continuously.
-2. **Priorities go below USB.** ESP-IDF's default puts lwIP's `tcpip` task at priority 18 (as on the sidekick, [sidekick.md](../architecture/sidekick.md)), above every P4 task, and the Ethernet receive task is high by default too. Both must sit below `usb_lib`/`uac_lib` (priority 5). The Ethernet interrupt is allocated on core 0 by installing the driver there.
+2. **Priorities go below USB.** ESP-IDF's default puts lwIP's `tcpip` task at priority 18 (as on the sidekick, [sidekick.md](../../architecture/sidekick.md)), above every P4 task, and the Ethernet receive task is high by default too. Both must sit below `usb_lib`/`uac_lib` (priority 5). The Ethernet interrupt is allocated on core 0 by installing the driver there.
 3. **The TX scheduler shares core 0.** The main loop starts transmissions, so the gate measures TX start against the slot boundary.
 4. **Core 1 gets one copy.** The only stream work on the decode core is a copy into a cross-core single-producer ring, inside the read `audio_ingest` already makes.
 5. **The P4 never waits on the network.**
@@ -143,18 +143,18 @@ If any check fails, the switch stays off and the slice does not ship turned on.
 
 ### 3.4 Wire contract
 
-One source of truth in code, per [README.md](../README.md) (**No prose specs**):
+One source of truth in code, per [README.md](../../README.md) (**No prose specs**):
 
 * The frame layout lives in a new component's header (`components/decode_stream/`, name provisional), and the encoder builds on the host.
 * The host's parser is held to it by a test that feeds it frames from the C encoder in `host_mock`.
-* The tap ring and framing logic live in that component. `poe_p4/main/` gets only board glue (Ethernet and PHY init), per [STYLE.md](../STYLE.md).
+* The tap ring and framing logic live in that component. `poe_p4/main/` gets only board glue (Ethernet and PHY init), per [STYLE.md](../../STYLE.md).
 
 ### 3.5 The host program
 
 * `tools/decode_server/` (provisional), in Python like `tools/decode_recall/report.py`.
 * It runs `jt9` from the operator's WSJT-X install as a separate process. We distribute nothing GPL.
 * Every row records the `jt9` version, because RFC 0006 requires pinned truth.
-* In S2 it is run by the operator from the repo, not a release artifact. It becomes a [RELEASE_PROCESS.md](../RELEASE_PROCESS.md) question only if S3 ships for other operators.
+* In S2 it is run by the operator from the repo, not a release artifact. It becomes a [RELEASE_PROCESS.md](../../RELEASE_PROCESS.md) question only if S3 ships for other operators.
 
 ### 3.6 S3 sketch: `jt9`'s decodes on the air
 
@@ -164,9 +164,9 @@ This is decided only after S2's data shows a gap worth closing and a round trip 
 * **QSO context.** The P4 sends my call, the partner's call and QSO progress for each slot, which `jt9` uses through `-c`/`-x`/`-Q`.
 * **Merge.** The union of both engines' decodes, keyed on normalised text. Each decode is tagged with the engine(s) that found it.
 * **Trust.**
-  - Decodes now flow into the P4 and drive autoseq, which keys the transmitter. That conflicts with "nothing may change the device merely by being on the LAN" ([system.md](../architecture/system.md)).
+  - Decodes now flow into the P4 and drive autoseq, which keys the transmitter. That conflicts with "nothing may change the device merely by being on the LAN" ([system.md](../../architecture/system.md)).
   - The P4 would accept results only from the configured host, on the socket it opened. A LAN device that spoofs the host can still inject decodes; that is the same honest limit as the token.
-  - The exposure depends on what autoseq answers unprompted. It is bounded against [autoseq.md](../architecture/autoseq.md) in S3's design, and needs a system.md amendment before S3 is accepted.
+  - The exposure depends on what autoseq answers unprompted. It is bounded against [autoseq.md](../../architecture/autoseq.md) in S3's design, and needs a system.md amendment before S3 is accepted.
 
 ## 4. Alternatives
 
@@ -184,7 +184,7 @@ This is decided only after S2's data shows a gap worth closing and a round trip 
 
 ## 5. Slices
 
-Each slice states which verifiability category from [AGENTS.md](../../AGENTS.md) applies.
+Each slice states which verifiability category from [AGENTS.md](../../../AGENTS.md) applies.
 
 1. **S1: Ethernet up, nothing sent.** The switch, DHCP, a link, the §3.2 priorities and pinning, and the heap log. Nothing is sent.
    - It measures what being on a LAN costs, apart from what sending costs.
@@ -198,10 +198,10 @@ Each slice states which verifiability category from [AGENTS.md](../../AGENTS.md)
 
 ## 6. What changes elsewhere on acceptance
 
-* [main_board.md](../architecture/main_board.md): the 2026-09-16 Ethernet decision is reversed, scoped to an outbound link to one configured host. This graduates with S1.
-* [system.md](../architecture/system.md): S1–S2 add an outbound-only LAN path from the P4. The phone still reaches the station only through the sidekick. S3 changes "Who may key the transmitter".
+* [main_board.md](../../architecture/main_board.md): the 2026-09-16 Ethernet decision is reversed, scoped to an outbound link to one configured host. This graduates with S1.
+* [system.md](../../architecture/system.md): S1–S2 add an outbound-only LAN path from the P4. The phone still reaches the station only through the sidekick. S3 changes "Who may key the transmitter".
 * RFC 0006 P6: a dated amendment pointing "our chain" here.
-* [README.md](../../README.md) fork notes: audited when the switch reaches a web-app control.
+* [README.md](../../../README.md) fork notes: audited when the switch reaches a web-app control.
 
 ## 7. Open questions — the Ask
 

@@ -137,37 +137,9 @@ int normalize_gps_baud(int value)
     return (value == 9600 || value == 115200) ? value : 115200;
 }
 
-int parse_radio_value(const char* raw)
+int parse_radio_value(const char* /*raw*/)
 {
-    if (!raw) {
-        return 2;  // QMX
-    }
-
-    char* end = nullptr;
-    long as_int = strtol(raw, &end, 10);
-    if (end != raw) {
-        switch (static_cast<int>(as_int)) {
-            case 5:
-                return 5;
-            case 2:
-            default:
-                return 2;
-        }
-    }
-
-    std::string token;
-    for (const char* p = raw; *p; ++p) {
-        unsigned char ch = static_cast<unsigned char>(*p);
-        if (ch == '\r' || ch == '\n' || ch == ' ' || ch == '\t') {
-            continue;
-        }
-        token.push_back(static_cast<char>(std::toupper(ch)));
-    }
-
-    if (token == "QDX") {
-        return 5;
-    }
-    return 2;
+    return 2;  // the QMX, the only radio: any value, a number or a name, reads as it
 }
 
 void format_freq(float f, char* fbuf, size_t n)
