@@ -11,6 +11,10 @@ make -C tools/iq_convert
 # recording: FT8 and FT4 on 20 m are 6 kHz apart, so 13,500 and 19,500 Hz.
 tools/iq_convert/iq_convert --center-hz 13500 --center-hz 19500 -o out.wav qmx_iq.wav
 
+# The same with the blind DC and gain/phase correction; the OUT line adds the imbalance it settled on
+# (balance_gain_db, balance_phase_deg). --balance-seconds sets its time constant (default 1 s).
+tools/iq_convert/iq_convert --balance -o out.wav qmx_iq.wav
+
 # The same radio's ordinary (demodulated) audio, through the same filters, for the A/B.
 tools/iq_convert/iq_convert --real -o audio_12k.wav qmx_audio.wav
 

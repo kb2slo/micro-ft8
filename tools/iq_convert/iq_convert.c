@@ -1,7 +1,8 @@
 // Offline I/Q front end (row y9bt, stage 2). Runs components/iq_frontend, the code the firmware
 // will run, over a recording, and makes synthetic I/Q from a corpus WAV to test it with.
 //
-//   iq_convert [--center-hz F]... [--if-trim-hz T] [--swap-iq] [--negate-q] [--output-rate R] -o OUT.wav IQ.wav
+//   iq_convert [--center-hz F]... [--if-trim-hz T] [--swap-iq] [--negate-q] [--balance] [--output-rate R]
+//              -o OUT.wav IQ.wav
 //       A 48 kHz stereo I/Q WAV (16- or 24-bit) to one mono 16-bit WAV per --center-hz (default
 //       13,500: a QMX's FT8 channel). With several centres, each output is OUT_<centre>Hz.wav.
 //   iq_convert --real [--output-rate R] -o OUT.wav AUDIO.wav
@@ -17,6 +18,10 @@
 //       48 kHz from the channel (which a 48 kHz ADC samples onto the channel itself: an alias).
 //       Levels are dB against the signal's RMS; the tones land at 1,500 + tone-offset Hz of audio.
 //       Deterministic.
+//
+// --balance turns on the front end's blind DC and gain/phase correction (components/iq_frontend, 1 s
+// time constant); the OUT line then adds balance_gain_db and balance_phase_deg, the imbalance it
+// converged to. (--balance-seconds S sets the time constant.)
 //
 // Every output prints an OUT line naming the NCO frequency applied, trim included, so a wrong trim
 // is visible: it moves every decoded frequency by that many Hz. --synth also prints the image level
@@ -170,6 +175,8 @@ typedef struct {
     double if_trim_hz;
     int swap_iq;
     int negate_q;
+    int balance;
+    double balance_seconds;
     int output_rate;
     int real;
     int synth;
@@ -198,6 +205,8 @@ static iq_frontend_config_t frontend_config(const options_t* o, double center, i
     c.if_trim_hz = o->if_trim_hz;
     c.swap_iq = o->swap_iq != 0;
     c.negate_q = o->negate_q != 0;
+    c.balance = o->balance != 0;
+    c.balance_seconds = (float)o->balance_seconds;
     return c;
 }
 
@@ -243,9 +252,15 @@ static int receive(const options_t* o, const float* iq, size_t frames, int rate,
         }
     }
     long clipped = write_wav(path, audio, written, 1, o->output_rate, 16);
-    printf("OUT %s center_hz=%g if_trim_hz=%g nco_hz=%.4f audio_hz=%d-%d samples=%zu out_gain_db=%.1f clipped=%ld\n",
+    char balance_text[96] = "";
+    double balance_gain_db, balance_phase_deg;
+    if (iq_frontend_balance_estimate(frontend, &balance_gain_db, &balance_phase_deg)) {
+        snprintf(balance_text, sizeof(balance_text), " balance_gain_db=%.3f balance_phase_deg=%.3f", balance_gain_db,
+                 balance_phase_deg);
+    }
+    printf("OUT %s center_hz=%g if_trim_hz=%g nco_hz=%.4f audio_hz=%d-%d samples=%zu out_gain_db=%.1f clipped=%ld%s\n",
            path, center, o->if_trim_hz, iq_frontend_nco_hz(frontend), frontend->audio_low_hz, frontend->audio_high_hz,
-           written, out_gain_db, clipped);
+           written, out_gain_db, clipped, balance_text);
     free(audio);
     free(frontend);
     return clipped < 0 ? -1 : 0;
@@ -287,7 +302,7 @@ static double measure_image_db(const options_t* o, double center)
     float* out = malloc(frames * sizeof(float));
     iq_frontend_t* frontend = malloc(sizeof(*frontend));
     options_t plain = *o;
-    plain.swap_iq = plain.negate_q = 0;
+    plain.swap_iq = plain.negate_q = plain.balance = 0;
     plain.if_trim_hz = 0;
     for (int k = 0; k < 2; ++k) {
         double hz = (k == 0 ? 1 : -1) * (center - 1500.0 + audio);
@@ -406,7 +421,7 @@ static void usage(void)
 {
     fprintf(stderr,
             "usage: iq_convert [--center-hz F]... [--if-trim-hz T] [--swap-iq] [--negate-q] [--output-rate R]\n"
-            "                  [--normalize-db L] -o OUT.wav IQ.wav\n"
+            "                  [--balance [--balance-seconds S]] [--normalize-db L] -o OUT.wav IQ.wav\n"
             "       iq_convert --real [--output-rate R] [--normalize-db L] -o OUT.wav AUDIO.wav\n"
             "       iq_convert --synth [--center-hz F] [--if-trim-hz T] [--swap-iq] [--negate-q] [--gain-db G]\n"
             "                  [--phase-deg P] [--dc-db D] [--mirror-tone-db L] [--alias-tone-db L]\n"
@@ -434,7 +449,8 @@ int main(int argc, char** argv)
         {"tone-offset-hz", required_argument, 0, 'f'}, {"level-db", required_argument, 0, 'l'},
         {"mirror-wav", required_argument, 0, 'M'},    {"mirror-wav-db", required_argument, 0, 'D'},
         {"bits", required_argument, 0, 'b'},          {"out", required_argument, 0, 'o'},
-        {"normalize-db", required_argument, 0, 'z'},
+        {"normalize-db", required_argument, 0, 'z'},  {"balance", no_argument, 0, 'B'},
+        {"balance-seconds", required_argument, 0, 'T'},
         {0, 0, 0, 0},
     };
     int opt;
@@ -461,12 +477,14 @@ int main(int argc, char** argv)
             case 'D': o.mirror_wav_db = atof(optarg); break;
             case 'b': o.bits = atoi(optarg); break;
             case 'o': o.out = optarg; break;
+            case 'B': o.balance = 1; break;
+            case 'T': o.balance_seconds = atof(optarg); break;
             case 'z': o.normalize = 1; o.normalize_db = atof(optarg); break;
             default: usage();
         }
     }
     if (optind != argc - 1 || o.out == NULL || (o.real && o.synth) || (o.bits != 16 && o.bits != 24)) usage();
-    if (o.real && (o.n_centers || o.swap_iq || o.negate_q || o.if_trim_hz != 0)) {
+    if (o.real && (o.n_centers || o.swap_iq || o.negate_q || o.if_trim_hz != 0 || o.balance)) {
         fprintf(stderr, "iq_convert --real: the dial is at 0 Hz; centre, trim and I/Q flags do not apply\n");
         return 2;
     }

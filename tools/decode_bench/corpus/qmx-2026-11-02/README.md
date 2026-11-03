@@ -41,3 +41,31 @@ each two-slot IQ turn against the audio turn after it.
 arms. A second 20 m channel centred 2.8 kHz higher adds 5 messages to the window's 3,371 (0.1%).
 On 20 m our decoder levels off near 27 decodes per slot whatever jt9 finds: the stations it misses
 are those within about 30 Hz of a stronger one.
+
+## With balance correction
+
+The same slots rescored with the front end's blind DC and gain/phase correction (`iq_convert --balance`,
+1 s time constant, nothing tuned to this corpus):
+`score_ab.py BAND_DIR --iq-flag=--balance --conv-dir conv-balance --jobs 6`. Uncorrected figures are the
+table above; corrected / uncorrected where both are given.
+
+| Band | jt9 per slot, IQ / audio | Ours per slot, IQ / audio | Paired IQ − audio per turn, jt9 | Image rejection, median (wrong-side decodes) | Converged gain, median (range) | Converged phase, median (range) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 15 m | 24.4 / 25.5 | 16.5 / 17.1 (was 16.6) | −2.20 ± 0.91 (was −2.23 ± 0.90) | not measurable: 1 decode before, 0 after | −0.04 dB (−0.11 to −0.01) | +13.6° (−2.4 to +47.4) |
+| 20 m | 56.1 / 55.9 (was 56.2) | 26.6 / 26.6 (was 26.8) | +0.43 ± 1.49 (was +0.53 ± 1.47) | 25 dB (531; range 10–46), was 32 dB (173) | +1.23 dB (+0.23 to +2.33) | +4.6° (+1.3 to +58.4) |
+| 40 m | 10.0 / 10.0 | 6.4 / 6.4 | +0.00 ± 0.61 (was +0.03 ± 0.61) | none strong enough | −0.01 dB (−0.08 to +0.00) | +18.1° (−0.3 to +65.2) |
+
+The 15 m gap did not close: IQ still trails audio by 2.2 jt9 decodes per slot (was 2.2), within the
+error bars of no change. Nothing else moved outside the noise. On 20 m, the one band where the image
+can be measured, the correction made it worse: more strong stations appear on the wrong side of the
+LO (531 against 173) and at a lower rejection (25 dB against 32). The converged gain and phase are
+each slot's last estimate. The phase is far larger and more scattered (up to 65°) than the 32 dB
+uncorrected rejection allows (about 4°), and on 15 m and 40 m it sits near +14° to +18° at a gain of
+0 dB. So the estimate is not the mixer's imbalance at the channel. Likely, untested: the correction as built
+estimates across the whole 48 kHz window, where anything correlated between I and Q that is not the
+channel's image (common-mode low-frequency content, an imbalance that differs with frequency across the
+window) pulls it away; the image rejection spread of 20–50 dB across the 20 m window
+already says the imbalance is not one number. The synthetic mixer in the host tests has a flat
+imbalance, which is why they pass. Next step this points at: estimate near the channel (after the
+NCO and the first decimation, as a correction on the mirror term of the narrow channel) rather than
+across the window; row y9bt is not closed on balance alone.
