@@ -2,6 +2,7 @@ idf_component_register(
     SRCS "main.cpp"
          "qmx_transport.cpp"
          "hl2_transport.cpp"
+         "radio_select.cpp"
          "decode_seams.cpp"
          "porta_board.cpp"
          "porta_host.cpp"

@@ -80,6 +80,7 @@ HEARD_GRID_TARGET = host_test_heard_grid
 DECODE_FIELDS_TARGET = host_test_decode_fields
 RTC_CORE_TARGET = host_test_rtc_core
 HL2_PROTO_TARGET = host_test_hl2_proto
+RADIO_CONTROL_TARGET = host_test_radio_control
 
 all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
      $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) \
@@ -91,7 +92,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARG
      $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(BLOCK_ACTIVITY_TARGET) $(CORE_BUSY_TARGET) \
      $(DECODE_RETRY_TARGET) $(DECODE_SYNC_TARGET) $(DECODE_SNR_TARGET) \
      $(PORTA_OUT_QUEUE_TARGET) $(HEARD_GRID_TARGET) $(DECODE_FIELDS_TARGET) $(RTC_CORE_TARGET) \
-     $(HL2_PROTO_TARGET) $(SIM_TARGET)
+     $(HL2_PROTO_TARGET) $(RADIO_CONTROL_TARGET) $(SIM_TARGET)
 
 $(TARGET): $(OBJ) porta_event_json.o heard_grid.o
 	$(CXX) $(CXXFLAGS) -o $@ $^
@@ -177,6 +178,14 @@ hl2_proto.o: ../components/hl2_proto/hl2_proto.cpp
 test_hl2_proto.o: test_hl2_proto.cpp
 	$(CXX) $(CXXFLAGS) -I../components/hl2_proto/include -c $< -o $@
 $(HL2_PROTO_TARGET): $(HL2_PROTO_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+RADIO_CONTROL_OBJ = radio_control.o test_radio_control.o
+radio_control.o: ../components/radio_control/radio_control.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+test_radio_control.o: test_radio_control.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+$(RADIO_CONTROL_TARGET): $(RADIO_CONTROL_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 SLOT_DEFICIT_OBJ = ft8_slot_deficit.o test_slot_deficit.o
@@ -380,7 +389,8 @@ clean:
 	      $(HEARD_GRID_OBJ) $(HEARD_GRID_TARGET) \
 	      $(DECODE_FIELDS_OBJ) $(DECODE_FIELDS_TARGET) \
 	      $(RTC_CORE_OBJ) $(RTC_CORE_TARGET) \
-	      $(HL2_PROTO_OBJ) $(HL2_PROTO_TARGET)
+	      $(HL2_PROTO_OBJ) $(HL2_PROTO_TARGET) \
+	      $(RADIO_CONTROL_OBJ) $(RADIO_CONTROL_TARGET)
 
 .PHONY: all clean
 

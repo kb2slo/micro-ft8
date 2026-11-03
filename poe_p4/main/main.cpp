@@ -13,13 +13,12 @@
 #include "decode_tx_state.h"
 #include "ft8_audio_pipeline.h"
 #include "ft8_block_activity.h"
-#include "hl2_transport.h"
 #include "porta.h"
 #include "porta_host.h"
 #include "protocol.h"
 #include "qmx_transport.h"
 #include "radio_control.h"
-#include "station.h"
+#include "radio_select.h"
 #include "storage_service.h"
 #include "swr_sweep.h"
 #include "tx_scheduler.h"
@@ -45,19 +44,25 @@ static void send_activity(void * /*ctx*/, int64_t slot_idx, int block_ms, int fi
                         (uint8_t)n, (uint16_t)lo_hz, (uint16_t)hi_hz);
 }
 
+// The QMX's audio feeds decode only while the QMX is the active radio (radio_select.h); choosing another radio
+// ends the pipeline run, as a QMX unplugged does.
+static bool qmx_decode_should_stop(void *ctx) {
+    return qmx_audio_should_stop(ctx) || !radio_select_qmx_feeds_decode();
+}
+
 static void decode_audio_task(void * /*arg*/) {
     ft8_audio_pipeline_config_t pipe_cfg = {
         .tag = TAG,
         .ctx = nullptr,
         .read = qmx_audio_read_ft8_samples,
-        .should_stop = qmx_audio_should_stop,
+        .should_stop = qmx_decode_should_stop,
         .on_block_processed = nullptr,
         .on_activity = send_activity,
     };
     // QMX CAT/UAC comes back only after a radio power cycle (QMX quirk);
     // keep this task alive so a replug restarts decode without resetting P4.
     while (true) {
-        while (!qmx_audio_ready()) {
+        while (!radio_select_qmx_feeds_decode() || !qmx_audio_ready()) {
             vTaskDelay(pdMS_TO_TICKS(200));
         }
         ESP_LOGI(TAG, "QMX UAC streaming; starting decode pipeline");
@@ -88,14 +93,8 @@ extern "C" void app_main(void) {
     porta_p4_station_boot();
     porta_p4_adif_register();
 
-    radio_control_set_backend(RADIO_CONTROL_QMX);
-    // The radio is chosen at boot, and a change reboots (RFC 0014 §3.1). The HL2 is receive only so far (S1):
-    // it streams and logs, with no radio_control backend, so the radio bar reads No radio and nothing decodes.
-    if (porta_p4_station_radio() == kStationRadioHl2) {
-        hl2_transport_start();
-    } else {
-        qmx_transport_start();
-    }
+    // Settings > Radio, applied again live on every change (radio_select.h).
+    radio_select_apply(porta_p4_station_radio());
     porta_start();
 
     xTaskCreatePinnedToCore(decode_audio_task, "decode_audio", 8192, nullptr, 4, nullptr, 1);

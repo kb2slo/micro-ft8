@@ -42,6 +42,7 @@ constexpr int64_t kStreamLostUs = 1000 * 1000;
 constexpr int64_t kStatusEveryUs = 15 * 1000 * 1000;
 constexpr int kDiscoveryEveryMs = 1000;
 constexpr EventBits_t kLinkUp = BIT0;
+constexpr EventBits_t kActive = BIT1;  // the HL2 is the radio feeding channel 0
 
 static EventGroupHandle_t s_events;
 static uint8_t s_our_ip[4];
@@ -141,7 +142,7 @@ static bool discover(int sock, sockaddr_in* hl2, Hl2DiscoveryReply* reply)
     uint8_t request[HL2_DISCOVERY_REQUEST_LEN];
     hl2_encode_discovery_request(request, sizeof request);
     bool said_running = false;
-    while (xEventGroupGetBits(s_events) & kLinkUp) {
+    while ((xEventGroupGetBits(s_events) & (kLinkUp | kActive)) == (kLinkUp | kActive)) {
         send_to(sock, broadcast, request, sizeof request);
         const int64_t until = esp_timer_get_time() + kDiscoveryEveryMs * 1000;
         while (esp_timer_get_time() < until) {
@@ -204,9 +205,15 @@ static void stream(int sock, const sockaddr_in& hl2)
     uint32_t packets = 0, clipped = 0;
     int64_t last_rx = esp_timer_get_time();
     int64_t next_status = last_rx + kStatusEveryUs;
+    bool lost = false;
     while (true) {
         const int64_t now = esp_timer_get_time();
-        if (now - last_rx > kStreamLostUs || !(xEventGroupGetBits(s_events) & kLinkUp)) {
+        const EventBits_t bits = xEventGroupGetBits(s_events);
+        if (!(bits & kActive)) {
+            break;  // another radio was chosen
+        }
+        if (now - last_rx > kStreamLostUs || !(bits & kLinkUp)) {
+            lost = true;
             break;
         }
         if (now >= next_status) {
@@ -236,8 +243,13 @@ static void stream(int sock, const sockaddr_in& hl2)
     hl2_encode_stop(stop, sizeof stop);
     send_to(sock, hl2, stop, sizeof stop);
     log_status(seq, packets, clipped, tel);
-    ESP_LOGW(TAG, "stream lost after %lu packets; back to discovery", (unsigned long)packets);
-    debug_log_line("HL2 stream lost; looking for the radio again");
+    if (lost) {
+        ESP_LOGW(TAG, "stream lost after %lu packets; back to discovery", (unsigned long)packets);
+        debug_log_line("HL2 stream lost; looking for the radio again");
+    } else {
+        ESP_LOGI(TAG, "stream stopped after %lu packets: another radio was chosen", (unsigned long)packets);
+        debug_log_line("HL2 stream stopped: another radio was chosen");
+    }
 }
 
 static void hl2_task(void* /*arg*/)
@@ -257,7 +269,7 @@ static void hl2_task(void* /*arg*/)
         return;
     }
     while (true) {
-        xEventGroupWaitBits(s_events, kLinkUp, pdFALSE, pdTRUE, portMAX_DELAY);
+        xEventGroupWaitBits(s_events, kLinkUp | kActive, pdFALSE, pdTRUE, portMAX_DELAY);
         sockaddr_in hl2 = {};
         Hl2DiscoveryReply reply{};
         if (!discover(sock, &hl2, &reply)) {
@@ -284,17 +296,37 @@ static void hl2_task(void* /*arg*/)
     vTaskDelete(nullptr);
 }
 
-bool hl2_transport_start(void)
+static bool s_started = false;
+static bool s_failed = false;  // a half-started EMAC is not installed twice
+
+bool hl2_transport_set_active(bool active)
 {
-    s_events = xEventGroupCreate();
-    if (!s_events || !start_ethernet()) {
-        debug_log_line("HL2 Ethernet could not start; no HL2 receive this boot");
+    if (!active) {
+        if (s_events) {
+            xEventGroupClearBits(s_events, kActive);  // the task sends stop on its next packet or timeout
+        }
+        return true;
+    }
+    if (s_failed) {
         return false;
     }
-    // Core 0, with the main loop; core 1 is decode's (docs/architecture/main_board.md, Tasks).
-    if (xTaskCreatePinnedToCore(hl2_task, "hl2_rx", 4096, nullptr, 5, nullptr, 0) != pdPASS) {
-        ESP_LOGE(TAG, "could not create the HL2 task");
-        return false;
+    if (!s_started) {
+        s_failed = true;  // until every step below has succeeded
+        if (!s_events) {
+            s_events = xEventGroupCreate();
+        }
+        if (!s_events || !start_ethernet()) {
+            debug_log_line("HL2 Ethernet could not start; no HL2 receive");
+            return false;
+        }
+        // Core 0, with the main loop; core 1 is decode's (docs/architecture/main_board.md, Tasks).
+        if (xTaskCreatePinnedToCore(hl2_task, "hl2_rx", 4096, nullptr, 5, nullptr, 0) != pdPASS) {
+            ESP_LOGE(TAG, "could not create the HL2 task");
+            return false;
+        }
+        s_started = true;
+        s_failed = false;
     }
+    xEventGroupSetBits(s_events, kActive);
     return true;
 }

@@ -18,6 +18,7 @@
 #include "protocol.h"
 #include "qmx_transport.h"
 #include "qso_browse.h"
+#include "radio_select.h"
 #include "radio_control.h"
 #include "rtc_core.h"
 #include "station.h"
@@ -294,8 +295,7 @@ static bool log_adif_entry(const std::string &dxcall, const std::string &dxgrid,
         station.band_name = (idx >= 0 && idx < kStationBandCount) ? kBandNames[idx] : "";
     }
     station.raw_comment = s_station.comment1;
-    // The P4 always drives a QMX today regardless of the Station radio= key
-    // (row cgc4), so this is the real value, not a placeholder.
+    // Only the QMX can transmit (the HL2 is receive only, RFC 0014 S1), so a QSO is the QMX's.
     station.radio_name = "QMX";
     // No GPS on the P4 (docs/architecture/main_board.md) -- nothing to
     // override the configured grid with for "/Grid".
@@ -700,8 +700,25 @@ const char *porta_host_config_set(const char *key, const char *value) {
         }
     }
 
+    if (strcmp(key, "radio") == 0) {
+        // The radio that is keyed must be the one that un-keys (radio_select.h).
+        if (s_tune) {
+            return "Tune is on";
+        }
+        if (swr_sweep_busy()) {
+            return "SWR sweep is running";
+        }
+        if (amp_band_prime_busy()) {
+            return "amp band prime is running";
+        }
+        if (decode_tx_state_get_tx_active()) {
+            return "a transmission is on";
+        }
+    }
+
     std::string line = std::string(key) + "=" + value + "\n";
     const int band_was = s_station.band_sel;
+    const int radio_was = s_station.radio;
     const bool act_refs_was_empty = s_station.act_refs.empty();
     station_parse(line, &s_station);
     s_station.serialize_ft4_band_keys = s_station.protocol_ft4;
@@ -726,6 +743,10 @@ const char *porta_host_config_set(const char *key, const char *value) {
     }
 
     persist_station();
+
+    if (s_station.radio != radio_was) {
+        radio_select_apply(s_station.radio);
+    }
 
     if (strcmp(key, "band_sel") == 0 || strcmp(key, "active_bands") == 0 ||
         strncmp(key, "band", 4) == 0 || strncmp(key, "ft4_band", 8) == 0) {

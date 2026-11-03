@@ -639,11 +639,12 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <div class=setrow><label>Ignore prefixes <input id=ignore_prefixes autocomplete=off></label></div>
 
     <div class="hd sep">Radio</div>
-    <p class=setnote>Connect, tune and clock sync now live on Operate.</p>
+    <p class=setnote>Connect, tune and clock sync now live on Operate. A new radio takes over at once; the change is refused while transmitting or tuning.</p>
     <div class=setrow>
       <label>Radio
         <select id=radio>
           <option value=2>QMX</option>
+          <option value=6>HL2 (testing: receive only, no decodes yet)</option>
         </select>
       </label>
     </div>
@@ -2015,6 +2016,7 @@ function operatingBandName(cfg) {
 
 // The model the radio names in its VN reply ("1_04_003QMX" is a QMX), else from the USB event.
 function radioNameOf() {
+  if (String(lastCfg.radio) === '6') return 'HL2';
   var m = /^\d+_\d+_\d+([A-Z]+)$/.exec(String(lastCfg.radio_fw || ''));
   if (m) return m[1];
   return usbState && usbState.present && usbState.kind === 0 ? 'QMX' : 'Radio';
