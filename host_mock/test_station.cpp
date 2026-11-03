@@ -99,6 +99,20 @@ int main()
     }
 
     {
+        // The HL2 (RFC 0014 S1): by name, as the bench sets it, and by the number Station.txt stores.
+        StationSettings s;
+        station_settings_init(&s);
+        station_parse("radio=hl2\n", &s);
+        expect_int(s.radio, kStationRadioHl2, "radio HL2 by name");
+        station_settings_init(&s);
+        station_parse("radio=6\n", &s);
+        expect_int(s.radio, kStationRadioHl2, "radio HL2 as stored");
+        station_settings_init(&s);
+        station_parse("radio=7\n", &s);
+        expect_int(s.radio, kStationRadioQmx, "an unknown radio is the QMX");
+    }
+
+    {
         StationSettings s;
         station_settings_init(&s);
         station_parse(

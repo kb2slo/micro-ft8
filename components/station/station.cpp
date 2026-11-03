@@ -137,9 +137,37 @@ int normalize_gps_baud(int value)
     return (value == 9600 || value == 115200) ? value : 115200;
 }
 
-int parse_radio_value(const char* /*raw*/)
+int parse_radio_value(const char* raw)
 {
-    return 2;  // the QMX, the only radio: any value, a number or a name, reads as it
+    if (!raw) {
+        return kStationRadioQmx;
+    }
+
+    char* end = nullptr;
+    long as_int = strtol(raw, &end, 10);
+    if (end != raw) {
+        switch (static_cast<int>(as_int)) {
+            case kStationRadioHl2:
+                return kStationRadioHl2;
+            case kStationRadioQmx:
+            default:
+                return kStationRadioQmx;
+        }
+    }
+
+    std::string token;
+    for (const char* p = raw; *p; ++p) {
+        unsigned char ch = static_cast<unsigned char>(*p);
+        if (ch == '\r' || ch == '\n' || ch == ' ' || ch == '\t') {
+            continue;
+        }
+        token.push_back(static_cast<char>(std::toupper(ch)));
+    }
+
+    if (token == "HL2") {
+        return kStationRadioHl2;
+    }
+    return kStationRadioQmx;
 }
 
 void format_freq(float f, char* fbuf, size_t n)
@@ -371,7 +399,7 @@ void station_settings_init(StationSettings* out)
     }
     *out = StationSettings{};
     out->gps_baud = 115200;
-    out->radio = 2;
+    out->radio = kStationRadioQmx;
 }
 
 void station_parse(const std::string& text, StationSettings* io)

@@ -264,3 +264,44 @@ void hl2_apply_status(const Hl2Status& s, Hl2Telemetry* t)
             break;
     }
 }
+
+uint32_t hl2_sequence_note(Hl2SequenceTracker* t, uint32_t sequence)
+{
+    if (!t->started) {
+        t->started = true;
+        t->expected = sequence + 1;
+        return 0;
+    }
+    const uint32_t ahead = sequence - t->expected;  // wraps
+    if (ahead >= 0x80000000u) {                     // behind the expected number
+        ++t->out_of_order;
+        return 0;
+    }
+    t->expected = sequence + 1;
+    if (ahead == 0) {
+        return 0;
+    }
+    ++t->gaps;
+    t->lost += ahead;
+    return ahead;
+}
+
+void hl2_link_local_ipv4(const uint8_t mac[6], bool avoid_reserved, uint8_t out[4])
+{
+    out[0] = 169;
+    out[1] = 254;
+    out[2] = mac[4];
+    out[3] = mac[5];
+    if (avoid_reserved) {
+        switch (out[2]) {
+            case 0:
+                out[2] = 1;
+                break;
+            case 255:
+                out[2] = 254;
+                break;
+            default:
+                break;
+        }
+    }
+}

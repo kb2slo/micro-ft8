@@ -201,12 +201,48 @@ static void test_rx_packet()
     expect(!hl2_parse_rx_packet(bad.data(), bad.size(), 1, &pkt, iq, 252), "a lost frame sync is refused");
 }
 
+static void test_sequence()
+{
+    Hl2SequenceTracker t{};
+    expect(hl2_sequence_note(&t, 500) == 0, "the first packet sets the start");
+    expect(hl2_sequence_note(&t, 501) == 0 && t.gaps == 0, "the next one is no gap");
+    expect(hl2_sequence_note(&t, 505) == 3 && t.gaps == 1 && t.lost == 3, "502-504 lost: one gap of 3");
+    expect(hl2_sequence_note(&t, 503) == 0 && t.out_of_order == 1 && t.lost == 3, "a late 503 is out of order");
+    expect(hl2_sequence_note(&t, 505) == 0 && t.out_of_order == 2, "a duplicate is out of order");
+    expect(hl2_sequence_note(&t, 506) == 0 && t.gaps == 1, "and the stream goes on");
+
+    Hl2SequenceTracker w{};
+    hl2_sequence_note(&w, 0xFFFFFFFEu);
+    expect(hl2_sequence_note(&w, 0xFFFFFFFFu) == 0, "up to the top");
+    expect(hl2_sequence_note(&w, 0) == 0 && w.gaps == 0, "wraps to 0 with no gap");
+    expect(hl2_sequence_note(&w, 2) == 1 && w.lost == 1, "a gap just past the wrap");
+}
+
+static void test_link_local()
+{
+    const uint8_t hl2_mac[6] = {0x00, 0x1c, 0xc0, 0xa2, 0x13, 0xdd};
+    uint8_t ip[4];
+    hl2_link_local_ipv4(hl2_mac, false, ip);
+    expect(ip[0] == 169 && ip[1] == 254 && ip[2] == 19 && ip[3] == 221,
+           "the HL2's own: 169.254.19.221, as it answered on 2026-11-03");
+    const uint8_t low[6] = {1, 2, 3, 4, 0x00, 0x07};
+    hl2_link_local_ipv4(low, false, ip);
+    expect(ip[2] == 0, "the HL2 does not avoid 169.254.0.x");
+    hl2_link_local_ipv4(low, true, ip);
+    expect(ip[2] == 1 && ip[3] == 7, "our boards do: 169.254.1.7");
+    const uint8_t high[6] = {1, 2, 3, 4, 0xFF, 0x07};
+    hl2_link_local_ipv4(high, true, ip);
+    expect(ip[2] == 254, "and 169.254.255.x becomes 169.254.254.x");
+}
+
 int main()
 {
     test_discovery();
     test_start_stop();
     test_control_packet();
     test_rx_packet();
+    test_sequence();
+    test_link_local();
     if (g_fails) {
         fprintf(stderr, "test_hl2_proto: %d failure(s)\n", g_fails);
         return 1;

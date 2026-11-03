@@ -134,3 +134,27 @@ bool hl2_parse_rx_packet(const uint8_t* data, size_t len, int receivers, Hl2RxPa
 
 // Folds one status word into telemetry. A command response changes nothing but ptt.
 void hl2_apply_status(const Hl2Status& status, Hl2Telemetry* telemetry);
+
+// ---- Sequence gaps (RFC 0014 §3.11) ----------------------------------------------------------------------------
+
+// Upstream sequence numbers, packet by packet. The first packet seen sets the start; a later one that is not the
+// next counts the packets between as lost; one at or behind the expected number (a duplicate or a reordered
+// packet) is counted and otherwise ignored. Arithmetic wraps at 2^32.
+struct Hl2SequenceTracker {
+    bool started;
+    uint32_t expected;
+    uint32_t gaps;          // places where packets went missing
+    uint32_t lost;          // packets missing in all
+    uint32_t out_of_order;  // duplicates and late arrivals
+};
+
+// Notes one sequence number; returns how many packets were lost just before it (0 for the expected one, a
+// duplicate or a late one), so the caller can zero-fill that many packets' samples.
+uint32_t hl2_sequence_note(Hl2SequenceTracker* tracker, uint32_t sequence);
+
+// ---- Addresses -------------------------------------------------------------------------------------------------
+
+// The link-local address 169.254.MAC[15:8].MAC[7:0], as the HL2 computes its own with no DHCP lease
+// (rtl/ethernet/network.v:182). For our own boards pass avoid_reserved: RFC 3927 reserves 169.254.0.x and
+// 169.254.255.x, which then become 169.254.1.x and 169.254.254.x. The HL2 itself does not avoid them.
+void hl2_link_local_ipv4(const uint8_t mac[6], bool avoid_reserved, uint8_t out[4]);

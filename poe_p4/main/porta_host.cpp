@@ -321,6 +321,11 @@ int porta_p4_station_offset_hz(void) {
     return s_station.offset_hz;
 }
 
+int porta_p4_station_radio(void) {
+    ensure_seeded();
+    return s_station.radio;
+}
+
 bool porta_p4_station_amp_swr_guard(void) {
     ensure_seeded();
     return s_station.amp_swr_guard;

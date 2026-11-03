@@ -13,11 +13,13 @@
 #include "decode_tx_state.h"
 #include "ft8_audio_pipeline.h"
 #include "ft8_block_activity.h"
+#include "hl2_transport.h"
 #include "porta.h"
 #include "porta_host.h"
 #include "protocol.h"
 #include "qmx_transport.h"
 #include "radio_control.h"
+#include "station.h"
 #include "storage_service.h"
 #include "swr_sweep.h"
 #include "tx_scheduler.h"
@@ -87,7 +89,13 @@ extern "C" void app_main(void) {
     porta_p4_adif_register();
 
     radio_control_set_backend(RADIO_CONTROL_QMX);
-    qmx_transport_start();
+    // The radio is chosen at boot, and a change reboots (RFC 0014 §3.1). The HL2 is receive only so far (S1):
+    // it streams and logs, with no radio_control backend, so the radio bar reads No radio and nothing decodes.
+    if (porta_p4_station_radio() == kStationRadioHl2) {
+        hl2_transport_start();
+    } else {
+        qmx_transport_start();
+    }
     porta_start();
 
     xTaskCreatePinnedToCore(decode_audio_task, "decode_audio", 8192, nullptr, 4, nullptr, 1);

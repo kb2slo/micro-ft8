@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS "main.cpp"
          "qmx_transport.cpp"
+         "hl2_transport.cpp"
          "decode_seams.cpp"
          "porta_board.cpp"
          "porta_host.cpp"
@@ -10,6 +11,7 @@ idf_component_register(
              autoseq callsign_hashtable protocol ft8_audio_pipeline decode_pipeline
              rtc_core resample porta porta_proto debug_log
              storage_service station qso_log adif
+             hl2_proto esp_eth esp_netif esp_event lwip
     # decode_seams.cpp defines this board's side of the seams
     # (log_rxtx_line, ...) that shared components bare-forward-declare
     # rather than REQUIRES --

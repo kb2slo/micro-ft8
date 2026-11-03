@@ -3,7 +3,6 @@
 #include <string>
 
 // Station.txt parse/serialize. No ESP-IDF. Host tests and firmware both link this.
-// Radio: 2 is the QMX, the only radio; any other value reads as the QMX.
 
 static constexpr int kStationBandCount = 12;
 
@@ -11,6 +10,11 @@ static constexpr int kStationBandCount = 12;
 // keyed from the radio's PTT (architecture/radio.md, TX timing on a QMX).
 static constexpr int kStationTxMinDelayDefaultMs = 50;
 static constexpr int kStationTxMinDelayMaxMs = 500;
+
+// Station.txt's radio= values: the QMX keeps Mini-FT8's number; the HL2 is ours (RFC 0014 S1). Anything else
+// reads as the QMX.
+constexpr int kStationRadioQmx = 2;
+constexpr int kStationRadioHl2 = 6;
 
 struct StationSettings {
     float band_freq[kStationBandCount];
@@ -26,7 +30,7 @@ struct StationSettings {
     std::string call;
     std::string grid;
     int offset_src;
-    int radio;
+    int radio;  // kStationRadioQmx or kStationRadioHl2
     int gps_baud;
     std::string comment1;
     std::string ignore_prefixes;

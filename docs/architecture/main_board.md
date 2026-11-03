@@ -11,7 +11,7 @@ The daily station. Headless is the only mode: the module has no display, touch o
 * **ESP32-P4, revision v1.3.** ESP-IDF treats pre-v3 P4 silicon as a separate hardware branch and defaults to v3+, whose bootloader refuses to boot on this board; `poe_p4/sdkconfig.defaults` selects `CONFIG_ESP32P4_SELECTS_REV_LESS_V3`. Newer P4 improvements (400 MHz, better PIE) do not apply to it.
 * **16 MB flash. 32 MB PSRAM** (`CONFIG_SPIRAM`, caps-only so `malloc` stays internal). The waterfall, the decode working sets and the capture path (ingest ring, FFT buffers) live there as `EXT_RAM_BSS` ([memory.md](memory.md)); DMA buffers stay in internal RAM.
 * **Internal RAM** holds the statics, the heap and some code, and the static part is budgeted at build time: [memory.md](memory.md).
-* **No WiFi and no BLE.** The board pairs the P4 with an Ethernet PHY and 802.3at PoE; **neither is used, by decision** (2026-09-16). The phone reaches the station only through the sidekick ([system.md](system.md)).
+* **No WiFi and no BLE.** The board pairs the P4 with an Ethernet PHY and 802.3at PoE. Ethernet is used only when the radio is an HL2 (**Ethernet**, below); PoE is not used. The phone reaches the station only through the sidekick ([system.md](system.md)).
 * **No RTC chip, battery gauge or GPS.** `external_rtc_stub.cpp` and `board_power_stub.cpp` report them absent. The clock is unset at every boot until the web app sets it from the phone's clock over Port A ([time.md](time.md)).
 * **Grove** `G53`/`G54` to the sidekick. A `porta_rx` task blocks in the UART read and decodes the byte stream there (`components/porta/porta.cpp`). Link-test bulk frames are checked in that task. Every other frame is queued for the main loop, which still owns autoseq and the radio. The loop's old 128-byte read every 10 ms was about 12.8 kB/s: clean at 115200, and CRC errors plus sequence drops at 230400 (measured on the P4, 2026-10-01). The task is not pinned.
 * **Tasks.** The main loop (`app_main`, core 0, a pass every 10 ms) owns autoseq, the slot cycle and the armed TX, the radio, the decode ids a Port A reply names, the dial history, and the recently-worked and heard-grid tables. None of them is locked, so no other task may call into them.
@@ -22,6 +22,16 @@ The daily station. Headless is the only mode: the module has no display, touch o
   * **The soft clock** is one atomic value, safe from any task ([time.md](time.md)). The decode task steps it; the main loop sets it from the phone.
   * **Still shared, unlocked:** the `decode_tx_state` flags, the designed hand-shake between the two tasks (one writer per field, none wider than one 32-bit write); and the callsign hash table, which decode fills and TX encoding reads, kept apart only because the TX trigger waits for the decode.
 * **Storage:** a LittleFS `storage` partition holds `Station.txt` and the daily `.adi` files (`poe_p4/partitions.csv`).
+
+### Ethernet
+
+Used only when Station's radio is the HL2 (`radio=HL2`, stored as 6), receive only so far ([RFC 0014](../rfcs/0014-hl2-two-p4.md) S1). The radio is chosen at boot: with the HL2 the P4 starts Ethernet and never the USB host, and anything else boots the QMX path untouched (`poe_p4/main/main.cpp`). The web app's Radio picker does not offer the HL2 yet, so the bench sets it over `/api/config`.
+
+* **The PHY:** an IP101 at address 1, reset on GPIO 51, MDC 31, MDIO 52, RMII on ESP-IDF's ESP32-P4 defaults (the 50 MHz clock in on GPIO 50; TX_EN 49, TXD0 34, TXD1 35, CRS_DV 28, RXD0 29, RXD1 30).
+* **Our address** is static link-local from our MAC, as the HL2 derives its own: no DHCP client, no server, no conflict probe (RFC 0014 §8). If it equals the HL2's, the P4 does not stream and says why.
+* **`poe_p4/main/hl2_transport.cpp`**, a task on core 0: discovery broadcast to 169.254.255.255 until a stopped HL2 answers (one already streaming to another client is left alone), then one receiver at 48 kHz on the station's dial, and one downstream control packet for each upstream packet, so the HL2's watchdog is fed exactly while we receive. One second with no packet, or the link dropping, sends stop and goes back to discovery. Every packet is built by `components/hl2_proto`, which cannot set MOX or write a transmit register.
+* **Logged** every 15 s on the console: packets, sequence gaps, packets lost, late packets, ADC clips and the HL2's temperature; to the sidekick's log only when there are gaps or clips, and on finding, losing and failing to start. **Not yet built: row mg9c:** the samples go nowhere, so nothing decodes from the HL2.
+* **RAM:** Ethernet, lwIP and the transport add 2,688 bytes of static DRAM (63,740 against 61,052, 2026-11-03); the packet buffers are in PSRAM. The EMAC's DMA buffers, 20 receive and 10 transmit of 512 bytes, are allocated only when the HL2 path starts. The UDP mailbox is raised to 32 packets (`sdkconfig.defaults`).
 
 ### Two USB-C ports
 
