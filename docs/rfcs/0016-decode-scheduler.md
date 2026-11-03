@@ -1,10 +1,10 @@
 # RFC 0016: A decode scheduler — one decoder for 1–N channels
 
-* **Status:** Draft 2026-11-02. Decided in discussion: §8. The Ask: §7.
+* **Status:** Accepted 2026-11-03 (drafted 2026-11-02). Decided: §8. Still open, each settled by a dated decision when its slice needs it: §7 items 2–5.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** decoding several channels at once on one P4 (FT8 and FT4 from one QMX in IQ mode; up to two HL2 bands per P4) within the time each channel has, on both cores, and across several P4s by placing whole channels on boards; how decode degrades as channels are added; how that stays deterministic under test.
 * **Does not cover:** the I/Q front end ([RFC 0014](0014-hl2-two-p4.md) §3.4, row y9bt); the HL2 backend, and the helper protocol between P4s (RFC 0014 §3.5, S4); subtracting decodes from the audio (row kkap), AP decoding (row qauk) and t4/f2 (row n2e7), which this RFC gives a place but does not design; modes other than FT8 and FT4 (row I6), which it must not rule out.
-* **Rows:** [ankx](../ROADMAP.md) (this RFC); [vnz7](../ROADMAP.md) builds it.
+* **Rows:** [vnz7](../ROADMAP.md) builds S1–S3.
 
 ---
 
@@ -112,7 +112,7 @@ Each slice states its verifiability category from [AGENTS.md](../../AGENTS.md).
 
 ## 6. What changes elsewhere on acceptance
 
-* [ROADMAP.md](../ROADMAP.md): row vnz7's Done-when becomes S2–S3 here (§8); row ankx drops.
+* [ROADMAP.md](../ROADMAP.md): row vnz7's Done-when becomes S2–S3 here (§8), with S1 ahead of it; this RFC's own row drops.
 * [RFC 0014](0014-hl2-two-p4.md) §3.5 points here for per-channel state and the CPU budget instead of growing.
 * [decode.md](../architecture/decode.md) gains the scheduler as each slice ships (graduation).
 
@@ -126,6 +126,7 @@ Each slice states its verifiability category from [AGENTS.md](../../AGENTS.md).
 
 ## 8. Decisions
 
+* **2026-11-03:** accepted: the direction (§3) and the slice order (§5); §7's items 2–5 stay open (operator).
 * **2026-11-03:** several P4s may be joined to decode more channels; whole channels are placed on boards, units of work never cross a board, and the QSO partner's channel stays on the station board (operator).
 * **2026-11-02:** each channel has its own deadline, and work runs earliest deadline first, so modes that are not 15 s even/odd fit (operator).
 * **2026-11-02:** admission control on each mode's declared minimum replaces "always a first pass": a channel the budget cannot carry is refused when it is added (operator).
