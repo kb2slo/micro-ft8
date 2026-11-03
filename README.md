@@ -114,9 +114,11 @@ Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md). C and C+
 - **[qmx-panadapter](https://github.com/SteffenLav/qmx-panadapter)**, by SteffenLav, showed that an
   ESP32-P4 can run FT8 with a live QMX, and was the working reference for driving the QMX over USB audio
   and CAT.
+- **[Hermes-Lite 2](https://github.com/softerhardware/Hermes-Lite2)**, by Steve Haynal KF7O and contributors.
+  Its gateware was the reference for the HL2's Protocol 1 fields in `components/hl2_proto`.
 
-WSJT-X and qmx-panadapter are GPL-3.0 projects that were read as references. No code from either is in
-this repository.
+WSJT-X and qmx-panadapter are GPL-3.0 projects, and parts of the Hermes-Lite 2 gateware are GPL; all three
+were read as references. No code from any of them is in this repository.
 
 ## License
 
