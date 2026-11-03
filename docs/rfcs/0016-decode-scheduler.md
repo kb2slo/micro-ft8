@@ -2,8 +2,8 @@
 
 * **Status:** Draft 2026-11-02. Decided in discussion: §8. The Ask: §7.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
-* **Covers:** decoding several channels at once on one P4 (FT8 and FT4 from one QMX in IQ mode; up to two HL2 bands per P4) within the time each channel has, on both cores; how decode degrades as channels are added; how that stays deterministic under test.
-* **Does not cover:** the I/Q front end ([RFC 0014](0014-hl2-two-p4.md) §3.4, row y9bt); the HL2 backend and the second P4 (RFC 0014); subtracting decodes from the audio (row kkap), AP decoding (row qauk) and t4/f2 (row n2e7), which this RFC gives a place but does not design; modes other than FT8 and FT4 (row I6), which it must not rule out.
+* **Covers:** decoding several channels at once on one P4 (FT8 and FT4 from one QMX in IQ mode; up to two HL2 bands per P4) within the time each channel has, on both cores, and across several P4s by placing whole channels on boards; how decode degrades as channels are added; how that stays deterministic under test.
+* **Does not cover:** the I/Q front end ([RFC 0014](0014-hl2-two-p4.md) §3.4, row y9bt); the HL2 backend, and the helper protocol between P4s (RFC 0014 §3.5, S4); subtracting decodes from the audio (row kkap), AP decoding (row qauk) and t4/f2 (row n2e7), which this RFC gives a place but does not design; modes other than FT8 and FT4 (row I6), which it must not rule out.
 * **Rows:** [ankx](../ROADMAP.md) (this RFC); [vnz7](../ROADMAP.md) builds it.
 
 ---
@@ -17,6 +17,7 @@
 * **The QMX station decodes exactly as today** while it has one FT8 channel and time to spare: the recall floors and the `tx_e2e` goldens hold.
 * **Deterministic under test.** The host replays any mix of channels and gets the P4's output byte for byte; CI does not depend on the host's speed.
 * **No mode's timing is built in.** The vision is several digital modes (row I6); this RFC builds FT8 and FT4 only, but nothing in the scheduler assumes a 15 s slot or even/odd periods.
+* **No board count is built in.** The vision is several P4s joined to decode more channels (operator, 2026-11-03); this RFC builds one, RFC 0014's S4 the second, and nothing here assumes either count.
 
 ## 2. What exists
 
@@ -38,7 +39,7 @@ So depth beyond today's first two passes buys little until subtraction improves 
 
 ### 3.1 A channel
 
-A channel is a source of real audio at the pipeline's rate (a QMX's demodulated audio, or one output of the I/Q front end), a dial frequency, and a **mode**. All of today's single-instance state (§2.1) becomes per channel; the FFT plan and window are shared. The mode is a value the channel carries, not a global.
+A channel is a source of real audio at the pipeline's rate (a QMX's demodulated audio, or one output of the I/Q front end fed by a local radio or by I/Q forwarded over Ethernet from another board), a dial frequency, and a **mode**. All of today's single-instance state (§2.1) becomes per channel; the FFT plan and window are shared. The mode is a value the channel carries, not a global.
 
 ### 3.2 A mode declares its timing and its work
 
@@ -63,19 +64,24 @@ Pending work is ordered by:
 * **A slot's budget** is its time to the deadline, less a margin, converted to units by that table. The scheduler's decisions depend only on counts, so the host, given the same audio and the same budget, makes the same decisions and decodes the same messages.
 * **The wall clock is a backstop, never the policy.** If a slot reaches its deadline before its budget is spent, decode stops, the slot is logged as overrun, and the cost table is wrong and gets re-measured.
 
-### 3.5 Admission instead of starvation
+### 3.5 Admission and placement, instead of starvation
 
 Adding a channel is refused, with a reason the web app shows, when the sum of every admitted channel's minimum (at its worst case: the full candidate list) would not fit each channel's budget. So no channel goes dark at runtime: what was admitted can always run its minimum, and only depth beyond it is shared.
 
-### 3.6 Two cores
+With several boards, admission is **placement**: a new channel goes to the board whose budget fits its minimum, or is refused when none does. The QSO partner's channel is placed on the station board, so the reply decision never waits on the network.
 
-Work units go on one queue that a worker on each core draws from. Core 0 also carries USB or Ethernet and, with IQ, the front end; its share of the budget is what remains after those, measured.
+### 3.6 Cores and boards
+
+**Within a board, units of work; across boards, whole channels.** A network round trip costs more than a unit, and a scheduler whose order depended on the network could not be replayed, so units never cross boards.
+
+* **Across boards.** Each board runs this scheduler on the channels placed on it. The station board holds the station's state; a helper holds none and returns its decodes by the slot's deadline, a late one dropped and counted ([RFC 0014](0014-hl2-two-p4.md) §3.5). With an HL2 the boards stop paying at its four receivers; more channels then need more sources, a different station design.
+* **Within a board.** Work units go on one queue that a worker on each core draws from. Core 0 also carries USB or Ethernet and, with IQ, the front end; its share of the budget is what remains after those, measured.
 
 **Open: subtraction and determinism.** Today each decode subtracts before the next candidate is tried (`decode_pipeline.cpp:374`–`:413`), so the order of decodes changes the output. With two workers either (a) subtraction happens at the end of each pass, and a pass's candidates decode in parallel, or (b) candidates decode in parallel but commit and subtract in candidate order, discarding a decode a prior subtraction would have changed. The recall harness scores both before one is chosen (row vnz7's open question; [RFC 0006](0006-decode-performance.md) §4.2).
 
 ### 3.7 Visibility
 
-Each slot's SLOT line reports, per channel, the work done and the depth reached (minimum only, which pass), and whether the backstop fired. A band that ran only its minimum is visible to the operator and in the logs, as RFC 0014 §3.11 asks of every loss.
+Each slot's SLOT line reports, per channel, the board it runs on, the work done and the depth reached (minimum only, which pass), and whether the backstop fired. A band that ran only its minimum is visible to the operator and in the logs, as RFC 0014 §3.11 asks of every loss.
 
 ### 3.8 Beyond FT8 and FT4
 
@@ -87,6 +93,7 @@ Each slot's SLOT line reports, per channel, the work done and the depth reached 
 * **Fixed tiers by channel count** (one channel deep, four channels shallow). Simple, but cost depends on the band more than on the count (a quiet band costs more than a busy one, §2.2), so a tier is too cautious on a busy evening and still overruns on a quiet one.
 * **A wall-clock deadline as the policy.** Adapts to anything, but the output then depends on CPU speed: the host cannot replay it, and CI's recall floors drift.
 * **One core per channel.** Deterministic without §3.6's open question, but one channel then uses half the P4, and two channels cannot borrow from each other.
+* **Units of work shared across boards.** Balances load best, but each unit would wait on a network round trip that costs more than the unit, and the order would depend on the network, so the host could not replay it.
 * **One decoder per mode, each with its own task.** FreeRTOS priorities would then decide which band goes dark, invisibly.
 
 ## 5. Slices
@@ -119,6 +126,7 @@ Each slice states its verifiability category from [AGENTS.md](../../AGENTS.md).
 
 ## 8. Decisions
 
+* **2026-11-03:** several P4s may be joined to decode more channels; whole channels are placed on boards, units of work never cross a board, and the QSO partner's channel stays on the station board (operator).
 * **2026-11-02:** each channel has its own deadline, and work runs earliest deadline first, so modes that are not 15 s even/odd fit (operator).
 * **2026-11-02:** admission control on each mode's declared minimum replaces "always a first pass": a channel the budget cannot carry is refused when it is added (operator).
 * **2026-11-02:** row vnz7's Done-when becomes this RFC's S2–S3 (operator).
