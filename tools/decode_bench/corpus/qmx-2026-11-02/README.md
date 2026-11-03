@@ -42,10 +42,11 @@ arms. A second 20 m channel centred 2.8 kHz higher adds 5 messages to the window
 On 20 m our decoder levels off near 27 decodes per slot whatever jt9 finds: the stations it misses
 are those within about 30 Hz of a stronger one.
 
-## With balance correction
+## A full-band balance correction: tried, reverted
 
-The same slots rescored with the front end's blind DC and gain/phase correction (`iq_convert --balance`,
-1 s time constant, nothing tuned to this corpus):
+The same slots rescored with a blind DC and gain/phase correction estimated across the whole 48 kHz
+window (`iq_convert --balance` at `c00fd97`, 1 s time constant, nothing tuned to this corpus; reverted
+in the next commit because it mis-estimates on this radio):
 `score_ab.py BAND_DIR --iq-flag=--balance --conv-dir conv-balance --jobs 6`. Uncorrected figures are the
 table above; corrected / uncorrected where both are given.
 
@@ -66,6 +67,7 @@ estimates across the whole 48 kHz window, where anything correlated between I an
 channel's image (common-mode low-frequency content, an imbalance that differs with frequency across the
 window) pulls it away; the image rejection spread of 20–50 dB across the 20 m window
 already says the imbalance is not one number. The synthetic mixer in the host tests has a flat
-imbalance, which is why they pass. Next step this points at: estimate near the channel (after the
-NCO and the first decimation, as a correction on the mirror term of the narrow channel) rather than
-across the window; row y9bt is not closed on balance alone.
+imbalance, which is why they pass. Uncorrected IQ already matches audio on 20 m and 40 m, and the correction did not move the 15 m gap, so
+balance is not what limits a single channel. It matters for two channels on one band, where FT8 and FT4
+sit near each other's mirror (40 m); a correction then is estimated near the channel (after the NCO and
+the first decimation, on the narrow channel's mirror term), not across the window (operator, 2026-11-02).

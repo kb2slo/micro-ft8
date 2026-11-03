@@ -49,13 +49,9 @@ def score_slot(job):
     base = rec["file"][:-4]
     out = os.path.join(conv, base + "_12k.wav")
     level = ["--normalize-db", str(a.normalize_db)]
-    balance = None
     if rec["mode_tag"] == "iq":
         iq = ["--center-hz", str(a.center_hz)] + a.iq_flag
-        run = subprocess.run([CONV, *iq, *level, "-o", out, src], capture_output=True, text=True, check=True)
-        m = re.search(r"balance_gain_db=(\S+) balance_phase_deg=(\S+)", run.stdout)
-        if m:
-            balance = (float(m.group(1)), float(m.group(2)))
+        subprocess.run([CONV, *iq, *level, "-o", out, src], capture_output=True, check=True)
     else:
         subprocess.run([CONV, "--real", *level, "-o", out, src], capture_output=True, check=True)
     with tempfile.TemporaryDirectory() as tmp:  # jt9 writes its own files into its cwd
@@ -69,7 +65,7 @@ def score_slot(job):
                             "-o", wrong, src], capture_output=True, check=True)
             ghosts = decode(["jt9", "-8", "-d", "3", wrong], tmp)
             image = [jt[t][0] - s for t, (s, _) in ghosts.items() if t in jt]
-    return rec["file"], rec["mode_tag"], jt, ours, ours4, image, balance
+    return rec["file"], rec["mode_tag"], jt, ours, ours4, image
 
 
 def main():
@@ -119,12 +115,6 @@ def main():
         se = lambda d: st.stdev(d) / len(d) ** 0.5
         print(f"  paired IQ−audio per turn ({len(dj)} pairs): jt9 {st.mean(dj):+.2f} ± {se(dj):.2f}, "
               f"ours {st.mean(do):+.2f} ± {se(do):.2f}  (± one standard error)")
-    settled = [r[6] for r in res if r[6]]
-    if settled:
-        print(f"  balance correction at each IQ slot's end ({len(settled)} slots): gain median "
-              f"{st.median(g for g, _ in settled):+.3f} dB (range {min(g for g, _ in settled):+.3f} to "
-              f"{max(g for g, _ in settled):+.3f}), phase median {st.median(p for _, p in settled):+.2f} deg "
-              f"(range {min(p for _, p in settled):+.2f} to {max(p for _, p in settled):+.2f})")
     if images:
         print(f"  image rejection from {len(images)} wrong-side decodes: median {st.median(images):.0f} dB, "
               f"range {min(images)}–{max(images)} dB")

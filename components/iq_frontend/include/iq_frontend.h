@@ -21,17 +21,8 @@
 // (swap_iq) and the sign of Q (negate_q). Either one wrong puts the band on the wrong side of the
 // LO; the first real recording settles them.
 //
-// I/Q balance. A gain or phase error between I and Q leaks each signal into its mirror about the
-// LO (the image); host_test_iq_frontend measures how much. With config.balance set, a blind
-// correction runs ahead of the NCO: DC is removed from I and Q, then Q is made orthogonal to I and
-// scaled to I's power (Gram-Schmidt, from running estimates of E[I^2], E[IQ], E[Q^2]):
-//
-//   Q' = s (Q - k I),   k = E[IQ] / E[I^2],   s = sqrt(E[I^2] / E[Q'^2])
-//
-// It needs no tone: a band's wanted signals and noise have equal power at +f and -f, so any
-// correlation between I and Q, or difference in their power, is the mixer's. The estimates are
-// running means over balance_seconds (a plain mean until that much has passed), so a drift in the
-// mixer is followed. The correction stays at identity (or the seed) for the first tenth of a second.
+// There is no I/Q balance correction. A gain or phase error between I and Q leaks each signal
+// into its mirror about the LO (the image); host_test_iq_frontend measures how much.
 //
 // State lives in the caller's iq_frontend_t, one per channel: no statics, no heap. Any block size
 // may be passed in, and the output is bit-identical however the input is chunked.
@@ -62,13 +53,6 @@ typedef struct {
     double if_trim_hz;        // added to center_hz; may be fractional
     bool swap_iq;             // the first channel of each frame is Q, not I
     bool negate_q;            // Q's sign is inverted
-    // I/Q balance correction (see the top of this file). All zero: off.
-    bool balance;             // remove DC, then correct Q's gain and phase against I's
-    float balance_seconds;    // time constant of the running estimates; 0 means 1 s
-    bool balance_seed;        // start from balance_seed_gain_db / balance_seed_phase_deg, not from identity
-    float balance_seed_gain_db;    // the mixer's imbalance as iq_convert --synth takes it: Q's gain over I's
-    float balance_seed_phase_deg;  // and Q's phase over I's
-    bool balance_freeze;      // never update the correction from the signal: it stays at the seed (identity if unseeded)
 } iq_frontend_config_t;
 
 typedef struct {
@@ -86,15 +70,6 @@ typedef struct {
 } iq_frontend_halfband_t;
 
 typedef struct {
-    float dc_i, dc_q;          // running means
-    float e_ii, e_iq, e_qq;    // running means of I^2, I*Q, Q^2 after DC removal
-    float k, s;                // the correction in use: Q' = s (Q - k I)
-    uint32_t count;            // samples seen, saturating at horizon
-    uint32_t horizon;          // balance_seconds in samples
-    uint32_t warmup;           // samples before the estimates replace the initial correction
-} iq_frontend_balance_t;
-
-typedef struct {
     // Configuration, as applied.
     iq_frontend_config_t config;
     int stages;
@@ -108,8 +83,6 @@ typedef struct {
     uint64_t input_count;
     iq_frontend_complex_t nco;
     iq_frontend_complex_t nco_rotate;
-
-    iq_frontend_balance_t balance;
 
     iq_frontend_halfband_t halfband[IQ_FRONTEND_MAX_STAGES];
 
@@ -147,10 +120,6 @@ int iq_frontend_process(iq_frontend_t* frontend, const float* iq, size_t frames,
 // The frequency the NCO mixes down from, relative to the LO, after the trim and the 32-bit
 // accumulator's rounding. center_hz + if_trim_hz - 1,500 Hz + the shift sits within 0.00002 Hz of it.
 double iq_frontend_nco_hz(const iq_frontend_t* frontend);
-
-// The imbalance the correction is removing, as the Q path's gain over I's (dB) and phase over I's
-// (degrees), in the convention of iq_convert --synth. Returns false if config.balance is off.
-bool iq_frontend_balance_estimate(const iq_frontend_t* frontend, double* gain_db, double* phase_deg);
 
 #ifdef __cplusplus
 }

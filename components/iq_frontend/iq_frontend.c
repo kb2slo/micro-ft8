@@ -52,7 +52,6 @@
 #define DESIGN_ATTENUATION_DB 80.0
 #define TRANSITION_HZ 400
 #define AUDIO_LOW_HZ 200
-#define BALANCE_REFRESH 64  // samples between recomputing the balance correction from its estimates
 #define NCO_RESYNC 256  // samples between exact NCO phases; the float rotation drifts ~1e-5 rad in that
 
 #define TWO_PI 6.283185307179586476925286766559
@@ -188,21 +187,6 @@ iq_frontend_status_t iq_frontend_init(iq_frontend_t* frontend, const iq_frontend
     double step_angle = -TWO_PI * (double)(int32_t)frontend->nco_step / 4294967296.0;
     frontend->nco_rotate.re = (float)cos(step_angle);
     frontend->nco_rotate.im = (float)sin(step_angle);
-
-    iq_frontend_balance_t* balance = &frontend->balance;
-    float seconds = config->balance_seconds > 0.0f ? config->balance_seconds : 1.0f;
-    balance->horizon = (uint32_t)llround((double)seconds * fs);
-    if (balance->horizon < 1) balance->horizon = 1;
-    balance->warmup = config->input_rate_hz / 10;
-    balance->k = 0.0f;
-    balance->s = 1.0f;
-    if (config->balance && config->balance_seed) {
-        // Q = g sin(theta + phi) against I = cos(theta): k = g sin(phi), s = 1 / (g cos(phi)).
-        double g = pow(10.0, config->balance_seed_gain_db / 20.0);
-        double phi = config->balance_seed_phase_deg * TWO_PI / 360.0;
-        balance->k = (float)(g * sin(phi));
-        balance->s = (float)(1.0 / (g * cos(phi)));
-    }
     return IQ_FRONTEND_OK;
 }
 
@@ -214,45 +198,6 @@ size_t iq_frontend_output_capacity(const iq_frontend_t* frontend, size_t frames)
 double iq_frontend_nco_hz(const iq_frontend_t* frontend)
 {
     return (double)(int32_t)frontend->nco_step * frontend->config.input_rate_hz / 4294967296.0;
-}
-
-bool iq_frontend_balance_estimate(const iq_frontend_t* frontend, double* gain_db, double* phase_deg)
-{
-    if (!frontend->config.balance) return false;
-    double k = frontend->balance.k;
-    double cos_part = 1.0 / frontend->balance.s;  // g cos(phi)
-    *gain_db = 10.0 * log10(k * k + cos_part * cos_part);
-    *phase_deg = atan2(k, cos_part) * 360.0 / TWO_PI;
-    return true;
-}
-
-// DC removal and the Gram-Schmidt balance (iq_frontend.h). Per sample, float, no division except
-// the running mean's weight; the coefficients are refreshed every BALANCE_REFRESH samples, keyed
-// on the sample count, so the result does not depend on how the input is chunked.
-static void balance_apply(iq_frontend_balance_t* b, bool freeze, uint64_t input_count, float* in_i, float* in_q)
-{
-    float weight = 1.0f / (float)(b->count < b->horizon ? b->count + 1 : b->horizon);
-    if (b->count < b->horizon) ++b->count;
-    b->dc_i += weight * (*in_i - b->dc_i);
-    b->dc_q += weight * (*in_q - b->dc_q);
-    float i = *in_i - b->dc_i;
-    float q = *in_q - b->dc_q;
-    if (!freeze) {
-        b->e_ii += weight * (i * i - b->e_ii);
-        b->e_iq += weight * (i * q - b->e_iq);
-        b->e_qq += weight * (q * q - b->e_qq);
-        if (b->count >= b->warmup && input_count % BALANCE_REFRESH == 0 && b->e_ii > 1e-30f) {
-            float k = b->e_iq / b->e_ii;
-            float residual = b->e_qq - k * b->e_iq;  // E[(Q - kI)^2]
-            // Leave the correction alone if Q is all but a copy of I (a dead channel, a real-valued signal).
-            if (residual > 1e-3f * b->e_qq) {
-                b->k = k;
-                b->s = sqrtf(b->e_ii / residual);
-            }
-        }
-    }
-    *in_i = i;
-    *in_q = b->s * (q - b->k * i);
 }
 
 static iq_frontend_complex_t nco_exact(const iq_frontend_t* frontend)
@@ -323,9 +268,6 @@ int iq_frontend_process(iq_frontend_t* frontend, const float* iq, size_t frames,
             in_q = t;
         }
         if (frontend->config.negate_q) in_q = -in_q;
-        if (frontend->config.balance) {
-            balance_apply(&frontend->balance, frontend->config.balance_freeze, frontend->input_count, &in_i, &in_q);
-        }
 
         if (frontend->input_count % NCO_RESYNC == 0) frontend->nco = nco_exact(frontend);
         iq_frontend_complex_t p = frontend->nco;

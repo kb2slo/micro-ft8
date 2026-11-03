@@ -1,8 +1,6 @@
 // Host test for iq_frontend.h, the I/Q receive front end (RFC 0014 §3.4, row y9bt): a tone swept
 // across the whole input band for passband flatness and stopband rejection, output bit-identical
-// however the input is chunked, image rejection under a gain and phase imbalance, in dB, and the
-// blind balance correction: image rejection after it converges, a balanced input unharmed, how
-// long it takes.
+// however the input is chunked, and image rejection under a gain and phase imbalance, in dB.
 
 #include <cmath>
 #include <cstdint>
@@ -140,12 +138,10 @@ static void test_sweep(uint32_t output_rate)
 }
 
 // The same input, in one call and in uneven chunks, gives the same bits.
-static void test_chunking(bool balance)
+static void test_chunking()
 {
     iq_frontend_config_t config = qmx_config(12000);
     config.if_trim_hz = 37.25;
-    config.balance = balance;
-    config.balance_seconds = 0.2f;
     const size_t frames = 60000;
     std::vector<float> iq(2 * frames);
     uint32_t r = 2463534242u;
@@ -155,8 +151,8 @@ static void test_chunking(bool balance)
         r ^= r << 5;
         double noise = ((double)(r & 0xffff) / 32768.0 - 1.0) * 0.1;
         double theta = kTwoPi * 14123.0 * (double)n / 48000.0;
-        iq[2 * n] = (float)(0.5 * cos(theta) + noise + 0.02);
-        iq[2 * n + 1] = (float)(1.1 * (0.5 * sin(theta + 0.03) - noise) - 0.01);
+        iq[2 * n] = (float)(0.5 * cos(theta) + noise);
+        iq[2 * n + 1] = (float)(0.5 * sin(theta) - noise);
     }
 
     iq_frontend_t whole;
@@ -183,10 +179,8 @@ static void test_chunking(bool balance)
         }
         bool same = got.size() == expected.size()
                     && memcmp(got.data(), expected.data(), got.size() * sizeof(float)) == 0;
-        check(same, pass == 0 ? (balance ? "balance on: chunked output bit-identical to one call"
-                                         : "chunked output bit-identical to one call")
-                              : (balance ? "balance on: bit-identical with a second instance running between chunks"
-                                         : "bit-identical with a second instance running between chunks"));
+        check(same, pass == 0 ? "chunked output bit-identical to one call"
+                              : "bit-identical with a second instance running between chunks");
     }
     check(expected.size() == frames / 4, "12 kHz out is a quarter of the input frames");
 
@@ -248,111 +242,6 @@ static void test_image()
     check(fabs(20.0 * log10(alias)) < 0.1, "a 48 kHz alias passes at full level");
 }
 
-// Complex white noise of the given RMS per rail plus a tone, through the same mixer as tone().
-// The mixer's imbalance acts on everything the radio receives, so it is applied last.
-static std::vector<float> band(double tone_hz, double tone_amp, double noise_rms, size_t frames, double gain_db,
-                               double phase_deg, double dc = 0.0)
-{
-    std::vector<float> iq(2 * frames);
-    double g = pow(10.0, gain_db / 20.0);
-    double phi = phase_deg * kTwoPi / 360.0;
-    uint32_t r = 88172645u;
-    auto uniform = [&r]() {
-        r ^= r << 13;
-        r ^= r >> 17;
-        r ^= r << 5;
-        return ((double)(r & 0xffffff) / 8388608.0 - 1.0) * sqrt(3.0);  // unit variance
-    };
-    for (size_t n = 0; n < frames; ++n) {
-        double theta = kTwoPi * tone_hz * (double)n / 48000.0;
-        double re = tone_amp * cos(theta) + noise_rms * uniform();
-        double im = tone_amp * sin(theta) + noise_rms * uniform();
-        iq[2 * n] = (float)(re + dc);
-        iq[2 * n + 1] = (float)(g * (im * cos(phi) + re * sin(phi)) + dc);
-    }
-    return iq;
-}
-
-// Image rejection, in dB, of each 0.1 s window of a strong tone at the channel's mirror in a noisy
-// band, against the tone's amplitude 1 at the channel.
-static std::vector<double> image_by_window(const iq_frontend_config_t& config, double gain_db, double phase_deg,
-                                           double seconds)
-{
-    const double audio = 1730.0;
-    const double mirror = -(kCenterHz - 1500.0 + audio);
-    const size_t frames = (size_t)(seconds * 48000.0);
-    iq_frontend_t frontend;
-    iq_frontend_init(&frontend, &config);
-    std::vector<float> y = run(&frontend, band(mirror, 1.0, 0.01, frames, gain_db, phase_deg, 0.02));
-    std::vector<double> db;
-    for (size_t at = 0; at + 1200 <= y.size(); at += 1200) {
-        double c = 0.0, s = 0.0;
-        for (size_t m = 0; m < 1200; ++m) {
-            double a = kTwoPi * audio * (double)(at + m) / 12000.0;
-            c += y[at + m] * cos(a);
-            s += y[at + m] * sin(a);
-        }
-        db.push_back(20.0 * log10(2.0 * sqrt(c * c + s * s) / 1200.0 + 1e-30));
-    }
-    return db;
-}
-
-static void test_balance()
-{
-    printf("blind balance correction (strong tone at the mirror in noise, 0.5 dB and 2 deg):\n");
-    iq_frontend_config_t off = qmx_config(12000);
-    iq_frontend_config_t on = off;
-    on.balance = true;
-    std::vector<double> before = image_by_window(off, 0.5, 2.0, 5.0);
-    std::vector<double> after = image_by_window(on, 0.5, 2.0, 5.0);
-    const double uncorrected = before.back();
-    // Converged: every window from here on at least 20 dB under the uncorrected image.
-    size_t settled = after.size();
-    while (settled > 0 && after[settled - 1] <= uncorrected - 20.0) --settled;
-    double converge_s = (double)settled * 0.1;
-    double final_db = after.back();
-    printf("  uncorrected image %.1f dB; corrected %.1f dB (%.1f dB better); at least 20 dB better from %.1f s on\n",
-           uncorrected, final_db, uncorrected - final_db, converge_s);
-    check(final_db <= uncorrected - 20.0, "after convergence the image is at least 20 dB down on uncorrected");
-    check(converge_s <= 2.0, "converges within 2 s");
-
-    // Reported imbalance, in the convention of iq_convert --synth.
-    iq_frontend_t frontend;
-    iq_frontend_init(&frontend, &on);
-    run(&frontend, band(-(kCenterHz - 1500.0 + 1730.0), 1.0, 0.1, 240000, 0.5, 2.0));
-    double gain_db = 0.0, phase_deg = 0.0;
-    iq_frontend_t off_frontend;
-    iq_frontend_init(&off_frontend, &off);
-    check(iq_frontend_balance_estimate(&frontend, &gain_db, &phase_deg), "estimate available when on");
-    printf("  estimated imbalance: gain %+.3f dB, phase %+.3f deg (mixer: +0.5, +2.0)\n", gain_db, phase_deg);
-    check(fabs(gain_db - 0.5) < 0.05 && fabs(phase_deg - 2.0) < 0.1, "the estimate matches the mixer");
-    check(!iq_frontend_balance_estimate(&off_frontend, &gain_db, &phase_deg), "no estimate when off");
-
-    // Seeded and frozen: right from the first sample, with no estimate.
-    iq_frontend_config_t seeded = on;
-    seeded.balance_seed = true;
-    seeded.balance_seed_gain_db = 0.5f;
-    seeded.balance_seed_phase_deg = 2.0f;
-    seeded.balance_freeze = true;
-    std::vector<double> frozen = image_by_window(seeded, 0.5, 2.0, 1.0);
-    printf("  seeded with the mixer's values and frozen: image %.1f dB in the first 0.1 s\n", frozen.front());
-    check(frozen.front() <= uncorrected - 20.0, "a seeded, frozen correction works from the start");
-
-    // A balanced mixer with a signal at the channel: unharmed, within 0.1 dB, DC included.
-    const double audio = 1730.0;
-    const double wanted = kCenterHz - 1500.0 + audio;
-    double level[2];
-    for (int k = 0; k < 2; ++k) {
-        iq_frontend_config_t c = k ? on : off;
-        iq_frontend_t f;
-        iq_frontend_init(&f, &c);
-        std::vector<float> y = run(&f, band(wanted, 1.0, 0.1, 240000, 0.0, 0.0, 0.02));
-        level[k] = 20.0 * log10(amplitude_at(y, 1200, audio, 12000));
-    }
-    printf("  balanced input, tone at the channel: %.3f dB off, %.3f dB on\n", level[0], level[1]);
-    check(fabs(level[1] - level[0]) < 0.1, "a balanced input is unharmed within 0.1 dB");
-}
-
 // swap_iq and negate_q each move a signal to the mirror; the trim moves the channel by that many Hz.
 static void test_format_and_trim()
 {
@@ -392,10 +281,8 @@ int main()
 {
     test_sweep(12000);
     test_sweep(6000);
-    test_chunking(false);
-    test_chunking(true);
+    test_chunking();
     test_image();
-    test_balance();
     test_format_and_trim();
     if (g_fails) {
         fprintf(stderr, "%d failure(s)\n", g_fails);

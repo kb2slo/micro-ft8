@@ -85,11 +85,7 @@ SNR_CHECK_LOW = -18
 # of the real arm's messages, decodes any phantom, or decodes more than IQ_EXTRA_SLACK other extras
 # beyond the real arm's. Extras are not all false (some are messages jt9 missed), so this is the same
 # kind of slack as SLACK. The imbalanced arm (a typical uncorrected mixer) is reported with no floor.
-# The "balanced" floor applies to the imbalanced mixer again with the front end's blind correction on
-# (--balance), which must match within IQ_BALANCE_FRACTION of the balanced arm's matched decodes.
-IQ_ARMS = [("balanced", 0.0, 0.0, True, False), ("imbalanced", 0.5, 2.0, False, False),
-           ("imbalanced-corrected", 0.5, 2.0, False, True)]
-IQ_BALANCE_FRACTION = 0.99
+IQ_ARMS = [("balanced", 0.0, 0.0, True), ("imbalanced", 0.5, 2.0, False)]
 IQ_RECALL_FRACTION = 0.99
 IQ_EXTRA_SLACK = 2
 
@@ -229,7 +225,7 @@ def build_iq_tool():
 
 def iq_one(job):
     """Synthesize one WAV's I/Q, convert it back to 12 kHz audio under the same name, drop the I/Q."""
-    wav, mirror, out_dir, gain_db, phase_deg, balance = job
+    wav, mirror, out_dir, gain_db, phase_deg = job
     iq_path = out_dir / (wav.stem + ".iq.wav")
     out_path = out_dir / wav.name
     synth = subprocess.run(
@@ -239,8 +235,7 @@ def iq_one(job):
     )
     if synth.returncode != 0:
         raise SystemExit(f"iq_convert --synth failed on {wav}: {synth.stderr}")
-    convert = subprocess.run([str(IQ_TOOL), *(["--balance"] if balance else []), "-o", str(out_path), str(iq_path)],
-                             capture_output=True, text=True)
+    convert = subprocess.run([str(IQ_TOOL), "-o", str(out_path), str(iq_path)], capture_output=True, text=True)
     iq_path.unlink()
     if convert.returncode != 0:
         raise SystemExit(f"iq_convert failed on {iq_path}: {convert.stderr}")
@@ -249,11 +244,11 @@ def iq_one(job):
     return out_path, float(image.group(1)), clipped
 
 
-def iq_arm(corpus, wavs, arm, gain_db, phase_deg, balance):
+def iq_arm(corpus, wavs, arm, gain_db, phase_deg):
     """The corpus through synthetic I/Q and the front end: (12 kHz WAVs, image level dB, clipped samples)."""
     out_dir = CACHE / "iq" / arm / corpus
     out_dir.mkdir(parents=True, exist_ok=True)
-    jobs = [(wav, wavs[(i + 1) % len(wavs)], out_dir, gain_db, phase_deg, balance) for i, wav in enumerate(wavs)]
+    jobs = [(wav, wavs[(i + 1) % len(wavs)], out_dir, gain_db, phase_deg) for i, wav in enumerate(wavs)]
     with ThreadPoolExecutor(max_workers=os.cpu_count() or 2) as pool:
         results = list(pool.map(iq_one, jobs))
     return [r[0] for r in results], results[0][1], sum(r[2] for r in results)
@@ -263,13 +258,11 @@ def run_iq_arms(config, corpora, real_decoded, real_scores):
     """Score each I/Q arm against truth and against the real arm. Returns True if a floor failed."""
     build_iq_tool()
     failed = False
-    balanced_hits = {}
-    for arm, gain_db, phase_deg, floor, balance in IQ_ARMS:
-        print(f"synthetic I/Q, {arm} (Q {gain_db:+.1f} dB, {phase_deg:+.1f} deg against I"
-              f"{', blind balance correction on' if balance else ''}), "
+    for arm, gain_db, phase_deg, floor in IQ_ARMS:
+        print(f"synthetic I/Q, {arm} (Q {gain_db:+.1f} dB, {phase_deg:+.1f} deg against I), "
               "QMX FT8 channel at 13,500 Hz, 48 kHz in, 12 kHz out:")
         for name, wavs in corpora:
-            paths, image_db, clipped = iq_arm(name, wavs, arm, gain_db, phase_deg, balance)
+            paths, image_db, clipped = iq_arm(name, wavs, arm, gain_db, phase_deg)
             decoded, _wall, _log = run_decoder(config, paths)
             score = score_corpus(name, paths, decoded)
             real = real_scores[name]
@@ -290,12 +283,6 @@ def run_iq_arms(config, corpora, real_decoded, real_scores):
                   f" image {image_db:.1f} dB; clipped {clipped}")
             for wav_name, text, snr in phantoms[:6]:
                 print(f"    phantom {wav_name}  {snr:+d} dB  {text}")
-            if arm == "balanced":
-                balanced_hits[name] = score["hits"]
-            if balance and score["hits"] < IQ_BALANCE_FRACTION * balanced_hits[name]:
-                print(f"FAIL {name} synthetic I/Q ({arm}) matched under {IQ_BALANCE_FRACTION:.0%} of the balanced arm",
-                      file=sys.stderr)
-                failed = True
             if floor and score["hits"] < IQ_RECALL_FRACTION * real["hits"]:
                 print(f"FAIL {name} synthetic I/Q ({arm}) matched under {IQ_RECALL_FRACTION:.0%} of the real arm",
                       file=sys.stderr)
