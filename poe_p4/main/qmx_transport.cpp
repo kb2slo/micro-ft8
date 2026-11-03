@@ -203,7 +203,12 @@ static void cdc_event_cb(const cdc_acm_host_dev_event_data_t *event, void * /*us
     }
 }
 
-static cat_reply_parser_t s_cat_parser = {-1, -1, -1, -1, -1, -1, -1, -1, 0, {0}, {0}, 0, 0};
+static cat_reply_parser_t make_cat_parser() {
+    cat_reply_parser_t parser;
+    cat_reply_parser_init(&parser);
+    return parser;
+}
+static cat_reply_parser_t s_cat_parser = make_cat_parser();
 
 static bool cdc_data_cb(const uint8_t *data, size_t data_len, void* /*user_arg*/) {
     if (!data || data_len == 0) {
@@ -348,8 +353,8 @@ static void try_open(void) {
 // under it, rather than the loop calling start() again on a stale handle.
 static volatile uac_host_device_handle_t s_uac_starting_handle = nullptr;
 
-// Field-found 2026-09-18: closing from this callback raced decode_audio
-// (core 1) still inside uac_host_device_read() and asserted in
+// Field-found 2026-09-18: closing from this callback raced the reader
+// (audio_ingest, core 0) still inside uac_host_device_read() and asserted in
 // spinlock_acquire after QMX power-off. Espressif's audio_player example
 // and the UAC README both require a user close on DISCONNECTED, but the
 // example queues it off the driver task: null the published handle first
@@ -490,11 +495,15 @@ static void try_open_uac(uint8_t addr, uint8_t iface_num) {
         if (status != IQ_FRONTEND_OK) {
             ESP_LOGE(TAG, "I/Q front end init failed (%d): nothing will decode", (int)status);
         }
+        // The init runs on this 4,096-byte task with a double coef[81] and soft-double libm.
+        ESP_LOGI(TAG, "I/Q front end init: uac_lib stack high-water mark %u bytes free",
+                 (unsigned)uxTaskGetStackHighWaterMark(nullptr));
     }
+    // Both before the handle is published: a reader may start the moment it is.
+    resample_init(&s_resample_state);
     s_uac_handle = handle;
     s_uac_starting_handle = nullptr;
     s_uac_close_queued = nullptr;
-    resample_init(&s_resample_state);
     ESP_LOGI(TAG, "QMX UAC RX streaming (%luHz %u-bit %uch)",
              (unsigned long)kUacSampleRate, (unsigned)kUacBitResolution, (unsigned)kUacChannels);
 }
@@ -777,6 +786,7 @@ static int read_iq_samples(int frames, float *out, int max_samples) {
     if (frames <= 0 || frames > (int)(sizeof(s_iq_frames) / sizeof(s_iq_frames[0]) / 2)) {
         return 0;
     }
+    const int64_t t0 = esp_timer_get_time();
     for (int i = 0; i < 2 * frames; ++i) {
         const uint8_t *p = s_usb_buffer + 3 * i;
         int32_t v = p[0] | (p[1] << 8) | (p[2] << 16);
@@ -785,7 +795,6 @@ static int read_iq_samples(int frames, float *out, int max_samples) {
         }
         s_iq_frames[i] = (float)v / 8388608.0f;
     }
-    const int64_t t0 = esp_timer_get_time();
     const int n = iq_frontend_process(&s_iq_frontend, s_iq_frames, (size_t)frames, out,
                                       (size_t)max_samples);
     s_frontend_us.fetch_add((uint32_t)(esp_timer_get_time() - t0), std::memory_order_relaxed);

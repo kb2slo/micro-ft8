@@ -116,6 +116,7 @@ extern "C" void app_main(void) {
         vTaskDelay(pdMS_TO_TICKS(10));
         // Q9 at each CAT link-up: the radio's receive output follows qmx_iq, both ways, and is read back.
         switch (radio_control_rx_path_tick(qmx_audio_iq_enabled(), decode_tx_state_get_tx_active() ||
+                                                                        porta_p4_tune_active() ||
                                                                         amp_band_prime_busy() || swr_sweep_busy())) {
             case RADIO_RX_PATH_MISMATCH:
                 debug_log_line("Q9 read-back differs from qmx_iq: the radio is in the other receive mode, "
@@ -131,7 +132,8 @@ extern "C" void app_main(void) {
         }
         // Set by qmx_transport on every CAT open; retried until it lands.
         if (decode_tx_state_get_cdc_initial_sync_pending() && radio_control_ready() &&
-            !decode_tx_state_get_tx_active() && !amp_band_prime_busy() && !swr_sweep_busy() &&
+            !decode_tx_state_get_tx_active() && !porta_p4_tune_active() && !amp_band_prime_busy() &&
+            !swr_sweep_busy() &&
             porta_p4_sync_vfo("QMX connect") == nullptr) {
             decode_tx_state_set_cdc_initial_sync_pending(false);
         }

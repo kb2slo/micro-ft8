@@ -27,11 +27,30 @@ enum class QmxIqLinkAction : uint8_t {
 };
 
 static constexpr int64_t kQmxIqLinkReplyMs = 1000;
+// A send that fails (the write blocks up to 200 ms) is retried after this, up to kQmxIqLinkSendTries
+// in all; then the link gives up on this link-up.
+static constexpr int64_t kQmxIqLinkRetryMs = 5000;
+static constexpr int kQmxIqLinkSendTries = 3;
 
 struct QmxIqLink {
     QmxIqLinkPhase phase = QmxIqLinkPhase::Idle;
     int64_t deadline_ms = 0;
+    int64_t retry_at_ms = 0;
+    int send_failures = 0;
 };
+
+// The caller's write of the Send failed. Returns true when this was the last try: the link is Done
+// and the caller says so once. Otherwise the next Send comes kQmxIqLinkRetryMs later.
+static inline bool qmx_iq_link_send_failed(QmxIqLink& link, int64_t now_ms)
+{
+    if (++link.send_failures >= kQmxIqLinkSendTries) {
+        link.phase = QmxIqLinkPhase::Done;
+        return true;
+    }
+    link.phase = QmxIqLinkPhase::Idle;
+    link.retry_at_ms = now_ms + kQmxIqLinkRetryMs;
+    return false;
+}
 
 // One step. `ready`: CAT is up. `busy`: a transmission, sweep or prime is running, so no command
 // goes out now (a waiting probe starts again afterwards). `want_iq`: the station's setting.
@@ -45,7 +64,7 @@ static inline QmxIqLinkAction qmx_iq_link_step(QmxIqLink& link, bool ready, bool
     }
     switch (link.phase) {
         case QmxIqLinkPhase::Idle:
-            if (busy) {
+            if (busy || now_ms < link.retry_at_ms) {
                 return QmxIqLinkAction::None;
             }
             link.phase = QmxIqLinkPhase::Waiting;

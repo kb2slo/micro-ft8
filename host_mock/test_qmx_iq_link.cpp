@@ -54,6 +54,25 @@ int main()
     expect(qmx_iq_link_step(silent, true, false, true, -1, kQmxIqLinkReplyMs + 10) == QmxIqLinkAction::None,
            "and not again");
 
+    // A send that fails waits before trying again, and gives up after a few tries.
+    QmxIqLink failing;
+    expect(qmx_iq_link_step(failing, true, false, true, -1, 0) == QmxIqLinkAction::Send, "first try");
+    expect(!qmx_iq_link_send_failed(failing, 0), "one failure is not the last");
+    expect(qmx_iq_link_step(failing, true, false, true, -1, kQmxIqLinkRetryMs - 1) == QmxIqLinkAction::None,
+           "no retry before the pause is over");
+    expect(qmx_iq_link_step(failing, true, false, true, -1, kQmxIqLinkRetryMs) == QmxIqLinkAction::Send,
+           "retried after the pause");
+    expect(!qmx_iq_link_send_failed(failing, kQmxIqLinkRetryMs), "two failures are not the last");
+    expect(qmx_iq_link_step(failing, true, false, true, -1, 2 * kQmxIqLinkRetryMs) == QmxIqLinkAction::Send,
+           "third try");
+    expect(qmx_iq_link_send_failed(failing, 2 * kQmxIqLinkRetryMs), "the third failure gives up");
+    expect(qmx_iq_link_step(failing, true, false, true, -1, 9 * kQmxIqLinkRetryMs) == QmxIqLinkAction::None,
+           "and sends no more on this link");
+    expect(qmx_iq_link_step(failing, false, false, true, -1, 10 * kQmxIqLinkRetryMs) == QmxIqLinkAction::None,
+           "link drops");
+    expect(qmx_iq_link_step(failing, true, false, true, -1, 10 * kQmxIqLinkRetryMs + 1) == QmxIqLinkAction::Send,
+           "a new link starts clean");
+
     // Busy: no command goes out, and a waiting one is asked again afterwards.
     QmxIqLink busy;
     expect(qmx_iq_link_step(busy, true, true, true, -1, 0) == QmxIqLinkAction::None, "not sent while busy");

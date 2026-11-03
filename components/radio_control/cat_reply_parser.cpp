@@ -121,13 +121,19 @@ void cat_reply_parser_forget_version(cat_reply_parser_t* parser)
     parser->vn[0] = 0;
 }
 
+void cat_reply_parser_init(cat_reply_parser_t* parser)
+{
+    *parser = cat_reply_parser_t{};
+    cat_reply_parser_reset(parser);
+    parser->q9_iq = -1;
+}
+
 void cat_reply_parser_reset(cat_reply_parser_t* parser)
 {
     parser->pc_tenths = -1;
     parser->sw_hundredths = -1;
     parser->fa_hz = -1;
     parser->sr_lock = -1;
-    parser->q9_iq = -1;
     parser->if_hz = -1;
     parser->if_tx = -1;
     parser->if_mode = -1;

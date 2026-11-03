@@ -321,6 +321,10 @@ int porta_p4_station_offset_hz(void) {
     return s_station.offset_hz;
 }
 
+bool porta_p4_tune_active(void) {
+    return s_tune;
+}
+
 bool porta_p4_station_qmx_iq(void) {
     ensure_seeded();
     return s_station.qmx_iq;

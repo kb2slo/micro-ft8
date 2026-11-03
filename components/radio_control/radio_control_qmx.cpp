@@ -292,7 +292,12 @@ static radio_rx_path_event_t qmx_rx_path_tick(bool want_iq, bool busy) {
         case QmxIqLinkAction::Send:
             cat_cdc_reset_parsed_q9();
             if (qmx_send_cmd(want_iq ? "Q9 1;Q9;" : "Q9 0;Q9;", 200) != ESP_OK) {
-                s_iq_link = QmxIqLink{};  // not sent: try again next pass
+                // Not sent: retried after a pause, a few times, so a dead write does not stall
+                // the main loop for 200 ms every pass.
+                if (qmx_iq_link_send_failed(s_iq_link, esp_timer_get_time() / 1000)) {
+                    ESP_LOGW(TAG, "QMX Q9 not sent after %d tries: the receive output is unconfirmed",
+                             kQmxIqLinkSendTries);
+                }
                 return RADIO_RX_PATH_NONE;
             }
             ESP_LOGI(TAG, "QMX receive output set to %s (Q9 %d;)", want, want_iq ? 1 : 0);

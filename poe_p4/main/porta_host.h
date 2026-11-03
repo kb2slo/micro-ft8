@@ -13,6 +13,7 @@ int porta_p4_station_freq_hz(void);
 const char *porta_p4_sync_vfo(const char *reason);
 int porta_p4_station_offset_hz(void);
 int porta_p4_station_offset_src(void);  // 0=RANDOM, 1=CURSOR, 2=RX
+bool porta_p4_tune_active(void);  // Tune is keying the radio (it never sets tx_active)
 bool porta_p4_station_qmx_iq(void);  // Station qmx_iq: decode the QMX from its I/Q (read once at boot)
 bool porta_p4_station_amp_swr_guard(void);  // handle the QMX's SWR-protection trips
 int porta_p4_station_tx_min_delay_ms(void);  // least TX;-to-first-RF gap, 0..500
