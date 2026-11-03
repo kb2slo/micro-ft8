@@ -29,6 +29,11 @@ if ! git diff --quiet HEAD --; then
   exit 1
 fi
 
+# Git exports GIT_DIR (and friends) to hooks, and it beats `git -C <dir>`: a check that drives another
+# repository, such as decode_recall's corpus clone, would act on this one instead. The checks find their
+# repositories from the working directory, as when run by hand.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_COMMON_DIR
+
 echo "pre-push: tools/check.sh --changed"
 if ! tools/check.sh --changed; then
   echo "pre-push: checks failed; nothing was pushed."
