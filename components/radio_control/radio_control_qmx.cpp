@@ -275,10 +275,11 @@ static esp_err_t qmx_query_version(void) {
     return qmx_send_cmd("VN;", 50);
 }
 
-// Sets the receive output at each CAT link-up, to IQ or audio whichever the station wants, and reads
-// it back. `Q9 0;` is sent too, deliberately: a radio another tool left in IQ mode streams I/Q that the
-// audio path decodes as nothing, silently (RFC 0006). The read-back only warns: the capture path was
-// chosen by the setting at boot and does not follow the radio.
+// Sets the receive output to IQ or audio, whichever the station wants, at each CAT link-up and each time
+// the want changes (main.cpp passes the path qmx_rx_mode.h decided for the slot about to begin), and
+// reads it back. `Q9 0;` is sent too, deliberately: a radio another tool left in IQ mode streams I/Q
+// that the audio path decodes as nothing, silently (RFC 0006). The read-back only warns: the capture
+// path was chosen by the schedule and does not follow the radio.
 static QmxIqLink s_iq_link;
 
 static radio_rx_path_event_t qmx_rx_path_tick(bool want_iq, bool busy) {
@@ -306,7 +307,7 @@ static radio_rx_path_event_t qmx_rx_path_tick(bool want_iq, bool busy) {
             ESP_LOGI(TAG, "QMX Q9; reads %s, as set", want);
             return RADIO_RX_PATH_MATCHED;
         case QmxIqLinkAction::Mismatch:
-            ESP_LOGW(TAG, "QMX Q9; reads %s, but qmx_iq wants %s: decode will hear the wrong thing",
+            ESP_LOGW(TAG, "QMX Q9; reads %s, but the receive path wants %s: decode will hear the wrong thing",
                      want_iq ? "audio" : "IQ", want);
             return RADIO_RX_PATH_MISMATCH;
         case QmxIqLinkAction::NoReply:

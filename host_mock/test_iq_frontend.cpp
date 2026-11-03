@@ -130,6 +130,10 @@ static void test_sweep(uint32_t output_rate)
            pass_max - pass_min);
     printf("  into the audio band from outside the channel: %d tones, worst %.1f dB (tone at %+.0f Hz)\n",
            stop_n, stop_worst, stop_worst_hz);
+    // The decoder searches from 200 Hz (ft8_audio_pipeline.cpp) and the QMX's audio passes to about
+    // 150 Hz: the flat band starts at 150 Hz, and the sweep's tone at 150 Hz is inside it.
+    check(frontend.audio_low_hz == 150, "the flat band starts at 150 Hz");
+    check(frontend.audio_high_hz >= 2850, "the flat band reaches the top of the decoder's search");
     check(pass_n > 50, "sweep reaches the passband");
     check(pass_max - pass_min <= 0.1 && fabs(pass_max) <= 0.1 && fabs(pass_min) <= 0.1,
           "passband flat within 0.1 dB");
@@ -187,6 +191,31 @@ static void test_chunking()
     std::vector<float> small(2);
     check(iq_frontend_process(&whole, iq.data(), 100, small.data(), small.size()) == -1,
           "refuses an output buffer smaller than the capacity");
+}
+
+// iq_frontend_reset() gives what a fresh init gives, bit for bit, mid-stream and after any chunking.
+static void test_reset()
+{
+    iq_frontend_config_t config = qmx_config(6000);
+    const size_t frames = 24000;
+    std::vector<float> iq(2 * frames);
+    for (size_t n = 0; n < frames; ++n) {
+        double theta = kTwoPi * 14123.0 * (double)n / 48000.0;
+        iq[2 * n] = (float)(0.5 * cos(theta) + 0.1 * sin(0.37 * (double)n));
+        iq[2 * n + 1] = (float)(0.5 * sin(theta));
+    }
+    iq_frontend_t fresh, used;
+    iq_frontend_init(&fresh, &config);
+    iq_frontend_init(&used, &config);
+    std::vector<float> expected = run(&fresh, iq);
+    run(&used, iq);                                  // leave state in every stage
+    std::vector<float> odd(2 * 777, 0.25f);
+    run(&used, odd);                                 // and an odd phase in the half-bands
+    iq_frontend_reset(&used);
+    std::vector<float> got = run(&used, iq);
+    check(got.size() == expected.size()
+              && memcmp(got.data(), expected.data(), got.size() * sizeof(float)) == 0,
+          "reset gives a fresh front end's output, bit for bit");
 }
 
 // Image rejection: a tone at the channel's mirror about the LO, through an imbalanced mixer, against
@@ -282,6 +311,7 @@ int main()
     test_sweep(12000);
     test_sweep(6000);
     test_chunking();
+    test_reset();
     test_image();
     test_format_and_trim();
     if (g_fails) {

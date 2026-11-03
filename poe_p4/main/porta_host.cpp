@@ -330,6 +330,11 @@ bool porta_p4_station_qmx_iq(void) {
     return s_station.qmx_iq;
 }
 
+int porta_p4_station_qmx_iq_ab(void) {
+    ensure_seeded();
+    return s_station.qmx_iq_ab;
+}
+
 bool porta_p4_station_amp_swr_guard(void) {
     ensure_seeded();
     return s_station.amp_swr_guard;
@@ -678,6 +683,15 @@ const char *porta_host_config_set(const char *key, const char *value) {
         const int tries = atoi(value);
         if (tries < 1 || tries > AUTOSEQ_TRIES_MAX_QSO) {
             return "tries is 1 to 20";
+        }
+    }
+
+    if (strcmp(key, "qmx_iq_ab") == 0) {
+        // Refused, not ignored, like tries: an experiment switch must not read back a value it ignored.
+        char *end = nullptr;
+        const long n = strtol(value, &end, 10);
+        if (end == value || *end != '\0' || n < 0 || n > kStationQmxIqAbMax) {
+            return "qmx_iq_ab is 0 to 99";
         }
     }
 

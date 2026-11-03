@@ -43,7 +43,7 @@ extern "C" {
 
 #define IQ_FRONTEND_MAX_STAGES 6           // input/output ratio up to 64 (384 kHz to 6 kHz)
 #define IQ_FRONTEND_MAX_HALFBAND_TAPS 31
-#define IQ_FRONTEND_MAX_CHANNEL_TAPS 161   // enough for output rates up to 12 kHz
+#define IQ_FRONTEND_MAX_CHANNEL_TAPS 203   // enough for output rates up to 12 kHz
 #define IQ_FRONTEND_MAX_SHIFT_PERIOD 64
 
 typedef struct {
@@ -108,6 +108,11 @@ typedef enum {
 
 // Designs the filters and clears the state. Not real-time: it calls libm.
 iq_frontend_status_t iq_frontend_init(iq_frontend_t* frontend, const iq_frontend_config_t* config);
+
+// Clears the state iq_frontend_init() clears (filter history, the NCO's phase, the shift's position)
+// and keeps the design: the output after it is bit-identical to a freshly initialised front end's,
+// without calling libm. For a stream that starts again (the QMX's receive output switched).
+void iq_frontend_reset(iq_frontend_t* frontend);
 
 // Samples iq_frontend_process() may write for this many input frames.
 size_t iq_frontend_output_capacity(const iq_frontend_t* frontend, size_t frames);

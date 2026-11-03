@@ -80,6 +80,41 @@ int main()
     expect(qmx_iq_link_step(busy, true, true, true, -1, 20) == QmxIqLinkAction::None, "busy while waiting");
     expect(qmx_iq_link_step(busy, true, false, true, -1, 30) == QmxIqLinkAction::Send, "asked again after");
 
+    // The want changes on a live link (qmx_rx_mode.h): the command goes out again, with its own check.
+    QmxIqLink sw;
+    qmx_iq_link_step(sw, true, false, false, -1, 0);
+    expect(qmx_iq_link_step(sw, true, false, false, 0, 10) == QmxIqLinkAction::Matched, "audio at link-up");
+    expect(qmx_iq_link_step(sw, true, false, false, 0, 20) == QmxIqLinkAction::None, "quiet while the want holds");
+    expect(qmx_iq_link_step(sw, true, true, true, 0, 30) == QmxIqLinkAction::None, "a new want waits out a busy radio");
+    expect(qmx_iq_link_step(sw, true, false, true, 0, 40) == QmxIqLinkAction::Send, "and is sent when it is not");
+    expect(qmx_iq_link_step(sw, true, false, true, 1, 50) == QmxIqLinkAction::Matched, "audio to IQ, IQ read back");
+    expect(qmx_iq_link_step(sw, true, false, false, 1, 60) == QmxIqLinkAction::Send, "and back");
+    expect(qmx_iq_link_step(sw, true, false, false, 1, 70) == QmxIqLinkAction::Mismatch,
+           "a radio that did not switch is a mismatch");
+    expect(qmx_iq_link_step(sw, true, false, false, 1, 80) == QmxIqLinkAction::None, "said once");
+
+    // The want flips while a reply is awaited: the reply to the old command is not judged by the new.
+    QmxIqLink flip;
+    qmx_iq_link_step(flip, true, false, true, -1, 0);
+    expect(qmx_iq_link_step(flip, true, false, false, 1, 10) == QmxIqLinkAction::None,
+           "no verdict on a stale reply");
+    expect(qmx_iq_link_step(flip, true, false, false, -1, 20) == QmxIqLinkAction::Send, "the new want is sent");
+    expect(qmx_iq_link_step(flip, true, false, false, 0, 30) == QmxIqLinkAction::Matched, "and checked");
+
+    // A switch whose write gives up is not retried every pass: it waits for the want to change again.
+    QmxIqLink dead;
+    qmx_iq_link_step(dead, true, false, false, -1, 0);
+    qmx_iq_link_step(dead, true, false, false, 0, 10);
+    for (int i = 0; i < kQmxIqLinkSendTries; ++i) {
+        const int64_t t = 100 + i * kQmxIqLinkRetryMs;
+        expect(qmx_iq_link_step(dead, true, false, true, -1, t) == QmxIqLinkAction::Send, "switch tried");
+        qmx_iq_link_send_failed(dead, t);
+    }
+    expect(qmx_iq_link_step(dead, true, false, true, -1, 100 * kQmxIqLinkRetryMs) == QmxIqLinkAction::None,
+           "gave up on this want");
+    expect(qmx_iq_link_step(dead, true, false, false, -1, 101 * kQmxIqLinkRetryMs) == QmxIqLinkAction::Send,
+           "and tries the next one");
+
     if (g_fails) {
         fprintf(stderr, "%d failure(s)\n", g_fails);
         return 1;

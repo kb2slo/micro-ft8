@@ -13,6 +13,9 @@
 #include "porta.h"
 #include "qmx_transport.h"
 #include "cat_reply_parser.h"
+#include "protocol.h"
+#include "qmx_rx_mode.h"
+#include "rtc_core.h"
 #include "iq_frontend.h"
 #include "radio_transport.h"
 #include "resample.h"
@@ -149,13 +152,16 @@ static constexpr int kUacStartMaxAttempts = 8;
 
 static resample_state_t s_resample_state;
 
-// The I/Q capture path (Station qmx_iq). One front end, one channel: FT8 at 13,500 Hz above the LO,
+// The I/Q capture path (Station qmx_iq, qmx_iq_ab). One front end, one channel: FT8 at 13,500 Hz above the LO,
 // I on the left channel, Q not negated, no IF trim, 6 kHz out (the 2026-11-02 corpus's settings,
 // tools/decode_bench/corpus/qmx-2026-11-02). Internal RAM, .bss: sizeof(iq_frontend_t) plus the
 // conversion buffer, checked by tools/check_ram_budget.py. Used only by the ingest task, which
-// calls qmx_audio_read_ft8_samples(); (re)initialised on the UAC task before a stream is published.
+// calls qmx_audio_read_ft8_samples(); initialised on the UAC task before a stream is published.
+// Which path a read takes follows the plan (qmx_rx_mode.h), which the main loop writes and the ingest
+// task reads: one word, so no lock. s_iq_active is what the ingest task is converting now.
 static constexpr double kIqChannelHz = 13500.0;
-static bool s_iq_enabled;
+static std::atomic<uint64_t> s_rx_plan{0};
+static bool s_iq_active;
 static iq_frontend_t s_iq_frontend;
 static float s_iq_frames[2 * (UAC_READ_BUFFER_SIZE / 6)];  // one read's frames, I then Q, ±1
 static std::atomic<uint32_t> s_frontend_us;  // the front end's time, for BDRY's fe
@@ -481,8 +487,9 @@ static void try_open_uac(uint8_t addr, uint8_t iface_num) {
         ESP_LOGW(TAG, "QMX UAC disconnected after start; abandoning publish");
         return;
     }
-    if (s_iq_enabled) {
-        // A fresh stream starts with cleared filters and the NCO at phase 0.
+    {
+        // Always, whatever the path now: qmx_iq can be switched on at the next slot boundary. A fresh
+        // stream starts with cleared filters and the NCO at phase 0.
         const iq_frontend_config_t config = {
             .input_rate_hz = kUacSampleRate,
             .output_rate_hz = 6000,
@@ -823,20 +830,51 @@ int qmx_audio_read_ft8_samples(void * /*ctx*/, float *out, int max_samples) {
         return 0;
     }
 
-    if (s_iq_enabled) {
+    // The path for this moment: the plan's, which changes at a slot boundary and not between. The
+    // radio changed format 0.5 s earlier, in the idle tail of the slot before.
+    const int64_t now = rtc_now_ms();
+    const bool want_iq = qmx_rx_plan_iq_at(qmx_rx_plan_unpack(s_rx_plan.load(std::memory_order_relaxed)), now,
+                                            g_protocol->slot_time_ms);
+    if (want_iq != s_iq_active) {
+        s_iq_active = want_iq;
+        if (want_iq) {
+            iq_frontend_reset(&s_iq_frontend);  // no slot mixes paths: the front end starts empty
+        }
+        char line[48];
+        snprintf(line, sizeof(line), "RXPATH %lld %s +%lldms", (long long)(now / g_protocol->slot_time_ms),
+                 want_iq ? "iq" : "au", (long long)(now % g_protocol->slot_time_ms));
+        debug_log_line(line);
+    }
+    if (s_iq_active) {
         return read_iq_samples((int)bytes_read / frame_bytes, out, max_samples);
     }
     return uac_pcm_to_ft8_samples(&s_resample_state, s_usb_buffer, (int)bytes_read, out,
                                   kUacBitResolution, kUacChannels);
 }
 
-void qmx_audio_set_iq(bool iq) {
-    s_iq_enabled = iq;
-    ESP_LOGI(TAG, "QMX receive decodes from %s", iq ? "I/Q (qmx_iq=1)" : "audio (qmx_iq=0)");
+void qmx_audio_rx_init(bool qmx_iq, int ab_slots) {
+    const int64_t slot = qmx_rx_slot_of(rtc_now_ms(), g_protocol->slot_time_ms);
+    const bool iq = qmx_rx_slot_wants_iq(slot, qmx_iq, ab_slots);
+    s_rx_plan.store(qmx_rx_plan_pack(qmx_rx_plan_make(slot, iq)));
+    s_iq_active = iq;
+    ESP_LOGI(TAG, "QMX receive decodes from %s (qmx_iq=%d qmx_iq_ab=%d)", iq ? "I/Q" : "audio",
+             qmx_iq ? 1 : 0, ab_slots);
 }
 
-bool qmx_audio_iq_enabled(void) {
-    return s_iq_enabled;
+bool qmx_audio_rx_tick(bool qmx_iq, int ab_slots, bool busy) {
+    QmxRxPlan plan = qmx_rx_plan_unpack(s_rx_plan.load());
+    const bool changed =
+        qmx_rx_plan_step(&plan, rtc_now_ms(), g_protocol->slot_time_ms, qmx_iq, ab_slots, busy);
+    s_rx_plan.store(qmx_rx_plan_pack(plan));
+    return changed;
+}
+
+bool qmx_audio_rx_want_iq(void) {
+    return qmx_rx_plan_unpack(s_rx_plan.load()).iq;
+}
+
+int qmx_audio_rx_path_for_slot(void * /*ctx*/, int64_t slot_idx) {
+    return qmx_rx_plan_iq_for_slot(qmx_rx_plan_unpack(s_rx_plan.load()), slot_idx) ? 2 : 1;
 }
 
 uint32_t qmx_audio_take_frontend_us(void * /*ctx*/) {

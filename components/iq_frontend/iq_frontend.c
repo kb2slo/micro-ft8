@@ -3,29 +3,30 @@
 //
 // The filter, and why this structure
 //
-// The decoder reads 200-3,000 Hz of audio (200-2,800 Hz at a 6 kHz output; below). Put the
-// channel's middle at 0 Hz and call P the half-width of that band: P = 1,400 Hz. After the real
-// part, a component at b Hz of the filtered channel lands at |b + shift| of audio, where
-// shift = P + 200. So three regions matter:
+// The decoder searches 200-2,900 Hz of audio (ft8_audio_pipeline.cpp's f_min and f_max), and the QMX's
+// own audio mode passes down to about 150 Hz, so this front end is flat from L = 150 Hz up: below the
+// decoder's floor, so the edge's roll-off does not touch the lowest signals it searches. Put the
+// channel's middle at 0 Hz and call P the half-width of the flat band: P = 1,350 Hz at a 6 kHz output.
+// After the real part, a component at b Hz of the filtered channel lands at |b + shift| of audio,
+// where shift = P + L. So three regions matter:
 //
 //   * |b| <= P is the audio band: flat within 0.1 dB.
-//   * b <= -(P + 400) is the other sideband. Taking the real part folds it onto the audio band
-//     (b = -(P + 400) lands at 200 Hz), so it must be at least 70 dB down. The 400 Hz between is
-//     audio 0-200 Hz, which the decoder ignores: that is the transition band, and it is what sets
-//     the filter's length.
+//   * b <= -(P + 2L) is the other sideband. Taking the real part folds it onto the audio band
+//     (b = -(P + 2L) lands at L Hz), so it must be at least 70 dB down. The 2L Hz between is
+//     audio 0-L Hz, which is the transition band, and it is what sets the filter's length.
 //   * Anything that aliases onto |b| <= P when the rate is halved, at every stage.
 //
-// The upper side needs no such stop at a 12 kHz output (b just above P lands just above 3,000 Hz),
-// but a symmetric low-pass is cheaper to run than a complex one, so the filter is symmetric:
-// pass |b| <= P, stop |b| >= P + 400. That is why the shift is P + 200 rather than 1,500 Hz: it
-// centres the filter on the decoder's band. center_hz still names the 1,500 Hz point, so the NCO
-// sits at center_hz - 1,500 + shift.
+// The upper side needs no such stop at a 12 kHz output (b just above P lands just above the band's
+// top edge), but a symmetric low-pass is cheaper to run than a complex one, so the filter is
+// symmetric: pass |b| <= P, stop |b| >= P + 2L. That is why the shift is P + L rather than 1,500 Hz: it
+// centres the filter on the band. center_hz still names the 1,500 Hz point, so the NCO sits at
+// center_hz - 1,500 + shift.
 //
 // At a 6 kHz output, 3,000 Hz is the Nyquist frequency, and the transition band above P folds back
-// under it: b in [P, P + 400] lands at 6,000 - (shift + b). Keeping that above the band's top edge
-// needs output_rate >= 4P + 800, so P = 1,300 there and the flat band is 200-2,800 Hz.
+// under it: b in [P, P + 2L] lands at 6,000 - (shift + b). Keeping that above the band's top edge
+// needs output_rate >= 4P + 4L, so P = 1,350 there and the flat band is 150-2,850 Hz.
 //
-// One filter with a 400 Hz transition at 48 kHz would be about 600 taps, run on every input sample.
+// One filter with a 300 Hz transition at 48 kHz would be about 800 taps, run on every input sample.
 // Instead:
 //
 //   1. Half-band decimators, 2:1 each, 48 -> 24 -> 12 (-> 6) kHz. Each must keep only what would
@@ -33,8 +34,8 @@
 //      15 taps at 48 and 24 kHz, 19 at 12 kHz, and half of each half-band's taps are zero. What
 //      aliases into a half-band's transition lands outside |b| <= P, where step 2 removes it or
 //      the audio is outside the decoder's band.
-//   2. One channel low-pass at the output rate carrying the sharp 400 Hz transition: 153 taps at
-//      12 kHz, 77 at 6 kHz, symmetric, so half the multiplies.
+//   2. One channel low-pass at the output rate carrying the sharp 2L = 300 Hz transition: 203 taps at
+//      12 kHz, 103 at 6 kHz, symmetric, so half the multiplies.
 //
 // All are Kaiser-windowed sinc designed for 80 dB, 10 dB inside the 70 dB asked for, since the
 // Kaiser length formula is an estimate; host_test_iq_frontend measures the cascade. Kaiser ripple
@@ -50,8 +51,9 @@
 #include "iq_frontend.h"
 
 #define DESIGN_ATTENUATION_DB 80.0
-#define TRANSITION_HZ 400
-#define AUDIO_LOW_HZ 200
+#define AUDIO_LOW_HZ 150            // L: the flat band's low edge (see the top of this file)
+#define TRANSITION_HZ (2 * AUDIO_LOW_HZ)
+#define SHIFT_MAX_HZ 1600           // keeps shift/output_rate to a short table at a 12 kHz output
 #define NCO_RESYNC 256  // samples between exact NCO phases; the float rotation drifts ~1e-5 rad in that
 
 #define TWO_PI 6.283185307179586476925286766559
@@ -131,7 +133,7 @@ iq_frontend_status_t iq_frontend_init(iq_frontend_t* frontend, const iq_frontend
 
     int fo = (int)config->output_rate_hz;
     int half_width = (fo - 2 * TRANSITION_HZ) / 4;  // P: see the top of this file
-    if (half_width > 1400) half_width = 1400;
+    if (half_width > SHIFT_MAX_HZ - AUDIO_LOW_HZ) half_width = SHIFT_MAX_HZ - AUDIO_LOW_HZ;
     int shift = half_width + TRANSITION_HZ / 2;
 
     frontend->config = *config;
@@ -155,7 +157,7 @@ iq_frontend_status_t iq_frontend_init(iq_frontend_t* frontend, const iq_frontend
         stage_rate /= 2.0;
     }
 
-    // Channel low-pass: pass |b| <= P, stop |b| >= P + 400, at the output rate.
+    // Channel low-pass: pass |b| <= P, stop |b| >= P + 2L, at the output rate.
     int taps = kaiser_taps(DESIGN_ATTENUATION_DB, (double)TRANSITION_HZ / fo);
     if (taps % 2 == 0) ++taps;
     if (taps > IQ_FRONTEND_MAX_CHANNEL_TAPS) return IQ_FRONTEND_TOO_MANY_TAPS;
@@ -188,6 +190,21 @@ iq_frontend_status_t iq_frontend_init(iq_frontend_t* frontend, const iq_frontend
     frontend->nco_rotate.re = (float)cos(step_angle);
     frontend->nco_rotate.im = (float)sin(step_angle);
     return IQ_FRONTEND_OK;
+}
+
+void iq_frontend_reset(iq_frontend_t* frontend)
+{
+    frontend->input_count = 0;
+    memset(&frontend->nco, 0, sizeof(frontend->nco));
+    for (int s = 0; s < IQ_FRONTEND_MAX_STAGES; ++s) {
+        iq_frontend_halfband_t* stage = &frontend->halfband[s];
+        memset(stage->line, 0, sizeof(stage->line));
+        stage->pos = 0;
+        stage->skip = 0;
+    }
+    memset(frontend->channel_line, 0, sizeof(frontend->channel_line));
+    frontend->channel_pos = 0;
+    frontend->shift_index = 0;
 }
 
 size_t iq_frontend_output_capacity(const iq_frontend_t* frontend, size_t frames)

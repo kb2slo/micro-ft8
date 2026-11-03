@@ -122,6 +122,31 @@ int main()
     {
         StationSettings s;
         station_settings_init(&s);
+        expect_true(s.qmx_iq_ab == 0, "qmx_iq_ab is off by default");
+        station_parse("qmx_iq_ab=2\n", &s);
+        expect_true(s.qmx_iq_ab == 2, "qmx_iq_ab=2 parsed");
+        StationSettings t;
+        station_settings_init(&t);
+        station_parse(station_serialize(s), &t);
+        expect_true(t.qmx_iq_ab == 2, "qmx_iq_ab round-trips");
+        station_parse("qmx_iq_ab=-1\n", &s);
+        expect_true(s.qmx_iq_ab == 2, "a negative value is ignored");
+        station_parse("qmx_iq_ab=100\n", &s);
+        expect_true(s.qmx_iq_ab == 2, "a value past kStationQmxIqAbMax is ignored");
+        station_parse("qmx_iq_ab=99\n", &s);
+        expect_true(s.qmx_iq_ab == 99, "kStationQmxIqAbMax itself is accepted");
+        station_parse("qmx_iq_ab=abc\n", &s);
+        expect_true(s.qmx_iq_ab == 99, "a non-number is ignored");
+        station_parse("qmx_iq_ab=0\n", &s);
+        expect_true(s.qmx_iq_ab == 0, "and turns off");
+        station_parse(station_serialize(s), &t);
+        expect_true(t.qmx_iq_ab == 0, "off round-trips");
+        expect_true(station_key_known("qmx_iq_ab"), "key known to CONFIG");
+    }
+
+    {
+        StationSettings s;
+        station_settings_init(&s);
         station_parse(
             "call= kb2slo\n"
             "grid=fn30pr\n"

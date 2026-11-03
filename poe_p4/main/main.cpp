@@ -17,6 +17,7 @@
 #include "porta_host.h"
 #include "protocol.h"
 #include "qmx_transport.h"
+#include "rtc_core.h"
 #include "radio_control.h"
 #include "storage_service.h"
 #include "swr_sweep.h"
@@ -52,6 +53,7 @@ static void decode_audio_task(void * /*arg*/) {
         .on_block_processed = nullptr,
         .on_activity = send_activity,
         .take_frontend_us = qmx_audio_take_frontend_us,
+        .rx_path_for_slot = qmx_audio_rx_path_for_slot,
     };
     // QMX CAT/UAC comes back only after a radio power cycle (QMX quirk);
     // keep this task alive so a replug restarts decode without resetting P4.
@@ -88,9 +90,9 @@ extern "C" void app_main(void) {
     porta_p4_adif_register();
 
     radio_control_set_backend(RADIO_CONTROL_QMX);
-    // Once, here: the capture path and the radio's Q9 follow the setting as it reads at boot, so a
-    // CONFIG write of qmx_iq takes effect after a reboot (Station.txt, architecture/decode.md).
-    qmx_audio_set_iq(porta_p4_station_qmx_iq());
+    // The capture path starts on what the settings give for this slot; after that the main loop moves it
+    // at slot boundaries (qmx_audio_rx_tick, below; architecture/decode.md, I/Q front end).
+    qmx_audio_rx_init(porta_p4_station_qmx_iq(), porta_p4_station_qmx_iq_ab());
     qmx_transport_start();
     porta_start();
 
@@ -114,19 +116,32 @@ extern "C" void app_main(void) {
             swr_sweep_tick(esp_timer_get_time() / 1000);
         }
         vTaskDelay(pdMS_TO_TICKS(10));
-        // Q9 at each CAT link-up: the radio's receive output follows qmx_iq, both ways, and is read back.
-        switch (radio_control_rx_path_tick(qmx_audio_iq_enabled(), decode_tx_state_get_tx_active() ||
-                                                                        porta_p4_tune_active() ||
-                                                                        amp_band_prime_busy() || swr_sweep_busy())) {
+        // The receive path for the slot about to begin, from qmx_iq and qmx_iq_ab as they read now: the
+        // radio is told 0.5 s before its boundary, the capture follows at the boundary. Q9 at each CAT
+        // link-up too: the radio's receive output follows the path, both ways, and is read back.
+        const bool rx_busy = decode_tx_state_get_tx_active() || porta_p4_tune_active() ||
+                             amp_band_prime_busy() || swr_sweep_busy();
+        qmx_audio_rx_tick(porta_p4_station_qmx_iq(), porta_p4_station_qmx_iq_ab(), rx_busy);
+        switch (radio_control_rx_path_tick(qmx_audio_rx_want_iq(), rx_busy)) {
             case RADIO_RX_PATH_MISMATCH:
-                debug_log_line("Q9 read-back differs from qmx_iq: the radio is in the other receive mode, "
+                debug_log_line("Q9 read-back differs from the wanted receive path: the radio is in the other receive mode, "
                                "so nothing will decode");
                 break;
             case RADIO_RX_PATH_NO_REPLY:
-                debug_log_line("Q9; unanswered: cannot confirm the QMX receive mode matches qmx_iq");
+                debug_log_line("Q9; unanswered: cannot confirm the QMX receive mode matches the wanted path");
                 break;
+            case RADIO_RX_PATH_SENT: {
+                // How long before the next boundary the radio was told: about 500 ms when a change
+                // was scheduled, anything at a link-up.
+                const int64_t slot_ms = g_protocol->slot_time_ms;
+                const int64_t now = rtc_now_ms();
+                char line[40];
+                snprintf(line, sizeof(line), "Q9 %d left%lld", qmx_audio_rx_want_iq() ? 1 : 0,
+                         (long long)((now / slot_ms + 1) * slot_ms - now));
+                debug_log_line(line);
+                break;
+            }
             case RADIO_RX_PATH_NONE:
-            case RADIO_RX_PATH_SENT:
             case RADIO_RX_PATH_MATCHED:
                 break;
         }
