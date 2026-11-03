@@ -7,7 +7,7 @@ The core (slot loop, TX scheduler, HUD) talks to the radio only through `compone
 * **One table of operations per radio**, `radio_control_ops_t` (`components/radio_control/include/radio_control_backend.h`): `ready`, `on_audio_start`, `sync_frequency_mode`, `begin_tx`, `set_tone_hz`, `end_tx`, `set_tune`, `set_time`, the TX power/SWR trio `reset_tx_power_swr` / `poll_tx_power_swr` / `get_tx_power_swr`, and `begin_cpfsk_tx`. A null pointer means "not supported", never a crash.
 * **Capabilities** (`radio_control_capabilities_t`, `radio_control.h`) are what the core and HUD ask instead of the radio's name: `has_wattmeter`, `has_swr`, `can_set_time`, `audio_is_uac`, `can_md8_tune`, `can_ps0`.
 * **One `.cpp` per radio**: `radio_control_qmx.cpp`, `radio_control_qdx.cpp`. QMX and QMX+ are one backend until their CAT differs.
-* **CAT replies are read by one parser**, `cat_reply_parser` (`components/radio_control`, host-tested), fed from the CDC callback (`poe_p4/main/qmx_transport.cpp`). It keeps the last `PC`, `SW` and `FA` reply, and drops the terminal display codes (`ESC[7m` ...) the radio appends to some replies, which would otherwise glue onto the next reply and hide its prefix. `FA` exists so a sweep can tell a frequency the radio refused (it answers `?;` and `FA;` still reads the old one) from one that took.
+* **CAT replies are read by one parser**, `cat_reply_parser` (`components/radio_control`, host-tested), fed from the CDC callback (`poe_p4/main/qmx_transport.cpp`). It keeps the last `PC`, `SW` and `FA` reply, and drops the terminal display codes (`ESC[7m` ...) the radio appends to some replies, which would otherwise glue onto the next reply and hide its prefix. `Q9` (the receive output) is read back at link-up, below. `FA` exists so a sweep can tell a frequency the radio refused (it answers `?;` and `FA;` still reads the old one) from one that took.
 * **The radio is fixed to the QMX** (`radio_control_set_backend(RADIO_CONTROL_QMX)` in `poe_p4/main/main.cpp`). Following the Station `radio` setting is row cgc4.
 
 ## Rules
@@ -16,6 +16,13 @@ The core (slot loop, TX scheduler, HUD) talks to the radio only through `compone
 * **QMX-only features go through a capability flag.** The SWR sweep calls `MD8;` only where `can_md8_tune` is set; a CAT power-off (`PS0;`) only where `can_ps0` is set.
 * **Adding a radio** means filling in a new operations table and capabilities, — no edit to the slot loop. This is the design's test; no second radio family has been added yet to prove it.
 * **Why a table, not `class Radio`:** the variants are a closed set, and a C struct of function pointers is what the rest of this ESP-IDF tree already uses. [STYLE.md](../STYLE.md) (**Structure**) allows inheritance only for closed sets like this one, and the table is the lighter form of it.
+
+## The QMX's receive output
+
+The QMX streams either its audio or its I/Q on the same USB stream: `Q9 0;` audio, `Q9 1;` I/Q, `Q9;` reads it back as `Q90;` or `Q91;` (bench-verified on QMX 1_04_010, 2026-11-02: the switch applies at once, the stream keeps every frame, and `TA` still keys in IQ mode; the radio's headphone jack is silent in IQ mode). Station `qmx_iq` chooses which the P4 decodes ([decode.md](decode.md), **I/Q front end**); it is read once at boot, so changing it takes a reboot.
+
+* **At each CAT link-up, both ways.** The backend (`radio_control_qmx.cpp`, `qmx_rx_path_tick()`, called every main-loop pass by `radio_control_rx_path_tick()`) sends `Q9 1;` when `qmx_iq` is 1 and `Q9 0;` when it is 0, with `Q9;` in the same write, then waits up to 1 s for the reply. `Q9 0;` when the key is 0 is deliberate: a radio another tool left in IQ mode streams I/Q that the audio path decodes as nothing, silently (RFC 0006).
+* **A reply that does not match** logs `QMX Q9; reads … but qmx_iq wants …` as a warning on the console and the same on the debug log; no reply in a second logs that it cannot confirm. Neither retries or changes the capture path, which follows the setting, not the radio. Nothing is sent while a transmission, sweep or prime is running, and a probe waiting then is sent again after it. A dropped link starts over. The sequence is `qmx_iq_link.h` (host-tested); the reply parser reads `Q91;` and `Q9 1;` alike.
 
 ## TX timing on a QMX
 

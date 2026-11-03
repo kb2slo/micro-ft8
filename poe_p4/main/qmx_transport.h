@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -22,6 +23,16 @@ bool qmx_audio_ready(void);
 // directly. `ctx` is unused (nullptr is fine).
 int qmx_audio_read_ft8_samples(void *ctx, float *out, int max_samples);
 bool qmx_audio_should_stop(void *ctx);
+
+// Chooses what the capture path decodes, once at boot before qmx_transport_start(): false the
+// QMX's audio (the L/R average, decimated), true its I/Q (the receive front end,
+// components/iq_frontend). Station `qmx_iq`; a change takes a reboot. architecture/decode.md,
+// I/Q front end.
+void qmx_audio_set_iq(bool iq);
+bool qmx_audio_iq_enabled(void);
+
+// ft8_audio_pipeline_config_t::take_frontend_us: the front end's time since the last call.
+uint32_t qmx_audio_take_frontend_us(void *ctx);
 
 #ifdef __cplusplus
 }

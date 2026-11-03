@@ -1,3 +1,4 @@
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 
@@ -12,6 +13,7 @@
 #include "porta.h"
 #include "qmx_transport.h"
 #include "cat_reply_parser.h"
+#include "iq_frontend.h"
 #include "radio_transport.h"
 #include "resample.h"
 #include "usb/cdc_acm_host.h"
@@ -146,6 +148,17 @@ static constexpr int64_t kUacStartSettleMs = 400;
 static constexpr int kUacStartMaxAttempts = 8;
 
 static resample_state_t s_resample_state;
+
+// The I/Q capture path (Station qmx_iq). One front end, one channel: FT8 at 13,500 Hz above the LO,
+// I on the left channel, Q not negated, no IF trim, 6 kHz out (the 2026-11-02 corpus's settings,
+// tools/decode_bench/corpus/qmx-2026-11-02). Internal RAM, .bss: sizeof(iq_frontend_t) plus the
+// conversion buffer, checked by tools/check_ram_budget.py. Used only by the ingest task, which
+// calls qmx_audio_read_ft8_samples(); (re)initialised on the UAC task before a stream is published.
+static constexpr double kIqChannelHz = 13500.0;
+static bool s_iq_enabled;
+static iq_frontend_t s_iq_frontend;
+static float s_iq_frames[2 * (UAC_READ_BUFFER_SIZE / 6)];  // one read's frames, I then Q, ±1
+static std::atomic<uint32_t> s_frontend_us;  // the front end's time, for BDRY's fe
 static DMA_ATTR uint8_t s_usb_buffer[UAC_READ_BUFFER_SIZE];
 
 static int64_t now_ms(void) {
@@ -463,6 +476,21 @@ static void try_open_uac(uint8_t addr, uint8_t iface_num) {
         ESP_LOGW(TAG, "QMX UAC disconnected after start; abandoning publish");
         return;
     }
+    if (s_iq_enabled) {
+        // A fresh stream starts with cleared filters and the NCO at phase 0.
+        const iq_frontend_config_t config = {
+            .input_rate_hz = kUacSampleRate,
+            .output_rate_hz = 6000,
+            .center_hz = kIqChannelHz,
+            .if_trim_hz = 0.0,
+            .swap_iq = false,
+            .negate_q = false,
+        };
+        const iq_frontend_status_t status = iq_frontend_init(&s_iq_frontend, &config);
+        if (status != IQ_FRONTEND_OK) {
+            ESP_LOGE(TAG, "I/Q front end init failed (%d): nothing will decode", (int)status);
+        }
+    }
     s_uac_handle = handle;
     s_uac_starting_handle = nullptr;
     s_uac_close_queued = nullptr;
@@ -695,6 +723,21 @@ bool cat_cdc_get_parsed_if(int* hz, int* tx, int* mode, int* split) {
     return true;
 }
 
+bool cat_cdc_get_parsed_q9(int* iq) {
+    const int value = s_cat_parser.q9_iq;
+    if (value < 0) {
+        return false;
+    }
+    if (iq) {
+        *iq = value;
+    }
+    return true;
+}
+
+void cat_cdc_reset_parsed_q9(void) {
+    s_cat_parser.q9_iq = -1;
+}
+
 bool cat_cdc_get_parsed_sr(int* lock) {
     const int value = s_cat_parser.sr_lock;
     if (value < 0) {
@@ -728,7 +771,28 @@ bool qmx_audio_ready(void) {
     return s_uac_handle != nullptr;
 }
 
-int qmx_audio_read_ft8_samples(void * /*ctx*/, float *out, int /*max_samples*/) {
+// The 24-bit stereo frames in s_usb_buffer as I/Q, through the front end into `out` at 6 kHz.
+static int read_iq_samples(int frames, float *out, int max_samples) {
+    static_assert(kUacBitResolution == 24 && kUacChannels == 2, "the I/Q path reads 24-bit stereo");
+    if (frames <= 0 || frames > (int)(sizeof(s_iq_frames) / sizeof(s_iq_frames[0]) / 2)) {
+        return 0;
+    }
+    for (int i = 0; i < 2 * frames; ++i) {
+        const uint8_t *p = s_usb_buffer + 3 * i;
+        int32_t v = p[0] | (p[1] << 8) | (p[2] << 16);
+        if (v & 0x800000) {
+            v |= (int32_t)0xFF000000;
+        }
+        s_iq_frames[i] = (float)v / 8388608.0f;
+    }
+    const int64_t t0 = esp_timer_get_time();
+    const int n = iq_frontend_process(&s_iq_frontend, s_iq_frames, (size_t)frames, out,
+                                      (size_t)max_samples);
+    s_frontend_us.fetch_add((uint32_t)(esp_timer_get_time() - t0), std::memory_order_relaxed);
+    return n > 0 ? n : 0;
+}
+
+int qmx_audio_read_ft8_samples(void * /*ctx*/, float *out, int max_samples) {
     // Snapshot: disconnect nulls s_uac_handle before queuing close; a
     // concurrent close must not race a read that still holds the old
     // pointer only if we re-load it after the null. Local copy is enough
@@ -750,8 +814,24 @@ int qmx_audio_read_ft8_samples(void * /*ctx*/, float *out, int /*max_samples*/) 
         return 0;
     }
 
+    if (s_iq_enabled) {
+        return read_iq_samples((int)bytes_read / frame_bytes, out, max_samples);
+    }
     return uac_pcm_to_ft8_samples(&s_resample_state, s_usb_buffer, (int)bytes_read, out,
                                   kUacBitResolution, kUacChannels);
+}
+
+void qmx_audio_set_iq(bool iq) {
+    s_iq_enabled = iq;
+    ESP_LOGI(TAG, "QMX receive decodes from %s", iq ? "I/Q (qmx_iq=1)" : "audio (qmx_iq=0)");
+}
+
+bool qmx_audio_iq_enabled(void) {
+    return s_iq_enabled;
+}
+
+uint32_t qmx_audio_take_frontend_us(void * /*ctx*/) {
+    return s_frontend_us.exchange(0, std::memory_order_relaxed);
 }
 
 bool qmx_audio_should_stop(void * /*ctx*/) {

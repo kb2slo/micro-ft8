@@ -2,7 +2,7 @@
 
 // Turns the bytes a QMX/QDX sends back over CAT into the few replies this
 // firmware reads: PC (power, tenths of a watt), SW (SWR, hundredths), FA
-// (the VFO A frequency), SR (the SWR-protection lock: 1 locked, 0 clear), IF (the radio's
+// (the VFO A frequency), SR (the SWR-protection lock: 1 locked, 0 clear), Q9 (the QMX's receive output: 1 IQ, 0 audio), IF (the radio's
 // state in one reply: frequency, TX or RX, mode, split) and VN (its firmware version). Everything else, including the radio's "?;" for a
 // command it refused, is ignored.
 //
@@ -27,6 +27,7 @@ typedef struct {
     volatile int sw_hundredths;
     volatile int fa_hz;
     volatile int sr_lock;
+    volatile int q9_iq;
     // IF: -1 until a reply arrives. tx 1 = transmitting; mode is the MD digit; split 1 = on.
     volatile int if_hz;
     volatile int if_tx;

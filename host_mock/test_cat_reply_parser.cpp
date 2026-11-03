@@ -54,6 +54,19 @@ int main()
     feed(&parser, "SR;?;");
     expect(parser.sr_lock, -1, "an empty SR and a refusal are not a reading");
 
+    // Q9 is the QMX's receive output: 1 IQ, 0 audio. The reply may or may not have a space.
+    cat_reply_parser_reset(&parser);
+    expect(parser.q9_iq, -1, "nothing heard reads as none: Q9");
+    feed(&parser, "Q91;");
+    expect(parser.q9_iq, 1, "Q91 is IQ");
+    feed(&parser, "Q90;");
+    expect(parser.q9_iq, 0, "Q90 is audio");
+    feed(&parser, "Q9 1;");
+    expect(parser.q9_iq, 1, "a spaced Q9 1 reads the same");
+    cat_reply_parser_reset(&parser);
+    feed(&parser, "Q9;?;");
+    expect(parser.q9_iq, -1, "an empty Q9 and a refusal are not a reading");
+
     // The radio appends terminal display codes after some replies; the next reply
     // must still parse, which it did not when they stayed in the frame.
     cat_reply_parser_reset(&parser);

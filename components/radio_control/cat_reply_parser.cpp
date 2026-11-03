@@ -97,7 +97,9 @@ static void parse_frame(cat_reply_parser_t* parser)
         parse_if(parser, frame + 2, parser->frame_len - 2);
         return;
     }
-    const int value = parse_digits(frame + 2);
+    // Q9 replies "Q91;" and, on some firmware, "Q9 1;".
+    const bool spaced = frame[0] == 'Q' && frame[1] == '9' && frame[2] == ' ';
+    const int value = parse_digits(frame + (spaced ? 3 : 2));
     if (value < 0) {
         return;
     }
@@ -109,6 +111,8 @@ static void parse_frame(cat_reply_parser_t* parser)
         parser->fa_hz = value;
     } else if (frame[0] == 'S' && frame[1] == 'R') {
         parser->sr_lock = value;
+    } else if (frame[0] == 'Q' && frame[1] == '9') {
+        parser->q9_iq = value;
     }
 }
 
@@ -123,6 +127,7 @@ void cat_reply_parser_reset(cat_reply_parser_t* parser)
     parser->sw_hundredths = -1;
     parser->fa_hz = -1;
     parser->sr_lock = -1;
+    parser->q9_iq = -1;
     parser->if_hz = -1;
     parser->if_tx = -1;
     parser->if_mode = -1;

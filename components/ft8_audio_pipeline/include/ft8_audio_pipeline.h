@@ -6,6 +6,10 @@
 typedef int (*ft8_audio_read_cb_t)(void* ctx, float* out, int max_samples);
 typedef bool (*ft8_audio_should_stop_cb_t)(void* ctx);
 typedef void (*ft8_audio_block_cb_t)(void* ctx);
+// The microseconds the receive front end has spent (components/iq_frontend) since the last call, then
+// forgotten. Called on the capture task at each slot boundary, for BDRY's fe; the front end runs
+// on the ingest task, so the count is atomic. A front end the radio's audio does not need reports 0.
+typedef uint32_t (*ft8_audio_take_frontend_us_cb_t)(void* ctx);
 // One batch of band activity (ft8_block_activity.h): `n` blocks of `block_ms` each, the first at
 // position `first` in slot `slot_idx`; per block a level and a mask of FT8_ACTIVITY_CELLS cells
 // spanning lo_hz..hi_hz. Called on the capture task; queue, do not block.
@@ -20,6 +24,7 @@ typedef struct {
     ft8_audio_should_stop_cb_t should_stop;
     ft8_audio_block_cb_t on_block_processed;
     ft8_audio_activity_cb_t on_activity;  // may be null
+    ft8_audio_take_frontend_us_cb_t take_frontend_us;  // may be null
 } ft8_audio_pipeline_config_t;
 
 // Runs until should_stop(). False when it could not start (no RAM for the waterfall or a buffer, no

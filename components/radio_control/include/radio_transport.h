@@ -37,6 +37,11 @@ bool cat_cdc_get_parsed_meters(int* pc_tenths, int* sw_hundredths);
 bool cat_cdc_get_parsed_freq(int* hz);
 // The last SR reply (1 the SWR-protection lock is set, 0 clear); false when none has arrived since the last reset.
 bool cat_cdc_get_parsed_sr(int* lock);
+// The last Q9 reply (1 the QMX's receive output is IQ, 0 audio); false when none has arrived since
+// the last reset.
+bool cat_cdc_get_parsed_q9(int* iq);
+// Forgets the last Q9 reply only, so the next one read was sent after this call.
+void cat_cdc_reset_parsed_q9(void);
 // Forgets the last IF reply only; the meters and the SWR lock keep theirs.
 void cat_cdc_reset_parsed_if(void);
 // The radio's firmware version from its VN reply ("1_04_004"), copied into `out`; false when it

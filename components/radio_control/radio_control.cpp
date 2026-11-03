@@ -160,6 +160,12 @@ bool radio_control_get_version(char* out, size_t cap) {
     return ops && ops->get_version && ops->get_version(out, cap);
 }
 
+radio_rx_path_event_t radio_control_rx_path_tick(bool want_iq, bool busy) {
+    const radio_control_ops_t* ops = current_ops();
+    if (!ops || !ops->rx_path_tick) return RADIO_RX_PATH_NONE;
+    return ops->rx_path_tick(want_iq, busy);
+}
+
 esp_err_t radio_control_set_push(bool on) {
     const radio_control_ops_t* ops = current_ops();
     if (!ops || !ops->set_push) return ESP_ERR_NOT_SUPPORTED;

@@ -51,6 +51,7 @@ static void decode_audio_task(void * /*arg*/) {
         .should_stop = qmx_audio_should_stop,
         .on_block_processed = nullptr,
         .on_activity = send_activity,
+        .take_frontend_us = qmx_audio_take_frontend_us,
     };
     // QMX CAT/UAC comes back only after a radio power cycle (QMX quirk);
     // keep this task alive so a replug restarts decode without resetting P4.
@@ -87,6 +88,9 @@ extern "C" void app_main(void) {
     porta_p4_adif_register();
 
     radio_control_set_backend(RADIO_CONTROL_QMX);
+    // Once, here: the capture path and the radio's Q9 follow the setting as it reads at boot, so a
+    // CONFIG write of qmx_iq takes effect after a reboot (Station.txt, architecture/decode.md).
+    qmx_audio_set_iq(porta_p4_station_qmx_iq());
     qmx_transport_start();
     porta_start();
 
@@ -110,6 +114,21 @@ extern "C" void app_main(void) {
             swr_sweep_tick(esp_timer_get_time() / 1000);
         }
         vTaskDelay(pdMS_TO_TICKS(10));
+        // Q9 at each CAT link-up: the radio's receive output follows qmx_iq, both ways, and is read back.
+        switch (radio_control_rx_path_tick(qmx_audio_iq_enabled(), decode_tx_state_get_tx_active() ||
+                                                                        amp_band_prime_busy() || swr_sweep_busy())) {
+            case RADIO_RX_PATH_MISMATCH:
+                debug_log_line("Q9 read-back differs from qmx_iq: the radio is in the other receive mode, "
+                               "so nothing will decode");
+                break;
+            case RADIO_RX_PATH_NO_REPLY:
+                debug_log_line("Q9; unanswered: cannot confirm the QMX receive mode matches qmx_iq");
+                break;
+            case RADIO_RX_PATH_NONE:
+            case RADIO_RX_PATH_SENT:
+            case RADIO_RX_PATH_MATCHED:
+                break;
+        }
         // Set by qmx_transport on every CAT open; retried until it lands.
         if (decode_tx_state_get_cdc_initial_sync_pending() && radio_control_ready() &&
             !decode_tx_state_get_tx_active() && !amp_band_prime_busy() && !swr_sweep_busy() &&

@@ -1,10 +1,12 @@
 #include "radio_control_backend.h"
+#include "qmx_iq_link.h"
 #include "radio_ta_format.h"
 
 #include <cstdio>
 #include <cstring>
 
 #include "esp_log.h"
+#include "esp_timer.h"
 
 #include "radio_transport.h"
 
@@ -273,6 +275,42 @@ static esp_err_t qmx_query_version(void) {
     return qmx_send_cmd("VN;", 50);
 }
 
+// Sets the receive output at each CAT link-up, to IQ or audio whichever the station wants, and reads
+// it back. `Q9 0;` is sent too, deliberately: a radio another tool left in IQ mode streams I/Q that the
+// audio path decodes as nothing, silently (RFC 0006). The read-back only warns: the capture path was
+// chosen by the setting at boot and does not follow the radio.
+static QmxIqLink s_iq_link;
+
+static radio_rx_path_event_t qmx_rx_path_tick(bool want_iq, bool busy) {
+    int reply = -1;
+    (void)cat_cdc_get_parsed_q9(&reply);
+    const char* want = want_iq ? "IQ" : "audio";
+    switch (qmx_iq_link_step(s_iq_link, cat_cdc_ready(), busy, want_iq, reply,
+                             esp_timer_get_time() / 1000)) {
+        case QmxIqLinkAction::None:
+            return RADIO_RX_PATH_NONE;
+        case QmxIqLinkAction::Send:
+            cat_cdc_reset_parsed_q9();
+            if (qmx_send_cmd(want_iq ? "Q9 1;Q9;" : "Q9 0;Q9;", 200) != ESP_OK) {
+                s_iq_link = QmxIqLink{};  // not sent: try again next pass
+                return RADIO_RX_PATH_NONE;
+            }
+            ESP_LOGI(TAG, "QMX receive output set to %s (Q9 %d;)", want, want_iq ? 1 : 0);
+            return RADIO_RX_PATH_SENT;
+        case QmxIqLinkAction::Matched:
+            ESP_LOGI(TAG, "QMX Q9; reads %s, as set", want);
+            return RADIO_RX_PATH_MATCHED;
+        case QmxIqLinkAction::Mismatch:
+            ESP_LOGW(TAG, "QMX Q9; reads %s, but qmx_iq wants %s: decode will hear the wrong thing",
+                     want_iq ? "audio" : "IQ", want);
+            return RADIO_RX_PATH_MISMATCH;
+        case QmxIqLinkAction::NoReply:
+            ESP_LOGW(TAG, "QMX Q9; unanswered: cannot confirm the receive output is %s", want);
+            return RADIO_RX_PATH_NO_REPLY;
+    }
+    return RADIO_RX_PATH_NONE;
+}
+
 static bool qmx_get_version(char* out, size_t cap) {
     return cat_cdc_get_version(out, cap);
 }
@@ -322,6 +360,7 @@ static const radio_control_ops_t k_ops = {
     .get_state = qmx_get_state,
     .query_version = qmx_query_version,
     .get_version = qmx_get_version,
+    .rx_path_tick = qmx_rx_path_tick,
     .set_push = qmx_set_push,
     .state_changes = qmx_state_changes,
 };
