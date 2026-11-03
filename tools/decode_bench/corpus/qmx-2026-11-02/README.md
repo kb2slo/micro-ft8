@@ -26,7 +26,7 @@ so every file's SHA-256 is in git.
 
 ## How it was scored
 
-IQ files through `tools/iq_convert` (`--center-hz 13500`, I on the left channel, Q not negated, no
+With `tools/decode_bench/score_ab.py` (its defaults): IQ files through `tools/iq_convert` (`--center-hz 13500`, I on the left channel, Q not negated, no
 IF trim, `--normalize-db -20`); audio files with `--real --normalize-db -20`. Both at 12 kHz to
 `jt9 -8 -d 3` and to `tools/decode_recall/decode_recall` at the firmware's settings. "Paired" sets
 each two-slot IQ turn against the audio turn after it.
