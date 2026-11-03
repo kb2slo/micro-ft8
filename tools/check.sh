@@ -47,7 +47,7 @@ triggers() {
     host_mock)       echo 'components/* host_mock/* sidekick/main/*' ;;
     sim)             echo 'components/* host_mock/* sidekick/main/* webapp/tests/*' ;;
     tx_e2e)          echo 'components/* tests/tx_e2e/*' ;;
-    decode_recall)   echo 'components/* tools/decode_recall/*' ;;
+    decode_recall)   echo 'components/* tools/decode_recall/* tools/iq_convert/*' ;;
     getting_started) echo 'webapp/app/* webapp/tools/* webapp/getting-started.md' ;;
     # The paths filter of ci.yml's `changes` job, which gates CI's firmware jobs.
     sidekick|p4)     echo 'components/* sidekick/* poe_p4/* idf_component.yml */idf_component.yml tools/*.cmake tools/check_ram_budget.py .github/workflows/ci.yml' ;;

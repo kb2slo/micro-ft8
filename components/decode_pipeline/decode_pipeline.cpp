@@ -300,17 +300,21 @@ static void log_slot_summary(int num_candidates, int max_cand, int msg_count, in
       (uint32_t)ulTaskGetIdleRunTimeCounterForCore(0) - s_idle_at_decode[0], elapsed);
   const int busy1 = decode_core_busy_pct(
       (uint32_t)ulTaskGetIdleRunTimeCounterForCore(1) - s_idle_at_decode[1], elapsed);
+  // The receive path this slot was captured on, last so a clipped event loses it and not b. Empty
+  // when the board does not name one.
+  const int path = decode_tx_state_get_rx_path();
+  const char* rx = path == 2 ? " rx=iq" : (path == 1 ? " rx=au" : "");
   // 128 covers a full int64 print. The event field keeps 64 characters.
   char buf[128];
   int n = snprintf(buf, sizeof(buf),
-                   "SLOT %lld c%d/%d m%d t%d dec%lld left%lld y%d b%d/%d",
+                   "SLOT %lld c%d/%d m%d t%d dec%lld left%lld y%d b%d/%d%s",
                    (long long)slot_idx, num_candidates, max_cand, msg_count, tome,
-                   (long long)dec_ms, (long long)left_ms, sync_ms, busy0, busy1);
+                   (long long)dec_ms, (long long)left_ms, sync_ms, busy0, busy1, rx);
   if (n > 64) {
     snprintf(buf, sizeof(buf),
-             "SLOT %lld c%d/%d m%d t%d dec%lld left%lld b%d/%d",
+             "SLOT %lld c%d/%d m%d t%d dec%lld left%lld b%d/%d%s",
              (long long)slot_idx, num_candidates, max_cand, msg_count, tome,
-             (long long)dec_ms, (long long)left_ms, busy0, busy1);
+             (long long)dec_ms, (long long)left_ms, busy0, busy1, rx);
   }
   debug_log_line(buf);
 }

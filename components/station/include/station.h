@@ -10,6 +10,12 @@ static constexpr int kStationBandCount = 12;
 // keyed from the radio's PTT (architecture/radio.md, TX timing on a QMX).
 static constexpr int kStationTxMinDelayDefaultMs = 50;
 static constexpr int kStationTxMinDelayMaxMs = 500;
+static constexpr int kStationQmxIqAbMax = 98;  // qmx_iq_ab: slots per path
+// 0 off, 1, or an even N: an odd N of 3 or more would give one path the even slots more often.
+static inline bool station_qmx_iq_ab_valid(int n)
+{
+    return n == 0 || n == 1 || (n >= 2 && n <= kStationQmxIqAbMax && n % 2 == 0);
+}
 
 // Station.txt's radio= values: the QMX keeps Mini-FT8's number; the HL2 is ours (RFC 0014 S1). Anything else
 // reads as the QMX.
@@ -39,6 +45,12 @@ struct StationSettings {
     int tx_min_delay_ms = kStationTxMinDelayDefaultMs;  // 0..kStationTxMinDelayMaxMs
     bool amp_swr_guard = false;  // recover from the QMX's SWR-protection trips (architecture/radio.md)
     bool amp_prime_on_band_change = false;  // brief QMX SWR Tune pulse after an explicit band change
+    // Decode the QMX from its IQ mode instead of its audio (architecture/decode.md, I/Q front end).
+    // 0 or 1; a change, from the file or a CONFIG write, applies at the next slot boundary.
+    bool qmx_iq = false;
+    // An experiment switch, not a setting (architecture/decode.md, I/Q front end): N > 0 alternates
+    // IQ and audio every N slots, from slot 0, whatever qmx_iq says. 0..kStationQmxIqAbMax, default 0.
+    int qmx_iq_ab = 0;
     int tries;  // transmissions per QSO message, and a CQ's to start (autoseq.md, Tries)
     bool protocol_ft4;
     bool serialize_ft4_band_keys;

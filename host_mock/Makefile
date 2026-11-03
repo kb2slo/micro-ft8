@@ -68,6 +68,8 @@ CAT_REPLY_PARSER_TARGET = host_test_cat_reply_parser
 AMP_BAND_PRIME_TARGET = host_test_amp_band_prime
 SWR_SWEEP_TARGET = host_test_swr_sweep
 SWR_TRIP_TARGET = host_test_swr_trip
+QMX_IQ_LINK_TARGET = host_test_qmx_iq_link
+QMX_RX_MODE_TARGET = host_test_qmx_rx_mode
 SLOT_DEFICIT_TARGET = host_test_slot_deficit
 SAMPLE_RING_TARGET = host_test_sample_ring
 BLOCK_ACTIVITY_TARGET = host_test_block_activity
@@ -81,6 +83,7 @@ DECODE_FIELDS_TARGET = host_test_decode_fields
 RTC_CORE_TARGET = host_test_rtc_core
 HL2_PROTO_TARGET = host_test_hl2_proto
 RADIO_CONTROL_TARGET = host_test_radio_control
+IQ_FRONTEND_TARGET = host_test_iq_frontend
 
 all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
      $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) \
@@ -88,11 +91,12 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARG
      $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
      $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(EVENT_STATE_TARGET) $(BUNDLE_HOST_TARGET) \
      $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(ROGERS_ONCE_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
-     $(CAT_REPLY_PARSER_TARGET) $(AMP_BAND_PRIME_TARGET) $(SWR_SWEEP_TARGET) $(SWR_TRIP_TARGET) \
+     $(CAT_REPLY_PARSER_TARGET) $(AMP_BAND_PRIME_TARGET) $(SWR_SWEEP_TARGET) $(SWR_TRIP_TARGET) $(QMX_IQ_LINK_TARGET) $(QMX_RX_MODE_TARGET) \
      $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(BLOCK_ACTIVITY_TARGET) $(CORE_BUSY_TARGET) \
      $(DECODE_RETRY_TARGET) $(DECODE_SYNC_TARGET) $(DECODE_SNR_TARGET) \
      $(PORTA_OUT_QUEUE_TARGET) $(HEARD_GRID_TARGET) $(DECODE_FIELDS_TARGET) $(RTC_CORE_TARGET) \
-     $(HL2_PROTO_TARGET) $(RADIO_CONTROL_TARGET) $(SIM_TARGET)
+     $(HL2_PROTO_TARGET) $(RADIO_CONTROL_TARGET) $(IQ_FRONTEND_TARGET) \
+     $(SIM_TARGET)
 
 $(TARGET): $(OBJ) porta_event_json.o heard_grid.o
 	$(CXX) $(CXXFLAGS) -o $@ $^
@@ -142,6 +146,15 @@ rtc_core.o: ../components/rtc_core/rtc_core.cpp
 $(RTC_CORE_TARGET): $(RTC_CORE_OBJ)
 	$(CXX) $(CXXFLAGS) -pthread -o $@ $^
 
+# The sweep runs about a thousand tones; -O2 keeps it to a second or two.
+IQ_FRONTEND_OBJ = iq_frontend.o test_iq_frontend.o
+iq_frontend.o: ../components/iq_frontend/iq_frontend.c
+	$(CC) $(CFLAGS) -O2 -I../components/iq_frontend/include -c $< -o $@
+test_iq_frontend.o: test_iq_frontend.cpp
+	$(CXX) $(CXXFLAGS) -O2 -I../components/iq_frontend/include -c $< -o $@
+$(IQ_FRONTEND_TARGET): $(IQ_FRONTEND_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^ -lm
+
 DIAL_HISTORY_OBJ = dial_history.o test_dial_history.o
 dial_history.o: ../components/dial_history/dial_history.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
@@ -186,6 +199,18 @@ radio_control.o: ../components/radio_control/radio_control.cpp
 test_radio_control.o: test_radio_control.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 $(RADIO_CONTROL_TARGET): $(RADIO_CONTROL_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+QMX_IQ_LINK_OBJ = test_qmx_iq_link.o
+test_qmx_iq_link.o: test_qmx_iq_link.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+$(QMX_IQ_LINK_TARGET): $(QMX_IQ_LINK_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+QMX_RX_MODE_OBJ = test_qmx_rx_mode.o
+test_qmx_rx_mode.o: test_qmx_rx_mode.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+$(QMX_RX_MODE_TARGET): $(QMX_RX_MODE_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 SLOT_DEFICIT_OBJ = ft8_slot_deficit.o test_slot_deficit.o
@@ -379,6 +404,7 @@ clean:
 	      $(CAT_REPLY_PARSER_OBJ) $(CAT_REPLY_PARSER_TARGET) \
 	      $(AMP_BAND_PRIME_OBJ) $(AMP_BAND_PRIME_TARGET) \
 	      $(SWR_SWEEP_OBJ) $(SWR_SWEEP_TARGET) \
+	      $(QMX_IQ_LINK_OBJ) $(QMX_IQ_LINK_TARGET) $(QMX_RX_MODE_OBJ) $(QMX_RX_MODE_TARGET) \
 	      $(PORTA_PROTO_OBJ) $(PORTA_PROTO_TARGET) \
 	      $(PORTA_OUT_QUEUE_OBJ) $(PORTA_OUT_QUEUE_TARGET) \
 	      $(DECODE_RETRY_OBJ) $(DECODE_RETRY_TARGET) \
@@ -390,7 +416,8 @@ clean:
 	      $(DECODE_FIELDS_OBJ) $(DECODE_FIELDS_TARGET) \
 	      $(RTC_CORE_OBJ) $(RTC_CORE_TARGET) \
 	      $(HL2_PROTO_OBJ) $(HL2_PROTO_TARGET) \
-	      $(RADIO_CONTROL_OBJ) $(RADIO_CONTROL_TARGET)
+	      $(RADIO_CONTROL_OBJ) $(RADIO_CONTROL_TARGET) \
+	      $(IQ_FRONTEND_OBJ) $(IQ_FRONTEND_TARGET)
 
 .PHONY: all clean
 

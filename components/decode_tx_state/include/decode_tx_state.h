@@ -46,6 +46,10 @@ void    decode_tx_state_set_decode_slot_idx(int64_t slot_idx);
 // that slot to this decode. Only such a slot may step the clock (decode_sync.h).
 bool    decode_tx_state_get_capture_clean(void);
 void    decode_tx_state_set_capture_clean(bool clean);
+// The receive path of the slot being decoded, set with decode_slot_idx: 0 not named, 1 audio, 2 I/Q.
+// The SLOT line names it (architecture/decode.md, I/Q front end).
+int     decode_tx_state_get_rx_path(void);
+void    decode_tx_state_set_rx_path(int path);
 int64_t decode_tx_state_get_decode_applied_slot_idx(void);
 void    decode_tx_state_set_decode_applied_slot_idx(int64_t slot_idx);
 bool    decode_tx_state_get_decode_in_progress(void);

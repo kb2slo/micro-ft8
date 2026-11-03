@@ -23,7 +23,29 @@ static void expect(int got, int want, const char* msg)
 
 int main()
 {
+    // A constructed parser holds no reading, version or frame, whatever fields it has.
+    {
+        cat_reply_parser_t fresh;
+        memset(&fresh, 0x5a, sizeof(fresh));
+        cat_reply_parser_init(&fresh);
+        expect(fresh.pc_tenths, -1, "init: PC");
+        expect(fresh.sw_hundredths, -1, "init: SW");
+        expect(fresh.fa_hz, -1, "init: FA");
+        expect(fresh.sr_lock, -1, "init: SR");
+        expect(fresh.q9_iq, -1, "init: Q9");
+        expect(fresh.if_hz, -1, "init: IF frequency");
+        expect(fresh.if_tx, -1, "init: IF tx");
+        expect(fresh.if_mode, -1, "init: IF mode");
+        expect(fresh.if_split, -1, "init: IF split");
+        expect((int)fresh.if_changes, 0, "init: IF change count");
+        expect(fresh.vn[0], 0, "init: version");
+        expect(fresh.frame[0], 0, "init: frame");
+        expect((int)fresh.frame_len, 0, "init: frame length");
+        expect(fresh.escape_state, 0, "init: escape state");
+    }
+
     cat_reply_parser_t parser;
+    cat_reply_parser_init(&parser);
     cat_reply_parser_reset(&parser);
     expect(parser.sw_hundredths, -1, "nothing heard reads as none: SW");
     expect(parser.fa_hz, -1, "nothing heard reads as none: FA");
@@ -53,6 +75,23 @@ int main()
     cat_reply_parser_reset(&parser);
     feed(&parser, "SR;?;");
     expect(parser.sr_lock, -1, "an empty SR and a refusal are not a reading");
+
+    // Q9 is the QMX's receive output: 1 IQ, 0 audio. The reply may or may not have a space.
+    expect(parser.q9_iq, -1, "nothing heard reads as none: Q9");
+    feed(&parser, "Q91;");
+    expect(parser.q9_iq, 1, "Q91 is IQ");
+    feed(&parser, "Q90;");
+    expect(parser.q9_iq, 0, "Q90 is audio");
+    feed(&parser, "Q9 1;");
+    expect(parser.q9_iq, 1, "a spaced Q9 1 reads the same");
+    cat_reply_parser_init(&parser);
+    feed(&parser, "Q9;?;");
+    expect(parser.q9_iq, -1, "an empty Q9 and a refusal are not a reading");
+    // Like the version, the reading survives reset(): Tune, an SWR lock query or the end of a
+    // transmission must not turn an answered Q9 into "unanswered".
+    feed(&parser, "Q91;");
+    cat_reply_parser_reset(&parser);
+    expect(parser.q9_iq, 1, "reset keeps Q9");
 
     // The radio appends terminal display codes after some replies; the next reply
     // must still parse, which it did not when they stayed in the frame.

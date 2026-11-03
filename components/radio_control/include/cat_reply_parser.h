@@ -2,7 +2,7 @@
 
 // Turns the bytes a QMX sends back over CAT into the few replies this
 // firmware reads: PC (power, tenths of a watt), SW (SWR, hundredths), FA
-// (the VFO A frequency), SR (the SWR-protection lock: 1 locked, 0 clear), IF (the radio's
+// (the VFO A frequency), SR (the SWR-protection lock: 1 locked, 0 clear), Q9 (the QMX's receive output: 1 IQ, 0 audio), IF (the radio's
 // state in one reply: frequency, TX or RX, mode, split) and VN (its firmware version). Everything else, including the radio's "?;" for a
 // command it refused, is ignored.
 //
@@ -27,6 +27,7 @@ typedef struct {
     volatile int sw_hundredths;
     volatile int fa_hz;
     volatile int sr_lock;
+    volatile int q9_iq;
     // IF: -1 until a reply arrives. tx 1 = transmitting; mode is the MD digit; split 1 = on.
     volatile int if_hz;
     volatile int if_tx;
@@ -44,7 +45,12 @@ typedef struct {
     int escape_state;  // 0 text, 1 after ESC, 2 inside a CSI sequence
 } cat_reply_parser_t;
 
-// Forgets every reading and any half-received frame. Not the firmware version.
+// Every field at its starting value: no reading, no version, no frame. Use this to construct a
+// parser, not a positional initializer, which shifts when a field is added.
+void cat_reply_parser_init(cat_reply_parser_t* parser);
+
+// Forgets every reading and any half-received frame. Not the firmware version, and not Q9: like
+// the version, Q9 is set by a command at link-up and a transmission's end must not lose its answer.
 void cat_reply_parser_reset(cat_reply_parser_t* parser);
 
 // Forgets the firmware version.
