@@ -36,9 +36,14 @@ void qmx_audio_rx_init(bool qmx_iq, int ab_slots);
 // the capture follows at the boundary. `busy`: a change is not made now (a transmission, Tune, a sweep
 // or a prime is running).
 bool qmx_audio_rx_tick(bool qmx_iq, int ab_slots, bool busy);
+// The Q9 for a change qmx_audio_rx_tick() just made went out (`sent`) or did not: a change whose write
+// failed, or that went out after the boundary, is taken back so the capture stays with the radio. Both
+// log a Port A line when they take a change back.
+void qmx_audio_rx_sent(void);
+void qmx_audio_rx_not_sent(void);
 // The path the radio should be in: the latest decision (the next slot's, in the last 0.5 s of a slot).
 bool qmx_audio_rx_want_iq(void);
-// ft8_audio_pipeline_config_t::rx_path_for_slot: 1 audio, 2 I/Q.
+// ft8_audio_pipeline_config_t::rx_path_for_slot: 1 audio, 2 I/Q; 0 (no tag) unless qmx_iq_ab is on.
 int qmx_audio_rx_path_for_slot(void *ctx, int64_t slot_idx);
 
 // ft8_audio_pipeline_config_t::take_frontend_us: the front end's time since the last call.

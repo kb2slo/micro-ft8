@@ -69,6 +69,7 @@ typedef enum {
     RADIO_RX_PATH_MATCHED,   // the radio reads back what was set
     RADIO_RX_PATH_MISMATCH,  // the radio reads back the other output
     RADIO_RX_PATH_NO_REPLY,  // the radio did not answer in time
+    RADIO_RX_PATH_NOT_SENT,  // the write failed: the radio was not told
 } radio_rx_path_event_t;
 
 void radio_control_set_backend(radio_control_backend_t backend);

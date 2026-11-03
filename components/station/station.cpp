@@ -312,7 +312,7 @@ void apply_key(StationSettings* io, StationKey key, const std::string& value)
             }
             break;
         case StationKey::QmxIqAb:
-            if (sscanf(value.c_str(), "%d", &val) == 1 && val >= 0 && val <= kStationQmxIqAbMax) {
+            if (sscanf(value.c_str(), "%d", &val) == 1 && station_qmx_iq_ab_valid(val)) {
                 io->qmx_iq_ab = val;
             }
             break;

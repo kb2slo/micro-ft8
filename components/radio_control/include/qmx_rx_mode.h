@@ -21,6 +21,7 @@ static constexpr int64_t kQmxRxLeadMs = 500;
 // The path slot `slot` should be received on. qmx_iq_ab = N > 0: IQ for N slots, audio for N, and so
 // on from slot 0, whatever qmx_iq says (N = 2: each path gets an even and an odd slot, so the
 // comparison is not between the two parities of the 15-second cycle). Otherwise qmx_iq.
+// N must be 1 or even (qmx_iq_ab_valid): an odd N of 3 or more gives one path the even slots more often.
 static inline bool qmx_rx_slot_wants_iq(int64_t slot, bool qmx_iq, int ab_slots)
 {
     if (ab_slots <= 0) {
@@ -73,10 +74,29 @@ static inline bool qmx_rx_plan_step(QmxRxPlan* plan, int64_t now_ms, int64_t slo
     return false;
 }
 
-// The path at time `ms`, for the ingest task: the plan's, once its slot has begun.
-static inline bool qmx_rx_plan_iq_at(const QmxRxPlan& plan, int64_t ms, int64_t slot_ms)
+// The change just made did not reach the radio (the write failed, or it would land after the boundary):
+// the capture stays with the radio, on the path it had.
+static inline void qmx_rx_plan_cancel(QmxRxPlan* plan)
 {
-    return qmx_rx_slot_of(ms, slot_ms) >= plan.slot ? plan.iq : plan.prev_iq;
+    plan->iq = plan->prev_iq;
+}
+
+// True once the plan's slot has begun: a Q9 sent now would land inside it.
+static inline bool qmx_rx_plan_late(const QmxRxPlan& plan, int64_t now_ms, int64_t slot_ms)
+{
+    return now_ms >= plan.slot * slot_ms;
+}
+
+// The path at time `ms`, for the ingest task: the plan's, once its slot has begun. `applied` is the
+// ingest task's own latch (start it at -1): once it has applied a plan's slot it keeps the plan's path,
+// so a clock stepped back inside the plan's slot does not flip the capture while the radio stays switched.
+static inline bool qmx_rx_plan_iq_at(const QmxRxPlan& plan, int64_t ms, int64_t slot_ms, int64_t* applied)
+{
+    if (qmx_rx_slot_of(ms, slot_ms) >= plan.slot) {
+        *applied = plan.slot;
+        return plan.iq;
+    }
+    return *applied == plan.slot ? plan.iq : plan.prev_iq;
 }
 
 // The path slot `slot` was received on, for its SLOT line. Right while the plan is at most one slot
@@ -86,7 +106,7 @@ static inline bool qmx_rx_plan_iq_for_slot(const QmxRxPlan& plan, int64_t slot)
     return slot >= plan.slot ? plan.iq : plan.prev_iq;
 }
 
-// One word, so the ingest task reads a whole plan without a lock. The slot is kept to 32 bits
+// One word, so the ingest task reads a whole plan at once. The slot is kept to 32 bits
 // (a slot is 15 s: that lasts to the year 2100).
 static inline uint64_t qmx_rx_plan_pack(const QmxRxPlan& plan)
 {

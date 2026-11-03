@@ -164,13 +164,13 @@ iq_frontend_status_t iq_frontend_init(iq_frontend_t* frontend, const iq_frontend
     frontend->channel_taps = taps;
     double beta = kaiser_beta(DESIGN_ATTENUATION_DB);
     double cutoff = (half_width + TRANSITION_HZ / 2.0) / fo;
-    double coef[(IQ_FRONTEND_MAX_CHANNEL_TAPS + 1) / 2];
+    // Two passes over the design rather than a coefficient array: init runs on a 4,096-byte task.
     double sum = 0.0;
     for (int k = 0; k <= taps / 2; ++k) {
-        coef[k] = kaiser_sinc(k, taps, cutoff, beta);
-        sum += (k == 0) ? coef[k] : 2.0 * coef[k];
+        const double c = kaiser_sinc(k, taps, cutoff, beta);
+        sum += (k == 0) ? c : 2.0 * c;
     }
-    for (int k = 0; k <= taps / 2; ++k) frontend->channel[k] = (float)(coef[k] / sum);
+    for (int k = 0; k <= taps / 2; ++k) frontend->channel[k] = (float)(kaiser_sinc(k, taps, cutoff, beta) / sum);
 
     // Shift up: shift/fo is p/q in lowest terms, so the phasor repeats every q samples.
     int period = fo / gcd(shift, fo);

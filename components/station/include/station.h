@@ -11,7 +11,12 @@ static constexpr int kStationBandCount = 12;
 // keyed from the radio's PTT (architecture/radio.md, TX timing on a QMX).
 static constexpr int kStationTxMinDelayDefaultMs = 50;
 static constexpr int kStationTxMinDelayMaxMs = 500;
-static constexpr int kStationQmxIqAbMax = 99;  // qmx_iq_ab: slots per path
+static constexpr int kStationQmxIqAbMax = 98;  // qmx_iq_ab: slots per path
+// 0 off, 1, or an even N: an odd N of 3 or more would give one path the even slots more often.
+static inline bool station_qmx_iq_ab_valid(int n)
+{
+    return n == 0 || n == 1 || (n >= 2 && n <= kStationQmxIqAbMax && n % 2 == 0);
+}
 
 struct StationSettings {
     float band_freq[kStationBandCount];

@@ -98,8 +98,36 @@ int main()
     qmx_iq_link_step(flip, true, false, true, -1, 0);
     expect(qmx_iq_link_step(flip, true, false, false, 1, 10) == QmxIqLinkAction::None,
            "no verdict on a stale reply");
-    expect(qmx_iq_link_step(flip, true, false, false, -1, 20) == QmxIqLinkAction::Send, "the new want is sent");
-    expect(qmx_iq_link_step(flip, true, false, false, 0, 30) == QmxIqLinkAction::Matched, "and checked");
+    expect(qmx_iq_link_step(flip, true, false, false, -1, 20) == QmxIqLinkAction::None,
+           "the new want waits out the old reply window");
+    expect(qmx_iq_link_step(flip, true, false, false, -1, kQmxIqLinkReplyMs - 1) == QmxIqLinkAction::None,
+           "still waiting just before it ends");
+    expect(qmx_iq_link_step(flip, true, false, false, -1, kQmxIqLinkReplyMs) == QmxIqLinkAction::Send,
+           "the new want is sent once it is over");
+    expect(qmx_iq_link_step(flip, true, false, false, 0, kQmxIqLinkReplyMs + 10) == QmxIqLinkAction::Matched,
+           "and checked");
+
+    // A plan change whose write failed is taken back: the want returns to what the radio has, and the
+    // link, whatever phase the failure left it in, sends that on its next try and does not stay Done.
+    QmxIqLink cancelled;
+    qmx_iq_link_step(cancelled, true, false, false, -1, 0);
+    qmx_iq_link_step(cancelled, true, false, false, 0, 10);
+    expect(qmx_iq_link_step(cancelled, true, false, true, -1, 100) == QmxIqLinkAction::Send, "change sent");
+    expect(!qmx_iq_link_send_failed(cancelled, 100), "and its write failed");
+    expect(qmx_iq_link_step(cancelled, true, false, false, -1, 110) == QmxIqLinkAction::None,
+           "the want back at audio: quiet until the retry pause is over");
+    expect(qmx_iq_link_step(cancelled, true, false, false, -1, 100 + kQmxIqLinkRetryMs) == QmxIqLinkAction::Send,
+           "then audio is confirmed");
+    QmxIqLink gave_up;
+    qmx_iq_link_step(gave_up, true, false, false, -1, 0);
+    qmx_iq_link_step(gave_up, true, false, false, 0, 10);
+    for (int i = 0; i < kQmxIqLinkSendTries; ++i) {
+        const int64_t t = 100 + i * kQmxIqLinkRetryMs;
+        qmx_iq_link_step(gave_up, true, false, true, -1, t);
+        qmx_iq_link_send_failed(gave_up, t);
+    }
+    expect(qmx_iq_link_step(gave_up, true, false, false, -1, 50 * kQmxIqLinkRetryMs) == QmxIqLinkAction::Send,
+           "a link that gave up on the change resumes when the want returns");
 
     // A switch whose write gives up is not retried every pass: it waits for the want to change again.
     QmxIqLink dead;

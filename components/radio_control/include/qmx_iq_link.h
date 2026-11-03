@@ -8,7 +8,8 @@
 // Per send: `Q9 n;` then `Q9;` (SEND), wait for the radio to say which it is set to, and compare it
 // with what the station wants (MATCHED, MISMATCH), or give up (NO_REPLY). Either way the capture path
 // has already been chosen by the schedule, so a mismatch is a warning, not a retry: the radio's reply
-// does not change what the P4 decodes.
+// does not change what the P4 decodes. A write that fails (qmx_iq_link_send_failed) is reported to the
+// caller, which takes back a path change that depended on it (qmx_rx_plan_cancel).
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -85,7 +86,11 @@ static inline QmxIqLinkAction qmx_iq_link_step(QmxIqLink& link, bool ready, bool
                 return QmxIqLinkAction::None;
             }
             if (want_iq != link.sent_iq) {
-                link.phase = QmxIqLinkPhase::Idle;  // the answer would be to a question no longer asked
+                // The answer would be to a question no longer asked, and the old query's reply may still
+                // be on its way: ask again only after the reply window, so that reply cannot be taken
+                // for the new answer (the reset at Send clears only what has arrived by then).
+                link.phase = QmxIqLinkPhase::Idle;
+                link.retry_at_ms = link.deadline_ms;
                 return QmxIqLinkAction::None;
             }
             if (reply == 0 || reply == 1) {

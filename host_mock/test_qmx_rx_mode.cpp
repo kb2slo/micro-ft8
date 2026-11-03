@@ -83,10 +83,11 @@ int main()
         Run run;
         run.plan = qmx_rx_plan_make(0, true);
         bool ok = true, at_boundary = true;
+        int64_t applied = -1;
         bool last = true;
         for (int64_t t = 0; t < 8 * kSlot; t += 10) {
             qmx_rx_plan_step(&run.plan, t, kSlot, false, 2, false);
-            const bool seen = qmx_rx_plan_iq_at(run.plan, t, kSlot);
+            const bool seen = qmx_rx_plan_iq_at(run.plan, t, kSlot, &applied);
             const int64_t slot = t / kSlot;
             if (seen != qmx_rx_slot_wants_iq(slot, false, 2)) ok = false;
             if (seen != last && t % kSlot != 0) at_boundary = false;
@@ -114,11 +115,14 @@ int main()
         run.plan = qmx_rx_plan_make(3, false);
         drive(&run, 3 * kSlot, 3 * kSlot + 7000, false, 0);
         drive(&run, 3 * kSlot + 7000, 4 * kSlot - 600, true, 0);
-        expect(run.changes == 0 && !qmx_rx_plan_iq_at(run.plan, 4 * kSlot - 600, kSlot), "key set mid-slot: nothing yet");
+        int64_t applied = -1;
+        expect(run.changes == 0 && !qmx_rx_plan_iq_at(run.plan, 4 * kSlot - 600, kSlot, &applied),
+               "key set mid-slot: nothing yet");
         drive(&run, 4 * kSlot - 600, 4 * kSlot - 400, true, 0);
         expect(run.changes == 1 && run.changed_at >= 4 * kSlot - 500 && run.changed_at < 4 * kSlot - 490,
                "decided 0.5 s before the boundary");
-        expect(!qmx_rx_plan_iq_at(run.plan, 4 * kSlot - 1, kSlot) && qmx_rx_plan_iq_at(run.plan, 4 * kSlot, kSlot),
+        expect(!qmx_rx_plan_iq_at(run.plan, 4 * kSlot - 1, kSlot, &applied) &&
+                   qmx_rx_plan_iq_at(run.plan, 4 * kSlot, kSlot, &applied),
                "and in effect from the boundary");
         drive(&run, 4 * kSlot - 400, 9 * kSlot, true, 0);
         expect(run.changes == 1, "and not decided again");
@@ -144,6 +148,35 @@ int main()
                "a step back inside a slot is ignored");
         expect(!qmx_rx_plan_step(&p, 5 * kSlot, kSlot, false, 0, false) && p.slot == 5 && p.iq && p.prev_iq,
                "a clock set far back restarts the plan on the path it has");
+    }
+
+    // A clock stepped back inside the plan's slot after the ingest applied it does not flip the capture
+    // while the radio stays switched; before it was applied, the old path still holds.
+    {
+        QmxRxPlan p = qmx_rx_plan_make(3, false);
+        qmx_rx_plan_step(&p, 4 * kSlot - 400, kSlot, true, 0, false);  // slot 4: IQ
+        int64_t applied = -1;
+        expect(!qmx_rx_plan_iq_at(p, 4 * kSlot - 100, kSlot, &applied), "before the boundary: the old path");
+        expect(qmx_rx_plan_iq_at(p, 4 * kSlot + 8, kSlot, &applied), "after it: the new");
+        expect(qmx_rx_plan_iq_at(p, 4 * kSlot - 300, kSlot, &applied), "clock stepped back: the new path is kept");
+        expect(qmx_rx_plan_iq_at(p, 4 * kSlot - 14000, kSlot, &applied), "even a long way back in the plan's slot");
+        int64_t fresh = -1;
+        expect(!qmx_rx_plan_iq_at(p, 4 * kSlot - 300, kSlot, &fresh), "a plan never applied still gives the old path");
+    }
+
+    // A change that did not reach the radio is taken back: the capture stays with the radio.
+    {
+        QmxRxPlan p = qmx_rx_plan_make(3, false);
+        expect(qmx_rx_plan_step(&p, 4 * kSlot - 400, kSlot, true, 0, false) && p.iq, "slot 4 decided: IQ");
+        expect(!qmx_rx_plan_late(p, 4 * kSlot - 1, kSlot) && qmx_rx_plan_late(p, 4 * kSlot, kSlot),
+               "a send is late from the boundary on");
+        qmx_rx_plan_cancel(&p);
+        int64_t applied = -1;
+        expect(!p.iq && !p.prev_iq && p.slot == 4 && !qmx_rx_plan_iq_at(p, 4 * kSlot + 8, kSlot, &applied) &&
+                   !qmx_rx_plan_iq_for_slot(p, 4),
+               "cancelled: audio from the boundary on, and slot 4 reads audio");
+        expect(qmx_rx_plan_step(&p, 5 * kSlot - 400, kSlot, true, 0, false) && p.iq && p.slot == 5,
+               "and the next slot asks again");
     }
 
     // The plan is one word.

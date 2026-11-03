@@ -279,7 +279,8 @@ static esp_err_t qmx_query_version(void) {
 // the want changes (main.cpp passes the path qmx_rx_mode.h decided for the slot about to begin), and
 // reads it back. `Q9 0;` is sent too, deliberately: a radio another tool left in IQ mode streams I/Q
 // that the audio path decodes as nothing, silently (RFC 0006). The read-back only warns: the capture
-// path was chosen by the schedule and does not follow the radio.
+// path was chosen by the schedule and does not follow the radio, except that a change whose write did not
+// go out (RADIO_RX_PATH_NOT_SENT) or went out late is taken back by the caller, so the two stay together.
 static QmxIqLink s_iq_link;
 
 static radio_rx_path_event_t qmx_rx_path_tick(bool want_iq, bool busy) {
@@ -299,7 +300,7 @@ static radio_rx_path_event_t qmx_rx_path_tick(bool want_iq, bool busy) {
                     ESP_LOGW(TAG, "QMX Q9 not sent after %d tries: the receive output is unconfirmed",
                              kQmxIqLinkSendTries);
                 }
-                return RADIO_RX_PATH_NONE;
+                return RADIO_RX_PATH_NOT_SENT;  // the caller takes back a path change that needed it
             }
             ESP_LOGI(TAG, "QMX receive output set to %s (Q9 %d;)", want, want_iq ? 1 : 0);
             return RADIO_RX_PATH_SENT;

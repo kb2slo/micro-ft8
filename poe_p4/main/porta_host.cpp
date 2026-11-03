@@ -690,8 +690,9 @@ const char *porta_host_config_set(const char *key, const char *value) {
         // Refused, not ignored, like tries: an experiment switch must not read back a value it ignored.
         char *end = nullptr;
         const long n = strtol(value, &end, 10);
-        if (end == value || *end != '\0' || n < 0 || n > kStationQmxIqAbMax) {
-            return "qmx_iq_ab is 0 to 99";
+        if (end == value || *end != '\0' || n < 0 || n > kStationQmxIqAbMax ||
+            !station_qmx_iq_ab_valid((int)n)) {
+            return "qmx_iq_ab is 0, 1, or an even number to 98";
         }
     }
 

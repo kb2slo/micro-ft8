@@ -134,9 +134,20 @@ int main()
         station_parse("qmx_iq_ab=100\n", &s);
         expect_true(s.qmx_iq_ab == 2, "a value past kStationQmxIqAbMax is ignored");
         station_parse("qmx_iq_ab=99\n", &s);
-        expect_true(s.qmx_iq_ab == 99, "kStationQmxIqAbMax itself is accepted");
+        expect_true(s.qmx_iq_ab == 2, "99 is past kStationQmxIqAbMax and ignored");
+        station_parse("qmx_iq_ab=98\n", &s);
+        expect_true(s.qmx_iq_ab == 98, "kStationQmxIqAbMax itself is accepted");
+        station_parse("qmx_iq_ab=3\n", &s);
+        expect_true(s.qmx_iq_ab == 98, "an odd N of 3 or more is ignored (it biases the parity)");
+        station_parse("qmx_iq_ab=1\n", &s);
+        expect_true(s.qmx_iq_ab == 1, "1 is accepted");
+        station_parse("qmx_iq_ab=4\n", &s);
+        expect_true(s.qmx_iq_ab == 4, "an even N is accepted");
+        expect_true(!station_qmx_iq_ab_valid(5) && !station_qmx_iq_ab_valid(97) && station_qmx_iq_ab_valid(0) &&
+                        station_qmx_iq_ab_valid(2) && !station_qmx_iq_ab_valid(-2),
+                    "station_qmx_iq_ab_valid, as CONFIG_SET uses it");
         station_parse("qmx_iq_ab=abc\n", &s);
-        expect_true(s.qmx_iq_ab == 99, "a non-number is ignored");
+        expect_true(s.qmx_iq_ab == 4, "a non-number is ignored");
         station_parse("qmx_iq_ab=0\n", &s);
         expect_true(s.qmx_iq_ab == 0, "and turns off");
         station_parse(station_serialize(s), &t);

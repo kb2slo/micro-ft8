@@ -158,10 +158,14 @@ static resample_state_t s_resample_state;
 // conversion buffer, checked by tools/check_ram_budget.py. Used only by the ingest task, which
 // calls qmx_audio_read_ft8_samples(); initialised on the UAC task before a stream is published.
 // Which path a read takes follows the plan (qmx_rx_mode.h), which the main loop writes and the ingest
-// task reads: one word, so no lock. s_iq_active is what the ingest task is converting now.
+// task reads: one 64-bit word, read whole. Correct, though not lock-free: on rv32 a 64-bit atomic goes
+// through libatomic. s_iq_active is what the ingest task is converting now; s_plan_applied is its latch.
 static constexpr double kIqChannelHz = 13500.0;
 static std::atomic<uint64_t> s_rx_plan{0};
 static bool s_iq_active;
+static int64_t s_plan_applied = -1;      // ingest task: the plan slot it has applied
+static bool s_change_pending;            // main loop: a change was made and its Q9 is not yet out
+static std::atomic<int> s_ab_slots{0};   // qmx_iq_ab as the main loop last read it
 static iq_frontend_t s_iq_frontend;
 static float s_iq_frames[2 * (UAC_READ_BUFFER_SIZE / 6)];  // one read's frames, I then Q, ±1
 static std::atomic<uint32_t> s_frontend_us;  // the front end's time, for BDRY's fe
@@ -500,9 +504,10 @@ static void try_open_uac(uint8_t addr, uint8_t iface_num) {
         };
         const iq_frontend_status_t status = iq_frontend_init(&s_iq_frontend, &config);
         if (status != IQ_FRONTEND_OK) {
-            ESP_LOGE(TAG, "I/Q front end init failed (%d): nothing will decode", (int)status);
+            ESP_LOGE(TAG, "I/Q front end init failed (%d): I/Q cannot be decoded, audio is unaffected",
+                     (int)status);
         }
-        // The init runs on this 4,096-byte task with a double coef[81] and soft-double libm.
+        // The init runs on this 4,096-byte task with soft-double libm, at every publish whatever the key.
         ESP_LOGI(TAG, "I/Q front end init: uac_lib stack high-water mark %u bytes free",
                  (unsigned)uxTaskGetStackHighWaterMark(nullptr));
     }
@@ -834,11 +839,13 @@ int qmx_audio_read_ft8_samples(void * /*ctx*/, float *out, int max_samples) {
     // radio changed format 0.5 s earlier, in the idle tail of the slot before.
     const int64_t now = rtc_now_ms();
     const bool want_iq = qmx_rx_plan_iq_at(qmx_rx_plan_unpack(s_rx_plan.load(std::memory_order_relaxed)), now,
-                                            g_protocol->slot_time_ms);
+                                            g_protocol->slot_time_ms, &s_plan_applied);
     if (want_iq != s_iq_active) {
         s_iq_active = want_iq;
         if (want_iq) {
             iq_frontend_reset(&s_iq_frontend);  // no slot mixes paths: the front end starts empty
+        } else {
+            resample_init(&s_resample_state);   // and so does the audio resampler
         }
         char line[48];
         snprintf(line, sizeof(line), "RXPATH %lld %s +%lldms", (long long)(now / g_protocol->slot_time_ms),
@@ -857,16 +864,49 @@ void qmx_audio_rx_init(bool qmx_iq, int ab_slots) {
     const bool iq = qmx_rx_slot_wants_iq(slot, qmx_iq, ab_slots);
     s_rx_plan.store(qmx_rx_plan_pack(qmx_rx_plan_make(slot, iq)));
     s_iq_active = iq;
+    s_ab_slots.store(ab_slots);
+    s_change_pending = false;
     ESP_LOGI(TAG, "QMX receive decodes from %s (qmx_iq=%d qmx_iq_ab=%d)", iq ? "I/Q" : "audio",
              qmx_iq ? 1 : 0, ab_slots);
 }
 
-bool qmx_audio_rx_tick(bool qmx_iq, int ab_slots, bool busy) {
+// Takes back the change just made (qmx_rx_plan_cancel) and says so. Main loop only, which alone writes the plan.
+static void rx_cancel(const char *why) {
     QmxRxPlan plan = qmx_rx_plan_unpack(s_rx_plan.load());
-    const bool changed =
-        qmx_rx_plan_step(&plan, rtc_now_ms(), g_protocol->slot_time_ms, qmx_iq, ab_slots, busy);
+    qmx_rx_plan_cancel(&plan);
     s_rx_plan.store(qmx_rx_plan_pack(plan));
+    s_change_pending = false;
+    char line[48];
+    snprintf(line, sizeof(line), "RXPATH %lld kept %s: Q9 %s", (long long)plan.slot, plan.iq ? "iq" : "au", why);
+    debug_log_line(line);
+}
+
+bool qmx_audio_rx_tick(bool qmx_iq, int ab_slots, bool busy) {
+    s_ab_slots.store(ab_slots);
+    const int64_t now = rtc_now_ms();
+    QmxRxPlan plan = qmx_rx_plan_unpack(s_rx_plan.load());
+    if (s_change_pending && qmx_rx_plan_late(plan, now, g_protocol->slot_time_ms)) {
+        rx_cancel("late");  // the main loop stalled past the boundary before sending
+        plan = qmx_rx_plan_unpack(s_rx_plan.load());
+    }
+    const bool changed = qmx_rx_plan_step(&plan, now, g_protocol->slot_time_ms, qmx_iq, ab_slots, busy);
+    s_rx_plan.store(qmx_rx_plan_pack(plan));
+    if (changed) s_change_pending = true;
     return changed;
+}
+
+void qmx_audio_rx_sent(void) {
+    if (!s_change_pending) return;
+    const QmxRxPlan plan = qmx_rx_plan_unpack(s_rx_plan.load());
+    if (qmx_rx_plan_late(plan, rtc_now_ms(), g_protocol->slot_time_ms)) {
+        rx_cancel("sent after the boundary");
+    } else {
+        s_change_pending = false;
+    }
+}
+
+void qmx_audio_rx_not_sent(void) {
+    if (s_change_pending) rx_cancel("not delivered");
 }
 
 bool qmx_audio_rx_want_iq(void) {
@@ -874,6 +914,7 @@ bool qmx_audio_rx_want_iq(void) {
 }
 
 int qmx_audio_rx_path_for_slot(void * /*ctx*/, int64_t slot_idx) {
+    if (s_ab_slots.load() == 0) return 0;  // no tag unless the experiment is on: the SLOT line stays as it was
     return qmx_rx_plan_iq_for_slot(qmx_rx_plan_unpack(s_rx_plan.load()), slot_idx) ? 2 : 1;
 }
 

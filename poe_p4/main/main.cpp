@@ -130,7 +130,15 @@ extern "C" void app_main(void) {
             case RADIO_RX_PATH_NO_REPLY:
                 debug_log_line("Q9; unanswered: cannot confirm the QMX receive mode matches the wanted path");
                 break;
+            case RADIO_RX_PATH_NOT_SENT: {
+                char line[40];
+                snprintf(line, sizeof(line), "Q9 %d not sent", qmx_audio_rx_want_iq() ? 1 : 0);
+                debug_log_line(line);
+                qmx_audio_rx_not_sent();
+                break;
+            }
             case RADIO_RX_PATH_SENT: {
+                qmx_audio_rx_sent();
                 // How long before the next boundary the radio was told: about 500 ms when a change
                 // was scheduled, anything at a link-up.
                 const int64_t slot_ms = g_protocol->slot_time_ms;
