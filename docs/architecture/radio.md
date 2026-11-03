@@ -6,7 +6,7 @@ The core (slot loop, TX scheduler, HUD) talks to the radio only through `compone
 
 * **One table of operations per radio**, `radio_control_ops_t` (`components/radio_control/include/radio_control_backend.h`): `ready`, `on_audio_start`, `sync_frequency_mode`, `begin_tx`, `set_tone_hz`, `end_tx`, `set_tune`, `set_time`, the TX power/SWR trio `reset_tx_power_swr` / `poll_tx_power_swr` / `get_tx_power_swr`, and `begin_cpfsk_tx`. A null pointer means "not supported", never a crash.
 * **Capabilities** (`radio_control_capabilities_t`, `radio_control.h`) are what the core and HUD ask instead of the radio's name: `has_wattmeter`, `has_swr`, `can_set_time`, `audio_is_uac`, `can_md8_tune`, `can_ps0`.
-* **One `.cpp` per radio**: `radio_control_qmx.cpp`, `radio_control_qdx.cpp`. QMX and QMX+ are one backend until their CAT differs.
+* **One `.cpp` per radio**: `radio_control_qmx.cpp`, the only one. QMX and QMX+ are one backend until their CAT differs.
 * **CAT replies are read by one parser**, `cat_reply_parser` (`components/radio_control`, host-tested), fed from the CDC callback (`poe_p4/main/qmx_transport.cpp`). It keeps the last `PC`, `SW` and `FA` reply, and drops the terminal display codes (`ESC[7m` ...) the radio appends to some replies, which would otherwise glue onto the next reply and hide its prefix. `FA` exists so a sweep can tell a frequency the radio refused (it answers `?;` and `FA;` still reads the old one) from one that took.
 * **The radio is fixed to the QMX** (`radio_control_set_backend(RADIO_CONTROL_QMX)` in `poe_p4/main/main.cpp`). Following the Station `radio` setting is row cgc4.
 
@@ -26,7 +26,7 @@ The QMX takes its tones over CAT, so the main board sets the timing (`tx_schedul
 * **The first `TA` is never sooner than the minimum TX delay after `TX;` returned**, however late the TX is armed, so an amplifier keyed from the QMX's PTT has its switching time before RF and the QMX's SWR protection never sees the transient. The delay is Settings › Radio › **Min TX delay**, `tx_min_delay_ms` in Station.txt: 0 to 500 ms, default 50, refused outside that; it is separate from the 0.5 s start above, which is the convention. A late start skips `(slot_ms + delay − 500) / symbol` tones (`tx_skip_tones()`): the first RF is the later of tone 0's due time and `TX;` + delay, sounding the tone due then, and later tones are slot-anchored again. At the default a reply armed up to 450 ms into the slot loses nothing; one armed at 3 s loses 17 of 79. A larger delay trades tones on late starts for relay time.
 * **After the last tone: `TA0;`, 50 ms, `RX;`.** RF stops before PTT drops. FT8 ends at about 13.19 s of 15 s. A cancel sends `RX;` at once.
 * **Both waits are states of the 10 ms tick**, not sleeps, and `tx_active` stays true from `TX;` to `RX;`.
-* **A radio with CPFSK audio (QDX) is unchanged:** `radio_control_tone_lead_ms()` is 0 where `begin_cpfsk_tx` exists, so neither the 0.5 s start nor the minimum delay applies, and with no `key_up` it goes straight to `RX;`.
+* **A radio that takes its symbols itself** would skip both: `radio_control_tone_lead_ms()` is 0 where a backend has `begin_cpfsk_tx`, so neither the 0.5 s start nor the minimum delay applies, and with no `key_up` it goes straight to `RX;`. No backend has it today; RFC 0014 §3.3 makes the lead its own property for the HL2.
 
 ## Prime an RF-sensing amplifier on a band change
 
@@ -67,7 +67,7 @@ Measured on a QMX at firmware 1_04_003 with `tools/qmx_swr_probe.py` (2026-09-30
 * **`MD8;` enters SWR Tune and keys the radio by itself** (`KD;`/`TQ;` read `1`; `MD;` then reads `3`). `SW;` returns the SWR in hundredths while keyed, and an empty `SW;` in receive. No `TX;` is needed, and a plain `TX;` does not measure: `KD;` stays `0` and `SW;` returns noisy, meaningless values.
 * **Operate's manual Tune uses SWR Tune on a QMX.** Start syncs the operating frequency and sends `MD8;`;
   Stop sends `RX;` then `MD6;`, so the carrier uses the QMX's configured Tune % and the radio returns to
-  digital mode. A QDX keeps its CPFSK Tune path. The SWR sweep and optional amplifier band-prime pulse above
+  digital mode. The SWR sweep and optional amplifier band-prime pulse above
   use the same QMX mode through their own bounded state machines. Bench-verified 2026-10-26 on QMX 1_04_003,
   local `cd17cd0-dirty`: 25% produced the reduced Tune carrier and stable SWR, 10% produced lower power, and
   Stop returned to Digi receive with decoding resumed.
@@ -100,7 +100,7 @@ flowchart LR
     sk -- "/api/events" --> page
 ```
 
-* **The state machine** is `components/swr_sweep`: non-blocking, one radio command per `swr_sweep_tick()`, so USB, audio and Port A keep running. It talks to the radio only through `radio_swr_io_t` (`radio_control_swr_io()`, QMX only, behind `can_md8_tune`; a QDX returns none), so `host_mock` tests it against a fake QMX: a refused `FA`, a refused band, cancel at any state, a silent radio, the restore, the caps. The sequence per point and the bench facts behind it are in the section above.
+* **The state machine** is `components/swr_sweep`: non-blocking, one radio command per `swr_sweep_tick()`, so USB, audio and Port A keep running. It talks to the radio only through `radio_swr_io_t` (`radio_control_swr_io()`, QMX only, behind `can_md8_tune`), so `host_mock` tests it against a fake QMX: a refused `FA`, a refused band, cancel at any state, a silent radio, the restore, the caps. The sequence per point and the bench facts behind it are in the section above.
 * **The phone owns the plan.** The firmware takes `(lo, hi, step)` kHz ranges and holds no band table, so there is nothing to keep in agreement between C and JavaScript. The radio's own refusal of a frequency outside its configured bands is the hardware-side limit, and it is not ours to duplicate. A band whose first and last frequency are both refused is reported skipped and never keys; a silent probe is not a refusal.
 * **Caps.** A request is refused above `SWR_SWEEP_MAX_POINTS` (200) points or `SWR_SWEEP_MAX_RANGES` (12) ranges. Every keyed phase is bounded by the reply timeouts and by aborting after three silent queries in a row, so the point cap bounds the keyed time (200 points at about 0.85 s is under three minutes). *Why no keyed-time cap:* it would be a second rule that can never fire.
 * **Threads.** `swr_sweep_start()`, `_tick()` and `_cancel()` belong to one task. Port A handlers use `swr_sweep_request_start()`, `_request_cancel()` and `swr_sweep_busy()`, which hand the work to that task's next tick. The tick runs at least every 100 ms (the P4's main loop: 10 ms); one more than a second late while the radio is keyed, and the next tick un-keys and aborts (STALLED). If ticks stopped altogether, only the radio's own CAT timeout (120 s on the bench unit) would un-key it.

@@ -23,10 +23,7 @@
 // USB host, CDC-ACM, and UAC lifecycle are board-specific (this
 // board has no presence-detection client or TX audio yet), so that part
 // stays here while everything CAT-protocol-shaped lives in the shared
-// component instead of being duplicated. Only the QMX backend is wired up
-// (main.cpp selects RADIO_CONTROL_QMX); the QDX-only uac_tx_* functions
-// below are honestly unimplemented, not silently faked -- see the comment
-// on them. qmx_audio_* (RX only -- decode audio) is this file's other half,
+// component instead of being duplicated. qmx_audio_* (RX only -- decode audio) is this file's other half,
 // feeding components/ft8_audio_pipeline. There is no TX audio out or hot-plug
 // presence detection yet.
 //
@@ -379,8 +376,7 @@ static void uac_device_event_cb(uac_host_device_handle_t handle,
 
 // Queue for uac_lib_task. Only RX (microphone) interfaces fire RX_CONNECTED;
 // a QMX's TX-capable interface (if it advertises one) would fire TX_CONNECTED
-// instead and is ignored here -- this board doesn't use UAC TX (see uac_tx_*
-// below). uac_host_device_open_with_vid_pid() looked like the simpler match
+// instead and is ignored here -- this board doesn't use UAC TX. uac_host_device_open_with_vid_pid() looked like the simpler match
 // to try_open()'s CDC polling style, but its iface_num isn't a wildcard --
 // the library rejects 0 outright ("Invalid interface number"), so it still
 // needs the real interface number, which only the driver's own enumeration
@@ -705,22 +701,6 @@ bool cat_cdc_get_parsed_sr(int* lock) {
     }
     return true;
 }
-
-// radio_transport.h -- UAC TX group, QDX-only. components/radio_control
-// compiles radio_control_qdx.cpp unconditionally, so these must exist for
-// the link to succeed, but main.cpp never selects RADIO_CONTROL_QDX on this
-// board, so they are never actually called.
-
-bool uac_tx_begin_cpfsk(float /*base_hz*/, const uint8_t * /*symbols*/, size_t /*symbol_count*/,
-                        float /*tone_spacing_hz*/, uint32_t /*samples_per_symbol*/) {
-    return false;
-}
-
-bool uac_tx_begin_tune(float /*tone_hz*/) {
-    return false;
-}
-
-void uac_tx_end(void) {}
 
 // qmx_audio_* -- RX decode audio, ft8_audio_pipeline_config_t's callbacks.
 

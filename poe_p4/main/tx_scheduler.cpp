@@ -169,8 +169,8 @@ void tx_scheduler_cancel(void) {
     }
 }
 
-// The operator's least TX;-to-RF gap. A radio with no lead (QDX: audio starts
-// with TX;) has nothing to hold back.
+// The operator's least TX;-to-RF gap. A radio with no lead (one that takes the symbols itself, through
+// begin_cpfsk_tx) has nothing to hold back.
 static int tx_min_delay_ms(void) {
     return radio_control_tone_lead_ms() > 0 ? porta_p4_station_tx_min_delay_ms() : 0;
 }
