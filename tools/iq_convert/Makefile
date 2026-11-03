@@ -1,4 +1,4 @@
-# Offline I/Q front end (row y9bt): components/iq_frontend over a recording, and synthetic I/Q.
+# Offline I/Q front end: components/iq_frontend over a recording, and synthetic I/Q.
 #   make -C tools/iq_convert
 ROOT := ../..
 LIB  := $(ROOT)/components/ft8_lib

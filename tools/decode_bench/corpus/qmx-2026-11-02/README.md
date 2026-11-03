@@ -42,6 +42,17 @@ arms. A second 20 m channel centred 2.8 kHz higher adds 5 messages to the window
 On 20 m our decoder levels off near 27 decodes per slot whatever jt9 finds: the stations it misses
 are those within about 30 Hz of a stronger one.
 
+**SNR against jt9**, `python3 tools/decode_bench/score_snr.py 15m 20m 40m` (2026-11-03): our SNR minus jt9's
+on the messages both decoded, the same file to each.
+
+| Band | IQ at −20 dBFS | IQ at its own level | Audio |
+| --- | --- | --- | --- |
+| 15 m | +0.22, sd 2.07, 94% (995) | −0.46, sd 1.12, 99% (971) | +0.29, sd 2.52, 87% (1,032) |
+| 20 m | −0.22, sd 2.81, 82% (1,609) | −0.62, sd 2.35, 87% (1,590) | −0.12, sd 2.88, 81% (1,594) |
+| 40 m | +0.21, sd 2.37, 91% (385) | +0.15, sd 1.65, 96% (383) | +0.35, sd 2.53, 89% (383) |
+
+Mean and sd in dB, then the share within 3 dB, and the message count.
+
 ## A full-band balance correction: tried, reverted
 
 The same slots rescored with a blind DC and gain/phase correction estimated across the whole 48 kHz

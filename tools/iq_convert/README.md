@@ -1,6 +1,6 @@
 # I/Q front end, offline
 
-Runs `components/iq_frontend`, the receive front end the firmware will use (row y9bt), over a
+Runs `components/iq_frontend`, the receive front end the firmware runs, over a
 recording, and makes synthetic I/Q to test it with. How the front end works and what it measured:
 [docs/architecture/decode.md](../../docs/architecture/decode.md) (**I/Q front end**).
 

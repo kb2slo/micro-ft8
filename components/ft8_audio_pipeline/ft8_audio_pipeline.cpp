@@ -294,8 +294,6 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                         decode_tx_state_set_decode_slot_idx(slot_idx);
                         decode_tx_state_set_capture_clean(
                             slot_clean && ft8_sample_ring_dropped(&ring) == dropped_at_boundary);
-                        decode_tx_state_set_rx_path(
-                            cfg->rx_path_for_slot ? cfg->rx_path_for_slot(cfg->ctx, slot_idx) : 0);
                         decode_tx_state_set_decode_in_progress(true);
                         decode_monitor_results(&mon, &mon_cfg, block_gain);
                     } else {

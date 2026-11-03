@@ -78,7 +78,7 @@ SNR_SLACK_X10 = 5
 SNR_SYNTH_TOLERANCE = 1.5
 SNR_CHECK_LOW = -18
 
-# The synthetic I/Q arm (row y9bt): each corpus WAV made into 48 kHz I/Q at a QMX's FT8 channel,
+# The synthetic I/Q arm: each corpus WAV made into 48 kHz I/Q at a QMX's FT8 channel,
 # with the corpus's next WAV at the same level in the mirror channel, and brought back through
 # components/iq_frontend. An image of the mirror slot decodes as a phantom: a message from the mirror
 # slot's truth that is not in this one's. With a balanced mixer CI fails if the arm matches under 99%

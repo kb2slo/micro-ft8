@@ -33,7 +33,7 @@ typedef struct {
     bool (*get_state)(radio_state_t* out);
     esp_err_t (*query_version)(void);  // null = the radio cannot report its firmware
     bool (*get_version)(char* out, size_t cap);
-    radio_rx_path_event_t (*rx_path_tick)(bool want_iq, bool busy);  // null = one receive output only
+    radio_rx_path_event_t (*rx_path_tick)(bool busy);  // null = one receive output only
     esp_err_t (*set_push)(bool on);    // null = the radio cannot push its state (QMX AI2; / AI0;)
     uint32_t (*state_changes)(void);   // null = no pushes; counts changes of the radio's reported state
 } radio_control_ops_t;

@@ -8,7 +8,7 @@ idf_component_register(
     INCLUDE_DIRS "."
     REQUIRES usb usb_host_cdc_acm usb_host_uac esp_timer radio_control amp_band_prime swr_sweep swr_trip
              autoseq callsign_hashtable protocol ft8_audio_pipeline decode_pipeline
-             rtc_core resample iq_frontend porta porta_proto debug_log
+             rtc_core iq_frontend porta porta_proto debug_log
              storage_service station qso_log adif
     # decode_seams.cpp defines this board's side of the seams
     # (log_rxtx_line, ...) that shared components bare-forward-declare

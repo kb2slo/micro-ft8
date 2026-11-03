@@ -1,11 +1,10 @@
-// Offline I/Q front end (row y9bt, stage 2). Runs components/iq_frontend, the code the firmware
-// will run, over a recording, and makes synthetic I/Q from a corpus WAV to test it with.
+// Offline I/Q front end. Runs components/iq_frontend, the code the firmware runs, over a recording, and makes synthetic I/Q from a corpus WAV to test it with.
 //
 //   iq_convert [--center-hz F]... [--if-trim-hz T] [--swap-iq] [--negate-q] [--output-rate R] -o OUT.wav IQ.wav
 //       A 48 kHz stereo I/Q WAV (16- or 24-bit) to one mono 16-bit WAV per --center-hz (default
 //       13,500: a QMX's FT8 channel). With several centres, each output is OUT_<centre>Hz.wav.
 //   iq_convert --real [--output-rate R] -o OUT.wav AUDIO.wav
-//       The radio's demodulated audio instead: L and R averaged, as uac_pcm_to_ft8_samples() does,
+//       The radio's demodulated audio instead: L and R averaged,
 //       through the same filters, so both arms of an A/B share one decimator.
 //   iq_convert --synth [--center-hz F] [--if-trim-hz T] [--swap-iq] [--negate-q] [--gain-db G]
 //              [--phase-deg P] [--dc-db D] [--mirror-tone-db L] [--alias-tone-db L] [--tone-offset-hz H]
