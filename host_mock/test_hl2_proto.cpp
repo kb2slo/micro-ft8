@@ -124,12 +124,13 @@ static void test_control_packet()
 
     expect(hl2_config_register(Hl2RxRate::Rate48k, 4, &cfg) && cfg.value == ((3u << 3) | (1u << 2)),
            "four receivers: last receiver 3, duplex");
-    expect(hl2_n2adr_receive_filters(7074000) == 0x44, "40 m: the 60/40 m low-pass and the receive high-pass");
-    expect(hl2_n2adr_receive_filters(14074000) == 0x48 && hl2_n2adr_receive_filters(28074000) == 0x60,
-           "20 m and 10 m: their low-passes and the high-pass");
-    expect(hl2_n2adr_receive_filters(3573000) == 0x02 && hl2_n2adr_receive_filters(1840000) == 0x01,
-           "80 m and 160 m: low-pass only, no high-pass");
-    expect(hl2_config_register(Hl2RxRate::Rate48k, 1, &cfg, 0x44) && ((cfg.value >> 17) & 0x7F) == 0x44 &&
+    expect(hl2_n2adr_receive_filters(7074000) == 0x04, "40 m: the 60/40 m low-pass, the high-pass left in line");
+    expect(hl2_n2adr_receive_filters(14074000) == 0x08 && hl2_n2adr_receive_filters(28074000) == 0x20,
+           "20 m and 10 m: their low-passes, the high-pass in line");
+    expect(hl2_n2adr_receive_filters(3573000) == 0x02 && hl2_n2adr_receive_filters(5357000) == 0x04,
+           "80 m and 60 m: their low-passes, the high-pass in line (it passes them)");
+    expect(hl2_n2adr_receive_filters(1840000) == 0x41, "160 m: its low-pass, and b6 to bypass the high-pass");
+    expect(hl2_config_register(Hl2RxRate::Rate48k, 1, &cfg, 0x41) && ((cfg.value >> 17) & 0x7F) == 0x41 &&
                !(cfg.value & (1u << 16)),
            "the filter byte lands in [23:17], clear of PA enable [16]");
     {

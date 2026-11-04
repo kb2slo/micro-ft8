@@ -172,7 +172,7 @@ uint8_t hl2_n2adr_receive_filters(uint32_t hz)
     } else {
         lpf = 1u << 5;  // 12/10 m
     }
-    return static_cast<uint8_t>(lpf | (hz > 5000000 ? 1u << 6 : 0u));
+    return static_cast<uint8_t>(lpf | (hz < 2500000 ? 1u << 6 : 0u));  // b6 bypasses the high-pass: 160 m only
 }
 
 bool hl2_nco_register(int receiver, uint32_t hz, Hl2Register* out)

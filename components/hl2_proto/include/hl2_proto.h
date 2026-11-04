@@ -81,7 +81,9 @@ struct Hl2Register {
 bool hl2_config_register(Hl2RxRate rate, int receivers, Hl2Register* out, uint8_t n2adr = 0);
 
 // The N2ADR filter byte for receiving at hz (RFC 0014 §2.3): b0 160 m, b1 80 m, b2 60/40 m, b3 30/20 m, b4 17/15 m,
-// b5 12/10 m low-pass, and b6 the receive high-pass above 5 MHz, which keeps the broadcast band out of the ADC.
+// b5 12/10 m low-pass, in the receive path as well as transmit. The receive high-pass (about 2.5 MHz at -3 dB,
+// 45 dB down at 1 MHz) is in line unless b6 is set: its relay is a NAND of b6 and the HL2's INTTR (n2adr.net, U5,
+// K7). So b6 is set only below 2.5 MHz, where the high-pass would cost 160 m 17 dB.
 uint8_t hl2_n2adr_receive_filters(uint32_t hz);
 
 // Registers 0x02..0x05: receiver 0..3's NCO, in hertz (radio.v:255). False for another receiver or above 38.4 MHz.
