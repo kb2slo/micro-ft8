@@ -23,7 +23,7 @@ How the roadmap is kept: the index [ROADMAP.md](../ROADMAP.md), the epic files b
 
 **Blocked is a section, not a tag,** so Backlog order stays pure priority. A Blocked row names **Blocked on:** (the condition that clears it) and keeps a Done-when; an optional **Collects:** lists work that attaches to it if it is ever done. Order within Blocked does not matter. Same size limit as every row; an overgrown **Collects:** becomes an epic.
 
-**Declined lives in [roadmap/declined.md](../roadmap/declined.md).** A rejected row or epic moves there as one line — ID, name, why. Git keeps the full row. An outside idea declined in its issue needs no line: the closed issue says why.
+**Declined lives in [roadmap/declined.md](../roadmap/declined.md).** A rejected row or epic moves there as one line — ID, name, why. The why is the reason that also rules out the idea's close variants, so a reworded proposal still meets it. Git keeps the full row; a line for something long, such as a rejected RFC, ends with the `git show <sha>:<path>` that prints it. An outside idea declined in its issue needs no line: the closed issue says why.
 
 **Every row has an anchor named by its ID:** `<a id="<id>"></a>` at the start of its Item cell in the index or `declined.md`, and at the start of its entry in its epic file. A row in an epic links to that entry (`Epic [knpp](roadmap/hl2-support.md#mg9c)`), so a click from the index lands on its detail. Mentions of a row anywhere link to it ([AGENTS.md](../../AGENTS.md), **Link every roadmap row you name**); `tools/check_docs.py` fails a roadmap link whose anchor is gone, and `tools/roadmap_rows.sh` measures a row without its anchors and link targets.
 
