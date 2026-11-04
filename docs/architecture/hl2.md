@@ -61,7 +61,7 @@ Read from the [HL2 wiki](https://github.com/softerhardware/Hermes-Lite2/wiki), t
 
 ## Scored against jt9
 
-`tools/hl2_record.py` records the HL2 on a computer as one I/Q WAV per slot per receiver, driven as the P4 drives it, and `tools/decode_bench/score_ab.py` scores the slots with our decoder and with `jt9` on the same samples (`--center-hz 1500 --iq-flag=--negate-q`). In the 2026-11-04 band survey our decoder found 64–75% of `jt9`'s decodes on every band scored, the share it finds on the QMX's I/Q (68% on 15 m), so the HL2's receive chain costs it nothing measured; per band, and how it was run: [the corpus's README](../../tools/decode_bench/corpus/hl2-2026-11-04/README.md).
+`tools/hl2_record.py` records the HL2 on a computer as one I/Q WAV per slot per receiver, driven as the P4 drives it, and `tools/decode_bench/score_ab.py` scores the slots with our decoder and with `jt9` on the same samples (`--center-hz 1500 --iq-flag=--negate-q`). In the 2026-11-04 band survey our decoder found 64–75% of `jt9`'s decodes on every band up to about 22 a slot, the share it finds on the QMX's I/Q (68% on 15 m), and 48% on crowded 20 m, the plateau the QMX showed too, so the HL2's receive chain costs it nothing measured; per band, and how it was run: [the corpus's README](../../tools/decode_bench/corpus/hl2-2026-11-04/README.md).
 
 ## Why not
 
