@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tools/roadmap_rows.sh health)",
+      "Bash(tools/roadmap_rows.sh health *)",
+      "Bash(tools/roadmap_rows.sh dangling)",
+      "Bash(tools/roadmap_rows.sh dangling *)",
+      "Bash(tools/roadmap_rows.sh new)",
+      "Bash(python3 tools/check_docs.py)",
+      "Bash(python3 tools/check_docs.py *)",
+      "Bash(python3 tools/check_commits.py)",
+      "Bash(python3 tools/check_commits.py *)"
+    ]
+  }
+}
