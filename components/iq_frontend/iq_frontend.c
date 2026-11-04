@@ -1,5 +1,5 @@
-// Receive front end: I/Q to upper-sideband audio (iq_frontend.h). Written from RFC 0014 §3.4 and
-// textbook multirate DSP (Kaiser-windowed FIR design, half-band decimators).
+// Receive front end: I/Q to upper-sideband audio (iq_frontend.h). Written from decode.md's
+// I/Q front end and textbook multirate DSP (Kaiser-windowed FIR design, half-band decimators).
 //
 // The filter, and why this structure
 //
@@ -41,7 +41,7 @@
 // Kaiser length formula is an estimate; host_test_iq_frontend measures the cascade. Kaiser ripple
 // is the same in both bands, so 80 dB stop also means a passband flat to about 0.001 dB.
 //
-// Cost, by count rather than measurement (RFC 0014 S1 measures it on the P4): per second of 48 kHz
+// Cost, by count (decode.md, **I/Q front end**, has the P4's measured figure): per second of 48 kHz
 // input at a 12 kHz output, about 0.7 M multiplies for the NCO and the half-bands, and 1.9 M for the
 // channel filter's 77 folded taps on two rails; at a 6 kHz output the channel filter is about 0.5 M.
 

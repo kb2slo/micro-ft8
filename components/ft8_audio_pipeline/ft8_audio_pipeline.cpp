@@ -146,7 +146,7 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
     int64_t slot_samples = 0;
     unsigned dropped_at_boundary = 0;
     // monitor_process() time this slot, for BDRY's mon: the capture path's cost per band
-    // (RFC 0014 §3.5), timed in place, where the cache is not warm as in decode_bench.
+    // (RFC 0016 §3.9), timed in place, where the cache is not warm as in decode_bench.
     int64_t slot_monitor_us = 0;
     // The first slot has no boundary behind it to vouch for its start.
     bool slot_clean = false;
