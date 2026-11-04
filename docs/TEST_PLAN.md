@@ -93,5 +93,6 @@ proven, and not counted as owed. Move one into the table when a check is planned
   `host_test_dial_history` (a retune 3 s into a slot), the decode-batching test (a retuned slot as two batches
   that keep every decode) and the preview. No error appeared in the tries.
 - **Android.** Nothing has been checked on an Android phone, including whether `micro-ft8.local` resolves over mDNS (on the sidekick's AP with mobile data on, and on a home router). It should work on Android 12+. Low priority at this project's scale: not every client gets tested.
+- **The P4 drops a late or duplicate HL2 packet** (`poe_p4/main/hl2_transport.cpp`, the stream loop): its place was already zero-filled, so writing it would push the slot's timeline late by a packet (2.6 ms). The sequence tracker that decides it is host-tested (`host_test_hl2_proto`), and `tools/test_hl2_record.py` tests the recorder's same rule; the P4's use of it is not. A direct cable does not reorder packets, so no bench run reaches it; a run whose HL2 status log shows `late` above 0 with decodes still on time would.
 - **Sidekick HTTP socket count.** `max_open_sockets = 10` in both servers (`sidekick/main/wifi_prov.c`) was
   chosen without an on-device heap reading.

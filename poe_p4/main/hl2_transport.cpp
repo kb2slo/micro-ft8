@@ -378,7 +378,13 @@ static void stream(int sock, const sockaddr_in& hl2)
         }
         last_rx = esp_timer_get_time();
         ++packets;
+        const uint32_t late_before = seq.out_of_order;
         const uint32_t missing = hl2_sequence_note(&seq, pkt.sequence);
+        if (seq.out_of_order != late_before) {
+            // A duplicate or a late packet: its place in the timeline was already written, zero-filled when it
+            // went missing, so its samples would push every later block late. Counted, not written.
+            continue;
+        }
         for (uint32_t i = 0; i < missing && i < 400; ++i) {  // past ~1 s of loss the stream is lost anyway
             ring_write_packet(s_zero_frames);
         }
