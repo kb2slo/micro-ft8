@@ -112,7 +112,7 @@ Every feature the QMX station has, against what the HL2 needs for it. **Fits**: 
 ## Open
 
 * **Discovery while running:** the source does not gate discovery on `run`, but a broadcast while the HL2 streamed got no reply, with SparkSDR and again with no other client.
-* **LAN operation:** the HL2 on a home LAN, the P4 taking a DHCP lease first and link-local after. Transmit only on a private link, or on a LAN too? Protocol 1 has no authentication (Safety 11), so anything on the LAN could key the radio.
+* **LAN operation:** the HL2 on a home LAN, the P4 taking a DHCP lease first and link-local after. Not yet run on the bench: the P4 and the HL2 through a switch rather than the direct cable. Transmit only on a private link, or on a LAN too? Protocol 1 has no authentication (Safety 11), so anything on the LAN could key the radio.
 * **A QMX and an HL2 at once:** channels from each (RFC 0016), all decoding, a reply on any of them transmitted by the radio whose channel heard it. Needs a queue entry carrying its radio as well as its band, and one backend per radio in place of one selected backend.
 * **Whether the LNA steps back up** within a stream when the band quiets.
 * **Whether the MCP23008 reads back** over the HL2's I2C read, for Safety 7 ([abkw](#abkw)).
