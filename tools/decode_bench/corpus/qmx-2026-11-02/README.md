@@ -82,3 +82,15 @@ imbalance, which is why they pass. Uncorrected IQ already matches audio on 20 m 
 balance is not what limits a single channel. It matters for two channels on one band, where FT8 and FT4
 sit near each other's mirror (40 m); a correction then is estimated near the channel (after the NCO and
 the first decimation, on the narrow channel's mirror term), not across the window (operator, 2026-11-02).
+
+## FT4 at the window's top (2026-11-04)
+
+With the dial on FT8's 14.074 MHz, 20 m's FT4 (14.080 MHz) is in these recordings 19.5 kHz above the LO, near the top of the QMX's 48 kHz window, where the ADC's own filter ends near 21.8 kHz. `python3 tools/decode_bench/score_ft4_edge.py 20m` decodes it there with `jt9 -5`, each 15 s slot cut into its two 7.5 s FT4 periods (our decoder runs FT8 only until row [an8x](../../../../docs/roadmap/several-channels.md#an8x)):
+
+| | |
+| --- | --- |
+| FT4 decodes | 980 in 120 periods of the 60 I/Q slots, 8.2 a period; every period had some |
+| SNR | median 0 dB, weakest −21 dB; DT median 0.1 s |
+| By audio offset, per 500 Hz (18.0 to 21.0 kHz above the LO) | 47, 179, 264, 250, 202, 38 |
+
+FT4 decodes at that edge, and the offsets show the usual activity shape, dense in the middle and thin at both ends, with no cut-off toward the top. The recordings hold no FT4 away from the edge, so this shows it works there, not that it loses nothing.
