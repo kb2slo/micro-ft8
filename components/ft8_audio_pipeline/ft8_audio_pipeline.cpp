@@ -121,10 +121,15 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
     Ft8SampleRing ring;
     ft8_sample_ring_init(&ring, s_ring_storage, kIngestRingSamples);
     AudioIngest ingest = { cfg, &ring, false, false };
-    // Higher priority than this task, same core, so a USB read completes
-    // during decode instead of waiting out the search.
+    // Higher priority than this task. A USB read must never wait out a decode (about 2 s of the
+    // core that runs it), so ingest is off the decode task's core: core 0, where the main loop and
+    // the USB tasks run, while decode holds core 1 (main.cpp pins decode_audio there). Pinned, not
+    // merely unpinned: ESP-IDF pins a task to the core it first uses the FPU on (docs, FreeRTOS
+    // IDF, Floating Point Usage; vPortTaskPinToCore() in portable/riscv/port.c), and ingest
+    // runs float code from its first read, so unpinned it would be pinned to whichever core
+    // that first read fell on. docs/architecture/main_board.md, Tasks.
     if (xTaskCreatePinnedToCore(audio_ingest_task, "audio_ingest", 6144, &ingest, 5,
-                                nullptr, xPortGetCoreID()) != pdPASS) {
+                                nullptr, 0) != pdPASS) {
         ESP_LOGE(tag, "audio ingest task create failed");
         free(ft8_buffer);
         free(temp_dec);
@@ -242,9 +247,12 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
                     // Port A log, not the console UART: the sidekick prints it.
                     {
                         char buf[64];
-                        snprintf(buf, sizeof(buf), "BDRY %lld g%d lost%lld drop%u mon%lld",
+                        // fe: the receive front end's time since the last boundary (ingest task).
+                        const unsigned frontend_us =
+                            cfg->take_frontend_us ? (unsigned)cfg->take_frontend_us(cfg->ctx) : 0;
+                        snprintf(buf, sizeof(buf), "BDRY %lld g%d lost%lld drop%u mon%lld fe%u",
                                  (long long)slot_idx, slot_blocks, (long long)lost, drop,
-                                 (long long)slot_monitor_us);
+                                 (long long)slot_monitor_us, frontend_us);
                         debug_log_line(buf);
                     }
                     if (slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {

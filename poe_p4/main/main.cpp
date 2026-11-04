@@ -51,6 +51,7 @@ static void decode_audio_task(void * /*arg*/) {
         .should_stop = qmx_audio_should_stop,
         .on_block_processed = nullptr,
         .on_activity = send_activity,
+        .take_frontend_us = qmx_audio_take_frontend_us,
     };
     // QMX CAT/UAC comes back only after a radio power cycle (QMX quirk);
     // keep this task alive so a replug restarts decode without resetting P4.
@@ -110,9 +111,24 @@ extern "C" void app_main(void) {
             swr_sweep_tick(esp_timer_get_time() / 1000);
         }
         vTaskDelay(pdMS_TO_TICKS(10));
+        // IQ mode at each CAT link-up, read back (architecture/radio.md, The QMX's receive output).
+        const bool rx_busy = decode_tx_state_get_tx_active() || porta_p4_tune_active() ||
+                             amp_band_prime_busy() || swr_sweep_busy();
+        switch (radio_control_rx_path_tick(rx_busy)) {
+            case RADIO_RX_PATH_MISMATCH:
+                debug_log_line("Q9 reads audio, not IQ: nothing will decode");
+                break;
+            case RADIO_RX_PATH_NO_REPLY:
+                debug_log_line("Q9 unanswered: the QMX firmware may lack IQ mode; nothing will decode");
+                break;
+            case RADIO_RX_PATH_NONE:
+            case RADIO_RX_PATH_MATCHED:
+                break;
+        }
         // Set by qmx_transport on every CAT open; retried until it lands.
         if (decode_tx_state_get_cdc_initial_sync_pending() && radio_control_ready() &&
-            !decode_tx_state_get_tx_active() && !amp_band_prime_busy() && !swr_sweep_busy() &&
+            !decode_tx_state_get_tx_active() && !porta_p4_tune_active() && !amp_band_prime_busy() &&
+            !swr_sweep_busy() &&
             porta_p4_sync_vfo("QMX connect") == nullptr) {
             decode_tx_state_set_cdc_initial_sync_pending(false);
         }

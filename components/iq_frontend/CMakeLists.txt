@@ -1,4 +1,4 @@
 idf_component_register(
-    SRCS "resample.cpp"
+    SRCS "iq_frontend.c"
     INCLUDE_DIRS "include"
 )

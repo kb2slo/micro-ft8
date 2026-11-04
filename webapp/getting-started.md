@@ -28,7 +28,7 @@ Micro-FT8 is a headless FT8 station for your QMX. The *main board* (M5Stack Unit
 
 ## 1. Connect it
 
-You need the main board and sidekick on their Grove cable, your QMX (tested on firmware 1_04_010) with its power and antenna, a USB-C data cable for it, 5 V USB-C power for the main board, and a phone or laptop.
+You need the main board and sidekick on their Grove cable, your QMX (validated on firmware 1.04.010; older firmware with IQ mode may work) with its power and antenna, a USB-C data cable for it, 5 V USB-C power for the main board, and a phone or laptop.
 
 1. Connect the antenna, then power the QMX and switch it on.
 2. Plug 5 V USB-C power (a charger or power bank) into the main board's *PROG* port, beside the network jack, which is not used. The sidekick starts with it.
@@ -72,6 +72,7 @@ One ADIF file per UTC day, kept on the main board. On **QSOs**, **Download ADI**
 
 - *CAT or Audio not ✓:* unplug the QMX's USB at the main board and plug it back in, or switch the QMX off and on. A restart of the main board while the QMX is connected can leave it unable to reconnect until you do.
 - *A busy band but no decodes:* reload the app, so it sets the clock again.
+- *Still no decodes:* Micro-FT8 decodes from the QMX's IQ mode, which older firmware may lack. The radio bar's drawer shows **Radio firmware**; update it if it is older than 1.04.010.
 - *Asked to pair again:* a new phone, a cleared browser or another address each take one button press.
 - *Internet* is never needed to operate. When the phone has it, a tapped callsign shows QRZ details, and **Tools** adds space weather and, on its map, POTA and SOTA spots.
 - *Two devices at most* can join the sidekick's network at once.

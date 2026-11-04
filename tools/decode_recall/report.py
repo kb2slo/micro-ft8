@@ -10,6 +10,9 @@ against committed `jt9 -8 -d 3` truth (WSJT-X 3.0.1), and how far the firmware's
 SNR sits from jt9's on the messages both decoded. CI never runs jt9.
 `20m_busy` is fetched from howard0su/ft8_lib at 55ccf01 and is not committed.
 The synthetic tier is GFSK plus calibrated AWGN; its truth is the message we encoded.
+The synthetic I/Q arm puts each corpus WAV through tools/iq_convert: I/Q at 48 kHz with the next
+WAV in the mirror channel, then back through the receive front end, balanced and with a typical
+mixer imbalance.
 
   python3 tools/decode_recall/report.py --write-truth     # needs jt9 on PATH
   python3 tools/decode_recall/report.py --write-baseline  # record CI floors
@@ -35,6 +38,8 @@ CACHE = HERE / ".cache"
 HOWARD_URL = "https://github.com/howard0su/ft8_lib.git"
 HOWARD_SHA = "55ccf01"
 DECODER = HERE / "decode_recall"
+IQ_TOOL_DIR = REPO / "tools" / "iq_convert"
+IQ_TOOL = IQ_TOOL_DIR / "iq_convert"
 
 def firmware_candidates():
     """The cap decode_monitor_results() uses. One definition, in decode_limits.h."""
@@ -72,6 +77,17 @@ SNR_SLACK_X10 = 5
 # this from the injected SNR (dB). Below that only the lucky draws decode, so the mean is biased.
 SNR_SYNTH_TOLERANCE = 1.5
 SNR_CHECK_LOW = -18
+
+# The synthetic I/Q arm: each corpus WAV made into 48 kHz I/Q at a QMX's FT8 channel,
+# with the corpus's next WAV at the same level in the mirror channel, and brought back through
+# components/iq_frontend. An image of the mirror slot decodes as a phantom: a message from the mirror
+# slot's truth that is not in this one's. With a balanced mixer CI fails if the arm matches under 99%
+# of the real arm's messages, decodes any phantom, or decodes more than IQ_EXTRA_SLACK other extras
+# beyond the real arm's. Extras are not all false (some are messages jt9 missed), so this is the same
+# kind of slack as SLACK. The imbalanced arm (a typical uncorrected mixer) is reported with no floor.
+IQ_ARMS = [("balanced", 0.0, 0.0, True), ("imbalanced", 0.5, 2.0, False)]
+IQ_RECALL_FRACTION = 0.99
+IQ_EXTRA_SLACK = 2
 
 LINE = re.compile(
     r"^\s*\d{4,6}\s+([-+]?\d+(?:\.\d+)?)\s+[-+]?\d+\.\d+\s+\d+\s+~\s+(.*?)\s*$"
@@ -201,6 +217,84 @@ def run_decoder(config, wavs):
     if missing:
         raise SystemExit("decoder produced no FILE block for " + missing[0])
     return by_file, wall, result.stdout
+
+
+def build_iq_tool():
+    subprocess.run(["make", "-C", str(IQ_TOOL_DIR)], check=True)
+
+
+def iq_one(job):
+    """Synthesize one WAV's I/Q, convert it back to 12 kHz audio under the same name, drop the I/Q."""
+    wav, mirror, out_dir, gain_db, phase_deg = job
+    iq_path = out_dir / (wav.stem + ".iq.wav")
+    out_path = out_dir / wav.name
+    synth = subprocess.run(
+        [str(IQ_TOOL), "--synth", "--gain-db", str(gain_db), "--phase-deg", str(phase_deg),
+         "--mirror-wav", str(mirror), "-o", str(iq_path), str(wav)],
+        capture_output=True, text=True,
+    )
+    if synth.returncode != 0:
+        raise SystemExit(f"iq_convert --synth failed on {wav}: {synth.stderr}")
+    convert = subprocess.run([str(IQ_TOOL), "-o", str(out_path), str(iq_path)], capture_output=True, text=True)
+    iq_path.unlink()
+    if convert.returncode != 0:
+        raise SystemExit(f"iq_convert failed on {iq_path}: {convert.stderr}")
+    image = re.search(r"image_db=(\S+)", synth.stdout)
+    clipped = sum(int(n) for n in re.findall(r"clipped=(\d+)", synth.stdout + convert.stdout))
+    return out_path, float(image.group(1)), clipped
+
+
+def iq_arm(corpus, wavs, arm, gain_db, phase_deg):
+    """The corpus through synthetic I/Q and the front end: (12 kHz WAVs, image level dB, clipped samples)."""
+    out_dir = CACHE / "iq" / arm / corpus
+    out_dir.mkdir(parents=True, exist_ok=True)
+    jobs = [(wav, wavs[(i + 1) % len(wavs)], out_dir, gain_db, phase_deg) for i, wav in enumerate(wavs)]
+    with ThreadPoolExecutor(max_workers=os.cpu_count() or 2) as pool:
+        results = list(pool.map(iq_one, jobs))
+    return [r[0] for r in results], results[0][1], sum(r[2] for r in results)
+
+
+def run_iq_arms(config, corpora, real_decoded, real_scores):
+    """Score each I/Q arm against truth and against the real arm. Returns True if a floor failed."""
+    build_iq_tool()
+    failed = False
+    for arm, gain_db, phase_deg, floor in IQ_ARMS:
+        print(f"synthetic I/Q, {arm} (Q {gain_db:+.1f} dB, {phase_deg:+.1f} deg against I), "
+              "QMX FT8 channel at 13,500 Hz, 48 kHz in, 12 kHz out:")
+        for name, wavs in corpora:
+            paths, image_db, clipped = iq_arm(name, wavs, arm, gain_db, phase_deg)
+            decoded, _wall, _log = run_decoder(config, paths)
+            score = score_corpus(name, paths, decoded)
+            real = real_scores[name]
+            diffs = []
+            phantoms = []
+            for i, (wav, path) in enumerate(zip(wavs, paths)):
+                ours = decoded[str(path)]
+                theirs = real_decoded[name][str(wav)]
+                truth = load_truth(name, wav)
+                mirror_truth = load_truth(name, wavs[(i + 1) % len(wavs)])
+                diffs.extend(ours[t] - theirs[t] for t in set(ours) & set(theirs) & set(truth))
+                phantoms.extend((wav.name, t, ours[t]) for t in sorted((set(ours) & set(mirror_truth)) - set(truth)))
+            median = percentile(diffs, 0.5) if diffs else 0.0
+            extras = score["extras"] - len(phantoms)
+            print(f"  {name}: matched {score['hits']}/{score['truth']} (real arm {real['hits']}),"
+                  f" image phantoms {len(phantoms)}, other extras {extras} (real arm {real['extras']}),"
+                  f" SNR minus the real arm's: median {median:+.1f} dB over {len(diffs)};"
+                  f" image {image_db:.1f} dB; clipped {clipped}")
+            for wav_name, text, snr in phantoms[:6]:
+                print(f"    phantom {wav_name}  {snr:+d} dB  {text}")
+            if floor and score["hits"] < IQ_RECALL_FRACTION * real["hits"]:
+                print(f"FAIL {name} synthetic I/Q ({arm}) matched under {IQ_RECALL_FRACTION:.0%} of the real arm",
+                      file=sys.stderr)
+                failed = True
+            if floor and phantoms:
+                print(f"FAIL {name} synthetic I/Q ({arm}) decoded an image of the mirror channel", file=sys.stderr)
+                failed = True
+            if floor and extras > real["extras"] + IQ_EXTRA_SLACK:
+                print(f"FAIL {name} synthetic I/Q ({arm}) decoded more than {IQ_EXTRA_SLACK} extras beyond the real arm's",
+                      file=sys.stderr)
+                failed = True
+    return failed
 
 
 def bucket_name(snr):
@@ -510,6 +604,10 @@ def main():
     }
     print_score("in_tree", scores["in_tree"], sum(in_wall.values()), len(in_tree))
     print_score("busy", scores["busy"], sum(busy_wall.values()), len(busy))
+    iq_failed = run_iq_arms(
+        config, [("in_tree", in_tree), ("busy", busy)],
+        {"in_tree": in_decoded, "busy": busy_decoded}, scores,
+    )
 
     strong_misses = []
     snr_misses = []
@@ -531,7 +629,7 @@ def main():
         print(f"wrote {baseline}")
         return 0
     if is_today(config) and not args.no_check:
-        if check_floors(baseline, scores, strong_misses, snr_misses):
+        if check_floors(baseline, scores, strong_misses, snr_misses) or iq_failed:
             return 1
     return 0
 

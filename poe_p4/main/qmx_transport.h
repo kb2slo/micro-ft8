@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -22,6 +23,9 @@ bool qmx_audio_ready(void);
 // directly. `ctx` is unused (nullptr is fine).
 int qmx_audio_read_ft8_samples(void *ctx, float *out, int max_samples);
 bool qmx_audio_should_stop(void *ctx);
+
+// ft8_audio_pipeline_config_t::take_frontend_us: the front end's time since the last call.
+uint32_t qmx_audio_take_frontend_us(void *ctx);
 
 #ifdef __cplusplus
 }

@@ -9,5 +9,5 @@ idf_component_register(
          "cat_reply_parser.cpp"
          "radio_control_qmx.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES esp_common log dial_history rtc_core
+    REQUIRES esp_common esp_timer log dial_history rtc_core
 )

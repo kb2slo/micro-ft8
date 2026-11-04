@@ -37,7 +37,7 @@ change can affect. Working for the maintainer (they say so, or `git config user.
 
 No open-ended codebase exploration to be helpful — that is exactly the token spend this rule exists to stop. A single cheap lookup (one grep, one file read, "where is X defined") can just be answered without the gate. Docs and roadmap questions are allowed without it.
 
-**Smallest fix first.** Do not build tooling, scanners, CI gates or config files nobody asked for. If a larger approach seems warranted, propose it in two or three sentences and wait for a yes before writing it. Throwaway scaffolding in a scratch directory, never committed, is not tooling.
+**Smallest fix first.** Do not build tooling, scanners, CI gates or config files nobody asked for. If a larger approach seems warranted, propose it in two or three sentences and wait for a yes before writing it. Throwaway scaffolding in a scratch directory, never committed, is not tooling. A scratch script that produces a result the docs record, or that would be run again to re-check one, is not throwaway: commit it next to the result it produced, for example a scorer beside its corpus in `tools/decode_bench/`.
 
 Do not mix a feature change with an unrelated fix in the same commit.
 

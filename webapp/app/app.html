@@ -1865,7 +1865,9 @@ function radioChipState(cfg) {
     // The radio is fine but the main board's decoder could not start, so nothing decodes.
     if (yn(cfg.decode_failed) === 'yes') return 'nodecode';
     var rs = radioReadBack(cfg);
-    if (rs && rs.want && (rs.hz !== rs.want || rs.mode !== 6 || rs.split)) return 'drift';
+    // Tune puts the QMX in its SWR Tune mode itself (MD8;), which it reports as CW: not a move.
+    var modeMoved = rs && rs.mode !== 6 && yn(cfg.tune) !== 'yes';
+    if (rs && rs.want && (rs.hz !== rs.want || modeMoved || rs.split)) return 'drift';
     return 'ready';
   }
   if (usbState && !usbState.present) { everCatUp = false; return 'none'; }

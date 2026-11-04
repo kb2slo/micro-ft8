@@ -1,10 +1,12 @@
 #include "radio_control_backend.h"
+#include "qmx_iq_link.h"
 #include "radio_ta_format.h"
 
 #include <cstdio>
 #include <cstring>
 
 #include "esp_log.h"
+#include "esp_timer.h"
 
 #include "radio_transport.h"
 
@@ -273,6 +275,43 @@ static esp_err_t qmx_query_version(void) {
     return qmx_send_cmd("VN;", 50);
 }
 
+// Puts the QMX in IQ mode at each CAT link-up and reads it back: the P4 decodes only its I/Q, and the
+// radio forgets IQ mode at power-off (architecture/radio.md, The QMX's receive output). A radio that
+// stays in audio mode, or does not answer, is warned about once; neither is retried.
+static QmxIqLink s_iq_link;
+
+static radio_rx_path_event_t qmx_rx_path_tick(bool busy) {
+    int reply = -1;
+    (void)cat_cdc_get_parsed_q9(&reply);
+    switch (qmx_iq_link_step(s_iq_link, cat_cdc_ready(), busy, reply, esp_timer_get_time() / 1000)) {
+        case QmxIqLinkAction::None:
+            return RADIO_RX_PATH_NONE;
+        case QmxIqLinkAction::Send:
+            cat_cdc_reset_parsed_q9();
+            if (qmx_send_cmd("Q9 1;Q9;", 200) != ESP_OK) {
+                // Not sent: retried after a pause, a few times, so a dead write does not stall
+                // the main loop for 200 ms every pass.
+                if (qmx_iq_link_send_failed(s_iq_link, esp_timer_get_time() / 1000)) {
+                    ESP_LOGW(TAG, "QMX Q9 1; not sent after %d tries: IQ mode is unconfirmed",
+                             kQmxIqLinkSendTries);
+                }
+                return RADIO_RX_PATH_NONE;
+            }
+            ESP_LOGI(TAG, "QMX receive output set to IQ (Q9 1;)");
+            return RADIO_RX_PATH_NONE;
+        case QmxIqLinkAction::Matched:
+            ESP_LOGI(TAG, "QMX Q9; reads IQ, as set");
+            return RADIO_RX_PATH_MATCHED;
+        case QmxIqLinkAction::Mismatch:
+            ESP_LOGW(TAG, "QMX Q9; reads audio, not IQ: nothing will decode");
+            return RADIO_RX_PATH_MISMATCH;
+        case QmxIqLinkAction::NoReply:
+            ESP_LOGW(TAG, "QMX Q9; unanswered: its firmware may lack IQ mode, and nothing will decode");
+            return RADIO_RX_PATH_NO_REPLY;
+    }
+    return RADIO_RX_PATH_NONE;
+}
+
 static bool qmx_get_version(char* out, size_t cap) {
     return cat_cdc_get_version(out, cap);
 }
@@ -322,6 +361,7 @@ static const radio_control_ops_t k_ops = {
     .get_state = qmx_get_state,
     .query_version = qmx_query_version,
     .get_version = qmx_get_version,
+    .rx_path_tick = qmx_rx_path_tick,
     .set_push = qmx_set_push,
     .state_changes = qmx_state_changes,
 };
