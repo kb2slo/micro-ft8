@@ -3,7 +3,7 @@
 * **Status:** Accepted 2026-11-03 (drafted 2026-11-02); widened 2026-11-04 from a decode scheduler to every channel's receive, decode and transmit (§8). Decided: §8. Still open, each settled by a dated decision when its slice needs it: §7 items 2–9.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** what a channel is and where its audio comes from, whatever the radio; decoding several channels at once on one P4 within the time each channel has, on both cores; operating several channels: a reply on the channel a station was heard on, in that channel's mode, and the log, autoseq and web app following; transmitting on one channel at a time, and which channels that deafens; FT8 and FT4 at once from one QMX; how decode degrades as channels are added; how that stays deterministic under test.
-* **Does not cover:** a radio's own backend: how an HL2 is reached, keyed and kept safe is [RFC 0014](0014-hl2-two-p4.md), and the QMX's is [radio.md](../architecture/radio.md); the I/Q front end's design, which is built ([decode.md](../architecture/decode.md), **I/Q front end**); subtracting decodes from the audio (row kkap), AP decoding (row qauk) and t4/f2 (row n2e7), which this RFC gives a place but does not design; modes other than FT8 and FT4 (row I6), which it must not rule out; an amplifier, which is the station's and not a channel's.
+* **Does not cover:** a radio's own backend: how an HL2 is reached, keyed and kept safe is epic [knpp](../roadmap/hl2-support.md), and the QMX's is [radio.md](../architecture/radio.md); the I/Q front end's design, which is built ([decode.md](../architecture/decode.md), **I/Q front end**); subtracting decodes from the audio (row [kkap](../ROADMAP.md#kkap)), AP decoding (row [qauk](../ROADMAP.md#qauk)) and t4/f2 (row [n2e7](../ROADMAP.md#n2e7)), which this RFC gives a place but does not design; modes other than FT8 and FT4 (row [I6](../ROADMAP.md#I6)), which it must not rule out; an amplifier, which is the station's and not a channel's.
 * **Rows:** [vnz7](../ROADMAP.md) builds S1–S3; each later slice becomes a row when it is next.
 
 ---
@@ -18,7 +18,7 @@
 
 * **The QMX station decodes exactly as today** while it has one FT8 channel and time to spare: the recall floors and the `tx_e2e` goldens hold.
 * **Deterministic under test.** The host replays any mix of channels and gets the P4's output byte for byte; CI does not depend on the host's speed.
-* **No mode's timing is built in.** The vision is several digital modes (row I6); this RFC builds FT8 and FT4 only, but nothing in the scheduler assumes a 15 s slot or even/odd periods.
+* **No mode's timing is built in.** The vision is several digital modes (row [I6](../ROADMAP.md#I6)); this RFC builds FT8 and FT4 only, but nothing in the scheduler assumes a 15 s slot or even/odd periods.
 * **No radio is built in.** A channel names its source; the scheduler, autoseq and the log never ask which radio it is.
 * **No board count is built in.** This RFC builds one P4; several are a future direction (§3.12), and nothing here assumes either count.
 * **Each QSO on the air is a WSJT-X QSO** ([AGENTS.md](../../AGENTS.md), **WSJT-X is the on-air standard**). The station chooses the channel; the messages and their sequence do not change.
@@ -35,23 +35,23 @@
 
 ### 2.2 Measured
 
-* **Cost.** A busy 20 m slot decodes in about 1.75 s of one core; a quiet one in 2.15–2.3 s, because failing candidates run LDPC to its limit; on 15 m 24 of 207 slots overran the guard (2026-10-31, [decode.md](../architecture/decode.md); row vnz7). During decode one core reads 2% busy, the other 100%.
+* **Cost.** A busy 20 m slot decodes in about 1.75 s of one core; a quiet one in 2.15–2.3 s, because failing candidates run LDPC to its limit; on 15 m 24 of 207 slots overran the guard (2026-10-31, [decode.md](../architecture/decode.md); row [vnz7](../ROADMAP.md#vnz7)). During decode one core reads 2% busy, the other 100%.
 * **Recall plateaus on crowded bands** ([corpus `corpus-2026-11-02`](https://github.com/kb2slo/micro-ft8/releases/tag/corpus-2026-11-02)): at about 25 jt9 messages a slot we decode about 67% of them; at 56, about 47%, levelling near 27 decodes a slot. On `20m_busy`'s ten most crowded slots we decode 90% of stations with no stronger one within 60 Hz and 6% of those within 30 Hz of one. More candidates, a third subtraction pass, or more LDPC iterations each move that by under 2%; t4/f2 adds 2–4% on every band measured.
 
-So depth beyond today's first two passes buys little until subtraction improves (row kkap), and a second channel's first pass is worth far more than either channel's third.
+So depth beyond today's first two passes buys little until subtraction improves (row [kkap](../ROADMAP.md#kkap)), and a second channel's first pass is worth far more than either channel's third.
 
 ### 2.3 Operating one channel
 
 Read from the working tree at `ef4e271`.
 
 * **One band and one mode throughout.** The station has one `band_sel` (`components/station/include/station.h:22`). A transmission goes on `porta_p4_station_freq_hz()` (`poe_p4/main/tx_scheduler.cpp:255`). Autoseq's `QsoContext` and `AutoseqTxEntry` carry an audio offset and an even/odd `slot_id` (`components/autoseq/include/autoseq.h:102`, `:120`), but no band and no mode, so a reply to a decode heard on another channel would go out on the selected one. The log takes band and frequency from `band_sel` at log time, and `radio_name = "QMX"` is fixed (`poe_p4/main/porta_host.cpp:299`). `dial_history` tracks one dial (`components/radio_control/radio_control.cpp`).
-* **FT4 is saved and ignored** (row xph7): the P4 runs FT8 whatever `protocol_mode` says.
+* **FT4 is saved and ignored** (row [xph7](../ROADMAP.md#xph7)): the P4 runs FT8 whatever `protocol_mode` says.
 * **Already several-channel-ready.** Port A's DECODE carries the dial frequency per decode (`components/porta_proto/include/porta_proto.h:264`), and the web app splits a slot's decodes into one batch per frequency.
 * **The I/Q front end is one instance per channel,** caller-owned with no statics, and FT8 and FT4 on one band are two instances on one stream ([decode.md](../architecture/decode.md), **I/Q front end**). On the P4 one instance costs 8.4% of core 0, on the ingest task.
 
 ### 2.4 The QMX as a source
 
-Read from [radio.md](../architecture/radio.md) and [decode.md](../architecture/decode.md), **I/Q front end**, and row ay9g.
+Read from [radio.md](../architecture/radio.md) and [decode.md](../architecture/decode.md), **I/Q front end**, and row [ay9g](../ROADMAP.md#ay9g).
 
 * **One window, one band.** The QMX has one band-pass filter and one local oscillator, and streams 48 kHz I/Q from 36 kHz below the dial to 12 kHz above it (the LO sits 12 kHz below the dial). Every channel from one QMX is on one band.
 * **FT8 and FT4 on one band fit, with an edge.** On 20 m FT4's dial (14.080 MHz) is 6 kHz above FT8's (14.074), so with the dial at FT8's its channel sits at 19.5 kHz above the LO, near the window's top. On 40 m each mode sits near the other's mirror across the LO, where the front end's image rejection (about 32 dB on a QMX, uncorrected) is what separates them.
@@ -78,7 +78,7 @@ Pending work is ordered by:
 
 1. **The QSO partner first:** the channel of the contact in progress, and on it the candidates near the partner's tone, so a reply is decided in time for the next slot (§3.10).
 2. **Every channel's minimum, earliest deadline first.** With per-channel deadlines (an FT4 deadline falls twice in each FT8 slot) this is the textbook policy.
-3. **Then deeper work, round-robin across channels, earliest deadline first:** further passes, and later what rows kkap, n2e7 and qauk add, each placed by its measured gain per cost.
+3. **Then deeper work, round-robin across channels, earliest deadline first:** further passes, and later what rows [kkap](../ROADMAP.md#kkap), [n2e7](../ROADMAP.md#n2e7) and [qauk](../ROADMAP.md#qauk) add, each placed by its measured gain per cost.
 
 ### 3.4 The budget is counted, not timed
 
@@ -99,7 +99,7 @@ With several boards, admission is **placement**: a new channel goes to the board
 * **Across boards.** Each board runs this scheduler on the channels placed on it. The station board holds the station's state; a helper holds none and returns its decodes by the slot's deadline, a late one dropped and counted (§3.12). With an HL2 the boards stop paying at its four receivers; more channels then need more sources, a different station design.
 * **Within a board.** Work units go on one queue that a worker on each core draws from. Core 0 also carries USB or Ethernet and, with IQ, the front end; its share of the budget is what remains after those, measured.
 
-**Open: subtraction and determinism.** Today each decode subtracts before the next candidate is tried (`decode_pipeline.cpp:374`–`:413`), so the order of decodes changes the output. With two workers either (a) subtraction happens at the end of each pass, and a pass's candidates decode in parallel, or (b) candidates decode in parallel but commit and subtract in candidate order, discarding a decode a prior subtraction would have changed. The recall harness scores both before one is chosen (row vnz7's open question; [RFC 0006](0006-decode-performance.md) §4.2).
+**Open: subtraction and determinism.** Today each decode subtracts before the next candidate is tried (`decode_pipeline.cpp:374`–`:413`), so the order of decodes changes the output. With two workers either (a) subtraction happens at the end of each pass, and a pass's candidates decode in parallel, or (b) candidates decode in parallel but commit and subtract in candidate order, discarding a decode a prior subtraction would have changed. The recall harness scores both before one is chosen (row [vnz7](../ROADMAP.md#vnz7)'s open question; [RFC 0006](0006-decode-performance.md) §4.2).
 
 ### 3.7 Visibility
 
@@ -107,14 +107,14 @@ Each slot's SLOT line reports, per channel, the board it runs on, the work done 
 
 ### 3.8 Beyond FT8 and FT4
 
-* **Other modes fit the same three declarations.** WSPR is slotted at 2 minutes with a deadline minutes away, so its work fills whatever the short slots leave; CW and RTTY would be streaming. Building any of them is row I6's, not this RFC's.
+* **Other modes fit the same three declarations.** WSPR is slotted at 2 minutes with a deadline minutes away, so its work fills whatever the short slots leave; CW and RTTY would be streaming. Building any of them is row [I6](../ROADMAP.md#I6)'s, not this RFC's.
 * **Licensing.** The obvious next modes have GPL reference decoders: JS8's tables exist only in JS8Call, and `wsprd` is WSJT-X's. A clean boundary between scheduler and mode does not change linking: each mode needs its own MIT implementation, written from its specification, as FT8 is.
 
 ### 3.9 Sources
 
 A **source** is what a radio backend hands the pipeline: one stream of samples, its rate, and for each channel it carries, the dial, a dropped-sample count and readiness. A source knows its radio; nothing downstream does.
 
-* **An I/Q source** carries one or more channels, each an I/Q front-end instance at that channel's frequency in the stream ([decode.md](../architecture/decode.md), **I/Q front end**). One QMX is one I/Q source on one band, and FT8 and FT4 are two instances on it. One HL2 receiver is one I/Q source at its own NCO ([RFC 0014](0014-hl2-two-p4.md)).
+* **An I/Q source** carries one or more channels, each an I/Q front-end instance at that channel's frequency in the stream ([decode.md](../architecture/decode.md), **I/Q front end**). One QMX is one I/Q source on one band, and FT8 and FT4 are two instances on it. One HL2 receiver is one I/Q source at its own NCO (epic [knpp](../roadmap/hl2-support.md)).
 * **A real-audio source** carries one channel at the pipeline's rate, as a radio's demodulated audio would. No radio uses one today; the QDX would.
 * **Per-source limits are the source's.** Which channels fit a QMX's window, and what an HL2's shared filter does to the bands it serves, are the backend's to report; admission (§3.5) refuses a channel the source cannot carry, with the source's reason.
 * **Per channel:** a ring, a monitor, block gains, the slot state and the dial. PSRAM holds each channel's large state: its waterfall (161,076 bytes at t2/f2) and its capture path (about 113 KB), so four channels are about 1.1 MB of 32 MB; what stays internal per channel is its slot results (two of about 7 KB on the heap), its front-end instance (7,528 bytes) and, if it gets one, a task stack ([memory.md](../architecture/memory.md)).
@@ -132,7 +132,7 @@ A **source** is what a radio backend hands the pipeline: one stream of samples, 
 ### 3.11 Transmit
 
 * **One channel at a time.** The transmission's channel sets its frequency, its mode's waveform and timing, and its slot.
-* **The frequency is checked before key-down.** A decode now chooses where we transmit, so before key-down the backend checks the dial plus the audio offset, and the signal's bandwidth, against a band table, and refuses to key otherwise. Host-tested, including an entry whose band and frequency disagree. Which edges: §7. This is every backend's rule; RFC 0014 states the HL2's.
+* **The frequency is checked before key-down.** A decode now chooses where we transmit, so before key-down the backend checks the dial plus the audio offset, and the signal's bandwidth, against a band table, and refuses to key otherwise. Host-tested, including an entry whose band and frequency disagree. Which edges: §7. This is every backend's rule; epic [knpp](../roadmap/hl2-support.md) states the HL2's.
 * **Deaf by overlap, not by slot index.** A channel is deaf for each of its slots that our transmission overlaps, on any channel of the same station. With FT8 at 15 s and FT4 at 7.5 s: an FT8 transmission deafens both FT4 slots inside it, and an FT4 transmission deafens the FT8 slot it falls in. Today's `tx_slot_idx` skip (§2.1) is the one-channel case of this rule, and stays byte-identical there. The web app says that a channel calling in the slots we transmit in is invisible until we stop.
 * **On a QMX, a channel off the receive dial costs a retune.** The radio transmits at the dial plus the `TA` tone (§2.4). Replying on FT4 at 14.080 MHz with the dial at 14.074 either asks `TA` for a tone about 6 kHz above the usual audio offsets, if the radio accepts one, or moves the dial for the transmission and back after it, which moves the receive window with it. Either way the receive side is deaf for that slot anyway, so the cost is the retune's time and what it does to the slot after. Which, and its timing on the bench: S5 (§7).
 * **Two QSOs on two channels are not run at once.** One transmission at a time means one QSO in progress, as in WSJT-X. What a CQ in progress on one channel does when we reply on another: §7.
@@ -163,20 +163,20 @@ Each slice states its verifiability category from [AGENTS.md](../../AGENTS.md).
    - Verification: host tests replay a mix of channels to identical output, and an ample budget reproduces S1's output exactly (category 1); a quiet band no longer overruns, because decode stops at its budget (category 2).
    - **Done-when:** an hour on a quiet band with no slot past the guard; host recall within the CI floors.
 3. **S3: two cores.** §3.6, with the subtraction question decided on the recall harness.
-   - **Done-when:** row vnz7's: busy slots well under 1,747 ms, recall within the floors, no overrun.
-4. **S4: FT8 and FT4 at once from one QMX, receive.** Two front-end instances on the QMX's I/Q (§3.9), each mode's timing and deadline, where the receive dial sits so both channels fit the window (§2.4), each channel's losses and depth shown (§3.10). Needs FT4 decode on the P4 (row xph7's receive half).
+   - **Done-when:** row [vnz7](../ROADMAP.md#vnz7)'s: busy slots well under 1,747 ms, recall within the floors, no overrun.
+4. **S4: FT8 and FT4 at once from one QMX, receive.** Two front-end instances on the QMX's I/Q (§3.9), each mode's timing and deadline, where the receive dial sits so both channels fit the window (§2.4), each channel's losses and depth shown (§3.10). Needs FT4 decode on the P4 (row [xph7](../ROADMAP.md#xph7)'s receive half).
    - Verification: a recorded 20 m I/Q slot pair decodes both modes on the host to the same messages as each mode alone, in replay (category 1); on the air (category 2).
    - **Done-when:** both channels decode for an hour on 20 m with every slot inside its deadline, each channel's depth logged, and FT8's decodes within its recall of FT8 alone (field).
-5. **S5: reply on the channel heard.** Queue entries with a channel, autoseq matching on it, the log's band and mode, the CQ channel setting, deafness by overlap (§3.11), the QMX's retune or wide `TA` decided on the bench, the band table; FT4 transmit (row xph7's transmit half).
+5. **S5: reply on the channel heard.** Queue entries with a channel, autoseq matching on it, the log's band and mode, the CQ channel setting, deafness by overlap (§3.11), the QMX's retune or wide `TA` decided on the bench, the band table; FT4 transmit (row [xph7](../ROADMAP.md#xph7)'s transmit half).
    - Verification: autoseq, the queue, the overlap rule and the band table in `host_mock` (category 1); on the air (category 2).
    - **Done-when:** listening on FT8 and FT4 on one QMX, a tap on a CQ on each completes a QSO in that mode and logs it with its mode, and the FT8 channel is deaf only in the slots §3.11 names (field).
-6. **S6: several bands from one HL2.** HL2 receivers as I/Q sources (§3.9; [RFC 0014](0014-hl2-two-p4.md) §3.5), two or more bands as admission allows, a reply on the band heard through S5's path. After RFC 0014 S1.
+6. **S6: several bands from one HL2.** HL2 receivers as I/Q sources (§3.9; epic [knpp](../roadmap/hl2-support.md), **Receive**), two or more bands as admission allows, a reply on the band heard through S5's path. After row [mg9c](../roadmap/hl2-support.md#mg9c).
    - **Done-when:** two bands decode for an hour with every loss counter at zero or explained, and a tap on a CQ on the second band completes a QSO there and logs it there (field); or the finding, recorded here, that one P4 carries one HL2 band.
 
 ## 6. What changes elsewhere on acceptance
 
-* [ROADMAP.md](../ROADMAP.md): row vnz7's Done-when becomes S2–S3 here (§8), with S1 ahead of it; this RFC's own row drops. Rows this touches: xph7 (P4: run FT4; S4 needs its receive half, S5 its transmit half), ay9g (QMX: several channels on one band from IQ mode; S4), n2e7 (t4/f2, which waits on the multi-channel budget: S6), mtd6 (per-radio settings), fc6w (listening on the phone, a consumer of a channel's audio).
-* [RFC 0014](0014-hl2-two-p4.md) §3.5 points here for everything about several channels, and keeps only what an HL2 contributes as a source.
+* [ROADMAP.md](../ROADMAP.md): row [vnz7](../ROADMAP.md#vnz7)'s Done-when becomes S2–S3 here (§8), with S1 ahead of it; this RFC's own row drops. Rows this touches: [xph7](../ROADMAP.md#xph7) (P4: run FT4; S4 needs its receive half, S5 its transmit half), [ay9g](../ROADMAP.md#ay9g) (QMX: several channels on one band from IQ mode; S4), [n2e7](../ROADMAP.md#n2e7) (t4/f2, which waits on the multi-channel budget: S6), [mtd6](../ROADMAP.md#mtd6) (per-radio settings), [fc6w](../ROADMAP.md#fc6w) (listening on the phone, a consumer of a channel's audio).
+* Epic [knpp](../roadmap/hl2-support.md) points here for everything about several channels, and keeps only what an HL2 contributes as a source.
 * [decode.md](../architecture/decode.md) gains the scheduler, sources and channels as each slice ships (graduation); [autoseq.md](../architecture/autoseq.md) the channel on queue entries (S5); [radio.md](../architecture/radio.md) the QMX's transmit off the receive dial (S5).
 
 ## 7. Open questions — the Ask
@@ -193,10 +193,10 @@ Each slice states its verifiability category from [AGENTS.md](../../AGENTS.md).
 
 ## 8. Decisions
 
-* **2026-11-04:** widened from a decode scheduler to every channel's receive, decode and transmit; the channel is general and a radio is one source of channels. FT8 and FT4 at once from one QMX is a slice (S4, S5), and several HL2 bands is a later one (S6). What RFC 0014 held about several bands, operating them and transmitting on them moves here; RFC 0014 keeps the HL2's backend. Several P4s are a future direction (§3.12), not a slice. §3.2–3.7 and S1–S3 are unchanged but for citations, so row vnz7 builds what it did (operator).
+* **2026-11-04:** widened from a decode scheduler to every channel's receive, decode and transmit; the channel is general and a radio is one source of channels. FT8 and FT4 at once from one QMX is a slice (S4, S5), and several HL2 bands is a later one (S6). What the HL2 RFC held about several bands, operating them and transmitting on them moves here; epic [knpp](../roadmap/hl2-support.md) holds the HL2's backend. Several P4s are a future direction (§3.12), not a slice. §3.2–3.7 and S1–S3 are unchanged but for citations, so row [vnz7](../ROADMAP.md#vnz7) builds what it did (operator).
 * **2026-11-03:** accepted: the direction (§3) and the slice order (§5); §7's items 2–5 stay open (operator).
 * **2026-11-03:** several P4s may be joined to decode more channels; whole channels are placed on boards, units of work never cross a board, and the QSO partner's channel stays on the station board (operator).
 * **2026-11-02:** each channel has its own deadline, and work runs earliest deadline first, so modes that are not 15 s even/odd fit (operator).
 * **2026-11-02:** admission control on each mode's declared minimum replaces "always a first pass": a channel the budget cannot carry is refused when it is added (operator).
-* **2026-11-02:** row vnz7's Done-when becomes this RFC's S2–S3 (operator).
+* **2026-11-02:** row [vnz7](../ROADMAP.md#vnz7)'s Done-when becomes this RFC's S2–S3 (operator).
 * **2026-11-02:** several digital modes are the vision; the scheduler assumes none of their timings and this RFC builds FT8 and FT4 only (operator).

@@ -173,7 +173,7 @@ further constraints:
 
 1. **The scale must be relative to the noise floor.** A fixed −120..0 window spends most of 16 levels on
    dB values no signal reaches. The per-block AGC in `ft8_audio_pipeline_run()` already pins the floor near
-   a known level, which is what makes an anchored 4-bit scale possible. That AGC is also one of I26's audio-path
+   a known level, which is what makes an anchored 4-bit scale possible. That AGC is also one of [I26](../ROADMAP.md#I26)'s audio-path
    suspects, so the two are tested together.
 2. **Simulating is cheap; packing is not.** Every read of a cell goes through `WF_ELEM_MAG()` /
    `WF_ELEM_MAG_INT()` in `vendor/ft8/decode.h`, so quantising values to 16 levels while keeping one per byte
@@ -669,7 +669,7 @@ on both corpora the same day.**
 
    A stall rule beats a plain cap at equal time, but none is free. **Not shipped:** the decode fits the guard
    today (decode.md), and the time is worth a decode only once something spends it. A later trigger
-   (up to ~4% more decodes on the host) and the two-core split (both now row vnz7) are the buyers; choose a row of this table when one of them
+   (up to ~4% more decodes on the host) and the two-core split (both now row [vnz7](../ROADMAP.md#vnz7)) are the buyers; choose a row of this table when one of them
    needs the time, then confirm on the P4. The change would be in `bp_decode()` (`vendor/ft8/ldpc.c`), so it
    ships as a commit on `kb2slo/ft8_lib` ([ft8_lib.md](../architecture/ft8_lib.md)).
 6. **The top of the search range.** The panadapter reports +6% decodes from opening the top end. That cannot
