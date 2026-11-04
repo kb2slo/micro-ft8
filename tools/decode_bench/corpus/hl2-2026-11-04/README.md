@@ -22,13 +22,14 @@ The Hermes-Lite 2 recorded on a computer, one band at a time, 30 minutes a band,
 | 15 m | good | 22.2 | 14.8 (65.4%) | 15.3 (67.7%) | −7 dB | 0 / 0 | 17 | +17 → +14 dB | 28.0–29.0 |
 | 17 m | poor | 17.6 | 11.3 (64.0%) | 12.0 (67.6%) | −10 dB | 0 / 0 | 26 | +17 → +14 dB | 28.2–29.2 |
 | 20 m | good | 50.0 | 24.3 (48.4%) | 25.0 (49.8%) | −2 dB | 0 / 0 | 13 | +14 → +11 dB | 28.0–29.0 |
+| 30 m | poor | 18.1 | 12.8 (70.6%) | 13.2 (72.9%) | −5 dB | 0 / 0 | 26 | +14 → +14 dB | 29.4–30.1 |
 
 **Our share of `jt9` is the QMX's.** On the QMX corpus's 15 m I/Q (2026-11-02) ours was 16.6 of `jt9`'s 24.4 a slot, 68%; here 64–75% on every band up to about 22 `jt9` decodes a slot. 20 m at 50 a slot drops to 48%, the crowded-band plateau the QMX corpus showed too (our decoder levels off near 25–27 a slot whatever `jt9` finds; [decode.md](../../../../docs/architecture/decode.md), **Subtraction**). So the HL2's receive chain costs our decoder nothing this measures; the gap is the decoder's, which rows kkap (subtraction from the audio) and qauk (AP decoding) work on. The decode counts themselves measure the band, not the radio: comparing the two radios needs both on one antenna at once (epic [knpp](../../../../docs/roadmap/hl2-support.md), **Later**).
 
-**The LNA starts every band at +17 dB and ends at +14** (20 m at +11). Each stream's first second at +20 dB read 33 to 61% of its status words clipped, and one later burst stepped it again (epic, **Open**).
+**The LNA ends every band 6 dB under its start** (+14 dB, 20 m at +11): it steps at once at each stream's start, and 20 m and 30 m stayed at the second step's level from the first slot. Each stream's first second at +20 dB read 33 to 61% of its status words clipped, and one later burst stepped it again (epic, **Open**).
 
 **The image check does not apply.** `score_ab.py` swaps I and Q to find each strong station's mirror, which on a QMX is its image across the LO; on the HL2, a direct-sampling radio, the far side of the NCO is real spectrum below the dial, so its "wrong-side" decodes (3 on 15 m, 9 on 20 m) are other stations, not images.
 
 **Timing:** each slot's first packet arrived within −1 to +2 ms of its UTC boundary over each band, so the HL2's sample clock is within about 1 ppm of the laptop's (the QMX's ran about 150 ppm fast); `jt9`'s DT median on 15 m was 0.1 s.
 
-30 m and the night bands (40, 60, 80 and 160 m) are added here as they are scored.
+The night bands (40, 60, 80 and 160 m) are added here as they are scored.
