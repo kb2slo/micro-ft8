@@ -9,7 +9,7 @@ Human- and tool-readable project memory. Prefer this tree over editor-specific r
 | [../CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | How people treat each other here, and how to report a problem. |
 | [../SECURITY.md](../SECURITY.md) | How to report a vulnerability privately, and what is in scope. |
 | [ROADMAP.md](ROADMAP.md) | Plan, as an index: Next groom / Epics / Now / Backlog / Blocked / Ideas. Chat and issues are intake; this file is truth. Shipped work is dropped, not archived — git history is the record. |
-| `roadmap/` | One file per epic, holding its plan and unbuilt design, deleted when the epic is done; and [declined.md](roadmap/declined.md), the ideas turned down. How: [maintainer/roadmap.md](maintainer/roadmap.md). |
+| `roadmap/` | One file per epic, named in plain words, holding its plan and unbuilt design, deleted when the epic is done; and [declined.md](roadmap/declined.md), the ideas turned down. How: [maintainer/roadmap.md](maintainer/roadmap.md). |
 | [../README.md](../README.md) | Contributor landing: what it is, status, hardware, layout, build and test, contributing, acknowledgements. Operators go to the site. What it holds and when to audit it: [AGENTS.md](../AGENTS.md), **README and site stay current**. |
 | [STYLE.md](STYLE.md) | Coding standard for our C/C++ (not vendored `M5*` / `ft8_lib`). |
 | [TEST_PLAN.md](TEST_PLAN.md) | Ledger: what automation checks, what it cannot see, and the field checks still owed (**Pending**), with how one is asked for and closed. |

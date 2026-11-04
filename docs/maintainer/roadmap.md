@@ -5,7 +5,7 @@ How the roadmap is kept: the index [ROADMAP.md](../ROADMAP.md), the epic files b
 ## The shape
 
 * **`ROADMAP.md` is the index:** Next groom, Epics, Now, Backlog, Blocked, Ideas. It holds the order, and every session reads it, so it stays small.
-* **An epic file, `roadmap/<id>-<slug>.md`, holds one epic:** a body of work too big for one row. Only a session touching that epic's rows reads it.
+* **An epic file, `roadmap/<name>.md`, holds one epic:** a body of work too big for one row. Only a session touching that epic's rows reads it.
 * **`roadmap/declined.md`** holds rejected ideas, one line each, so they are not proposed again. Read it when an idea comes up, not at session start.
 
 **Not Jira.** The roadmap is plain markdown that a person can edit by hand. These limits are the point; a change that loosens one is a process change, proposed on its own:
@@ -24,6 +24,8 @@ How the roadmap is kept: the index [ROADMAP.md](../ROADMAP.md), the epic files b
 **Blocked is a section, not a tag,** so Backlog order stays pure priority. A Blocked row names **Blocked on:** (the condition that clears it) and keeps a Done-when; an optional **Collects:** lists work that attaches to it if it is ever done. Order within Blocked does not matter. Same size limit as every row; an overgrown **Collects:** becomes an epic.
 
 **Declined lives in [roadmap/declined.md](../roadmap/declined.md).** A rejected row or epic moves there as one line — ID, name, why. Git keeps the full row. An outside idea declined in its issue needs no line: the closed issue says why.
+
+**Every row has an anchor named by its ID:** `<a id="<id>"></a>` at the start of its Item cell in the index or `declined.md`, and at the start of its entry in its epic file. A row in an epic links to that entry (`Epic [knpp](roadmap/hl2-support.md#mg9c)`), so a click from the index lands on its detail. Mentions of a row anywhere link to it ([AGENTS.md](../../AGENTS.md), **Link every roadmap row you name**); `tools/check_docs.py` fails a roadmap link whose anchor is gone, and `tools/roadmap_rows.sh` measures a row without its anchors and link targets.
 
 **IDs are opaque.** New rows and epics get a random ID from `tools/roadmap_rows.sh new`, which checks it has never appeared in git history. Existing `B`/`I` IDs stay. Section is stage, position is priority; the ID encodes neither. Lineage — split from, merged into, replaced by — goes in the commit message that made the change, not in the row; `git log -S'<id>' --reverse -- docs/ROADMAP.md` finds where a row came from.
 
@@ -48,20 +50,22 @@ Update the roadmap in the **same turn** as the work:
 
 **An epic is planned work too big for one row:** several rows toward one goal, with design that is decided but not built. It replaces the RFC; there is no separate design document.
 
-**In the index,** an epic is one row in **Epics**: its ID, its name and a link to its file. Its child rows sit in Now, Backlog or Blocked like any row, in priority order, each starting its Why with the epic's link. A child row in the index is one line of why and a Done-when; its detail is in the epic file.
+**In the index,** an epic is one row in **Epics**: its ID, its name and a link to its file. The file is named for what the epic is, in plain words (`hl2-support.md`), not for its ID; its title carries the ID. Its child rows sit in Now, Backlog or Blocked like any row, in priority order, each starting its Why with the epic's link. A child row in the index is one line of why and a Done-when; its detail is in the epic file.
 
 **The epic file holds what is planned, and only while it is planned:**
 
 * **Goal** and **constraints.**
 * **Decided:** what holds now. No dates, no decision log, no "was X": a decision that changes is edited in place, and git keeps the old one.
 * **Design** of what is not built yet, and the facts it rests on, each with its source.
-* **Children:** each child row's detail, and the order they depend on each other in.
+* **Children:** each child row's detail, the order they depend on each other in, and its **Lands in:** line; then **Later**, the slices not yet rows, one line each.
 * **Open:** questions still to settle, each named for the child that needs the answer.
 * **Why not:** short notes on the alternatives turned down, so they are not proposed again.
 
-Leave out anything that is not useful to the next child's work. A file past about 200 lines is doing an architecture doc's job: move what is true now there.
+**An epic grows by grooming.** It starts high-level: a goal, its constraints, one child row, and the rest as a short **Later** list. Each groom that reaches it adds detail as late as it can and as early as the next work needs: design is filled in ahead of the child that builds it, a Later slice becomes a row with a Done-when when it is next, and Open questions are settled or named for the child that needs them. Leave out anything that is not useful to the next child's work. A file past about 200 lines is doing an architecture doc's job: move what is true now there.
 
-**When a child ships,** its commit drops the row and moves what is now true about the code into the architecture doc ([AGENTS.md](../../AGENTS.md), **Architecture docs match the code too**), deleting it from the epic file. So the epic file describes only the plan, and architecture docs only what is built.
+**Lands in.** Each child names, on one **Lands in:** line, the architecture docs its commit moves truth into (and any new one it creates), plus the README, site and TEST_PLAN audits it triggers. A section no child obviously builds (facts, why-not notes, parity, open questions) gets its own **Lands in:** line naming the child and the doc; design sections go with the child that builds them and carry none. The destination is decided when the child is written, while the context is fresh, and grooming corrects it as the design moves.
+
+**When a child ships,** its commit drops the row and moves what is now true about the code into the docs its **Lands in:** line names ([AGENTS.md](../../AGENTS.md), **Architecture docs match the code too**), deleting it from the epic file. So the epic file describes only the plan, and architecture docs only what is built.
 
 **When the last child ships or is dropped,** that commit deletes the file and the Epics row, after moving anything still true into an architecture doc. An epic abandoned before then is deleted with one line in `declined.md`.
 
@@ -90,7 +94,7 @@ If the maintainer asks to add an idea or “add to the backlog”:
 **A groom is a timeboxed session.**
 
 1. **Open:** ask the maintainer for a rough timebox (e.g. 30 min, 1 h) and tune the pace to it. Read `ROADMAP.md`'s **Next groom** section — carried items come first. Run `tools/roadmap_rows.sh health` if you can and state the budget in one line.
-2. **Passes, in order, until the timebox runs out:** ① Now: drop what shipped, move out what is not the epic or theme in focus; ② Epics: does each still have live children, and is its file still only plan; ③ Backlog: drops, demotions, splits, missing Done-whens, over-size rows, then order; ④ Blocked: does each condition still hold; ⑤ Ideas: drops, declines, over-size rows; ⑥ pick Now.
+2. **Passes, in order, until the timebox runs out:** ① Now: drop what shipped, move out what is not the epic or theme in focus; ② Epics: for each, does the next child have the design it needs, which Later slices are now next (they become rows), which Open questions can be settled or need naming for a child, is the file still only plan, and does each still have live children; ③ Backlog: drops, demotions, splits, missing Done-whens, over-size rows, then order; ④ Blocked: does each condition still hold; ⑤ Ideas: drops, declines, over-size rows; ⑥ pick Now.
 3. **Wrap:** re-run `health`; rewrite **Next groom** in `ROADMAP.md` with what was not reached (delete the section's items, or the section, when nothing carries over); a short retro — what in this process to change, applied to the doc it changes in the same wrap; propose the commits (process changes separate from the groom). **Nothing is queued in chat:** each follow-up becomes a row or is done in the wrap. Carry-over state lives in the file every agent reads, never only in a commit message.
 
 **A groom may focus on one epic.** The passes then run over its file, its rows and the rows that bear on them; the rest waits for a full groom.

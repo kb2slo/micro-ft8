@@ -41,7 +41,8 @@ rows() {
   awk -F'|' '
     /^## / { sec = $0; sub(/^## /, "", sec); gsub(/ /, "_", sec) }
     /^\| *[A-Za-z0-9]+ *\|/ && !/^\| *(ID|---)/ {
-      s = $0; gsub(/  +/, " ", s)
+      # Length is the text a reader sees: anchors and link targets do not count.
+      s = $0; gsub(/<a id="[^"]*"><\/a>/, "", s); gsub(/\]\([^)]*\)/, "]", s); gsub(/  +/, " ", s)
       id = $2; gsub(/ /, "", id)
       print sec, length(s), id, (index(s, "`long-ok`") ? 1 : 0), (tolower(s) ~ /done[- ]when/ ? 1 : 0), (index(s, "Blocked on:") ? 1 : 0)
     }'
@@ -203,24 +204,26 @@ health() {
   printf '  dangling IDs     %d file(s) cite a dropped row ID    (tools/roadmap_rows.sh dangling)\n' "$(grep -c . <<<"$dang" || true)"
 
   local why=()
-  # Epics: each Epics row links a file that exists, each epic file has an Epics row, and each epic
-  # has at least one child row citing its ID elsewhere in the index (maintainer/roadmap.md, Epics).
-  local files epic_ids epic_bad=() eid f
+  # Epics: each Epics row links a file in docs/roadmap/ that exists, each epic file is linked by an
+  # Epics row, and each epic has at least one child row citing its ID elsewhere in the index
+  # (maintainer/roadmap.md, Epics). Files are named in plain words, so the row's link pairs them.
+  local files epic_ids linked epic_bad=() eid f
   if (( worktree )); then
     files="$(ls "$EPICS_DIR"/*.md 2>/dev/null | grep -v "/declined.md$" || true)"
   else
     files="$(git ls-tree --name-only "$rev" "$EPICS_DIR/" 2>/dev/null | grep '\.md$' | grep -v "/declined.md$" || true)"
   fi
   epic_ids="$(awk '$1 == "Epics" { print $3 }' <<<"$data")"
+  linked="$(awk '/^## / { sec = $0 } sec == "## Epics" && /^\| / { while (match($0, /\(roadmap\/[^)]+\.md\)/)) {
+      print "docs/" substr($0, RSTART + 1, RLENGTH - 2); $0 = substr($0, RSTART + RLENGTH) } }' <<<"$text")"
   for eid in $epic_ids; do
-    grep -q "^$EPICS_DIR/$eid-" <<<"$files" || epic_bad+=("$eid has no file")
+    awk -v e="$eid" '/^## / { sec = $0 } sec == "## Epics" && $0 ~ "^\\| *" e " *\\|" && /\(roadmap\/[^)]+\.md\)/ { n++ } END { exit !n }' <<<"$text" \
+      || epic_bad+=("$eid links no file")
     awk -v e="$eid" '/^## / { sec = $0 } sec != "## Epics" && sec != "## Declined" && /^\| / && index($0, e) { n++ } END { exit !n }' <<<"$text" \
       || epic_bad+=("$eid has no child rows")
   done
-  for f in $files; do
-    eid="$(basename "$f" | cut -d- -f1)"
-    grep -qx "$eid" <<<"$epic_ids" || epic_bad+=("$(basename "$f") has no Epics row")
-  done
+  for f in $linked; do grep -qx "$f" <<<"$files" || epic_bad+=("$(basename "$f") is linked but missing"); done
+  for f in $files; do grep -qx "$f" <<<"$linked" || epic_bad+=("$(basename "$f") has no Epics row"); done
   printf '  epics            %d%s\n' "$(grep -c . <<<"$epic_ids" || true)" "${epic_bad:+ -- $(IFS=';'; echo "${epic_bad[*]}")}"
   (( ${#epic_bad[@]} )) && why+=("epics inconsistent")
 

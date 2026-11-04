@@ -70,7 +70,7 @@ No model tier turns a hardware-only check into one an agent can close (**Never r
 
 State which of these you did in the turn you report the work, and in the pull request's **Audits**. **"No test-plan change needed" is a valid answer and must be said out loud**, exactly like the README and site audits — an audit you skipped and an audit you did are otherwise indistinguishable.
 
-**Architecture docs match the code too.** A `docs/architecture/<area>.md` describes how things work now, so a change that alters behaviour one of them describes updates it in the **same commit**. As with the README and site audits, say it out loud when nothing needs changing: "no architecture-doc change needed". When an epic's row ships, the same commit moves what is now true out of the epic file and into the architecture doc ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md), **Epics**). **Unbuilt design lives in the epic file, not the architecture doc.** An architecture doc may mention a decided but unbuilt change only in a sentence pointing at its epic, under a label naming the rows that build it — "**not yet built: rows v697, hstv**" — so that when those rows ship and are dropped, `tools/roadmap_rows.sh dangling` flags the stale label.
+**Architecture docs match the code too.** A `docs/architecture/<area>.md` describes how things work now, so a change that alters behaviour one of them describes updates it in the **same commit**. As with the README and site audits, say it out loud when nothing needs changing: "no architecture-doc change needed". When an epic's row ships, the same commit moves what is now true out of the epic file and into the docs the row's **Lands in:** line names, and the pull request's audit says what moved where ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md), **Epics**). Detail deleted from an epic file without a move is lost. **Unbuilt design lives in the epic file, not the architecture doc.** An architecture doc may mention a decided but unbuilt change only in a sentence pointing at its epic, under a label naming the rows that build it — "**not yet built: rows v697, hstv**" — so that when those rows ship and are dropped, `tools/roadmap_rows.sh dangling` flags the stale label.
 
 **Never report a field check as passed.** An agent runs `tools/check.sh` and reports its summary honestly. **A run is not clean unless it exits 0 with nothing skipped.** Before proposing a commit or a push, run `tools/check.sh --changed`; the pre-push hook (`.githooks/pre-push`, CONTRIBUTING.md **Setup**) runs it again on every push and refuses a push that fails it or would push something other than the checked-out commit, and `git push --no-verify` needs the same explicit say-so as `--allow-skip`. If it exits non-zero, or any check skipped or is allowed to skip, the first line of the reply says which checks did not run and why, and no commit or push is proposed until the cause is fixed. Pass `--allow-skip` only when the person you work for says to in so many words, and report what it left unverified wherever you report the result. Anything needing the P4, a radio, or an antenna is for someone with the hardware to run: propose it, put it in **Pending**, and wait for their result, step by step. A green build is evidence about linkage, not about whether the radio transmitted.
 
@@ -172,11 +172,19 @@ the only place every agent and every person can see them — see "Memory lives i
   under `webapp/app/` needs no extra step. Before pushing one, run `tools/check.sh --changed`: it runs that
   build, as CI does.
 
-- **Gloss roadmap IDs in chat.** Write "u4dw (a watchdog that stops a runaway transmitter)", not "u4dw".
-  Nobody holds the ID-to-topic mapping in their head, and a bare ID makes them go look it up mid-conversation.
-  Applies to every row ID (the four-character ones and the older `B*`/`I*`) and RFC or epic section numbers. Test-plan
-  row IDs are fine bare when the surrounding text already says what the check does. Inside `ROADMAP.md` and
-  commit messages the bare ID is correct — this is about chat. **When asking for a decision, put all the
+- **Link every roadmap row you name, in chat and in any `.md` file.** A row's anchor is its ID: a row in an
+  epic links to its entry in the epic file, any other row to its row in the index, a declined one to
+  `declined.md`, and an epic to its file. In a doc the link is relative (`[u4dw](../ROADMAP.md#u4dw)`). In chat
+  it is an absolute GitHub URL, since a chat surface has no repo to resolve a relative one against:
+  `https://github.com/kb2slo/micro-ft8/blob/main/docs/ROADMAP.md#u4dw`, on `main` when the row is there, or on the
+  pushed branch that holds it; for a row only on an unpushed branch, say so and gloss it, since no link can reach it
+  yet. `tools/check_docs.py` fails a roadmap link whose anchor is gone. Left bare: commit messages and pull request titles, code comments, code spans, headings,
+  and the frozen `docs/rfcs/rejected/`.
+- **Gloss roadmap IDs in chat, too.** Write "u4dw (a watchdog that stops a runaway transmitter)", linked as
+  above, not a bare "u4dw": a link takes a click, a gloss takes none, and nobody holds the ID-to-topic
+  mapping in their head. Applies to every row ID (the four-character ones and the older `B*`/`I*`) and RFC or epic
+  section numbers. Test-plan row IDs are fine bare when the surrounding text already says what the check does.
+  **When asking for a decision, put all the
   context it needs in the chat itself** — what the row said, what was found, what each option does — so the
   person you work for never has to open a row, an epic file, or an earlier message to answer.
 
