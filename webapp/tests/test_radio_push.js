@@ -53,4 +53,15 @@ assert.strictEqual(ctx.radioReadBack(cfg).tx, true, 'and the panel reads it as t
 
 ctx.applyRadioPush(cfg, { hz: 14074000, tx: 0, md: 6, sp: 0 });
 assert.strictEqual(ctx.radioChipState(cfg), 'ready', 'back where it was');
+
+// Tune: the QMX reports CW (md 3) for its SWR Tune carrier. That is ours, not a move; a frequency
+// change during Tune still is, and once Tune is off the same mode is a move again.
+cfg.tune = '1';
+ctx.applyRadioPush(cfg, { hz: 14074000, tx: 1, md: 3, sp: 0 });
+assert.strictEqual(ctx.radioChipState(cfg), 'ready', 'Tune\'s own mode is not the radio moving');
+ctx.applyRadioPush(cfg, { hz: 14074300, tx: 1, md: 3, sp: 0 });
+assert.strictEqual(ctx.radioChipState(cfg), 'drift', 'a knob turn during Tune still is');
+cfg.tune = '0';
+ctx.applyRadioPush(cfg, { hz: 14074000, tx: 0, md: 3, sp: 0 });
+assert.strictEqual(ctx.radioChipState(cfg), 'drift', 'CW once Tune is off is a move');
 console.log('radio push: all checks passed');
