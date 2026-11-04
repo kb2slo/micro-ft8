@@ -193,6 +193,11 @@ the only place every agent and every person can see them — see "Memory lives i
   UTC; a time relayed in chat is converted and labelled (CST or CDT). A clock with no zone, such as a
   logger's, is checked against a known event before it is relayed.
 
+- **Read an outside branch before running anything on it.** A contributor's branch can change any script in it,
+  including the read-only checks `.claude/settings.json` lets run without a prompt and the pre-push hook. Before
+  running a check, a test or a build on such a branch, the person you work for has seen its diff. A tool's own
+  permission file, like that one, lists only read-only checks and carries no rules of its own.
+
 - **An agent cannot answer a password prompt.** For `sudo` or any command that asks for a password, give
   the exact command, ask the person you work for to run it in their own terminal, and wait for them to say it
   ran. Do not run it through the agent's shell.
