@@ -1,5 +1,5 @@
 // Receive front end: one channel of upper-sideband audio from a complex I/Q stream
-// (RFC 0014 §3.4). docs/architecture/decode.md, **I/Q front end**.
+// (docs/architecture/decode.md, **I/Q front end**).
 //
 // What it does, per channel:
 //

@@ -4,9 +4,9 @@ This repo is tool-agnostic, and this file is the working agreement for every age
 Tool-specific files (`CLAUDE.md`, which imports this file, `.cursor/rules/`, and any future equivalent) load
 it and carry no rules of their own; if one disagrees with this file, the stub is the bug. Supporting a new
 tool means adding a stub, never copying or moving rules into it. Do not adopt a vendor-specific format for
-anything that belongs here or in `docs/` — workflow, style, roadmap, or RFCs.
+anything that belongs here or in `docs/` — workflow, style, or the roadmap and its epics.
 
-**Workflow matches documentation.** Committed docs are the workflow: this file, `ROADMAP.md`, `STYLE.md`, RFCs, and the architecture notes. Cite the relevant doc when proposing or making a change.
+**Workflow matches documentation.** Committed docs are the workflow: this file, the roadmap (`ROADMAP.md` and its epic files), `STYLE.md`, and the architecture notes. Cite the relevant doc when proposing or making a change.
 
 **A line earns its place here if it changes what an agent does.** If it only explains how a rule came about, it belongs in the commit message, not in this file.
 
@@ -14,7 +14,7 @@ anything that belongs here or in `docs/` — workflow, style, roadmap, or RFCs.
 
 - **The person you work for** is whoever is driving you: the maintainer, or a contributor. They review in
   chat and say when to commit and push; "they" below means them.
-- **The maintainer** (Jeff, KB2SLO) orders the roadmap, accepts RFCs, reviews and merges pull requests,
+- **The maintainer** (Jeff, KB2SLO) orders the roadmap, decides epics, reviews and merges pull requests,
   cuts releases, and runs the upstream watches. What only the maintainer does is in
   [docs/maintainer/](docs/maintainer/README.md); do it only when the person you work for is the maintainer.
 - **An operator** is someone running a station. Where these docs say "operator", they mean that person,
@@ -22,7 +22,7 @@ anything that belongs here or in `docs/` — workflow, style, roadmap, or RFCs.
 
 ## Starting a session
 
-Read `docs/ROADMAP.md` (what is next) and the architecture doc or RFC for the area you touch. Follow
+Read `docs/ROADMAP.md` (what is next) and the architecture doc for the area you touch; before touching an epic's rows, read its file under `docs/roadmap/` (or the RFC not yet dissolved into one). Follow
 [STYLE.md](docs/STYLE.md) for our C/C++. How a change gets from a branch onto `main`:
 [CONTRIBUTING.md](CONTRIBUTING.md). `tools/check.sh` runs every check CI runs; `--changed`, the ones a
 change can affect. Working for the maintainer (they say so, or `git config user.name` is theirs), also read
@@ -30,7 +30,7 @@ change can affect. Working for the maintainer (they say so, or `git config user.
 
 ## The work
 
-**Push back before tools.** Classify the request against `ROADMAP.md` Now, the active RFC, and `STYLE.md` **before any edit of implementation, or before exploration spanning more than one file.** 
+**Push back before tools.** Classify the request against `ROADMAP.md` Now, the epic in focus, and `STYLE.md` **before any edit of implementation, or before exploration spanning more than one file.** 
 
 - **Working for the maintainer:** if it is not the current Now theme, not an explicit exception in those docs, or is still Ideas/Backlog (including “quick” UI/product tweaks), the first reply cites the doc and talks it through. Tools only after the maintainer retracts, grants an exception, or updates the doc in the same turn — an exception is an explicit decision, not a shortcut, and never a silent divergence.
 - **Working for a contributor:** a bug fix can go straight to a pull request. Anything else — a feature, a renamed label, a changed behaviour, a slice of a larger plan — needs an issue the maintainer has agreed to, however well a host test proves it: a test shows a change works, not that it is wanted; with none, draft the issue in chat (what, why, Done-when) and stop there.
@@ -56,7 +56,7 @@ An unproven fix is still worth making. Pretending it is proven is not.
 **Tier the model to the task, the same way work is tiered by verifiability above.** An agent can prove some things and not others; a model can carry some kinds of work well and not others, and a wrong choice here is not caught by the compiler the way a bad fix is. State which tier a task is before starting non-trivial work:
 
 1. **Mechanical, low blast radius** — `git mv`-shaped extracts, renames, doc formatting, running `tools/check.sh` and reporting the result, applying a change the person you work for already fully specified. Verified by the compiler or a host test regardless of which model did it — use whatever is fast and cheap.
-2. **Judgment under ambiguity** — RFC drafting, sizing a memory/timing budget, choosing an extract boundary, RFC graduation, changes to this process, anything **Push back before tools** above would stop for. Use the strongest available model. Nothing mechanical catches a wrong call here, which is exactly what makes it expensive.
+2. **Judgment under ambiguity** — drafting an epic, sizing a memory/timing budget, choosing an extract boundary, moving an epic's design into an architecture doc, changes to this process, anything **Push back before tools** above would stop for. Use the strongest available model. Nothing mechanical catches a wrong call here, which is exactly what makes it expensive.
 
 No model tier turns a hardware-only check into one an agent can close (**Never report a field check as passed**, below).
 
@@ -70,7 +70,7 @@ No model tier turns a hardware-only check into one an agent can close (**Never r
 
 State which of these you did in the turn you report the work, and in the pull request's **Audits**. **"No test-plan change needed" is a valid answer and must be said out loud**, exactly like the README and site audits — an audit you skipped and an audit you did are otherwise indistinguishable.
 
-**Architecture docs match the code too.** A `docs/architecture/<area>.md` describes how things work now, so a change that alters behaviour one of them describes updates it in the **same commit**. As with the README and site audits, say it out loud when nothing needs changing: "no architecture-doc change needed". An RFC slice does this through graduation ([docs/rfcs/README.md](docs/rfcs/README.md), **RFC lifecycle**); this rule covers changes that come through no RFC. **An accepted RFC records decisions, not current state:** do not edit one to match a change, even a renamed label. It changes only by a dated decision, and what is true now goes in the architecture doc. A doc may describe a decided but unbuilt design only under a label naming the roadmap rows that build it — "**not yet built: rows v697, hstv**" — so that when those rows ship and are dropped, `tools/roadmap_rows.sh dangling` flags the stale label.
+**Architecture docs match the code too.** A `docs/architecture/<area>.md` describes how things work now, so a change that alters behaviour one of them describes updates it in the **same commit**. As with the README and site audits, say it out loud when nothing needs changing: "no architecture-doc change needed". When an epic's row ships, the same commit moves what is now true out of the epic file and into the docs the row's **Lands in:** line names, and the pull request's audit says what moved where ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md), **Epics**). Detail deleted from an epic file without a move is lost. **Unbuilt design lives in the epic file, not the architecture doc.** An architecture doc may mention a decided but unbuilt change only in a sentence pointing at its epic, under a label naming the rows that build it — "**not yet built: rows [v697](docs/ROADMAP.md#v697), [hstv](docs/ROADMAP.md#hstv)**" — so that when those rows ship and are dropped, `tools/roadmap_rows.sh dangling` flags the stale label.
 
 **Never report a field check as passed.** An agent runs `tools/check.sh` and reports its summary honestly. **A run is not clean unless it exits 0 with nothing skipped.** Before proposing a commit or a push, run `tools/check.sh --changed`; the pre-push hook (`.githooks/pre-push`, CONTRIBUTING.md **Setup**) runs it again on every push and refuses a push that fails it or would push something other than the checked-out commit, and `git push --no-verify` needs the same explicit say-so as `--allow-skip`. If it exits non-zero, or any check skipped or is allowed to skip, the first line of the reply says which checks did not run and why, and no commit or push is proposed until the cause is fixed. Pass `--allow-skip` only when the person you work for says to in so many words, and report what it left unverified wherever you report the result. Anything needing the P4, a radio, or an antenna is for someone with the hardware to run: propose it, put it in **Pending**, and wait for their result, step by step. A green build is evidence about linkage, not about whether the radio transmitted.
 
@@ -87,7 +87,7 @@ State which of these you did in the turn you report the work, and in the pull re
 
 **Audit the site in the same turn** when a change adds, alters, or **removes** any of: a web-app screen or control; an on-screen string the site or Getting started quotes; a documented workflow (log offload, flashing, time sync, pairing); a supported radio or board; or what is verified (a field check that passes moves a claim to **Verified on the air**, and one that fails takes it down). `webapp/tools/getting_started.mjs` fails when a label Getting started quotes leaves the UI; nothing checks the landing page, so read it. **The site describes what ships** ([docs/README.md](docs/README.md)): nothing unbuilt beyond its **Coming soon** list, nothing unmeasured, nothing only upstream had.
 
-**Removal counts, and is the easy one to miss**: a page documenting a control that now does nothing is worse than one that never mentioned it. For either audit, propose the add, change, or drop in chat with the test plan and commit message, and put the accepted edit in the same commit as the work. When it does not apply, say so in that turn: "README: no change needed", "site: no change needed". Agent, RFC, extract-only and other work nobody outside the repo can see triggers neither.
+**Removal counts, and is the easy one to miss**: a page documenting a control that now does nothing is worse than one that never mentioned it. For either audit, propose the add, change, or drop in chat with the test plan and commit message, and put the accepted edit in the same commit as the work. When it does not apply, say so in that turn: "README: no change needed", "site: no change needed". Agent, roadmap, extract-only and other work nobody outside the repo can see triggers neither.
 
 **Credit what we use, and never copy GPL code.** This repository is MIT. Code from a permissively licensed project keeps its copyright notice and is credited in the README's **Acknowledgements** in the same change. A GPL project, such as WSJT-X or qmx-panadapter, may be read to learn how something works and credited as a reference, but none of its code is copied or translated line by line into this tree; write from the behaviour, not the source.
 
@@ -172,13 +172,21 @@ the only place every agent and every person can see them — see "Memory lives i
   under `webapp/app/` needs no extra step. Before pushing one, run `tools/check.sh --changed`: it runs that
   build, as CI does.
 
-- **Gloss roadmap IDs in chat.** Write "u4dw (a watchdog that stops a runaway transmitter)", not "u4dw".
-  Nobody holds the ID-to-topic mapping in their head, and a bare ID makes them go look it up mid-conversation.
-  Applies to every row ID (the four-character ones and the older `B*`/`I*`) and RFC section numbers. Test-plan
-  row IDs are fine bare when the surrounding text already says what the check does. Inside `ROADMAP.md` and
-  commit messages the bare ID is correct — this is about chat. **When asking for a decision, put all the
+- **Link every roadmap row you name, in chat and in any `.md` file.** A row's anchor is its ID: a row in an
+  epic links to its entry in the epic file, any other row to its row in the index, a declined one to
+  `declined.md`, and an epic to its file. In a doc the link is relative (`[u4dw](../ROADMAP.md#u4dw)`). In chat
+  it is an absolute GitHub URL, since a chat surface has no repo to resolve a relative one against:
+  `https://github.com/kb2slo/micro-ft8/blob/main/docs/ROADMAP.md#u4dw`, on `main` when the row is there, or on the
+  pushed branch that holds it; for a row only on an unpushed branch, say so and gloss it, since no link can reach it
+  yet. `tools/check_docs.py` fails a roadmap link whose anchor is gone. Left bare: commit messages and pull request titles, code comments, code spans, headings,
+  and the frozen `docs/rfcs/rejected/`.
+- **Gloss roadmap IDs in chat, too.** Write "u4dw (a watchdog that stops a runaway transmitter)", linked as
+  above, not a bare "u4dw": a link takes a click, a gloss takes none, and nobody holds the ID-to-topic
+  mapping in their head. Applies to every row ID (the four-character ones and the older `B*`/`I*`) and RFC or epic
+  section numbers. Test-plan row IDs are fine bare when the surrounding text already says what the check does.
+  **When asking for a decision, put all the
   context it needs in the chat itself** — what the row said, what was found, what each option does — so the
-  person you work for never has to open a row, an RFC, or an earlier message to answer.
+  person you work for never has to open a row, an epic file, or an earlier message to answer.
 
 - **Times in chat are the maintainer's local time, US Central.** Logs, commits, ADIF and the docs keep
   UTC; a time relayed in chat is converted and labelled (CST or CDT). A clock with no zone, such as a
@@ -225,7 +233,7 @@ goes.
 
 **The one exception is upstream.** Where code here still shares lineage with Wei's Mini-FT8 (the
 sequencer, logging, the ft8_lib integration), a deliberate divergence stays documented in the architecture
-doc, RFC or roadmap row for that area, so an agent porting a fix from upstream does not "fix" it back to
+doc, epic file or roadmap row for that area, so an agent porting a fix from upstream does not "fix" it back to
 upstream behaviour ([docs/maintainer/upstream.md](docs/maintainer/upstream.md)). The README credits
 Mini-FT8; it does not list what changed since.
 
@@ -236,12 +244,17 @@ comes out.
 ## Memory lives in this repo
 
 Agents with a private per-machine memory store must not use it for anything about this project. These docs
-are the memory: `AGENTS.md` for working agreement and operating notes, `ROADMAP.md` for plan and history,
+are the memory: `AGENTS.md` for working agreement and operating notes, `ROADMAP.md` and its epic files for the plan,
 `TEST_PLAN.md` for the field checks still owed and what has never run on hardware, `STYLE.md` for code conventions.
 
 **Why:** a private store is scoped to one machine and one account. It is invisible to the person you work for, to a
 second agent on another machine, to a future maintainer, and to code review — so it silently diverges from the
 repo and cannot be corrected by anyone who has not got it. A rule only one agent can read is not a rule.
+
+**GitHub issues are discussion, not memory.** An issue is where an idea or a report arrives and is talked
+through; it is never the only home of a decision. The pull request that acts on one puts the outcome in these docs
+and cites `#N`. Read issues freely; comment on, open or close one only when the person you work for says to in that
+turn, as for a push: an issue is public ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md), **Issues**).
 
 **How to apply:** when the maintainer states a preference worth keeping, put it in the right doc in the same
 turn and propose the commit. A contributor's preference about how this repo works is a pull request to that

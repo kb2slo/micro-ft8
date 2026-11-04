@@ -60,7 +60,7 @@ The full picture, and the rules about who may key the transmitter:
 | `webapp/` | The browser app (`webapp/app/`) and the public site |
 | `host_mock/`, `tests/` | Host tests that run the firmware's logic without hardware |
 | `tools/` | `check.sh` and the checks it runs, release and flashing helpers |
-| [`docs/`](docs/README.md) | Architecture, roadmap, RFCs, style guide, test plan |
+| [`docs/`](docs/README.md) | Architecture, roadmap and its epics, style guide, test plan |
 
 ## Build and test
 

@@ -49,11 +49,11 @@ A contact's state is **what we last sent**. `next_tx` is what we send next.
 * **Reactivation restores `next_tx` itself.** `move_to_inactive()` clears `next_tx`, and `reactivate()` sets it back to the state's canonical value (`canonical_next_tx()`) before the table runs. Relying on the table's "keep" was not enough, because a message the classifier cannot place (no third field, say) returns before the table. An active entry with `TX_NONE` renders no text, so at `queue[0]` it stopped every TX, the CQ's included (`host_mock/test_queue_head.cpp`).
 * **A new contact enters through the same table.** For a new entry, `generate_response(override=true)` first sets the state *before* the one the received message answers: TX1 → CALLING, TX2 → REPLYING, TX3 → REPORT, TX4 → ROGER_REPORT, TX5 → ROGERS. Then it applies the table. A grid answering our CQ lands in REPORT, and a straight report lands in ROGER_REPORT. The new entry takes DX's audio offset, and the slot parity opposite the one DX sent in.
 * **`snr_tx`** (the report we send) is latched from the first TX1 or TX2 we decode from DX and never changes after that. A touch sets it from the tapped decode.
-* **Field Day follows the CQ type**, as WSJT-X's "Special operating activity" does. With CQ type FD every contact is FD: a reply opens with our exchange (TX2), never a grid, TX2 and TX3 carry the exchange (the Station key `free_text`) instead of a report, and the received exchange is kept for Cabrillo. With any other type, a tapped `CQ FD` gets an ordinary reply. WSJT-X disables Tx1 in Field Day mode and takes its exchange from a setting, never from the CQ it answers (`widgets/mainwindow.cpp` at `967c85a`, lines 8241-8249 and 9637). **Differs from Wei's Micro-FT8,** where tapping a `CQ FD` made that contact FD whatever our CQ type, and a reply opened with our grid. An exchange `parse_fd_exchange()` rejects is still sent as typed (row u9nb).
+* **Field Day follows the CQ type**, as WSJT-X's "Special operating activity" does. With CQ type FD every contact is FD: a reply opens with our exchange (TX2), never a grid, TX2 and TX3 carry the exchange (the Station key `free_text`) instead of a report, and the received exchange is kept for Cabrillo. With any other type, a tapped `CQ FD` gets an ordinary reply. WSJT-X disables Tx1 in Field Day mode and takes its exchange from a setting, never from the CQ it answers (`widgets/mainwindow.cpp` at `967c85a`, lines 8241-8249 and 9637). **Differs from Wei's Micro-FT8,** where tapping a `CQ FD` made that contact FD whatever our CQ type, and a reply opened with our grid. An exchange `parse_fd_exchange()` rejects is still sent as typed (row [u9nb](../ROADMAP.md#u9nb)).
 
 ## Where entries come from
 
-* **Decodes addressed to us.** After each RX decode, the main loop (`decode_pipeline_apply()`, handed the slot by the decode task) builds the list of decodes whose first field is our call and calls `autoseq_on_decodes()`. It skips this while transmitting. The P4 has no IgnoreList yet (row j4xh). `on_decode()` then:
+* **Decodes addressed to us.** After each RX decode, the main loop (`decode_pipeline_apply()`, handed the slot by the decode task) builds the list of decodes whose first field is our call and calls `autoseq_on_decodes()`. It skips this while transmitting. The P4 has no IgnoreList yet (row [j4xh](../ROADMAP.md#j4xh)). `on_decode()` then:
   1. finds an active entry for the sender and applies the table, re-anchoring its slot parity to the decode;
   2. else finds an inactive one, reactivates it with fresh tries, and applies the table. Parked entries past their 10 minutes are expired before any lookup, so a stale one is never found;
   3. else creates a new entry, **except** for `RR73`/`RRR`/`73` (a late signoff for a QSO we no longer hold), `R±NN` (**Inactive zone** below says why), and a station logged in the last 10 minutes. A grid, a report or an FD exchange starts a QSO.
@@ -130,7 +130,7 @@ Each board runs `check_slot_boundary()` on every pass of its main loop. It does 
 * RX: DX's own offset, except for a CQ.
 * RANDOM (the default), and RX for a CQ: a fresh 500–2500 Hz roll every arm.
 
-Row B88 holds the offset for the length of a QSO.
+Row [B88](../ROADMAP.md#B88) holds the offset for the length of a QSO.
 
 ## Logging
 

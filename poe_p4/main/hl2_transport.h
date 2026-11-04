@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-// The HL2 over the P4's Ethernet port, receive only (RFC 0014 S1, row mg9c; hl2_transport.cpp).
+// The HL2 over the P4's Ethernet port, receive only (row mg9c, docs/roadmap/hl2-support.md; hl2_transport.cpp).
 
 // Active: finds the HL2 by discovery, streams one receiver at 48 kHz on the station's dial, and logs the stream's
 // health every 15 s; its I/Q feeds decode (hl2_audio_*, below). The first activation brings up the EMAC and IP101 with a

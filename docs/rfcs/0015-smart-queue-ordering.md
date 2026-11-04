@@ -3,7 +3,7 @@
 * **Status:** Draft 2026-10-27. Decided in discussion on 2026-10-27: §9. The Ask: §8.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** the order in which queued contacts transmit; holding a contact while its station works someone else; the opening call's tries; moving entries by hand; how the station picks among callers to our CQ; a reconfigurable priority ladder; POTA and SOTA priority, park-to-park included.
-* **Does not cover:** adding stations to the queue that neither the operator tapped nor called us, which is auto-reply ([RFC 0009](0009-operate-station-surface.md) §5, row r2bu); working several stations at once, as WSJT-X's Fox mode and MSHV's multi-answer mode do; DXCC, grid or park "needed" priority (§5.8).
+* **Does not cover:** adding stations to the queue that neither the operator tapped nor called us, which is auto-reply ([RFC 0009](0009-operate-station-surface.md) §5, row [r2bu](../ROADMAP.md#r2bu)); working several stations at once, as WSJT-X's Fox mode and MSHV's multi-answer mode do; DXCC, grid or park "needed" priority (§5.8).
 * **Rows:** none yet; a row for the maintainer to place.
 
 ---
@@ -158,7 +158,7 @@ The active zone sorts by these keys, in order. The first two are today's rules; 
 
 ### 5.8 Deferred: "needed" (DXCC, grid, park)
 
-Ranking by a new DXCC entity, a new grid or a park not yet worked needs a worked-before lookup the main board cannot do well from flat `.adi` files. It waits for the log database (row I32), as the web app's New filter does ([webapp.md](../architecture/webapp.md), **Decode sort and filter**). Nothing in this RFC decides how "needed" works; when I32 lands, needed rungs join the ladder as any rung does.
+Ranking by a new DXCC entity, a new grid or a park not yet worked needs a worked-before lookup the main board cannot do well from flat `.adi` files. It waits for the log database (row [I32](../ROADMAP.md#I32)), as the web app's New filter does ([webapp.md](../architecture/webapp.md), **Decode sort and filter**). Nothing in this RFC decides how "needed" works; when [I32](../ROADMAP.md#I32) lands, needed rungs join the ladder as any rung does.
 
 ### 5.9 Mixed parity: test first
 
@@ -166,7 +166,7 @@ A `host_mock` scenario puts two REPLYING entries on opposite parities and checks
 
 ### 5.10 A station that calls CQ over our calls
 
-**Nothing special happens; the opening limit bounds it** (§5.3). A CQ is a free station, so it is not held, and it gets at most 4 calls. The row already says "CQ again" (§2), and × ends the entry. Setting such a station aside is rejected (§6). Moving our TX offset after a CQ over us, in case we land on someone else's signal, is an idea only: §3 cannot test it, since that log held its offset. It also has to fit row B88 (hold the TX offset for a QSO), which concerns a QSO already started.
+**Nothing special happens; the opening limit bounds it** (§5.3). A CQ is a free station, so it is not held, and it gets at most 4 calls. The row already says "CQ again" (§2), and × ends the entry. Setting such a station aside is rejected (§6). Moving our TX offset after a CQ over us, in case we land on someone else's signal, is an idea only: §3 cannot test it, since that log held its offset. It also has to fit row [B88](../ROADMAP.md#B88) (hold the TX offset for a QSO), which concerns a QSO already started.
 
 ## 6. Rejected alternatives
 
@@ -185,7 +185,7 @@ A `host_mock` scenario puts two REPLYING entries on opposite parities and checks
 * **Q3: manual order.** `QUEUE_ORDER`, the entry's sheet, the pin mark. **Done-when:** host tests for pin, up, down and next, including refusals across stages; on the phone, each action moves the row and changes what transmits next (field).
 * **Q4: the ladder and callers to our CQ.** `queue_order`, the phase 1 rungs, the Station sheet's Queue order. **Done-when:** host tests order two simultaneous callers by each rung; the Station sheet's order survives a reload and applies to the next sort.
 * **Q5 (phase 2): POTA and SOTA.** The heard-activation record, its rungs, park to park. **Done-when:** host tests mark a call from `CQ POTA` and order by the rungs, and P2P ranks the same whoever called.
-* **Later:** live spots as a second source for Q5; needed rungs after I32.
+* **Later:** live spots as a second source for Q5; needed rungs after [I32](../ROADMAP.md#I32).
 
 Each slice graduates what it builds into [autoseq.md](../architecture/autoseq.md) and [webapp.md](../architecture/webapp.md).
 
@@ -201,7 +201,7 @@ Each slice graduates what it builds into [autoseq.md](../architecture/autoseq.md
 ## 9. Decisions
 
 * **2026-10-27, in discussion (operator):**
-  - Order only what is already queued; never add a station on our own (auto-reply stays row r2bu). Picking among callers to our CQ is in scope.
+  - Order only what is already queued; never add a station on our own (auto-reply stays row [r2bu](../ROADMAP.md#r2bu)). Picking among callers to our CQ is in scope.
   - Hold a station that is working someone else, with tries frozen.
   - No hold for a station that has gone unheard; the opening limit covers it.
   - An opening call gets 4 tries.
@@ -209,5 +209,5 @@ Each slice graduates what it builds into [autoseq.md](../architecture/autoseq.md
   - Callers to our CQ get an entry without a tap, as today, and the RFC records it. **Differs from WSJT-X**, which stops after each QSO.
   - One ladder, easy to reconfigure, set on the Station sheet and stored on the main board.
   - POTA and SOTA are rungs used at home too, possibly phase 2. Park to park ranks the same whoever initiated, and activators are known from a per-call cache like the heard-grid table.
-  - DXCC, grid and park "needed" are deferred to the log database (I32).
+  - DXCC, grid and park "needed" are deferred to the log database ([I32](../ROADMAP.md#I32)).
   - A station that calls CQ over our calls gets no special treatment beyond the opening limit.

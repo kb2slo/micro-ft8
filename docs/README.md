@@ -8,13 +8,14 @@ Human- and tool-readable project memory. Prefer this tree over editor-specific r
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | How a change gets from a branch onto `main`: setup, checks, the pull request, field checks. |
 | [../CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | How people treat each other here, and how to report a problem. |
 | [../SECURITY.md](../SECURITY.md) | How to report a vulnerability privately, and what is in scope. |
-| [ROADMAP.md](ROADMAP.md) | Plan: Next groom / Now / Backlog / Blocked / Ideas / Declined. Chat is intake; this file is truth. Shipped work is dropped, not archived — git history is the record. |
+| [ROADMAP.md](ROADMAP.md) | Plan, as an index: Next groom / Epics / Now / Backlog / Blocked / Ideas. Chat and issues are intake; this file is truth. Shipped work is dropped, not archived — git history is the record. |
+| `roadmap/` | One file per epic, named in plain words, holding its plan and unbuilt design, deleted when the epic is done; and [declined.md](roadmap/declined.md), the ideas turned down. How: [maintainer/roadmap.md](maintainer/roadmap.md). |
 | [../README.md](../README.md) | Contributor landing: what it is, status, hardware, layout, build and test, contributing, acknowledgements. Operators go to the site. What it holds and when to audit it: [AGENTS.md](../AGENTS.md), **README and site stay current**. |
 | [STYLE.md](STYLE.md) | Coding standard for our C/C++ (not vendored `M5*` / `ft8_lib`). |
 | [TEST_PLAN.md](TEST_PLAN.md) | Ledger: what automation checks, what it cannot see, and the field checks still owed (**Pending**), with how one is asked for and closed. |
 | [RELEASE_PROCESS.md](RELEASE_PROCESS.md) | How a build becomes a download: the rolling `continuous` tag, versioned `v*` releases, what a version tag does **not** set, and what a rename/de-fork would break. |
 | `architecture/` | How it works now, and why, one doc per area. Start at [system.md](architecture/system.md); it links the rest. Doc type: **Doc types** below. |
-| `rfcs/` | Design for work not yet built. Lifecycle and graduation: [rfcs/README.md](rfcs/README.md). |
+| `rfcs/` | Retired: the rejected RFCs, frozen, and the RFCs not yet dissolved into epics ([rfcs/README.md](rfcs/README.md)). |
 | `maintainer/` | What only the maintainer does: how the roadmap is kept and groomed, the upstream watches, how agents are run here. Start at [maintainer/README.md](maintainer/README.md). |
 
 Git history is the changelog. Do not keep a narrative log in these files.
@@ -25,8 +26,9 @@ Each document answers one question. Put content where its question is answered.
 
 | Question | Where | Kind |
 |---|---|---|
-| What next? | `ROADMAP.md` | Plan rows |
-| Should we, and how? (not built yet) | `docs/rfcs/NNNN-*.md` | RFC |
+| What next? | `ROADMAP.md` | Plan rows, in order |
+| Should we, and how? (undecided) | A GitHub issue | Discussion; its outcome lands in an epic |
+| What is planned for this area, and how? (decided, not built) | `docs/roadmap/<id>-<slug>.md` | Epic file |
 | How does this work now, and why? | `docs/architecture/<area>.md` | Architecture doc |
 | What is this project, and how do I start contributing? | `README.md` | Contributor landing |
 | How do I build, flash, or use this part? | That directory's `README.md` | How-to |

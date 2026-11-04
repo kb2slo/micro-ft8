@@ -99,7 +99,7 @@ int main()
     }
 
     {
-        // The HL2 (RFC 0014 S1): by name, as the bench sets it, and by the number Station.txt stores.
+        // The HL2 (row mg9c, docs/roadmap/hl2-support.md): by name, as the bench sets it, and by the number Station.txt stores.
         StationSettings s;
         station_settings_init(&s);
         station_parse("radio=hl2\n", &s);

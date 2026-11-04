@@ -1,9 +1,9 @@
-// The HL2 over the P4's Ethernet port, receive only (hl2_transport.h; RFC 0014 §3.1, §3.3, S1).
+// The HL2 over the P4's Ethernet port, receive only (hl2_transport.h; docs/roadmap/hl2-support.md, Decided and Backend; row mg9c).
 //
 // Board-only: the EMAC, the IP101 PHY, lwIP and one UDP socket. Everything sent and parsed goes through
 // components/hl2_proto, which cannot encode MOX or any transmit register, so nothing here can key the radio.
 //
-// Addresses (RFC 0014 §8, 2026-11-03): ours is static link-local, derived from our MAC as the HL2 derives its own,
+// Addresses (docs/roadmap/hl2-support.md, Decided): ours is static link-local, derived from our MAC as the HL2 derives its own,
 // so the segment needs no DHCP server and no conflict probe. Finding the HL2 never assumes 169.254/16 beyond the
 // broadcast it is sent to: whatever address answers discovery is the one streamed from.
 //
@@ -119,7 +119,7 @@ static EXT_RAM_BSS_ATTR int32_t s_iq[2 * 2 * 63];
 // The HL2 task writes each packet's I/Q, as float frames (I, Q, full scale ±1), into a stream buffer; the decode
 // pipeline's ingest task reads them through the front end (hl2_audio_read_ft8_samples). One writer, one reader.
 // Only whole packets are written, so the buffer always holds whole frames, and a packet with no room is dropped and
-// counted. A sequence gap is written as that many packets of zeros (RFC 0014 §3.11), so the slot's timeline holds.
+// counted. A sequence gap is written as that many packets of zeros (docs/roadmap/hl2-support.md, Receive), so the slot's timeline holds.
 // Half a second of stream, in PSRAM; so is the front end, since internal RAM is the budget (memory.md).
 constexpr int kFramesPerPacket = 2 * 63;
 constexpr size_t kFrameBytes = 2 * sizeof(float);
@@ -276,7 +276,7 @@ static bool discover(int sock, sockaddr_in* hl2, Hl2DiscoveryReply* reply)
                 continue;
             }
             if (reply->running) {
-                // Another client holds the stream; taking it would be a stream loss for them (RFC 0014 §3.9).
+                // Another client holds the stream; taking it would be a stream loss for them (docs/roadmap/hl2-support.md, Safety 11).
                 running_reply = true;
                 set_state(Hl2State::Busy);
                 if (!said_running) {
@@ -477,7 +477,7 @@ static void hl2_task(void* /*arg*/)
         uint8_t derived[4];
         hl2_link_local_ipv4(reply.mac, false, derived);
         if (memcmp(derived, s_our_ip, sizeof derived) == 0) {
-            // Same last two MAC bytes: one address for two boards (RFC 0014 §8, 2026-11-03). Never stream then.
+            // Same last two MAC bytes: one address for two boards (docs/roadmap/hl2-support.md, Decided). Never stream then.
             ESP_LOGE(TAG, "the HL2's link-local address is ours (%u.%u.%u.%u); not streaming", a[0], a[1], a[2], a[3]);
             debug_log_line("HL2 address collides with this P4's; HL2 receive stopped this boot");
             break;

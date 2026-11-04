@@ -11,7 +11,7 @@ static constexpr int kStationBandCount = 12;
 static constexpr int kStationTxMinDelayDefaultMs = 50;
 static constexpr int kStationTxMinDelayMaxMs = 500;
 
-// Station.txt's radio= values: the QMX keeps Mini-FT8's number; the HL2 is ours (RFC 0014 S1). Anything else
+// Station.txt's radio= values: the QMX keeps Mini-FT8's number; the HL2 is ours (row mg9c, docs/roadmap/hl2-support.md). Anything else
 // reads as the QMX.
 constexpr int kStationRadioQmx = 2;
 constexpr int kStationRadioHl2 = 6;

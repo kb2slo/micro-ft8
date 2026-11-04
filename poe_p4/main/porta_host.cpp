@@ -302,7 +302,7 @@ static bool log_adif_entry(const std::string &dxcall, const std::string &dxgrid,
         station.band_name = (idx >= 0 && idx < kStationBandCount) ? kBandNames[idx] : "";
     }
     station.raw_comment = s_station.comment1;
-    // Only the QMX can transmit (the HL2 is receive only, RFC 0014 S1), so a QSO is the QMX's.
+    // Only the QMX can transmit (the HL2 is receive only, row mg9c, docs/roadmap/hl2-support.md), so a QSO is the QMX's.
     station.radio_name = "QMX";
     // No GPS on the P4 (docs/architecture/main_board.md) -- nothing to
     // override the configured grid with for "/Grid".

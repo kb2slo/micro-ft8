@@ -3,7 +3,7 @@
 // Both transports stay installed once started: the USB host for the QMX, Ethernet for the HL2. Choosing a radio
 // changes which one is active, so there is no teardown and no restart, and a QMX left plugged in is never reset by a
 // change (a P4 reset can wedge its USB, docs/architecture/main_board.md, Host). When the QMX and the HL2 both become
-// channels (RFC 0014 §7, item 12), this file is what is replaced: no component knows which radio is active.
+// channels (docs/roadmap/hl2-support.md, Open), this file is what is replaced: no component knows which radio is active.
 
 #include <atomic>
 

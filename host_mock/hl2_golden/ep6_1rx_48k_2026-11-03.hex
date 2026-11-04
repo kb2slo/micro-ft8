@@ -1,5 +1,5 @@
 # HL2 upstream packet (EP6), one receiver at 48 kHz, gateware 74.2, antenna jack open.
-# Packet 100 of a 2 s capture from the operator's HL2, 2026-11-03 (RFC 0014 S1).
+# Packet 100 of a 2 s capture from the operator's HL2, 2026-11-03 (row mg9c, docs/roadmap/hl2-support.md).
 ef fe 01 06 00 00 00 64 7f 7f 7f 18 00 00 00 00
 00 00 48 ff ff 96 00 00 00 00 1d ff ff e4 00 00
 00 00 24 ff ff e6 00 00 00 00 23 ff ff e5 00 00

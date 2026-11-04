@@ -9,15 +9,17 @@ outside fenced code blocks, and fails on:
   - a relative Markdown link whose file or directory is gone;
   - a repo path in `code` that is gone: a token that starts with one of our top-level directories,
     such as `poe_p4/main/main.cpp:386`. A path in another repo is written as a link to it;
+  - a link into the roadmap (docs/ROADMAP.md, docs/roadmap/) whose #fragment names no <a id> there:
+    a row's anchor is its ID, so a link to a dropped or moved row breaks here;
   - a row ID cited after its row left docs/ROADMAP.md, when REV's docs did not already cite it
     (tools/roadmap_rows.sh dangling). Citations REV already had are counted, not failed;
   - an ESP-IDF version (a vX.Y.Z on a line that names IDF) that CI does not build with, so README.md,
-    CONTRIBUTING.md and AGENTS.md cannot keep an old version after a toolchain bump. RFCs are skipped,
-    since an RFC may cite the version it was written against.
+    CONTRIBUTING.md and AGENTS.md cannot keep an old version after a toolchain bump. Plan docs (RFCs,
+    docs/roadmap/) are skipped, since a plan may cite the version it was written against.
 
 A gitignored path passes (a build output need not exist yet), and so does a path inside a
-submodule that is not checked out. #anchors and web links are not checked. RFCs get the link check
-only, since an RFC designs files that do not exist yet, and rejected RFCs are frozen and skipped.
+submodule that is not checked out. #anchors and web links are not checked. Plan docs get the link check
+only, since a plan designs files that do not exist yet, and rejected RFCs are frozen and skipped.
 """
 import argparse
 import os
@@ -29,6 +31,12 @@ import urllib.parse
 
 ROOT = subprocess.run(['git', 'rev-parse', '--show-toplevel'], check=True,
                       capture_output=True, text=True).stdout.strip()
+
+# Docs that design what is not built yet: their `code` paths may not exist (an RFC, an epic file).
+PLAN_DOCS = ('docs/rfcs/', 'docs/roadmap/')
+# Roadmap files, whose #fragments are row anchors (<a id="<row id>"></a>) and are checked.
+ANCHORED = ('docs/ROADMAP.md', 'docs/roadmap/')
+ANCHOR = re.compile(r'<a id="([^"]+)"></a>')
 
 FENCE = re.compile(r'^\s{0,3}(`{3,}|~{3,})')
 CODE_SPAN = re.compile(r'(`+)(.+?)\1')
@@ -154,7 +162,7 @@ def dangling(rev=None):
 
 def idf_mismatches(doc, text, built):
     """(line, version) for each ESP-IDF version in text that is not one CI builds with."""
-    if doc.startswith('docs/rfcs/'):
+    if doc.startswith(PLAN_DOCS):
         return []
     found = []
     for n, line in enumerate(text.splitlines(), 1):
@@ -172,6 +180,7 @@ def main():
     with open(os.path.join(ROOT, '.github/workflows/ci.yml'), encoding='utf-8') as f:
         built = set(CI_IDF.findall(f.read()))
     found = []  # (doc, line, kind, target, path)
+    frags = []  # (doc, line, target, path, fragment)
     stale_idf = 0
     for doc in repo.docs:
         with open(os.path.join(ROOT, doc), encoding='utf-8') as f:
@@ -180,7 +189,7 @@ def main():
             print(f'{doc}:{n}: ESP-IDF v{v}, but CI builds with {", ".join("v" + b for b in sorted(built))}')
             stale_idf += 1
         for n, kind, target in references(text):
-            if kind == 'code' and doc.startswith('docs/rfcs/'):
+            if kind == 'code' and doc.startswith(PLAN_DOCS):
                 continue
             path = resolve_link(doc, target) if kind == 'link' else resolve_code(repo, target)
             if path is None:
@@ -190,14 +199,32 @@ def main():
                 found.append(None)
                 continue
             found.append((doc, n, kind, target, path))
+            if kind == 'link' and '#' in target:
+                frags.append((doc, n, target, path, target.split('#', 1)[1]))
+        # A same-file #fragment in a roadmap file is a row anchor too.
+        if doc.startswith(ANCHORED):
+            for n, kind, target in references(text):
+                if kind == 'link' and target.startswith('#'):
+                    frags.append((doc, n, target, doc, target[1:]))
 
     refs = [f for f in found if f]
+    anchors = {}
+    bad_frag = 0
+    for doc, n, target, path, frag in frags:
+        if not path.startswith(ANCHORED) or not os.path.isfile(os.path.join(ROOT, path)):
+            continue
+        if path not in anchors:
+            with open(os.path.join(ROOT, path), encoding='utf-8') as f:
+                anchors[path] = set(ANCHOR.findall(f.read()))
+        if frag not in anchors[path]:
+            print(f'{doc}:{n}: link {target!r}: {path} has no anchor {frag!r}')
+            bad_frag += 1
     gone = set(repo.missing(sorted({f[4] for f in refs})))
     broken = [f for f in refs if f[4] in gone]
     for doc, n, kind, target, path in broken:
         what = f'link {target!r}' if kind == 'link' else f'path `{target}`'
         print(f'{doc}:{n}: {what} does not exist ({path})')
-    failures = len(broken) + found.count(None) + stale_idf
+    failures = len(broken) + found.count(None) + stale_idf + bad_frag
     print(f'{len(repo.docs)} docs, {len(refs)} references checked, {failures} broken')
     if failures:
         print('Fix the path, or drop the reference if the thing is gone. A file in another '

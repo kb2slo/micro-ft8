@@ -3,8 +3,8 @@
 * **Status:** Accepted 2026-09-27 (drafted 2026-09-26). Slices: §7. Decisions and deferred questions: §9. **Amended 2026-10-02:** the ADV was dropped. Where this RFC discusses the ADV, its measurements, its screens or its `ADV-only` work, it is history and no longer applies.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** the activation as an object the station knows about; where it lives so an activation runs with no internet; what goes on the air; what the log records and how it is exported for pota.app and the SOTA database; choosing a nearby reference and checking the grid offline; planning activations while online; where spotting fits.
-* **Does not cover:** how any of it looks on Operate ([RFC 0009](0009-operate-station-surface.md): this RFC supplies the data, 0009 the surface), hunter mode (§6), programs other than POTA and SOTA (§6), log editing and the on-device storage format ([ROADMAP.md](../ROADMAP.md) I31, I32).
-* **Replaces** the design sketch in row I18.
+* **Does not cover:** how any of it looks on Operate ([RFC 0009](0009-operate-station-surface.md): this RFC supplies the data, 0009 the surface), hunter mode (§6), programs other than POTA and SOTA (§6), log editing and the on-device storage format ([ROADMAP.md](../ROADMAP.md) [I31](../ROADMAP.md#I31), [I32](../ROADMAP.md#I32)).
+* **Replaces** the design sketch in row [I18](../ROADMAP.md#I18).
 
 ---
 
@@ -163,7 +163,7 @@ A later phase (§6). What the design keeps open:
 
 ## 5. Rejected alternatives
 
-* **Full reference databases on the device** (I18's sketch). POTA's `all_parks_ext.csv` is 9.4 MB and SOTA's `summitslist.csv` 25.2 MB (measured 2026-09-26), against 3 MB of main-board storage. An activator needs the references near where they are going, so an extract made at planning time is enough.
+* **Full reference databases on the device** ([I18](../ROADMAP.md#I18)'s sketch). POTA's `all_parks_ext.csv` is 9.4 MB and SOTA's `summitslist.csv` 25.2 MB (measured 2026-09-26), against 3 MB of main-board storage. An activator needs the references near where they are going, so an extract made at planning time is enough.
 * **The active activation in browser storage only.** Evicted by Safari, invisible to a second phone, and absent while the phone sleeps. The main board logs the QSO, so the main board holds the references.
 * **References in `COMMENT`**, the WSJT-X workaround POTA's digital guide describes. No importer reads it; it defeats the top goal.
 * **N-fers as one file with comma lists.** POTA does not read `MY_POTA_REF` (§3), so the per-park files POTA asks for are built at export.
@@ -178,11 +178,11 @@ Not part of this design; each gets a row or an RFC when wanted.
 * **More programs:** WWFF (`MY_WWFF_REF`; 44 QSOs), and others PoLo supports.
 * **Park boundaries** for real n-fer detection and an "inside the park" check.
 * **Self-spotting:** POTA POST; SOTAwatch; SOTAmat if its encoding becomes available.
-* **Log editing** of references after the fact: I31, blocked on I32.
+* **Log editing** of references after the fact: [I31](../ROADMAP.md#I31), blocked on [I32](../ROADMAP.md#I32).
 
 ## 7. Slices
 
-Accepted 2026-09-27. The slices stay listed here, under row I18, until each is next; then it becomes its own row.
+Accepted 2026-09-27. The slices stay listed here, under row [I18](../ROADMAP.md#I18), until each is next; then it becomes its own row.
 
 **Order with RFC 0009** (agreed 2026-09-27): 0009 builds each Operate surface for the home case first, and this RFC then adds references to a surface that already exists, so no activation work ships its own screen. The firmware half of A1 does not wait on O1; only its entry in the sheet does.
 

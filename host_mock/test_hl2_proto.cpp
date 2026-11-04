@@ -1,5 +1,5 @@
 // hl2_proto: the HL2's Protocol 1 wire format (components/hl2_proto/include/hl2_proto.h), held to golden frames
-// from the operator's HL2 on gateware 74.2 (hl2_golden/; RFC 0014 §2.5, S1).
+// from the operator's HL2 on gateware 74.2 (hl2_golden/; docs/roadmap/hl2-support.md, Facts; row mg9c).
 
 #include <cmath>
 #include <cstdio>

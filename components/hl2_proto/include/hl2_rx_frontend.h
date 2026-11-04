@@ -1,6 +1,6 @@
 #pragma once
 
-// How the HL2's receive stream goes through components/iq_frontend (RFC 0014 §3.4, S1). Header only; the P4's
+// How the HL2's receive stream goes through components/iq_frontend (decode.md, The HL2's channel; row mg9c). Header only; the P4's
 // hl2_transport.cpp uses it, and host_test_hl2_frontend pins it.
 //
 // The HL2's receiver NCO sits on the dial, so FT8's audio band, 0 to 3 kHz above the dial, is 0 to 3 kHz above the

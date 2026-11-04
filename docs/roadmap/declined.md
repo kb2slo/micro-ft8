@@ -1,0 +1,14 @@
+# Declined
+
+Rejected ideas and epics, kept so they are not proposed again. One line each: ID, name, why. How they get here: [maintainer/roadmap.md](../maintainer/roadmap.md), **Roadmap rows**.
+
+| ID | Item | Why declined |
+| --- | --- | --- |
+| I42 | <a id="I42"></a>Sidekick joins captive-portal networks (hotel/conference WiFi) | Declined 2026-09-24: its own provisioning captive portal already failed (retired 2026-09-21), and nothing on the sidekick needs an uplink; the phone clears venue portals itself. Revisit only if a field session shows the sidekick needs outbound internet. |
+| I17 | <a id="I17"></a>M32 Pocket as Micro-FT8 host | Declined 2026-09-25: the P4 + sidekick is the direction; the Pocket needs unproven external hardware to host a radio. RFC 0003 already rejected. |
+| I16 | <a id="I16"></a>Optional TX meter poll off | Declined 2026-09-25: no observed CAT-load symptom; reopen if a late `TA` or USB glitch is traced to the poll. |
+| ujk5 | <a id="ujk5"></a>Autoseq: stop resending RR73 when DX is heard calling CQ or working another station | Declined 2026-10-11: ROGERS now sends RR73 once and parks right after it, before DX's next slot is decoded, so there is no resend left to stop; it would also have needed autoseq to see decodes not addressed to us. |
+| qdcm | <a id="qdcm"></a>A P4 reset leaves the QMX unenumerated until it is replugged | Declined 2026-11-02: the wedge is the QMX's, and only the QMX clears it; the P4 cannot switch the Host port's 5 V, and a root-port cycle re-enumerates into the same wedge ([main_board.md](../architecture/main_board.md), **Host**). |
+| p83e | <a id="p83e"></a>Home decode server: stream P4 audio to a LAN host running `jt9` | Declined 2026-11-03: paired data comes from recordings scored offline (the [2026-11-02 IQ/audio corpus](../../tools/decode_bench/corpus/qmx-2026-11-02/README.md)), and `jt9` feeding autoseq competes with keeping decode on the P4. [RFC 0012](../rfcs/rejected/0012-home-decode-server.md) rejected. |
+| B85 | <a id="B85"></a>Measure QMX out-of-band audio; anti-alias decimator if it costs >1 dB | Declined 2026-11-03: the QMX decodes only from IQ mode, whose front end filters before it decimates; the unfiltered audio resampler is gone. |
+| B57 | <a id="B57"></a>Radio auto-detect: tell a QMX from a QDX over CAT | Declined 2026-11-03: the QDX is dropped (maintainer), so there is no other radio to tell a QMX from; reading the QMX's bands is [vcng](../ROADMAP.md#vcng)'s. |

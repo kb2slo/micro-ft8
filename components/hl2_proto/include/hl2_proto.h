@@ -1,8 +1,8 @@
 #pragma once
 
 // ============================================================================
-// hl2_proto.h — the Hermes-Lite 2's openHPSDR Protocol 1 wire format ([RFC 0014](../../../docs/rfcs/0014-hl2-two-p4.md)
-// §3.3, row mg9c).
+// hl2_proto.h — the Hermes-Lite 2's openHPSDR Protocol 1 wire format (docs/roadmap/hl2-support.md,
+// Backend, row mg9c).
 //
 // Pure codec: no sockets, no globals, no ESP-IDF, nothing allocated. Host-tested (host_test_hl2_proto). The wire
 // contract is this header plus the golden frames in host_mock/hl2_golden/, recorded from the operator's HL2 on
@@ -12,7 +12,7 @@
 // RECEIVE ONLY (S1). This header can build discovery, start, stop, and writes to the receive registers, and
 // nothing that keys the radio: every downstream frame has MOX clear and zero transmit samples, and
 // hl2_encode_control_packet() refuses every other register, and the PA-enable bit of register 0x00. Transmit is
-// S2's, under RFC 0014 §3.8.
+// S2's, under docs/roadmap/hl2-support.md, Safety.
 //
 // Every multi-byte field on the wire is big-endian.
 // ============================================================================
@@ -56,7 +56,7 @@ size_t hl2_encode_discovery_request(uint8_t* out, size_t cap);
 // False unless data is a 60-byte HL2 discovery reply (EF FE, status 02 or 03, board ID 0x06).
 bool hl2_parse_discovery_reply(const uint8_t* data, size_t len, Hl2DiscoveryReply* out);
 
-// Degrees Celsius from the temperature code (RFC 0014 §2.3).
+// Degrees Celsius from the temperature code (docs/roadmap/hl2-support.md, Facts).
 float hl2_temperature_c(uint16_t code);
 
 // ---- Start and stop --------------------------------------------------------------------------------------------
@@ -76,11 +76,11 @@ struct Hl2Register {
 };
 
 // Register 0x00: rate [25:24], the N2ADR filter byte [23:17], last receiver [6:3], duplex [2]
-// (radio_openhpsdr1/radio.v:269; RFC 0014 §2.3). Duplex is always set, so the receive NCOs stay independent of the TX
+// (radio_openhpsdr1/radio.v:269; docs/roadmap/hl2-support.md, Facts). Duplex is always set, so the receive NCOs stay independent of the TX
 // NCO. False unless 1 <= receivers <= HL2_MAX_RECEIVERS.
 bool hl2_config_register(Hl2RxRate rate, int receivers, Hl2Register* out, uint8_t n2adr = 0);
 
-// The N2ADR filter byte for receiving at hz (RFC 0014 §2.3): b0 160 m, b1 80 m, b2 60/40 m, b3 30/20 m, b4 17/15 m,
+// The N2ADR filter byte for receiving at hz (docs/roadmap/hl2-support.md, Facts): b0 160 m, b1 80 m, b2 60/40 m, b3 30/20 m, b4 17/15 m,
 // b5 12/10 m low-pass, in the receive path as well as transmit. The receive high-pass (about 2.5 MHz at -3 dB,
 // 45 dB down at 1 MHz) is in line unless b6 is set: its relay is a NAND of b6 and the HL2's INTTR (n2adr.net, U5,
 // K7). So b6 is set only below 2.5 MHz, where the high-pass would cost 160 m 17 dB.
@@ -142,7 +142,7 @@ bool hl2_parse_rx_packet(const uint8_t* data, size_t len, int receivers, Hl2RxPa
 // Folds one status word into telemetry. A command response changes nothing but ptt.
 void hl2_apply_status(const Hl2Status& status, Hl2Telemetry* telemetry);
 
-// ---- Sequence gaps (RFC 0014 §3.11) ----------------------------------------------------------------------------
+// ---- Sequence gaps (docs/roadmap/hl2-support.md, Receive) ----------------------------------------------------------------------------
 
 // Upstream sequence numbers, packet by packet. The first packet seen sets the start; a later one that is not the
 // next counts the packets between as lost; one at or behind the expected number (a duplicate or a reordered

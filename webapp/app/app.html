@@ -1861,7 +1861,7 @@ function applyRadioPush(cfg, e) {
 // it reports the wanted frequency, in Digi, on VFO A without split; anything else is a drift.
 function radioChipState(cfg) {
   var cat = yn(cfg.cat_ready) === 'yes', audio = yn(cfg.audio_rx) === 'yes';
-  // The HL2 (Settings > Radio): no CAT, receive only so far (RFC 0014 S1). The main board says what its
+  // The HL2 (Settings > Radio): no CAT, receive only so far (row mg9c, docs/roadmap/hl2-support.md). The main board says what its
   // transport knows (hl2=); its stream up is all it can be.
   if (String(cfg.radio) === '6') {
     switch (String(cfg.hl2 || '')) {
