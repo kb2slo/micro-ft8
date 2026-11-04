@@ -180,6 +180,10 @@ the only place every agent and every person can see them — see "Memory lives i
   context it needs in the chat itself** — what the row said, what was found, what each option does — so the
   person you work for never has to open a row, an RFC, or an earlier message to answer.
 
+- **Times in chat are the maintainer's local time, US Central.** Logs, commits, ADIF and the docs keep
+  UTC; a time relayed in chat is converted and labelled (CST or CDT). A clock with no zone, such as a
+  logger's, is checked against a known event before it is relayed.
+
 - **An agent cannot answer a password prompt.** For `sudo` or any command that asks for a password, give
   the exact command, ask the person you work for to run it in their own terminal, and wait for them to say it
   ran. Do not run it through the agent's shell.
