@@ -1,10 +1,10 @@
 # HL2 support (epic knpp)
 
-The Hermes-Lite 2 (HL2) as a second radio on the P4, beside the QMX: receive, then transmit, at home, then in the park. Rows: [abkw](#abkw), [kgyh](#kgyh) ([ROADMAP.md](../ROADMAP.md)). Receive on one band has shipped: how it works is [hl2.md](../architecture/hl2.md). Several HL2 bands at once is [RFC 0016](../rfcs/0016-decode-scheduler.md) S6.
+The Hermes-Lite 2 (HL2) as a second radio on the P4, beside the QMX: receive, then transmit, at home, then in the park. Rows: [abkw](#abkw), [kgyh](#kgyh) ([ROADMAP.md](../ROADMAP.md)). Receive on one band has shipped: how it works is [hl2.md](../architecture/hl2.md). Several HL2 bands at once is epic [u8mc](several-channels.md)'s several-HL2-bands slice.
 
 ## Goal
 
-Operate FT8 from an iPhone anywhere in the house, asynchronously, on the home station (HL2, N2ADR filter board, antenna), and the same station in the park for POTA. The HL2 is the station's several-band radio: up to four receivers, each a source of channels that RFC 0016 decodes and operates.
+Operate FT8 from an iPhone anywhere in the house, asynchronously, on the home station (HL2, N2ADR filter board, antenna), and the same station in the park for POTA. The HL2 is the station's several-band radio: up to four receivers, each a source of channels that epic [u8mc](several-channels.md) decodes and operates.
 
 ## Constraints
 
@@ -30,11 +30,11 @@ Operate FT8 from an iPhone anywhere in the house, asynchronously, on the home st
 ### Receive
 
 * **On transmit, the TX FIFO's recovery flag and count** (address 0's C3) join the receive counters the P4 already logs ([main_board.md](../architecture/main_board.md), **Ethernet**).
-* **As a source of several channels** (RFC 0016 S6): four receivers, each on its own band; FT8 and FT4 on one band are two front-end instances on one receiver. The N2ADR receive filter serves every receiver, so it is set for the highest band listened to (as Quisk does), and ADC overload is counted per slot and reported as the source's reason when it rises.
+* **As a source of several channels** (epic [u8mc](several-channels.md), Later): four receivers, each on its own band; FT8 and FT4 on one band are two front-end instances on one receiver. The N2ADR receive filter serves every receiver, so it is set for the highest band listened to (as Quisk does), and ADC overload is counted per slot and reported as the source's reason when it rises.
 
 ### Transmit
 
-* **One transmission at a time,** on the channel RFC 0016 chooses. It sets the HL2's TX NCO and the N2ADR transmit filter for that channel; no receiver moves.
+* **One transmission at a time,** on the channel epic [u8mc](several-channels.md) chooses. It sets the HL2's TX NCO and the N2ADR transmit filter for that channel; no receiver moves.
 * **The waveform:** GFSK, BT 2.0 for FT8 and 1.0 for FT4, first and last symbols ramped, as ft8_lib's `demo/gen_ft8.c` and WSJT-X make it. Complex baseband at 48 kHz, offset by the audio offset from a TX NCO at the dial, written ahead into the HL2's transmit buffer. The first tone at the slot start plus 0.5 s, as on the QMX ([radio.md](../architecture/radio.md), **TX timing on a QMX**). ft8_lib's encoder is proved against `ft8code` (row [I40](../ROADMAP.md#I40)) before anything transmits.
 * **PTT before RF:** PTT rides every transmit sample, so the P4 keys with silent samples for the Min TX delay before the first tone, giving the HL2's T/R relay time to switch.
 * **The filter before every key-down:** the N2ADR transmit LPF for the band, then the receive byte again afterwards.
@@ -49,7 +49,7 @@ Operate FT8 from an iPhone anywhere in the house, asynchronously, on the home st
 6. **A runaway transmitter** is bounded by row [u4dw](../ROADMAP.md#u4dw)'s cap.
 7. **A filter write that fails stops the transmission.**
 8. **The bench procedure:** a dummy load through an attenuator; occupied bandwidth against WSJT-X's; harmonics and spurs through each band's LPF; RF start and stop against the slot boundary.
-9. **A frequency outside the allowed band is refused,** by RFC 0016's rule for every backend: before key-down the backend checks the TX NCO plus the audio offset, and the signal's bandwidth, against the band table.
+9. **A frequency outside the allowed band is refused,** by epic [u8mc](several-channels.md)'s rule for every backend: before key-down the backend checks the TX NCO plus the audio offset, and the signal's bandwidth, against the band table.
 10. **A gap in transmit samples ends the transmission.** The P4 never fills a gap with samples carrying PTT: that would hold the transmitter keyed and defeat the gateware's first dead-man layer. If the writer falls behind by more than a set time, or the TX FIFO's recovery flag (address 0's C3) reports it ran dry, the transmission stops, PTT drops, and the slot is counted and marked unclean. Host-tested against a stalled writer. No browser heartbeat: transmission is autonomous by design, so the station-side bound is item 6.
 11. **Who may key it:** the pairing token guards our API, not the radio. Protocol 1 has no authentication, so anything that can send the HL2 a packet can stop, start or key it, and anything that restarts it takes our stream (seen as stream loss). Hence the private link; the phone's path stays through the sidekick, behind the token ([system.md](../architecture/system.md), **Who may key the transmitter**).
 
@@ -60,7 +60,7 @@ Every feature the QMX station has, against what the HL2 needs for it. **Fits**: 
 | Feature (QMX today) | On the HL2 | |
 |---|---|---|
 | Decode FT8 from I/Q through the front end | One receiver through the same front end (**Receive**). | Fits (built) |
-| FT4 (row [xph7](../ROADMAP.md#xph7), both radios) | Same pipeline; on transmit, BT 1.0. | Fits |
+| FT4 (rows [an8x](several-channels.md#an8x) and [grqg](several-channels.md#grqg), both radios) | Same pipeline; on transmit, BT 1.0. | Fits |
 | Transmit: the QMX makes the tones from `TA` | The P4 makes the waveform and streams it, 381 packets/s on core 0, with no gap allowed (Safety 10). Core 0's headroom while transmitting is unmeasured. | Work ([abkw](#abkw)) |
 | Band change: `FA`, and the QMX's own filters | NCO plus the N2ADR byte, both ours, re-chosen on every band change; its relays click. The receive filter is shared once several receivers run (**Receive**). | Fits (built) |
 | Power and SWR while transmitting (`PC;SW;`, slot bar) | Forward and reverse telemetry through a calibration table. Which word is forward on this unit, and how often telemetry refreshes while keyed, are unread; until calibrated, the watts are Quisk's table, not this unit's. | Work ([abkw](#abkw)) |
@@ -87,7 +87,7 @@ Every feature the QMX station has, against what the HL2 needs for it. **Fits**: 
 
 ## Children
 
-* <a id="abkw"></a>**abkw: transmit, barefoot.** After row [I40](../ROADMAP.md#I40). Waveform, PTT lead, filter, drive cap, SWR latch, stream loss, the band table, transmit off by default. The safety policy host-tested (category 1); everything RF on the bench (category 2). **Done-when:** which telemetry word is forward on this unit, read while transmitting; the bench procedure (Safety, 8) passes into a dummy load and is recorded in TEST_PLAN; then a QSO on the air at 5 W (field). **Lands in:** `hl2.md` (transmit, and a **Safety** section holding each item as built with its bench result and host test; items 6 and 9 land with row [u4dw](../ROADMAP.md#u4dw) and RFC 0016); radio.md (the tone lead, TX timing beside the QMX's); system.md (who may key it); webapp.md (power and SWR for the HL2); TEST_PLAN (the bench procedure's result); the site, what is verified on the air.
+* <a id="abkw"></a>**abkw: transmit, barefoot.** After row [I40](../ROADMAP.md#I40). Waveform, PTT lead, filter, drive cap, SWR latch, stream loss, the band table, transmit off by default. The safety policy host-tested (category 1); everything RF on the bench (category 2). **Done-when:** which telemetry word is forward on this unit, read while transmitting; the bench procedure (Safety, 8) passes into a dummy load and is recorded in TEST_PLAN; then a QSO on the air at 5 W (field). **Lands in:** `hl2.md` (transmit, and a **Safety** section holding each item as built with its bench result and host test; items 6 and 9 land with row [u4dw](../ROADMAP.md#u4dw) and epic [u8mc](several-channels.md)); radio.md (the tone lead, TX timing beside the QMX's); system.md (who may key it); webapp.md (power and SWR for the HL2); TEST_PLAN (the bench procedure's result); the site, what is verified on the air.
 * <a id="kgyh"></a>**kgyh: in the park.** After [abkw](#abkw). AP mode with the HL2, field power measured, listen-only bands (row [mtd6](../ROADMAP.md#mtd6) holds them per radio). **Done-when:** a POTA activation on the HL2 station, with the power draw recorded (field). **Lands in:** main_board.md (**Field power** with the HL2); `hl2.md` (its current draw).
 
 **Later** (slices not yet rows; grooming makes each one a row when it is next):
@@ -105,7 +105,7 @@ Every feature the QMX station has, against what the HL2 needs for it. **Fits**: 
 
 * **Discovery while running:** the source does not gate discovery on `run`, but a broadcast while the HL2 streamed got no reply, with SparkSDR and again with no other client.
 * **LAN operation:** the HL2 on a home LAN, the P4 taking a DHCP lease first and link-local after. Not yet run on the bench: the P4 and the HL2 through a switch rather than the direct cable. Transmit only on a private link, or on a LAN too? Protocol 1 has no authentication (Safety 11), so anything on the LAN could key the radio.
-* **A QMX and an HL2 at once:** channels from each (RFC 0016), all decoding, a reply on any of them transmitted by the radio whose channel heard it. Needs a queue entry carrying its radio as well as its band, and one backend per radio in place of one selected backend.
+* **A QMX and an HL2 at once:** channels from each (epic [u8mc](several-channels.md)), all decoding, a reply on any of them transmitted by the radio whose channel heard it. Needs a queue entry carrying its radio as well as its band, and one backend per radio in place of one selected backend.
 * **The LNA's first second.** In the 2026-11-04 band survey, every stream's first second at +20 dB read 33 to 61% of its ADC status words clipped, so the LNA stepped to +17 dB at once, even on 17 m, which hardly clipped afterwards: likely a start-up transient (the filter relays switching as the first config arrives), not the band. Whether the LNA should wait a second or two after a start or a retune before it reacts. The P4 runs the same rule.
 * **Whether the LNA steps back up** within a stream when the band quiets. In the survey one later burst (11 to 20 clipped words over a few slots) took each band to +14 dB for the rest of its 30 minutes, about 6 dB under the start between the two steps. Measure before changing either side: a band recorded with the LNA held at +20 and at +14 dB on alternate slots, scored against `jt9`.
 * **The receive high-pass's loss on 80 m,** where it is in line: about 2.5 MHz at −3 dB is computed from the netlist, not measured. A signal generator, or b6 set and clear on alternate slots on 80 m.
@@ -123,7 +123,7 @@ Every feature the QMX station has, against what the HL2 needs for it. **Fits**: 
 
 ## Why not
 
-* **A second P4 for more bands:** worth designing only once one P4's capacity is measured; RFC 0016 keeps it as a direction.
+* **A second P4 for more bands:** worth designing only once one P4's capacity is measured; epic [u8mc](several-channels.md) keeps it as a direction.
 * **RigPi's transmit guard and its zero-IQ fill** (`hlnurse/rigpi-sdr` `7c0c913`, MIT): its HackRF guard (a band list, one transmission, a time cap) informs Safety 9; its filling of missing audio with zero IQ is what Safety 10 forbids on an HL2, where samples carry PTT.
 
 The rest of the epic's why-nots moved to [hl2.md](../architecture/hl2.md), **Why not**, when receive shipped.

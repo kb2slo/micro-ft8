@@ -173,7 +173,7 @@ int decode_snr_message(const decode_snr_slot_t* slot, const monitor_t* monitor,
             ft4_encode(payload, tones);
             n_symbols = FT4_NN;
             n_tones = 4;
-            // Not fitted: FT8's constant moved by the wider noise bandwidth of FT4's shorter symbol (row xph7).
+            // Not fitted: FT8's constant moved by the wider noise bandwidth of FT4's shorter symbol (row an8x, docs/roadmap/several-channels.md).
             offset_db = DECODE_SNR_FT8_OFFSET_DB + 10.0f * log10f(FT8_SYMBOL_PERIOD / FT4_SYMBOL_PERIOD);
             break;
         case FTX_PROTOCOL_FT8:

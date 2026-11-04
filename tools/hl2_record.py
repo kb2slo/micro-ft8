@@ -19,7 +19,7 @@ counts as an overflow in the manifest.
 **Several receivers share one set of filters and one LNA.** The N2ADR byte is the highest band's: its
 low-pass passes every lower band, so they lose their own, and the receive high-pass stays in line unless
 every band is 160 m. One band alone gets its own filter, as on the P4 today. Recording the same bands
-both ways measures what the sharing costs (docs/roadmap/hl2-support.md; RFC 0016, S6).
+both ways measures what the sharing costs (docs/roadmap/several-channels.md, several HL2 bands).
 
 Each manifest line carries the radio-wide figures for its slot, the same for every receiver: packets
 lost and late, ADC status words and how many read clipped, the LNA's range, the HL2's temperature

@@ -33,6 +33,7 @@ change can affect. Working for the maintainer (they say so, or `git config user.
 **Push back before tools.** Classify the request against `ROADMAP.md` Now, the epic in focus, and `STYLE.md` **before any edit of implementation, or before exploration spanning more than one file.** 
 
 - **Working for the maintainer:** if it is not the current Now theme, not an explicit exception in those docs, or is still Ideas/Backlog (including “quick” UI/product tweaks), the first reply cites the doc and talks it through. Tools only after the maintainer retracts, grants an exception, or updates the doc in the same turn — an exception is an explicit decision, not a shortcut, and never a silent divergence.
+- **Before proposing a new row, epic or idea,** search [docs/roadmap/declined.md](docs/roadmap/declined.md) (and `docs/rfcs/rejected/` while it exists) for it, and cite the line that matches.
 - **Working for a contributor:** a bug fix can go straight to a pull request. Anything else — a feature, a renamed label, a changed behaviour, a slice of a larger plan — needs an issue the maintainer has agreed to, however well a host test proves it: a test shows a change works, not that it is wanted; with none, draft the issue in chat (what, why, Done-when) and stop there.
 
 No open-ended codebase exploration to be helpful — that is exactly the token spend this rule exists to stop. A single cheap lookup (one grep, one file read, "where is X defined") can just be answered without the gate. Docs and roadmap questions are allowed without it.
@@ -191,6 +192,11 @@ the only place every agent and every person can see them — see "Memory lives i
 - **Times in chat are the maintainer's local time, US Central.** Logs, commits, ADIF and the docs keep
   UTC; a time relayed in chat is converted and labelled (CST or CDT). A clock with no zone, such as a
   logger's, is checked against a known event before it is relayed.
+
+- **Read an outside branch before running anything on it.** A contributor's branch can change any script in it,
+  including the read-only checks `.claude/settings.json` lets run without a prompt and the pre-push hook. Before
+  running a check, a test or a build on such a branch, the person you work for has seen its diff. A tool's own
+  permission file, like that one, lists only read-only checks and carries no rules of its own.
 
 - **An agent cannot answer a password prompt.** For `sudo` or any command that asks for a password, give
   the exact command, ask the person you work for to run it in their own terminal, and wait for them to say it
