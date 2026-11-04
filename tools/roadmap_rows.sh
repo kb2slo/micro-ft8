@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# ROADMAP.md hygiene (docs/maintainer/roadmap.md, "Roadmap rows").
+# Roadmap hygiene: ROADMAP.md, its epic files and declined.md (docs/maintainer/roadmap.md).
 #
 #   tools/roadmap_rows.sh                  rows over the size limit, median length, long-ok count
 #   tools/roadmap_rows.sh new              print a fresh random row ID never seen in git history
 #   tools/roadmap_rows.sh health [--at REV]
 #                                          backlog health and drift budget, now or as of REV,
-#                                          including how long since the dependency watch ran
+#                                          including how long since the dependency watch ran,
+#                                          and whether each epic has its file, a row and live children
 #   tools/roadmap_rows.sh dangling [--at REV]
 #                                          docs citing a row ID that is no longer a row (nor Declined)
 #
@@ -16,7 +17,9 @@ set -euo pipefail
 export LC_ALL=C
 
 LIMIT=1000              # row size, characters, padding collapsed -- every section, Blocked included
-BUDGET_READ_KB=40       # ROADMAP.md size; the session-start read cost (also a trigger for row c9yz)
+BUDGET_READ_KB=40       # ROADMAP.md size; the session-start read cost (also a trigger for row c9yz).
+                        # Not budgeted while RFCs remain in docs/rfcs/ to dissolve into epics: the index
+                        # swings while they move, and the budget returns by itself when the last one goes.
 BUDGET_OVERSIZE_PCT=15  # rows over LIMIT, % of all rows
 BUDGET_NO_DONE_PCT=20   # Backlog rows with no Done-when, % of Backlog
 BUDGET_NOW_ROWS=3       # rows in Now (theme count is judged at grooming, not here)
@@ -25,6 +28,8 @@ BUDGET_DEPS_DAYS=14     # days since the dependency watch last ran (docs/maintai
 FLOW_DAYS=14            # window for rows added vs removed
 
 ROADMAP="docs/ROADMAP.md"
+EPICS_DIR="docs/roadmap"
+DECLINED="$EPICS_DIR/declined.md"
 TEST_PLAN="docs/TEST_PLAN.md"
 UPSTREAM="docs/maintainer/upstream.md"
 
@@ -42,12 +47,24 @@ rows() {
     }'
 }
 
+# The roadmap as one text: ROADMAP.md, then declined.md under a "## Declined" heading so its
+# lines count as rows of that section. Worktree, or REV when given (declined.md may predate it).
+index_text() {
+  local rev="${1:-}"
+  if [[ -z "$rev" ]]; then
+    cat "$ROADMAP"; [[ -f "$DECLINED" ]] && { printf '\n## Declined\n'; sed '/^#/d' "$DECLINED"; }
+  else
+    git show "$rev:$ROADMAP"
+    git show "$rev:$DECLINED" 2>/dev/null | { printf '\n## Declined\n'; sed '/^#/d'; } || true
+  fi
+}
+
 new_id() {
   # 4 chars from a lowercase alphabet without look-alikes (0/o, 1/l/i), led by
   # a letter. Uppercase B/I IDs predate this scheme and cannot collide.
   local letters="abcdefghjkmnpqrstuvwxyz" alnum="abcdefghjkmnpqrstuvwxyz23456789"
   local seen id i
-  seen="$( (git log -p --all -- "$ROADMAP"; cat "$ROADMAP") | grep -oE '\b[a-z][a-z2-9]{3}\b' | sort -u)"
+  seen="$( (git log -p --all -- "$ROADMAP" "$EPICS_DIR"; cat "$ROADMAP" "$EPICS_DIR"/*.md 2>/dev/null) | grep -oE '\b[a-z][a-z2-9]{3}\b' | sort -u)"
   for _ in $(seq 1 100); do
     id="${letters:RANDOM%${#letters}:1}"
     for i in 1 2 3; do id+="${alnum:RANDOM%${#alnum}:1}"; done
@@ -77,7 +94,7 @@ dead_ids() {
   local rev="$1" text="$2"
   local id_re='^([BID][0-9]+[a-z]?|[a-z][a-z2-9]{3})$'
   comm -23 \
-    <(git log -p "$rev" -- "$ROADMAP" | awk -F'|' '/^[-+ ]\| *[A-Za-z0-9]+ *\|/ && !/^[-+ ]\| *(ID|---)/ { id = $2; gsub(/ /, "", id); print id }' \
+    <(git log -p "$rev" -- "$ROADMAP" "$DECLINED" | awk -F'|' '/^[-+ ]\| *[A-Za-z0-9]+ *\|/ && !/^[-+ ]\| *(ID|---)/ { id = $2; gsub(/ /, "", id); print id }' \
         | grep -E "$id_re" | sort -u) \
     <(rows <<<"$text" | awk '{ print $3 }' | sort -u)
 }
@@ -88,7 +105,7 @@ dangling() {
   local rev="" worktree=1
   if [[ "${1:-}" == "--at" ]]; then rev="$2"; worktree=0; fi
   local text re
-  if (( worktree )); then text="$(cat "$ROADMAP")"; else text="$(git show "$rev:$ROADMAP")"; fi
+  if (( worktree )); then text="$(index_text)"; else text="$(index_text "$rev")"; fi
   re="$(dead_ids "${rev:-HEAD}" "$text" | paste -sd'|' -)"
   [[ -z "$re" ]] && return 0
   # In the worktree, a doc not yet added counts too (tools/check_docs.py reads it before its commit).
@@ -104,7 +121,7 @@ pct() { awk -v a="$1" -v b="$2" 'BEGIN { printf "%d", (b ? 100 * a / b : 0) }'; 
 
 # IDs added / removed by ROADMAP.md diffs in git log args "$@".
 flow() {
-  git log -p "$@" -- "$ROADMAP" | awk '
+  git log -p "$@" -- "$ROADMAP" "$DECLINED" | awk '
     /^[-+]\| *[A-Za-z0-9]+ *\|/ && !/^[-+]\| *(ID|---)/ {
       split(substr($0, 2), x, "|"); id = x[2]; gsub(/ /, "", id)
       if (substr($0, 1, 1) == "+") add[id] = 1; else del[id] = 1
@@ -117,17 +134,18 @@ health() {
   if [[ "${1:-}" == "--at" ]]; then rev="$2"; worktree=0; fi
   local text tp up now since
   if (( worktree )); then
-    text="$(cat "$ROADMAP")"; tp="$(cat "$TEST_PLAN")"; up="$(cat "$UPSTREAM")"; now="$(date +%s)"
+    text="$(index_text)"; tp="$(cat "$TEST_PLAN")"; up="$(cat "$UPSTREAM")"; now="$(date +%s)"
+    bytes="$(wc -c <"$ROADMAP" | tr -d ' ')"
   else
-    text="$(git show "$rev:$ROADMAP")"; tp="$(git show "$rev:$TEST_PLAN")"
+    text="$(index_text "$rev")"; tp="$(git show "$rev:$TEST_PLAN")"
+    bytes="$(git show "$rev:$ROADMAP" | wc -c | tr -d ' ')"
     up="$(git show "$rev:$UPSTREAM" 2>/dev/null || true)"
     now="$(git show -s --format=%ct "$rev")"
   fi
   since="$(( now - FLOW_DAYS * 86400 ))"
 
-  local data bytes total over longok now_rows bl no_done blocked declined no_blocked_on added removed owed
+  local data total over longok now_rows bl no_done blocked declined no_blocked_on added removed owed
   data="$(rows <<<"$text")"
-  bytes="$(printf '%s\n' "$text" | wc -c | tr -d ' ')"
   total="$(wc -l <<<"$data" | tr -d ' ')"
   over="$(awk -v L="$LIMIT" '$2 > L' <<<"$data" | wc -l | tr -d ' ')"
   longok="$(awk '$4 == 1' <<<"$data" | wc -l | tr -d ' ')"
@@ -158,7 +176,14 @@ health() {
   over_pct="$(pct "$over" "$total")"; nodone_pct="$(pct "$no_done" "$bl")"
 
   echo "health @ $( (( worktree )) && echo "worktree" || git rev-parse --short "$rev")"
-  printf '  read cost        %d KB (~%dk tokens)                budget %d KB\n' "$(( bytes / 1024 ))" "$(( bytes / 4000 ))" "$BUDGET_READ_KB"
+  local rfcs_left
+  if (( worktree )); then rfcs_left="$(ls docs/rfcs/[0-9]*.md 2>/dev/null | wc -l | tr -d ' ')"
+  else rfcs_left="$(git ls-tree --name-only "$rev" docs/rfcs/ 2>/dev/null | grep -c '/[0-9][^/]*\.md$' || true)"; fi
+  if (( rfcs_left )); then
+    printf '  read cost        %d KB (~%dk tokens)                not budgeted: %d RFC(s) to dissolve\n' "$(( bytes / 1024 ))" "$(( bytes / 4000 ))" "$rfcs_left"
+  else
+    printf '  read cost        %d KB (~%dk tokens)                budget %d KB\n' "$(( bytes / 1024 ))" "$(( bytes / 4000 ))" "$BUDGET_READ_KB"
+  fi
   printf '  oversize rows    %d / %d (%d%%), long-ok %d        budget %d%%\n' "$over" "$total" "$over_pct" "$longok" "$BUDGET_OVERSIZE_PCT"
   printf '  Now rows         %d                               budget %d\n' "$now_rows" "$BUDGET_NOW_ROWS"
   printf '  no Done-when     %d / %d Backlog (%d%%)            budget %d%%\n' "$no_done" "$bl" "$nodone_pct" "$BUDGET_NO_DONE_PCT"
@@ -172,13 +197,34 @@ health() {
   [[ -n "$deps_date" ]] && deps_days="$(( (now - $(date -d "$deps_date" +%s)) / 86400 ))"
   printf '  dependency watch %s                    budget %d days\n' \
     "$( (( deps_days >= 0 )) && echo "$deps_days days since $deps_date" || echo "never run" )" "$BUDGET_DEPS_DAYS"
-  # Reported, not budgeted: most dead citations sit in RFCs awaiting graduation (row k7gc).
+  # Reported, not budgeted: most dead citations sit in RFCs not yet dissolved into epics.
   local dang
   dang="$(if (( worktree )); then dangling; else dangling --at "$rev"; fi)"
   printf '  dangling IDs     %d file(s) cite a dropped row ID    (tools/roadmap_rows.sh dangling)\n' "$(grep -c . <<<"$dang" || true)"
 
   local why=()
-  (( bytes / 1024 > BUDGET_READ_KB )) && why+=("read cost $(( bytes / 1024 )) KB")
+  # Epics: each Epics row links a file that exists, each epic file has an Epics row, and each epic
+  # has at least one child row citing its ID elsewhere in the index (maintainer/roadmap.md, Epics).
+  local files epic_ids epic_bad=() eid f
+  if (( worktree )); then
+    files="$(ls "$EPICS_DIR"/*.md 2>/dev/null | grep -v "/declined.md$" || true)"
+  else
+    files="$(git ls-tree --name-only "$rev" "$EPICS_DIR/" 2>/dev/null | grep '\.md$' | grep -v "/declined.md$" || true)"
+  fi
+  epic_ids="$(awk '$1 == "Epics" { print $3 }' <<<"$data")"
+  for eid in $epic_ids; do
+    grep -q "^$EPICS_DIR/$eid-" <<<"$files" || epic_bad+=("$eid has no file")
+    awk -v e="$eid" '/^## / { sec = $0 } sec != "## Epics" && sec != "## Declined" && /^\| / && index($0, e) { n++ } END { exit !n }' <<<"$text" \
+      || epic_bad+=("$eid has no child rows")
+  done
+  for f in $files; do
+    eid="$(basename "$f" | cut -d- -f1)"
+    grep -qx "$eid" <<<"$epic_ids" || epic_bad+=("$(basename "$f") has no Epics row")
+  done
+  printf '  epics            %d%s\n' "$(grep -c . <<<"$epic_ids" || true)" "${epic_bad:+ -- $(IFS=';'; echo "${epic_bad[*]}")}"
+  (( ${#epic_bad[@]} )) && why+=("epics inconsistent")
+
+  (( ! rfcs_left && bytes / 1024 > BUDGET_READ_KB )) && why+=("read cost $(( bytes / 1024 )) KB")
   (( over_pct > BUDGET_OVERSIZE_PCT )) && why+=("oversize ${over_pct}%")
   [[ -n "$no_blocked_on" ]] && why+=("Blocked rows missing Blocked on")
   (( now_rows > BUDGET_NOW_ROWS )) && why+=("Now ${now_rows} rows")

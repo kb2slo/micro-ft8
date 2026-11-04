@@ -2,11 +2,15 @@
 
 Living plan for Micro-FT8. How it is kept: [maintainer/roadmap.md](maintainer/roadmap.md). The rest of `docs/`: [README.md](README.md).
 
-How things work now: `architecture/` (start at [architecture/system.md](architecture/system.md)). [RFC 0003](rfcs/rejected/0003-m32-pocket-port-and-ble-time.md) (Pocket+CTS bundle) is **rejected**. When a row needs an RFC, and what happens to it: [rfcs/README.md](rfcs/README.md).
+How things work now: `architecture/` (start at [architecture/system.md](architecture/system.md)). An epic's detail is in its file under [roadmap/](roadmap/); rejected ideas are in [roadmap/declined.md](roadmap/declined.md).
 
 ## Next groom
 
 * **Not reached 2026-11-02:** the Blocked pass (does each condition still hold) and the Ideas pass (drops, rows that still carry history).
+
+## Epics
+
+Each epic is one row here and one file under `roadmap/`, read only when touching its rows. None yet.
 
 ## Now
 
@@ -66,7 +70,7 @@ Decided or conditional, not to be picked up until the named condition clears; th
 
 ## Ideas
 
-Not scheduled. Move to Backlog with a Done-when before implementing. When an idea needs an RFC first: [rfcs/README.md](rfcs/README.md).
+Not scheduled. Move to Backlog with a Done-when before implementing. When an idea needs design first, it is discussed in an issue and becomes an epic ([maintainer/roadmap.md](maintainer/roadmap.md), **Epics**).
 
 
 | ID | Item | Notes |
@@ -97,21 +101,6 @@ Not scheduled. Move to Backlog with a Done-when before implementing. When an ide
 | B77 | WiFi management: several saved networks, and AP mode's way back | Operator-requested. `wifi_prov.c` stores one SSID. **Undecided:** NVS layout (indexed keys, as band config's `band0`..`band11`; position is priority); `provision.html` becoming add/reorder/remove; boot join in priority order blind vs scan first; per-network forget beside forget-all. **AP mode:** Enter AP mode lasts one boot (a one-shot flag, commit `21d26c4`), so a field power-up first spends up to 60 s on the home network; sticky until the operator rejoins is the alternative. AP mode's Settings shows only the AP's own name, so kept credentials look erased, and the way back retypes the password: show the saved networks with a one-tap rejoin. 2026-11-01: after Enter AP mode and a power cycle the sidekick stayed in AP mode and the operator re-entered the password; erased or a failed join is unknown, so reproduce with its console captured. |
 | B65 | Migrate to ESP-IDF 6.x (currently pinned v5.5.5) | Operator preference: stay on the newest stable, deliberately. 6.x is a migration, not a bump: gnu23/gnu++26 with warnings as errors, Picolibc, mbedTLS 4 (PSA), legacy drivers removed, `wifi_provisioning` moved to `network_provisioning`, cJSON to managed components; none of our managed components are verified on 6.x. Gains: ESP32-P4 v3 support, and a JPEG-decoder security fix (GHSA-v6r2-f6p2-88cj) in 6.1. **Done-when:** P4 and sidekick build and pass `host_mock`/`tx_e2e` on 6.x, every managed component confirmed or replaced, and the migration guide checked against this code. |
 
-
-## Declined
-
-Rejected ideas, kept so they are not re-proposed. One line each: ID, name, why.
-
-| ID | Item | Why declined |
-| --- | --- | --- |
-| I42 | Sidekick joins captive-portal networks (hotel/conference WiFi) | Declined 2026-09-24: its own provisioning captive portal already failed (retired 2026-09-21), and nothing on the sidekick needs an uplink; the phone clears venue portals itself. Revisit only if a field session shows the sidekick needs outbound internet. |
-| I17 | M32 Pocket as Micro-FT8 host | Declined 2026-09-25: the P4 + sidekick is the direction; the Pocket needs unproven external hardware to host a radio. RFC 0003 already rejected. |
-| I16 | Optional TX meter poll off | Declined 2026-09-25: no observed CAT-load symptom; reopen if a late `TA` or USB glitch is traced to the poll. |
-| ujk5 | Autoseq: stop resending RR73 when DX is heard calling CQ or working another station | Declined 2026-10-11: ROGERS now sends RR73 once and parks right after it, before DX's next slot is decoded, so there is no resend left to stop; it would also have needed autoseq to see decodes not addressed to us. |
-| qdcm | A P4 reset leaves the QMX unenumerated until it is replugged | Declined 2026-11-02: the wedge is the QMX's, and only the QMX clears it; the P4 cannot switch the Host port's 5 V, and a root-port cycle re-enumerates into the same wedge ([main_board.md](architecture/main_board.md), **Host**). |
-| p83e | Home decode server: stream P4 audio to a LAN host running `jt9` | Declined 2026-11-03: paired data comes from recordings scored offline (the [2026-11-02 IQ/audio corpus](../tools/decode_bench/corpus/qmx-2026-11-02/README.md)), and `jt9` feeding autoseq competes with keeping decode on the P4 (RFC 0014). [RFC 0012](rfcs/rejected/0012-home-decode-server.md) rejected. |
-| B85 | Measure QMX out-of-band audio; anti-alias decimator if it costs >1 dB | Declined 2026-11-03: the QMX decodes only from IQ mode, whose front end filters before it decimates; the unfiltered audio resampler is gone. |
-| B57 | Radio auto-detect: tell a QMX from a QDX over CAT | Declined 2026-11-03: the QDX is dropped (maintainer), so there is no other radio to tell a QMX from; reading the QMX's bands is vcng's. |
 
 Field-only (do not fake in CI): USB/CDC/QMX CAT, UAC timing/DRAM, display/SPI, full-slot audio.
 

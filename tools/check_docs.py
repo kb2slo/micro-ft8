@@ -12,12 +12,12 @@ outside fenced code blocks, and fails on:
   - a row ID cited after its row left docs/ROADMAP.md, when REV's docs did not already cite it
     (tools/roadmap_rows.sh dangling). Citations REV already had are counted, not failed;
   - an ESP-IDF version (a vX.Y.Z on a line that names IDF) that CI does not build with, so README.md,
-    CONTRIBUTING.md and AGENTS.md cannot keep an old version after a toolchain bump. RFCs are skipped,
-    since an RFC may cite the version it was written against.
+    CONTRIBUTING.md and AGENTS.md cannot keep an old version after a toolchain bump. Plan docs (RFCs,
+    docs/roadmap/) are skipped, since a plan may cite the version it was written against.
 
 A gitignored path passes (a build output need not exist yet), and so does a path inside a
-submodule that is not checked out. #anchors and web links are not checked. RFCs get the link check
-only, since an RFC designs files that do not exist yet, and rejected RFCs are frozen and skipped.
+submodule that is not checked out. #anchors and web links are not checked. Plan docs get the link check
+only, since a plan designs files that do not exist yet, and rejected RFCs are frozen and skipped.
 """
 import argparse
 import os
@@ -29,6 +29,9 @@ import urllib.parse
 
 ROOT = subprocess.run(['git', 'rev-parse', '--show-toplevel'], check=True,
                       capture_output=True, text=True).stdout.strip()
+
+# Docs that design what is not built yet: their `code` paths may not exist (an RFC, an epic file).
+PLAN_DOCS = ('docs/rfcs/', 'docs/roadmap/')
 
 FENCE = re.compile(r'^\s{0,3}(`{3,}|~{3,})')
 CODE_SPAN = re.compile(r'(`+)(.+?)\1')
@@ -154,7 +157,7 @@ def dangling(rev=None):
 
 def idf_mismatches(doc, text, built):
     """(line, version) for each ESP-IDF version in text that is not one CI builds with."""
-    if doc.startswith('docs/rfcs/'):
+    if doc.startswith(PLAN_DOCS):
         return []
     found = []
     for n, line in enumerate(text.splitlines(), 1):
@@ -180,7 +183,7 @@ def main():
             print(f'{doc}:{n}: ESP-IDF v{v}, but CI builds with {", ".join("v" + b for b in sorted(built))}')
             stale_idf += 1
         for n, kind, target in references(text):
-            if kind == 'code' and doc.startswith('docs/rfcs/'):
+            if kind == 'code' and doc.startswith(PLAN_DOCS):
                 continue
             path = resolve_link(doc, target) if kind == 'link' else resolve_code(repo, target)
             if path is None:

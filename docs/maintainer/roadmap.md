@@ -1,40 +1,87 @@
-# The roadmap: rows, intake and grooming
+# The roadmap: rows, epics, intake and grooming
 
-How [ROADMAP.md](../ROADMAP.md) is kept.
+How the roadmap is kept: the index [ROADMAP.md](../ROADMAP.md), the epic files beside it in [roadmap/](../roadmap/), and [roadmap/declined.md](../roadmap/declined.md).
+
+## The shape
+
+* **`ROADMAP.md` is the index:** Next groom, Epics, Now, Backlog, Blocked, Ideas. It holds the order, and every session reads it, so it stays small.
+* **An epic file, `roadmap/<id>-<slug>.md`, holds one epic:** a body of work too big for one row. Only a session touching that epic's rows reads it.
+* **`roadmap/declined.md`** holds rejected ideas, one line each, so they are not proposed again. Read it when an idea comes up, not at session start.
+
+**Not Jira.** The roadmap is plain markdown that a person can edit by hand. These limits are the point; a change that loosens one is a process change, proposed on its own:
+
+* **Status is the section a row sits in.** No status field.
+* **A row has ID, Item, and Why with a Done-when.** No priority, estimate, assignee, label or sprint field; order is priority.
+* **One level of nesting:** epic, then rows. No sub-epics; a row that needs children is an epic.
+* **Few epics:** a handful at a time.
+* **No tooling beyond `tools/roadmap_rows.sh`.** If keeping the roadmap needs more, the process is too heavy.
+* **Now reads in a minute,** and a fresh agent gets the plan from the index plus at most the epic it touches.
 
 ## Roadmap rows
 
 **Order is priority.** Within Now and Backlog, the top row is next. Grooming re-orders; a new row is placed deliberately, not appended by default.
 
-**Blocked is a section, not a tag,** so Backlog order stays pure priority. A Blocked row names **Blocked on:** (the condition that clears it) and keeps a Done-when; an optional **Collects:** lists work that attaches to it if it is ever done. Order within Blocked does not matter. Same size limit as every row — an overgrown **Collects:** becomes an RFC.
+**Blocked is a section, not a tag,** so Backlog order stays pure priority. A Blocked row names **Blocked on:** (the condition that clears it) and keeps a Done-when; an optional **Collects:** lists work that attaches to it if it is ever done. Order within Blocked does not matter. Same size limit as every row; an overgrown **Collects:** becomes an epic.
 
-**Declined is the last section.** A rejected row moves there as one line — ID, name, why — so the idea is not re-proposed. Git keeps the full row.
+**Declined lives in [roadmap/declined.md](../roadmap/declined.md).** A rejected row or epic moves there as one line — ID, name, why. Git keeps the full row. An outside idea declined in its issue needs no line: the closed issue says why.
 
-**IDs are opaque.** New rows get a random ID from `tools/roadmap_rows.sh new`, which checks it has never appeared in git history. Existing `B`/`I` IDs stay. Section is stage, position is priority; the ID encodes neither. Lineage — split from, merged into, replaced by — goes in the commit message that made the change, not in the row; `git log -S'<id>' --reverse -- docs/ROADMAP.md` finds where a row came from.
+**IDs are opaque.** New rows and epics get a random ID from `tools/roadmap_rows.sh new`, which checks it has never appeared in git history. Existing `B`/`I` IDs stay. Section is stage, position is priority; the ID encodes neither. Lineage — split from, merged into, replaced by — goes in the commit message that made the change, not in the row; `git log -S'<id>' --reverse -- docs/ROADMAP.md` finds where a row came from.
 
 **Row size.** `tools/roadmap_rows.sh` lists rows over its `LIMIT` (the only place the number lives). Flag any such row in chat — in the turn that writes it, before proposing the commit, and at grooming. Route the overflow by kind:
 
-- Design for unbuilt work → an RFC (an existing one if it fits).
+- Detail of planned work → its epic's file (a new epic if none fits).
 - Facts about current code → an architecture doc.
 - History ("built…", "extended…", "note, same day…") → delete; git has it.
 
 What stays is ID, name, a line of why, Done-when, and a link. A row stays long only on the maintainer's say-so, marked `` `long-ok` `` so the script counts it. Each grooming retro reads the script's output: many `long-ok` rows mean `LIMIT` is too low; rows under it that still needed trimming mean it is too high.
 
-Update `ROADMAP.md` in the **same turn** as the work:
+Update the roadmap in the **same turn** as the work:
 
 - New idea → **Ideas** (do not implement until moved up)
 - Agreed / sequenced → **Backlog**
 - Decided or conditional, waiting on a named condition → **Blocked** (not picked up until it clears)
-- Next to build → **Now** (one theme)
-- Rejected → one line in **Declined**
-- Shipped → drop the row from Now/Backlog. No separate Done archive — git history (and the commit that dropped the row) is the record.
+- Next to build → **Now**
+- Rejected → one line in `roadmap/declined.md`
+- Shipped → drop the row. No separate Done archive: git history (and the commit that dropped the row) is the record.
 
-Each row is an ID plus a name.
+## Epics
+
+**An epic is planned work too big for one row:** several rows toward one goal, with design that is decided but not built. It replaces the RFC; there is no separate design document.
+
+**In the index,** an epic is one row in **Epics**: its ID, its name and a link to its file. Its child rows sit in Now, Backlog or Blocked like any row, in priority order, each starting its Why with the epic's link. A child row in the index is one line of why and a Done-when; its detail is in the epic file.
+
+**The epic file holds what is planned, and only while it is planned:**
+
+* **Goal** and **constraints.**
+* **Decided:** what holds now. No dates, no decision log, no "was X": a decision that changes is edited in place, and git keeps the old one.
+* **Design** of what is not built yet, and the facts it rests on, each with its source.
+* **Children:** each child row's detail, and the order they depend on each other in.
+* **Open:** questions still to settle, each named for the child that needs the answer.
+* **Why not:** short notes on the alternatives turned down, so they are not proposed again.
+
+Leave out anything that is not useful to the next child's work. A file past about 200 lines is doing an architecture doc's job: move what is true now there.
+
+**When a child ships,** its commit drops the row and moves what is now true about the code into the architecture doc ([AGENTS.md](../../AGENTS.md), **Architecture docs match the code too**), deleting it from the epic file. So the epic file describes only the plan, and architecture docs only what is built.
+
+**When the last child ships or is dropped,** that commit deletes the file and the Epics row, after moving anything still true into an architecture doc. An epic abandoned before then is deleted with one line in `declined.md`.
+
+**One epic per row.** A row that serves two epics belongs to the one whose goal it finishes, and names the other as **After:**.
+
+**Undecided design is not an epic yet.** "Should we, and how?" is discussed in a GitHub issue (**Issues**, below). The pull request that settles it adds the epic file, the Epics row and the first child rows together.
+
+## Issues
+
+GitHub issues are where the roadmap's inputs arrive and are talked through; the roadmap and the epic files are where the outcome lands.
+
+* **Uses:** a contributor's idea, a bug or field report from an operator, and design discussion for an epic not yet decided.
+* **Never the only home of a decision.** When an issue settles something, the pull request that acts on it puts the outcome in the index, an epic file or an architecture doc, and cites `#N` for the history. Closing the issue then loses nothing.
+* **Plain issues only:** the templates in `.github/ISSUE_TEMPLATE/` and a few labels. No Projects boards, milestones, assignees or sub-issues; epics are files here, not issues.
+* **Agents read issues freely,** and comment on, open or close one only when the person they work for says to in that turn ([AGENTS.md](../../AGENTS.md), **Commit / push only when asked**): an issue comment is public.
 
 ## Roadmap intake (ideas)
 
 If the maintainer asks to add an idea or “add to the backlog”:
-1. Draft the `docs/ROADMAP.md` row in chat. Do not commit yet.
+1. Draft the row in chat. Do not commit yet.
 2. New items go in **Ideas**. Use **Backlog** only when they give a Done-when or say it is sequenced.
 3. After they approve, commit that row. Push `origin` only when they ask to push. Never `upstream` unless they explicitly ask.
 
@@ -43,10 +90,10 @@ If the maintainer asks to add an idea or “add to the backlog”:
 **A groom is a timeboxed session.**
 
 1. **Open:** ask the maintainer for a rough timebox (e.g. 30 min, 1 h) and tune the pace to it. Read `ROADMAP.md`'s **Next groom** section — carried items come first. Run `tools/roadmap_rows.sh health` if you can and state the budget in one line.
-2. **Passes, in order, until the timebox runs out:** ① Now — drop what shipped, move out what is not the one theme; ② Backlog — drops, demotions, splits, missing Done-whens, over-size rows, then order; ③ Blocked — does each condition still hold; ④ Ideas — drops, Declined, over-size rows; ⑤ pick Now (one theme).
+2. **Passes, in order, until the timebox runs out:** ① Now: drop what shipped, move out what is not the epic or theme in focus; ② Epics: does each still have live children, and is its file still only plan; ③ Backlog: drops, demotions, splits, missing Done-whens, over-size rows, then order; ④ Blocked: does each condition still hold; ⑤ Ideas: drops, declines, over-size rows; ⑥ pick Now.
 3. **Wrap:** re-run `health`; rewrite **Next groom** in `ROADMAP.md` with what was not reached (delete the section's items, or the section, when nothing carries over); a short retro — what in this process to change, applied to the doc it changes in the same wrap; propose the commits (process changes separate from the groom). **Nothing is queued in chat:** each follow-up becomes a row or is done in the wrap. Carry-over state lives in the file every agent reads, never only in a commit message.
 
-**A groom may focus on one area**, such as one RFC's rows. The passes then run over that area's rows and the rows that bear on them; the rest waits for a full groom.
+**A groom may focus on one epic.** The passes then run over its file, its rows and the rows that bear on them; the rest waits for a full groom.
 
 **"Timebox"** — the maintainer can say it at any point. Stop proposing, apply nothing not yet accepted, and go straight to the wrap. An open proposal is listed as not reached, not applied.
 
