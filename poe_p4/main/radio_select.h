@@ -11,3 +11,9 @@ void radio_select_apply(int station_radio);
 
 // True while the QMX is the active radio, so its audio may feed decode. Any task.
 bool radio_select_qmx_feeds_decode(void);
+
+// True while the HL2 is the active radio, so its I/Q feeds decode. Any task.
+bool radio_select_hl2_feeds_decode(void);
+
+// The active radio's receive stream is up: the QMX's UAC, or the HL2's stream. Any task.
+bool radio_select_audio_ready(void);

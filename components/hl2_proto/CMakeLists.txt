@@ -2,4 +2,5 @@
 idf_component_register(
     SRCS "hl2_proto.cpp"
     INCLUDE_DIRS "include"
+    REQUIRES iq_frontend  # hl2_rx_frontend.h, header only
 )

@@ -14,6 +14,7 @@
 #include "station.h"
 
 #include "hl2_transport.h"
+#include "porta_host.h"
 #include "qmx_transport.h"
 #include "radio_select.h"
 #include "tx_scheduler.h"
@@ -21,6 +22,7 @@
 static const char* TAG = "radio_select";
 
 static std::atomic<bool> s_qmx_active{false};
+static std::atomic<bool> s_hl2_active{false};
 static bool s_qmx_started = false;
 
 void radio_select_apply(int station_radio)
@@ -32,12 +34,15 @@ void radio_select_apply(int station_radio)
         // The HL2 has no backend yet (receive only), so nothing can be keyed or retuned, a QMX still on the Host
         // port included.
         radio_control_set_backend(RADIO_CONTROL_NONE);
+        hl2_transport_set_dial(static_cast<uint32_t>(porta_p4_station_freq_hz()));
+        s_hl2_active = true;
         if (!hl2_transport_set_active(true)) {
             ESP_LOGE(TAG, "the HL2 is chosen but Ethernet did not start: no radio is active");
         }
         ESP_LOGI(TAG, "radio: HL2");
         return;
     }
+    s_hl2_active = false;
     hl2_transport_set_active(false);
     radio_control_set_backend(RADIO_CONTROL_QMX);
     if (!s_qmx_started) {
@@ -54,4 +59,17 @@ void radio_select_apply(int station_radio)
 bool radio_select_qmx_feeds_decode(void)
 {
     return s_qmx_active;
+}
+
+bool radio_select_hl2_feeds_decode(void)
+{
+    return s_hl2_active;
+}
+
+bool radio_select_audio_ready(void)
+{
+    if (s_hl2_active) {
+        return hl2_audio_ready();
+    }
+    return s_qmx_active && qmx_audio_ready();
 }

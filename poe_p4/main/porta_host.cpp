@@ -13,6 +13,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "file_list.h"
+#include "hl2_transport.h"
 #include "porta.h"
 #include "porta_proto.h"
 #include "protocol.h"
@@ -220,6 +221,12 @@ static const char *sync_vfo(const char *reason) {
     const int freq_hz = station_freq_hz();
     if (freq_hz <= 0) {
         return "no band frequency";
+    }
+    if (radio_select_hl2_feeds_decode()) {
+        // The HL2 has no CAT: its receiver's NCO follows the dial (hl2_transport.h). Receive only, so no
+        // transmission can be under way to wait for.
+        hl2_transport_set_dial((uint32_t)freq_hz);
+        return nullptr;
     }
     if (!radio_control_ready()) {
         ESP_LOGW(TAG, "VFO sync skipped (%s): CAT not ready (want %d Hz)",
@@ -631,8 +638,8 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
     snprintf(live, sizeof(live),
              "streaming=%d\ncat_ready=%d\ntune=%d\nband_name=%s\nfreq_khz=%d\n"
              "audio_rx=%d\nclock_set=%d\ndecode_failed=%d\n",
-             qmx_audio_ready() ? 1 : 0, radio_control_ready() ? 1 : 0, s_tune ? 1 : 0, band_name,
-             freq_khz, qmx_audio_ready() ? 1 : 0, rtc_is_set() ? 1 : 0, s_decode_failed ? 1 : 0);
+             radio_select_audio_ready() ? 1 : 0, radio_control_ready() ? 1 : 0, s_tune ? 1 : 0, band_name,
+             freq_khz, radio_select_audio_ready() ? 1 : 0, rtc_is_set() ? 1 : 0, s_decode_failed ? 1 : 0);
     text += live;
 
     // What the radio last said of itself (IF;), against what Micro-FT8 means it to be: both in

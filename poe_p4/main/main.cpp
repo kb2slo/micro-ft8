@@ -13,6 +13,7 @@
 #include "decode_tx_state.h"
 #include "ft8_audio_pipeline.h"
 #include "ft8_block_activity.h"
+#include "hl2_transport.h"
 #include "porta.h"
 #include "porta_host.h"
 #include "protocol.h"
@@ -45,13 +46,27 @@ static void send_activity(void * /*ctx*/, int64_t slot_idx, int block_ms, int fi
                         (uint8_t)n, (uint16_t)lo_hz, (uint16_t)hi_hz);
 }
 
-// The QMX's audio feeds decode only while the QMX is the active radio (radio_select.h); choosing another radio
-// ends the pipeline run, as a QMX unplugged does.
+// A radio's samples feed decode only while it is the active radio (radio_select.h); choosing another radio ends
+// the pipeline run, as a QMX unplugged does, and the task starts one on the radio now chosen.
 static bool qmx_decode_should_stop(void *ctx) {
     return qmx_audio_should_stop(ctx) || !radio_select_qmx_feeds_decode();
 }
 
+static bool hl2_decode_should_stop(void *ctx) {
+    return hl2_audio_should_stop(ctx) || !radio_select_hl2_feeds_decode();
+}
+
 static void decode_audio_task(void * /*arg*/) {
+    const ft8_audio_pipeline_config_t hl2_cfg = {
+        .tag = TAG,
+        .ctx = nullptr,
+        .read = hl2_audio_read_ft8_samples,
+        .should_stop = hl2_decode_should_stop,
+        .on_block_processed = nullptr,
+        .on_activity = send_activity,
+        .take_frontend_us = hl2_audio_take_frontend_us,
+        .rx_path_for_slot = hl2_audio_rx_path_for_slot,
+    };
     ft8_audio_pipeline_config_t pipe_cfg = {
         .tag = TAG,
         .ctx = nullptr,
@@ -65,12 +80,20 @@ static void decode_audio_task(void * /*arg*/) {
     // QMX CAT/UAC comes back only after a radio power cycle (QMX quirk);
     // keep this task alive so a replug restarts decode without resetting P4.
     while (true) {
-        while (!radio_select_qmx_feeds_decode() || !qmx_audio_ready()) {
-            vTaskDelay(pdMS_TO_TICKS(200));
+        const ft8_audio_pipeline_config_t *cfg = nullptr;
+        while (!cfg) {
+            if (radio_select_qmx_feeds_decode() && qmx_audio_ready()) {
+                cfg = &pipe_cfg;
+                ESP_LOGI(TAG, "QMX UAC streaming; starting decode pipeline");
+            } else if (radio_select_hl2_feeds_decode() && hl2_audio_ready()) {
+                cfg = &hl2_cfg;
+                ESP_LOGI(TAG, "HL2 streaming; starting decode pipeline");
+            } else {
+                vTaskDelay(pdMS_TO_TICKS(200));
+            }
         }
-        ESP_LOGI(TAG, "QMX UAC streaming; starting decode pipeline");
         porta_p4_set_decode_failed(false);
-        if (!ft8_audio_pipeline_run(&pipe_cfg)) {
+        if (!ft8_audio_pipeline_run(cfg)) {
             // Could not start (RAM, a task), so nothing will decode until it can. Say so once, on
             // the phone as well as here, and wait before trying again rather than every 60 ms.
             ESP_LOGE(TAG, "decode pipeline could not start: the radio is up but nothing will decode");
@@ -79,7 +102,7 @@ static void decode_audio_task(void * /*arg*/) {
             vTaskDelay(pdMS_TO_TICKS(10000));
             continue;
         }
-        ESP_LOGW(TAG, "decode_audio_task: pipeline exited (QMX audio disconnected); waiting for UAC");
+        ESP_LOGW(TAG, "decode_audio_task: pipeline exited (the radio's stream stopped or another was chosen)");
     }
 }
 
