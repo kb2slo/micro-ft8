@@ -26,7 +26,7 @@ The Hermes-Lite 2 recorded on a computer, one band at a time, 30 minutes a band,
 
 **Our share of `jt9` is the QMX's.** On the QMX corpus's 15 m I/Q (2026-11-02) ours was 16.6 of `jt9`'s 24.4 a slot, 68%; here 64–75% on every band up to about 22 `jt9` decodes a slot. 20 m at 50 a slot drops to 48%, the crowded-band plateau the QMX corpus showed too (our decoder levels off near 25–27 a slot whatever `jt9` finds; [decode.md](../../../../docs/architecture/decode.md), **Subtraction**). So the HL2's receive chain costs our decoder nothing this measures; the gap is the decoder's, which rows kkap (subtraction from the audio) and qauk (AP decoding) work on. The decode counts themselves measure the band, not the radio: comparing the two radios needs both on one antenna at once (epic [knpp](../../../../docs/roadmap/hl2-support.md), **Later**).
 
-**The LNA ends every band 6 dB under its start** (+14 dB, 20 m at +11): it steps at once at each stream's start, and 20 m and 30 m stayed at the second step's level from the first slot. Each stream's first second at +20 dB read 33 to 61% of its status words clipped, and one later burst stepped it again (epic, **Open**).
+**The LNA ends every band at +14 dB or lower, from a +20 dB start** (20 m at +11). Each stream's first second at +20 dB read 33 to 61% of its status words clipped, and one later burst stepped it again (epic, **Open**).
 
 **The image check does not apply.** `score_ab.py` swaps I and Q to find each strong station's mirror, which on a QMX is its image across the LO; on the HL2, a direct-sampling radio, the far side of the NCO is real spectrum below the dial, so its "wrong-side" decodes (3 on 15 m, 9 on 20 m) are other stations, not images.
 
