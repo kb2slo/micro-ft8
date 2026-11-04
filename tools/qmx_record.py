@@ -188,12 +188,15 @@ class SlotWriter:
     """
 
     def __init__(self, out_dir, first_start, slots, mode_tag, cat=None, dial_hz=None,
-                 version="unknown", log=print, alternate=None):
+                 version="unknown", log=print, alternate=None, extra=None):
         self.out_dir = out_dir
         self.first_start = first_start
         self.slots = slots  # None: until stopped
         self.mode_tag = mode_tag  # with alternate, the first turn's mode
         self.alternate = alternate
+        # Optional: called as each slot closes; its dict joins that slot's manifest line
+        # (tools/hl2_record.py adds the HL2's LNA and clip counts this way).
+        self.extra = extra
         self.cat = cat
         self.dial_hz = dial_hz
         self.version = version
@@ -304,6 +307,8 @@ class SlotWriter:
             "sha256": h.hexdigest(),
             "recorder": self.version,
         }
+        if self.extra is not None:
+            rec.update(self.extra())
         with open(os.path.join(self.out_dir, MANIFEST), "a", encoding="utf-8") as f:
             f.write(json.dumps(rec) + "\n")
             f.flush()
@@ -321,7 +326,7 @@ class SlotWriter:
 class Recorder:
     """The stream's callback only queues; a writer thread runs the SlotWriter."""
 
-    def __init__(self, open_stream, writer_args, clock=time.time, wait=None):
+    def __init__(self, open_stream, writer_args, clock=time.time, wait=None, start_utc=None):
         self.open_stream = open_stream  # callable(callback) -> object with start(), stop(), close()
         self.writer_args = writer_args
         self.clock = clock
@@ -329,6 +334,9 @@ class Recorder:
         self.q = queue.Queue()
         self.done = threading.Event()
         self.error = None
+        # Optional: the first slot's boundary, fixed, so several recorders fed by one stream share it
+        # (tools/hl2_record.py, one per HL2 receiver). Default: the next boundary when run() starts.
+        self.fixed_start = start_utc
         self.start_utc = None
         self.writer = None
 
@@ -378,7 +386,7 @@ class Recorder:
     def run(self):
         """Record until the slot count is reached or Ctrl-C. Returns the manifest records."""
         self._started = False
-        self.start_utc = next_boundary(self.clock() + LEAD_S)
+        self.start_utc = self.fixed_start or next_boundary(self.clock() + LEAD_S)
         self.writer = SlotWriter(first_start=self.start_utc, **self.writer_args)
         log = self.writer.log
         w = self.writer
