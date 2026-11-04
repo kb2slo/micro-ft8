@@ -20,3 +20,12 @@ bool hl2_audio_ready(void);
 bool hl2_audio_should_stop(void* ctx);
 int hl2_audio_read_ft8_samples(void* ctx, float* out, int max_samples);
 uint32_t hl2_audio_take_frontend_us(void* ctx);
+
+// What the transport knows of the HL2, for the app (porta_host.cpp's live status, `hl2=`): "off" (not the chosen
+// radio), "nolink" (no Ethernet link), "silent" (link up, nothing answers), "busy" (it answers as streaming to
+// another client, or answers ARP but not discovery), "found" (starting the stream), "streaming", or "lost" (it was
+// streaming and stopped; kept until it is found again or known busy). Any task.
+const char* hl2_transport_state_name(void);
+
+// The ADC clipped with the LNA already at its floor, within the last 15 s: the slot bar's Overload cue. Any task.
+bool hl2_transport_overloaded(void);

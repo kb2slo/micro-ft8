@@ -1861,10 +1861,18 @@ function applyRadioPush(cfg, e) {
 // it reports the wanted frequency, in Digi, on VFO A without split; anything else is a drift.
 function radioChipState(cfg) {
   var cat = yn(cfg.cat_ready) === 'yes', audio = yn(cfg.audio_rx) === 'yes';
-  // The HL2 (Settings > Radio): no CAT, receive only so far (RFC 0014 S1). Its stream up is all it can be.
+  // The HL2 (Settings > Radio): no CAT, receive only so far (RFC 0014 S1). The main board says what its
+  // transport knows (hl2=); its stream up is all it can be.
   if (String(cfg.radio) === '6') {
-    if (!audio) return 'found';
-    return yn(cfg.decode_failed) === 'yes' ? 'nodecode' : 'rxonly';
+    switch (String(cfg.hl2 || '')) {
+      case 'streaming':
+        if (!audio) return 'found';
+        return yn(cfg.decode_failed) === 'yes' ? 'nodecode' : 'rxonly';
+      case 'busy': return 'busy';
+      case 'lost': return 'streamlost';
+      case 'found': return 'found';
+      default: return 'none';  // off, nolink, silent: the slot bar says which
+    }
   }
   if (cat) everCatUp = true;
   if (cat && audio) {
@@ -1963,6 +1971,8 @@ function radioBarState(chip, hud, ctx) {
     drift: { tone: 'amber', sub: 'Radio is on ' + (ctx.wantMHz || 'another frequency') + ' · tap to fix', glyph: '!', label: 'Review ›' },
     lost: { tone: 'red', sub: 'CAT lost · cannot retune', glyph: '✕', label: 'Radio ›' },
     rxonly: { tone: 'amber', sub: 'Receive only · no transmit yet', glyph: '·', label: 'Radio ›' },
+    busy: { tone: 'amber', sub: radio + ' busy · another program has it', glyph: '…', label: 'Radio ›' },
+    streamlost: { tone: 'red', sub: 'Stream lost', glyph: '✕', label: 'Radio ›' },
     nodecode: { tone: 'red', sub: 'Not decoding · the decoder could not start', glyph: '✕', label: 'Radio ›' },
     unknown: { tone: 'grey', sub: 'Unknown USB device', glyph: '?', label: 'Radio ›' },
     none: { tone: 'grey', sub: 'No radio', glyph: '–', label: 'Radio ›' }
@@ -3263,6 +3273,28 @@ function activityLabel(act, now, period) {
 // CLOCK_CUE_MIN_SIGNALS or more and decoded a quarter of them or fewer. Signals heard is what
 // tells a clock from an empty band, an unplugged antenna or no audio, which also decode nothing
 // (ROADMAP I15). A slot the main board did not decode (PAUSED) breaks the run.
+// Why this slot is not decoding, for the slot bar (webapp.md, The slot bar's receive cues), from the main board's
+// live status: no audio and why, the decoder not starting, an overloaded HL2. '' when none applies; the clock cue
+// is the next thing to check. Radio-specific reasons come from the radio's own fields: the HL2's transport state
+// (hl2=, hl2_overload=), the QMX's USB presence and CAT.
+function rxCue(cfg, usb) {
+  var audio = yn(cfg.audio_rx) === 'yes';
+  if (String(cfg.radio) === '6') {
+    var why = {
+      off: 'HL2 starting', nolink: 'no Ethernet link', silent: 'HL2 not answering',
+      busy: 'HL2 busy, another program has it', found: 'HL2 found, starting', lost: 'stream lost'
+    }[String(cfg.hl2 || 'off')];
+    if (why && String(cfg.hl2) !== 'streaming') return 'No audio · ' + why;
+    if (!audio) return 'No audio · HL2 starting';
+  } else if (!audio) {
+    if (usb && !usb.present) return 'No audio · QMX not connected';
+    return yn(cfg.cat_ready) === 'yes' ? 'No audio · QMX audio down' : 'No audio · QMX connecting';
+  }
+  if (yn(cfg.decode_failed) === 'yes') return 'Not decoding · decoder could not start';
+  if (yn(cfg.hl2_overload) === 'yes') return 'Overload · ADC clipping';
+  return '';
+}
+
 function clockCue(tallies) {
   if (tallies.length < CLOCK_CUE_SLOTS) return '';
   var run = tallies.slice(-CLOCK_CUE_SLOTS);
@@ -3329,7 +3361,10 @@ function renderCountdown() {
   var fill = document.getElementById('opSlotBarFill');
   var cursor = document.getElementById('opSlotBarCursor');
   var tag = document.getElementById('opParity');
-  if (!radioLive()) {
+  // No word from the main board: the radio bar says so, and the bar has nothing to say. With word but no audio,
+  // the bar still counts the slot and says why (rxCue()).
+  var live = radioLive();
+  if (!live && (!lastConfigOkMs || Date.now() - lastConfigOkMs > STALE_AFTER_MS)) {
     fill.style.width = '0%';
     fill.className = '';
     cursor.hidden = true;
@@ -3347,13 +3382,13 @@ function renderCountdown() {
   var onAir = txHud && txHud.active && !txHud.nk;
   var readout = onAir && !txHud.aborted
     ? txReadout(txHud, yn(lastCfg.tune) === 'yes' || txHud.x === 'TUNE', now - txKeyedAt) : null;
-  var cue = readout || onAir ? '' : clockCue(band.tallies);
+  var cue = readout || onAir ? '' : rxCue(lastCfg, usbState) || (live ? clockCue(band.tallies) : '');
   var slotText = document.getElementById('opSlotText');
-  slotText.textContent = readout ? readout.text : onAir ? '' : cue || activityLabel(band.act, now, p);
+  slotText.textContent = readout ? readout.text : onAir ? '' : cue || (live ? activityLabel(band.act, now, p) : '');
   slotText.className = cue ? 'warn' : '';
   fill.style.width = (frac * 100).toFixed(1) + '%';
   fill.className = onAir && txHud.aborted ? 'halt' : readout && readout.dead ? 'dead' : (onAir ? 'tx' : '');
-  drawActivity(onAir ? [] : activityStrip(band.act, now, p));
+  drawActivity(onAir || !live ? [] : activityStrip(band.act, now, p));
   tag.textContent = parity ? 'O' : 'E';
   tag.className = onAir && !txHud.aborted ? 'tx' : '';
   tag.setAttribute('aria-label', (parity ? 'Odd' : 'Even') + ' slot');

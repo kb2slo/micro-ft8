@@ -25,6 +25,9 @@
 #include "freertos/event_groups.h"
 #include "freertos/stream_buffer.h"
 #include "freertos/task.h"
+#include "esp_netif_net_stack.h"
+#include "lwip/etharp.h"
+#include "lwip/priv/tcpip_priv.h"
 #include "lwip/sockets.h"
 
 #include "debug_log.h"
@@ -58,6 +61,52 @@ constexpr EventBits_t kActive = BIT1;  // the HL2 is the radio feeding channel 0
 
 static EventGroupHandle_t s_events;
 static uint8_t s_our_ip[4];
+static esp_netif_t* s_netif;
+static uint32_t s_known_hl2 = 0;  // the HL2's address once found this boot, network order; 0 until then
+
+// What the transport knows of the HL2, for the app's radio chip and slot bar (hl2_transport_state_name()).
+enum class Hl2State : int { Off, NoLink, Silent, Busy, Found, Streaming, Lost };
+static std::atomic<int> s_state{static_cast<int>(Hl2State::Off)};
+static std::atomic<int64_t> s_overload_until_us{0};  // the ADC clipped with the LNA at its floor until then
+
+static void set_state(Hl2State st)
+{
+    s_state.store(static_cast<int>(st));
+}
+
+// ARP, run in lwIP's thread: clear this interface's cache, or ask whether an address has a resolved entry. A
+// silent HL2 still answers ARP, so a fresh entry after a probe means it is there and only not answering discovery.
+struct ArpCall {
+    struct tcpip_api_call_data base;
+    ip4_addr_t ip;
+    bool clear;
+    bool found;
+};
+
+static err_t arp_in_lwip(struct tcpip_api_call_data* call)
+{
+    ArpCall* a = reinterpret_cast<ArpCall*>(call);
+    struct netif* n = static_cast<struct netif*>(esp_netif_get_netif_impl(s_netif));
+    if (!n) {
+        return ERR_IF;
+    }
+    if (a->clear) {
+        etharp_cleanup_netif(n);
+    } else {
+        struct eth_addr* eth = nullptr;
+        const ip4_addr_t* ip = nullptr;
+        a->found = etharp_find_addr(n, &a->ip, &eth, &ip) >= 0;
+    }
+    return ERR_OK;
+}
+
+static bool arp_call(uint32_t addr, bool clear)
+{
+    ArpCall a = {};
+    a.ip.addr = addr;
+    a.clear = clear;
+    return tcpip_api_call(arp_in_lwip, &a.base) == ERR_OK && a.found;
+}
 
 // One packet each way, and one packet's I/Q: static, so the task's stack stays small, and in PSRAM, since lwIP
 // copies to and from them and no DMA touches them (docs/architecture/memory.md).
@@ -99,17 +148,36 @@ static void ring_write_packet(const float* frames)
     }
 }
 
-static void on_eth_event(void* /*arg*/, esp_event_base_t /*base*/, int32_t id, void* /*data*/)
+static void on_eth_event(void* /*arg*/, esp_event_base_t /*base*/, int32_t id, void* data)
 {
     switch (id) {
-        case ETHERNET_EVENT_CONNECTED:
+        case ETHERNET_EVENT_CONNECTED: {
             xEventGroupSetBits(s_events, kLinkUp);
-            ESP_LOGI(TAG, "link up");
+            // The IP101 is 10/100: a half-duplex link would show only as gaps under load, so say what it got.
+            eth_speed_t speed = ETH_SPEED_10M;
+            eth_duplex_t duplex = ETH_DUPLEX_HALF;
+            esp_eth_handle_t eth = data ? *static_cast<esp_eth_handle_t*>(data) : nullptr;
+            if (eth) {
+                esp_eth_ioctl(eth, ETH_CMD_G_SPEED, &speed);
+                esp_eth_ioctl(eth, ETH_CMD_G_DUPLEX_MODE, &duplex);
+            }
+            ESP_LOGI(TAG, "link up, %s Mb/s %s duplex", speed == ETH_SPEED_100M ? "100" : "10",
+                     duplex == ETH_DUPLEX_FULL ? "full" : "half");
+            if (duplex != ETH_DUPLEX_FULL) {
+                debug_log_line("HL2 Ethernet link is half duplex: expect gaps");
+            }
+            if (s_state.load() != static_cast<int>(Hl2State::Off) && s_state.load() != static_cast<int>(Hl2State::Lost)) {
+                set_state(Hl2State::Silent);
+            }
             break;
+        }
         case ETHERNET_EVENT_DISCONNECTED:
             xEventGroupClearBits(s_events, kLinkUp);
             ESP_LOGW(TAG, "link down");
             debug_log_line("HL2 Ethernet link down");
+            if (s_state.load() != static_cast<int>(Hl2State::Off)) {
+                set_state(Hl2State::NoLink);
+            }
             break;
         default:
             break;
@@ -146,6 +214,7 @@ static bool start_ethernet(void)
 
     esp_netif_config_t netif_config = ESP_NETIF_DEFAULT_ETH();
     esp_netif_t* netif = esp_netif_new(&netif_config);
+    s_netif = netif;
     if (!netif || esp_netif_attach(netif, esp_eth_new_netif_glue(eth)) != ESP_OK) {
         ESP_LOGE(TAG, "netif attach failed");
         return false;
@@ -189,6 +258,14 @@ static bool discover(int sock, sockaddr_in* hl2, Hl2DiscoveryReply* reply)
     hl2_encode_discovery_request(request, sizeof request);
     bool said_running = false;
     while ((xEventGroupGetBits(s_events) & (kLinkUp | kActive)) == (kLinkUp | kActive)) {
+        bool running_reply = false;
+        if (s_known_hl2) {
+            // Probe where it was: a fresh ARP entry after this send means it is there, if silent.
+            arp_call(s_known_hl2, true);
+            sockaddr_in known = broadcast;
+            known.sin_addr.s_addr = s_known_hl2;
+            send_to(sock, known, request, sizeof request);
+        }
         send_to(sock, broadcast, request, sizeof request);
         const int64_t until = esp_timer_get_time() + kDiscoveryEveryMs * 1000;
         while (esp_timer_get_time() < until) {
@@ -200,6 +277,8 @@ static bool discover(int sock, sockaddr_in* hl2, Hl2DiscoveryReply* reply)
             }
             if (reply->running) {
                 // Another client holds the stream; taking it would be a stream loss for them (RFC 0014 §3.9).
+                running_reply = true;
+                set_state(Hl2State::Busy);
                 if (!said_running) {
                     ESP_LOGW(TAG, "an HL2 answered but is already streaming to another client; waiting");
                     said_running = true;
@@ -208,7 +287,16 @@ static bool discover(int sock, sockaddr_in* hl2, Hl2DiscoveryReply* reply)
             }
             *hl2 = from;
             hl2->sin_port = htons(HL2_PORT);
+            s_known_hl2 = from.sin_addr.s_addr;
+            set_state(Hl2State::Found);
             return true;
+        }
+        if (!running_reply) {
+            if (s_known_hl2 && arp_call(s_known_hl2, false)) {
+                set_state(Hl2State::Busy);  // answers ARP, not discovery: streaming to someone else
+            } else if (s_state.load() != static_cast<int>(Hl2State::Lost)) {
+                set_state(Hl2State::Silent);
+            }
         }
     }
     return false;
@@ -263,6 +351,7 @@ static void stream(int sock, const sockaddr_in& hl2)
     s_ring_drops.store(0);
     s_stream_gen.fetch_add(1);
     s_streaming = true;
+    set_state(Hl2State::Streaming);
     int64_t last_rx = esp_timer_get_time();
     int64_t next_status = last_rx + kStatusEveryUs;
     bool lost = false;
@@ -319,6 +408,9 @@ static void stream(int sock, const sockaddr_in& hl2)
         }
         if (last_rx >= next_lna_check) {
             // More than 1% of a second's address-0 words clipped: 3 dB less gain.
+            if (window_clipped * 100 > window_status0 && lna_db == kLnaFloorDb) {
+                s_overload_until_us = last_rx + kStatusEveryUs;  // the slot bar says so for 15 s
+            }
             if (window_clipped * 100 > window_status0 && lna_db > kLnaFloorDb) {
                 lna_db = lna_db - kLnaStepDb < kLnaFloorDb ? kLnaFloorDb : lna_db - kLnaStepDb;
                 hl2_lna_register(lna_db, &lna);
@@ -340,6 +432,8 @@ static void stream(int sock, const sockaddr_in& hl2)
     hl2_encode_stop(stop, sizeof stop);
     send_to(sock, hl2, stop, sizeof stop);
     log_status(seq, packets, clipped, tel);
+    s_overload_until_us = 0;
+    set_state(lost ? Hl2State::Lost : Hl2State::Off);
     if (lost) {
         ESP_LOGW(TAG, "stream lost after %lu packets; back to discovery", (unsigned long)packets);
         debug_log_line("HL2 stream lost; looking for the radio again");
@@ -409,6 +503,7 @@ bool hl2_transport_set_active(bool active)
         if (s_events) {
             xEventGroupClearBits(s_events, kActive);  // the task sends stop on its next packet or timeout
         }
+        set_state(Hl2State::Off);
         return true;
     }
     if (s_failed) {
@@ -434,8 +529,37 @@ bool hl2_transport_set_active(bool active)
         s_started = true;
         s_failed = false;
     }
+    if (s_state.load() == static_cast<int>(Hl2State::Off)) {
+        set_state((xEventGroupGetBits(s_events) & kLinkUp) ? Hl2State::Silent : Hl2State::NoLink);
+    }
     xEventGroupSetBits(s_events, kActive);
     return true;
+}
+
+const char* hl2_transport_state_name(void)
+{
+    switch (static_cast<Hl2State>(s_state.load())) {
+        case Hl2State::Off:
+            return "off";
+        case Hl2State::NoLink:
+            return "nolink";
+        case Hl2State::Silent:
+            return "silent";
+        case Hl2State::Busy:
+            return "busy";
+        case Hl2State::Found:
+            return "found";
+        case Hl2State::Streaming:
+            return "streaming";
+        case Hl2State::Lost:
+            return "lost";
+    }
+    return "off";
+}
+
+bool hl2_transport_overloaded(void)
+{
+    return esp_timer_get_time() < s_overload_until_us.load();
 }
 
 void hl2_transport_set_dial(uint32_t hz)

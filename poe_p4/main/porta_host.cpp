@@ -624,12 +624,13 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
             ? (int)(s_station.band_freq[idx] + 0.5f)
             : 0;
 
-    char live[256];
+    char live[320];
     snprintf(live, sizeof(live),
              "streaming=%d\ncat_ready=%d\ntune=%d\nband_name=%s\nfreq_khz=%d\n"
-             "audio_rx=%d\nclock_set=%d\ndecode_failed=%d\n",
+             "audio_rx=%d\nclock_set=%d\ndecode_failed=%d\nhl2=%s\nhl2_overload=%d\n",
              radio_select_audio_ready() ? 1 : 0, radio_control_ready() ? 1 : 0, s_tune ? 1 : 0, band_name,
-             freq_khz, radio_select_audio_ready() ? 1 : 0, rtc_is_set() ? 1 : 0, s_decode_failed ? 1 : 0);
+             freq_khz, radio_select_audio_ready() ? 1 : 0, rtc_is_set() ? 1 : 0, s_decode_failed ? 1 : 0,
+             hl2_transport_state_name(), hl2_transport_overloaded() ? 1 : 0);
     text += live;
 
     // What the radio last said of itself (IF;), against what Micro-FT8 means it to be: both in
