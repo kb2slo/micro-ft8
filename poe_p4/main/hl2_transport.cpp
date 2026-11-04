@@ -47,6 +47,12 @@ constexpr int kRecvTimeoutMs = 100;
 constexpr int64_t kStreamLostUs = 1000 * 1000;
 constexpr int64_t kStatusEveryUs = 15 * 1000 * 1000;
 constexpr int kDiscoveryEveryMs = 1000;
+// The LNA starts at the HL2's own power-on gain and steps down while the ADC clips, never back up within a stream:
+// with an antenna on and no filter chosen the ADC clipped on every status word (bench, 2026-11-03).
+constexpr int kLnaStartDb = 20;
+constexpr int kLnaFloorDb = -12;
+constexpr int kLnaStepDb = 3;
+constexpr int64_t kLnaCheckUs = 1000 * 1000;
 constexpr EventBits_t kLinkUp = BIT0;
 constexpr EventBits_t kActive = BIT1;  // the HL2 is the radio feeding channel 0
 
@@ -227,9 +233,11 @@ static void log_status(const Hl2SequenceTracker& seq, uint32_t packets, uint32_t
 // Starts one receiver and runs until the stream stops arriving. Returns after sending stop.
 static void stream(int sock, const sockaddr_in& hl2)
 {
-    Hl2Register config{}, nco{};
-    hl2_config_register(Hl2RxRate::Rate48k, 1, &config);
+    Hl2Register config{}, nco{}, lna{};
     uint32_t dial = s_dial_hz.load();
+    hl2_config_register(Hl2RxRate::Rate48k, 1, &config, hl2_n2adr_receive_filters(dial));
+    int lna_db = kLnaStartDb;
+    hl2_lna_register(lna_db, &lna);
     if (!hl2_nco_register(0, dial, &nco)) {
         ESP_LOGE(TAG, "dial %lu Hz is outside the HL2's range; not streaming", (unsigned long)dial);
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -237,14 +245,15 @@ static void stream(int sock, const sockaddr_in& hl2)
     }
     uint32_t tx_seq = 0;
     for (int i = 0; i < 4; ++i) {
-        if (hl2_encode_control_packet(tx_seq++, config, nco, s_tx, sizeof s_tx)) {
+        if (hl2_encode_control_packet(tx_seq++, (i & 1) ? lna : config, nco, s_tx, sizeof s_tx)) {
             send_to(sock, hl2, s_tx, sizeof s_tx);
         }
     }
     uint8_t start[HL2_START_STOP_LEN];
     hl2_encode_start(start, sizeof start);
     send_to(sock, hl2, start, sizeof start);
-    ESP_LOGI(TAG, "streaming one receiver at 48 kHz, NCO %lu Hz", (unsigned long)nco.value);
+    ESP_LOGI(TAG, "streaming one receiver at 48 kHz, NCO %lu Hz, N2ADR filters 0x%02x, LNA %+d dB",
+             (unsigned long)nco.value, (unsigned)((config.value >> 17) & 0x7F), lna_db);
     debug_log_line("HL2 streaming");
 
     Hl2SequenceTracker seq{};
@@ -257,6 +266,8 @@ static void stream(int sock, const sockaddr_in& hl2)
     int64_t last_rx = esp_timer_get_time();
     int64_t next_status = last_rx + kStatusEveryUs;
     bool lost = false;
+    uint32_t window_status0 = 0, window_clipped = 0;
+    int64_t next_lna_check = last_rx + kLnaCheckUs;
     while (true) {
         const int64_t now = esp_timer_get_time();
         const EventBits_t bits = xEventGroupGetBits(s_events);
@@ -287,21 +298,41 @@ static void stream(int sock, const sockaddr_in& hl2)
         }
         ring_write_packet(s_frames);
         const uint32_t want = s_dial_hz.load(std::memory_order_relaxed);
-        if (want != dial) {  // the band changed: retune from the next control packet on
+        if (want != dial) {  // the band changed: retune and refilter from the next control packet on
             dial = want;
             if (!hl2_nco_register(0, want, &nco)) {
                 ESP_LOGE(TAG, "dial %lu Hz is outside the HL2's range; NCO kept", (unsigned long)want);
             }
+            hl2_config_register(Hl2RxRate::Rate48k, 1, &config, hl2_n2adr_receive_filters(want));
+            ESP_LOGI(TAG, "N2ADR filters 0x%02x for %lu Hz", (unsigned)((config.value >> 17) & 0x7F),
+                     (unsigned long)want);
         }
         for (const Hl2Status& s : pkt.status) {
             hl2_apply_status(s, &tel);
-            if (!s.command_response && s.address == 0 && tel.adc_clipped) {
-                ++clipped;
+            if (!s.command_response && s.address == 0) {
+                ++window_status0;
+                if (tel.adc_clipped) {
+                    ++clipped;
+                    ++window_clipped;
+                }
             }
         }
-        if (hl2_encode_control_packet(tx_seq++, config, nco, s_tx, sizeof s_tx)) {
+        if (last_rx >= next_lna_check) {
+            // More than 1% of a second's address-0 words clipped: 3 dB less gain.
+            if (window_clipped * 100 > window_status0 && lna_db > kLnaFloorDb) {
+                lna_db = lna_db - kLnaStepDb < kLnaFloorDb ? kLnaFloorDb : lna_db - kLnaStepDb;
+                hl2_lna_register(lna_db, &lna);
+                ESP_LOGI(TAG, "ADC clipped in %lu of %lu status words: LNA %+d dB", (unsigned long)window_clipped,
+                         (unsigned long)window_status0, lna_db);
+            }
+            window_status0 = window_clipped = 0;
+            next_lna_check = last_rx + kLnaCheckUs;
+        }
+        // Each packet carries the NCO and, in turn, the config (filters) and the LNA.
+        if (hl2_encode_control_packet(tx_seq, (tx_seq & 1) ? lna : config, nco, s_tx, sizeof s_tx)) {
             send_to(sock, hl2, s_tx, sizeof s_tx);
         }
+        ++tx_seq;
     }
 
     s_streaming = false;  // the pipeline's run ends on its next should_stop

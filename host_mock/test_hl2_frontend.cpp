@@ -1,6 +1,6 @@
 // The HL2's receive front end (components/hl2_proto/include/hl2_rx_frontend.h, through components/iq_frontend):
-// with the receiver's NCO on the dial, a signal above the dial comes out at that audio frequency, and one below it
-// is rejected. If this were mirrored, the HL2 would decode nothing.
+// with the receiver's NCO on the dial, a signal above the dial, as the HL2 sends it (Q negated, found on the bench
+// 2026-11-03), comes out at that audio frequency, and one below it is rejected. Mirrored, nothing decodes.
 
 #include <cmath>
 #include <cstdio>
@@ -32,7 +32,8 @@ static double tone_power(const std::vector<float>& x, double hz, double rate)
     return s1 * s1 + s2 * s2 - c * s1 * s2;
 }
 
-// A complex tone `offset_hz` from the NCO (negative: below the dial), 1 s at 48 kHz, through the HL2's front end.
+// A complex tone `offset_hz` from the NCO (negative: below the dial) as the HL2 sends it, I = cos and Q = -sin,
+// 1 s at 48 kHz, through the HL2's front end.
 static std::vector<float> run(double offset_hz)
 {
     static iq_frontend_t fe;
@@ -42,7 +43,7 @@ static std::vector<float> run(double offset_hz)
     for (size_t n = 0; n < frames; ++n) {
         const double ph = 2.0 * M_PI * offset_hz * n / 48000.0;
         iq[2 * n] = 0.25f * static_cast<float>(std::cos(ph));      // I
-        iq[2 * n + 1] = 0.25f * static_cast<float>(std::sin(ph));  // Q
+        iq[2 * n + 1] = -0.25f * static_cast<float>(std::sin(ph));  // Q, as the HL2 sends it
     }
     std::vector<float> out(iq_frontend_output_capacity(&fe, frames));
     const int n = iq_frontend_process(&fe, iq.data(), frames, out.data(), out.size());

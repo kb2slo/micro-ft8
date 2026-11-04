@@ -145,14 +145,34 @@ size_t hl2_encode_stop(uint8_t* out, size_t cap)
     return encode_start_stop(0x00, out, cap);
 }
 
-bool hl2_config_register(Hl2RxRate rate, int receivers, Hl2Register* out)
+bool hl2_config_register(Hl2RxRate rate, int receivers, Hl2Register* out, uint8_t n2adr)
 {
     if (receivers < 1 || receivers > HL2_MAX_RECEIVERS) {
         return false;
     }
     out->address = kRegConfig;
-    out->value = (static_cast<uint32_t>(rate) << 24) | (static_cast<uint32_t>(receivers - 1) << 3) | (1u << 2);
+    out->value = (static_cast<uint32_t>(rate) << 24) | (static_cast<uint32_t>(n2adr & 0x7F) << 17) |
+                 (static_cast<uint32_t>(receivers - 1) << 3) | (1u << 2);
     return true;
+}
+
+uint8_t hl2_n2adr_receive_filters(uint32_t hz)
+{
+    uint8_t lpf;
+    if (hz < 2500000) {
+        lpf = 1u << 0;  // 160 m
+    } else if (hz < 4500000) {
+        lpf = 1u << 1;  // 80 m
+    } else if (hz < 8000000) {
+        lpf = 1u << 2;  // 60/40 m
+    } else if (hz < 15000000) {
+        lpf = 1u << 3;  // 30/20 m
+    } else if (hz < 22000000) {
+        lpf = 1u << 4;  // 17/15 m
+    } else {
+        lpf = 1u << 5;  // 12/10 m
+    }
+    return static_cast<uint8_t>(lpf | (hz > 5000000 ? 1u << 6 : 0u));
 }
 
 bool hl2_nco_register(int receiver, uint32_t hz, Hl2Register* out)

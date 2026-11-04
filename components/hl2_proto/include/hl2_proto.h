@@ -75,9 +75,14 @@ struct Hl2Register {
     uint32_t value;
 };
 
-// Register 0x00: rate [25:24], last receiver [6:3], duplex [2] (radio_openhpsdr1/radio.v:269). Duplex is always
-// set, so the receive NCOs stay independent of the TX NCO. False unless 1 <= receivers <= HL2_MAX_RECEIVERS.
-bool hl2_config_register(Hl2RxRate rate, int receivers, Hl2Register* out);
+// Register 0x00: rate [25:24], the N2ADR filter byte [23:17], last receiver [6:3], duplex [2]
+// (radio_openhpsdr1/radio.v:269; RFC 0014 §2.3). Duplex is always set, so the receive NCOs stay independent of the TX
+// NCO. False unless 1 <= receivers <= HL2_MAX_RECEIVERS.
+bool hl2_config_register(Hl2RxRate rate, int receivers, Hl2Register* out, uint8_t n2adr = 0);
+
+// The N2ADR filter byte for receiving at hz (RFC 0014 §2.3): b0 160 m, b1 80 m, b2 60/40 m, b3 30/20 m, b4 17/15 m,
+// b5 12/10 m low-pass, and b6 the receive high-pass above 5 MHz, which keeps the broadcast band out of the ADC.
+uint8_t hl2_n2adr_receive_filters(uint32_t hz);
 
 // Registers 0x02..0x05: receiver 0..3's NCO, in hertz (radio.v:255). False for another receiver or above 38.4 MHz.
 bool hl2_nco_register(int receiver, uint32_t hz, Hl2Register* out);

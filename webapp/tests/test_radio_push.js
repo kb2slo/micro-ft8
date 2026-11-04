@@ -64,4 +64,9 @@ assert.strictEqual(ctx.radioChipState(cfg), 'drift', 'a knob turn during Tune st
 cfg.tune = '0';
 ctx.applyRadioPush(cfg, { hz: 14074000, tx: 0, md: 3, sp: 0 });
 assert.strictEqual(ctx.radioChipState(cfg), 'drift', 'CW once Tune is off is a move');
+// The HL2: no CAT, so never "CAT lost"; receive only while its stream is up.
+const hl2 = { radio: '6', cat_ready: '0', audio_rx: '1', decode_failed: '0' };
+assert.strictEqual(ctx.radioChipState(hl2), 'rxonly', 'the HL2 streaming is receive only, not CAT lost');
+hl2.audio_rx = '0';
+assert.strictEqual(ctx.radioChipState(hl2), 'found', 'the HL2 not yet streaming is found');
 console.log('radio push: all checks passed');

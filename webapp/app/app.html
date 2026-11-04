@@ -1861,6 +1861,11 @@ function applyRadioPush(cfg, e) {
 // it reports the wanted frequency, in Digi, on VFO A without split; anything else is a drift.
 function radioChipState(cfg) {
   var cat = yn(cfg.cat_ready) === 'yes', audio = yn(cfg.audio_rx) === 'yes';
+  // The HL2 (Settings > Radio): no CAT, receive only so far (RFC 0014 S1). Its stream up is all it can be.
+  if (String(cfg.radio) === '6') {
+    if (!audio) return 'found';
+    return yn(cfg.decode_failed) === 'yes' ? 'nodecode' : 'rxonly';
+  }
   if (cat) everCatUp = true;
   if (cat && audio) {
     // The radio is fine but the main board's decoder could not start, so nothing decodes.
@@ -1957,6 +1962,7 @@ function radioBarState(chip, hud, ctx) {
     found: { tone: 'amber', sub: radio + ' found · syncing', glyph: '…', label: 'Band & radio' },
     drift: { tone: 'amber', sub: 'Radio is on ' + (ctx.wantMHz || 'another frequency') + ' · tap to fix', glyph: '!', label: 'Review ›' },
     lost: { tone: 'red', sub: 'CAT lost · cannot retune', glyph: '✕', label: 'Radio ›' },
+    rxonly: { tone: 'amber', sub: 'Receive only · no transmit yet', glyph: '·', label: 'Radio ›' },
     nodecode: { tone: 'red', sub: 'Not decoding · the decoder could not start', glyph: '✕', label: 'Radio ›' },
     unknown: { tone: 'grey', sub: 'Unknown USB device', glyph: '?', label: 'Radio ›' },
     none: { tone: 'grey', sub: 'No radio', glyph: '–', label: 'Radio ›' }
@@ -3143,15 +3149,15 @@ var lastConfigOkMs = 0;
 var STALE_AFTER_MS = 12000; // >2x pollLiveStatus's 5s cadence before giving up on the last answer
 
 // The countdown only means something once slots are actually being decoded
-// -- CAT ready and real audio flowing (see applyOperateLive()'s audio_rx
-// note) -- and only while that reading is still fresh; a stale reading is
+// -- real audio flowing (see applyOperateLive()'s audio_rx note); CAT is not
+// needed to receive, and the HL2 has none -- and only while that reading is still fresh; a stale reading is
 // exactly the case (radio/main board went away mid-session) that used to leave the
 // countdown confidently running against nothing.
 function radioLive() {
   if (lastConfigOkMs > 0 && (Date.now() - lastConfigOkMs) > STALE_AFTER_MS) {
     return false;
   }
-  return yn(lastCfg.cat_ready) === 'yes' && yn(lastCfg.audio_rx) === 'yes';
+  return yn(lastCfg.audio_rx) === 'yes';
 }
 
 // Band activity (webapp.md, The slot bar's activity trace): the main board's ACTIVITY events
