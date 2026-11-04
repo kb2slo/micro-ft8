@@ -1,4 +1,4 @@
-// Host test for iq_frontend.h, the I/Q receive front end (RFC 0014 §3.4, row y9bt): a tone swept
+// Host test for iq_frontend.h, the I/Q receive front end (RFC 0014 §3.4): a tone swept
 // across the whole input band for passband flatness and stopband rejection, output bit-identical
 // however the input is chunked, and image rejection under a gain and phase imbalance, in dB.
 

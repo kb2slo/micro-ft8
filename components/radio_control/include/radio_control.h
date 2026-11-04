@@ -67,11 +67,9 @@ typedef struct {
 // What a radio_control_rx_path_tick() did.
 typedef enum {
     RADIO_RX_PATH_NONE = 0,
-    RADIO_RX_PATH_SENT,      // the receive output was set and asked for back
-    RADIO_RX_PATH_MATCHED,   // the radio reads back what was set
-    RADIO_RX_PATH_MISMATCH,  // the radio reads back the other output
-    RADIO_RX_PATH_NO_REPLY,  // the radio did not answer in time
-    RADIO_RX_PATH_NOT_SENT,  // the write failed: the radio was not told
+    RADIO_RX_PATH_MATCHED,   // the radio reads back IQ mode
+    RADIO_RX_PATH_MISMATCH,  // the radio reads back audio mode: nothing will decode
+    RADIO_RX_PATH_NO_REPLY,  // the radio did not answer: a firmware without IQ mode
 } radio_rx_path_event_t;
 
 void radio_control_set_backend(radio_control_backend_t backend);
@@ -97,11 +95,11 @@ esp_err_t radio_control_set_push(bool on);
 // Compare with the count last seen, then read radio_control_get_state().
 uint32_t radio_control_state_changes(void);
 
-// Once per CAT link-up, sets the radio's receive output to audio or I/Q (QMX `Q9 0;`/`Q9 1;`) and
-// reads it back; call it every main-loop pass. `busy`: a transmission or sweep is running, so
-// nothing is sent. RADIO_RX_PATH_NONE where the radio has no such choice. docs/architecture/radio.md,
-// The QMX's receive output.
-radio_rx_path_event_t radio_control_rx_path_tick(bool want_iq, bool busy);
+// Once per CAT link-up, sets the radio's receive output to I/Q (QMX `Q9 1;`) and reads it back; call
+// it every main-loop pass. `busy`: a transmission, Tune, sweep or prime is running, so nothing is sent.
+// RADIO_RX_PATH_NONE where the radio has no such choice. docs/architecture/radio.md, The QMX's
+// receive output.
+radio_rx_path_event_t radio_control_rx_path_tick(bool busy);
 
 esp_err_t radio_control_on_audio_start(void);
 esp_err_t radio_control_sync_frequency_mode(int freq_hz);

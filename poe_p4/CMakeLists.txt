@@ -28,7 +28,6 @@ set(EXTRA_COMPONENT_DIRS
     "${CMAKE_CURRENT_LIST_DIR}/../components/debug_log"
     "${CMAKE_CURRENT_LIST_DIR}/../components/rtc_core"
     "${CMAKE_CURRENT_LIST_DIR}/../components/adif"
-    "${CMAKE_CURRENT_LIST_DIR}/../components/resample"
     "${CMAKE_CURRENT_LIST_DIR}/../components/iq_frontend"
     "${CMAKE_CURRENT_LIST_DIR}/../components/ft8_audio_pipeline"
     "${CMAKE_CURRENT_LIST_DIR}/../components/decode_pipeline"

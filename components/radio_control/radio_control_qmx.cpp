@@ -275,44 +275,38 @@ static esp_err_t qmx_query_version(void) {
     return qmx_send_cmd("VN;", 50);
 }
 
-// Sets the receive output to IQ or audio, whichever the station wants, at each CAT link-up and each time
-// the want changes (main.cpp passes the path qmx_rx_mode.h decided for the slot about to begin), and
-// reads it back. `Q9 0;` is sent too, deliberately: a radio another tool left in IQ mode streams I/Q
-// that the audio path decodes as nothing, silently (RFC 0006). The read-back only warns: the capture
-// path was chosen by the schedule and does not follow the radio, except that a change whose write did not
-// go out (RADIO_RX_PATH_NOT_SENT) or went out late is taken back by the caller, so the two stay together.
+// Puts the QMX in IQ mode at each CAT link-up and reads it back: the P4 decodes only its I/Q, and the
+// radio forgets IQ mode at power-off (architecture/radio.md, The QMX's receive output). A radio that
+// stays in audio mode, or does not answer, is warned about once; neither is retried.
 static QmxIqLink s_iq_link;
 
-static radio_rx_path_event_t qmx_rx_path_tick(bool want_iq, bool busy) {
+static radio_rx_path_event_t qmx_rx_path_tick(bool busy) {
     int reply = -1;
     (void)cat_cdc_get_parsed_q9(&reply);
-    const char* want = want_iq ? "IQ" : "audio";
-    switch (qmx_iq_link_step(s_iq_link, cat_cdc_ready(), busy, want_iq, reply,
-                             esp_timer_get_time() / 1000)) {
+    switch (qmx_iq_link_step(s_iq_link, cat_cdc_ready(), busy, reply, esp_timer_get_time() / 1000)) {
         case QmxIqLinkAction::None:
             return RADIO_RX_PATH_NONE;
         case QmxIqLinkAction::Send:
             cat_cdc_reset_parsed_q9();
-            if (qmx_send_cmd(want_iq ? "Q9 1;Q9;" : "Q9 0;Q9;", 200) != ESP_OK) {
+            if (qmx_send_cmd("Q9 1;Q9;", 200) != ESP_OK) {
                 // Not sent: retried after a pause, a few times, so a dead write does not stall
                 // the main loop for 200 ms every pass.
                 if (qmx_iq_link_send_failed(s_iq_link, esp_timer_get_time() / 1000)) {
-                    ESP_LOGW(TAG, "QMX Q9 not sent after %d tries: the receive output is unconfirmed",
+                    ESP_LOGW(TAG, "QMX Q9 1; not sent after %d tries: IQ mode is unconfirmed",
                              kQmxIqLinkSendTries);
                 }
-                return RADIO_RX_PATH_NOT_SENT;  // the caller takes back a path change that needed it
+                return RADIO_RX_PATH_NONE;
             }
-            ESP_LOGI(TAG, "QMX receive output set to %s (Q9 %d;)", want, want_iq ? 1 : 0);
-            return RADIO_RX_PATH_SENT;
+            ESP_LOGI(TAG, "QMX receive output set to IQ (Q9 1;)");
+            return RADIO_RX_PATH_NONE;
         case QmxIqLinkAction::Matched:
-            ESP_LOGI(TAG, "QMX Q9; reads %s, as set", want);
+            ESP_LOGI(TAG, "QMX Q9; reads IQ, as set");
             return RADIO_RX_PATH_MATCHED;
         case QmxIqLinkAction::Mismatch:
-            ESP_LOGW(TAG, "QMX Q9; reads %s, but the receive path wants %s: decode will hear the wrong thing",
-                     want_iq ? "audio" : "IQ", want);
+            ESP_LOGW(TAG, "QMX Q9; reads audio, not IQ: nothing will decode");
             return RADIO_RX_PATH_MISMATCH;
         case QmxIqLinkAction::NoReply:
-            ESP_LOGW(TAG, "QMX Q9; unanswered: cannot confirm the receive output is %s", want);
+            ESP_LOGW(TAG, "QMX Q9; unanswered: its firmware may lack IQ mode, and nothing will decode");
             return RADIO_RX_PATH_NO_REPLY;
     }
     return RADIO_RX_PATH_NONE;

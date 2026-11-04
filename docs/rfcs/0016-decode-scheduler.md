@@ -3,7 +3,7 @@
 * **Status:** Accepted 2026-11-03 (drafted 2026-11-02). Decided: §8. Still open, each settled by a dated decision when its slice needs it: §7 items 2–5.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** decoding several channels at once on one P4 (FT8 and FT4 from one QMX in IQ mode; up to two HL2 bands per P4) within the time each channel has, on both cores, and across several P4s by placing whole channels on boards; how decode degrades as channels are added; how that stays deterministic under test.
-* **Does not cover:** the I/Q front end ([RFC 0014](0014-hl2-two-p4.md) §3.4, row y9bt); the HL2 backend, and the helper protocol between P4s (RFC 0014 §3.5, S4); subtracting decodes from the audio (row kkap), AP decoding (row qauk) and t4/f2 (row n2e7), which this RFC gives a place but does not design; modes other than FT8 and FT4 (row I6), which it must not rule out.
+* **Does not cover:** the I/Q front end ([RFC 0014](0014-hl2-two-p4.md) §3.4; [decode.md](../architecture/decode.md), **I/Q front end**); the HL2 backend, and the helper protocol between P4s (RFC 0014 §3.5, S4); subtracting decodes from the audio (row kkap), AP decoding (row qauk) and t4/f2 (row n2e7), which this RFC gives a place but does not design; modes other than FT8 and FT4 (row I6), which it must not rule out.
 * **Rows:** [vnz7](../ROADMAP.md) builds S1–S3.
 
 ---
@@ -107,7 +107,7 @@ Each slice states its verifiability category from [AGENTS.md](../../AGENTS.md).
    - **Done-when:** an hour on a quiet band with no slot past the guard; host recall within the CI floors.
 3. **S3: two cores.** §3.6, with the subtraction question decided on the recall harness.
    - **Done-when:** row vnz7's: busy slots well under 1,747 ms, recall within the floors, no overrun.
-4. **S4: a second channel.** FT4 beside FT8 from one QMX in IQ mode (after row y9bt's firmware stage), or a second HL2 band (RFC 0014 S3), whichever comes first.
+4. **S4: a second channel.** FT4 beside FT8 from one QMX in IQ mode (after the QMX's IQ receive path, which shipped 2026-11-03), or a second HL2 band (RFC 0014 S3), whichever comes first.
    - **Done-when:** both channels decode for an hour with every slot inside its deadline and each channel's depth logged (field).
 
 ## 6. What changes elsewhere on acceptance

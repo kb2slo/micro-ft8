@@ -433,11 +433,6 @@ uint32_t hl2_audio_take_frontend_us(void* /*ctx*/)
     return s_frontend_us.exchange(0, std::memory_order_relaxed);
 }
 
-int hl2_audio_rx_path_for_slot(void* /*ctx*/, int64_t /*slot_idx*/)
-{
-    return 2;  // I/Q
-}
-
 int hl2_audio_read_ft8_samples(void* /*ctx*/, float* out, int max_samples)
 {
     if (!s_ring || !out || max_samples <= 0) {

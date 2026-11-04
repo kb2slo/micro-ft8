@@ -30,12 +30,12 @@ checked on hardware is in [docs/TEST_PLAN.md](docs/TEST_PLAN.md).
 | [M5Stack Unit PoE-P4](https://shop.m5stack.com/products/unit-poe-with-esp32-p4) (ESP32-P4) | Main board: USB host to the radio, decode, transmit, sequencing, log |
 | [M5Stack AtomS3 Lite](https://shop.m5stack.com/products/atoms3-lite-esp32s3-dev-kit) (ESP32-S3) | Sidekick: WiFi access point, web server, the app |
 | Grove cable (ships with the PoE-P4) | The link between the two boards |
-| QRP Labs QMX | The radio, over one USB-C cable (audio and CAT) |
+| QRP Labs QMX (validated on firmware 1_04_010) | The radio, over one USB-C cable (I/Q and CAT) |
 
 ## How it works
 
 The phone is the only screen, the sidekick is a peripheral, and the main board is the station. The
-main board talks to the radio over USB (audio in and out, CAT control) and runs everything that keys
+main board talks to the radio over USB (I/Q in, CAT control and tones out) and runs everything that keys
 the transmitter. The sidekick talks to the main board over a serial link on the Grove cable, and serves the web app and its API to the browser over its own access point or your home WiFi.
 The browser reaches the internet for optional extras (QRZ lookups, space weather, POTA/SOTA spots,
 PSKReporter) and the station never needs it.
@@ -44,7 +44,7 @@ PSKReporter) and the station never needs it.
 flowchart LR
     phone["Phone browser<br/>the web app"] -- WiFi --> sk["Sidekick<br/>AtomS3 Lite"]
     sk -- "Grove serial (Port A)" --> p4["Main board<br/>PoE-P4"]
-    p4 -- "USB: audio + CAT" --> radio["QMX"]
+    p4 -- "USB: I/Q + CAT" --> radio["QMX"]
 ```
 
 The full picture, and the rules about who may key the transmitter:

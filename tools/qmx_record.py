@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Record a QMX's USB audio as one WAV per 15 s FT8 slot, for row y9bt's offline A/B.
+"""Record a QMX's USB stream as one WAV per 15 s FT8 slot, for an offline A/B.
 
-Stage 2 of row y9bt (docs/ROADMAP.md) records the QMX in IQ mode and in its normal audio
-mode, then scores both against `jt9`. This script is the recorder. By default it records
+The 2026-11-02 corpus (tools/decode_bench/corpus/qmx-2026-11-02) recorded the QMX in IQ mode and
+in its normal audio mode, then scored both against `jt9`. This script is the recorder. By default it records
 whatever the QMX sends and never switches its mode: set IQ or audio mode on the radio by
 hand and say which with --mode-tag.
 
