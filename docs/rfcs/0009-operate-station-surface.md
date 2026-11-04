@@ -84,7 +84,7 @@ Built as O1c ([webapp.md](../architecture/webapp.md), **The Station sheet**). St
 
 ### 3.7 Radio status replaces Connect
 
-Shipped as O2, now on the radio bar: [webapp.md](../architecture/webapp.md), **The radio bar**. Choosing the radio model stays in Settings, and the P4 ignores it today (row `cgc4`).
+Shipped as O2, now on the radio bar: [webapp.md](../architecture/webapp.md), **The radio bar**. Choosing the radio stays in Settings, and the P4 follows it ([radio.md](../architecture/radio.md), **How it works**).
 
 ### 3.8 Decode sort and filter
 

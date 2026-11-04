@@ -17,6 +17,8 @@ static const radio_control_ops_t* current_ops(void) {
     switch (s_backend) {
     case RADIO_CONTROL_QMX:
         return radio_control_qmx_get_ops();
+    case RADIO_CONTROL_NONE:
+        return nullptr;
     }
     return radio_control_qmx_get_ops();
 }
@@ -24,7 +26,7 @@ static const radio_control_ops_t* current_ops(void) {
 void radio_control_set_backend(radio_control_backend_t backend) {
     s_backend = backend;
     const radio_control_ops_t* ops = current_ops();
-    ESP_LOGI(TAG, "Selected radio control backend=%s", ops ? ops->name : "unknown");
+    ESP_LOGI(TAG, "Selected radio control backend=%s", ops ? ops->name : "none");
 }
 
 radio_control_backend_t radio_control_get_backend(void) {
@@ -35,6 +37,8 @@ const char* radio_control_backend_name(radio_control_backend_t backend) {
     switch (backend) {
     case RADIO_CONTROL_QMX:
         return "qmx";
+    case RADIO_CONTROL_NONE:
+        return "none";
     }
     return "unknown";
 }

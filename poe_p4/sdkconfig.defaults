@@ -50,3 +50,7 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 # cycle counter is a different clock per core, so it is not the source.
 CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
 CONFIG_FREERTOS_RUN_TIME_STATS_USING_ESP_TIMER=y
+
+# The HL2's UDP socket (poe_p4/main/hl2_transport.cpp): it receives 383 packets/s for one receiver at 48 kHz, and
+# 1,263 for four. The default mailbox of 6 is about 16 ms of stream, so a short stall in the task drops packets.
+CONFIG_LWIP_UDP_RECVMBOX_SIZE=32

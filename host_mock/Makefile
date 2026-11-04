@@ -27,7 +27,8 @@ INCLUDES = -I. \
            -I../components/swr_trip/include \
            -I../components/ft8_lib -I../components/ft8_lib/vendor \
            -I../components/ft8_lib/vendor/ft8 \
-           -I../components/porta_proto/include
+           -I../components/porta_proto/include \
+           -I../components/hl2_proto/include
 
 CORE_SRC   = ../components/autoseq/autoseq.cpp
 MOCK_SRC   = host_main.cpp host_mocks.cpp json_parser.cpp scenario.cpp
@@ -79,6 +80,9 @@ PORTA_OUT_QUEUE_TARGET = host_test_porta_out_queue
 HEARD_GRID_TARGET = host_test_heard_grid
 DECODE_FIELDS_TARGET = host_test_decode_fields
 RTC_CORE_TARGET = host_test_rtc_core
+HL2_PROTO_TARGET = host_test_hl2_proto
+RADIO_CONTROL_TARGET = host_test_radio_control
+HL2_FRONTEND_TARGET = host_test_hl2_frontend
 IQ_FRONTEND_TARGET = host_test_iq_frontend
 
 all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
@@ -91,7 +95,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARG
      $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(BLOCK_ACTIVITY_TARGET) $(CORE_BUSY_TARGET) \
      $(DECODE_RETRY_TARGET) $(DECODE_SYNC_TARGET) $(DECODE_SNR_TARGET) \
      $(PORTA_OUT_QUEUE_TARGET) $(HEARD_GRID_TARGET) $(DECODE_FIELDS_TARGET) $(RTC_CORE_TARGET) \
-     $(IQ_FRONTEND_TARGET) \
+     $(HL2_PROTO_TARGET) $(RADIO_CONTROL_TARGET) $(IQ_FRONTEND_TARGET) $(HL2_FRONTEND_TARGET) \
      $(SIM_TARGET)
 
 $(TARGET): $(OBJ) porta_event_json.o heard_grid.o
@@ -181,11 +185,33 @@ test_swr_trip.o: test_swr_trip.cpp
 $(SWR_TRIP_TARGET): $(SWR_TRIP_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
+HL2_PROTO_OBJ = hl2_proto.o test_hl2_proto.o
+hl2_proto.o: ../components/hl2_proto/hl2_proto.cpp
+	$(CXX) $(CXXFLAGS) -I../components/hl2_proto/include -c $< -o $@
+test_hl2_proto.o: test_hl2_proto.cpp
+	$(CXX) $(CXXFLAGS) -I../components/hl2_proto/include -c $< -o $@
+$(HL2_PROTO_TARGET): $(HL2_PROTO_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+RADIO_CONTROL_OBJ = radio_control.o test_radio_control.o
+radio_control.o: ../components/radio_control/radio_control.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+test_radio_control.o: test_radio_control.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+$(RADIO_CONTROL_TARGET): $(RADIO_CONTROL_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
 QMX_IQ_LINK_OBJ = test_qmx_iq_link.o
 test_qmx_iq_link.o: test_qmx_iq_link.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 $(QMX_IQ_LINK_TARGET): $(QMX_IQ_LINK_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
+
+HL2_FRONTEND_OBJ = iq_frontend.o test_hl2_frontend.o
+test_hl2_frontend.o: test_hl2_frontend.cpp
+	$(CXX) $(CXXFLAGS) -I../components/hl2_proto/include -I../components/iq_frontend/include -c $< -o $@
+$(HL2_FRONTEND_TARGET): $(HL2_FRONTEND_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^ -lm
 
 SLOT_DEFICIT_OBJ = ft8_slot_deficit.o test_slot_deficit.o
 ft8_slot_deficit.o: ../components/ft8_audio_pipeline/ft8_slot_deficit.c
@@ -389,7 +415,10 @@ clean:
 	      $(HEARD_GRID_OBJ) $(HEARD_GRID_TARGET) \
 	      $(DECODE_FIELDS_OBJ) $(DECODE_FIELDS_TARGET) \
 	      $(RTC_CORE_OBJ) $(RTC_CORE_TARGET) \
-	      $(IQ_FRONTEND_OBJ) $(IQ_FRONTEND_TARGET)
+	      $(HL2_PROTO_OBJ) $(HL2_PROTO_TARGET) \
+	      $(RADIO_CONTROL_OBJ) $(RADIO_CONTROL_TARGET) \
+	      $(IQ_FRONTEND_OBJ) $(IQ_FRONTEND_TARGET) \
+	      $(HL2_FRONTEND_OBJ) $(HL2_FRONTEND_TARGET)
 
 .PHONY: all clean
 

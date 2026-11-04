@@ -639,11 +639,12 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <div class=setrow><label>Ignore prefixes <input id=ignore_prefixes autocomplete=off></label></div>
 
     <div class="hd sep">Radio</div>
-    <p class=setnote>Connect, tune and clock sync now live on Operate.</p>
+    <p class=setnote>Connect, tune and clock sync now live on Operate. A new radio takes over at once; the change is refused while transmitting or tuning.</p>
     <div class=setrow>
       <label>Radio
         <select id=radio>
           <option value=2>QMX</option>
+          <option value=6>HL2 (testing: receive only, no decodes yet)</option>
         </select>
       </label>
     </div>
@@ -1860,6 +1861,19 @@ function applyRadioPush(cfg, e) {
 // it reports the wanted frequency, in Digi, on VFO A without split; anything else is a drift.
 function radioChipState(cfg) {
   var cat = yn(cfg.cat_ready) === 'yes', audio = yn(cfg.audio_rx) === 'yes';
+  // The HL2 (Settings > Radio): no CAT, receive only so far (row mg9c, docs/roadmap/hl2-support.md). The main board says what its
+  // transport knows (hl2=); its stream up is all it can be.
+  if (String(cfg.radio) === '6') {
+    switch (String(cfg.hl2 || '')) {
+      case 'streaming':
+        if (!audio) return 'found';
+        return yn(cfg.decode_failed) === 'yes' ? 'nodecode' : 'rxonly';
+      case 'busy': return 'busy';
+      case 'lost': return 'streamlost';
+      case 'found': return 'found';
+      default: return 'none';  // off, nolink, silent: the slot bar says which
+    }
+  }
   if (cat) everCatUp = true;
   if (cat && audio) {
     // The radio is fine but the main board's decoder could not start, so nothing decodes.
@@ -1956,6 +1970,9 @@ function radioBarState(chip, hud, ctx) {
     found: { tone: 'amber', sub: radio + ' found · syncing', glyph: '…', label: 'Band & radio' },
     drift: { tone: 'amber', sub: 'Radio is on ' + (ctx.wantMHz || 'another frequency') + ' · tap to fix', glyph: '!', label: 'Review ›' },
     lost: { tone: 'red', sub: 'CAT lost · cannot retune', glyph: '✕', label: 'Radio ›' },
+    rxonly: { tone: 'amber', sub: 'Receive only · no transmit yet', glyph: '·', label: 'Radio ›' },
+    busy: { tone: 'amber', sub: radio + ' busy · another program has it', glyph: '…', label: 'Radio ›' },
+    streamlost: { tone: 'red', sub: 'Stream lost', glyph: '✕', label: 'Radio ›' },
     nodecode: { tone: 'red', sub: 'Not decoding · the decoder could not start', glyph: '✕', label: 'Radio ›' },
     unknown: { tone: 'grey', sub: 'Unknown USB device', glyph: '?', label: 'Radio ›' },
     none: { tone: 'grey', sub: 'No radio', glyph: '–', label: 'Radio ›' }
@@ -2017,6 +2034,7 @@ function operatingBandName(cfg) {
 
 // The model the radio names in its VN reply ("1_04_003QMX" is a QMX), else from the USB event.
 function radioNameOf() {
+  if (String(lastCfg.radio) === '6') return 'HL2';
   var m = /^\d+_\d+_\d+([A-Z]+)$/.exec(String(lastCfg.radio_fw || ''));
   if (m) return m[1];
   return usbState && usbState.present && usbState.kind === 0 ? 'QMX' : 'Radio';
@@ -3141,15 +3159,15 @@ var lastConfigOkMs = 0;
 var STALE_AFTER_MS = 12000; // >2x pollLiveStatus's 5s cadence before giving up on the last answer
 
 // The countdown only means something once slots are actually being decoded
-// -- CAT ready and real audio flowing (see applyOperateLive()'s audio_rx
-// note) -- and only while that reading is still fresh; a stale reading is
+// -- real audio flowing (see applyOperateLive()'s audio_rx note); CAT is not
+// needed to receive, and the HL2 has none -- and only while that reading is still fresh; a stale reading is
 // exactly the case (radio/main board went away mid-session) that used to leave the
 // countdown confidently running against nothing.
 function radioLive() {
   if (lastConfigOkMs > 0 && (Date.now() - lastConfigOkMs) > STALE_AFTER_MS) {
     return false;
   }
-  return yn(lastCfg.cat_ready) === 'yes' && yn(lastCfg.audio_rx) === 'yes';
+  return yn(lastCfg.audio_rx) === 'yes';
 }
 
 // Band activity (webapp.md, The slot bar's activity trace): the main board's ACTIVITY events
@@ -3255,6 +3273,28 @@ function activityLabel(act, now, period) {
 // CLOCK_CUE_MIN_SIGNALS or more and decoded a quarter of them or fewer. Signals heard is what
 // tells a clock from an empty band, an unplugged antenna or no audio, which also decode nothing
 // (ROADMAP I15). A slot the main board did not decode (PAUSED) breaks the run.
+// Why this slot is not decoding, for the slot bar (webapp.md, The slot bar's receive cues), from the main board's
+// live status: no audio and why, the decoder not starting, an overloaded HL2. '' when none applies; the clock cue
+// is the next thing to check. Radio-specific reasons come from the radio's own fields: the HL2's transport state
+// (hl2=, hl2_overload=), the QMX's USB presence and CAT.
+function rxCue(cfg, usb) {
+  var audio = yn(cfg.audio_rx) === 'yes';
+  if (String(cfg.radio) === '6') {
+    var why = {
+      off: 'HL2 starting', nolink: 'no Ethernet link', silent: 'HL2 not answering',
+      busy: 'HL2 busy, another program has it', found: 'HL2 found, starting', lost: 'stream lost'
+    }[String(cfg.hl2 || 'off')];
+    if (why && String(cfg.hl2) !== 'streaming') return 'No audio · ' + why;
+    if (!audio) return 'No audio · HL2 starting';
+  } else if (!audio) {
+    if (usb && !usb.present) return 'No audio · QMX not connected';
+    return yn(cfg.cat_ready) === 'yes' ? 'No audio · QMX audio down' : 'No audio · QMX connecting';
+  }
+  if (yn(cfg.decode_failed) === 'yes') return 'Not decoding · decoder could not start';
+  if (yn(cfg.hl2_overload) === 'yes') return 'Overload · ADC clipping';
+  return '';
+}
+
 function clockCue(tallies) {
   if (tallies.length < CLOCK_CUE_SLOTS) return '';
   var run = tallies.slice(-CLOCK_CUE_SLOTS);
@@ -3321,7 +3361,10 @@ function renderCountdown() {
   var fill = document.getElementById('opSlotBarFill');
   var cursor = document.getElementById('opSlotBarCursor');
   var tag = document.getElementById('opParity');
-  if (!radioLive()) {
+  // No word from the main board: the radio bar says so, and the bar has nothing to say. With word but no audio,
+  // the bar still counts the slot and says why (rxCue()).
+  var live = radioLive();
+  if (!live && (!lastConfigOkMs || Date.now() - lastConfigOkMs > STALE_AFTER_MS)) {
     fill.style.width = '0%';
     fill.className = '';
     cursor.hidden = true;
@@ -3339,13 +3382,13 @@ function renderCountdown() {
   var onAir = txHud && txHud.active && !txHud.nk;
   var readout = onAir && !txHud.aborted
     ? txReadout(txHud, yn(lastCfg.tune) === 'yes' || txHud.x === 'TUNE', now - txKeyedAt) : null;
-  var cue = readout || onAir ? '' : clockCue(band.tallies);
+  var cue = readout || onAir ? '' : rxCue(lastCfg, usbState) || (live ? clockCue(band.tallies) : '');
   var slotText = document.getElementById('opSlotText');
-  slotText.textContent = readout ? readout.text : onAir ? '' : cue || activityLabel(band.act, now, p);
+  slotText.textContent = readout ? readout.text : onAir ? '' : cue || (live ? activityLabel(band.act, now, p) : '');
   slotText.className = cue ? 'warn' : '';
   fill.style.width = (frac * 100).toFixed(1) + '%';
   fill.className = onAir && txHud.aborted ? 'halt' : readout && readout.dead ? 'dead' : (onAir ? 'tx' : '');
-  drawActivity(onAir ? [] : activityStrip(band.act, now, p));
+  drawActivity(onAir || !live ? [] : activityStrip(band.act, now, p));
   tag.textContent = parity ? 'O' : 'E';
   tag.className = onAir && !txHud.aborted ? 'tx' : '';
   tag.setAttribute('aria-label', (parity ? 'Odd' : 'Even') + ' slot');

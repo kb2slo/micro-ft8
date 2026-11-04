@@ -35,6 +35,7 @@ set(EXTRA_COMPONENT_DIRS
     "${CMAKE_CURRENT_LIST_DIR}/../components/storage_service"
     "${CMAKE_CURRENT_LIST_DIR}/../components/station"
     "${CMAKE_CURRENT_LIST_DIR}/../components/qso_log"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/hl2_proto"
 )
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)

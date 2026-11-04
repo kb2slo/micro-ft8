@@ -12,6 +12,9 @@ extern "C" {
 
 typedef enum {
     RADIO_CONTROL_QMX = 0,
+    // No radio under CAT control: every operation is unsupported and ready() is false. The HL2, until it has
+    // a backend of its own (row mg9c, docs/roadmap/hl2-support.md), and any radio that must not be keyed.
+    RADIO_CONTROL_NONE = 1,
 } radio_control_backend_t;
 
 typedef struct {

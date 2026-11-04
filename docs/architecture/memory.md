@@ -27,6 +27,7 @@ Sizes come from the build: `check_ram_budget.py` prints the total, and `riscv32-
 | Port A's outbound queue | `s_out`, `components/porta/porta.cpp` | Static, sized for a busy slot's frames (`porta_out_queue.h`). |
 | A slot's decode results, two copies | `alloc_slot_result()`, `components/decode_pipeline/decode_pipeline.cpp` | Heap, internal (`MALLOC_CAP_INTERNAL`), on first use. |
 | The heard-grid table | `table()`, `components/decode_pipeline/heard_grid.cpp` | Heap, on first use; null when there is no RAM, and then nothing is noted. |
+| The HL2's packet buffers and its half-second ring | `s_rx`, `s_tx`, `s_iq`, `s_ring_storage` in `poe_p4/main/hl2_transport.cpp` | Static in PSRAM (`EXT_RAM_BSS_ATTR`): the ring is 192 KB, filled as packets arrive and read by the ingest task. The EMAC's DMA buffers (20 receive and 10 transmit of 512 bytes) are heap, internal, allocated only when the HL2 path first starts ([main_board.md](main_board.md), **Ethernet**). |
 | Task stacks | `xTaskCreate*` calls in `poe_p4/main` and `components` | Heap, at task creation. |
 | Code in internal RAM | ESP-IDF's `*_IN_IRAM` placements | Not ours to size. It comes from the same memory as the data (`idf.py size` shows how much). |
 

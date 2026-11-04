@@ -13,11 +13,13 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "file_list.h"
+#include "hl2_transport.h"
 #include "porta.h"
 #include "porta_proto.h"
 #include "protocol.h"
 #include "qmx_transport.h"
 #include "qso_browse.h"
+#include "radio_select.h"
 #include "radio_control.h"
 #include "rtc_core.h"
 #include "station.h"
@@ -220,6 +222,12 @@ static const char *sync_vfo(const char *reason) {
     if (freq_hz <= 0) {
         return "no band frequency";
     }
+    if (radio_select_hl2_feeds_decode()) {
+        // The HL2 has no CAT: its receiver's NCO follows the dial (hl2_transport.h). Receive only, so no
+        // transmission can be under way to wait for.
+        hl2_transport_set_dial((uint32_t)freq_hz);
+        return nullptr;
+    }
     if (!radio_control_ready()) {
         ESP_LOGW(TAG, "VFO sync skipped (%s): CAT not ready (want %d Hz)",
                  reason ? reason : "", freq_hz);
@@ -294,8 +302,7 @@ static bool log_adif_entry(const std::string &dxcall, const std::string &dxgrid,
         station.band_name = (idx >= 0 && idx < kStationBandCount) ? kBandNames[idx] : "";
     }
     station.raw_comment = s_station.comment1;
-    // The P4 always drives a QMX today regardless of the Station radio= key
-    // (row cgc4), so this is the real value, not a placeholder.
+    // Only the QMX can transmit (the HL2 is receive only, row mg9c, docs/roadmap/hl2-support.md), so a QSO is the QMX's.
     station.radio_name = "QMX";
     // No GPS on the P4 (docs/architecture/main_board.md) -- nothing to
     // override the configured grid with for "/Grid".
@@ -319,6 +326,11 @@ int porta_p4_station_freq_hz(void) {
 int porta_p4_station_offset_hz(void) {
     ensure_seeded();
     return s_station.offset_hz;
+}
+
+int porta_p4_station_radio(void) {
+    ensure_seeded();
+    return s_station.radio;
 }
 
 bool porta_p4_tune_active(void) {
@@ -612,12 +624,13 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
             ? (int)(s_station.band_freq[idx] + 0.5f)
             : 0;
 
-    char live[256];
+    char live[320];
     snprintf(live, sizeof(live),
              "streaming=%d\ncat_ready=%d\ntune=%d\nband_name=%s\nfreq_khz=%d\n"
-             "audio_rx=%d\nclock_set=%d\ndecode_failed=%d\n",
-             qmx_audio_ready() ? 1 : 0, radio_control_ready() ? 1 : 0, s_tune ? 1 : 0, band_name,
-             freq_khz, qmx_audio_ready() ? 1 : 0, rtc_is_set() ? 1 : 0, s_decode_failed ? 1 : 0);
+             "audio_rx=%d\nclock_set=%d\ndecode_failed=%d\nhl2=%s\nhl2_overload=%d\n",
+             radio_select_audio_ready() ? 1 : 0, radio_control_ready() ? 1 : 0, s_tune ? 1 : 0, band_name,
+             freq_khz, radio_select_audio_ready() ? 1 : 0, rtc_is_set() ? 1 : 0, s_decode_failed ? 1 : 0,
+             hl2_transport_state_name(), hl2_transport_overloaded() ? 1 : 0);
     text += live;
 
     // What the radio last said of itself (IF;), against what Micro-FT8 means it to be: both in
@@ -699,8 +712,25 @@ const char *porta_host_config_set(const char *key, const char *value) {
         }
     }
 
+    if (strcmp(key, "radio") == 0) {
+        // The radio that is keyed must be the one that un-keys (radio_select.h).
+        if (s_tune) {
+            return "Tune is on";
+        }
+        if (swr_sweep_busy()) {
+            return "SWR sweep is running";
+        }
+        if (amp_band_prime_busy()) {
+            return "amp band prime is running";
+        }
+        if (decode_tx_state_get_tx_active()) {
+            return "a transmission is on";
+        }
+    }
+
     std::string line = std::string(key) + "=" + value + "\n";
     const int band_was = s_station.band_sel;
+    const int radio_was = s_station.radio;
     const bool act_refs_was_empty = s_station.act_refs.empty();
     station_parse(line, &s_station);
     s_station.serialize_ft4_band_keys = s_station.protocol_ft4;
@@ -725,6 +755,10 @@ const char *porta_host_config_set(const char *key, const char *value) {
     }
 
     persist_station();
+
+    if (s_station.radio != radio_was) {
+        radio_select_apply(s_station.radio);
+    }
 
     if (strcmp(key, "band_sel") == 0 || strcmp(key, "active_bands") == 0 ||
         strncmp(key, "band", 4) == 0 || strncmp(key, "ft4_band", 8) == 0) {

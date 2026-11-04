@@ -1,6 +1,6 @@
 #pragma once
 
-// Turns the bytes a QMX/QDX sends back over CAT into the few replies this
+// Turns the bytes a QMX sends back over CAT into the few replies this
 // firmware reads: PC (power, tenths of a watt), SW (SWR, hundredths), FA
 // (the VFO A frequency), SR (the SWR-protection lock: 1 locked, 0 clear), Q9 (the QMX's receive output: 1 IQ, 0 audio), IF (the radio's
 // state in one reply: frequency, TX or RX, mode, split) and VN (its firmware version). Everything else, including the radio's "?;" for a
