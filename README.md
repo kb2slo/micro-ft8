@@ -31,6 +31,7 @@ checked on hardware is in [docs/TEST_PLAN.md](docs/TEST_PLAN.md).
 | [M5Stack AtomS3 Lite](https://shop.m5stack.com/products/atoms3-lite-esp32s3-dev-kit) (ESP32-S3) | Sidekick: WiFi access point, web server, the app |
 | Grove cable (ships with the PoE-P4) | The link between the two boards |
 | QRP Labs QMX (validated on firmware 1_04_010) | The radio, over one USB-C cable (I/Q and CAT) |
+| Hermes-Lite 2 with the N2ADR filter board (gateware 74.2) | A second radio, **receive only** so far, over Ethernet on its own cable ([docs/architecture/hl2.md](docs/architecture/hl2.md)) |
 
 ## How it works
 

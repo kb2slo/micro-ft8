@@ -1,6 +1,6 @@
 # System architecture: the phone is the UI, the sidekick is a peripheral
 
-How the boards, the phone and the internet divide the work, and who may key the transmitter. Component detail, one doc per area: [sidekick.md](sidekick.md), [webapp.md](webapp.md), [radio.md](radio.md), [autoseq.md](autoseq.md), [decode.md](decode.md), [ft8_lib.md](ft8_lib.md), [main_board.md](main_board.md), [memory.md](memory.md), [time.md](time.md), [logging.md](logging.md).
+How the boards, the phone and the internet divide the work, and who may key the transmitter. Component detail, one doc per area: [sidekick.md](sidekick.md), [webapp.md](webapp.md), [radio.md](radio.md), [hl2.md](hl2.md), [autoseq.md](autoseq.md), [decode.md](decode.md), [ft8_lib.md](ft8_lib.md), [main_board.md](main_board.md), [memory.md](memory.md), [time.md](time.md), [logging.md](logging.md).
 
 ## The station
 
@@ -58,6 +58,8 @@ Dashed edges need internet; solid edges work without it. **Everything the statio
 ## Who may key the transmitter
 
 A headless radio driven by a local HTTP API means any device on the network could start a transmission, and the licensee answers for it. The control is **authorization, not authenticity**: nothing may change the device merely by being on the LAN.
+
+* **The HL2 is keyed over Ethernet with no authentication at all** (Protocol 1), so the pairing token guards our API but not the radio: it sits on a private cable to the P4, with nothing else on it ([hl2.md](hl2.md), **The link**). It receives only today.
 
 * **A pairing token**, minted on the sidekick's first boot, stored in the sidekick's NVS and in the browser's `localStorage`. Every state-changing request carries it; requests without it are refused. It is a nuisance control scoped to accidents on a home LAN, not a targeted attacker. Nothing rotates it: re-provisioning keeps it, and only erasing the sidekick's NVS mints a new one. Code: `sidekick/main/pairing_token.h`, `pairing_http.h`.
 * **Reads are open on principle.** Anyone may listen to amateur transmissions, and Part 97 forbids obscuring their meaning, so decodes, status and the log are open to anyone who can reach the device. What needs authorization is *changing* the device: transmit control, bundle install, firmware updates, the release-host URL, every config write (WiFi credentials included, in AP mode as in station mode), and the clock sync (a write, even though idempotent). This is the reason reads are open, not convenience, and it rules out a read-scoped token: a watch-only guest needs no credential.

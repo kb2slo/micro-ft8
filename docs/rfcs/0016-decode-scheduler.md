@@ -170,7 +170,7 @@ Each slice states its verifiability category from [AGENTS.md](../../AGENTS.md).
 5. **S5: reply on the channel heard.** Queue entries with a channel, autoseq matching on it, the log's band and mode, the CQ channel setting, deafness by overlap (§3.11), the QMX's retune or wide `TA` decided on the bench, the band table; FT4 transmit (row [xph7](../ROADMAP.md#xph7)'s transmit half).
    - Verification: autoseq, the queue, the overlap rule and the band table in `host_mock` (category 1); on the air (category 2).
    - **Done-when:** listening on FT8 and FT4 on one QMX, a tap on a CQ on each completes a QSO in that mode and logs it with its mode, and the FT8 channel is deaf only in the slots §3.11 names (field).
-6. **S6: several bands from one HL2.** HL2 receivers as I/Q sources (§3.9; epic [knpp](../roadmap/hl2-support.md), **Receive**), two or more bands as admission allows, a reply on the band heard through S5's path. After row [mg9c](../roadmap/hl2-support.md#mg9c).
+6. **S6: several bands from one HL2.** HL2 receivers as I/Q sources (§3.9; epic [knpp](../roadmap/hl2-support.md), **Receive**), two or more bands as admission allows, a reply on the band heard through S5's path. After row the HL2's receive ([hl2.md](../architecture/hl2.md)).
    - **Done-when:** two bands decode for an hour with every loss counter at zero or explained, and a tap on a CQ on the second band completes a QSO there and logs it there (field); or the finding, recorded here, that one P4 carries one HL2 band.
 
 ## 6. What changes elsewhere on acceptance
