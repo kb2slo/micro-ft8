@@ -15,7 +15,7 @@ Each epic is one row here and one file under `roadmap/`, read only when touching
 | ID | Epic | Why / constraint |
 | --- | --- | --- |
 | u8mc | <a id="u8mc"></a>Several channels at once | [roadmap/several-channels.md](roadmap/several-channels.md): receive, decode and transmit on 1–N channels, whatever the radio; FT8 and FT4 at once on one QMX first. Children: [d9me](roadmap/several-channels.md#d9me), [vnz7](roadmap/several-channels.md#vnz7), [an8x](roadmap/several-channels.md#an8x), [grqg](roadmap/several-channels.md#grqg). |
-| knpp | <a id="knpp"></a>HL2 support | [roadmap/hl2-support.md](roadmap/hl2-support.md): the Hermes-Lite 2 as a second radio on the P4, receive then transmit, at home then in the park. Children: [abkw](roadmap/hl2-support.md#abkw), [kgyh](roadmap/hl2-support.md#kgyh). |
+| knpp | <a id="knpp"></a>HL2 support | [roadmap/hl2-support.md](roadmap/hl2-support.md): the Hermes-Lite 2 as a second radio on the P4, receive then transmit, at home then in the park. Children: [q9my](roadmap/hl2-support.md#q9my), [abkw](roadmap/hl2-support.md#abkw), [kgyh](roadmap/hl2-support.md#kgyh). |
 
 ## Now
 
@@ -23,6 +23,7 @@ Each epic is one row here and one file under `roadmap/`, read only when touching
 | --- | --- | --- |
 | d9me | <a id="d9me"></a>P4: per-channel capture and decode state | Epic [u8mc](roadmap/several-channels.md#d9me). Today's single-instance state per channel, one FT8 channel, `g_protocol` out of decode. **Done-when:** the recall floors and `tx_e2e` goldens byte-identical; a QMX decodes and transmits as before (field). |
 | vnz7 | <a id="vnz7"></a>P4: decode inside the slot on every band, on both cores | Epic [u8mc](roadmap/several-channels.md#vnz7). After [d9me](#d9me). The counted budget and its order, then two cores; quiet bands overrun today. **Done-when:** an hour on a quiet band with no slot past the guard; busy slots well under 1,747 ms; recall within the CI floors (field). |
+| q9my | <a id="q9my"></a>HL2: four bands at once, and the LNA at two gains | Epic [knpp](roadmap/hl2-support.md#q9my). Four receivers on 10, 15, 20 and 40 m beside the 2026-11-04 one-band survey, then one band with `--lna-ab 20,14`, on an afternoon all four are open. **Done-when:** both scored against `jt9`, the shared-filter cost per band and the LNA arms' difference written as facts in `hl2.md` (field). |
 
 ## Backlog
 
