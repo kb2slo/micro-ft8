@@ -24,6 +24,7 @@ The Hermes-Lite 2 recorded on a computer, one band at a time, 30 minutes a band,
 | 20 m | good | 50.0 | 24.3 (48.4%) | 25.0 (49.8%) | −2 dB | 0 / 0 | 13 | +14 → +11 dB | 28.0–29.0 |
 | 30 m | poor | 18.1 | 12.8 (70.6%) | 13.2 (72.9%) | −5 dB | 0 / 0 | 26 | +14 → +14 dB | 29.4–30.1 |
 | 40 m | good | 44.5 | 22.1 (49.5%) | 22.9 (51.2%) | −4 dB | 0 / 0 | 13 | +11 → +5 dB | 28.5–29.4 |
+| 60 m | poor | 2.0 | 1.4 (71.9%) | 1.4 (73.6%) | −10 dB | 0 / 0 | 11 | +11 → +8 dB | 28.3–29.4 |
 
 **Our share of `jt9` is the QMX's.** On the QMX corpus's 15 m I/Q (2026-11-02) ours was 16.6 of `jt9`'s 24.4 a slot, 68%; here 64–75% on every band up to about 22 `jt9` decodes a slot. 20 m at 50 a slot drops to 48%, and 40 m after dark at 44.5 to 50%, the crowded-band plateau the QMX corpus showed too (our decoder levels off near 25–27 a slot whatever `jt9` finds; [decode.md](../../../../docs/architecture/decode.md), **Subtraction**). So the HL2's receive chain costs our decoder nothing this measures; the gap is the decoder's, which rows kkap (subtraction from the audio) and qauk (AP decoding) work on. The decode counts themselves measure the band, not the radio: comparing the two radios needs both on one antenna at once (epic [knpp](../../../../docs/roadmap/hl2-support.md), **Later**).
 
@@ -35,4 +36,4 @@ The Hermes-Lite 2 recorded on a computer, one band at a time, 30 minutes a band,
 
 **Which recorder ran.** One process recorded every band, with the code it loaded at 20:21 UTC: `tools/hl2_record.py` as it stood then, uncommitted on top of `1855ad7`, one receiver, the band plan and the failsafes; the four-receiver rewrite was committed (`57ee4e3`) after it started and did not run here. Each manifest's `recorder` is `git describe` of the worktree at each band's start, so it reads `1855ad7-dirty` (10–15 m), `62b3dd2` (17–20 m), `5119b3a-dirty` (30 m) and, once that worktree was removed, `unknown` (40 m on): the checkout's state, not the running code.
 
-The rest of the night bands (60, 80 and 160 m) are added here as they are scored.
+80 m and 160 m are added here as they are scored.
