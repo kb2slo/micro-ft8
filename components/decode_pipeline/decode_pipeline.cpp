@@ -33,8 +33,7 @@ extern "C" {
 #include "ft8/constants.h"
 #include "ft8/decode.h"
 #include "ft8/message.h"
-#include "decode_retry.h"
-#include "decode_snr.h"
+#include "decode_core.h"
 #include "decode_subtract.h"
 }
 
@@ -331,13 +330,6 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
 
   s_dec_count = 0;
 
-  static DECODE_PSRAM_BSS ftx_candidate_t candidates[DECODE_MAX_CANDIDATES];
-  static DECODE_PSRAM_BSS float seen_hz[DECODE_MAX_CANDIDATES];
-  static DECODE_PSRAM_BSS decode_retry_t retry;
-  decode_retry_reset(&retry);
-  const int n_tones = (mon->wf.protocol == FTX_PROTOCOL_FT4) ? 4 : 8;
-  int num_candidates = 0;
-
   // ---- slot index + once-per-slot hashtable maintenance ----
   int64_t slot_idx = (decode_tx_state_get_decode_slot_idx() >= 0) ? decode_tx_state_get_decode_slot_idx() : rtc_now_ms() / g_protocol->slot_time_ms;
   int slot_id = (int)(slot_idx & 1);
@@ -348,12 +340,24 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
     hashtable_age_all();
   }
 
-  // ---- per-frequency noise for the SNR, before any subtraction (decode.md, SNR) ----
-  static DECODE_PSRAM_BSS decode_snr_slot_t s_snr_slot;
-  if (!decode_snr_prepare(&s_snr_slot, mon, block_gain)) {
+  // ---- the slot's decode (decode_core.h): two searches, each decode lowering its tones so the
+  // second reads what that uncovered; half the estimated SNR, including the neighbouring time
+  // subdivision (decode.md) ----
+  static const decode_core_config_t kCoreConfig = {
+      .max_candidates = max_cand,
+      .min_score = 5,
+      .ldpc_iterations = 25,
+      .passes = DECODE_SUBTRACT_PASSES,
+      .subtract_neighbors = DECODE_SUBTRACT_NEIGHBORS,
+      .subtract_fraction = DECODE_SUBTRACT_FRACTION,
+      .hash_if = &hash_if,
+  };
+  static DECODE_PSRAM_BSS decode_core_t s_core;
+  if (!decode_core_begin(&s_core, mon, block_gain, &kCoreConfig)) {
     ESP_LOGW(TAG, "SNR not prepared: waterfall %d bins x freq_osr %d; SNRs read the floor",
              mon->wf.num_bins, mon->wf.freq_osr);
   }
+  (void)cfg;
 
   // ---- mycall uppercase (stack, not heap) ----
   char mycall_up[DEC_FIELD_MAX];
@@ -362,24 +366,14 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
   xSemaphoreGive(my_call_mutex());
   for (char* p = mycall_up; *p; ++p) *p = (char)toupper((unsigned char)*p);
 
-  // ---- decode candidates into static s_dec[] ----
-  const int kMaxDecoded = 50;
-  static DECODE_PSRAM_BSS ftx_message_t decoded[kMaxDecoded];
-  static DECODE_PSRAM_BSS ftx_message_t* decoded_hashtable[kMaxDecoded];
-  for (int i = 0; i < kMaxDecoded; ++i) decoded_hashtable[i] = nullptr;
-  int num_decoded = 0;
-
-  // Two searches. Each decode lowers its tones; the second search reads what that uncovered.
-  // Half the estimated SNR, including the neighbouring time subdivision (decode.md).
-  for (int pass = 0; pass < DECODE_SUBTRACT_PASSES && s_dec_count < DEC_MAX; ++pass) {
-    int want = max_cand / (pass + 1);
-    if (want < 1) want = 1;
-    int found = ftx_find_candidates(&mon->wf, want, candidates, 5);
-    if (pass == 0) {
+  int num_candidates = 0;
+  do {
+    const int found = decode_core_search(&s_core);
+    if (s_core.pass == 0) {
       num_candidates = found;
       ESP_LOGD(TAG, "Candidates found: %d", num_candidates);
     }
-    if (pass == 0 && found <= 0) {
+    if (s_core.pass == 0 && found <= 0) {
       ESP_LOGD(TAG, "No candidates found; keeping RX list");
       // No candidates means we processed the slot's audio but found nothing —
       // still counts as "applied" for the TX-trigger guard. Still handed over,
@@ -394,113 +388,66 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
       return;
     }
 
-    int seen = 0;
     for (int i = 0; i < found && s_dec_count < DEC_MAX; ++i) {
-    float freq_hz = (mon->min_bin + candidates[i].freq_offset +
-                    candidates[i].freq_sub / (float)cfg->freq_osr) / mon->symbol_period;
-    float time_s = (candidates[i].time_offset +
-                   candidates[i].time_sub / (float)cfg->time_osr) * mon->symbol_period;
-    // The other freq_osr subdivision of a signal we just decoded is the same station.
-    if (decode_subtract_already(seen_hz, seen, freq_hz)) continue;
-    // Failed before, and no subtraction has touched its bins: it would fail again.
-    if (decode_retry_unchanged(&retry, &candidates[i], n_tones)) continue;
+      if (decode_core_skip(&s_core, i)) continue;
+      decode_core_attempt_t attempt;
+      decode_core_message_t message;
+      decode_core_decode(&s_core, i, &attempt);
+      // A repeated payload is the same station again: subtracted, not listed twice.
+      if (decode_core_commit(&s_core, i, &attempt, &message) != DECODE_CORE_NEW) continue;
+      const char* text = message.text;
+      const int snr_q = message.snr;
+      const float freq_hz = message.freq_hz;
+      const float time_s = message.time_s;
 
-    ftx_message_t message;
-    ftx_decode_status_t status;
-    memset(&message, 0, sizeof(message));
-    memset(&status, 0, sizeof(status));
-
-    if (!ftx_decode_candidate(&mon->wf, &candidates[i], 25, &message, &status)) {
-      decode_retry_note_failed(&retry, &candidates[i]);
-      continue;
-    }
-
-    // payload/hash dedupe (open addressing)
-    int idx_hash = (int)(message.hash % kMaxDecoded);
-    bool found_empty = false, found_dup = false;
-    for (int probe = 0; probe < kMaxDecoded; ++probe) {
-      ftx_message_t* p = decoded_hashtable[idx_hash];
-      if (!p) { found_empty = true; break; }
-      if (p->hash == message.hash &&
-          0 == memcmp(p->payload, message.payload, sizeof(message.payload))) {
-        found_dup = true; break;
+      char final_text[DEC_TEXT_MAX];
+      snprintf(final_text, sizeof(final_text), "%s", text);
+      if (decode_dxpedition_rewrite(text, mycall_up, final_text, sizeof(final_text))) {
+        ESP_LOGI(TAG, "DXpedition raw match: %s", text);
       }
-      idx_hash = (idx_hash + 1) % kMaxDecoded;
-    }
-    // A duplicate payload is the same station again. Still subtract it, but do not list it twice.
-    if (!found_dup && !found_empty) continue;
-    if (!found_dup) {
-      memcpy(&decoded[idx_hash], &message, sizeof(message));
-      decoded_hashtable[idx_hash] = &decoded[idx_hash];
-      ++num_decoded;
-    }
 
-    // decode to human text
-    char text[FTX_MAX_MESSAGE_LENGTH] = {0};
-    ftx_message_offsets_t offsets;
-    ftx_message_rc_t urc = ftx_message_decode(&message, &hash_if, text, &offsets);
-    if (urc != FTX_MESSAGE_RC_OK || text[0] == '\0') continue;
-
-    // Before this message is subtracted: the SNR reads its tones.
-    const int snr_q = decode_snr_message(&s_snr_slot, mon, &candidates[i], message.payload);
-
-    if (seen < DECODE_MAX_CANDIDATES) seen_hz[seen++] = freq_hz;
-    decode_subtract_message(&mon->wf, &candidates[i], message.payload,
-                            DECODE_SUBTRACT_NEIGHBORS, DECODE_SUBTRACT_FRACTION);
-    decode_retry_note_subtracted(&retry, &candidates[i]);
-    if (found_dup) continue;
-
-    char final_text[DEC_TEXT_MAX];
-    snprintf(final_text, sizeof(final_text), "%s", text);
-    if (decode_dxpedition_rewrite(text, mycall_up, final_text, sizeof(final_text))) {
-      ESP_LOGI(TAG, "DXpedition raw match: %s", text);
-    }
-
-    // UI text dedup (linear scan — 32 entries max, no hash map needed)
-    int dup_idx = -1;
-    for (int j = 0; j < s_dec_count; ++j) {
-      if (strcmp(s_dec[j].text, final_text) == 0) { dup_idx = j; break; }
-    }
-    if (dup_idx >= 0) {
-      if (snr_q > s_dec[dup_idx].snr) {
-        s_dec[dup_idx].snr = snr_q;
-        s_dec[dup_idx].offset_hz = (int)lrintf(freq_hz);
-        s_dec[dup_idx].slot_id = slot_id;
+      // UI text dedup (linear scan — 32 entries max, no hash map needed)
+      int dup_idx = -1;
+      for (int j = 0; j < s_dec_count; ++j) {
+        if (strcmp(s_dec[j].text, final_text) == 0) { dup_idx = j; break; }
       }
-      continue;
+      if (dup_idx >= 0) {
+        if (snr_q > s_dec[dup_idx].snr) {
+          s_dec[dup_idx].snr = snr_q;
+          s_dec[dup_idx].offset_hz = (int)lrintf(freq_hz);
+          s_dec[dup_idx].slot_id = slot_id;
+        }
+        continue;
+      }
+
+      ESP_LOGD(TAG, "Decoded[%d] t=%.2fs f=%.1fHz snr=%d : %s",
+               s_dec_count, time_s, freq_hz, snr_q, final_text);
+
+      // Fill static entry
+      DecodeMsg* d = &s_dec[s_dec_count];
+      // final_text is always NUL-terminated above; a same-size copy keeps -O2's stringop-truncation check quiet (B89).
+      static_assert(sizeof(d->text) == sizeof(final_text), "RX list text and decode text buffers must match");
+      memcpy(d->text, final_text, sizeof(d->text));
+      d->snr = snr_q;
+      d->offset_hz = (int)lrintf(freq_hz);
+      d->slot_id = slot_id;
+      d->time_s = time_s;
+
+      decode_fields_fill(d);
+      s_dec_standard[s_dec_count] = message.standard != 0;
+
+      d->is_cq = (strncmp(d->text, "CQ ", 3) == 0 || strcmp(d->text, "CQ") == 0);
+
+      char f1_norm[DEC_FIELD_MAX];
+      dec_normalize_call(d->field1, f1_norm, DEC_FIELD_MAX);
+      d->is_to_me = (mycall_up[0] != '\0' && strcmp(f1_norm, mycall_up) == 0);
+
+      // The recently-worked table is the main loop's: decode_pipeline_apply() sets this.
+      d->is_recent_qso = false;
+
+      s_dec_count++;
     }
-
-    ESP_LOGD(TAG, "Decoded[%d] t=%.2fs f=%.1fHz snr=%d : %s",
-             s_dec_count, time_s, freq_hz, snr_q, final_text);
-
-    // Fill static entry
-    DecodeMsg* d = &s_dec[s_dec_count];
-    // final_text is always NUL-terminated above; a same-size copy keeps -O2's stringop-truncation check quiet (B89).
-    static_assert(sizeof(d->text) == sizeof(final_text), "RX list text and decode text buffers must match");
-    memcpy(d->text, final_text, sizeof(d->text));
-    d->snr = snr_q;
-    d->offset_hz = (int)lrintf(freq_hz);
-    d->slot_id = slot_id;
-    d->time_s = time_s;
-
-    decode_fields_fill(d);
-    s_dec_standard[s_dec_count] = ftx_message_get_type(&message) == FTX_MESSAGE_TYPE_STANDARD;
-
-    d->is_cq = (strncmp(d->text, "CQ ", 3) == 0 || strcmp(d->text, "CQ") == 0);
-
-    char f1_norm[DEC_FIELD_MAX];
-    dec_normalize_call(d->field1, f1_norm, DEC_FIELD_MAX);
-    d->is_to_me = (mycall_up[0] != '\0' && strcmp(f1_norm, mycall_up) == 0);
-
-    // The recently-worked table is the main loop's: decode_pipeline_apply() sets this.
-    d->is_recent_qso = false;
-
-    s_dec_count++;
-    }
-    // Nothing subtracted leaves the waterfall as it was, so another search
-    // would only retry candidates that just failed.
-    if (seen == 0) break;
-  }
+  } while (s_dec_count < DEC_MAX && decode_core_next_pass(&s_core));
 
   ESP_LOGD(TAG, "Decoded %d unique messages", s_dec_count);
 

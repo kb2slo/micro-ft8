@@ -4,6 +4,7 @@ ROOT := ../..
 LIB  := $(ROOT)/components/ft8_lib
 BENCH := $(ROOT)/test_apps/decode_bench/main
 SRCS := decode_recall.c $(BENCH)/bench_core.c \
+        $(ROOT)/components/decode_pipeline/decode_core.c \
         $(ROOT)/components/decode_pipeline/decode_subtract.c \
         $(ROOT)/components/decode_pipeline/decode_retry.c \
         $(ROOT)/components/decode_pipeline/decode_snr.c \
@@ -24,7 +25,8 @@ CFLAGS := $(OPT) -std=gnu11 -DMONITOR_NFFT_MAX=3840 \
 gen_ft8.o: $(LIB)/vendor/demo/gen_ft8.c
 	$(CC) $(CFLAGS) -Dmain=gen_ft8_unused_main -c -o $@ $<
 
-decode_recall: $(SRCS) gen_ft8.o $(BENCH)/bench_core.h
+decode_recall: $(SRCS) gen_ft8.o $(BENCH)/bench_core.h \
+        $(ROOT)/components/decode_pipeline/include/decode_core.h
 	$(CC) $(CFLAGS) -o $@ $(SRCS) gen_ft8.o -lm
 
 clean:

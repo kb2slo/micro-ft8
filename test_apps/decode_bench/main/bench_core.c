@@ -8,19 +8,14 @@
 
 #include "common/decode_psram.h"
 #include "common/monitor.h"
-#include "decode_retry.h"
-#include "decode_snr.h"
+#include "decode_core.h"
 #include "decode_subtract.h"
 #include "ft8/constants.h"
 #include "ft8/decode.h"
 #include "ft8/message.h"
 
-#define BENCH_HASH_SLOTS     128
-
-// Same placement as the firmware's decode working sets (row p3x6).
-static DECODE_PSRAM_BSS ftx_candidate_t s_candidates[BENCH_MAX_CANDIDATES];
-static DECODE_PSRAM_BSS ftx_message_t s_decoded[BENCH_HASH_SLOTS];
-static DECODE_PSRAM_BSS ftx_message_t* s_decoded_table[BENCH_HASH_SLOTS];
+// Same placement as the firmware's decode working set (memory.md).
+static DECODE_PSRAM_BSS decode_core_t s_core;
 
 // No callsign hash table: hashed calls unpack as "<...>", which is how the scorer normalises them anyway.
 static bool bench_lookup_hash(ftx_callsign_hash_type_t hash_type, uint32_t hash, char* callsign)
@@ -99,25 +94,6 @@ static float bench_block_agc(float* block, int size)
     return gain;
 }
 
-// Open-addressing payload dedupe, as decode_monitor_results() does. Returns true if the message is new.
-static bool bench_remember(const ftx_message_t* message)
-{
-    int index = (int)(message->hash % BENCH_HASH_SLOTS);
-    for (int probe = 0; probe < BENCH_HASH_SLOTS; ++probe) {
-        ftx_message_t* slot = s_decoded_table[index];
-        if (slot == NULL) {
-            s_decoded[index] = *message;
-            s_decoded_table[index] = &s_decoded[index];
-            return true;
-        }
-        if (slot->hash == message->hash && memcmp(slot->payload, message->payload, sizeof(message->payload)) == 0) {
-            return false;
-        }
-        index = (index + 1) % BENCH_HASH_SLOTS;
-    }
-    return false;
-}
-
 void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sample_count,
                     bench_clock_fn clock_us, bench_message_fn on_message, void* context,
                     BenchResult* result)
@@ -170,84 +146,41 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
     quantise_waterfall(&monitor, mag_levels);
     int64_t t1 = clock_us();
 
-    int max_candidates = config->max_candidates;
-    if (max_candidates > BENCH_MAX_CANDIDATES) max_candidates = BENCH_MAX_CANDIDATES;
-    int passes = config->subtract_passes;
-    if (passes < 1) passes = 1;
-    if (passes > 3) passes = 3;
-    const int do_subtract = config->subtract_passes > 0;
-    const float fraction = config->subtract_fraction > 0.0f ? config->subtract_fraction : DECODE_SUBTRACT_FRACTION;
-
-    for (int i = 0; i < BENCH_HASH_SLOTS; ++i) {
-        s_decoded_table[i] = NULL;
-    }
+    const decode_core_config_t core_config = {
+        .max_candidates = config->max_candidates,
+        .min_score = config->min_score,
+        .ldpc_iterations = config->ldpc_iterations,
+        .passes = config->subtract_passes,
+        .subtract_neighbors = config->subtract_neighbors,
+        .subtract_fraction = config->subtract_fraction > 0.0f ? config->subtract_fraction : DECODE_SUBTRACT_FRACTION,
+        .hash_if = &s_hash_interface,
+    };
     int candidate_count = 0;
     int decoded = 0;
     int64_t find_us = 0;
     int64_t decode_us = 0;
-    // On the decode clock, as in decode_monitor_results().
-    static DECODE_PSRAM_BSS decode_snr_slot_t snr_slot;
+    // The SNR's preparation is on the decode clock, as in decode_monitor_results().
     int64_t snr_t0 = clock_us();
-    decode_snr_prepare(&snr_slot, &monitor, block_gain);
+    decode_core_begin(&s_core, &monitor, block_gain, &core_config);
     decode_us += clock_us() - snr_t0;
-    static DECODE_PSRAM_BSS decode_retry_t retry;
-    decode_retry_reset(&retry);
-    const int n_tones = (monitor.wf.protocol == FTX_PROTOCOL_FT4) ? 4 : 8;
-    for (int pass = 0; pass < passes && decoded < config->max_decodes; ++pass) {
-        int want = max_candidates;
-        if (do_subtract) {
-            want = max_candidates / (pass + 1);
-            if (want < 1) want = 1;
-        }
+    do {
         int64_t find_t0 = clock_us();
-        int found = ftx_find_candidates(&monitor.wf, want, s_candidates, config->min_score);
+        int found = decode_core_search(&s_core);
         find_us += clock_us() - find_t0;
-        if (pass == 0) candidate_count = found;
+        if (s_core.pass == 0) candidate_count = found;
 
-        float seen_hz[BENCH_MAX_CANDIDATES];
-        int seen = 0;
         int64_t decode_t0 = clock_us();
         for (int i = 0; i < found && decoded < config->max_decodes; ++i) {
-            float freq_hz = (monitor.min_bin + s_candidates[i].freq_offset +
-                             s_candidates[i].freq_sub / (float)config->freq_osr) / monitor.symbol_period;
-            float time_s = (s_candidates[i].time_offset +
-                            s_candidates[i].time_sub / (float)config->time_osr) * monitor.symbol_period;
-            // Both freq_osr subdivisions of one signal land within DECODE_SUBTRACT_FREQ_SKIP_HZ.
-            // Subtracting the second would dig the hole twice in this pass.
-            if (do_subtract && decode_subtract_already(seen_hz, seen, freq_hz)) continue;
-            // As the firmware: a failure no subtraction has touched would fail again.
-            if (do_subtract && decode_retry_unchanged(&retry, &s_candidates[i], n_tones)) continue;
-
-            ftx_message_t message;
-            ftx_decode_status_t status;
-            memset(&message, 0, sizeof(message));
-            memset(&status, 0, sizeof(status));
-            if (!ftx_decode_candidate(&monitor.wf, &s_candidates[i], config->ldpc_iterations, &message, &status)) {
-                decode_retry_note_failed(&retry, &s_candidates[i]);
-                continue;
-            }
-            bool fresh = bench_remember(&message);
-            char text[FTX_MAX_MESSAGE_LENGTH] = {0};
-            ftx_message_offsets_t offsets;
-            if (ftx_message_decode(&message, &s_hash_interface, text, &offsets) != FTX_MESSAGE_RC_OK || text[0] == '\0') {
-                continue;
-            }
-            int snr = decode_snr_message(&snr_slot, &monitor, &s_candidates[i], message.payload);
-            if (do_subtract) {
-                if (seen < BENCH_MAX_CANDIDATES) seen_hz[seen++] = freq_hz;
-                decode_subtract_message(&monitor.wf, &s_candidates[i], message.payload,
-                                        config->subtract_neighbors, fraction);
-                decode_retry_note_subtracted(&retry, &s_candidates[i]);
-            }
-            if (!fresh) continue;
+            if (decode_core_skip(&s_core, i)) continue;
+            decode_core_attempt_t attempt;
+            decode_core_message_t message;
+            decode_core_decode(&s_core, i, &attempt);
+            if (decode_core_commit(&s_core, i, &attempt, &message) != DECODE_CORE_NEW) continue;
             ++decoded;
-            if (on_message != NULL) on_message(context, text, freq_hz, time_s, snr);
+            if (on_message != NULL) on_message(context, message.text, message.freq_hz, message.time_s, message.snr);
         }
         decode_us += clock_us() - decode_t0;
-        if (!do_subtract) break;
-        // As the firmware: nothing subtracted, so another search would only retry failures.
-        if (seen == 0) break;
-    }
+    } while (decoded < config->max_decodes && decode_core_next_pass(&s_core));
     int64_t t2 = t1 + find_us;
     int64_t t3 = t2 + decode_us;
 
