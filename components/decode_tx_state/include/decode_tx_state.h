@@ -23,13 +23,8 @@
 // --- Decode configuration (read by the pipeline, set from the UI) -----------
 bool decode_tx_state_get_decode_enabled(void);
 void decode_tx_state_set_decode_enabled(bool enabled);
-int  decode_tx_state_get_time_osr(void);
-void decode_tx_state_set_time_osr(int osr);
-int  decode_tx_state_get_freq_osr(void);
-void decode_tx_state_set_freq_osr(int osr);
 
 // --- Decode progress (written by the audio task, read by the slot loop) -----
-// decode_slot_idx is tagged at decode trigger so RX lines carry slot parity.
 // decode_applied_slot_idx is the monotonic index of the most recent slot
 // whose decode has been handed to the main loop (or whose audio was never
 // decoded, e.g. paused/skipped) -- written by the decode task on core 1, read
@@ -39,13 +34,6 @@ void decode_tx_state_set_freq_osr(int osr);
 // invariant "TX in slot N is blocked until the decode for slot N-1 has been
 // applied." Stored as 32 bits, like tx_slot_idx below, so core 0 never reads
 // it half-written.
-int64_t decode_tx_state_get_decode_slot_idx(void);
-void    decode_tx_state_set_decode_slot_idx(int64_t slot_idx);
-// capture_clean is set with decode_slot_idx, on the same task: the slot began one
-// boundary after a whole slot, and the ingest ring dropped nothing from the start of
-// that slot to this decode. Only such a slot may step the clock (decode_sync.h).
-bool    decode_tx_state_get_capture_clean(void);
-void    decode_tx_state_set_capture_clean(bool clean);
 int64_t decode_tx_state_get_decode_applied_slot_idx(void);
 void    decode_tx_state_set_decode_applied_slot_idx(int64_t slot_idx);
 bool    decode_tx_state_get_decode_in_progress(void);

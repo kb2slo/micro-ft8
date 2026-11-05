@@ -25,7 +25,7 @@
 #include "../../components/ft8_lib/vendor/ft8/constants.h"
 #include "../../components/ft8_lib/common/monitor.h"
 
-// MONITOR_NFFT_MAX is the hard static-buffer limit in monitor.c
+// This diagnostic sweeps configurations up to nfft 960 only
 #define MY_NFFT_MAX 960
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -104,12 +104,12 @@ static DiagResult decode_detailed(const float* samples, int n_samples, int fs,
 {
     DiagResult r = {};
 
-    // Guard: nfft must not exceed MONITOR_NFFT_MAX
+    // Guard: nfft within this diagnostic's sweep
     float sym_period = (proto == FTX_PROTOCOL_FT4) ? FT4_SYMBOL_PERIOD : FT8_SYMBOL_PERIOD;
     int   block_size = (int)(fs * sym_period);
     int   nfft       = block_size * freq_osr;
     if (nfft > MY_NFFT_MAX) {
-        printf("    [SKIP] nfft=%d exceeds MONITOR_NFFT_MAX=%d (fs=%d freq_osr=%d)\n",
+        printf("    [SKIP] nfft=%d exceeds MY_NFFT_MAX=%d (fs=%d freq_osr=%d)\n",
                nfft, MY_NFFT_MAX, fs, freq_osr);
         return r;
     }

@@ -7,15 +7,17 @@ SRCS := host_main.c ../main/bench_core.c \
         $(LIB)/vendor/ft8/encode.c $(LIB)/vendor/ft8/constants.c $(LIB)/vendor/ft8/crc.c \
         $(LIB)/vendor/ft8/ldpc.c $(LIB)/vendor/fft/kiss_fft.c $(LIB)/vendor/fft/kiss_fftr.c \
         $(LIB)/common/monitor.c $(LIB)/common/fft_wrapper.c \
+        $(ROOT)/components/decode_pipeline/decode_core.c \
         $(ROOT)/components/decode_pipeline/decode_subtract.c \
         $(ROOT)/components/decode_pipeline/decode_retry.c \
         $(ROOT)/components/decode_pipeline/decode_snr.c
 OPT  ?= -O2
-CFLAGS := $(OPT) -std=gnu11 -DMONITOR_NFFT_MAX=1920 -I../main -I$(LIB) -I$(LIB)/vendor \
+CFLAGS := $(OPT) -std=gnu11 -I../main -I$(LIB) -I$(LIB)/vendor \
           -I$(ROOT)/components/decode_pipeline/include -Wno-format
 
 decode_bench_host: $(SRCS) ../main/bench_core.h ../main/bench_configs.h \
-        $(ROOT)/components/decode_pipeline/include/decode_limits.h
+        $(ROOT)/components/decode_pipeline/include/decode_limits.h \
+        $(ROOT)/components/decode_pipeline/include/decode_core.h
 	$(CC) $(CFLAGS) -o $@ $(SRCS) -lm
 
 clean:

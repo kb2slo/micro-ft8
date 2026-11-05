@@ -41,12 +41,6 @@ set(EXTRA_COMPONENT_DIRS
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(poe_p4)
 
-# B25: freq_osr 2 needs nfft 1920. The default in monitor.c stays 960.
-# The waterfall is one static buffer (docs/architecture/memory.md), sized for the largest the P4
-# runs: FT8 at t2/f2, 93 blocks x 2 x 2 x 433 bins. FT4 needs less (156 x 2 x 2 x 131 = 81,744).
-idf_component_get_property(ft8_lib_target ft8_lib COMPONENT_LIB)
-target_compile_definitions(${ft8_lib_target} PRIVATE MONITOR_NFFT_MAX=1920 MONITOR_WF_STATIC_BYTES=161076)
-
 # Single flashable image -- a release should be able to ship
 # one file, not three offsets an operator has to know by hand.
 add_custom_command(TARGET app POST_BUILD

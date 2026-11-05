@@ -33,8 +33,7 @@ extern "C" {
 #include "ft8/constants.h"
 #include "ft8/decode.h"
 #include "ft8/message.h"
-#include "decode_retry.h"
-#include "decode_snr.h"
+#include "decode_core.h"
 #include "decode_subtract.h"
 }
 
@@ -134,32 +133,38 @@ bool find_decode_for_reply(uint32_t decode_id, UiRxLine* out) {
 #define DEC_FIELD_MAX RX_FIELD_MAX         // 20
 typedef RxDecodeEntry DecodeMsg;
 
-// Decode working sets in PSRAM on the P4 (row p3x6, memory.md); internal on host.
-static DECODE_PSRAM_BSS DecodeMsg s_dec[DEC_MAX];
-static int       s_dec_count;
-// Each s_dec[] entry's ft8_lib FTX_MESSAGE_TYPE_STANDARD, for heard_grid_note().
-static DECODE_PSRAM_BSS bool s_dec_standard[DEC_MAX];
+// ---- One channel's decode (docs/roadmap/several-channels.md, A channel): the slot's decode in progress
+// (decode_core.h) and the list it builds. In PSRAM on the P4 (memory.md), one per channel; used only
+// on the capture task, during decode_slot(). ----
+struct DecodeChannel {
+  decode_core_t core;
+  DecodeMsg dec[DEC_MAX];
+  bool standard[DEC_MAX];  // each dec[] entry's ft8_lib FTX_MESSAGE_TYPE_STANDARD, for heard_grid_note()
+  int count;
+};
+static DECODE_PSRAM_BSS DecodeChannel s_channels[RX_MAX_CHANNELS];
 
 // ---- The decode task's hand-off to the main loop (docs/architecture/main_board.md, P4).
 // The main loop owns autoseq, the armed TX, the decode-id ring and the
 // recently-worked and heard-grid tables, so the decode task touches none of
 // them: it publishes each slot's decodes here, and decode_pipeline_apply()
-// does the rest. One slot deep, copied by value with no heap, under a mutex
-// as porta's frame queue is. A result still waiting when the next is
+// does the rest. One slot deep per channel, copied by value with no heap, under a mutex
+// as porta's frame queue is. A result still waiting when the channel's next is
 // published means the main loop went a whole slot without a pass; the older
 // one is dropped, and the drop is logged. ----
 struct DecodeSlotResult {
+  int channel;
+  const ProtocolConfig* mode;
   int64_t slot_idx;
   int64_t published_us;  // esp_timer
   int count;
   DecodeMsg dec[DEC_MAX];
   bool standard[DEC_MAX];
 };
-// Both copies of a slot's result (this one and the main loop's in decode_pipeline_apply()) are
-// allocated on first use from the heap, about 7 KB each (docs/architecture/memory.md lists
-// them).
-static DecodeSlotResult* s_result = nullptr;  // guarded by result_mutex()
-static bool s_result_pending = false;         // guarded by result_mutex()
+// Each channel's copy, and the main loop's one in decode_pipeline_apply(), are allocated on first
+// use from the heap, about 7 KB each (docs/architecture/memory.md lists them).
+static DecodeSlotResult* s_result[RX_MAX_CHANNELS] = {};  // guarded by result_mutex()
+static bool s_result_pending[RX_MAX_CHANNELS] = {};        // guarded by result_mutex()
 
 static DecodeSlotResult* alloc_slot_result() {
   return static_cast<DecodeSlotResult*>(
@@ -176,23 +181,27 @@ static SemaphoreHandle_t result_mutex() {
 }
 
 // Decode task.
-static void publish_slot_result(int64_t slot_idx) {
+static void publish_slot_result(const ft8_slot_t* slot, const DecodeChannel& dc) {
+  const int c = slot->channel;
   int64_t dropped_slot = -1;
   xSemaphoreTake(result_mutex(), portMAX_DELAY);
-  if (!s_result) s_result = alloc_slot_result();
-  if (!s_result) {
+  if (!s_result[c]) s_result[c] = alloc_slot_result();
+  DecodeSlotResult* r = s_result[c];
+  if (!r) {
     xSemaphoreGive(result_mutex());
-    ESP_LOGE(TAG, "DECODE slot %lld lost: no RAM for the hand-off", (long long)slot_idx);
+    ESP_LOGE(TAG, "DECODE slot %lld lost: no RAM for the hand-off", (long long)slot->slot_idx);
     debug_log_line("DECODE slot lost: no RAM for the hand-off");
     return;
   }
-  if (s_result_pending) dropped_slot = s_result->slot_idx;
-  s_result->slot_idx = slot_idx;
-  s_result->published_us = esp_timer_get_time();
-  s_result->count = s_dec_count;
-  memcpy(s_result->dec, s_dec, sizeof(s_dec[0]) * (size_t)s_dec_count);
-  memcpy(s_result->standard, s_dec_standard, sizeof(s_dec_standard[0]) * (size_t)s_dec_count);
-  s_result_pending = true;
+  if (s_result_pending[c]) dropped_slot = r->slot_idx;
+  r->channel = c;
+  r->mode = slot->mode;
+  r->slot_idx = slot->slot_idx;
+  r->published_us = esp_timer_get_time();
+  r->count = dc.count;
+  memcpy(r->dec, dc.dec, sizeof(dc.dec[0]) * (size_t)dc.count);
+  memcpy(r->standard, dc.standard, sizeof(dc.standard[0]) * (size_t)dc.count);
+  s_result_pending[c] = true;
   xSemaphoreGive(result_mutex());
   if (dropped_slot >= 0) {
     char buf[64];
@@ -203,16 +212,19 @@ static void publish_slot_result(int64_t slot_idx) {
 }
 
 // Main loop.
-static bool take_slot_result(DecodeSlotResult* out) {
+static bool take_slot_result(int c, DecodeSlotResult* out) {
   xSemaphoreTake(result_mutex(), portMAX_DELAY);
-  const bool pending = s_result_pending && s_result;
+  const DecodeSlotResult* r = s_result[c];
+  const bool pending = s_result_pending[c] && r;
   if (pending) {
-    out->slot_idx = s_result->slot_idx;
-    out->published_us = s_result->published_us;
-    out->count = s_result->count;
-    memcpy(out->dec, s_result->dec, sizeof(s_result->dec[0]) * (size_t)s_result->count);
-    memcpy(out->standard, s_result->standard, sizeof(s_result->standard[0]) * (size_t)s_result->count);
-    s_result_pending = false;
+    out->channel = r->channel;
+    out->mode = r->mode;
+    out->slot_idx = r->slot_idx;
+    out->published_us = r->published_us;
+    out->count = r->count;
+    memcpy(out->dec, r->dec, sizeof(r->dec[0]) * (size_t)r->count);
+    memcpy(out->standard, r->standard, sizeof(r->standard[0]) * (size_t)r->count);
+    s_result_pending[c] = false;
   }
   xSemaphoreGive(result_mutex());
   return pending;
@@ -220,7 +232,8 @@ static bool take_slot_result(DecodeSlotResult* out) {
 
 bool decode_pipeline_result_pending(void) {
   xSemaphoreTake(result_mutex(), portMAX_DELAY);
-  const bool pending = s_result_pending;
+  bool pending = false;
+  for (int c = 0; c < RX_MAX_CHANNELS; ++c) pending = pending || s_result_pending[c];
   xSemaphoreGive(result_mutex());
   return pending;
 }
@@ -262,11 +275,6 @@ static int dec_sort_cmp(const void* a, const void* b) {
   return decode_sort_cmp(&ea, &eb);
 }
 
-// Sync step applied during this decode, in ms. Folded into the slot line and
-// cleared there. The console UART is not written: a line per message at 115200
-// was inside this function's timer, on the capture task.
-static int s_sync_delta_ms = 0;
-
 // FreeRTOS run-time counter at the start of this decode, and each core's idle
 // task counter then. The P4 is dual-core; core 1's idle task exists.
 // portGET_RUN_TIME_COUNTER_VALUE is esp_timer microseconds, uint32.
@@ -282,19 +290,18 @@ static void sample_decode_cores(void) {
 // One line per receive slot, sent as a Port A log (the sidekick prints it).
 // dec is esp_timer, sampled before that send: a clock step in this function
 // must not land in the duration. left is the soft clock's time until the
-// boundary. y is the sync step this slot, 0 if none. b is each core's busy
+// boundary. y is the sync step this slot, 0 if none: the console UART is not written, since a line
+// per message at 115200 was inside this function's timer, on the capture task. b is each core's busy
 // percent over this decode (core 0, then core 1). The text fits
 // PORTA_EVENT_TEXT_MAX (64). A line that does not is resent without y, so a
 // truncated event cannot clip b into a different number.
-static void log_slot_summary(int num_candidates, int max_cand, int msg_count, int tome,
-                             int64_t decode_t0_us) {
+static void log_slot_summary(const ft8_slot_t* slot, int num_candidates, int max_cand, int msg_count,
+                             int tome, int sync_ms, int64_t decode_t0_us) {
   const int64_t dec_ms = (esp_timer_get_time() - decode_t0_us) / 1000;
-  const int64_t slot_ms = g_protocol->slot_time_ms;
-  const int64_t slot_idx = decode_tx_state_get_decode_slot_idx();
+  const int64_t slot_ms = slot->mode->slot_time_ms;
+  const int64_t slot_idx = slot->slot_idx;
   int64_t left_ms = 0;
   if (slot_idx >= 0 && slot_ms > 0) left_ms = (slot_idx + 1) * slot_ms - rtc_now_ms();
-  const int sync_ms = s_sync_delta_ms;
-  s_sync_delta_ms = 0;
   const uint32_t elapsed = (uint32_t)portGET_RUN_TIME_COUNTER_VALUE() - s_rt_at_decode;
   const int busy0 = decode_core_busy_pct(
       (uint32_t)ulTaskGetIdleRunTimeCounterForCore(0) - s_idle_at_decode[0], elapsed);
@@ -315,7 +322,9 @@ static void log_slot_summary(int num_candidates, int max_cand, int msg_count, in
   debug_log_line(buf);
 }
 
-void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const float* block_gain) {
+void decode_slot(const ft8_slot_t* slot) {
+  monitor_t* mon = slot->monitor;
+  DecodeChannel& dc = s_channels[slot->channel];
   const int64_t decode_t0_us = esp_timer_get_time();
   sample_decode_cores();
   const int max_cand = DECODE_MAX_CANDIDATES;
@@ -329,17 +338,10 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
            (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT),
            (unsigned)stack_hw_entry);
 
-  s_dec_count = 0;
-
-  static DECODE_PSRAM_BSS ftx_candidate_t candidates[DECODE_MAX_CANDIDATES];
-  static DECODE_PSRAM_BSS float seen_hz[DECODE_MAX_CANDIDATES];
-  static DECODE_PSRAM_BSS decode_retry_t retry;
-  decode_retry_reset(&retry);
-  const int n_tones = (mon->wf.protocol == FTX_PROTOCOL_FT4) ? 4 : 8;
-  int num_candidates = 0;
+  dc.count = 0;
 
   // ---- slot index + once-per-slot hashtable maintenance ----
-  int64_t slot_idx = (decode_tx_state_get_decode_slot_idx() >= 0) ? decode_tx_state_get_decode_slot_idx() : rtc_now_ms() / g_protocol->slot_time_ms;
+  const int64_t slot_idx = slot->slot_idx;
   int slot_id = (int)(slot_idx & 1);
 
   static int64_t s_last_aged_slot = -1;
@@ -348,13 +350,23 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
     hashtable_age_all();
   }
 
-  // ---- per-frequency noise for the SNR, before any subtraction (decode.md, SNR) ----
-  static DECODE_PSRAM_BSS decode_snr_slot_t s_snr_slot;
-  if (!decode_snr_prepare(&s_snr_slot, mon, block_gain)) {
+  // ---- the slot's decode (decode_core.h): two searches, each decode lowering its tones so the
+  // second reads what that uncovered; half the estimated SNR, including the neighbouring time
+  // subdivision (decode.md) ----
+  static const decode_core_config_t kCoreConfig = {
+      .max_candidates = max_cand,
+      .min_score = 5,
+      .ldpc_iterations = 25,
+      .passes = DECODE_SUBTRACT_PASSES,
+      .subtract_neighbors = DECODE_SUBTRACT_NEIGHBORS,
+      .subtract_fraction = DECODE_SUBTRACT_FRACTION,
+      .hash_if = &hash_if,
+  };
+  decode_core_t& core = dc.core;
+  if (!decode_core_begin(&core, mon, slot->block_gain, &kCoreConfig)) {
     ESP_LOGW(TAG, "SNR not prepared: waterfall %d bins x freq_osr %d; SNRs read the floor",
              mon->wf.num_bins, mon->wf.freq_osr);
   }
-
   // ---- mycall uppercase (stack, not heap) ----
   char mycall_up[DEC_FIELD_MAX];
   xSemaphoreTake(my_call_mutex(), portMAX_DELAY);
@@ -362,162 +374,105 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
   xSemaphoreGive(my_call_mutex());
   for (char* p = mycall_up; *p; ++p) *p = (char)toupper((unsigned char)*p);
 
-  // ---- decode candidates into static s_dec[] ----
-  const int kMaxDecoded = 50;
-  static DECODE_PSRAM_BSS ftx_message_t decoded[kMaxDecoded];
-  static DECODE_PSRAM_BSS ftx_message_t* decoded_hashtable[kMaxDecoded];
-  for (int i = 0; i < kMaxDecoded; ++i) decoded_hashtable[i] = nullptr;
-  int num_decoded = 0;
-
-  // Two searches. Each decode lowers its tones; the second search reads what that uncovered.
-  // Half the estimated SNR, including the neighbouring time subdivision (decode.md).
-  for (int pass = 0; pass < DECODE_SUBTRACT_PASSES && s_dec_count < DEC_MAX; ++pass) {
-    int want = max_cand / (pass + 1);
-    if (want < 1) want = 1;
-    int found = ftx_find_candidates(&mon->wf, want, candidates, 5);
-    if (pass == 0) {
+  int num_candidates = 0;
+  do {
+    const int found = decode_core_search(&core);
+    if (core.pass == 0) {
       num_candidates = found;
       ESP_LOGD(TAG, "Candidates found: %d", num_candidates);
     }
-    if (pass == 0 && found <= 0) {
+    if (core.pass == 0 && found <= 0) {
       ESP_LOGD(TAG, "No candidates found; keeping RX list");
       // No candidates means we processed the slot's audio but found nothing —
       // still counts as "applied" for the TX-trigger guard. Still handed over,
       // empty, so the main loop arms after it and a quiet band cannot stall
       // the CQ. Published before the marker, as below.
-      publish_slot_result(slot_idx);
-      if (decode_tx_state_get_decode_slot_idx() > decode_tx_state_get_decode_applied_slot_idx()) {
-        decode_tx_state_set_decode_applied_slot_idx(decode_tx_state_get_decode_slot_idx());
+      publish_slot_result(slot, dc);
+      if (slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
+        decode_tx_state_set_decode_applied_slot_idx(slot_idx);
       }
       decode_tx_state_set_decode_in_progress(false);
-      log_slot_summary(0, max_cand, 0, 0, decode_t0_us);
+      log_slot_summary(slot, 0, max_cand, 0, 0, 0, decode_t0_us);
       return;
     }
 
-    int seen = 0;
-    for (int i = 0; i < found && s_dec_count < DEC_MAX; ++i) {
-    float freq_hz = (mon->min_bin + candidates[i].freq_offset +
-                    candidates[i].freq_sub / (float)cfg->freq_osr) / mon->symbol_period;
-    float time_s = (candidates[i].time_offset +
-                   candidates[i].time_sub / (float)cfg->time_osr) * mon->symbol_period;
-    // The other freq_osr subdivision of a signal we just decoded is the same station.
-    if (decode_subtract_already(seen_hz, seen, freq_hz)) continue;
-    // Failed before, and no subtraction has touched its bins: it would fail again.
-    if (decode_retry_unchanged(&retry, &candidates[i], n_tones)) continue;
+    for (int i = 0; i < found && dc.count < DEC_MAX; ++i) {
+      if (decode_core_skip(&core, i)) continue;
+      decode_core_attempt_t attempt;
+      decode_core_message_t message;
+      decode_core_decode(&core, i, &attempt);
+      // A repeated payload is the same station again: subtracted, not listed twice.
+      if (decode_core_commit(&core, i, &attempt, &message) != DECODE_CORE_NEW) continue;
+      const char* text = message.text;
+      const int snr_q = message.snr;
+      const float freq_hz = message.freq_hz;
+      const float time_s = message.time_s;
 
-    ftx_message_t message;
-    ftx_decode_status_t status;
-    memset(&message, 0, sizeof(message));
-    memset(&status, 0, sizeof(status));
-
-    if (!ftx_decode_candidate(&mon->wf, &candidates[i], 25, &message, &status)) {
-      decode_retry_note_failed(&retry, &candidates[i]);
-      continue;
-    }
-
-    // payload/hash dedupe (open addressing)
-    int idx_hash = (int)(message.hash % kMaxDecoded);
-    bool found_empty = false, found_dup = false;
-    for (int probe = 0; probe < kMaxDecoded; ++probe) {
-      ftx_message_t* p = decoded_hashtable[idx_hash];
-      if (!p) { found_empty = true; break; }
-      if (p->hash == message.hash &&
-          0 == memcmp(p->payload, message.payload, sizeof(message.payload))) {
-        found_dup = true; break;
+      char final_text[DEC_TEXT_MAX];
+      snprintf(final_text, sizeof(final_text), "%s", text);
+      if (decode_dxpedition_rewrite(text, mycall_up, final_text, sizeof(final_text))) {
+        ESP_LOGI(TAG, "DXpedition raw match: %s", text);
       }
-      idx_hash = (idx_hash + 1) % kMaxDecoded;
-    }
-    // A duplicate payload is the same station again. Still subtract it, but do not list it twice.
-    if (!found_dup && !found_empty) continue;
-    if (!found_dup) {
-      memcpy(&decoded[idx_hash], &message, sizeof(message));
-      decoded_hashtable[idx_hash] = &decoded[idx_hash];
-      ++num_decoded;
-    }
 
-    // decode to human text
-    char text[FTX_MAX_MESSAGE_LENGTH] = {0};
-    ftx_message_offsets_t offsets;
-    ftx_message_rc_t urc = ftx_message_decode(&message, &hash_if, text, &offsets);
-    if (urc != FTX_MESSAGE_RC_OK || text[0] == '\0') continue;
-
-    // Before this message is subtracted: the SNR reads its tones.
-    const int snr_q = decode_snr_message(&s_snr_slot, mon, &candidates[i], message.payload);
-
-    if (seen < DECODE_MAX_CANDIDATES) seen_hz[seen++] = freq_hz;
-    decode_subtract_message(&mon->wf, &candidates[i], message.payload,
-                            DECODE_SUBTRACT_NEIGHBORS, DECODE_SUBTRACT_FRACTION);
-    decode_retry_note_subtracted(&retry, &candidates[i]);
-    if (found_dup) continue;
-
-    char final_text[DEC_TEXT_MAX];
-    snprintf(final_text, sizeof(final_text), "%s", text);
-    if (decode_dxpedition_rewrite(text, mycall_up, final_text, sizeof(final_text))) {
-      ESP_LOGI(TAG, "DXpedition raw match: %s", text);
-    }
-
-    // UI text dedup (linear scan — 32 entries max, no hash map needed)
-    int dup_idx = -1;
-    for (int j = 0; j < s_dec_count; ++j) {
-      if (strcmp(s_dec[j].text, final_text) == 0) { dup_idx = j; break; }
-    }
-    if (dup_idx >= 0) {
-      if (snr_q > s_dec[dup_idx].snr) {
-        s_dec[dup_idx].snr = snr_q;
-        s_dec[dup_idx].offset_hz = (int)lrintf(freq_hz);
-        s_dec[dup_idx].slot_id = slot_id;
+      // UI text dedup (linear scan — 32 entries max, no hash map needed)
+      int dup_idx = -1;
+      for (int j = 0; j < dc.count; ++j) {
+        if (strcmp(dc.dec[j].text, final_text) == 0) { dup_idx = j; break; }
       }
-      continue;
+      if (dup_idx >= 0) {
+        if (snr_q > dc.dec[dup_idx].snr) {
+          dc.dec[dup_idx].snr = snr_q;
+          dc.dec[dup_idx].offset_hz = (int)lrintf(freq_hz);
+          dc.dec[dup_idx].slot_id = slot_id;
+        }
+        continue;
+      }
+
+      ESP_LOGD(TAG, "Decoded[%d] t=%.2fs f=%.1fHz snr=%d : %s",
+               dc.count, time_s, freq_hz, snr_q, final_text);
+
+      // Fill static entry
+      DecodeMsg* d = &dc.dec[dc.count];
+      // final_text is always NUL-terminated above; a same-size copy keeps -O2's stringop-truncation check quiet (B89).
+      static_assert(sizeof(d->text) == sizeof(final_text), "RX list text and decode text buffers must match");
+      memcpy(d->text, final_text, sizeof(d->text));
+      d->snr = snr_q;
+      d->offset_hz = (int)lrintf(freq_hz);
+      d->slot_id = slot_id;
+      d->time_s = time_s;
+
+      decode_fields_fill(d);
+      dc.standard[dc.count] = message.standard != 0;
+
+      d->is_cq = (strncmp(d->text, "CQ ", 3) == 0 || strcmp(d->text, "CQ") == 0);
+
+      char f1_norm[DEC_FIELD_MAX];
+      dec_normalize_call(d->field1, f1_norm, DEC_FIELD_MAX);
+      d->is_to_me = (mycall_up[0] != '\0' && strcmp(f1_norm, mycall_up) == 0);
+
+      // The recently-worked table is the main loop's: decode_pipeline_apply() sets this.
+      d->is_recent_qso = false;
+
+      dc.count++;
     }
+  } while (dc.count < DEC_MAX && decode_core_next_pass(&core));
 
-    ESP_LOGD(TAG, "Decoded[%d] t=%.2fs f=%.1fHz snr=%d : %s",
-             s_dec_count, time_s, freq_hz, snr_q, final_text);
-
-    // Fill static entry
-    DecodeMsg* d = &s_dec[s_dec_count];
-    // final_text is always NUL-terminated above; a same-size copy keeps -O2's stringop-truncation check quiet (B89).
-    static_assert(sizeof(d->text) == sizeof(final_text), "RX list text and decode text buffers must match");
-    memcpy(d->text, final_text, sizeof(d->text));
-    d->snr = snr_q;
-    d->offset_hz = (int)lrintf(freq_hz);
-    d->slot_id = slot_id;
-    d->time_s = time_s;
-
-    decode_fields_fill(d);
-    s_dec_standard[s_dec_count] = ftx_message_get_type(&message) == FTX_MESSAGE_TYPE_STANDARD;
-
-    d->is_cq = (strncmp(d->text, "CQ ", 3) == 0 || strcmp(d->text, "CQ") == 0);
-
-    char f1_norm[DEC_FIELD_MAX];
-    dec_normalize_call(d->field1, f1_norm, DEC_FIELD_MAX);
-    d->is_to_me = (mycall_up[0] != '\0' && strcmp(f1_norm, mycall_up) == 0);
-
-    // The recently-worked table is the main loop's: decode_pipeline_apply() sets this.
-    d->is_recent_qso = false;
-
-    s_dec_count++;
-    }
-    // Nothing subtracted leaves the waterfall as it was, so another search
-    // would only retry candidates that just failed.
-    if (seen == 0) break;
-  }
-
-  ESP_LOGD(TAG, "Decoded %d unique messages", s_dec_count);
+  ESP_LOGD(TAG, "Decoded %d unique messages", dc.count);
 
   // ---- Auto sync soft RTC from decode timing ----
+  int sync_ms = 0;
   {
     float times_s[DEC_MAX];
-    for (int i = 0; i < s_dec_count; ++i) times_s[i] = s_dec[i].time_s;
-    const int delta_ms =
-        decode_sync_step_ms(times_s, s_dec_count, decode_tx_state_get_capture_clean() ? 1 : 0);
+    for (int i = 0; i < dc.count; ++i) times_s[i] = dc.dec[i].time_s;
+    const int delta_ms = decode_sync_step_ms(times_s, dc.count, slot->capture_clean ? 1 : 0);
     if (delta_ms != 0) {
       rtc_apply_decode_sync(delta_ms);
-      s_sync_delta_ms = delta_ms;
+      sync_ms = delta_ms;
     }
   }
 
   // ---- Hand the slot to the main loop (decode_pipeline_apply()) ----
-  publish_slot_result(slot_idx);
+  publish_slot_result(slot, dc);
 
   // ---- heap instrumentation (exit) ----
   {
@@ -532,33 +487,22 @@ void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const f
   }
 
   int tome = 0;
-  for (int i = 0; i < s_dec_count; ++i) if (s_dec[i].is_to_me) tome++;
-  log_slot_summary(num_candidates, max_cand, s_dec_count, tome, decode_t0_us);
+  for (int i = 0; i < dc.count; ++i) if (dc.dec[i].is_to_me) tome++;
+  log_slot_summary(slot, num_candidates, max_cand, dc.count, tome, sync_ms, decode_t0_us);
 
   // Publish, then mark this slot's decode applied, then clear the in-progress
   // flag, in that order. The TX trigger on core 0 reads in_progress and the
   // marker, then decode_pipeline_result_pending(): once it sees the marker, the
   // slot's result is already waiting for decode_pipeline_apply(), and the
   // trigger holds until the main loop has applied it.
-  if (decode_tx_state_get_decode_slot_idx() > decode_tx_state_get_decode_applied_slot_idx()) {
-    decode_tx_state_set_decode_applied_slot_idx(decode_tx_state_get_decode_slot_idx());
+  if (slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
+    decode_tx_state_set_decode_applied_slot_idx(slot_idx);
   }
   decode_tx_state_set_decode_in_progress(false);
 }
 
-void decode_pipeline_apply(void) {
-  static DecodeSlotResult* rp = nullptr;  // the main loop's copy; too big for its stack
-  if (!rp) {
-    if (!decode_pipeline_result_pending()) return;  // nothing yet; allocate with the first result
-    rp = alloc_slot_result();
-    if (!rp) {
-      ESP_LOGE(TAG, "DECODE apply: no RAM for the main loop's copy");
-      return;
-    }
-  }
-  DecodeSlotResult& r = *rp;
-  if (!take_slot_result(&r)) return;
-
+// One channel's slot, on the main loop.
+static void apply_slot_result(DecodeSlotResult& r) {
   const int64_t wait_ms = (esp_timer_get_time() - r.published_us) / 1000;
   if (wait_ms >= kLateApplyMs) {
     char buf[64];
@@ -628,9 +572,9 @@ void decode_pipeline_apply(void) {
     // it was actually heard on, and none has to be dropped. time_s counts
     // from the start of the recording, which begins on the slot boundary.
     const int64_t emit_slot_idx = r.slot_idx;
-    const int64_t emit_slot_ms = g_protocol->slot_time_ms;
+    const int64_t emit_slot_ms = r.mode->slot_time_ms;
     const int64_t half_signal_ms =
-        (int64_t)(g_protocol->total_symbols * g_protocol->symbol_period * 500.0f);
+        (int64_t)(r.mode->total_symbols * r.mode->symbol_period * 500.0f);
     for (int i = 0; i < r.count; ++i) {
       const RxDecodeEntry& e = r.dec[i];
       uint32_t decode_id = remember_decode_for_reply(e);
@@ -643,5 +587,20 @@ void decode_pipeline_apply(void) {
     }
   } else {
     ESP_LOGD(TAG, "No messages decoded; keeping RX list");
+  }
+}
+
+void decode_pipeline_apply(void) {
+  static DecodeSlotResult* rp = nullptr;  // the main loop's copy, one for every channel; too big for its stack
+  if (!rp) {
+    if (!decode_pipeline_result_pending()) return;  // nothing yet; allocate with the first result
+    rp = alloc_slot_result();
+    if (!rp) {
+      ESP_LOGE(TAG, "DECODE apply: no RAM for the main loop's copy");
+      return;
+    }
+  }
+  for (int c = 0; c < RX_MAX_CHANNELS; ++c) {
+    if (take_slot_result(c, rp)) apply_slot_result(*rp);
   }
 }
