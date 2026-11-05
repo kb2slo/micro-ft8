@@ -177,6 +177,31 @@ def test_temperature_and_abort():
     assert s.stats[0]["temp_c_max"] == 51.9
 
 
+def test_lna_ab():
+    sock = FakeSock()
+    s = h.Hl2Stream(sock, ("169.254.0.2", h.PORT), [7074000], log=lambda *_: None, start_utc=0.0, lna_ab=(20, 14, 2))
+    assert s.lna_db == 20, "the first arm from the start"
+    seq = 0
+    gains = {}
+    for t10 in range(0, 650):  # 65 s, a packet every 0.1 s
+        now = t10 / 10
+        s.handle(packet(seq, clipped=True), now)  # clipping all along: a held gain does not step
+        seq += 1
+        gains[round(now, 1)] = s.lna_db
+    assert gains[0.0] == 20 and gains[14.4] == 20, "slots 0 and 1 at A"
+    assert gains[29.4] == 20 and gains[29.5] == 14, "B from 0.5 s before slot 2's boundary"
+    assert gains[44.0] == 14 and gains[59.5] == 20, "slots 2 and 3 at B, then A again"
+    assert [s.stats[i]["lna_arm_db"] for i in range(4)] == [20, 20, 14, 14], "each slot names its arm"
+    assert s.stats[2]["lna_db_start"] == 14 and s.stats[2]["lna_db_end"] == 14, "the slot is all one gain"
+    assert h.parse_lna_ab("20,14") == (20, 14, 2) and h.parse_lna_ab("20,8,4") == (20, 8, 4)
+    for bad in ("20", "20,20", "20,60", "20,14,0"):
+        try:
+            h.parse_lna_ab(bad)
+        except (ValueError, h.argparse.ArgumentTypeError):
+            continue
+        raise AssertionError(f"--lna-ab {bad!r} must be refused")
+
+
 def test_plan():
     assert h.parse_plan("28074000:120, 7074000:60@00:00") == [([28074000], 120, None), ([7074000], 60, (0, 0))]
     assert h.parse_plan("28074000+21074000+14074000+7074000:120") == [
