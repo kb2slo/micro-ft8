@@ -228,10 +228,11 @@ static void test_sequence()
     expect(hl2_sequence_note(&t, 506) == 0 && t.gaps == 1, "and the stream goes on");
 
     Hl2SequenceTracker w{};
-    hl2_sequence_note(&w, 0xFFFFFFFEu);
-    expect(hl2_sequence_note(&w, 0xFFFFFFFFu) == 0, "up to the top");
-    expect(hl2_sequence_note(&w, 0) == 0 && w.gaps == 0, "wraps to 0 with no gap");
+    hl2_sequence_note(&w, 0xFFFFEu);  // the HL2 counts in 20 bits (usopenhpsdr1.v:89)
+    expect(hl2_sequence_note(&w, 0xFFFFFu) == 0, "up to the top of 20 bits");
+    expect(hl2_sequence_note(&w, 0) == 0 && w.gaps == 0 && w.out_of_order == 0, "wraps to 0 with no gap, not late");
     expect(hl2_sequence_note(&w, 2) == 1 && w.lost == 1, "a gap just past the wrap");
+    expect(hl2_sequence_note(&w, 0xFFFFFu) == 0 && w.out_of_order == 1, "the packet before the wrap, again: late");
 }
 
 static void test_link_local()

@@ -146,7 +146,12 @@ void hl2_apply_status(const Hl2Status& status, Hl2Telemetry* telemetry);
 
 // Upstream sequence numbers, packet by packet. The first packet seen sets the start; a later one that is not the
 // next counts the packets between as lost; one at or behind the expected number (a duplicate or a reordered
-// packet) is counted and otherwise ignored. Arithmetic wraps at 2^32.
+// packet) is counted and otherwise ignored. The HL2 counts in 20 bits and sends them in the 32-bit field
+// (usopenhpsdr1.v:89), so arithmetic wraps at 2^20: compared as 32 bits, its wrap to 0 after 1,048,576 packets
+// (45.6 min of one receiver) read as a million behind, every later packet as late, and no control packet went
+// back until the HL2's watchdog stopped the stream.
+constexpr uint32_t kHl2SequenceMask = (1u << 20) - 1;
+
 struct Hl2SequenceTracker {
     bool started;
     uint32_t expected;
