@@ -10,6 +10,11 @@ of the LO (the IQ slot converted with --swap-iq).
 
   python3 tools/decode_bench/score_ab.py BAND_DIR [--conv-dir conv] [--iq-flag=--balance] [--jobs 4]
 
+With --arm-field FIELD the arms are that manifest field's values instead of IQ and audio, in the
+order they first appear, every slot converted by its own mode_tag: an HL2 run with
+tools/hl2_record.py --lna-ab scores as --arm-field lna_arm_db, the first arm's turns paired against
+the second's.
+
 Needs `jt9` (WSJT-X) on PATH and tools/iq_convert and tools/decode_recall built (`make -C`).
 Conversions go in BAND_DIR/CONV_DIR, so a run with other --iq-flag options keeps its own.
 How the 2026-11-02 corpus was scored with it: tools/decode_bench/corpus/qmx-2026-11-02/README.md.
@@ -76,6 +81,7 @@ def main():
     ap.add_argument("--normalize-db", type=float, default=-20, help="output RMS, dBFS, both arms")
     ap.add_argument("--iq-flag", action="append", default=[], help="extra iq_convert flag for IQ slots (repeatable)")
     ap.add_argument("--jobs", type=int, default=4)
+    ap.add_argument("--arm-field", help="split arms by this manifest field instead of IQ against audio")
     a = ap.parse_args()
     recs = [json.loads(l) for l in open(os.path.join(a.band_dir, "manifest.jsonl"))]
     with Pool(a.jobs) as p:
@@ -83,9 +89,11 @@ def main():
 
     print(f"{a.band_dir}: {len(res)} slots, dial {recs[0].get('dial_hz')}, "
           f"overflows {sum(r['overflows'] for r in recs)}, iq flags {a.iq_flag or 'none'}")
+    arm_of = {r["file"]: (str(r.get(a.arm_field)) if a.arm_field else r["mode_tag"]) for r in recs}
+    arms = list(dict.fromkeys(arm_of[r["file"]] for r in recs)) if a.arm_field else ["iq", "audio"]
     images = []
-    for tag in ("iq", "audio"):
-        rows = [r for r in res if r[1] == tag]
+    for tag in arms:
+        rows = [r for r in res if arm_of[r[0]] == tag]
         if not rows:
             continue
         jt = [len(r[2]) for r in rows]
@@ -93,27 +101,29 @@ def main():
         hit = sum(len(set(r[3]) & set(r[2])) for r in rows)
         hit4 = sum(len(set(r[4]) & set(r[2])) for r in rows)
         snrs = [s for r in rows for s, _ in r[2].values()]
-        print(f"  {tag:5s} {len(rows):3d} slots  jt9 {st.mean(jt):5.1f}/slot (median {st.median(jt):4.1f})  "
+        print(f"  {(a.arm_field + '=' if a.arm_field else '') + tag:5s} {len(rows):3d} slots  jt9 {st.mean(jt):5.1f}/slot (median {st.median(jt):4.1f})  "
               f"ours {st.mean(ours):5.1f}/slot ({100 * hit / max(1, sum(jt)):5.1f}% of jt9)  "
               f"t4/f2 {st.mean(len(r[4]) for r in rows):5.1f}/slot ({100 * hit4 / max(1, sum(jt)):5.1f}% of jt9)  "
               f"jt9 SNR median {st.median(snrs) if snrs else float('nan'):+.0f} dB")
         images += [d for r in rows for d in (r[5] or [])]
 
-    # Turns: runs of consecutive slots in one mode. Each IQ turn against the audio turn after it.
+    # Turns: runs of consecutive slots in one arm. Each first-arm turn against the second-arm turn after it.
+    first, second = (arms + [None, None])[:2]
     turns = []
     for r in res:
-        if turns and turns[-1][0][1] == r[1]:
+        if turns and arm_of[turns[-1][0][0]] == arm_of[r[0]]:
             turns[-1].append(r)
         else:
             turns.append([r])
     dj, do = [], []
     for t1, t2 in zip(turns, turns[1:]):
-        if t1[0][1] == "iq" and t2[0][1] == "audio":
+        if arm_of[t1[0][0]] == first and arm_of[t2[0][0]] == second:
             dj.append(sum(len(r[2]) for r in t1) - sum(len(r[2]) for r in t2))
             do.append(sum(len(r[3]) for r in t1) - sum(len(r[3]) for r in t2))
     if len(dj) > 1:
         se = lambda d: st.stdev(d) / len(d) ** 0.5
-        print(f"  paired IQ−audio per turn ({len(dj)} pairs): jt9 {st.mean(dj):+.2f} ± {se(dj):.2f}, "
+        label = f"{first}−{second}" if a.arm_field else "IQ−audio"
+        print(f"  paired {label} per turn ({len(dj)} pairs): jt9 {st.mean(dj):+.2f} ± {se(dj):.2f}, "
               f"ours {st.mean(do):+.2f} ± {se(do):.2f}  (± one standard error)")
     if images:
         print(f"  image rejection from {len(images)} wrong-side decodes: median {st.median(images):.0f} dB, "

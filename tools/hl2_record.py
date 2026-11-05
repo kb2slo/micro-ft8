@@ -50,6 +50,11 @@ the HL2's watchdog, finds the radio again and carries on with that entry's remai
 over --max-temp-c, a disk with too little room for the next entry, or a clock that says it is not
 synced stops the run.
 
+**--lna-ab A,B[,N]** holds the LNA instead of stepping it: at A dB for N slots (default 2), then B for N,
+in turn, each change sent 0.5 s before a boundary, in the slot's tail where FT8 sends nothing. Each
+manifest line carries `lna_arm_db`, and score_ab.py --arm-field lna_arm_db pairs the arms, so a run
+measures what a lower gain costs in decodes (docs/roadmap/hl2-support.md, Open: the LNA).
+
 Python 3 only, no packages. Ctrl-C once: finish the current slot, then stop. Twice: stop now and
 delete the unfinished .wav.part files.
 
@@ -233,7 +238,8 @@ class _Tap:
 class Hl2Stream:
     """The HL2 as qmx_record.Recorder's open_stream() object: start(), stop(), close()."""
 
-    def __init__(self, sock, hl2, dials, log=print, clock=time.time, max_temp_c=55.0, start_utc=None):
+    def __init__(self, sock, hl2, dials, log=print, clock=time.time, max_temp_c=55.0, start_utc=None,
+                 lna_ab=None):
         self.sock, self.hl2, self.log, self.clock = sock, hl2, log, clock
         self.dials = list(dials)
         self.receivers = len(self.dials)
@@ -244,7 +250,8 @@ class Hl2Stream:
         self.n2adr = n2adr_receive_filters(max(self.dials))
         self.config = config_register(self.n2adr, self.receivers)
         self.ncos = [nco_register(hz, k) for k, hz in enumerate(self.dials)]
-        self.lna_db = LNA_START_DB
+        self.lna_ab = lna_ab  # (A dB, B dB, slots per turn): the LNA held, in turns, instead of stepped
+        self.lna_db = lna_ab[0] if lna_ab else LNA_START_DB
         self.lna = lna_register(self.lna_db)
         self.fill = bytes(2 * samples_per_frame(self.receivers) * qmx_record.FRAME_BYTES)
         self.callbacks = [None] * self.receivers
@@ -260,6 +267,11 @@ class Hl2Stream:
     def tap(self, k):
         return _Tap(self, k).attach
 
+    def lna_arm(self, i):
+        """The LNA gain slot i is recorded at, under --lna-ab."""
+        a, b, n = self.lna_ab
+        return a if (i // n) % 2 == 0 else b
+
     def _slot(self, now):
         if self.start_utc is None or now < self.start_utc:
             return None
@@ -269,6 +281,8 @@ class Hl2Stream:
                              "n2adr": self.n2adr, "lna_db_start": self.lna_db, "lna_db_end": self.lna_db,
                              "status_words": 0, "clipped_status_words": 0, "lost_packets": 0,
                              "late_packets": 0, "temp_c_min": None, "temp_c_max": None}
+            if self.lna_ab:
+                self.stats[i]["lna_arm_db"] = self.lna_arm(i)
         return self.stats[i]
 
     def slot_stats(self, k, rec):
@@ -322,7 +336,14 @@ class Hl2Stream:
                 if slot is not None:
                     slot["status_words"] += 1
                     slot["clipped_status_words"] += clipped
-        if self.next_lna is None:
+        if self.lna_ab and self.start_utc is not None:
+            # The next slot's gain from 0.5 s before its boundary, in the tail FT8 does not use.
+            want = self.lna_arm(max(0, int((now + 0.5 - self.start_utc) // qmx_record.SLOT_S)))
+            if want != self.lna_db:
+                self.lna_db = want
+                self.lna = lna_register(want)
+                self.log(f"LNA {want:+d} dB for the next slot (--lna-ab)")
+        elif self.next_lna is None:
             self.next_lna = now + 1.0
         elif now >= self.next_lna:
             if self.window[1] * 100 > self.window[0] and self.lna_db > LNA_FLOOR_DB:
@@ -488,7 +509,8 @@ def record_entry(args, dials, slots, out_dirs, log=print):
         log(f"HL2 at {host}: gateware {info['gateware']}, {info['temperature_c']} C; "
             f"{' + '.join(band_name(d) for d in dials)}, {slots - done} slot(s)")
         start = qmx_record.next_boundary(time.time() + qmx_record.LEAD_S)
-        stream = Hl2Stream(sock, (host, PORT), dials, log=log, max_temp_c=args.max_temp_c, start_utc=start)
+        stream = Hl2Stream(sock, (host, PORT), dials, log=log, max_temp_c=args.max_temp_c, start_utc=start,
+                           lna_ab=args.lna_ab)
         recs = []
         for k, (dial, out_dir) in enumerate(zip(dials, out_dirs)):
             rec = qmx_record.Recorder(stream.tap(k), dict(
@@ -526,6 +548,19 @@ def record_entry(args, dials, slots, out_dirs, log=print):
     return None
 
 
+def parse_lna_ab(text):
+    """(A, B, N) from A,B or A,B,N: two gains in -12..+48 dB and the slots each turn lasts."""
+    parts = [int(x) for x in text.split(",")]
+    if len(parts) not in (2, 3):
+        raise argparse.ArgumentTypeError("--lna-ab is A,B or A,B,N")
+    a, b, n = parts[0], parts[1], parts[2] if len(parts) == 3 else 2
+    for g in (a, b):
+        lna_register(g)
+    if a == b or n < 1:
+        raise argparse.ArgumentTypeError("--lna-ab needs two different gains and N of 1 or more")
+    return a, b, n
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--bind", required=True, help="this computer's address on the HL2's network")
@@ -535,6 +570,7 @@ def main():
     ap.add_argument("--out", required=True, help="output directory (never inside git)")
     ap.add_argument("--take", action="store_true", help="start even if the HL2 reports it is streaming")
     ap.add_argument("--max-temp-c", type=float, default=55.0, help="stop when the HL2 reports more (default 55)")
+    ap.add_argument("--lna-ab", type=parse_lna_ab, help="A,B[,N]: hold the LNA at A then B dB, N slots each (default 2)")
     n = ap.add_mutually_exclusive_group()
     n.add_argument("--slots", type=int, help="with --dial-hz: stop after this many slots")
     n.add_argument("--minutes", type=float, help="with --dial-hz: stop after this many minutes of slots")
