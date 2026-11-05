@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Experiments — Micro-FT8</title>
+<meta name="description" content="Bench and on-air measurements from the Micro-FT8 project, each dated and linked to its method. Experiments, not features.">
+<link rel="stylesheet" href="experiments.css">
+<main>
+  <nav class="crumbs"><a href="/">Micro-FT8</a> › Experiments</nav>
+  <p class="eyebrow">Micro-FT8 · Experiments</p>
+  <h1>Experiments</h1>
+  <p class="lead">
+    Measurements from the bench and the air, as they ran: each one dated, with its method
+    and, where it has one, its corpus. They are experiments, not features: a result here says
+    nothing about what the station does until it ships.
+  </p>
+
+  <!-- One <li> per experiment, newest first. Its folder holds its page and runs/index.json,
+       whose first run's date fills the "Latest run" line. docs/architecture/webapp.md, Experiments. -->
+  <ul class="experiments">
+    <li class="card" data-runs="four-band/runs/index.json">
+      <h3><a href="four-band/">Four bands at once</a></h3>
+      <p>Which of 10, 15, 20 and 40&nbsp;m were open through a day, heard on one Hermes-Lite&nbsp;2 with four receivers.</p>
+      <p class="meta">Latest run: <span data-latest>see the experiment</span></p>
+    </li>
+  </ul>
+
+  <footer>
+    <p>
+      The data and the tools that built it are on
+      <a href="https://github.com/kb2slo/micro-ft8">GitHub</a>.
+    </p>
+  </footer>
+</main>
+<script>
+(function () {
+  var months = ["January", "February", "March", "April", "May", "June", "July", "August",
+                "September", "October", "November", "December"];
+  function longDate(iso) {
+    var p = iso.split("-");
+    return Number(p[2]) + " " + months[Number(p[1]) - 1] + " " + p[0];
+  }
+  var items = document.querySelectorAll("[data-runs]");
+  Array.prototype.forEach.call(items, function (li) {
+    var out = li.querySelector("[data-latest]");
+    fetch(li.getAttribute("data-runs"))
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (idx) {
+        var run = idx.runs && idx.runs[0];
+        if (!run) return;
+        var n = idx.runs.length;
+        out.textContent = longDate(run.date) + (n > 1 ? " · " + n + " runs" : "");
+      })
+      .catch(function () { /* keep the fallback text */ });
+  });
+})();
+</script>
+</html>
