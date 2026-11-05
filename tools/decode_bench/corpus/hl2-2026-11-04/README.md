@@ -6,7 +6,7 @@ The Hermes-Lite 2 recorded on a computer, one band at a time, 30 minutes a band,
 
 * HL2, gateware 74.2, with the N2ADR filter board; the same 40 m end-fed half-wave as the QMX corpus, good on 40, 20, 15 and 10 m (its harmonics) and poor on the others; receive only.
 * Its Ethernet straight into a Linux laptop's port with a link-local address; the laptop's clock NTP-synced (0.3 ms from NTP during the run, 40 ms RMS).
-* `tools/hl2_record.py`, a plan of ten bands in turn, 120 slots each, the night bands waiting for dark; the HL2 driven as the P4 drives it: one receiver at 48 kHz, its NCO on the dial, the band's N2ADR filters, the LNA from +20 dB stepping down while the ADC clips. Started 20:21:45 UTC.
+* `tools/hl2_record.py`, a plan of ten bands in turn, 120 slots each, the night bands waiting for dark, 20:21 to 02:30 UTC, 1,200 slots, 4.9 GB; the HL2 driven as the P4 drives it: one receiver at 48 kHz, its NCO on the dial, the band's N2ADR filters, the LNA from +20 dB stepping down while the ADC clips. Started 20:21:45 UTC.
 * **Not the P4's figures.** Packets lost and late here describe the laptop's receive, not the P4's network stack, whose own counters are in its log ([main_board.md](../../../../docs/architecture/main_board.md), **Ethernet**). A direct cable does not reorder packets, so late packets are 0 on either.
 
 ## How it was scored
@@ -26,10 +26,11 @@ The Hermes-Lite 2 recorded on a computer, one band at a time, 30 minutes a band,
 | 40 m | good | 44.5 | 22.1 (49.5%) | 22.9 (51.2%) | −4 dB | 0 / 0 | 13 | +11 → +5 dB | 28.5–29.4 |
 | 60 m | poor | 2.0 | 1.4 (71.9%) | 1.4 (73.6%) | −10 dB | 0 / 0 | 11 | +11 → +8 dB | 28.3–29.4 |
 | 80 m | poor | 11.0 | 6.8 (61.5%) | 7.1 (64.9%) | −12 dB | 0 / 0 | 2 | +8 → +8 dB | 28.2–28.9 |
+| 160 m | poor | 3.2 | 2.4 (75.1%) | 2.5 (76.4%) | −10 dB | 0 / 0 | 16 | +20 → +20 dB | 28.6–29.6 |
 
-**Our share of `jt9` is the QMX's.** On the QMX corpus's 15 m I/Q (2026-11-02) ours was 16.6 of `jt9`'s 24.4 a slot, 68%; here 62–75% on every band up to about 22 `jt9` decodes a slot. 20 m at 50 a slot drops to 48%, and 40 m after dark at 44.5 to 50%, the crowded-band plateau the QMX corpus showed too (our decoder levels off near 25–27 a slot whatever `jt9` finds; [decode.md](../../../../docs/architecture/decode.md), **Subtraction**). So the HL2's receive chain costs our decoder nothing this measures; the gap is the decoder's, which rows kkap (subtraction from the audio) and qauk (AP decoding) work on. The decode counts themselves measure the band, not the radio: comparing the two radios needs both on one antenna at once (epic [knpp](../../../../docs/roadmap/hl2-support.md), **Later**).
+**Our share of `jt9` is the QMX's.** On the QMX corpus's 15 m I/Q (2026-11-02) ours was 16.6 of `jt9`'s 24.4 a slot, 68%; here 62–75% on every band up to about 22 `jt9` decodes a slot (160 m 75%). 20 m at 50 a slot drops to 48%, and 40 m after dark at 44.5 to 50%, the crowded-band plateau the QMX corpus showed too (our decoder levels off near 25–27 a slot whatever `jt9` finds; [decode.md](../../../../docs/architecture/decode.md), **Subtraction**). So the HL2's receive chain costs our decoder nothing this measures; the gap is the decoder's, which rows kkap (subtraction from the audio) and qauk (AP decoding) work on. The decode counts themselves measure the band, not the radio: comparing the two radios needs both on one antenna at once (epic [knpp](../../../../docs/roadmap/hl2-support.md), **Later**).
 
-**The LNA ends every band at +14 dB or lower, from a +20 dB start** (20 m at +11; 40 m after dark at +5, 15 dB down, with its share of `jt9` on the same plateau as 20 m's, so the steps are not what limits it there). Each stream's first second at +20 dB read 33 to 61% of its status words clipped, and one later burst stepped it again (epic, **Open**).
+**The LNA ends every band but 160 m at +14 dB or lower, from a +20 dB start** (20 m at +11; 40 m after dark at +5, 15 dB down, with its share of `jt9` on the same plateau as 20 m's, so the steps are not what limits it there). **160 m never stepped:** its first second did not clip, though it is the one band whose filter relays bypass the receive high-pass. So the first-second clipping on the other nine is probably not the relays switching but strong signals that 160 m's low-pass removes (everything above about 2.5 MHz, the broadcast bands among them). Each stream's first second at +20 dB read 33 to 61% of its status words clipped, and one later burst stepped it again (epic, **Open**).
 
 **The image check does not apply.** `score_ab.py` swaps I and Q to find each strong station's mirror, which on a QMX is its image across the LO; on the HL2, a direct-sampling radio, the far side of the NCO is real spectrum below the dial, so its "wrong-side" decodes (3 on 15 m, 9 on 20 m) are other stations, not images.
 
@@ -37,4 +38,4 @@ The Hermes-Lite 2 recorded on a computer, one band at a time, 30 minutes a band,
 
 **Which recorder ran.** One process recorded every band, with the code it loaded at 20:21 UTC: `tools/hl2_record.py` as it stood then, uncommitted on top of `1855ad7`, one receiver, the band plan and the failsafes; the four-receiver rewrite was committed (`57ee4e3`) after it started and did not run here. Each manifest's `recorder` is `git describe` of the worktree at each band's start, so it reads `1855ad7-dirty` (10–15 m), `62b3dd2` (17–20 m), `5119b3a-dirty` (30 m) and, once that worktree was removed, `unknown` (40 m on): the checkout's state, not the running code.
 
-160 m is added here when it is scored.
+**Not in the manifests:** the N2ADR filter byte. The code that ran predates that field; each band's byte follows from its dial (`hl2_n2adr_receive_filters()`), and `run.log` shows it.
