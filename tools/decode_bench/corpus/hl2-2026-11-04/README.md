@@ -25,8 +25,9 @@ The Hermes-Lite 2 recorded on a computer, one band at a time, 30 minutes a band,
 | 30 m | poor | 18.1 | 12.8 (70.6%) | 13.2 (72.9%) | −5 dB | 0 / 0 | 26 | +14 → +14 dB | 29.4–30.1 |
 | 40 m | good | 44.5 | 22.1 (49.5%) | 22.9 (51.2%) | −4 dB | 0 / 0 | 13 | +11 → +5 dB | 28.5–29.4 |
 | 60 m | poor | 2.0 | 1.4 (71.9%) | 1.4 (73.6%) | −10 dB | 0 / 0 | 11 | +11 → +8 dB | 28.3–29.4 |
+| 80 m | poor | 11.0 | 6.8 (61.5%) | 7.1 (64.9%) | −12 dB | 0 / 0 | 2 | +8 → +8 dB | 28.2–28.9 |
 
-**Our share of `jt9` is the QMX's.** On the QMX corpus's 15 m I/Q (2026-11-02) ours was 16.6 of `jt9`'s 24.4 a slot, 68%; here 64–75% on every band up to about 22 `jt9` decodes a slot. 20 m at 50 a slot drops to 48%, and 40 m after dark at 44.5 to 50%, the crowded-band plateau the QMX corpus showed too (our decoder levels off near 25–27 a slot whatever `jt9` finds; [decode.md](../../../../docs/architecture/decode.md), **Subtraction**). So the HL2's receive chain costs our decoder nothing this measures; the gap is the decoder's, which rows kkap (subtraction from the audio) and qauk (AP decoding) work on. The decode counts themselves measure the band, not the radio: comparing the two radios needs both on one antenna at once (epic [knpp](../../../../docs/roadmap/hl2-support.md), **Later**).
+**Our share of `jt9` is the QMX's.** On the QMX corpus's 15 m I/Q (2026-11-02) ours was 16.6 of `jt9`'s 24.4 a slot, 68%; here 62–75% on every band up to about 22 `jt9` decodes a slot. 20 m at 50 a slot drops to 48%, and 40 m after dark at 44.5 to 50%, the crowded-band plateau the QMX corpus showed too (our decoder levels off near 25–27 a slot whatever `jt9` finds; [decode.md](../../../../docs/architecture/decode.md), **Subtraction**). So the HL2's receive chain costs our decoder nothing this measures; the gap is the decoder's, which rows kkap (subtraction from the audio) and qauk (AP decoding) work on. The decode counts themselves measure the band, not the radio: comparing the two radios needs both on one antenna at once (epic [knpp](../../../../docs/roadmap/hl2-support.md), **Later**).
 
 **The LNA ends every band at +14 dB or lower, from a +20 dB start** (20 m at +11; 40 m after dark at +5, 15 dB down, with its share of `jt9` on the same plateau as 20 m's, so the steps are not what limits it there). Each stream's first second at +20 dB read 33 to 61% of its status words clipped, and one later burst stepped it again (epic, **Open**).
 
@@ -36,4 +37,4 @@ The Hermes-Lite 2 recorded on a computer, one band at a time, 30 minutes a band,
 
 **Which recorder ran.** One process recorded every band, with the code it loaded at 20:21 UTC: `tools/hl2_record.py` as it stood then, uncommitted on top of `1855ad7`, one receiver, the band plan and the failsafes; the four-receiver rewrite was committed (`57ee4e3`) after it started and did not run here. Each manifest's `recorder` is `git describe` of the worktree at each band's start, so it reads `1855ad7-dirty` (10–15 m), `62b3dd2` (17–20 m), `5119b3a-dirty` (30 m) and, once that worktree was removed, `unknown` (40 m on): the checkout's state, not the running code.
 
-80 m and 160 m are added here as they are scored.
+160 m is added here when it is scored.
