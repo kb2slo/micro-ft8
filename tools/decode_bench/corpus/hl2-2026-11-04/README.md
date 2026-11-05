@@ -33,6 +33,6 @@ The Hermes-Lite 2 recorded on a computer, one band at a time, 30 minutes a band,
 
 **Timing:** each slot's first packet arrived within −1 to +2 ms of its UTC boundary over each band, so the HL2's sample clock is within about 1 ppm of the laptop's (the QMX's ran about 150 ppm fast); `jt9`'s DT median on 15 m was 0.1 s.
 
-From 40 m on, each slot's manifest reads `recorder` `unknown`: the worktree the recorder ran from was removed mid-run, so its `git describe` found nothing. The code was the same throughout (`hl2-s1-codec` at `0ad476d`, merged as `485e91c`).
+**Which recorder ran.** One process recorded every band, with the code it loaded at 20:21 UTC: `tools/hl2_record.py` as it stood then, uncommitted on top of `1855ad7`, one receiver, the band plan and the failsafes; the four-receiver rewrite was committed (`57ee4e3`) after it started and did not run here. Each manifest's `recorder` is `git describe` of the worktree at each band's start, so it reads `1855ad7-dirty` (10–15 m), `62b3dd2` (17–20 m), `5119b3a-dirty` (30 m) and, once that worktree was removed, `unknown` (40 m on): the checkout's state, not the running code.
 
 The rest of the night bands (60, 80 and 160 m) are added here as they are scored.
