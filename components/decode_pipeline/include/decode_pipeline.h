@@ -5,26 +5,24 @@
 
 #include "decode_types.h"
 
-extern "C" {
-#include "common/monitor.h"
-}
+#include "ft8_audio_pipeline.h"
 
 // The decode/autoseq-arm/RTC-auto-sync pipeline (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)) -- extracted
 // out of main.cpp; this is what P4's "RX decode" milestone build-forces into
-// components/, per STYLE's module-placement rule). Called once per slot by
-// ft8_audio_pipeline_run() with a filled monitor_t, and the AGC gain it applied to
-// each waterfall block (decode_snr.h). Decodes and steps the clock on the decode
-// task, then hands the slot's decodes to decode_pipeline_apply().
-void decode_monitor_results(monitor_t* mon, const monitor_config_t* cfg, const float* block_gain);
+// components/, per STYLE's module-placement rule). Called once per slot of each channel by
+// ft8_audio_pipeline_run(), on the capture task, with the channel's finished slot. Decodes it
+// with the channel's own decode state (decode_core.h) and steps the clock on the decode task,
+// then hands the slot's decodes to decode_pipeline_apply().
+void decode_slot(const ft8_slot_t* slot);
 
-// The main loop's half of each decode: applies the slot decode_monitor_results()
+// The main loop's half of each decode: applies each channel's slot decode_slot()
 // last handed over -- the heard-grid and recently-worked tables, the sort,
 // autoseq_on_decodes(), arming, the decode ids and porta_emit_decode() -- so the
 // decode task touches none of them. Call it on every pass of the main loop,
 // before the slot cycle.
 void decode_pipeline_apply(void);
 
-// True while a decoded slot waits for decode_pipeline_apply(). The TX trigger
+// True while any channel's decoded slot waits for decode_pipeline_apply(). The TX trigger
 // holds on it as on decode_in_progress: a slot's decode is not applied until
 // the main loop has applied it.
 bool decode_pipeline_result_pending(void);

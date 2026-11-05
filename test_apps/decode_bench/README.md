@@ -4,8 +4,8 @@ docs/architecture/decode.md. Times the firmware's decode steps on the same corpu
 the device decodes exactly what the host does. There is no radio or USB audio, only the decoder.
 
 What it runs is `main/bench_core.c`: the firmware's per-block AGC and `monitor_process()` (as
-`ft8_audio_pipeline_run()` does), then `ftx_find_candidates()` / `ftx_decode_candidate()` / unpack (as
-`decode_monitor_results()` does). The configurations are in `main/bench_configs.h`, and the device image and
+`ft8_audio_pipeline_run()` does), then the firmware's own decode, `components/decode_pipeline/decode_core.c`,
+which `decode_slot()` drives too. The configurations are in `main/bench_configs.h`, and the device image and
 host binary share that one table.
 
 ## 1. Slots (once)

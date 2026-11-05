@@ -17,6 +17,19 @@
 // Same placement as the firmware's decode working set (memory.md).
 static DECODE_PSRAM_BSS decode_core_t s_core;
 
+#ifdef ESP_PLATFORM
+// On the device the monitor works in static PSRAM buffers sized as the firmware's channel's (FT8 at t2/f2,
+// ft8_audio_pipeline.cpp), which is what the firmware times. Host tools malloc to size to run any configuration.
+#define BENCH_NFFT_MAX 1920
+#define BENCH_WF_BYTES 161076
+static DECODE_PSRAM_BSS WF_ELEM_T s_mag[BENCH_WF_BYTES / sizeof(WF_ELEM_T)];
+static DECODE_PSRAM_BSS uint8_t s_fft_work[MONITOR_FFT_WORK_BYTES(BENCH_NFFT_MAX)] __attribute__((aligned(16)));
+static DECODE_PSRAM_BSS float s_window[BENCH_NFFT_MAX];
+static DECODE_PSRAM_BSS float s_last_frame[BENCH_NFFT_MAX];
+static DECODE_PSRAM_BSS kiss_fft_scalar s_timedata[BENCH_NFFT_MAX];
+static DECODE_PSRAM_BSS kiss_fft_cpx s_freqdata[BENCH_NFFT_MAX / 2 + 1];
+#endif
+
 // No callsign hash table: hashed calls unpack as "<...>", which is how the scorer normalises them anyway.
 static bool bench_lookup_hash(ftx_callsign_hash_type_t hash_type, uint32_t hash, char* callsign)
 {
@@ -112,8 +125,16 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
         .protocol = FTX_PROTOCOL_FT8,
     };
     monitor_t monitor;
-    memset(&monitor, 0, sizeof(monitor));
+#ifdef ESP_PLATFORM
+    const monitor_buffers_t buffers = {
+        .mag = s_mag, .mag_bytes = sizeof(s_mag), .fft_work = s_fft_work, .fft_work_bytes = sizeof(s_fft_work),
+        .window = s_window, .last_frame = s_last_frame, .timedata = s_timedata, .freqdata = s_freqdata,
+        .nfft_max = BENCH_NFFT_MAX,
+    };
+    monitor_init_buffers(&monitor, &monitor_config, &buffers);
+#else
     monitor_init(&monitor, &monitor_config);
+#endif
     if (monitor.wf.mag == NULL || monitor.window == NULL) {
         monitor_free(&monitor);
         return;
@@ -159,7 +180,7 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
     int decoded = 0;
     int64_t find_us = 0;
     int64_t decode_us = 0;
-    // The SNR's preparation is on the decode clock, as in decode_monitor_results().
+    // The SNR's preparation is on the decode clock, as in decode_slot().
     int64_t snr_t0 = clock_us();
     decode_core_begin(&s_core, &monitor, block_gain, &core_config);
     decode_us += clock_us() - snr_t0;

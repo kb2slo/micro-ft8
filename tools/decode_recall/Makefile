@@ -17,7 +17,7 @@ OPT  ?= -O2
 .PHONY: all
 all: decode_recall
 
-CFLAGS := $(OPT) -std=gnu11 -DMONITOR_NFFT_MAX=3840 \
+CFLAGS := $(OPT) -std=gnu11 \
           -I$(BENCH) -I$(LIB) -I$(LIB)/vendor \
           -I$(ROOT)/components/decode_pipeline/include -Wno-format
 

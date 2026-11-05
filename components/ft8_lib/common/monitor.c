@@ -1,26 +1,11 @@
 #include "monitor.h"
 #include "common.h"
-#include "decode_psram.h"
 
 #define LOG_LEVEL LOG_INFO
 #include "ft8/debug.h"
 
 #include <stdlib.h>
 #include <string.h>
-
-// Maximum nfft for static buffer sizing.
-// FT8 at 6 kHz, freq_osr=1: nfft = 6000 * 0.160 * 1 = 960
-// freq_osr=2 needs 1920. The P4 build sets that (poe_p4/CMakeLists.txt). The
-// default suits tx_e2e, which decodes at freq_osr=1.
-#ifndef MONITOR_NFFT_MAX
-#define MONITOR_NFFT_MAX 960
-#endif
-
-static float* window_buf = NULL;
-static float* last_frame_buf = NULL;
-static WF_ELEM_T* waterfall_mag_buf = NULL;
-static uint8_t* fft_work_buf = NULL;
-static bool fft_work_is_static = false;
 
 static float hann_i(int i, int N)
 {
@@ -58,33 +43,29 @@ static void waterfall_init(ftx_waterfall_t* me, int max_blocks, int num_bins, in
     me->time_osr = time_osr;
     me->freq_osr = freq_osr;
     me->block_stride = (time_osr * freq_osr * num_bins);
-    me->mag = waterfall_mag_buf;
 }
 
-// The waterfall (docs/architecture/memory.md). A device build sets MONITOR_WF_STATIC_BYTES to
-// the largest waterfall it runs, and the waterfall is that one static buffer: the linker places
-// it or the build fails, and heap fragmentation cannot take it away. On the P4 it lives in
-// PSRAM (DECODE_PSRAM_BSS / row p3x6); DMA buffers never do. A configuration that needs more
-// is refused, never moved to the heap; a silent fallback is how a static buffer once sat unused
-// in the image. Host tools run any configuration, so without the define the waterfall is
-// malloc'd to size and freed by monitor_free().
-#ifdef MONITOR_WF_STATIC_BYTES
-static DECODE_PSRAM_BSS WF_ELEM_T waterfall_static_buf[MONITOR_WF_STATIC_BYTES / sizeof(WF_ELEM_T)];
-#endif
-
-static void waterfall_free(ftx_waterfall_t* me)
+void monitor_sizes(const monitor_config_t* cfg, monitor_sizes_t* sizes)
 {
-    if (me && me->mag)
-    {
-#ifndef MONITOR_WF_STATIC_BYTES
-        free(me->mag);
-#endif
-        me->mag = NULL;
-    }
+    float slot_time = (cfg->protocol == FTX_PROTOCOL_FT4) ? FT4_SLOT_TIME : FT8_SLOT_TIME;
+    float symbol_period = (cfg->protocol == FTX_PROTOCOL_FT4) ? FT4_SYMBOL_PERIOD : FT8_SYMBOL_PERIOD;
+    const int block_size = (int)(cfg->sample_rate * symbol_period);
+    sizes->nfft = block_size * cfg->freq_osr;
+    // Enough blocks to fit the entire FT8/FT4 slot
+    const int max_blocks = (int)(slot_time / symbol_period);
+    const int num_bins = ((int)(cfg->f_max * symbol_period) + 1) - (int)(cfg->f_min * symbol_period);
+    sizes->mag_bytes = (size_t)max_blocks * cfg->time_osr * cfg->freq_osr * num_bins * sizeof(WF_ELEM_T);
+    size_t fft_needed = 0;
+    kiss_fftr_alloc(sizes->nfft, 0, NULL, &fft_needed);
+    sizes->fft_work_bytes = fft_needed;
 }
 
-void monitor_init(monitor_t* me, const monitor_config_t* cfg)
+// Every buffer is the caller's (docs/architecture/memory.md): on the P4 one static set per channel in PSRAM,
+// so a second monitor never shares the first's frame, waterfall or FFT scratch. A buffer smaller than
+// this configuration needs refuses it, logging both sizes; nothing falls back to the heap.
+void monitor_init_buffers(monitor_t* me, const monitor_config_t* cfg, const monitor_buffers_t* buffers)
 {
+    memset(me, 0, sizeof(*me));
     float slot_time = (cfg->protocol == FTX_PROTOCOL_FT4) ? FT4_SLOT_TIME : FT8_SLOT_TIME;
     float symbol_period = (cfg->protocol == FTX_PROTOCOL_FT4) ? FT4_SYMBOL_PERIOD : FT8_SYMBOL_PERIOD;
     // Compute DSP parameters that depend on the sample rate
@@ -94,6 +75,8 @@ void monitor_init(monitor_t* me, const monitor_config_t* cfg)
     me->fft_norm = 2.0f / me->nfft;
     // const int len_window = 1.8f * me->block_size; // hand-picked and optimized
 
+    monitor_sizes_t need;
+    monitor_sizes(cfg, &need);
     // Allocate enough blocks to fit the entire FT8/FT4 slot in memory
     const int max_blocks = (int)(slot_time / symbol_period);
     // Keep only FFT bins in the specified frequency range (f_min/f_max)
@@ -104,78 +87,33 @@ void monitor_init(monitor_t* me, const monitor_config_t* cfg)
     LOG(LOG_INFO, "Block size = %d\n", me->block_size);
     LOG(LOG_INFO, "Subblock size = %d\n", me->subblock_size);
 
-    // FFT work buffer in BSS, not the heap: long-lived, so static
-    // (docs/architecture/memory.md). kiss_fftr_alloc's size, 32-bit float:
-    // 3 pointers + kiss_fft_state (272) + (nfft/2-1) twiddles +
-    // (nfft/2)*3/2 super-twiddles, each cpx 8 bytes. +32 for slack.
-    // Sized from MONITOR_NFFT_MAX.
-#define KISS_FFTR_PLAN_BYTES(nfft) \
-    (12 + (272 + 8 * ((nfft) / 2 - 1)) + 8 * (((nfft) / 2) * 3 / 2) + 32)
-    static DECODE_PSRAM_BSS uint8_t fft_work_static[KISS_FFTR_PLAN_BYTES(MONITOR_NFFT_MAX)]
-        __attribute__((aligned(16)));
-    size_t fft_needed = 0;
-    kiss_fftr_alloc(me->nfft, 0, NULL, &fft_needed);
-    if (fft_needed <= sizeof(fft_work_static))
+    if (buffers->nfft_max < me->nfft || buffers->mag_bytes < need.mag_bytes ||
+        buffers->fft_work_bytes < need.fft_work_bytes)
     {
-        fft_work_buf = fft_work_static;
-        fft_work_is_static = true;
-        LOG(LOG_INFO, "FFT plan using static buffer (%zu / %zu bytes)\n",
-            fft_needed, sizeof(fft_work_static));
-    }
-    else
-    {
-        fft_work_buf = (uint8_t*)malloc(fft_needed);
-        fft_work_is_static = false;
-    }
-    if (fft_work_buf == NULL || fft_plan_init_with_buffer(&me->fft_plan, me->nfft, fft_work_buf, fft_needed) != 0)
-    {
-        LOG(LOG_ERROR, "FFT plan init failed (needed %zu)\n", fft_needed);
+        LOG(LOG_ERROR, "Monitor needs nfft %d, waterfall %zu, FFT plan %zu bytes; buffers are %d, %zu, %zu\n",
+            me->nfft, need.mag_bytes, need.fft_work_bytes, buffers->nfft_max, buffers->mag_bytes,
+            buffers->fft_work_bytes);
         return;
     }
-
-    int block_stride = cfg->time_osr * cfg->freq_osr * num_bins;
-    size_t wf_bytes = (size_t)max_blocks * block_stride * sizeof(WF_ELEM_T);
-#ifdef MONITOR_WF_STATIC_BYTES
-    if (wf_bytes > sizeof(waterfall_static_buf))
+    if (fft_plan_init_with_buffer(&me->fft_plan, me->nfft, buffers->fft_work, buffers->fft_work_bytes) != 0)
     {
-        LOG(LOG_ERROR, "Waterfall needs %zu bytes, static buffer is %zu\n", wf_bytes, sizeof(waterfall_static_buf));
-        monitor_free(me);
+        LOG(LOG_ERROR, "FFT plan init failed (needed %zu)\n", need.fft_work_bytes);
         return;
     }
-    waterfall_mag_buf = waterfall_static_buf;
-#else
-    waterfall_mag_buf = (WF_ELEM_T*)malloc(wf_bytes);
-    if (waterfall_mag_buf == NULL)
-    {
-        LOG(LOG_ERROR, "Waterfall alloc failed (%zu bytes)\n", wf_bytes);
-        monitor_free(me);
-        return;
-    }
-#endif
 
     waterfall_init(&me->wf, max_blocks, num_bins, cfg->time_osr, cfg->freq_osr);
-    me->wf.mag = waterfall_mag_buf;
+    me->wf.mag = buffers->mag;
     me->wf.protocol = cfg->protocol;
 
-    // Static window and analysis frame — avoids heap fragmentation
-    static DECODE_PSRAM_BSS float window_static[MONITOR_NFFT_MAX];
-    static DECODE_PSRAM_BSS float last_frame_static[MONITOR_NFFT_MAX];
-    if (me->nfft > MONITOR_NFFT_MAX)
-    {
-        LOG(LOG_ERROR, "Monitor nfft %d exceeds static buffer %d\n", me->nfft, MONITOR_NFFT_MAX);
-        monitor_free(me);
-        return;
-    }
-    window_buf = window_static;
-    last_frame_buf = last_frame_static;
-    memset(last_frame_buf, 0, sizeof(float) * me->nfft);
-
-    me->window = window_buf;
+    me->timedata = buffers->timedata;
+    me->freqdata = buffers->freqdata;
+    me->last_frame = buffers->last_frame;
+    memset(me->last_frame, 0, sizeof(float) * me->nfft);
+    me->window = buffers->window;
     for (int i = 0; i < me->nfft; ++i)
     {
         me->window[i] = me->fft_norm * hann_i(i, me->nfft);
     }
-    me->last_frame = last_frame_buf;
 
     LOG(LOG_INFO, "N_FFT = %d\n", me->nfft);
 
@@ -196,18 +134,60 @@ void monitor_init(monitor_t* me, const monitor_config_t* cfg)
     me->max_mag = -120.0f;
 }
 
+// Host tools run any configuration, so each buffer is malloc'd to size here and freed by monitor_free().
+// Device code calls monitor_init_buffers() with static buffers instead.
+void monitor_init(monitor_t* me, const monitor_config_t* cfg)
+{
+    monitor_sizes_t need;
+    monitor_sizes(cfg, &need);
+    monitor_buffers_t b = {
+        .mag = (WF_ELEM_T*)malloc(need.mag_bytes),
+        .mag_bytes = need.mag_bytes,
+        .fft_work = (uint8_t*)malloc(need.fft_work_bytes),
+        .fft_work_bytes = need.fft_work_bytes,
+        .window = (float*)malloc(sizeof(float) * need.nfft),
+        .last_frame = (float*)malloc(sizeof(float) * need.nfft),
+        .timedata = (kiss_fft_scalar*)malloc(sizeof(kiss_fft_scalar) * need.nfft),
+        .freqdata = (kiss_fft_cpx*)malloc(sizeof(kiss_fft_cpx) * (need.nfft / 2 + 1)),
+        .nfft_max = need.nfft,
+    };
+    if (!b.mag || !b.fft_work || !b.window || !b.last_frame || !b.timedata || !b.freqdata)
+    {
+        LOG(LOG_ERROR, "Monitor alloc failed (waterfall %zu bytes)\n", need.mag_bytes);
+        memset(me, 0, sizeof(*me));
+    }
+    else
+    {
+        monitor_init_buffers(me, cfg, &b);
+    }
+    if (me->wf.mag == NULL)
+    {
+        free(b.mag);
+        free(b.fft_work);
+        free(b.window);
+        free(b.last_frame);
+        free(b.timedata);
+        free(b.freqdata);
+        return;
+    }
+    me->owned = b;
+}
+
 void monitor_free(monitor_t* me)
 {
-    waterfall_free(&me->wf);
     fft_plan_free(&me->fft_plan);
-    // window_buf and last_frame_buf are static arrays — just NULL the pointers
-    window_buf = NULL;
-    last_frame_buf = NULL;
-    if (fft_work_buf && !fft_work_is_static) {
-        free(fft_work_buf);
-    }
-    fft_work_buf = NULL;
-    fft_work_is_static = false;
+    free(me->owned.mag);
+    free(me->owned.fft_work);
+    free(me->owned.window);
+    free(me->owned.last_frame);
+    free(me->owned.timedata);
+    free(me->owned.freqdata);
+    memset(&me->owned, 0, sizeof(me->owned));
+    me->wf.mag = NULL;
+    me->window = NULL;
+    me->last_frame = NULL;
+    me->timedata = NULL;
+    me->freqdata = NULL;
 }
 
 void monitor_reset(monitor_t* me)
@@ -226,14 +206,9 @@ void monitor_process(monitor_t* me, const float* frame)
     int offset = me->wf.num_blocks * me->wf.block_stride;
     int frame_pos = 0;
 
-    // Static FFT work buffers — avoids heap allocation in the hot path
-    static DECODE_PSRAM_BSS kiss_fft_scalar timedata[MONITOR_NFFT_MAX];
-    static DECODE_PSRAM_BSS kiss_fft_cpx   freqdata[MONITOR_NFFT_MAX / 2 + 1];
-    if (me->nfft > MONITOR_NFFT_MAX)
-    {
-        LOG(LOG_ERROR, "nfft %d exceeds static buffer %d\n", me->nfft, MONITOR_NFFT_MAX);
-        return;
-    }
+    // This monitor's FFT scratch, so monitors on different tasks do not share it
+    kiss_fft_scalar* timedata = me->timedata;
+    kiss_fft_cpx* freqdata = me->freqdata;
 
     // Loop over block subdivisions
     for (int time_sub = 0; time_sub < me->wf.time_osr; ++time_sub)

@@ -55,6 +55,12 @@ static bool hl2_decode_should_stop(void *ctx) {
     return hl2_audio_should_stop(ctx) || !radio_select_hl2_feeds_decode();
 }
 
+// The one channel the P4 receives today (docs/roadmap/several-channels.md): the station's mode, at t2/f2.
+// The QMX's and the HL2's run on it in turn, never together.
+constexpr int kRxChannel = 0;
+constexpr int kRxTimeOsr = 2;
+constexpr int kRxFreqOsr = 2;
+
 static void decode_audio_task(void * /*arg*/) {
     const ft8_audio_pipeline_config_t hl2_cfg = {
         .tag = TAG,
@@ -64,6 +70,10 @@ static void decode_audio_task(void * /*arg*/) {
         .on_block_processed = nullptr,
         .on_activity = send_activity,
         .take_frontend_us = hl2_audio_take_frontend_us,
+        .channel = kRxChannel,
+        .mode = g_protocol,
+        .time_osr = kRxTimeOsr,
+        .freq_osr = kRxFreqOsr,
     };
     ft8_audio_pipeline_config_t pipe_cfg = {
         .tag = TAG,
@@ -73,6 +83,10 @@ static void decode_audio_task(void * /*arg*/) {
         .on_block_processed = nullptr,
         .on_activity = send_activity,
         .take_frontend_us = qmx_audio_take_frontend_us,
+        .channel = kRxChannel,
+        .mode = g_protocol,
+        .time_osr = kRxTimeOsr,
+        .freq_osr = kRxFreqOsr,
     };
     // QMX CAT/UAC comes back only after a radio power cycle (QMX quirk);
     // keep this task alive so a replug restarts decode without resetting P4.

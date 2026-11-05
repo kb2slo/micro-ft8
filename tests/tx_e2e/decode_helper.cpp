@@ -229,14 +229,13 @@ DecodeResult decode_pcm(const float* samples, int n_samples, int fs,
                         ftx_protocol_t proto) {
     DecodeResult result = {false, "", 0.0f};
 
-    // Use firmware-compatible settings to fit monitor.c's static buffer (MONITOR_NFFT_MAX=960)
-    // At 6kHz with freq_osr=1: nfft = 960, matches static allocation exactly
+    // freq_osr 1: nfft 960, the settings these goldens are decoded at (the firmware runs freq_osr 2)
     monitor_config_t cfg = {
         .f_min = 200.0f,
         .f_max = 2900.0f,
         .sample_rate = fs,        // Use input sample rate (test provides 6kHz)
         .time_osr = 2,            // Firmware default
-        .freq_osr = 1,            // Critical: >= 2 would exceed MONITOR_NFFT_MAX (960)
+        .freq_osr = 1,
         .protocol = proto
     };
 

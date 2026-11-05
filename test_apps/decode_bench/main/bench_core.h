@@ -1,9 +1,9 @@
 #pragma once
 
-// Decode benchmark core (docs/architecture/decode.md). Runs the firmware's decode steps on one slot:
-// per-block AGC and monitor_process() as ft8_audio_pipeline_run() does, then ftx_find_candidates() /
-// ftx_decode_candidate() / ftx_message_decode() as decode_monitor_results() does. Portable C: the same
-// file builds into the device image, the host parity binary, and tools/decode_recall.
+// Decode benchmark core (docs/architecture/decode.md). Runs the firmware's decode on one slot: per-block
+// AGC and monitor_process() as ft8_audio_pipeline_run() does, then the firmware's own decode
+// (components/decode_pipeline/decode_core.c, which decode_slot() drives too). Portable C: the same file
+// builds into the device image, the host parity binary, and tools/decode_recall.
 //
 // A zero in sample_rate, agc, or mag_levels means the firmware default (6 kHz, AGC on, 8-bit cells),
 // so the device benchmark's existing initialisers keep today's behaviour.
@@ -22,7 +22,7 @@ typedef struct {
     const char* name;
     int time_osr;
     int freq_osr;
-    int max_candidates;   // decode_monitor_results(): max_cand
+    int max_candidates;   // decode_slot(): max_cand
     int max_decodes;      // DEC_MAX (RX list size)
     int min_score;        // ftx_find_candidates() argument
     int ldpc_iterations;  // ftx_decode_candidate() argument

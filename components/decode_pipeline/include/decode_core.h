@@ -2,7 +2,7 @@
 
 // One slot's decode over a filled waterfall: the candidate search, LDPC, the SNR, subtraction and the
 // retry skip (docs/architecture/decode.md). Portable C, and the only copy: the P4's
-// decode_monitor_results() and the decode bench and recall harness's bench_run_slot() both drive it, so
+// decode_slot() and the decode bench and recall harness's bench_run_slot() both drive it, so
 // the recall floors score the code the P4 runs.
 //
 // The work is in steps so a scheduler can order and share it (docs/roadmap/several-channels.md, The
