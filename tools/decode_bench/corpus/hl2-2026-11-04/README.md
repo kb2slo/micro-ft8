@@ -1,6 +1,20 @@
 # HL2 band survey, 2026-11-04
 
-The Hermes-Lite 2 recorded on a computer, one band at a time, 30 minutes a band, and scored with our decoder against `jt9` on the same samples: what row mg9c (HL2 receive, one band) asked for, and the HL2 counterpart of the [QMX corpus](../qmx-2026-11-02/README.md). The audio is not in git; it goes up as a GitHub release when the run is complete, one tar per band. The manifests here are copies, so every file's SHA-256 is in git.
+The Hermes-Lite 2 recorded on a computer, one band at a time, 30 minutes a band, and scored with our decoder against `jt9` on the same samples: what row mg9c (HL2 receive, one band) asked for, and the HL2 counterpart of the [QMX corpus](../qmx-2026-11-02/README.md). The audio is not in git. It is the release [`corpus-2026-11-04-hl2`](https://github.com/kb2slo/micro-ft8/releases/tag/corpus-2026-11-04-hl2), one tar per band holding that band's WAVs and its `manifest.jsonl`, and the run's log. The manifests here are copies, so every file's SHA-256 is in git.
+
+| File | SHA-256 |
+| --- | --- |
+| `hl2-survey-2026-11-04-10m.tar` | `4d13d88037ec4de6e432d07790b1a52a819ef6353d5719fec45ae27f87795fba` |
+| `hl2-survey-2026-11-04-12m.tar` | `383f073e524ea1903bc3cb6c61f9182a91f261e2ff7dfb883ee9fcbfaf55fed7` |
+| `hl2-survey-2026-11-04-15m.tar` | `12d3d076a381f06e85bd83282293da9b29c55b9000679602b77ba3cff3bc2dbd` |
+| `hl2-survey-2026-11-04-17m.tar` | `a48704e45fac48a82c0a13c00f040c59360f9ffc361180d0b9ed36e80b4118b4` |
+| `hl2-survey-2026-11-04-20m.tar` | `287cd460e2aed778aa5e407e0f73562f602b8fc0566cf93c76e4f0a4153a419b` |
+| `hl2-survey-2026-11-04-30m.tar` | `009ee7f495c789c0ca642e1ee3870b16c13945066d1ed1f96640d8f6b8109f37` |
+| `hl2-survey-2026-11-04-40m.tar` | `28aa44aa91108f589830b8330df8c1660b0491ff08009630e7dbb4c3ba4d112d` |
+| `hl2-survey-2026-11-04-60m.tar` | `3adc398966f0f8f9ecc8e53d01a5ef08b0f50c9864a0a974c3cfc16dcab5c3c6` |
+| `hl2-survey-2026-11-04-80m.tar` | `b940cb97633029f8085869a791d80387429223c3f66af6bab6b174a22a483d2d` |
+| `hl2-survey-2026-11-04-160m.tar` | `2d91e0ba42a3b367082fbde72c84b990a426f6a92f0123ffd39bcd75a570562b` |
+| `hl2-survey-2026-11-04-run.log` | `cfd94cb2c970b802a593070f82784833e34ba5e482969a8a603470cfec562a1b` |
 
 ## The station and the run
 
