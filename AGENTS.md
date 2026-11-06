@@ -206,6 +206,10 @@ the only place every agent and every person can see them — see "Memory lives i
   at each estimated checkpoint; when an estimate passes, say why and give a new one. Before starting, remind
   the person you work for to keep their machine from sleeping; how is theirs to choose.
 
+- **Read the station before asking about it.** On the bench the sidekick is on the LAN at `http://micro-ft8.local`, and its reads need no token ([sidekick.md](docs/architecture/sidekick.md), **Port A: the link to the main board**): `GET /api/config` is the station's settings (call, grid, radio, band, active bands), `GET /api/state?slots=<n>` the station as it is now, and `GET /api/events?since=<seq>` every decode and radio event as Operate shows it. The sidekick keeps only the last 64 events, so to follow a run, poll every few seconds. The P4's own console is its PROG port (an Espressif USB serial device, `/dev/ttyACM*` on Linux). Before asking the person you work for what the station shows or is set to (decodes, band, grid, radio), read it there, and ask only for what neither shows: a screen, a sound, a cable.
+
+  **Token-guarded calls** (`PUT /api/config` and the rest) go through `webapp/tools/sidekick.py`, as `desk_push.py` does. It caches the pairing token at `webapp/tools/.sidekick_token` (git-ignored, owner-only), claims one with the sidekick's button the first time or when the cache is refused, and retries on a 401. Each write needs the person you work for to approve it explicitly, in that turn: say what you will send and what it changes, then wait. A write that can make the station transmit (a CQ, a reply, Tune) also needs them at the station as its control operator, since the licence is theirs. What an agent reads this way is evidence from a run they set up; the TEST_PLAN rules on who closes a field check are unchanged.
+
 - **WSJT-X is the on-air standard.** Where our behaviour on the air differs from WSJT-X's (the message
   sequence, a message's format, what a tap sends), WSJT-X's is the default, and we differ only by a recorded
   decision. Check its source first: the `WSJTX/wsjtx` mirror, `widgets/mainwindow.cpp` for sequencing.
