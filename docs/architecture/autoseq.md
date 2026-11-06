@@ -142,6 +142,8 @@ Row [B88](../ROADMAP.md#B88) holds the offset for the length of a QSO.
 
 `logged` stops a retry from logging twice. A failed write stays unlogged and retries on the next emission, so a ROGERS entry keeps resending RR73 until it logs or runs out of tries. A Field Day contact also writes a Cabrillo line first, with its own flag. A QSO that DX closes with 73 while we are still at ROGER_REPORT goes IDLE unlogged, because we never sent RR73 or 73.
 
+**Every station that calls us gets an entry without a tap,** a caller answering our CQ with a grid landing in REPORT, so one Call CQ can run several QSOs; what each entry transmits is still bounded by its tries (**Tries**). **Differs from WSJT-X,** which with Auto Seq on turns Enable Tx off at the end of each QSO and "will not make consecutive, fully automated QSOs" (its user guide, `doc/user_guide/en/make-qso.adoc`); JTDX's Auto CQ, MSHV's multi-answer mode and WSJT-Z run on, as we do. **ARRL** counts a contact for DXCC, its contests, WAS and VUCC only with "contemporaneous direct initiation by the operator on both sides" (2019); whether a QSO with a caller to a CQ the operator started meets it is not defined. A setting that keeps to one QSO per tap is row [bbcp](../roadmap/ideas.md#bbcp).
+
 Logging also starts the 10-minute recently-worked window for that call, so the station cannot start a second QSO with us until it passes. Its closing messages still reach the QSO (**Where entries come from**, step 3). Once the window and the parked entry's own 10 minutes have both passed, a call from that station is a new QSO, with a fresh report, and is logged again.
 
 ## Inactive zone

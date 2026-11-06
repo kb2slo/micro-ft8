@@ -42,6 +42,7 @@ How things work now: `architecture/` (start at [architecture/system.md](architec
 | nxyk | <a id="nxyk"></a>P4: one fault string the radio bar shows as sent | Each fault the operator must see is its own wire flag and app state today (`decode_failed`, the radio bar's `nodecode`), so a QMX that will not take IQ mode (`Q9` reads audio, or no answer) reaches only the console. One text field the P4 sets and clears, shown as sent in the radio bar's red state, carries every such fault. **Done-when:** `decode_failed` and the `Q9` warnings use it, the app has no per-fault code for them, and a bench check sees one appear and clear. |
 | abkw | <a id="abkw"></a>HL2: transmit, barefoot | Epic [knpp](roadmap/hl2-support.md#abkw). After [I40](roadmap/ideas.md#I40). Waveform, PTT lead, filters and the safety policy, transmit off by default. **Done-when:** the epic's bench procedure passes into a dummy load and is recorded in TEST_PLAN, then a QSO at 5 W (field). |
 | kgyh | <a id="kgyh"></a>HL2: in the park | Epic [knpp](roadmap/hl2-support.md#kgyh). After [abkw](roadmap/hl2-support.md#abkw). AP mode with the HL2, field power, listen-only bands. **Done-when:** a POTA activation on the HL2 station, with the power draw recorded (field). |
+| jqpm | <a id="jqpm"></a>Opening calls get at most 4 tries | Epic [qxy5](roadmap/smart-queue.md#jqpm). Answers to a repeated opening call fall off fast and calls past the 4th were never answered; a constant caps REPLYING, every later stage keeps `tries`. **Done-when:** a host test shows REPLYING ends after 4 with `tries` at 6, after 2 with `tries` at 2, and after the entry's own count when one is set. |
 
 ## Blocked
 
@@ -64,6 +65,7 @@ Each epic is one row here and one file under `roadmap/`, read only when touching
 | knpp | <a id="knpp"></a>HL2 support | [roadmap/hl2-support.md](roadmap/hl2-support.md): the Hermes-Lite 2 as a second radio on the P4, receive then transmit, at home then in the park. Children: [abkw](roadmap/hl2-support.md#abkw), [kgyh](roadmap/hl2-support.md#kgyh). |
 | ukk6 | <a id="ukk6"></a>OTA updates | [roadmap/ota-updates.md](roadmap/ota-updates.md): after the first install over USB, every update to either board is over the air, started from the web app. Children: [wanw](roadmap/ota-updates.md#wanw), [v697](roadmap/ota-updates.md#v697), [hstv](roadmap/ota-updates.md#hstv), [yme5](roadmap/ota-updates.md#yme5). |
 | I18 | <a id="I18"></a>Activator mode: POTA and SOTA | [roadmap/activator-mode.md](roadmap/activator-mode.md): a whole activation run offline, its log accepted by pota.app and the SOTA database unedited, and what helps an activator pick a reference, check the grid and plan. Children: [rrsp](roadmap/activator-mode.md#rrsp), [w5nj](roadmap/activator-mode.md#w5nj). |
+| qxy5 | <a id="qxy5"></a>Smart queue ordering | [roadmap/smart-queue.md](roadmap/smart-queue.md): spend each transmission where it can be answered, by ordering and holding what is already queued, never adding a station. Children: [jqpm](roadmap/smart-queue.md#jqpm). |
 
 ## Next groom
 
