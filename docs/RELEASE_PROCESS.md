@@ -25,8 +25,8 @@ as one printed on a Mac.
 
 **No image carries a version identity.** The ADV's `rel`/`dev` build machinery went with the ADV (dropped 2026-10-02),
 so every release ships whatever it builds to at that commit, with no version string in the image. The web
-app will show one once the P4 reports its version over Port A — which OTA updates need (row [hstv](ROADMAP.md#hstv),
-[RFC 0007](rfcs/0007-flash-and-update.md) §3.6).
+app will show one once the P4 reports its version over Port A — which OTA updates need (row [hstv](roadmap/ota-updates.md#hstv),
+epic [ukk6](roadmap/ota-updates.md)).
 
 ## The rolling `continuous` release
 

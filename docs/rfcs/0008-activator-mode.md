@@ -90,7 +90,7 @@ The rule: **whatever must work offline lives on a device; the browser only cache
   - **Filled by the map's existing fetches** (operator, 2026-09-27). `map.html` already downloads POTA parks per country and SOTA summits per association region while online (its "All" layers). **Save this area** filters what is already loaded to the view and writes it; there is no second download path. The map's live path and the store share one record format and one parser, so a stored area and a live fetch draw identically. Offline, the store is the map's POTA/SOTA source.
   - **Freshness.** Each area shows its age; saving an area again replaces it.
   - **To confirm in code before building:** that bundle commit never removes files outside its manifest, and what boot or rehydrate does to an unmountable filesystem. A format would lose the store, which is acceptable only because it can be re-downloaded.
-  - **If the cap pinches:** the sidekick's OTA slots are 3 MB for a 955 KB image (RFC 0007 §2), so a repartition could roughly double `web`. It costs a USB reflash of every sidekick, so do it only alongside another one.
+  - **If the cap pinches:** the sidekick's OTA slots are 3 MB (`sidekick/partitions.csv`), about three times its image, so a repartition could roughly double `web`. It costs a USB reflash of every sidekick, so do it only alongside another one.
 * **The browser caches** in IndexedDB, keyed by area and version, purely for speed. It is never the only copy.
 * **Why not the main board for the store:** a second hop over Port A and new protocol work for data only the browser reads. An earlier draft chose the main board and rejected the sidekick for lack of a partition to add. Files in the existing `web` partition need no new partition.
 

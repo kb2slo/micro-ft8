@@ -52,7 +52,7 @@ Rules that follow:
 
 ## Firmware updates
 
-**Decided 2026-09-25, not yet built: rows [v697](../ROADMAP.md#v697), [hstv](../ROADMAP.md#hstv)** ([RFC 0007](../rfcs/0007-flash-and-update.md)). The sidekick downloads firmware images itself, from the release host over plain HTTP, and refuses any image whose SHA-256 differs from the one the web app read over HTTPS and handed it behind the pairing token (the trust argument: [system.md](system.md), **The inversion**). It has no PSRAM, so an image is staged in flash, in its spare OTA slot: either its own next image, or a main board's, which it then sends down Port A. Unlike the app bundle, the image never passes through the browser. Updates need the sidekick on a network with internet, so they are refused in AP mode. Its own rollback already exists: a new image is marked valid only after three Port A heartbeats (`sidekick/main/main.c`).
+**Decided, not yet built: rows [v697](../ROADMAP.md#v697), [hstv](../ROADMAP.md#hstv)** (epic [ukk6](../roadmap/ota-updates.md)). The sidekick downloads firmware images itself, from the release host over plain HTTP, and refuses any image whose SHA-256 differs from the one the web app read over HTTPS and handed it behind the pairing token (the trust argument: [system.md](system.md), **The inversion**). It has no PSRAM, so an image is staged in flash, in its spare OTA slot: either its own next image, or a main board's, which it then sends down Port A. Unlike the app bundle, the image never passes through the browser. Updates need the sidekick on a network with internet, so they are refused in AP mode. Its own rollback already exists: a new image is marked valid only after three Port A heartbeats (`sidekick/main/main.c`).
 
 ## Why the sidekick has no TLS
 

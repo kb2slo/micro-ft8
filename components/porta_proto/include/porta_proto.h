@@ -72,7 +72,7 @@ extern "C" {
 // v4 (2026-09-30): SWR sweep (docs/architecture/radio.md, The SWR sweep): the SWEEP_START action and the SWEEP event. A v3 peer
 // would answer the new action "unknown action" and ignore the event, so this is a break only in
 // that the page's sweep cannot work against it; both ends are flashed together as for v3.
-// v5 (2026-10-01): link stress test (RFC 0007 §3.11). A v4 peer logs LINK_TEST / LINK_DATA and
+// v5 (2026-10-01): link stress test (docs/architecture/sidekick.md, Port A). A v4 peer logs LINK_TEST / LINK_DATA and
 // does not run the test. Both ends are flashed together.
 // v6 (2026-10-01): the link-test start frame carries the byte quota. A v5 peer
 // ignores that start and does not run the test. Both ends are flashed together.
@@ -137,7 +137,7 @@ typedef enum {
     PORTA_MSG_FW_BEGIN     = 0x10,
     PORTA_MSG_FW_CHUNK     = 0x11,
     PORTA_MSG_FW_END       = 0x12,
-    // Link stress test (RFC 0007 §3.11). Bulk, and both directions, so these
+    // Link stress test (docs/architecture/sidekick.md, Port A). Bulk, and both directions, so these
     // are their own types: ACTION is sidekick -> host only.
     PORTA_MSG_LINK_TEST    = 0x13,  // start / set-rate / stop / result
     PORTA_MSG_LINK_DATA    = 0x14,  // one max-length stress payload
@@ -683,7 +683,7 @@ size_t porta_proto_encode_file_entry_row(const porta_qso_entry_row_t *e,
                                          uint8_t *out, size_t out_cap);
 bool porta_proto_parse_file_entry_row(const porta_frame_t *f, porta_qso_entry_row_t *out);
 
-// --- Link stress test (RFC 0007 §3.11) ------------------------------------
+// --- Link stress test (docs/architecture/sidekick.md, Port A) -------------
 // One direction's payloads. The sequence starts at 0 when that direction
 // starts; both directions share the seed from LINK_TEST start and keep
 // their own sequences. Pattern is seq % 5, in this order: 0xC6, 0x00, 0xFF,
@@ -714,7 +714,7 @@ typedef enum {
 #define PORTA_LINK_IDLE_MS 3000u
 
 // Payload bytes one direction must exchange, clean, before that rate passes.
-// This is the final pass: about 10x the largest image (RFC 0007 §3.11).
+// This is the final pass: about 10x the largest firmware image.
 // Settings may start a shorter run; the quota has to be one porta_link_pass_at()
 // returns, and the start frame carries it so both ends use the same number.
 #define PORTA_LINK_PASS_BYTES 14000000u

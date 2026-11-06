@@ -55,4 +55,4 @@ Every ESP-IDF app embeds an `esp_app_desc_t` (`project_name`, `version`) as the 
 Serves the web app, provisioning and pairing, and relays between the browser and the main board over Port A. How it works and why: [`docs/architecture/sidekick.md`](../docs/architecture/sidekick.md).
 
 - **Grove pins are GPIO1/GPIO2** (silkscreen `G`, `5V`, `G2`, `G1`; M5Stack labels Grove pins by GPIO number). With the straight-through cable the main board receives on G1 and transmits on G2, so the sidekick transmits on G1 and receives on G2. Confirmed on hardware 2026-09-09. Neither is an S3 strapping pin (GPIO0/3/45/46).
-- **Port A can never flash a stock chip (B42).** The ROM bootloader listens only on UART0's default pins (GPIO43/44 on S3), and Grove is GPIO1/GPIO2. USB-C is the only wire flash path; updates come over WiFi ([RFC 0007](../docs/rfcs/0007-flash-and-update.md)).
+- **Port A can never flash a stock chip (B42).** The ROM bootloader listens only on UART0's default pins (GPIO43/44 on S3), and Grove is GPIO1/GPIO2. USB-C is the only wire flash path; updates come over WiFi (epic [ukk6](../docs/roadmap/ota-updates.md)).
