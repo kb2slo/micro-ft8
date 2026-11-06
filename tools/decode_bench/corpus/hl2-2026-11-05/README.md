@@ -1,13 +1,49 @@
 # HL2 four bands at once, 2026-11-05
 
-The Hermes-Lite 2 recorded on a computer on 10, 15, 20 and 40 m at once, on four receivers, from 8:17 AM to 6:02 PM CST, then 40 m alone after dark with the LNA held at two gains in turn, and every slot scored with our decoder against `jt9` on the same samples: what row q9my (four bands at once, and the LNA at two gains) asked for, beside the one-band [2026-11-04 survey](../hl2-2026-11-04/README.md). The audio is not in git. It is the release [`corpus-2026-11-05-hl2`](https://github.com/kb2slo/micro-ft8/releases/tag/corpus-2026-11-05-hl2), once uploaded: one tar per band holding that band's WAVs and per-stream `manifest.jsonl` (paths `<stream>/<band>/`), one tar for the LNA A/B (`lna-ab/40m/`), and the run's log. The manifests here are copies, each band's streams concatenated in order (`manifest-<band>.jsonl`, and `manifest-lna-ab-40m.jsonl`), so every file's SHA-256 is in git. The tars are reproducible: `tar --format=gnu --sort=name --mtime=2026-11-06T00:00:00Z --owner=0 --group=0 --numeric-owner --mode=a+rX,u+w,go-w`, over the WAVs and manifests only.
+The Hermes-Lite 2 recorded on a computer on 10, 15, 20 and 40 m at once, on four receivers, from 8:17 AM to 6:02 PM CST, then 40 m alone after dark with the LNA held at two gains in turn, and every slot scored with our decoder against `jt9` on the same samples: what row q9my (four bands at once, and the LNA at two gains) asked for, beside the one-band [2026-11-04 survey](../hl2-2026-11-04/README.md). The audio is not in git. It is the release [`corpus-2026-11-05-hl2`](https://github.com/kb2slo/micro-ft8/releases/tag/corpus-2026-11-05-hl2), once uploaded: one tar per stream and band holding that band-hour's WAVs and `manifest.jsonl` (paths `<stream>/<band>/`), each about 1 GB, so one band-hour can be fetched alone (a release asset must be under 2 GiB); one tar for the LNA A/B (`lna-ab/40m/`); and the run's log. The manifests here are copies, each band's streams concatenated in order (`manifest-<band>.jsonl`, and `manifest-lna-ab-40m.jsonl`), so every file's SHA-256 is in git. The tars are reproducible: `tar --format=gnu --sort=name --mtime=2026-11-06T00:00:00Z --owner=0 --group=0 --numeric-owner --mode=a+rX,u+w,go-w`, over the WAVs and manifests only.
 
 | File | SHA-256 |
 | --- | --- |
-| `hl2-2026-11-05-10m.tar` | `3727f37a4421945d2ee6223aa7a20c600c93006b38fa50844426259e13e02102` |
-| `hl2-2026-11-05-15m.tar` | `6418cf7506a58fd5349489d137e02102298111cfe478ebd07564d00a448d47f3` |
-| `hl2-2026-11-05-20m.tar` | `01c435168f611eaa9e3ed22afa84aca290786a2887ea8ab5b7a61cce19bd1da1` |
-| `hl2-2026-11-05-40m.tar` | `19ea2d19f72d3d58b08ea6ee8ddbc77f68634c8cc473485bfcaf335b0320ff6a` |
+| `hl2-2026-11-05-now-10m.tar` | `24b1b3469709a66ac5e7c605536efcf5814b4da8deba5c8a298fa2c9c3c75a9e` |
+| `hl2-2026-11-05-now-15m.tar` | `64842375b02d00a0e6e19cce9fb321f1b3f44ba0af87f58e41056b88be4a7fed` |
+| `hl2-2026-11-05-now-20m.tar` | `8528e8852c74c4f294356846451b048f359beafebd3641ef8f56c7e24002118c` |
+| `hl2-2026-11-05-now-40m.tar` | `9cbd624a1232131d1e68091647cb24b278331f15ec43e98872bf477a57285703` |
+| `hl2-2026-11-05-1500z-10m.tar` | `e34e78636ba1fd0075ea60af1271482ba62e3313691b0981f32c3c6840cc916b` |
+| `hl2-2026-11-05-1500z-15m.tar` | `e3b06172c1635787ea7a22c3da7c49323a067fd603f41547835d2319c6ca4af9` |
+| `hl2-2026-11-05-1500z-20m.tar` | `e8a6d2ba7d3830f758bed948d71fd5d7df62f636ebb26a46806fcc97769ce15c` |
+| `hl2-2026-11-05-1500z-40m.tar` | `92a2fa4ee805ef05df9363b7bb7d89d87c031b5a7137ed63fd5228da3c2f798d` |
+| `hl2-2026-11-05-1600z-10m.tar` | `337655b2ee49ad91d10520bad678478ed9791a61890b4621c0300924636d2b65` |
+| `hl2-2026-11-05-1600z-15m.tar` | `e509b847c14b7321dd028cc190e7d45b7a3f9fc01dd96db8d6472d29dbe7cb6d` |
+| `hl2-2026-11-05-1600z-20m.tar` | `2732cfa5e83066e29191551dcae0159d26a3f26421e0d2bc0a135b40e97f2de3` |
+| `hl2-2026-11-05-1600z-40m.tar` | `01fc1ac79c333f14e2e2cc793bd7b85a8c5a02703f35223bc4aa11661cde391a` |
+| `hl2-2026-11-05-1700z-10m.tar` | `7bf07ff405ee5875be0fda555c25fbcd9c0fd1ce744752546ffd74d3291f70a4` |
+| `hl2-2026-11-05-1700z-15m.tar` | `90f5ee50fa0aa59c131c57fbc1dcb445cdfe56f9c989e810db6c77d741798e45` |
+| `hl2-2026-11-05-1700z-20m.tar` | `8ede6d0d61d11f763dfc82b205e867a660412dd594924525f3ce477be2e97ce8` |
+| `hl2-2026-11-05-1700z-40m.tar` | `1c4d10107f9e9ce7eb1c73927870defe43225f09c7413877b3fe4b7731d1d1fb` |
+| `hl2-2026-11-05-1800z-10m.tar` | `54a81ea4cfd18e7e7d1545cd24c0b6dd46c2b484cce81bc281d67bbdeb49bf55` |
+| `hl2-2026-11-05-1800z-15m.tar` | `b583a866e9995ab7f11cf9c47d1d1f9feaa999fc04a94605fbc7ed2eb37cb925` |
+| `hl2-2026-11-05-1800z-20m.tar` | `64b0385285ff2710d511b2fc9917c054c38f03c9571e9aaec19f4f892a085230` |
+| `hl2-2026-11-05-1800z-40m.tar` | `7f227ce0259403c871a95180a2f4df1a8622a69cdce6030d7c4fdec9a28d8e74` |
+| `hl2-2026-11-05-1900z-10m.tar` | `c676d9b7f14a54608bdb7c4b330a5fe67a7d4fb4912c7ae6505d342d4744cd79` |
+| `hl2-2026-11-05-1900z-15m.tar` | `0e0434b39b3bbc57ed89bed2a90772582e5b37555999205bf82b94c7d5c6e3ed` |
+| `hl2-2026-11-05-1900z-20m.tar` | `23ef49295d77c1e0e7e2220a8f004aad1c0fbc470778ac9e7cf58c121f09d2ff` |
+| `hl2-2026-11-05-1900z-40m.tar` | `8a33e629a73266095138c1e87eea94549cfbf1746f7508146e9626b0510129a6` |
+| `hl2-2026-11-05-2000z-10m.tar` | `86825c2c21a0058688f9e8c21912b974766d8fb935f3514db4e1e159fd093f43` |
+| `hl2-2026-11-05-2000z-15m.tar` | `0793d88a1fd1236ca5d004c6a3333c94ab31031607ac0f4f62de2464626bc2e9` |
+| `hl2-2026-11-05-2000z-20m.tar` | `14f1bc5c96ae95bdc2647337ecb37798b83308941e553e09c20c8fa793d5bcf9` |
+| `hl2-2026-11-05-2000z-40m.tar` | `e2a711f8d36cda734fcff0200db4f2ee5c12aabb0f89aa69854f752585eabacb` |
+| `hl2-2026-11-05-2100z-10m.tar` | `e8e9225f5a6ad5b6e3bdd349270122b8f2331b020c68654f259adaeb5a0d837b` |
+| `hl2-2026-11-05-2100z-15m.tar` | `b01e55beb6f7974de3bb17d47c72a229bc5560be4c6df3ce911e8fdea41c31ca` |
+| `hl2-2026-11-05-2100z-20m.tar` | `937636393c8f77312b79927e76b693abdb1ff129fafc4093e9b11b61d0eb356c` |
+| `hl2-2026-11-05-2100z-40m.tar` | `d81971b126519790e9035d3d036f8a759741d890f8f56bcd5060a7e64d07ac43` |
+| `hl2-2026-11-05-2200z-10m.tar` | `1c76e098905bc814d3b4c7e4f4aae78ee54911e685eba12b431869120095d71b` |
+| `hl2-2026-11-05-2200z-15m.tar` | `0e962ebfc59febbc95522b715860ac52e54541932a2f09332664c9e29572091e` |
+| `hl2-2026-11-05-2200z-20m.tar` | `5ccee9eb035ee1fe42bf9d229d29606af4cfe310b9a61184aa3b32ac1797376d` |
+| `hl2-2026-11-05-2200z-40m.tar` | `41eb8657d4b67018775a0ee676aacee8394997d5226bbce53263183f100e460c` |
+| `hl2-2026-11-05-2300z-10m.tar` | `ca8ef26032913fc1b2ff17328c83dfdf5dd9d739eb5d175604473fe969ce50aa` |
+| `hl2-2026-11-05-2300z-15m.tar` | `e82a8321cee748093978a39c13e966884f53876dbcbf795e78d8363734705d73` |
+| `hl2-2026-11-05-2300z-20m.tar` | `a95aa3a1cf9ef87bf84e6e30b9450ddcf23d090450afcc299fd393c8dfc8b530` |
+| `hl2-2026-11-05-2300z-40m.tar` | `76cdc019810a76f7641d401ce90cdd2c350676ac93db3423aca09a1f31b05790` |
 | `hl2-2026-11-05-lna-ab-40m.tar` | `dfe303b030b5f831d4016e7491c977fc4ff61c63ef7516e5dfbcd8c06cdeb3a5` |
 | `hl2-2026-11-05-run.log` | `2728e368efdada1faf96ad5cc4f9f2aa84cbb0fc746af77e4e48e33e4f0026e5` |
 
