@@ -1,4 +1,5 @@
 <!doctype html>
+<meta charset=utf-8>
 <meta name=viewport content='width=device-width,initial-scale=1,viewport-fit=cover'>
 <title>Micro-FT8 Map</title>
 <!--
@@ -381,11 +382,11 @@ var LOG_MAP_PLACES_URL = 'ne_110m_places.json';
 // 2026-09-22. Not same-origin: `map.html` runs from the sidekick's own
 // non-secure `http://micro-ft8.local` (docs/architecture/webapp.md (A non-secure origin)), so this has to come
 // from somewhere that IS reachable, not from the bundle -- served from
-// `micro-ft8.kalikstein.com` (the Cloudflare Worker `webapp/worker.js`
-// already deploys) rather than the vendor's raw GitHub content, so it comes
-// with our own CORS header (`Access-Control-Allow-Origin: *`, set
-// unconditionally for every asset the Worker serves) and Cloudflare's own
-// far-future asset caching, instead of depending on a third party's.
+// `micro-ft8.kalikstein.com` (our own site) rather than the vendor's raw
+// GitHub content, so it comes with our own CORS header
+// (`Access-Control-Allow-Origin: *`, which webapp/_headers sets on every
+// static file) and Cloudflare's own asset caching, instead of depending on a
+// third party's.
 var LOG_MAP_PLACES_FINE_URL = 'https://micro-ft8.kalikstein.com/data/ne_10m_places.json';
 var LOG_MAP_PLACES_FINE_ZOOM_MIN = 6; // comfortably before the bundled tier's own rank range (0-8) is exhausted at zoom 9, so the handoff feels smooth rather than a visible gap
 var logMapGeo = null, logMapCountriesGeo = null, logMapUsStatesGeo = null, logMapLakesGeo = null;

@@ -3,8 +3,8 @@
 // locate button (docs/architecture/webapp.md, A non-secure origin): this
 // origin cannot call navigator.geolocation, so the page navigates to geo.html
 // on the HTTPS release host, which reads the position and navigates back
-// with ?lat=&lon=. "/geo", not "/geo.html": Static Assets 307s the .html form
-// before webapp/worker.js's cache override applies.
+// with ?lat=&lon=. "/geo", not "/geo.html": Static Assets 307s the .html form,
+// and webapp/_headers' long-lived cache rule is on /geo.
 //
 // Leaving the page is the step that needs internet, and on the sidekick's AP
 // the phone often has none (docs/architecture/system.md, Connectivity). A

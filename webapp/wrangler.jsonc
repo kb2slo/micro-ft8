@@ -5,13 +5,10 @@
   "main": "worker.js",
   "assets": {
     "directory": ".",
-    "binding": "ASSETS",
-    // Default: Cloudflare serves a matching static file directly, bypassing
-    // worker.js entirely, which is exactly why the CORS header never showed
-    // up on manifest.json or on the app.html clean-URL redirect -- only
-    // requests with no matching asset (e.g. a genuine 404) ever reached our
-    // fetch handler. This forces every request through worker.js first.
-    "run_worker_first": true
+    // Only these two run worker.js; every other request is served as a static
+    // file, with its headers from _headers (docs/architecture/webapp.md,
+    // Serving the site), and costs no Worker request.
+    "run_worker_first": ["/download/*", "/pskreporter"]
   },
   "r2_buckets": [
     {

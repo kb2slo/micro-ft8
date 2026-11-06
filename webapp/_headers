@@ -1,0 +1,28 @@
+# Response headers for the site's static files (docs/architecture/webapp.md, Serving the site).
+# Workers Static Assets applies these to every asset response, redirects and 404s included;
+# it never serves this file, and it applies none of it to what worker.js returns
+# (/download/* and /pskreporter set their own headers).
+
+# CORS on everything. The sidekick's plain-HTTP page (http://micro-ft8.local) fetches the app
+# bundle from /app/ cross-origin to install and update it (docs/architecture/sidekick.md,
+# Installing the app bundle), and map.html fetches /data/ne_10m_places.json the same way.
+# Static Assets sends no CORS header by default, unlike GitHub Pages, which that doc's host
+# requirement was measured against. The redirect needs it too: the sidekick asks for
+# /app/app.html, which Static Assets 307s to /app/app, and a cross-origin fetch fails on a
+# redirect without the header.
+/*
+  Access-Control-Allow-Origin: *
+
+# geo.html is the one page whose point is working with no network: an operator who reaches it
+# already crossed the hard part, getting internet once. Static Assets' default Cache-Control,
+# "public, max-age=0, must-revalidate" (measured 2026-09-22), forces a revalidation round trip
+# on every visit. immutable with a long max-age lets a browser holding a fresh copy skip the
+# network outright for as long as it keeps the entry. Only this path: every other page and
+# file here changes on every deploy and wants normal revalidation.
+#
+# "/geo", not "/geo.html": the default html_handling (auto-trailing-slash) 307s *.html to the
+# extensionless URL, so a rule on /geo.html lands on the redirect while /geo keeps the default
+# (confirmed live 2026-09-22). Callers (geo_handoff.js) link straight to /geo for the same
+# reason: one round trip fewer on the page where a round trip is the whole cost.
+/geo
+  Cache-Control: public, max-age=31536000, immutable

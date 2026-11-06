@@ -42,7 +42,7 @@ The design depends on two properties of the host, not on which host it is:
 1. **HTTPS with a publicly trusted certificate** — the only thing authenticating the bundle.
 2. **An `Access-Control-Allow-Origin` that lets the plain-HTTP page read the response.** This is a capability, not a security control: the browser is the courier, and it must be able to read the bytes it re-POSTs.
 
-Today's host is a Cloudflare Worker with Static Assets (`webapp/wrangler.jsonc`) at `https://micro-ft8.kalikstein.com`; the app lives under `/app/`. It sends the header only because `assets.run_worker_first` routes every request, including real asset hits, through `worker.js`. Without it, Cloudflare serves assets directly and the header is missing — which once broke `/update` with a generic fetch failure. **Measure any new host before adopting it** (the `curl` in [system.md](system.md), **Third-party services**); GitHub Releases, for one, sends no CORS header and cannot carry the bundle.
+Today's host is Cloudflare Workers Static Assets (`webapp/wrangler.jsonc`) at `https://micro-ft8.kalikstein.com`; the app lives under `/app/`. Static Assets sends no CORS header by default; `webapp/_headers` adds it to every static file, the `/app/app.html` → `/app/app` redirect included ([webapp.md](webapp.md), **Serving the site**). Without it the header is missing, which once broke `/update` with a generic fetch failure. **Measure any new host before adopting it** (the `curl` in [system.md](system.md), **Third-party services**); GitHub Releases, for one, sends no CORS header and cannot carry the bundle.
 
 Rules that follow:
 

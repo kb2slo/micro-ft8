@@ -59,7 +59,7 @@ Corollaries an agent should not re-derive:
 
 GitHub's `continuous` assets carry dated names that change every run, so nothing can link to them for long. After
 each successful `release-main`, CI also mirrors the four rolling payloads to Cloudflare **R2** bucket
-`micro-ft8-downloads`, served under the site origin by [`webapp/worker.js`](../webapp/worker.js):
+`micro-ft8-downloads`, served under the site origin by [`webapp/worker.js`](../webapp/worker.js), whose `/download/*` route is one of the two that run the Worker ([webapp.md](architecture/webapp.md), **Serving the site**):
 
 | Stable URL | Contents |
 | --- | --- |
