@@ -84,7 +84,7 @@ Kept, and easy to mistake for signing: a **SHA-256 per asset** (catches a corrup
 ## Third-party services
 
 * **Called directly from the browser when the source sends CORS.** QRZ's XML API sends `Access-Control-Allow-Origin: *` (measured 2026-09-10), so each operator's QRZ credentials go from their own browser to QRZ and never touch our infrastructure, which is right for terms of service, privacy and liability. The same holds for NOAA SWPC, POTA and SOTA ([webapp.md](webapp.md), **Tools**).
-* **A Worker route only when a source has no CORS**, and it **filters rather than relays**: it re-serves the small subset the app needs as JSON, because a phone on cellular must not pay for a full upstream payload (one PSKReporter query returned 1.25 MB of XML). Routes live in `webapp/worker.js`.
+* **A Worker route only when a source has no CORS**, and it **filters rather than relays**: it re-serves the small subset the app needs as JSON, because a phone on cellular must not pay for a full upstream payload (one PSKReporter query returned 1.25 MB of XML). Routes live in `webapp/worker.js`, and each is also named in `wrangler.jsonc`'s `run_worker_first`, the only paths that run the Worker ([webapp.md](webapp.md), **Serving the site**).
 * **CORS headers are observed behaviour, not policy.** Any of them can disappear without notice, so a refused request is a missing optional service, shown as such, never a fatal error. Re-check a source with `curl -sS -D - -o /dev/null -H 'Origin: http://micro-ft8.local' <url> | grep -i access-control`.
 
 ## Why not

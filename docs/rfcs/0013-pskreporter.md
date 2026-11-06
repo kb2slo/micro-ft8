@@ -23,7 +23,7 @@
 Facts are from the working tree at `f4618e6` and from measurements made on 2026-10-07.
 
 **In our code:**
-* **A Worker route, `/pskreporter`,** wired at `webapp/worker.js:16` and implemented at `:126`. It runs one query per request for `senderCallsign`, the last hour, FT8 only (`:139`–`:141`), and returns only the `<receptionReport>` elements, as small JSON with CORS (`:214`).
+* **A Worker route, `/pskreporter`,** wired at `webapp/worker.js:18` and implemented at `:87`. It runs one query per request for `senderCallsign`, the last hour, FT8 only (`:100`–`:102`), and returns only the `<receptionReport>` elements, as small JSON with CORS (`:175`).
   - It does not set `noactive`. That is the likely reason one query measured 1.25 MB, almost all of it a list of every active receiver on the network (`:113` comment).
   - **Nothing calls it.** The map's PSKReporter layer button is disabled ("Not built yet", `webapp/app/map.html:99`), and the site lists PSKReporter under Coming soon (`webapp/index.html:802`).
 * **The app's origin is not a secure context** ([webapp.md](../architecture/webapp.md), **A non-secure origin**). `localStorage` and `fetch` to HTTPS work. The **Screen Wake Lock API needs a secure context, so the app cannot keep the screen on.** With no Service Worker, the app cannot be opened while the sidekick is unreachable.
