@@ -133,15 +133,17 @@ dangling() {
 
 pct() { awk -v a="$1" -v b="$2" 'BEGIN { printf "%d", (b ? 100 * a / b : 0) }'; }
 
-# IDs added / removed by roadmap diffs in git log args "$@". A row moved between the index and
-# ideas.md is removed from one and added to the other, so it nets out.
+# Rows added / removed over a window: the row IDs at its start against the IDs in TEXT at its end.
+# Comparing sets, not diff lines, so an edited row, or one moved between the index and ideas.md
+# or declined.md, is neither added nor removed.
 flow() {
-  git log -p "$@" -- "$ROADMAP" "$IDEAS" "$DECLINED" | awk '
-    /^[-+]\| *[A-Za-z0-9]+ *\|/ && !/^[-+]\| *(ID|---)/ {
-      split(substr($0, 2), x, "|"); id = x[2]; gsub(/ /, "", id)
-      if (substr($0, 1, 1) == "+") add[id] = 1; else del[id] = 1
-    }
-    END { for (k in add) if (!(k in del)) a++; for (k in del) if (!(k in add)) d++; print a + 0, d + 0 }'
+  local since="$1" rev="$2" text="$3" start
+  start="$(git rev-list -1 --before="@$since" "$rev" -- || true)"
+  local before="" after
+  [[ -n "$start" ]] && before="$(index_text "$start" | rows | awk '{ print $3 }' | sort -u)"
+  after="$(rows <<<"$text" | awk '{ print $3 }' | sort -u)"
+  echo "$(comm -13 <(echo "$before") <(echo "$after") | grep -c . || true)" \
+       "$(comm -23 <(echo "$before") <(echo "$after") | grep -c . || true)"
 }
 
 health() {
@@ -170,7 +172,7 @@ health() {
   blocked="$(awk '$1 == "Blocked"' <<<"$data" | wc -l | tr -d ' ')"
   declined="$(awk '$1 == "Declined"' <<<"$data" | wc -l | tr -d ' ')"
   no_blocked_on="$(awk '$1 == "Blocked" && $6 == 0 { print $3 }' <<<"$data" | tr '\n' ' ')"
-  read -r added removed < <(flow --since="@$since" --until="@$now" "$rev")
+  read -r added removed < <(flow "$since" "$rev" "$text")
   # Owed field checks: Pending table rows whose status cell does not say the row is closed. Bold is
   # stripped first -- a "**pass 2026-..**" left undropped once counted as owed and inflated this to 91.
   owed="$(awk -F'|' '/^## Pending/ { p = 1; next } /^## / { p = 0 }
