@@ -63,4 +63,5 @@ Each epic is one row here and one file under `roadmap/`, read only when touching
 
 ## Next groom
 
-* **Not reached 2026-11-02:** the Blocked pass (does each condition still hold) and the Ideas pass (drops, rows that still carry history).
+* **Not reached 2026-11-02 or 2026-11-06:** the Backlog pass (drops, demotions, order: rows added since 2026-11-02 were placed, not ranked), the Blocked pass (does each condition still hold) and the Ideas pass (drops, rows that still carry history).
+* **Retro carried from 2026-11-06:** with an epic's queue in its file, the Backlog budget counts only what is next. At the next groom, ask whether that still tracks what matters, against the children waiting in epic files (6 on 2026-11-06).
