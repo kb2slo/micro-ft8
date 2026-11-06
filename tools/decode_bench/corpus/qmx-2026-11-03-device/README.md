@@ -51,5 +51,5 @@ each band by its own precision.
   against 10.11 a slot).
 * **The sequential runs** (key on for 30 minutes, then off, then in the other order, `slots.log`): IQ 7 to 12% behind,
   −9.1% pooled. Interleaved, that gap is gone: the 200 Hz edge and band drift between the halves, not the path.
-* **Quiet bands overrun in both paths** (15 m 35%, 30 m 36%, 40 m 14% of slots; 20 m none): the decode cost row
-  [vnz7](../../../../docs/roadmap/several-channels.md#vnz7) bounds.
+* **Quiet bands overrun in both paths** (15 m 35%, 30 m 36%, 40 m 14% of slots; 20 m none): what the decode budget
+  now bounds ([decode.md](../../../../docs/architecture/decode.md), **The work budget**).
