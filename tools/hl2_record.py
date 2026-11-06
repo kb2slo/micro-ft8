@@ -53,7 +53,7 @@ synced stops the run.
 **--lna-ab A,B[,N]** holds the LNA instead of stepping it: at A dB for N slots (default 2), then B for N,
 in turn, each change sent 0.5 s before a boundary, in the slot's tail where FT8 sends nothing. Each
 manifest line carries `lna_arm_db`, and score_ab.py --arm-field lna_arm_db pairs the arms, so a run
-measures what a lower gain costs in decodes (docs/roadmap/hl2-support.md, Open: the LNA).
+measures what a lower gain costs in decodes (what it found: docs/architecture/hl2.md, Receive).
 
 Python 3 only, no packages. Ctrl-C once: finish the current slot, then stop. Twice: stop now and
 delete the unfinished .wav.part files.

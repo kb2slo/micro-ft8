@@ -4,7 +4,8 @@
   python3 tools/decode_bench/build_four_band_run.py RECORDING_DIR --decodes DECODES.jsonl \\
           --run-id ID --station-grid GRID [--station-label TEXT] [--hours HOUR ...] \\
           [--baseline CORPUS_DIR] [--scored-window BAND=DIR ...] \\
-          [--lna-ab-score SCORE.txt --lna-ab-manifest MANIFEST.jsonl] [--corpus-url URL] [--note TEXT] \\
+          [--lna-ab-score SCORE.txt --lna-ab-manifest MANIFEST.jsonl] [--hour-scores] \\
+          [--corpus-url URL] [--release-url URL] [--note TEXT] \\
           [--utc-offset-hours -6 --tz-label CST] [--runs-dir webapp/experiments/four-band/runs]
 
 RECORDING_DIR is a tools/hl2_record.py several-receiver recording: one directory per stream (HOUR),
@@ -23,7 +24,9 @@ and the LNA. --scored-window BAND=DIR gives this run's side for a band from scor
 in DIR (the band's slots on the survey's clock window, scored with jt9 and ours) and DIR's
 manifest.jsonl; a band without one falls back to the sampled jt9 decodes in the window, if they
 cover at least half of it. --lna-ab-score and --lna-ab-manifest are a `hl2_record.py --lna-ab`
-run's score_ab.py --arm-field lna_arm_db output and its manifest.
+run's score_ab.py --arm-field lna_arm_db output and its manifest. --hour-scores reads each kept
+stream's band directories' score.txt (score_ab.py, jt9 and ours on every slot; score_table.py's
+rows), for our decoder's share of jt9's by hour and band.
 
 Writes RUNS_DIR/ID/run.json, everything the page draws for the run, aggregated (not the raw rows),
 and rewrites RUNS_DIR/index.json, the list of runs the page's picker and the experiments listing
@@ -39,7 +42,9 @@ Run 2026-11-05 was built, from the repository root, with
       --scored-window 15m=$HOME/hl2_recordings/2026-11-05/score-windows/15m \\
       --scored-window 20m=$HOME/hl2_recordings/2026-11-05/score-windows/20m \\
       --lna-ab-score ~/hl2_recordings/2026-11-05/lna-ab/score.txt \\
-      --lna-ab-manifest ~/hl2_recordings/2026-11-05/lna-ab/40m/manifest.jsonl
+      --lna-ab-manifest ~/hl2_recordings/2026-11-05/lna-ab/40m/manifest.jsonl \\
+      --hour-scores \\
+      --corpus-url https://github.com/kb2slo/micro-ft8/blob/main/tools/decode_bench/corpus/hl2-2026-11-05/README.md
 """
 import argparse
 import datetime as dt
@@ -49,6 +54,9 @@ import os
 import re
 import statistics as st
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from score_table import hour_rows  # noqa: E402
 
 SLOT_S = 15
 GRID = re.compile(r"^[A-R]{2}[0-9]{2}$")
@@ -192,7 +200,9 @@ def main():
                     help="score_ab.py's score.txt and the manifest for BAND's slots on the survey's clock window")
     ap.add_argument("--lna-ab-score", help="score_ab.py --arm-field lna_arm_db output for an --lna-ab run")
     ap.add_argument("--lna-ab-manifest", help="that run's manifest.jsonl")
-    ap.add_argument("--corpus-url", help="this run's own corpus, once it is released")
+    ap.add_argument("--hour-scores", action="store_true", help="read each stream's band score.txt (score_ab.py)")
+    ap.add_argument("--corpus-url", help="this run's corpus README")
+    ap.add_argument("--release-url", help="the corpus's audio release, once it is published")
     ap.add_argument("--note", help="one line the page shows with the run, such as what a snapshot leaves out")
     ap.add_argument("--utc-offset-hours", type=float, default=-6, help="the page's local time (CST: -6)")
     ap.add_argument("--tz-label", default="CST")
@@ -359,6 +369,14 @@ def main():
         baseline = {"corpus": name, "url": REPO_URL + rel.replace(os.sep, "/") + "/README.md",
                     "date": (first + off).strftime("%Y-%m-%d") if first else None, "bands": rows}
 
+    # ---- Every slot scored with jt9 and ours, per stream and band: the stream's start (local minutes),
+    # slots, jt9 and ours per slot, and our share of jt9's decodes.
+    hour_scores = None
+    if a.hour_scores:
+        hour_scores = [{"band": r["band"], "start_min": round(minute(utc(r["start_utc"])), 1), "slots": r["slots"],
+                        "jt9": r["jt9"], "ours": r["ours"], "ours_pct": r["ours_pct"]}
+                       for r in hour_rows(a.recording_dir, hours)]
+
     # ---- The LNA A/B: score_ab.py's arms and pairs, and each arm's clipping from its manifest.
     lna_ab = None
     if a.lna_ab_score and a.lna_ab_manifest:
@@ -386,7 +404,9 @@ def main():
         "note": a.note,
         "station": {"grid": a.station_grid, "label": a.station_label, "lat": round(home[0], 4), "lon": round(home[1], 4)},
         "corpus_url": a.corpus_url,
-        "ours_scored": False,  # the day's sampled decodes are jt9's; ours scores only the windows and the A/B
+        "release_url": a.release_url,
+        "ours_scored": bool(hour_scores),  # every slot of every kept stream scored with jt9 and ours
+        "hour_scores": hour_scores,
         "sampling": {"every": round(len(slots) * len(bands) / len(dec)), "decoder": "jt9 -8 -d 3"},
         "bands": bands,
         "totals": {"slots_recorded": len(slots), "slots_sampled": len(dec), "decodes": sum(x[2] for x in per_slot),

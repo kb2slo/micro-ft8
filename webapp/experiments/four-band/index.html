@@ -135,6 +135,16 @@
         <div class="chart" id="snr"></div>
       </section>
 
+      <section id="ours" hidden>
+        <h2>Our decoder against jt9</h2>
+        <p class="hint">Every slot of every hour scored with both decoders on the same samples: the share of <code>jt9</code>'s decodes ours also found, for each band and hour.</p>
+        <ul class="legend" data-legend="bands"></ul>
+        <div class="chart" id="oursHour"></div>
+        <h3>Against how crowded the band was</h3>
+        <p class="hint">The same hours, each a dot: our share against <code>jt9</code>'s decodes a slot that hour. Our decoder levels off near 25 a slot, so its share falls as a band fills.</p>
+        <div class="chart" id="oursCrowd"></div>
+      </section>
+
       <section id="radio">
         <h2>The radio's day</h2>
         <p class="hint">Every slot recorded, radio-wide: the four receivers share one filter, one LNA and one ADC, so these are the same for every band.</p>
@@ -189,6 +199,8 @@
     <dl>
       <dt>Recording</dt>
       <dd><code>tools/hl2_record.py</code> on a computer, the HL2 on its own Ethernet link: four receivers at 48&nbsp;kHz, each NCO on its band's FT8 dial, one stream an hour, every 15-second slot saved with a manifest line of the radio's counters.</dd>
+      <dt>Our decoder</dt>
+      <dd>Every slot of every stream and band scored with <code>jt9 -8 -d 3</code> and our decoder (<code>tools/decode_recall</code> at the firmware's settings) on the same converted samples, by <code>tools/decode_bench/score_ab.py</code>; ours' share is the part of <code>jt9</code>'s messages it also decoded. Per hour and band, with t4/f2 and the radio's counters, in the corpus README.</dd>
       <dt>Decodes</dt>
       <dd>WSJT-X's <code>jt9 -8 -d 3</code> on one slot in eight of each band (one every two minutes), each slot converted to 12&nbsp;kHz by <code>tools/iq_convert</code> 1,500&nbsp;Hz above the NCO, as the corpus scorer does (<code>tools/decode_bench/sample_jt9.py</code>). A message counts once per slot. The radio's figures cover every slot.</dd>
       <dt>Stations</dt>
