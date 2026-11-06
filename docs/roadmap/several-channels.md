@@ -64,6 +64,7 @@ Receive, decode and transmit on 1–N channels at once, whatever the radio. A ch
 
 * **Several bands from one HL2:** HL2 receivers as I/Q sources (epic [knpp](hl2-support.md), **Receive**), two or more bands as admission allows, a reply on the band heard through [grqg](#grqg)'s path; after the HL2's own receive shipped. **Done-when:** two bands decode for an hour with every loss counter at zero or explained, and a CQ on the second band completes a QSO there (field); or the finding that one P4 carries one HL2 band. **After:** row [q9my](hl2-support.md#q9my), which measures what sharing the N2ADR's filter costs.
 * **A QMX and an HL2 at once:** channels from each, a reply transmitted by the radio whose channel heard it; one backend per radio in place of one selected backend (epic [knpp](hl2-support.md), **Open**).
+* **A recorded band replayed into the P4 as an HL2:** a computer on the P4's Ethernet port answers as the HL2 and sends a recorded stream in Protocol 1, from the [2026-11-04 survey](../../tools/decode_bench/corpus/hl2-2026-11-04/README.md)'s quiet bands or epic [knpp](hl2-support.md)'s mirror-port capture (exactly what the P4 decoded live). [vnz7](#vnz7)'s hour on a quiet band then runs on the bench on demand, and two builds' slot times and decodes compare on identical input. Receive only, and the replayer is the radio, so nothing can key. Becomes a row if vnz7's Done-when accepts a replayed hour.
 
 ## Open
 
