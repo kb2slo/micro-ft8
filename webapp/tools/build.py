@@ -39,7 +39,7 @@ BUILD_PLACEHOLDER = "__APP_BUILD__"
 FILE_MAX = 512 * 1024
 # The sidekick's web partition is 0x1E0000 (1,920 KB, sidekick/partitions.csv).
 # A bundle install stages a second copy before it renames into place, and the
-# reference store's proposed cap is 256 KB (RFC 0008 §4.2), so two bundles plus the
+# reference store's proposed cap is 256 KB (docs/roadmap/activator-mode.md), so two bundles plus the
 # store plus the bootstrap pages and LittleFS overhead must fit:
 # 2 x 800 + 256 = 1,856 KB leaves 64 KB. Raising this means shrinking the store cap.
 BUNDLE_MAX = 800 * 1024

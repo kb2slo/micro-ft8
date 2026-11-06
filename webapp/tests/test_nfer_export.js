@@ -4,7 +4,7 @@
 // carrying only that reference's own fields (MY_SIG/MY_SIG_INFO or
 // MY_SOTA_REF), since pota.app's real importer does not read the device's
 // own MY_POTA_REF comma list (confirmed against its importer and PoLo's
-// notes, RFC 0008 §3).
+// notes; docs/architecture/logging.md, What POTA and SOTA require).
 //
 // Same approach as test_decode_batching.js: pull the exact function source
 // out of app.html and run it under Node, rather than re-implementing the

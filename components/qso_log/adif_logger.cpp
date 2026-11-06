@@ -29,7 +29,7 @@ std::string expand_comment_macros(const std::string& src, const std::string& rad
 }
 
 // This app's own band names are lowercase, no unit ("20m"); POTA requires
-// BAND with a unit, upper-case (RFC 0008 §3: "BAND (with unit, 20M)"). ADIF's
+// BAND with a unit, upper-case (docs/architecture/logging.md, What POTA and SOTA require). ADIF's
 // own band enum is exactly the band name upper-cased plus the trailing unit
 // letter this app's names already carry ("20m" -> "20M", "2m" -> "2M"), so
 // this is a plain case fold, not a lookup table.

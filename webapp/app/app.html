@@ -853,7 +853,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       </label>
     </div>
 
-    <!-- RFC 0008 §4.3 "Typed references, offline": format-only (a slash means
+    <!-- Typed references, offline (docs/roadmap/activator-mode.md): format-only (a slash means
          SOTA, otherwise POTA) -- no store, no nearby list, no map and no
          verified/unverified badge, since nothing to check against exists
          until A3's reference store ships. renderActRefs() below fills
@@ -1555,8 +1555,8 @@ function renderActRefs(cfg) {
     };
   });
 }
-// A slash means SOTA, otherwise POTA (RFC 0008 §4.3 -- the same rule the
-// eventual add screen's typed-reference path uses, A3). ',' and ':' are our
+// A slash means SOTA, otherwise POTA (the same rule the
+// eventual add screen's typed-reference path uses, docs/roadmap/activator-mode.md). ',' and ':' are our
 // own list/token delimiters (station.cpp's normalize_act_refs()), so a
 // reference containing either can never round-trip and is refused here
 // before it ever reaches the station.
@@ -5593,7 +5593,7 @@ function adifBandTag(band) {
 // n-fer export's per-file single reference replaces the device's own
 // comma-list fields with the exact fields each program's importer reads
 // (architecture/logging.md) -- POTA wants MY_SIG/MY_SIG_INFO (confirmed
-// against pota.app's real importer, RFC 0008 §3; MY_POTA_REF is not read
+// against pota.app's real importer, docs/architecture/logging.md; MY_POTA_REF is not read
 // yet), SOTA wants
 // MY_SOTA_REF scoped to the one summit this file is for. Omitted (the plain
 // per-day/full-archive download), the record keeps the raw comma lists

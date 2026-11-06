@@ -153,7 +153,7 @@ The active zone sorts by these keys, in order. The first two are today's rules; 
 
 * **A heard-activation record per call:** a station decoded sending `CQ POTA` is marked a POTA activator, `CQ SOTA` a SOTA activator. It is kept as the heard-grid table keeps a grid (§2), for hours, since an activation lasts that long. Live spots the phone already fetches are a later, second source; they need a path from the sidekick to the main board.
 * **Rungs:** **POTA activator** and **SOTA activator**, ordinary rungs on the ladder, so a hunter at home can put them first.
-* **Park to park:** when our station is activating (CQ type POTA or SOTA, or an activation set up, [RFC 0008](0008-activator-mode.md)), a station known to be activating gets the same priority whoever called whom. The P2P rung covers both our calls and stations calling us.
+* **Park to park:** when our station is activating (CQ type POTA or SOTA, or an activation set up, epic [I18](../roadmap/activator-mode.md)), a station known to be activating gets the same priority whoever called whom. The P2P rung covers both our calls and stations calling us.
 * **Whether the ladder follows the CQ type,** as Field Day does, so an activation has its own order, is a phase 2 question.
 
 ### 5.8 Deferred: "needed" (DXCC, grid, park)
