@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Downloads — Micro-FT8</title>
-<meta name="description" content="Continuous prerelease firmware and source for Micro-FT8 (PoE-P4, AtomS3 Lite).">
+<meta name="description" content="Continuous prerelease firmware for Micro-FT8 (PoE-P4, AtomS3 Lite).">
 <style>
   :root {
     --ink: #1a1f1c;
@@ -240,7 +240,8 @@
   <section>
     <h2>Source</h2>
     <p class="note">
-      A snapshot of the firmware tree with supporting libraries included, ready to build.
+      The source is on <a href="https://github.com/kb2slo/micro-ft8">GitHub</a>; its
+      README says how to clone and build it.
     </p>
   </section>
 
@@ -274,10 +275,6 @@ const LABELS = {
     desc: "Wi‑Fi companion (esp32s3), merged 0x0 image. Flash over USB-C separately from the host.",
     chip: "ESP32-S3",
     flashSize: "8MB",
-  },
-  source: {
-    title: "Source tree",
-    desc: "History-free tarball with ft8_lib vendored in.",
   },
   getting_started: {
     title: "Getting-started sheet",
@@ -441,7 +438,7 @@ function render(m) {
   flashButtons.length = 0;
   for (const k in logEls) delete logEls[k];
 
-  ["poe_p4", "sidekick", "source", "getting_started"].forEach((key) => {
+  ["poe_p4", "sidekick", "getting_started"].forEach((key) => {
     const asset = m.assets && m.assets[key];
     const label = LABELS[key];
     if (!label) return;
@@ -480,7 +477,7 @@ function render(m) {
     li.appendChild(row);
 
     // Every asset in one CI run comes from the same commit, so "updated"
-    // is the same date for all four -- shown per card anyway rather than
+    // is the same date for all three -- shown per card anyway rather than
     // only once at the top, so it travels with the hash an operator would
     // actually be checking it against.
     if (asset && asset.sha256) {
@@ -517,7 +514,6 @@ function fallback() {
     assets: {
       poe_p4: { stable: "microft8-poe-p4-continuous.bin" },
       sidekick: { stable: "microft8-sidekick-continuous.bin" },
-      source: { stable: "microft8-source-continuous.tar.gz" },
     },
   });
   statusEl.className = "warn status-err";
