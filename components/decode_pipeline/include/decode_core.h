@@ -14,10 +14,16 @@
 //         int found = decode_core_search(&core);
 //         for (int i = 0; i < found; ++i) {
 //             if (decode_core_skip(&core, i)) continue;
+//             if (!decode_core_afford(&core)) break;
 //             decode_core_decode(&core, i, &attempt);
 //             decode_core_commit(&core, i, &attempt, &message);
 //         }
 //     } while (decode_core_next_pass(&core));
+//
+// The work is counted in units (decode.md, The work budget): each search costs cost_search, each
+// candidate tried cost_candidate plus the LDPC iterations it ran. A slot stops at the first candidate
+// whose worst case would take it past budget_units, so where it stops depends on the waterfall alone:
+// the host replays it exactly, whatever its speed.
 //
 // One decode_core_t per channel: it is a slot's decode in progress, not a worker's scratch.
 
@@ -50,6 +56,11 @@ typedef struct {
     int subtract_neighbors;  // decode_subtract_message()
     float subtract_fraction; // decode_subtract_message()
     ftx_callsign_hash_interface_t* hash_if;  // unpacks hashed calls, and saves them: not owned
+    // The slot's budget in units; 0 is no limit. The first search always runs; everything after it,
+    // the first search's own candidates included, runs only while its worst case fits.
+    int budget_units;
+    int cost_search;     // units a search costs
+    int cost_candidate;  // units a candidate tried costs, beside its LDPC iterations
 } decode_core_config_t;
 
 typedef struct {
@@ -63,6 +74,9 @@ typedef struct {
     ftx_candidate_t candidates[DECODE_MAX_CANDIDATES];
     float seen_hz[DECODE_MAX_CANDIDATES];  // this search's subtracted frequencies
     int seen;
+    int spent;                           // units charged this slot
+    int tried;                           // candidates decoded this slot, every search
+    int cut;                             // 1 once the budget stopped work the slot would have done
     decode_retry_t retry;
     decode_snr_slot_t snr;
     ftx_message_t decoded[DECODE_CORE_HASH_SLOTS];
@@ -72,6 +86,7 @@ typedef struct {
 // What decode_core_decode() found for one candidate, before it is committed.
 typedef struct {
     int ok;
+    int iterations;  // LDPC iterations run
     ftx_message_t message;
 } decode_core_attempt_t;
 
@@ -102,16 +117,22 @@ int decode_core_search(decode_core_t* core);
 // subtracted, or a failure no subtraction has touched since (decode_retry.h).
 int decode_core_skip(const decode_core_t* core, int i);
 
+// 1 when the budget has room for one more candidate at its worst case: cost_candidate plus every LDPC
+// iteration. 0 marks the slot cut; try no more of this search's candidates.
+int decode_core_afford(decode_core_t* core);
+
 // LDPC on candidate i. Reads the waterfall only.
 void decode_core_decode(const decode_core_t* core, int i, decode_core_attempt_t* attempt);
 
-// Commits candidate i's attempt: notes a failure, or unpacks, measures the SNR, subtracts. Fills
+// Commits candidate i's attempt and charges what it cost: notes a failure, or unpacks, measures the
+// SNR, subtracts. Fills
 // *message for DECODE_CORE_REPEAT and DECODE_CORE_NEW.
 decode_core_result_t decode_core_commit(decode_core_t* core, int i, const decode_core_attempt_t* attempt,
                                         decode_core_message_t* message);
 
-// After a search's commits. 1, and the next search is current, when another search can find anything:
-// subtraction is on, a search remains, and this one subtracted something.
+// After a search's commits. 1, and the next search is current, when another search can find anything
+// (subtraction is on, a search remains, and this one subtracted something) and the budget has room
+// for it and one candidate; with no room the slot is marked cut. A cut slot searches no more.
 int decode_core_next_pass(decode_core_t* core);
 
 #ifdef __cplusplus

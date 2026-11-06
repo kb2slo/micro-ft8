@@ -302,6 +302,7 @@ check_tx_e2e() {
 check_decode_recall() {
   need_submodule
   python3 tools/decode_recall/report.py
+  python3 tools/decode_recall/test_budget.py
 }
 
 # The sheet's on-screen-text check, and its page limit wherever Chrome is

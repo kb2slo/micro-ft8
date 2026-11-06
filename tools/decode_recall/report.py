@@ -41,12 +41,12 @@ DECODER = HERE / "decode_recall"
 IQ_TOOL_DIR = REPO / "tools" / "iq_convert"
 IQ_TOOL = IQ_TOOL_DIR / "iq_convert"
 
-def firmware_candidates():
-    """The cap decode_slot() uses. One definition, in decode_limits.h."""
+def firmware_limit(name):
+    """A value decode_slot() uses. One definition, in decode_limits.h."""
     header = (REPO / "components" / "decode_pipeline" / "include" / "decode_limits.h").read_text()
-    match = re.search(r"#define DECODE_MAX_CANDIDATES (\d+)", header)
+    match = re.search(rf"#define {name} (\d+)", header)
     if not match:
-        raise SystemExit("DECODE_MAX_CANDIDATES missing from decode_limits.h")
+        raise SystemExit(f"{name} missing from decode_limits.h")
     return int(match.group(1))
 
 
@@ -54,7 +54,7 @@ def firmware_candidates():
 TODAY = {
     "time_osr": 2,
     "freq_osr": 2,
-    "candidates": firmware_candidates(),
+    "candidates": firmware_limit("DECODE_MAX_CANDIDATES"),
     "decodes": 32,
     "min_score": 5,
     "ldpc": 25,
@@ -64,6 +64,9 @@ TODAY = {
     "subtract_passes": 2,
     "subtract_neighbors": 1,
     "subtract_fraction": 0.5,
+    "budget_units": firmware_limit("DECODE_BUDGET_UNITS"),
+    "cost_search": firmware_limit("DECODE_COST_SEARCH"),
+    "cost_candidate": firmware_limit("DECODE_COST_CANDIDATE"),
 }
 
 # CI fails if recall falls more than this many messages under the recorded hits.
