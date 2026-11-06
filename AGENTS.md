@@ -42,7 +42,7 @@ No open-ended codebase exploration to be helpful — that is exactly the token s
 
 Do not mix a feature change with an unrelated fix in the same commit.
 
-**The roadmap is the maintainer's.** A change that ships a `ROADMAP.md` row drops the row in the same change. Any other roadmap edit — a new row, a new order, a move between sections — is the maintainer's ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md)), and goes on its own branch from `main` with its own pull request, never into a work branch and never pushed straight to `main` unless the maintainer says so for that change. A contributor's new idea is an issue.
+**The roadmap is the maintainer's.** A change that ships a `ROADMAP.md` row drops the row in the same change. Any other roadmap edit — a new row, a new order, a move between sections — is the maintainer's ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md)), and goes on its own branch from `main` with its own pull request, never into a work branch and never pushed straight to `main` unless the maintainer says so for that change, or it is an Ideas-only change on the fast path ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md), **Roadmap intake**). A contributor's new idea is an issue.
 
 **Fix defects in the slice.** A defect found while working in an area gets fixed in that slice, not filed for later. What was wrong and why is still recorded — in a `ROADMAP.md` row when working for the maintainer, in the pull request otherwise — and it is not a promise to act later.
 
@@ -112,7 +112,7 @@ The person you work for reviews in chat, then green-lights each step. A good pre
 
 3. **Commit message in chat.** Propose the message here: a subject of one sentence, at most 72 characters, saying what changed, then a blank line and the why in the body. `tools/check_commits.py` holds commits to that shape, in CI on pull requests, and with them a pull request's title: a squash merge makes it, or a lone commit's subject, the subject on `main`, with ` (#N)` added. Also propose the README and site deltas, or say why neither needs a change (**README and site stay current**). Wait for them to accept or edit. Do not commit in the same turn as the proposal unless they already asked to commit.
 
-4. **Commit / push only when asked.** Local edits are fine when they asked for the work. `git commit` waits until they have seen the plan or diff and said to commit. `git push` waits until they said to push, and so does opening a pull request. “Commit and push” is both, using the agreed message. Do not treat “ship on main”, a green host test, or “local commits are fine” as standing permission.
+4. **Commit / push only when asked.** Local edits are fine when they asked for the work. `git commit` waits until they have seen the plan or diff and said to commit. `git push` waits until they said to push, and so does opening a pull request. “Commit and push” is both, using the agreed message. Do not treat “ship on main”, a green host test, or “local commits are fine” as standing permission. The one standing exception is an approved Ideas-only roadmap change, which goes straight to `main` ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md), **Roadmap intake**, fast path).
 
    **A scope instruction is not a push instruction, even mid-session.** Each push needs its own explicit trigger in that turn — "push", "commit and push", or equivalent — not inferred from momentum, from how the last few turns went, or from the change being correct and well-tested.
 
