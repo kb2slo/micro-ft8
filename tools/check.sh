@@ -30,8 +30,8 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-CHECKS="web webapp host_mock sim tx_e2e decode_recall getting_started docs commits locks sidekick p4"
-HOST_CHECKS="web webapp host_mock sim tx_e2e decode_recall getting_started"
+CHECKS="web webapp host_mock sim tx_e2e decode_recall tools getting_started docs commits locks sidekick p4"
+HOST_CHECKS="web webapp host_mock sim tx_e2e decode_recall tools getting_started"
 LOG_DIR="build/check"
 JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
 IDF_VERSION="v5.5.5"  # AGENTS.md, Local IDF build / flash
@@ -48,6 +48,7 @@ triggers() {
     sim)             echo 'components/* host_mock/* sidekick/main/* webapp/tests/*' ;;
     tx_e2e)          echo 'components/* tests/tx_e2e/*' ;;
     decode_recall)   echo 'components/* tools/decode_recall/* tools/iq_convert/*' ;;
+    tools)           echo 'tools/qmx_record.py tools/hl2_record.py tools/hl2_pcap.py tools/test_*.py' ;;
     getting_started) echo 'webapp/app/* webapp/tools/* webapp/getting-started.md' ;;
     # The paths filter of ci.yml's `changes` job, which gates CI's firmware jobs.
     sidekick|p4)     echo 'components/* sidekick/* poe_p4/* idf_component.yml */idf_component.yml tools/*.cmake tools/check_ram_budget.py .github/workflows/ci.yml' ;;
@@ -303,6 +304,14 @@ check_decode_recall() {
   need_submodule
   python3 tools/decode_recall/report.py
   python3 tools/decode_recall/test_budget.py
+}
+
+# The recorders and the capture converter, each against synthetic streams: no
+# radio, no audio device, no packages.
+check_tools() {
+  python3 tools/test_qmx_record.py
+  python3 tools/test_hl2_record.py
+  python3 tools/test_hl2_pcap.py
 }
 
 # The sheet's on-screen-text check, and its page limit wherever Chrome is

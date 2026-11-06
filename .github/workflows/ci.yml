@@ -78,6 +78,9 @@ jobs:
       - name: Decode recall
         run: tools/check.sh --only decode_recall
 
+      - name: Recorders and capture converter
+        run: tools/check.sh --only tools
+
   # Links and repo paths in the docs still resolve, and no row ID newly
   # dangles (tools/check_docs.py); on a pull request, its commit messages
   # and the subject a squash merge would write (tools/check_commits.py).
