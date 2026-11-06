@@ -204,7 +204,7 @@ What the operator consults *instead of* looking at the radio. **The test for a T
 
 ### Who hears me
 
-Stations that reported hearing our call, from PSKReporter's live MQTT feed. Online-required. **The map is the main view** (operator, 2026-10-08): a PSKReporter layer on `map.html` (**The map**, below). Tools has a card with a status, a count, **Open list** and **Show on map** (`map.html?layer=psk`, which opens with the layer on). The design, and the history query still to come for gaps, is [RFC 0013](../rfcs/0013-pskreporter.md).
+Stations that reported hearing our call, from PSKReporter's live MQTT feed. Online-required. **The map is the main view** (operator, 2026-10-08): a PSKReporter layer on `map.html` (**The map**, below). Tools has a card with a status, a count, **Open list** and **Show on map** (`map.html?layer=psk`, which opens with the layer on). Filling the gaps below is **not yet built: row [I37](../ROADMAP.md#I37)**.
 
 * **Three files.**
   - `pskr_core.js` holds the logic: packets, spots, gaps. Host-tested by `webapp/tests/test_pskr_core.js`.
@@ -220,7 +220,7 @@ Stations that reported hearing our call, from PSKReporter's live MQTT feed. Onli
 * **When it listens:**
   - For 15 minutes after any transmission `app.html` saw (a TX HUD event on the air), on whichever page is open.
   - While Tools or the list is on screen, or while the map's layer is on.
-  - Why 15 minutes: a transmission's spots reached the feed up to 561 s after it (median 92 s; 2026-10-07, 20 m FT8). The map sees no TX events, so a transmission made while only the map is open is not recorded.
+  - Why 15 minutes: a transmission's spots reached the feed up to 561 s after it (median 92 s; 2026-10-07, 20 m FT8). The map sees no TX events, so a transmission made while only the map is open is not recorded. A transmission drew a median of 1 spot (75th percentile 3, 90th 5, 99th 15, most 77; 642 transmissions).
 * **The feed keeps no history.** It publishes at QoS 0, so even a persistent session holds nothing for a client that is away (measured 2026-10-07). A spot that arrives while no page is listening is lost.
 * **One stored copy, both pages.** `localStorage` key `microft8_pskr_v1` holds one call's newest 5,000 spots for 24 hours, plus the listening and transmitting ranges.
   - A page loads it on start and saves it every couple of seconds while listening, and on leaving.
