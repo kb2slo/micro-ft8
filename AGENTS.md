@@ -212,9 +212,15 @@ the only place every agent and every person can see them — see "Memory lives i
 
   **One write needs no approval: setting the clock.** When the main board's clock is unset (SLOT indices count from boot, events carry `t` 0) or reads more than a second off, an agent sends `POST /api/time` with its own machine's time, the call the web app makes, provided that machine's clock is synced to NTP (check it first), and says in chat that it did. It sets the clock and nothing else, so it cannot key the radio or change a setting. Every other write still needs approval in that turn.
 
-- **WSJT-X is the on-air standard.** Where our behaviour on the air differs from WSJT-X's (the message
-  sequence, a message's format, what a tap sends), WSJT-X's is the default, and we differ only by a recorded
-  decision. Check its source first: the `WSJTX/wsjtx` mirror, `widgets/mainwindow.cpp` for sequencing.
+- **WSJT-X is the on-air standard; station policy is ours.** On the wire WSJT-X decides: a message's format,
+  what each message of a QSO means and which follows which, what a tap sends, reports, timing and parity. We
+  differ there only by a recorded decision; check its source first (the `WSJTX/wsjtx` mirror,
+  `widgets/mainwindow.cpp` for sequencing). **Station policy** (whom to call or answer and in what order,
+  when, how many times, how many QSOs are queued) has no single standard: WSJT-X's is deliberately minimal,
+  and JTDX, MSHV, FT8CN and WSJT-X Improved go further. Decide it on evidence, say what those engines do, and
+  record it in [autoseq.md](docs/architecture/autoseq.md), a difference from WSJT-X included, so nobody
+  "fixes" it back. What binds station policy is the control operator's licence and award rules such as
+  ARRL's contemporaneous initiation, not WSJT-X.
 
 - **Prose is authoritative; a diagram is derived.** Never let a fact live only in a diagram. Agents read
   the prose and may not reconstruct a constraint that exists only as an arrow, and a diagram that is the sole
