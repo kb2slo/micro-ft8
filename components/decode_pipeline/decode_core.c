@@ -18,6 +18,9 @@ int decode_core_begin(decode_core_t* core, monitor_t* monitor, const float* bloc
     core->pass = 0;
     core->found = 0;
     core->seen = 0;
+    core->spent = 0;
+    core->tried = 0;
+    core->cut = 0;
     decode_retry_reset(&core->retry);
     memset(core->decoded_used, 0, sizeof(core->decoded_used));
     // Per-frequency noise, before any subtraction (decode.md, SNR).
@@ -34,6 +37,7 @@ int decode_core_search(decode_core_t* core)
         if (want < 1) want = 1;
     }
     core->seen = 0;
+    core->spent += core->config->cost_search;
     core->found = ftx_find_candidates(&core->monitor->wf, want, core->candidates, core->config->min_score);
     return core->found;
 }
@@ -54,6 +58,25 @@ int decode_core_skip(const decode_core_t* core, int i)
     return decode_retry_unchanged(&core->retry, c, core->n_tones);
 }
 
+// 1 when the budget has room for this many more units, or there is no budget.
+static int fits(const decode_core_t* core, int units)
+{
+    const int budget = core->config->budget_units;
+    return budget <= 0 || core->spent + units <= budget;
+}
+
+static int worst_candidate(const decode_core_t* core)
+{
+    return core->config->cost_candidate + core->config->ldpc_iterations;
+}
+
+int decode_core_afford(decode_core_t* core)
+{
+    if (fits(core, worst_candidate(core))) return 1;
+    core->cut = 1;
+    return 0;
+}
+
 void decode_core_decode(const decode_core_t* core, int i, decode_core_attempt_t* attempt)
 {
     ftx_decode_status_t status;
@@ -63,6 +86,7 @@ void decode_core_decode(const decode_core_t* core, int i, decode_core_attempt_t*
                                        &attempt->message, &status)
                       ? 1
                       : 0;
+    attempt->iterations = status.ldpc_iterations;
 }
 
 // 1 if the payload is new this slot, and remembers it. A full table remembers nothing more, and a
@@ -89,6 +113,8 @@ decode_core_result_t decode_core_commit(decode_core_t* core, int i, const decode
                                         decode_core_message_t* message)
 {
     const ftx_candidate_t* c = &core->candidates[i];
+    core->spent += core->config->cost_candidate + attempt->iterations;
+    core->tried++;
     if (!attempt->ok) {
         decode_retry_note_failed(&core->retry, c);
         return DECODE_CORE_FAILED;
@@ -120,7 +146,11 @@ decode_core_result_t decode_core_commit(decode_core_t* core, int i, const decode
 int decode_core_next_pass(decode_core_t* core)
 {
     // Nothing subtracted leaves the waterfall as it was, so another search would only retry what just failed.
-    if (!core->subtract || core->seen == 0 || core->pass + 1 >= core->passes) return 0;
+    if (core->cut || !core->subtract || core->seen == 0 || core->pass + 1 >= core->passes) return 0;
+    if (!fits(core, core->config->cost_search + worst_candidate(core))) {
+        core->cut = 1;
+        return 0;
+    }
     core->pass++;
     return 1;
 }

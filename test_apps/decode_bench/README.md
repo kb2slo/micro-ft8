@@ -59,7 +59,8 @@ The P4 build uses `poe_p4/partitions.csv`, so writing only `0x10000` leaves the 
 
 ## Reading the output
 
-- `RESULT <config> <slot> ... find_ms decode_ms total_ms process_ms`
+- `RESULT <config> <slot> ... find_ms decode_ms total_ms process_ms searches tried iters`
+  - `searches`, `tried` and `iters` are the work the decode budget counts; the P4's cost per unit is fitted from them against `find_ms` and `decode_ms` (docs/architecture/decode.md, **The work budget**).
   - `total_ms` (find + decode) is what must fit the 2.36 s FT8 guard band.
   - `process_ms` is capture-time CPU, spread across the slot.
 - `MSG <config> <slot> <Hz> <DT> <text>`: diff these against the host log for parity.

@@ -32,6 +32,9 @@ typedef struct {
     int subtract_passes;  // 0 = one search, no subtraction. 1..3 re-search that many times
     int subtract_neighbors; // 0 = the decoded time_sub only. 1 = that and the neighbouring time_sub
     float subtract_fraction; // 0 = half the estimated SNR. Otherwise the fraction removed, in (0, 1]
+    int budget_units;     // decode_core_config_t: 0 = no limit
+    int cost_search;      // decode_core_config_t
+    int cost_candidate;   // decode_core_config_t
 } BenchConfig;
 
 typedef struct {
@@ -41,6 +44,11 @@ typedef struct {
     int64_t process_us;   // all monitor_process() calls: capture-time CPU, spread across the slot
     int64_t find_us;      // ftx_find_candidates(): on the decode clock
     int64_t decode_us;    // candidate loop incl. unpack: on the decode clock
+    int searches;         // ftx_find_candidates() calls
+    int tried;            // candidates decoded, every search
+    int iterations;       // LDPC iterations run, every candidate
+    int units;            // decode_core_t spent: what the budget counted
+    int cut;              // 1 when the budget stopped the slot early
 } BenchResult;
 
 typedef int64_t (*bench_clock_fn)(void);

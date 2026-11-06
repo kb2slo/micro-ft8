@@ -295,8 +295,8 @@ static void sample_decode_cores(void) {
 // percent over this decode (core 0, then core 1). The text fits
 // PORTA_EVENT_TEXT_MAX (64). A line that does not is resent without y, so a
 // truncated event cannot clip b into a different number.
-static void log_slot_summary(const ft8_slot_t* slot, int num_candidates, int max_cand, int msg_count,
-                             int tome, int sync_ms, int64_t decode_t0_us) {
+static void log_slot_summary(const ft8_slot_t* slot, const decode_core_t* core, int num_candidates,
+                             int msg_count, int tome, int sync_ms, int64_t decode_t0_us) {
   const int64_t dec_ms = (esp_timer_get_time() - decode_t0_us) / 1000;
   const int64_t slot_ms = slot->mode->slot_time_ms;
   const int64_t slot_idx = slot->slot_idx;
@@ -307,17 +307,20 @@ static void log_slot_summary(const ft8_slot_t* slot, int num_candidates, int max
       (uint32_t)ulTaskGetIdleRunTimeCounterForCore(0) - s_idle_at_decode[0], elapsed);
   const int busy1 = decode_core_busy_pct(
       (uint32_t)ulTaskGetIdleRunTimeCounterForCore(1) - s_idle_at_decode[1], elapsed);
+  // The work counted: units, searches run, and '!' when the budget cut the slot short.
+  const char* cut = core->cut ? "!" : "";
+  const int searches = core->pass + 1;
   // 128 covers a full int64 print. The event field keeps 64 characters.
   char buf[128];
   int n = snprintf(buf, sizeof(buf),
-                   "SLOT %lld c%d/%d m%d t%d dec%lld left%lld y%d b%d/%d",
-                   (long long)slot_idx, num_candidates, max_cand, msg_count, tome,
-                   (long long)dec_ms, (long long)left_ms, sync_ms, busy0, busy1);
+                   "SLOT %lld c%d m%d t%d dec%lld left%lld y%d u%dp%d%s b%d/%d",
+                   (long long)slot_idx, num_candidates, msg_count, tome,
+                   (long long)dec_ms, (long long)left_ms, sync_ms, core->spent, searches, cut, busy0, busy1);
   if (n > 64) {
     snprintf(buf, sizeof(buf),
-             "SLOT %lld c%d/%d m%d t%d dec%lld left%lld b%d/%d",
-             (long long)slot_idx, num_candidates, max_cand, msg_count, tome,
-             (long long)dec_ms, (long long)left_ms, busy0, busy1);
+             "SLOT %lld c%d m%d t%d dec%lld left%lld u%dp%d%s b%d/%d",
+             (long long)slot_idx, num_candidates, msg_count, tome,
+             (long long)dec_ms, (long long)left_ms, core->spent, searches, cut, busy0, busy1);
   }
   debug_log_line(buf);
 }
@@ -361,6 +364,9 @@ void decode_slot(const ft8_slot_t* slot) {
       .subtract_neighbors = DECODE_SUBTRACT_NEIGHBORS,
       .subtract_fraction = DECODE_SUBTRACT_FRACTION,
       .hash_if = &hash_if,
+      .budget_units = DECODE_BUDGET_UNITS,
+      .cost_search = DECODE_COST_SEARCH,
+      .cost_candidate = DECODE_COST_CANDIDATE,
   };
   decode_core_t& core = dc.core;
   if (!decode_core_begin(&core, mon, slot->block_gain, &kCoreConfig)) {
@@ -392,12 +398,13 @@ void decode_slot(const ft8_slot_t* slot) {
         decode_tx_state_set_decode_applied_slot_idx(slot_idx);
       }
       decode_tx_state_set_decode_in_progress(false);
-      log_slot_summary(slot, 0, max_cand, 0, 0, 0, decode_t0_us);
+      log_slot_summary(slot, &core, 0, 0, 0, 0, decode_t0_us);
       return;
     }
 
     for (int i = 0; i < found && dc.count < DEC_MAX; ++i) {
       if (decode_core_skip(&core, i)) continue;
+      if (!decode_core_afford(&core)) break;
       decode_core_attempt_t attempt;
       decode_core_message_t message;
       decode_core_decode(&core, i, &attempt);
@@ -488,7 +495,7 @@ void decode_slot(const ft8_slot_t* slot) {
 
   int tome = 0;
   for (int i = 0; i < dc.count; ++i) if (dc.dec[i].is_to_me) tome++;
-  log_slot_summary(slot, num_candidates, max_cand, dc.count, tome, sync_ms, decode_t0_us);
+  log_slot_summary(slot, &core, num_candidates, dc.count, tome, sync_ms, decode_t0_us);
 
   // Publish, then mark this slot's decode applied, then clear the in-progress
   // flag, in that order. The TX trigger on core 0 reads in_progress and the

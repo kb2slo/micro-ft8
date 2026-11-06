@@ -100,10 +100,11 @@ static void bench_task(void* argument)
             MessageContext where = { config->name, s };
             BenchResult result;
             bench_run_slot(config, samples, count, bench_clock_us, print_message, &where, &result);
-            printf("RESULT %s %d ok=%d cand=%d dec=%d find_ms=%.1f decode_ms=%.1f total_ms=%.1f process_ms=%.1f\n",
+            printf("RESULT %s %d ok=%d cand=%d dec=%d find_ms=%.1f decode_ms=%.1f total_ms=%.1f process_ms=%.1f searches=%d tried=%d iters=%d\n",
                    config->name, s, result.ok, result.candidates, result.decoded,
                    result.find_us / 1000.0, result.decode_us / 1000.0,
-                   (result.find_us + result.decode_us) / 1000.0, result.process_us / 1000.0);
+                   (result.find_us + result.decode_us) / 1000.0, result.process_us / 1000.0,
+                   result.searches, result.tried, result.iterations);
             fflush(stdout);
             vTaskDelay(1);
         }

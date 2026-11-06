@@ -170,9 +170,11 @@ static int decode_file(const char* path, const BenchConfig* config)
         printf("FAIL %s\n", path);
         return 1;
     }
-    printf("END cand=%d dec=%d wall_ms=%lld find_ms=%lld decode_ms=%lld\n",
+    printf("END cand=%d dec=%d wall_ms=%lld find_ms=%lld decode_ms=%lld searches=%d tried=%d iters=%d units=%d cut=%d find_us=%lld decode_us=%lld\n",
            result.candidates, result.decoded, (long long)wall_ms,
-           (long long)(result.find_us / 1000), (long long)(result.decode_us / 1000));
+           (long long)(result.find_us / 1000), (long long)(result.decode_us / 1000), result.searches,
+           result.tried, result.iterations, result.units, result.cut, (long long)result.find_us,
+           (long long)result.decode_us);
     return 0;
 }
 
@@ -265,8 +267,10 @@ static void usage(const char* argv0)
             "       %s --synth DIR\n"
             "defaults are the firmware's: time-osr 2, freq-osr 2, candidates %d, decodes 32,\n"
             "min-score 5, ldpc 25, sample-rate 6000, agc on, levels 256,\n"
-            "subtract-passes %d, subtract-neighbors %d, subtract-fraction 0.5\n",
-            argv0, argv0, DECODE_MAX_CANDIDATES, DECODE_SUBTRACT_PASSES, DECODE_SUBTRACT_NEIGHBORS);
+            "subtract-passes %d, subtract-neighbors %d, subtract-fraction 0.5,\n"
+            "budget-units %d, cost-search %d, cost-candidate %d\n",
+            argv0, argv0, DECODE_MAX_CANDIDATES, DECODE_SUBTRACT_PASSES, DECODE_SUBTRACT_NEIGHBORS,
+            DECODE_BUDGET_UNITS, DECODE_COST_SEARCH, DECODE_COST_CANDIDATE);
 }
 
 int main(int argc, char** argv)
@@ -285,6 +289,9 @@ int main(int argc, char** argv)
         .subtract_passes = DECODE_SUBTRACT_PASSES,
         .subtract_neighbors = DECODE_SUBTRACT_NEIGHBORS,
         .subtract_fraction = DECODE_SUBTRACT_FRACTION,
+        .budget_units = DECODE_BUDGET_UNITS,
+        .cost_search = DECODE_COST_SEARCH,
+        .cost_candidate = DECODE_COST_CANDIDATE,
     };
     const char* synth_dir = NULL;
     static const struct option options[] = {
@@ -300,6 +307,9 @@ int main(int argc, char** argv)
         { "subtract-passes", required_argument, NULL, 'p' },
         { "subtract-neighbors", required_argument, NULL, 'n' },
         { "subtract-fraction", required_argument, NULL, 'F' },
+        { "budget-units", required_argument, NULL, 'b' },
+        { "cost-search", required_argument, NULL, 'S' },
+        { "cost-candidate", required_argument, NULL, 'C' },
         { "synth", required_argument, NULL, 'y' },
         { "help", no_argument, NULL, 'h' },
         { NULL, 0, NULL, 0 },
@@ -326,6 +336,9 @@ int main(int argc, char** argv)
             case 'p': config.subtract_passes = atoi(optarg); break;
             case 'n': config.subtract_neighbors = atoi(optarg); break;
             case 'F': config.subtract_fraction = (float)atof(optarg); break;
+            case 'b': config.budget_units = atoi(optarg); break;
+            case 'S': config.cost_search = atoi(optarg); break;
+            case 'C': config.cost_candidate = atoi(optarg); break;
             case 'y': synth_dir = optarg; break;
             default:
                 usage(argv[0]);
@@ -336,10 +349,11 @@ int main(int argc, char** argv)
         config.max_decodes < 1 || config.time_osr < 1 || config.freq_osr < 1 ||
         config.subtract_passes < 0 || config.subtract_passes > 3 ||
         (config.subtract_neighbors != 0 && config.subtract_neighbors != 1) ||
-        config.subtract_fraction < 0.0f || config.subtract_fraction > 1.0f) {
+        config.subtract_fraction < 0.0f || config.subtract_fraction > 1.0f || config.budget_units < 0 ||
+        config.cost_search < 0 || config.cost_candidate < 0) {
         fprintf(stderr, "candidates must be 1..%d; osr and decodes must be >= 1; "
                         "subtract-passes is 0..3; subtract-neighbors is 0 or 1; "
-                        "subtract-fraction is 0 (half) or (0, 1]\n",
+                        "subtract-fraction is 0 (half) or (0, 1]; budget and costs are >= 0\n",
                 BENCH_MAX_CANDIDATES);
         return 2;
     }

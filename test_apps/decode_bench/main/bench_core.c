@@ -175,8 +175,13 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
         .subtract_neighbors = config->subtract_neighbors,
         .subtract_fraction = config->subtract_fraction > 0.0f ? config->subtract_fraction : DECODE_SUBTRACT_FRACTION,
         .hash_if = &s_hash_interface,
+        .budget_units = config->budget_units,
+        .cost_search = config->cost_search,
+        .cost_candidate = config->cost_candidate,
     };
     int candidate_count = 0;
+    int searches = 0;
+    int iterations = 0;
     int decoded = 0;
     int64_t find_us = 0;
     int64_t decode_us = 0;
@@ -188,14 +193,17 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
         int64_t find_t0 = clock_us();
         int found = decode_core_search(&s_core);
         find_us += clock_us() - find_t0;
+        ++searches;
         if (s_core.pass == 0) candidate_count = found;
 
         int64_t decode_t0 = clock_us();
         for (int i = 0; i < found && decoded < config->max_decodes; ++i) {
             if (decode_core_skip(&s_core, i)) continue;
+            if (!decode_core_afford(&s_core)) break;
             decode_core_attempt_t attempt;
             decode_core_message_t message;
             decode_core_decode(&s_core, i, &attempt);
+            iterations += attempt.iterations;
             if (decode_core_commit(&s_core, i, &attempt, &message) != DECODE_CORE_NEW) continue;
             ++decoded;
             if (on_message != NULL) on_message(context, message.text, message.freq_hz, message.time_s, message.snr);
@@ -211,6 +219,11 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
     result->process_us = t1 - t0;
     result->find_us = t2 - t1;
     result->decode_us = t3 - t2;
+    result->searches = searches;
+    result->tried = s_core.tried;
+    result->iterations = iterations;
+    result->units = s_core.spent;
+    result->cut = s_core.cut;
     free(block_gain);
     monitor_free(&monitor);
 }
