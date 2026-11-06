@@ -67,7 +67,7 @@ static int mag_percentile(const monitor_t* monitor, int percent)
     return 0;
 }
 
-// RFC 0006 §4, fewer-bits simulation: `levels` codes across a 32 dB window (64 counts at
+// Fewer-bits simulation (docs/architecture/decode.md, Recall against jt9): `levels` codes across a 32 dB window (64 counts at
 // 0.5 dB), with the noise floor two steps above the bottom. One value per byte; no packing.
 // levels <= 1 or >= 256 leaves the 8-bit cells alone.
 static void quantise_waterfall(monitor_t* monitor, int levels)

@@ -1,6 +1,6 @@
 // Host side of the decode benchmark: same core, same configurations, same output format as the device
 // image, reading the slot files the device embeds. Diff the MSG lines of the two logs for the
-// host/device parity check (RFC 0006 §3). Host timings rank configurations; they are not device timings.
+// host/device parity check (docs/architecture/decode.md, Measured). Host timings rank configurations; they are not device timings.
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -297,7 +297,7 @@ check_tx_e2e() {
   ctest --test-dir tests/tx_e2e/build --output-on-failure
 }
 
-# RFC 0006 P1. Truth is committed; this does not run jt9. The first run clones
+# The recall harness (docs/architecture/decode.md). Truth is committed; this does not run jt9. The first run clones
 # howard0su/ft8_lib at the pinned SHA for the 20m_busy WAVs.
 check_decode_recall() {
   need_submodule

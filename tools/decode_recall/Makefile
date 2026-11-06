@@ -1,4 +1,4 @@
-# Host decoder for the recall harness (RFC 0006 P1).
+# Host decoder for the recall harness (docs/architecture/decode.md, Recall against jt9).
 #   make -C tools/decode_recall
 ROOT := ../..
 LIB  := $(ROOT)/components/ft8_lib

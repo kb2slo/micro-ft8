@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rebuild every decoder variant scored in RFC 0006 section 4.1, then score them.
+# Rebuild every decoder variant scored in docs/architecture/decode.md (Against other decoders), then score them.
 #
 #   tools/decode_bench/build_variants.sh OUT_DIR
 #
@@ -9,7 +9,7 @@
 # Every variant is howard0su/ft8_lib at a pinned SHA, changed by one sed recipe, so
 # each number in the RFC traces to an exact diff. The subtraction fix (sub_minus8)
 # is the base for the ablations: the upstream macro is undefined behaviour and its
-# result depends on compiler and CPU (RFC 0006 section 4.1).
+# result depends on compiler and CPU (docs/architecture/decode.md, Against other decoders).
 
 set -euo pipefail
 

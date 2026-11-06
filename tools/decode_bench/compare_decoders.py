@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Score FT8 decoders against jt9 on a directory of 12 kHz WAVs.
 
-Throwaway comparison used for RFC 0006 section 4.1. The recall harness that replaced it
+Comparison behind docs/architecture/decode.md (Against other decoders). The recall harness that replaced it
 is `python3 tools/decode_recall/report.py` (docs/architecture/decode.md). Truth here is a
 live `jt9 -8 -d DEPTH`; the harness uses committed truth instead. Decodes are matched on
 normalised message text.

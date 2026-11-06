@@ -4,11 +4,11 @@
 Writes data/slot_0.raw .. slot_4.raw (6 kHz mono int16, little-endian) and data/slots.txt. The busiest
 slots are chosen on purpose: the benchmark measures worst-case decode time, and busy slots are where the
 candidate cap binds. 12 kHz -> 6 kHz uses a windowed-sinc low-pass, not the firmware's stride decimator,
-so the benchmark measures the decoder, not the aliasing question (RFC 0006 P3). The filter (127 taps, a
+so the benchmark measures the decoder, not a decimator's aliasing. The filter (127 taps, a
 ~500 Hz transition around 2.95 kHz) is good enough for timing and for host/device parity, which both see the
 same samples; it is not the recall-grade decimator P1 needs.
 
-The 20m_busy WAVs are fetched from howard0su/ft8_lib at a pinned SHA and never committed (RFC 0006 P1).
+The 20m_busy WAVs are fetched from howard0su/ft8_lib at a pinned SHA and never committed.
 
   python3 test_apps/decode_bench/tools/make_slots.py
 """

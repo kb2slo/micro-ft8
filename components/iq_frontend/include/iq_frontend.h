@@ -10,7 +10,7 @@
 // the recall harness and the corpora take it unchanged.
 //
 // The channel is placed by center_hz: the frequency, relative to the LO, that comes out at
-// 1,500 Hz of audio. That is the dial frequency plus 1,500 Hz. A QMX's IF is 12 kHz (RFC 0006 §5 P3),
+// 1,500 Hz of audio. That is the dial frequency plus 1,500 Hz. A QMX's IF is 12 kHz (QMX operating manual, §5.22),
 // and qmx-panadapter's documentation puts its LO 12 kHz below the dial, so FT8's channel is at
 // 13,500 Hz. if_trim_hz is added to
 // it: a unit whose IF is 40 Hz high is corrected with a trim of +40. An uncorrected trim error moves

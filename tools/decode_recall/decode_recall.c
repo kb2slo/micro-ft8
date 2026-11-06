@@ -1,7 +1,7 @@
-// Host CLI for RFC 0006 P1. Decodes one or more WAVs with the firmware's decode steps
+// Host CLI for the recall harness (docs/architecture/decode.md). Decodes one or more WAVs with the firmware's decode steps
 // (bench_run_slot) and prints one jt9-style line per message. A 12 kHz WAV is
 // low-pass filtered and decimated to 6 kHz here; that filter is not the firmware's
-// stride decimator (RFC 0006 P3). `--synth` writes the tier-1 AWGN grid.
+// I/Q front end. `--synth` writes the tier-1 AWGN grid.
 
 #include <getopt.h>
 #include <math.h>

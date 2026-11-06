@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Recall report for the firmware decoder (RFC 0006 §2 and §5 P1).
+"""Recall report for the firmware decoder (docs/architecture/decode.md, Recall against jt9).
 
 One command, today's firmware settings unless flags say otherwise:
 
@@ -67,7 +67,7 @@ TODAY = {
 }
 
 # CI fails if recall falls more than this many messages under the recorded hits.
-# Two libm implementations can move a marginal candidate either way (RFC 0006 §3).
+# Two libm implementations can move a marginal candidate either way.
 SLACK = {"in_tree": 4, "busy": 8}
 
 # CI fails if the SNR's mean error against jt9 moves more than this from the recorded value,
