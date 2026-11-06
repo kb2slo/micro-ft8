@@ -87,6 +87,8 @@ Every feature the QMX station has, against what the HL2 needs for it. **Fits**: 
 
 ## Children
 
+Only the next child is a row in the index ([ROADMAP.md](../ROADMAP.md), Backlog: [abkw](#abkw)); the others wait here, in order, until it ships.
+
 * <a id="abkw"></a>**abkw: transmit, barefoot.** After row [I40](ideas.md#I40). Waveform, PTT lead, filter, drive cap, SWR latch, stream loss, the band table, transmit off by default. The safety policy host-tested (category 1); everything RF on the bench (category 2). **Done-when:** which telemetry word is forward on this unit, read while transmitting; the bench procedure (Safety, 8) passes into a dummy load and is recorded in TEST_PLAN; then a QSO on the air at 5 W (field). **Lands in:** `hl2.md` (transmit, and a **Safety** section holding each item as built with its bench result and host test; items 6 and 9 land with row [u4dw](../ROADMAP.md#u4dw) and epic [u8mc](several-channels.md)); radio.md (the tone lead, TX timing beside the QMX's); system.md (who may key it); webapp.md (power and SWR for the HL2); TEST_PLAN (the bench procedure's result); the site, what is verified on the air.
 * <a id="kgyh"></a>**kgyh: in the park.** After [abkw](#abkw). AP mode with the HL2, field power measured, listen-only bands (row [mtd6](../ROADMAP.md#mtd6) holds them per radio). **Done-when:** a POTA activation on the HL2 station, with the power draw recorded (field). **Lands in:** main_board.md (**Field power** with the HL2); `hl2.md` (its current draw).
 

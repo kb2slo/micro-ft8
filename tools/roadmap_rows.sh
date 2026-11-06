@@ -99,16 +99,29 @@ report() {
   fi
 }
 
+# The children an epic file holds as entries (`<a id="...">`), worktree or REV: an epic's
+# children wait there until each is next, so an anchored entry is as live as a row.
+epic_entry_ids() {
+  local rev="${1:-}" f
+  if [[ -z "$rev" ]]; then
+    for f in "$EPICS_DIR"/*.md; do [[ "$f" == "$DECLINED" || "$f" == "$IDEAS" ]] || cat "$f"; done
+  else
+    for f in $(git ls-tree --name-only "$rev" "$EPICS_DIR/" 2>/dev/null | grep '\.md$' || true); do
+      [[ "$f" == "$DECLINED" || "$f" == "$IDEAS" ]] || git show "$rev:$f"
+    done
+  fi | { grep -oE '<a id="[^"]+"></a>' || true; } | sed 's/<a id="\([^"]*\)".*/\1/'
+}
+
 # Row IDs that were once rows in ROADMAP.md or ideas.md (as of REV) but are not rows now,
-# in any section -- Declined lines count as rows, so a declined ID is not dead.
-# Only real ID shapes: B12 / I28a / D7, or an opaque 4-char ID.
+# in any section, nor entries in an epic file -- Declined lines count as rows, so a declined
+# ID is not dead. Only real ID shapes: B12 / I28a / D7, or an opaque 4-char ID.
 dead_ids() {
-  local rev="$1" text="$2"
+  local rev="$1" text="$2" entries="$3"
   local id_re='^([BID][0-9]+[a-z]?|[a-z][a-z2-9]{3})$'
   comm -23 \
     <(git log -p "$rev" -- "$ROADMAP" "$IDEAS" "$DECLINED" | awk -F'|' '/^[-+ ]\| *[A-Za-z0-9]+ *\|/ && !/^[-+ ]\| *(ID|---)/ { id = $2; gsub(/ /, "", id); print id }' \
         | grep -E "$id_re" | sort -u) \
-    <(rows <<<"$text" | awk '{ print $3 }' | sort -u)
+    <({ rows <<<"$text" | awk '{ print $3 }'; echo "$entries"; } | sort -u)
 }
 
 # "<file>: <id> <id> ..." for every doc citing a dead ID. TEST_PLAN.md is left
@@ -116,9 +129,10 @@ dead_ids() {
 dangling() {
   local rev="" worktree=1
   if [[ "${1:-}" == "--at" ]]; then rev="$2"; worktree=0; fi
-  local text re
-  if (( worktree )); then text="$(index_text)"; else text="$(index_text "$rev")"; fi
-  re="$(dead_ids "${rev:-HEAD}" "$text" | paste -sd'|' -)"
+  local text entries re
+  if (( worktree )); then text="$(index_text)"; entries="$(epic_entry_ids)"
+  else text="$(index_text "$rev")"; entries="$(epic_entry_ids "$rev")"; fi
+  re="$(dead_ids "${rev:-HEAD}" "$text" "$entries" | paste -sd'|' -)"
   [[ -z "$re" ]] && return 0
   # In the worktree, a doc not yet added counts too (tools/check_docs.py reads it before its commit).
   local untracked=""
@@ -131,15 +145,15 @@ dangling() {
 
 pct() { awk -v a="$1" -v b="$2" 'BEGIN { printf "%d", (b ? 100 * a / b : 0) }'; }
 
-# Rows added / removed over a window: the row IDs at its start against the IDs in TEXT at its end.
-# Comparing sets, not diff lines, so an edited row, or one moved between the index and ideas.md
-# or declined.md, is neither added nor removed.
+# Rows added / removed over a window: the row IDs at its start against the IDs in TEXT (and
+# ENTRIES, epic entries) at its end. Comparing sets, not diff lines, so an edited row, or one moved
+# between the index, ideas.md, declined.md and an epic file, is neither added nor removed.
 flow() {
-  local since="$1" rev="$2" text="$3" start
+  local since="$1" rev="$2" text="$3" entries="$4" start
   start="$(git rev-list -1 --before="@$since" "$rev" -- || true)"
   local before="" after
-  [[ -n "$start" ]] && before="$(index_text "$start" | rows | awk '{ print $3 }' | sort -u)"
-  after="$(rows <<<"$text" | awk '{ print $3 }' | sort -u)"
+  [[ -n "$start" ]] && before="$( { index_text "$start" | rows | awk '{ print $3 }'; epic_entry_ids "$start"; } | sort -u)"
+  after="$( { rows <<<"$text" | awk '{ print $3 }'; echo "$entries"; } | grep . | sort -u)"
   echo "$(comm -13 <(echo "$before") <(echo "$after") | grep -c . || true)" \
        "$(comm -23 <(echo "$before") <(echo "$after") | grep -c . || true)"
 }
@@ -170,7 +184,7 @@ health() {
   blocked="$(awk '$1 == "Blocked"' <<<"$data" | wc -l | tr -d ' ')"
   declined="$(awk '$1 == "Declined"' <<<"$data" | wc -l | tr -d ' ')"
   no_blocked_on="$(awk '$1 == "Blocked" && $6 == 0 { print $3 }' <<<"$data" | tr '\n' ' ')"
-  read -r added removed < <(flow "$since" "$rev" "$text")
+  read -r added removed < <(flow "$since" "$rev" "$text" "$(if (( worktree )); then epic_entry_ids; else epic_entry_ids "$rev"; fi)")
   # Owed field checks: Pending table rows whose status cell does not say the row is closed. Bold is
   # stripped first -- a "**pass 2026-..**" left undropped once counted as owed and inflated this to 91.
   owed="$(awk -F'|' '/^## Pending/ { p = 1; next } /^## / { p = 0 }

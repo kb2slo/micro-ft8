@@ -74,6 +74,8 @@ While an update runs, the app suppresses its lost-contact banner and its device-
 
 ## Children
 
+Only the next child is a row in the index ([ROADMAP.md](../ROADMAP.md), Backlog: [wanw](#wanw)); the others wait here, in order, until it ships.
+
 In order: each needs the one before it.
 
 * <a id="wanw"></a>**wanw: CI publishes app-only OTA images** (**Manifest**). **Done-when:** `/download/manifest.json` carries a per-board `ota` entry (file, size, SHA-256, version, protocol version) and the files are served. **Lands in:** RELEASE_PROCESS.md (what a release publishes); TEST_PLAN's Automated table if CI gains a check of the manifest.
