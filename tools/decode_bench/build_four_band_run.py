@@ -12,8 +12,9 @@ each with one directory per band holding its manifest.jsonl. DECODES.jsonl is wh
 wrote for it. --hours keeps only those streams, for a run still recording: a stream not finished is
 left out of both the radio's figures and the decodes.
 
---station-grid is the four-character grid square the run listened from: distances are great-circle
-(haversine) from its centre to each heard square's centre, in km. A decode is placed by its
+--station-grid is the grid square the run listened from, four characters or six (a subsquare, a few
+km across): distances are great-circle (haversine) from its centre to each heard square's centre,
+in km. Heard squares are four characters, as FT8 messages carry them. A decode is placed by its
 sender's grid square, learned from any message of that sender's in the run that carries one.
 
 --baseline is the one-band survey corpus the run is compared with: its manifest-<band>.jsonl gives
@@ -31,7 +32,7 @@ read, from every RUNS_DIR/*/run.json. Commit both. Python 3, standard library.
 Run 2026-11-05 was built, from the repository root, with
   python3 tools/decode_bench/build_four_band_run.py ~/hl2_recordings/2026-11-05/four-band \\
       --decodes ~/hl2_recordings/dashboard-2026-11-05/decodes.jsonl --run-id 2026-11-05 \\
-      --station-grid EM10 --station-label "Austin, Texas" \\
+      --station-grid EM10cg --station-label "Austin, Texas" \\
       --hours now 1500z 1600z 1700z 1800z 1900z 2000z 2100z 2200z 2300z \\
       --baseline tools/decode_bench/corpus/hl2-2026-11-04 \\
       --scored-window 10m=$HOME/hl2_recordings/2026-11-05/score-windows/10m \\
@@ -75,9 +76,18 @@ def band_of(dial_hz):
     return mhz[min(mhz, key=lambda f: abs(f - dial_hz / 1e6))]
 
 
+STATION_GRID = re.compile(r"^[A-Ra-r]{2}[0-9]{2}(?:[A-Xa-x]{2})?$")
+
+
 def grid_centre(g):
-    """(lat, lon) of a four-character grid square's centre."""
-    return ((ord(g[1]) - 65) * 10 - 90 + int(g[3]) + 0.5, (ord(g[0]) - 65) * 20 - 180 + int(g[2]) * 2 + 1)
+    """(lat, lon) of a four- or six-character grid square's centre: a square is 1 x 2 degrees, a
+    subsquare (the last two letters) 2.5 x 5 minutes, a few km."""
+    g = g[:2].upper() + g[2:4] + g[4:].lower()
+    lat = (ord(g[1]) - 65) * 10 - 90 + int(g[3])
+    lon = (ord(g[0]) - 65) * 20 - 180 + int(g[2]) * 2
+    if len(g) == 6:
+        return (lat + (ord(g[5]) - 97 + 0.5) * 2.5 / 60, lon + (ord(g[4]) - 97 + 0.5) * 5 / 60)
+    return (lat + 0.5, lon + 1)
 
 
 def km_between(a, b):
@@ -175,7 +185,7 @@ def main():
     ap.add_argument("--decodes", required=True, help="sample_jt9.py's output for this recording")
     ap.add_argument("--run-id", required=True, help="the run's folder name, its date: YYYY-MM-DD")
     ap.add_argument("--hours", nargs="+", help="stream directories to include (default: all)")
-    ap.add_argument("--station-grid", required=True, help="the four-character grid square the run listened from")
+    ap.add_argument("--station-grid", required=True, help="the four- or six-character grid square the run listened from")
     ap.add_argument("--station-label", help="where that is, in words")
     ap.add_argument("--baseline", help="the one-band survey corpus directory to compare with")
     ap.add_argument("--scored-window", action="append", default=[], metavar="BAND=DIR",
@@ -192,8 +202,9 @@ def main():
 
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", a.run_id):
         sys.exit("--run-id is a date, YYYY-MM-DD")
-    if not GRID.match(a.station_grid):
-        sys.exit("--station-grid is a four-character grid square, such as EM10")
+    if not STATION_GRID.match(a.station_grid):
+        sys.exit("--station-grid is a four- or six-character grid square, such as EM10 or EM10cg")
+    a.station_grid = a.station_grid[:2].upper() + a.station_grid[2:4] + a.station_grid[4:].lower()
     home = grid_centre(a.station_grid)
     off = dt.timedelta(hours=a.utc_offset_hours)
     hours = a.hours or sorted(d for d in os.listdir(a.recording_dir) if os.path.isdir(os.path.join(a.recording_dir, d)))
@@ -373,7 +384,7 @@ def main():
         "covers": {"streams": hours, "first_utc": t0.strftime("%Y-%m-%dT%H:%M:%SZ"),
                    "end_utc": t_end.strftime("%Y-%m-%dT%H:%M:%SZ"), "first_local": hhmm(t0), "end_local": hhmm(t_end)},
         "note": a.note,
-        "station": {"grid": a.station_grid, "label": a.station_label, "lat": home[0], "lon": home[1]},
+        "station": {"grid": a.station_grid, "label": a.station_label, "lat": round(home[0], 4), "lon": round(home[1], 4)},
         "corpus_url": a.corpus_url,
         "ours_scored": False,  # the day's sampled decodes are jt9's; ours scores only the windows and the A/B
         "sampling": {"every": round(len(slots) * len(bands) / len(dec)), "decoder": "jt9 -8 -d 3"},

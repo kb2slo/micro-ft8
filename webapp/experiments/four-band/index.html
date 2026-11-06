@@ -196,7 +196,7 @@
       <dt>Grid squares</dt>
       <dd>The four-character locator a message ends with, drawn at its centre.</dd>
       <dt>Distances</dt>
-      <dd>Great-circle (haversine) from the centre of the run's four-character grid square to the centre of each heard square, in km (miles alongside: 1&nbsp;mi = 1.609&nbsp;km). A square is about 110 by 190&nbsp;km here, so a distance is rough under about 150&nbsp;km. A decode is placed at its sender's grid square, the one that sender's own messages carried most often in the run; a decode whose sender never sent one, or is unknown, has no distance. The farthest stations are those heard at least twice on the band, since <code>jt9 -d 3</code> makes the odd false decode.</dd>
+      <dd>Great-circle (haversine) from the centre of the run's grid square to the centre of each heard square, in km (miles alongside: 1&nbsp;mi = 1.609&nbsp;km). A run's square has four characters or six; a six-character one (a subsquare, a few km across) places the station closely. A heard square always has four, as FT8 messages carry it: about 110 by 190&nbsp;km at these latitudes, so a short distance is rough either way. A decode is placed at its sender's grid square, the one that sender's own messages carried most often in the run; a decode whose sender never sent one, or is unknown, has no distance. The farthest stations are those heard at least twice on the band, since <code>jt9 -d 3</code> makes the odd false decode.</dd>
       <dt>Distance against SNR</dt>
       <dd>Not every decode drawn: the build tool counts decodes in cells of one distance bin by 1&nbsp;dB of SNR, per band, and takes the median SNR of each distance bin, which keeps the run's data small.</dd>
       <dt>Same time of day</dt>

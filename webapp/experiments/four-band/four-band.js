@@ -788,8 +788,10 @@
       if (r.station) {
         var gb = document.createElement("b");
         gb.textContent = r.station.grid;
-        sw.append("In this run it was listening from ", gb, (r.station.label ? ", " + r.station.label : "") +
-          ". Distances on this page are from that four-character square's centre, so they are rough under about 150\u00a0km.");
+        sw.append("In this run it was listening from ", gb, (r.station.label ? ", " + r.station.label : "") + ". " +
+          (r.station.grid.length >= 6
+            ? "That six-character square places the station to a few km; the uncertainty in a distance is the heard station's four-character square, about 100 by 200\u00a0km, so short distances are still rough."
+            : "Distances run from that four-character square's centre to each heard square's centre, both about 100 by 200\u00a0km, so distances are rough under about 150\u00a0km."));
       }
       Array.prototype.forEach.call(document.querySelectorAll("[data-station]"), function (n) { n.textContent = r.station ? r.station.grid : ""; });
       Array.prototype.forEach.call(document.querySelectorAll("[data-bin]"), function (n) { n.textContent = r.distance ? fmt(r.distance.bin_km) : ""; });
