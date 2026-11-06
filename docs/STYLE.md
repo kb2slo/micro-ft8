@@ -66,7 +66,7 @@ File size is a ratchet, not a rewrite target. New files stay under about 500 lin
 
 Require a **module**, not a class. New behavior gets a name and a header API. One tested function is enough. A strategy interface for one implementation is not.
 
-Inheritance only when there is a closed set of variants that already exists or is about to (radio backends, later modes). Radio uses `radio_control_ops_t`, not `class Radio`. A station/mode object model is [I6](roadmap/ideas.md#I6) and needs its own RFC.
+Inheritance only when there is a closed set of variants that already exists or is about to (radio backends, later modes). Radio uses `radio_control_ops_t`, not `class Radio`. A station/mode object model is [I6](roadmap/ideas.md#I6) and needs its own epic.
 
 No new host-testable logic in `poe_p4/main/`: wiring and board-only code only.
 

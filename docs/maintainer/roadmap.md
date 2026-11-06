@@ -24,7 +24,7 @@ How the roadmap is kept: the index [ROADMAP.md](../ROADMAP.md), the epic files b
 
 **Blocked is a section, not a tag,** so Backlog order stays pure priority. A Blocked row names **Blocked on:** (the condition that clears it) and keeps a Done-when; an optional **Collects:** lists work that attaches to it if it is ever done. Order within Blocked does not matter. Same size limit as every row; an overgrown **Collects:** becomes an epic.
 
-**Declined lives in [roadmap/declined.md](../roadmap/declined.md).** A rejected row or epic moves there as one line — ID, name, why. The why is the reason that also rules out the idea's close variants, so a reworded proposal still meets it. Git keeps the full row; a line for something long, such as a rejected RFC, ends with the `git show <sha>:<path>` that prints it. An outside idea declined in its issue needs no line: the closed issue says why.
+**Declined lives in [roadmap/declined.md](../roadmap/declined.md).** A rejected row or epic moves there as one line — ID, name, why. The why is the reason that also rules out the idea's close variants, so a reworded proposal still meets it. Git keeps the full row; a line for something long, such as a rejected design, ends with the `git show <sha>:<path>` that prints it. An outside idea declined in its issue needs no line: the closed issue says why.
 
 **Every row has an anchor named by its ID:** `<a id="<id>"></a>` at the start of its Item cell in the index, `ideas.md` or `declined.md`, and at the start of its entry in its epic file. A row in an epic links to that entry (`Epic [knpp](roadmap/hl2-support.md#abkw)`), so a click from the index lands on its detail. Mentions of a row anywhere link to it ([AGENTS.md](../../AGENTS.md), **Link every roadmap row you name**); `tools/check_docs.py` fails a roadmap link whose anchor is gone, and `tools/roadmap_rows.sh` measures a row without its anchors and link targets.
 
@@ -49,14 +49,14 @@ Update the roadmap in the **same turn** as the work:
 
 ## Epics
 
-**An epic is planned work too big for one row:** several rows toward one goal, with design that is decided but not built. It replaces the RFC; there is no separate design document.
+**An epic is planned work too big for one row:** several rows toward one goal, with design that is decided but not built.
 
 **What qualifies.** An epic needs both:
 
 * **several rows toward one goal,** where finishing them is the point, not only a shared topic; and
 * **knowledge that must outlive any one row:** decisions, facts, open questions or design the rows depend on, too much to repeat in each.
 
-Missing either, it is rows. **Not an epic:** a single large row, however large (its detail goes in the row and an architecture doc); a theme of unrelated rows ("cleanup", "docs"), which is grooming's; a standing row (`swsu`); a category kept open for rows to come, since an epic ends when its goal is met. **A new row joins an existing epic** when it serves that epic's goal; serving two, it belongs to the one whose goal it finishes and names the other as **After:**. **Dissolving an RFC** applies the same test: one whose remaining plan is a row or two becomes rows and an architecture doc, not an epic. Every intake runs this test ([AGENTS.md](../../AGENTS.md), **Before proposing a new row, epic or idea**).
+Missing either, it is rows. **Not an epic:** a single large row, however large (its detail goes in the row and an architecture doc); a theme of unrelated rows ("cleanup", "docs"), which is grooming's; a standing row (`swsu`); a category kept open for rows to come, since an epic ends when its goal is met. **A new row joins an existing epic** when it serves that epic's goal; serving two, it belongs to the one whose goal it finishes and names the other as **After:**. Every intake runs this test ([AGENTS.md](../../AGENTS.md), **Before proposing a new row, epic or idea**).
 
 **In the index,** an epic is one row in **Epics**: its ID, its name and a link to its file. The file is named for what the epic is, in plain words (`hl2-support.md`), not for its ID; its title carries the ID. Its child rows sit in Now, Backlog or Blocked like any row, in priority order, each starting its Why with the epic's link. A child row in the index is one line of why and a Done-when; its detail is in the epic file.
 

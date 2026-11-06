@@ -7,7 +7,7 @@
 # Throwaway, like compare_decoders.py; B25 replaces both with the real harness.
 #
 # Every variant is howard0su/ft8_lib at a pinned SHA, changed by one sed recipe, so
-# each number in the RFC traces to an exact diff. The subtraction fix (sub_minus8)
+# each number in docs/architecture/decode.md traces to an exact diff. The subtraction fix (sub_minus8)
 # is the base for the ablations: the upstream macro is undefined behaviour and its
 # result depends on compiler and CPU (docs/architecture/decode.md, Against other decoders).
 

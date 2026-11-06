@@ -18,8 +18,6 @@ export LC_ALL=C
 
 LIMIT=1000              # row size, characters, padding collapsed -- every section, Blocked included
 BUDGET_READ_KB=40       # ROADMAP.md size; the session-start read cost (also a trigger for row c9yz).
-                        # Not budgeted while RFCs remain in docs/rfcs/ to dissolve into epics: the index
-                        # swings while they move, and the budget returns by itself when the last one goes.
 BUDGET_OVERSIZE_PCT=15  # rows over LIMIT, % of all rows
 BUDGET_NO_DONE_PCT=20   # Backlog rows with no Done-when, % of Backlog
 BUDGET_NOW_ROWS=3       # rows in Now (theme count is judged at grooming, not here)
@@ -114,7 +112,7 @@ dead_ids() {
 }
 
 # "<file>: <id> <id> ..." for every doc citing a dead ID. TEST_PLAN.md is left
-# out (row IDs label what a check covers there), and so is rfcs/rejected/ (frozen).
+# out (row IDs label what a check covers there).
 dangling() {
   local rev="" worktree=1
   if [[ "${1:-}" == "--at" ]]; then rev="$2"; worktree=0; fi
@@ -126,7 +124,7 @@ dangling() {
   local untracked=""
   (( worktree )) && untracked="--untracked"
   # git grep exits 1 when nothing matches, which here means clean: not a failure.
-  { git grep ${untracked:+"$untracked"} -owE "($re)" ${rev:+"$rev"} -- 'docs/*.md' ':!docs/TEST_PLAN.md' ':!docs/rfcs/rejected/*' || [[ $? == 1 ]]; } \
+  { git grep ${untracked:+"$untracked"} -owE "($re)" ${rev:+"$rev"} -- 'docs/*.md' ':!docs/TEST_PLAN.md' || [[ $? == 1 ]]; } \
     | sed "s|^${rev:+$rev:}||" \
     | awk -F: '!seen[$1 FS $2]++ { ids[$1] = ids[$1] " " $2 } END { for (f in ids) print f ":" ids[f] }' | sort
 }
@@ -193,14 +191,7 @@ health() {
   over_pct="$(pct "$over" "$total")"; nodone_pct="$(pct "$no_done" "$bl")"
 
   echo "health @ $( (( worktree )) && echo "worktree" || git rev-parse --short "$rev")"
-  local rfcs_left
-  if (( worktree )); then rfcs_left="$(ls docs/rfcs/[0-9]*.md 2>/dev/null | wc -l | tr -d ' ')"
-  else rfcs_left="$(git ls-tree --name-only "$rev" docs/rfcs/ 2>/dev/null | grep -c '/[0-9][^/]*\.md$' || true)"; fi
-  if (( rfcs_left )); then
-    printf '  read cost        %d KB (~%dk tokens)                not budgeted: %d RFC(s) to dissolve\n' "$(( bytes / 1024 ))" "$(( bytes / 4000 ))" "$rfcs_left"
-  else
-    printf '  read cost        %d KB (~%dk tokens)                budget %d KB\n' "$(( bytes / 1024 ))" "$(( bytes / 4000 ))" "$BUDGET_READ_KB"
-  fi
+  printf '  read cost        %d KB (~%dk tokens)                budget %d KB\n' "$(( bytes / 1024 ))" "$(( bytes / 4000 ))" "$BUDGET_READ_KB"
   printf '  oversize rows    %d / %d (%d%%), long-ok %d        budget %d%%\n' "$over" "$total" "$over_pct" "$longok" "$BUDGET_OVERSIZE_PCT"
   printf '  Now rows         %d                               budget %d\n' "$now_rows" "$BUDGET_NOW_ROWS"
   printf '  no Done-when     %d / %d Backlog (%d%%)            budget %d%%\n' "$no_done" "$bl" "$nodone_pct" "$BUDGET_NO_DONE_PCT"
@@ -214,7 +205,7 @@ health() {
   [[ -n "$deps_date" ]] && deps_days="$(( (now - $(date -d "$deps_date" +%s)) / 86400 ))"
   printf '  dependency watch %s                    budget %d days\n' \
     "$( (( deps_days >= 0 )) && echo "$deps_days days since $deps_date" || echo "never run" )" "$BUDGET_DEPS_DAYS"
-  # Reported, not budgeted: most dead citations sit in RFCs not yet dissolved into epics.
+  # Reported, not budgeted: a citation of a dropped row is check_docs.py's to fail when new.
   local dang
   dang="$(if (( worktree )); then dangling; else dangling --at "$rev"; fi)"
   printf '  dangling IDs     %d file(s) cite a dropped row ID    (tools/roadmap_rows.sh dangling)\n' "$(grep -c . <<<"$dang" || true)"
@@ -243,7 +234,7 @@ health() {
   printf '  epics            %d%s\n' "$(grep -c . <<<"$epic_ids" || true)" "${epic_bad:+ -- $(IFS=';'; echo "${epic_bad[*]}")}"
   (( ${#epic_bad[@]} )) && why+=("epics inconsistent")
 
-  (( ! rfcs_left && bytes / 1024 > BUDGET_READ_KB )) && why+=("read cost $(( bytes / 1024 )) KB")
+  (( bytes / 1024 > BUDGET_READ_KB )) && why+=("read cost $(( bytes / 1024 )) KB")
   (( over_pct > BUDGET_OVERSIZE_PCT )) && why+=("oversize ${over_pct}%")
   [[ -n "$no_blocked_on" ]] && why+=("Blocked rows missing Blocked on")
   (( now_rows > BUDGET_NOW_ROWS )) && why+=("Now ${now_rows} rows")

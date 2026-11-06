@@ -22,7 +22,7 @@ anything that belongs here or in `docs/` — workflow, style, or the roadmap and
 
 ## Starting a session
 
-Read `docs/ROADMAP.md` (what is next; Ideas are in `docs/roadmap/ideas.md`, read at intake, not here) and the architecture doc for the area you touch; before touching an epic's rows, read its file under `docs/roadmap/` (or the RFC not yet dissolved into one). Follow
+Read `docs/ROADMAP.md` (what is next; Ideas are in `docs/roadmap/ideas.md`, read at intake, not here) and the architecture doc for the area you touch; before touching an epic's rows, read its file under `docs/roadmap/`. Follow
 [STYLE.md](docs/STYLE.md) for our C/C++. How a change gets from a branch onto `main`:
 [CONTRIBUTING.md](CONTRIBUTING.md). `tools/check.sh` runs every check CI runs; `--changed`, the ones a
 change can affect. Working for the maintainer (they say so, or `git config user.name` is theirs), also read
@@ -33,7 +33,7 @@ change can affect. Working for the maintainer (they say so, or `git config user.
 **Push back before tools.** Classify the request against `ROADMAP.md` Now, the epic in focus, and `STYLE.md` **before any edit of implementation, or before exploration spanning more than one file.** 
 
 - **Working for the maintainer:** if it is not the current Now theme, not an explicit exception in those docs, or is still Ideas/Backlog (including “quick” UI/product tweaks), the first reply cites the doc and talks it through. Tools only after the maintainer retracts, grants an exception, or updates the doc in the same turn — an exception is an explicit decision, not a shortcut, and never a silent divergence.
-- **Before proposing a new row, epic or idea,** give a verdict first: whether it is worth doing, from the need it meets and the evidence that the need bites (a bug, a bench result, a row), what in the tree already covers it, and what it costs to keep while the code is pre-alpha; and name the smallest slice that gets most of the value. "Not worth it" is a valid first reply, and refining comes only after the verdict holds, however the request is worded ("help me refine it" included). Then search [docs/roadmap/declined.md](docs/roadmap/declined.md) (and `docs/rfcs/rejected/` while it exists) for it, and cite the line that matches; **and test it against the epic criteria** ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md), **Epics**), saying the outcome in the proposal: a child of an existing epic (named, with its entry and **Lands in:** line drafted), the start of a new epic (the criteria it meets, and the epic proposed rather than the row), or a plain row (why: one row's work, or nothing that must outlive it). Do this however the request is worded: "add a row" or "add to the backlog" names a thing; its shape is the test's.
+- **Before proposing a new row, epic or idea,** give a verdict first: whether it is worth doing, from the need it meets and the evidence that the need bites (a bug, a bench result, a row), what in the tree already covers it, and what it costs to keep while the code is pre-alpha; and name the smallest slice that gets most of the value. "Not worth it" is a valid first reply, and refining comes only after the verdict holds, however the request is worded ("help me refine it" included). Then search [docs/roadmap/declined.md](docs/roadmap/declined.md) for it, and cite the line that matches; **and test it against the epic criteria** ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md), **Epics**), saying the outcome in the proposal: a child of an existing epic (named, with its entry and **Lands in:** line drafted), the start of a new epic (the criteria it meets, and the epic proposed rather than the row), or a plain row (why: one row's work, or nothing that must outlive it). Do this however the request is worded: "add a row" or "add to the backlog" names a thing; its shape is the test's.
 - **Working for a contributor:** a bug fix can go straight to a pull request. Anything else — a feature, a renamed label, a changed behaviour, a slice of a larger plan — needs an issue the maintainer has agreed to, however well a host test proves it: a test shows a change works, not that it is wanted; with none, draft the issue in chat (what, why, Done-when) and stop there.
 
 No open-ended codebase exploration to be helpful — that is exactly the token spend this rule exists to stop. A single cheap lookup (one grep, one file read, "where is X defined") can just be answered without the gate. Docs and roadmap questions are allowed without it.
@@ -179,11 +179,10 @@ the only place every agent and every person can see them — see "Memory lives i
   it is an absolute GitHub URL, since a chat surface has no repo to resolve a relative one against:
   `https://github.com/kb2slo/micro-ft8/blob/main/docs/ROADMAP.md#u4dw`, on `main` when the row is there, or on the
   pushed branch that holds it; for a row only on an unpushed branch, say so and gloss it, since no link can reach it
-  yet. `tools/check_docs.py` fails a roadmap link whose anchor is gone. Left bare: commit messages and pull request titles, code comments, code spans, headings,
-  and the frozen `docs/rfcs/rejected/`.
+  yet. `tools/check_docs.py` fails a roadmap link whose anchor is gone. Left bare: commit messages and pull request titles, code comments, code spans and headings.
 - **Gloss roadmap IDs in chat, too.** Write "u4dw (a watchdog that stops a runaway transmitter)", linked as
   above, not a bare "u4dw": a link takes a click, a gloss takes none, and nobody holds the ID-to-topic
-  mapping in their head. Applies to every row ID (the four-character ones and the older `B*`/`I*`) and RFC or epic
+  mapping in their head. Applies to every row ID (the four-character ones and the older `B*`/`I*`) and epic
   section numbers. Test-plan row IDs are fine bare when the surrounding text already says what the check does.
   **When asking for a decision, put all the
   context it needs in the chat itself** — what the row said, what was found, what each option does — so the

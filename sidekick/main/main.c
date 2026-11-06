@@ -81,7 +81,7 @@ static void porta_beacon_send(void) {
     }
 }
 
-// PORTA update flash (docs/rfcs/rejected/0001-ble-companion.md §5.2c "Update flash over PORTA") — tried a
+// PORTA update flash (declined RFC 0001, docs/roadmap/declined.md efud) — tried a
 // button-hold self-restart (hold the on-board GPIO9 button, sidekick calls
 // esp_restart() on its own), reasoning the operator's finger holding GPIO9
 // low at that exact reset would land the chip in its ROM bootloader the

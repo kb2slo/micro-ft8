@@ -13,8 +13,7 @@ extern "C" {
 // The seam between radio_control_qmx.cpp and whatever main board it
 // runs on: a QMX is a plain USB CDC-ACM serial device, but how that CDC
 // connection gets opened is board-specific (a board that also streams UAC audio shares the port with
-// that pipeline and its USB host lifecycle). Extracted from main/audio/stream_uac.h (RFC
-// 0005 Phase 2, docs/STYLE.md (Two boards, one source)) so radio_control itself
+// that pipeline and its USB host lifecycle). Extracted from main/audio/stream_uac.h so radio_control itself
 // depends on this narrow interface, not on one board's whole audio stack.
 //
 // Replies are parsed by cat_reply_parser.h, which each board's transport feeds from its CDC callback.
