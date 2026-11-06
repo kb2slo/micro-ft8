@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Four bands at once — Micro-FT8 experiments</title>
+<meta name="description" content="An experiment: 10, 15, 20 and 40 m heard at once on one Hermes-Lite 2 with four receivers, through a day, decoded with jt9.">
+<link rel="stylesheet" href="../experiments.css">
+<style>
+  .runbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin: 0 0 1rem; }
+  .runbar label { font-size: 0.9rem; color: var(--muted); }
+  .runbar select {
+    font: inherit; font-size: 0.95rem; color: var(--ink); background: var(--panel-solid);
+    border: 1px solid var(--line); border-radius: 2px; padding: 0.3rem 0.5rem;
+  }
+  .runbar .meta { font-size: 0.9rem; color: var(--muted); }
+  .take { font-size: 1.05rem; line-height: 1.5; margin: 0 0 1rem; }
+  .take b { font-variant-numeric: tabular-nums; }
+  /* Six tiles: two columns, then three, so every row is full at every width. */
+  .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; margin: 0 0 0.5rem; padding: 0; list-style: none; }
+  @media (min-width: 560px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .tiles li {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 2px;
+    padding: 0.55rem 0.7rem; margin: 0; display: flex; flex-direction: column-reverse; gap: 0.15rem;
+  }
+  .tiles span { font-size: 0.8rem; color: var(--muted); line-height: 1.3; }
+  .tiles b { font-size: 1.45rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .seg { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0 0 0.5rem; }
+  .seg button {
+    font: inherit; font-size: 0.88rem; color: var(--ink); background: transparent;
+    border: 1px solid var(--line); border-radius: 2px; padding: 0.3rem 0.65rem; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--band); border-color: var(--band); color: var(--paper); font-weight: 600; }
+  ol.top { font-size: 0.9rem; columns: 2; column-gap: 1.5rem; margin: 0.4rem 0 0; padding-left: 1.4rem; }
+  ol.top li { margin: 0 0 0.15rem; break-inside: avoid; font-variant-numeric: tabular-nums; }
+  @media (min-width: 640px) { ol.top { columns: 3; } }
+  .pair { display: grid; gap: 1.25rem; }
+  @media (min-width: 720px) { .pair.two { grid-template-columns: 1fr 1fr; } }
+  .fartables { display: grid; gap: 0.5rem 1.5rem; }
+  @media (min-width: 640px) { .fartables { grid-template-columns: 1fr 1fr; } }
+  .tablebox { overflow-x: auto; margin: 0.25rem 0 0.75rem; }
+  table.data { border-collapse: collapse; width: 100%; font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+  table.data caption { text-align: left; font-weight: 600; padding: 0.3rem 0; }
+  table.data th, table.data td { text-align: right; padding: 0.3rem 0.4rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.data th:first-child, table.data td:first-child { text-align: left; }
+  table.data thead th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }
+  table.data .sub { display: block; color: var(--muted); font-size: 0.8rem; }
+  table.data .lead-fig { display: block; font-weight: 600; }
+  table.data td.muted { color: var(--muted); }
+  table.data tbody th { white-space: nowrap; }
+  #vsTable td, #vsTable thead th { text-align: left; }
+  details { border-top: 1px solid var(--line); margin-top: 1.6rem; padding-top: 1rem; }
+  summary { cursor: pointer; font-weight: 600; }
+  dl { margin: 0.75rem 0 0; }
+  dt { font-weight: 600; margin-top: 0.7rem; }
+  dd { margin: 0.15rem 0 0; }
+  .empty { color: var(--muted); font-size: 0.95rem; }
+  #run[aria-busy="true"] { opacity: 0.5; }
+</style>
+<main>
+  <nav class="crumbs"><a href="/">Micro-FT8</a> › <a href="../">Experiments</a> › Four bands at once</nav>
+  <p class="eyebrow">Micro-FT8 · Experiment <span class="tag">Experiment, not a feature</span></p>
+  <h1>Four bands at once</h1>
+  <p class="lead">
+    One Hermes-Lite&nbsp;2 listening on 10, 15, 20 and 40&nbsp;m at the same time, on four
+    receivers, from morning into the evening: when each band was open, where its signals came
+    from and how strong they were, and what listening to four bands through one front end did
+    to the radio.
+  </p>
+  <p>
+    <strong>Why:</strong> the HL2's four receivers share one filter, one amplifier and one
+    converter. This looks at what that costs each band, against a survey the night before
+    that heard one band at a time on the same antenna. It is a measurement on a computer with
+    WSJT-X's decoder, not something the station does.
+  </p>
+  <p>
+    <strong>Station:</strong> one 40&nbsp;m end-fed half-wave, which is good on 40, 20, 15 and
+    10&nbsp;m. A Hermes-Lite&nbsp;2, gateware 74.2, with the N2ADR filter board; with four
+    receivers it uses the 10&nbsp;m low-pass for all of them. Receive only.
+    <span id="stationWhere"></span>
+  </p>
+
+  <div class="runbar">
+    <label for="runPick">Run</label>
+    <select id="runPick" disabled><option>Loading…</option></select>
+    <span class="meta" id="runMeta"></span>
+  </div>
+
+  <div id="run" aria-live="polite">
+    <p class="empty" id="runStatus">Loading the run…</p>
+
+    <div id="runBody" hidden>
+      <p class="note" id="runNote" hidden></p>
+      <p class="take" id="take"></p>
+      <ul class="tiles" id="tiles"></ul>
+
+      <section id="open">
+        <h2>When each band was open</h2>
+        <h3>Decodes per slot, by hour</h3>
+        <p class="hint">Mean <code>jt9</code> decodes in a 15-second slot, from the sampled slots, by hour of the day (<span data-tz></span>). The stronger the colour, the busier; the number is in each cell.</p>
+        <div class="chart" id="heat"></div>
+        <h3>Through the day</h3>
+        <p class="hint">The same, averaged over 10 minutes.</p>
+        <ul class="legend" data-legend="bands"></ul>
+        <div class="chart" id="trend"></div>
+      </section>
+
+      <section id="where">
+        <h2>Where the signals came from</h2>
+        <p class="hint">Every grid square a decoded message carried, at its centre; a bigger circle was heard more often.</p>
+        <div class="seg" role="group" aria-label="Band shown on the map" id="mapBands"></div>
+        <div class="chart" id="map"></div>
+        <p class="hint" id="mapNote"></p>
+        <h3 id="topHead">Most heard</h3>
+        <ol class="top" id="topGrids" aria-labelledby="topHead"></ol>
+      </section>
+
+      <section id="far">
+        <h2>How far away they were</h2>
+        <p class="hint">Decodes by great-circle distance from <span data-station></span>, in <span data-bin></span>&nbsp;km bins, every band on the same two scales. A decode is placed at its sender's grid square; <span id="farPlaced"></span></p>
+        <div class="chart" id="dist"></div>
+        <h3>The farthest stations</h3>
+        <p class="hint">Per band, each heard at least twice, with its best SNR.</p>
+        <div class="fartables" id="farthest"></div>
+      </section>
+
+      <section id="snrfar">
+        <h2>Distance against signal strength</h2>
+        <p class="hint">Each band's decodes by distance and SNR, every band on the same two scales. A cell's shade is how many decodes fell in it, against that band's busiest cell; the line is the median SNR in each distance bin.</p>
+        <div class="chart" id="snrdist"></div>
+      </section>
+
+      <section id="strength">
+        <h2>How strong they were</h2>
+        <p class="hint">Each band's decodes by signal-to-noise ratio as <code>jt9</code> reports it (in 2.5&nbsp;kHz), every band on the same two scales.</p>
+        <div class="chart" id="snr"></div>
+      </section>
+
+      <section id="radio">
+        <h2>The radio's day</h2>
+        <p class="hint">Every slot recorded, radio-wide: the four receivers share one filter, one LNA and one ADC, so these are the same for every band.</p>
+        <div class="pair">
+          <div>
+            <h3>LNA gain</h3>
+            <p class="hint">At each slot's end. Each stream (one an hour) starts the LNA at +20&nbsp;dB and steps it down 3&nbsp;dB a second while the ADC clips, never back up within the stream. Every stream stepped down in its first seconds, before its first slot was recorded, so the chart never shows +20&nbsp;dB: each stream's line starts where those first steps left it.</p>
+            <div class="chart" id="lna"></div>
+          </div>
+          <div>
+            <h3>ADC clipping</h3>
+            <p class="hint">Status words in each slot reporting a clipped ADC, of about 9,470.</p>
+            <div class="chart" id="clip"></div>
+          </div>
+          <div>
+            <h3>HL2 temperature</h3>
+            <p class="hint">The highest reading in each slot.</p>
+            <div class="chart" id="temp"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="lnafind" hidden>
+        <h2>What the shared filter and the LNA cost</h2>
+        <p id="lnaVerdict"></p>
+        <h3 id="abHead"></h3>
+        <p class="hint" id="abHint"></p>
+        <div class="tablebox"><table class="data" id="abTable"></table></div>
+        <p class="hint">Paired difference per turn, +<span data-arm-a></span> minus +<span data-arm-b></span>&nbsp;dB, decodes a slot, with one standard error either side. Zero is no difference.</p>
+        <div class="chart" id="abPaired"></div>
+        <h3>Four bands against one, on the same clock window</h3>
+        <p id="winVerdict"></p>
+        <p class="hint">Different days, so propagation moves the counts too: these are not a same-night test, which the 40&nbsp;m A/B above is. Nor are they a claim about other antennas, or about a quiet 10&nbsp;m on a short antenna.</p>
+      </section>
+
+      <section id="baseline">
+        <h2>Against one band at a time</h2>
+        <p class="hint" id="baseHint"></p>
+        <ul class="legend">
+          <li><i style="background: var(--base)"></i><span id="baseLegendA">One band at a time</span></li>
+          <li><i style="background: var(--s1)"></i><span id="baseLegendB">Four bands at once</span></li>
+        </ul>
+        <div class="chart" id="vs"></div>
+        <div class="tablebox"><table class="data" id="vsTable"></table></div>
+        <p class="hint">A band's count mixes the radio with that day's propagation, so this is a baseline, not a verdict on the shared filter.</p>
+      </section>
+    </div>
+  </div>
+
+  <details>
+    <summary>How this was measured, and what is left out</summary>
+    <dl>
+      <dt>Recording</dt>
+      <dd><code>tools/hl2_record.py</code> on a computer, the HL2 on its own Ethernet link: four receivers at 48&nbsp;kHz, each NCO on its band's FT8 dial, one stream an hour, every 15-second slot saved with a manifest line of the radio's counters.</dd>
+      <dt>Decodes</dt>
+      <dd>WSJT-X's <code>jt9 -8 -d 3</code> on one slot in eight of each band (one every two minutes), each slot converted to 12&nbsp;kHz by <code>tools/iq_convert</code> 1,500&nbsp;Hz above the NCO, as the corpus scorer does (<code>tools/decode_bench/sample_jt9.py</code>). A message counts once per slot. The radio's figures cover every slot.</dd>
+      <dt>Stations</dt>
+      <dd>A station is the sender of a decoded message, counted once however often it was heard: the call after <code>CQ</code> (or after <code>CQ</code> and one word such as <code>DX</code> or <code>POTA</code>), or the second call of a <code>TO FROM …</code> message. It counts only when it is a well-formed callsign: a prefix, a digit and a suffix ending in a letter (up to seven characters, for a special-event station), with or without a portable part such as <code>/P</code> or <code>VE3/</code>; a call <code>jt9</code> resolved from a hash, shown in angle brackets, counts as that call. Every other message goes under <strong>unknown or other</strong>, counted by messages, not as stations: a sender sent as a hash <code>jt9</code> could not resolve (<code>&lt;...&gt;</code>), free text, a telemetry message, and any message whose sender cannot be told.</dd>
+      <dt>Grid squares</dt>
+      <dd>The four-character locator a message ends with, drawn at its centre.</dd>
+      <dt>Distances</dt>
+      <dd>Great-circle (haversine) from the centre of the run's four-character grid square to the centre of each heard square, in km (miles alongside: 1&nbsp;mi = 1.609&nbsp;km). A square is about 110 by 190&nbsp;km here, so a distance is rough under about 150&nbsp;km. A decode is placed at its sender's grid square, the one that sender's own messages carried most often in the run; a decode whose sender never sent one, or is unknown, has no distance. The farthest stations are those heard at least twice on the band, since <code>jt9 -d 3</code> makes the odd false decode.</dd>
+      <dt>Distance against SNR</dt>
+      <dd>Not every decode drawn: the build tool counts decodes in cells of one distance bin by 1&nbsp;dB of SNR, per band, and takes the median SNR of each distance bin, which keeps the run's data small.</dd>
+      <dt>Same time of day</dt>
+      <dd>For 10, 15 and 20&nbsp;m, the four-band side is the 120 slots on the same clock window, in Central time, that the band had in the one-band survey, every slot scored with <code>jt9</code> and our decoder (<code>tools/decode_bench/score_ab.py</code>). A band without such a window falls back to the sampled <code>jt9</code> decodes in it, when they cover at least half of it.</dd>
+      <dt>The LNA A/B</dt>
+      <dd>After the four-band day, one receiver on 40&nbsp;m with <code>tools/hl2_record.py --lna-ab</code>: the LNA held, not stepped, at one gain for two slots, then the other for two, and so on, every slot scored with <code>score_ab.py --arm-field lna_arm_db</code>. Each turn of one gain is paired with the turn of the other after it, which takes the band's drift out of the difference. Clipping per slot is from the run's manifest.</dd>
+      <dt>Left out</dt>
+      <dd>
+        <ul id="leftOut"></ul>
+      </dd>
+      <dt>Built with</dt>
+      <dd><code>tools/decode_bench/build_four_band_run.py</code>, from the recording's manifests, the sampled decodes, the scored windows and the A/B's score, into this page's <code>runs/</code> folder. Source on <a href="https://github.com/kb2slo/micro-ft8">GitHub</a>.</dd>
+    </dl>
+  </details>
+
+  <footer>
+    <p>An experiment, dated and as it ran: it claims nothing about what the station does until that ships.</p>
+  </footer>
+</main>
+<script src="../charts.js"></script>
+<script src="four-band.js"></script>
+</html>

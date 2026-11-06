@@ -34,12 +34,13 @@ Each document answers one question. Put content where its question is answered.
 | How do I build, flash, or use this part? | That directory's `README.md` | How-to |
 | What must two codebases agree on? | The code | One source of truth, plus a test holding the other side to it |
 | What can an operator do with it? | `webapp/` → `micro-ft8.kalikstein.com` | Public site |
+| What did we measure, and how? | `webapp/experiments/` → the site's `/experiments/` | Public site: each experiment's page and its dated runs |
 | How does an operator set up a station? | `webapp/getting-started.md` → the site's Getting started page and the printed sheet in the box | One source for both; `webapp/tools/getting_started.mjs` builds it and fails when a label it quotes leaves the UI |
 
 **One fact, one home.** A fact lives in the doc of the component that implements it. Other docs link to it and restate at most the one sentence needed to follow the link — the trust argument for the firmware download is in `system.md`, its mechanism in `sidekick.md`.
 
 **No prose specs.** A contract that crosses a language or repo boundary (C ↔ webapp JS, our encoder ↔ WSJT-X) gets one side as the source of truth in code and a test that holds the other side to it — not a document restating it.
 
-**The site describes what ships.** Nothing unbuilt, unmeasured, or upstream-only goes on it.
+**The site describes what ships, and what we measured.** Nothing unbuilt or upstream-only goes on it. Its **Experiments** section (`/experiments/`) holds bench and on-air measurements as they ran, each dated, linked to its corpus and method, and labelled an experiment, not a feature: a result there claims nothing about what the radio does until it ships. Amateur radio is for tinkerers, so anyone using the app is its audience (operator decision 2026-11-05).
 
 **Docs point at what exists.** `tools/check_docs.py` (part of `tools/check.sh`) fails on a relative link or a repo path in `code` that no longer resolves, and on a row ID that newly dangles. A file in another repo is written as a link to it.
