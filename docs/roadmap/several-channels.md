@@ -45,7 +45,7 @@ Receive, decode and transmit on 1–N channels at once, whatever the radio. A ch
 * **Every queue entry carries its channel** (band, mode, dial) beside its offset and slot parity, which is in its mode's periods. A reply goes out on the channel the decode was heard on; autoseq advances a QSO only on decodes from that channel, so one station heard on two channels is two candidates.
 * **One setting chooses the channels listened to,** within what admission allows, **and one the channel we CQ on.**
 * **The log** takes the QSO's band, mode and frequency from its channel, and the radio's name from the backend.
-* **The web app** shows each channel's decodes as their own batch and says which channel a QSO is on; grouping and filtering is [RFC 0009](../rfcs/0009-operate-station-surface.md)'s rows. Losses show per channel: gaps, zero-fill, ring drops, depth.
+* **The web app** shows each channel's decodes as their own batch and says which channel a QSO is on; grouping and filtering build on [webapp.md](../architecture/webapp.md), **Decode sort and filter**. Losses show per channel: gaps, zero-fill, ring drops, depth.
 
 ### Transmit
 

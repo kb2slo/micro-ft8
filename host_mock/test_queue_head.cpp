@@ -170,7 +170,7 @@ static void test_transmitting_id_names_the_on_air_entry() {
     check(autoseq_transmitting_entry_id() == 0, "cleared by the tick after the TX");
 }
 
-// RFC 0009 §4.4 / row j4xh: a board arms our own CQ, then the operator
+// Row j4xh: a board arms our own CQ, then the operator
 // switches cq_type (the Station sheet's Type control, O1c) before that slot
 // fires. The armed entry's identity never changes -- it's still the same
 // CALLING entry -- but its rendered text does, which a bare entry_id

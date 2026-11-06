@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Activation cues on Operate (RFC 0009 3.10): runs the real dupe, badge and progress functions from
+// Activation cues on Operate (docs/architecture/webapp.md, Activation cues on decodes): runs the real dupe, badge and progress functions from
 // app.html. Without references neither cue shows; a dupe is the same call, band, mode and reference
 // (today's file is the day); another band, mode or reference is not a dupe; P2P/S2S only when the
 // program is ours. Progress: a park counts calls unique by band and mode, a summit different calls,

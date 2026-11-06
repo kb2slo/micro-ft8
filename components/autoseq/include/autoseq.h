@@ -226,7 +226,7 @@ AutoseqParityResult autoseq_set_cq_parity(uint16_t entry_id, int slot_parity);
 // Combines the entry_id check above with the text refresh a board's armed
 // snapshot also needs: the *same* queue[0] entry's rendered text can change
 // without its entry_id changing (a live cq_type switch re-derives the CQ
-// template for the entry already at CALLING, RFC 0009 §4.4) — a bare
+// template for the entry already at CALLING) — a bare
 // entry_id comparison alone misses that, so a switch made after a board
 // armed a slot but before it fired would silently transmit the old text.
 // Returns true if the head entry's identity changed (the caller must drop

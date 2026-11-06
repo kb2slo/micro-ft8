@@ -187,7 +187,7 @@ button:disabled{opacity:.45}
    red while we transmit, amber while TX is halted; small cursor dot at the TX
    offset frequency) ---- */
 /* 18 px always, keyed or not, so the row never changes height; while we transmit the
-   readout sits inside it (txReadout(), RFC 0009 §7 2026-10-26). */
+   readout sits inside it (txReadout(), docs/architecture/webapp.md, Operate's pinned regions). */
 #opSlotBar{position:relative;flex:1;height:18px;border-radius:5px;overflow:hidden;background:#141428}
 #opSlotText{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:ui-monospace,monospace;font-size:.7rem;font-weight:700;color:#fff;white-space:nowrap;pointer-events:none}
 #opSlotBarFill{height:100%;width:0%;background:#3b82f6;transition:width .2s linear,background-color .2s linear}
@@ -792,7 +792,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
      writes its own key with putConfigLine() the moment it changes -- there is
      no Save button -- which is exactly why Settings' own FIELDS (below) drops
      these keys: an all-keys Settings save must never overwrite a value one of
-     these controls just wrote (RFC 0009 §2.1). Same overlay mechanics as
+     these controls just wrote. Same overlay mechanics as
      #pskrList (see that CSS rule), never open at the same time as it. -->
 <div id=stationSheet>
   <div id=stationSheetHead>
@@ -3482,7 +3482,7 @@ document.getElementById('cqCancelBtn').onclick = function () {
 
 // ===================== Operate: the tries stepper (webapp.md, Tries on a queue row) =====================
 // Changes one entry's count in place. A step applies on its own once the taps
-// settle (no Save button: RFC 0009 §4), except one that would end the entry
+// settle (no Save button: docs/architecture/webapp.md, Why not, on Operate), except one that would end the entry
 // (at or below the tries already sent), which waits for End it.
 
 var TRIES_MAX_QSO = 20, TRIES_MAX_CQ = 99; // autoseq.h AUTOSEQ_TRIES_MAX_*
@@ -3917,7 +3917,7 @@ function isReplyableDecode(d) {
   return last === '73' || last === 'RR73';
 }
 
-// ===================== Operate: decode sort and filter (RFC 0009 3.8) =====================
+// ===================== Operate: decode sort and filter (docs/architecture/webapp.md) =====================
 // Applied when a slot is drawn, within each slot; slots stay newest first. Sorts: Default, Strongest, Nearest, Farthest. A message to us is
 // always on top and never filtered. `distKmOf(d)` answers the sender's distance in km, or null
 // when the grid is not known (such a decode fails a distance filter and sorts last under Nearest).
@@ -4036,7 +4036,7 @@ function decodeDistKm(d) {
   return a && b ? greatCircle(a, b).km : null;
 }
 
-// ===================== Operate: activation cues (RFC 0009 3.10, hh3v) =====================
+// ===================== Operate: activation cues (docs/architecture/webapp.md) =====================
 // Only while the station has references. The dupe cue reads today's day file (opLog, loaded by
 // refreshOpLog() below, not the Log tab's list); the badges read callinfo.js's spot cache.
 // A dupe is the same call, band, mode and UTC day (the file) on a QSO logged at one of our

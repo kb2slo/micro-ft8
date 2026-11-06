@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Decode sort and filter (RFC 0009 3.8): runs the real functions from app.html, as
+// Decode sort and filter (docs/architecture/webapp.md, Decode sort and filter): runs the real functions from app.html, as
 // test_decode_batching.js does. Within a slot; filters combine; a message to us stays on top and
 // is never hidden; a decode with no grid sorts last under Nearest and Farthest.
 'use strict';

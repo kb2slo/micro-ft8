@@ -70,7 +70,7 @@ A contact's state is **what we last sent**. `next_tx` is what we send next.
 
 ## Tries
 
-Every queue entry counts its tries (transmissions, `tries_sent`) against a limit (`try_limit`). Decided 2026-10-14 ([RFC 0009](../rfcs/0009-operate-station-surface.md) §7).
+Every queue entry counts its tries (transmissions, `tries_sent`) against a limit (`try_limit`).
 
 * **A QSO's count is per step.** Each state change starts it over (`set_state()`), so the limit bounds how many times each message goes out. At the limit the entry ends as the tick says (**The slot cycle**): parked once reports are exchanged, dropped otherwise.
 * **A CQ's count is the whole CQ.** Each CQ sent uses a try, an answer gives none back, and at its limit the CQ ends. It sorts below every QSO, so an answer is worked first and the CQ then resumes with the count it had. So nothing the station sends on its own goes out without bound.
@@ -78,7 +78,7 @@ Every queue entry counts its tries (transmissions, `tries_sent`) against a limit
 * **An entry's own count** (`autoseq_set_entry_tries()`, Port A `QUEUE_TRIES`, a row's count in the web app): 1–20 for a QSO, 1–99 for the CQ, and 0 returns it to the default. It is kept in `tries_custom`, carries across the entry's steps and a reactivation, and a change of the default leaves it alone. Only an active entry can be changed: a parked one is not addressable, so raising a count never revives one.
 * **Lowering a count to the tries already sent ends the entry** as its last try would (`retire_used_up()`): at once when it is not on the air, or at the tick after the try on the air, which still counts. A cancelled TX is not on the air (`autoseq_on_tx_cancelled()`), so lowering the count after a Stop ends the entry at once.
 * **Call CQ picks its parity** (`autoseq_cq_parity()`): an active QSO's, so the CQ keeps the period the station already uses; otherwise the slot under way, if the trigger can still key it (its first 4/15, and not a slot a cancel or a skip refused), or else the next. The P4 picks, since it holds the slot clock (`tx_scheduler_call_cq()`). The CQ can be moved to the other period (`autoseq_set_cq_parity()`, Port A `QUEUE_PARITY`), for a strong station nearby; a QSO's parity is set by the station it works, so that is refused.
-* **Differs from WSJT-X,** which repeats a message, a CQ included, until the operator acts or its Tx watchdog stops it. Here every message has a count; the decision is RFC 0009 §7's.
+* **Differs from WSJT-X,** which repeats a message, a CQ included, until the operator acts or its Tx watchdog stops it. Here every message has a count, a CQ included (operator decision 2026-10-14).
 
 ## The slot cycle
 

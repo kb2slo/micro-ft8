@@ -68,8 +68,8 @@ static int64_t s_cdc_reconnect_after_ms = 0;
 
 // What the browser has been told about the USB-C port (USB_STATUS), so a
 // plug-in shows as Found when the host core first sees the device -- about
-// 11 s before CDC opens, a QMX-side delay (docs/rfcs/0009-operate-station-
-// surface.md, section 6, O2) -- and a device that never opens still clears when it
+// 11 s before CDC opens, a QMX-side delay (docs/architecture/main_board.md,
+// Two USB-C ports) -- and a device that never opens still clears when it
 // goes. announced: an attach was sent and no detach since. announced_known:
 // that attach carried the device's VID/PID. Written on usb_lib_task and the
 // CDC event task, hence volatile.

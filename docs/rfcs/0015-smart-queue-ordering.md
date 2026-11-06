@@ -3,7 +3,7 @@
 * **Status:** Draft 2026-10-27. Decided in discussion on 2026-10-27: §9. The Ask: §8.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** the order in which queued contacts transmit; holding a contact while its station works someone else; the opening call's tries; moving entries by hand; how the station picks among callers to our CQ; a reconfigurable priority ladder; POTA and SOTA priority, park-to-park included.
-* **Does not cover:** adding stations to the queue that neither the operator tapped nor called us, which is auto-reply ([RFC 0009](0009-operate-station-surface.md) §5, row [r2bu](../roadmap/ideas.md#r2bu)); working several stations at once, as WSJT-X's Fox mode and MSHV's multi-answer mode do; DXCC, grid or park "needed" priority (§5.8).
+* **Does not cover:** adding stations to the queue that neither the operator tapped nor called us, which is auto-reply (row [r2bu](../roadmap/ideas.md#r2bu)); working several stations at once, as WSJT-X's Fox mode and MSHV's multi-answer mode do; DXCC, grid or park "needed" priority (§5.8).
 * **Rows:** none yet; a row for the maintainer to place.
 
 ---

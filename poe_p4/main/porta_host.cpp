@@ -256,7 +256,7 @@ static const char *sync_vfo(const char *reason) {
         return "CAT sync failed";
     }
     ESP_LOGI(TAG, "VFO sync ok (%s) freq=%d", reason ? reason : "", freq_hz);
-    // What the radio says of itself, for the page's chip (RFC 0009 section 3.7); the reply
+    // What the radio says of itself, for the radio bar (docs/architecture/webapp.md, The radio bar); the reply
     // lands in the config snapshot. Not an error if the radio cannot say.
     (void)radio_control_query_state();
     // Once per connection: the version does not change, and the parser keeps it until the radio goes.

@@ -3,7 +3,7 @@
 * **Status:** Accepted 2026-09-27 (drafted 2026-09-26). Slices: §7. Decisions and deferred questions: §9. **Amended 2026-10-02:** the ADV was dropped. Where this RFC discusses the ADV, its measurements, its screens or its `ADV-only` work, it is history and no longer applies.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
 * **Covers:** the activation as an object the station knows about; where it lives so an activation runs with no internet; what goes on the air; what the log records and how it is exported for pota.app and the SOTA database; choosing a nearby reference and checking the grid offline; planning activations while online; where spotting fits.
-* **Does not cover:** how any of it looks on Operate ([RFC 0009](0009-operate-station-surface.md): this RFC supplies the data, 0009 the surface), hunter mode (§6), programs other than POTA and SOTA (§6), log editing and the on-device storage format ([ROADMAP.md](../ROADMAP.md) [I31](../roadmap/ideas.md#I31), [I32](../roadmap/ideas.md#I32)).
+* **Does not cover:** hunter mode (§6), programs other than POTA and SOTA (§6), log editing and the on-device storage format ([ROADMAP.md](../ROADMAP.md) [I31](../roadmap/ideas.md#I31), [I32](../roadmap/ideas.md#I32)).
 * **Replaces** the design sketch in row [I18](../roadmap/ideas.md#I18).
 
 ---
@@ -103,7 +103,7 @@ In order of preference:
 3. **The selected reference's coordinates.** POTA's data carries a 6-character grid, and SOTA gives coordinates. This is a suggestion only: a big park's point can be many kilometres from the operator.
 4. **Manual entry**, as today.
 
-**Nearby:** sort the stored extract by distance from the fix (PoLo takes a 0.25° box, then sorts). **The data is points, not boundaries**, so "nearest" does not mean "inside". The UI says "nearest registered references", never "you are in". The list and the grid check live in the station sheet ([RFC 0009](0009-operate-station-surface.md) §3.5 and §3.9).
+**Nearby:** sort the stored extract by distance from the fix (PoLo takes a 0.25° box, then sorts). **The data is points, not boundaries**, so "nearest" does not mean "inside". The UI says "nearest registered references", never "you are in". The list and the grid check live in the Station sheet (§4.9).
 
 **Typed references, offline:**
 
@@ -137,7 +137,7 @@ Still to add:
 
 ### 4.6 Activation status
 
-Offline-derived. It answers a mid-QSO question ("am I there yet?"), so it belongs on Operate, as a progress line under the slot bar, and only while the station has references (decided 2026-09-26). Where and how it appears: [RFC 0009](0009-operate-station-surface.md) §3.10. What it computes:
+Offline-derived. It answers a mid-QSO question ("am I there yet?"), so it belongs on Operate, as a progress line under the slot bar, and only while the station has references (decided 2026-09-26). Where and how it appears: [webapp.md](../architecture/webapp.md), **Activation progress**. What it computes:
 
 * QSOs counted per reference against its threshold (POTA 10, SOTA 4).
 * Unique by call, band and mode for a park; by call alone for a summit, since SOTA wants four different stations.
@@ -160,6 +160,30 @@ A later phase (§6). What the design keeps open:
 * Online POTA self-spotting is an unauthenticated POST. [webapp.md](../architecture/webapp.md) still records it as a different risk class, a write under the operator's name, so it needs its own operator decision.
 * SOTAwatch needs SSO and runs into the terms question.
 * Offline, **pre-scheduling plus RBN** is zero code on our side. SOTAmat would need its author's cooperation for the encoding.
+
+### 4.9 On Operate
+
+How an activation appears in the web app. Built so far: typed references in the Station sheet, the progress line, the Worked flag and P2P/S2S badges ([webapp.md](../architecture/webapp.md), **The Station sheet**, **Activation progress**, **Activation cues on decodes**). Mockups, private to the operator: "Operate Dock Options" (https://claude.ai/artifact/HazeSpixV3UbDfUJDKqzGD), its `Add a park or summit`, `Add, offline: typing a reference` and three `Map ·` boards; "Operate Redesign" (https://claude.ai/artifact/GsMDrsrNLEtnUC7aVNxptF), the first pass.
+
+**There is no mode.** An activation is the station having references (§4.1); clearing them is the whole of ending one. Nothing moves between home and activation: the top grows by one line, and the CQ row's text changes.
+
+**Still to build:**
+
+* **In the Station sheet:** an **unverified** badge on a reference the store does not hold; **Add a park or summit** (below). CQ follows the references until the type is picked by hand: a park gives POTA, and any summit gives SOTA (§4.4). The grid check against the references and the phone's fix (§4.3), on top of the sheet's own format check.
+* **A partner reference on queue rows** (row [w5nj](../ROADMAP.md#w5nj)).
+* **The add screen**, from the Station sheet:
+  - Search by reference or name across the whole store (§4.2), with an All / POTA / SOTA filter.
+  - The nearby list sorted by distance from the phone's fix, showing distance, bearing and summit points, with an **Add / Added** toggle on each row, so an n-fer is a few taps.
+  - A **Saved for offline** card: what is saved and how old it is, with **Choose on the map ›**.
+  - **A well-formed reference not in the store** adds as **unverified**; the program comes from the format (a slash means SOTA). **Malformed input** gets the format hint instead (§4.3).
+  - A standing caveat: distances are to each reference's listed point, not its boundary.
+  - **Done · N added** returns to the sheet.
+* **The map in pick mode** (`map.html?pick=refs&lat=…&lon=…`, beside `?grid=` and `?lat=&lon=`):
+  - **Zoomed out:** your pin with its accuracy ring. **Save this area for offline** writes what the map already loaded for the view into the store (§4.2) and draws the area's outline.
+  - **Zoomed in:** labels on. A popup gains **Add to activation**, and an added one turns blue. **Done · N** returns.
+  - **Offline:** only saved areas draw, and saving is disabled with the reason.
+* **Changes to the map** ([webapp.md](../architecture/webapp.md), **The map**): parks draw as circles and summits as diamonds (both are hollow circles today), added ones filled blue; the 40-marker cap never hides a reference near your pin; saved areas get an outline layer, and offline the store is the POTA/SOTA source; the popup always offers **Add to activation**, however the map was opened.
+* **Honest limit:** the basemap is Natural Earth 110 m, so at park zoom the background is nearly blank: your pin, grid squares and markers. Enough to pick by distance, not to judge "am I inside?". Park boundaries are a later phase (§6).
 
 ## 5. Rejected alternatives
 
@@ -184,19 +208,15 @@ Not part of this design; each gets a row or an RFC when wanted.
 
 Accepted 2026-09-27. The slices stay listed here, under row [I18](../roadmap/ideas.md#I18), until each is next; then it becomes its own row.
 
-**Order with RFC 0009** (agreed 2026-09-27): 0009 builds each Operate surface for the home case first, and this RFC then adds references to a surface that already exists, so no activation work ships its own screen. The firmware half of A1 does not wait on O1; only its entry in the sheet does.
+**Each Operate surface is built for the home case first,** and an activation adds references to a surface that already exists, so no activation work ships its own screen.
 
 1. **A0: log baseline.** `BAND` in records and export shipped as part of A1 below; `MY_GRIDSQUARE` at full length is still open (row `I18`).
-2. **O0:** done 2026-09-27; RFC 0009 accepted.
-3. **O1:** the dock layout, home case, in three pieces: the CQ row, the dock, and the Station sheet (RFC 0009 §6).
-4. **A1: the activation and the log**, shipped 2026-09-29 ([logging.md](../architecture/logging.md)). **The top goal lands here.** Proof: `host_mock` and `webapp/tests/test_nfer_export.js` validate a record's fields and the export's n-fer expansion against the POTA/SOTA ADIF spec (§8) — a real pota.app/SOTA-database upload waits for an actual activation, per the operator's 2026-09-28 relaxation of this slice's Done-when. Field checks on the shipped mechanics (TX-arm timing, the wire version bump, the sheet's Activation section) are tracked in `TEST_PLAN.md` Pending, not this Done-when.
-5. **A2: activation status** (§4.6), shipped with RFC 0009's O8 as the line under the slot bar ([webapp.md](../architecture/webapp.md), **Activation progress**).
-6. **A4: offline phone location** (the service-worker `geo.html`, §4.3). Row `rrsp`. Field check: on an iPhone with cellular off, the grid fills from GNSS.
-7. **A3: the reference store on the sidekick, filled from the map's fetches** (§4.2). Also the map's Save this area, pick mode and offline layer, the nearby list, search and unverified typed references in the add screen, and the grid check in the sheet (§4.3; the UI is [RFC 0009](0009-operate-station-surface.md)'s). After this, **a whole activation works offline**.
-8. **A5: P2P/S2S capture:** a partner reference on queue entries, auto-filled from spots, and the "worked on this reference today" cue (§4.4).
-9. **A6: the planning UI:** nearby, route, n-fer candidates, scheduling links (§4.7).
-
-RFC 0009's O2–O4 (radio status, reply feedback, decode sort and filter) do not depend on this RFC and fit wherever they are most wanted.
+2. **A1: the activation and the log**, shipped 2026-09-29 ([logging.md](../architecture/logging.md)). **The top goal lands here.** Proof: `host_mock` and `webapp/tests/test_nfer_export.js` validate a record's fields and the export's n-fer expansion against the POTA/SOTA ADIF spec (§8) — a real pota.app/SOTA-database upload waits for an actual activation, per the operator's 2026-09-28 relaxation of this slice's Done-when. Field checks on the shipped mechanics (TX-arm timing, the wire version bump, the sheet's Activation section) are tracked in `TEST_PLAN.md` Pending, not this Done-when.
+3. **A2: activation status** (§4.6), shipped as the line under the slot bar ([webapp.md](../architecture/webapp.md), **Activation progress**).
+4. **A4: offline phone location** (the service-worker `geo.html`, §4.3). Row `rrsp`. Field check: on an iPhone with cellular off, the grid fills from GNSS.
+5. **A3: the reference store on the sidekick, filled from the map's fetches** (§4.2). Also the map's Save this area, pick mode and offline layer, the nearby list, search and unverified typed references in the add screen, and the grid check in the sheet (§4.3; the UI is §4.9). After this, **a whole activation works offline**.
+6. **A5: P2P/S2S capture:** a partner reference on queue entries, auto-filled from spots (§4.4). The "worked on this reference today" cue and the P2P/S2S badges shipped ([webapp.md](../architecture/webapp.md), **Activation cues on decodes**).
+7. **A6: the planning UI:** nearby, route, n-fer candidates, scheduling links (§4.7).
 
 ## 8. Prior art
 
