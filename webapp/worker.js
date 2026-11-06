@@ -7,8 +7,8 @@
 // firmware, source and getting-started sheet mirror). See docs/RELEASE_PROCESS.md.
 // /pskreporter is the PSKReporter filter (below).
 //
-// A path with no matching static file also lands here, because Static Assets
-// falls through to the Worker when nothing matches; it gets a plain 404.
+// A path with no file never lands here: Static Assets answers it with 404.html
+// (wrangler.jsonc, not_found_handling). The last return is a backstop only.
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
