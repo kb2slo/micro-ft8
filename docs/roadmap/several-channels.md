@@ -10,7 +10,7 @@ Receive, decode and transmit on 1–N channels at once, whatever the radio. A ch
 
 * **The QMX station decodes exactly as today** while it has one FT8 channel and time to spare: the recall floors and the `tx_e2e` goldens hold.
 * **Deterministic under test.** The host replays any mix of channels and gets the P4's output byte for byte; CI does not depend on the host's speed.
-* **No mode's timing is built in** (several digital modes are the vision, row [I6](../ROADMAP.md#I6)); this epic builds FT8 and FT4 only, and nothing assumes a 15 s slot or even/odd periods.
+* **No mode's timing is built in** (several digital modes are the vision, row [I6](ideas.md#I6)); this epic builds FT8 and FT4 only, and nothing assumes a 15 s slot or even/odd periods.
 * **No radio is built in:** a channel names its source; the scheduler, autoseq and the log never ask which radio it is.
 * **No board count is built in:** one P4 here; several are a direction (**Why not**).
 * **Each QSO on the air is a WSJT-X QSO** ([AGENTS.md](../../AGENTS.md), **WSJT-X is the on-air standard**), and **one transmission at a time**, on one channel.
@@ -98,4 +98,4 @@ Read from the working tree at `ef4e271`.
 * **Hopping one QMX between bands each slot over CAT:** each band heard half the time, and each slot after a hop starts with a retune. **Several bands on one QMX:** one band-pass filter and one LO; the QMX+ is the same design.
 * **Receiving while we transmit:** the radio's front end sees our transmission; WSJT-X is half-duplex too. **Several QSOs at once:** a transmitter per channel or interleaved transmissions, and neither is a WSJT-X QSO.
 * **Several P4s joined:** whole channels placed per board would scale, but worth designing only once one P4's capacity is measured; [vnz7](#vnz7)'s numbers say what one carries.
-* **Other modes now:** WSPR (slotted at 2 minutes) or CW and RTTY (streaming) fit the same declarations, but are row [I6](../ROADMAP.md#I6)'s; each needs its own MIT implementation, since the obvious reference decoders (JS8Call's tables, `wsprd`) are GPL.
+* **Other modes now:** WSPR (slotted at 2 minutes) or CW and RTTY (streaming) fit the same declarations, but are row [I6](ideas.md#I6)'s; each needs its own MIT implementation, since the obvious reference decoders (JS8Call's tables, `wsprd`) are GPL.

@@ -11,7 +11,7 @@ The web app (`webapp/app/`) is the station's only UI on the headless P4, served 
 * **Operate** pins its status above the decodes and its controls below them, so only the decode list scrolls (**Operate's pinned regions** below): the slot bar on top; the queue (**The CQ row** below) and the radio bar (**The radio bar** below, with band and frequency in its drawer) at the bottom.
 * **Grow by destination, never by feature.** QRZ is not a screen: per-callsign data expands on the row it belongs to. One shared expand-on-tap component, used on decode, queue and QSO rows, shows **offline-derived** facts at once (DXCC and zones from the prefix, distance and bearing from grid arithmetic) and **online-enriched** ones (QRZ bio, photo) when reachable, failing legibly when not.
 * **QSOs is one continuous list** with day dividers ("Today", "Sep 13"), not a day-file picker. The main board keeps one ADIF file per UTC day; the list loads the current day on open and older days as the operator scrolls (`FILE_LIST`/`FILE_READ`), because Port A's budget cannot carry the whole log on every open. A line under the toolbar shows the main board's log storage, "N MB free of M MB", from the live `storage_total_kb` / `storage_used_kb` config lines; it is hidden while the board has not said, and red under 10% free.
-* **The callsign card's QSO history comes from the QSOs loaded so far** (`qsoHistoryFor()`), so a QSO on a day not yet loaded is missing from it. Row [I32](../ROADMAP.md#I32) would answer it from the P4.
+* **The callsign card's QSO history comes from the QSOs loaded so far** (`qsoHistoryFor()`), so a QSO on a day not yet loaded is missing from it. Row [I32](../roadmap/ideas.md#I32) would answer it from the P4.
 
 ### The CQ row
 

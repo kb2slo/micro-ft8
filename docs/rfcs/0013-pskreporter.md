@@ -2,16 +2,16 @@
 
 * **Status:** Draft 2026-10-08. Decided in discussion on 2026-10-07: §8. The Ask: §7.
 * **Author / Lead:** Jeff Kalikstein, KB2SLO
-* **Covers:** showing which stations heard our transmissions, at home and on an activation, including one made where the phone has no signal ([ROADMAP.md](../ROADMAP.md) [I37](../ROADMAP.md#I37)); sending our own decodes to PSKReporter as reception reports ([f4kb](../ROADMAP.md#f4kb)).
+* **Covers:** showing which stations heard our transmissions, at home and on an activation, including one made where the phone has no signal ([ROADMAP.md](../ROADMAP.md) [I37](../ROADMAP.md#I37)); sending our own decodes to PSKReporter as reception reports ([f4kb](../roadmap/ideas.md#f4kb)).
 * **Does not cover:** self-spotting to POTA or SOTA, a different risk class ([webapp.md](../architecture/webapp.md), **Tools**); other spot networks such as the Reverse Beacon Network.
-* **Rows:** [dmyu](../ROADMAP.md) (this RFC), [I37](../ROADMAP.md#I37), [f4kb](../ROADMAP.md#f4kb).
+* **Rows:** [dmyu](../ROADMAP.md) (this RFC), [I37](../ROADMAP.md#I37), [f4kb](../roadmap/ideas.md#f4kb).
 
 ---
 
 ## 1. Goal
 
 1. **Who hears me ([I37](../ROADMAP.md#I37)).** After a CQ, the operator sees the stations that heard it, with band, SNR and distance, on a Tools card and on the map. On a summit with no cell signal, they see the same list once they are back online.
-2. **Report what we hear ([f4kb](../ROADMAP.md#f4kb)).** With an opt-in setting on, our decodes appear on pskreporter.info with our call as the receiver, as WSJT-X's do.
+2. **Report what we hear ([f4kb](../roadmap/ideas.md#f4kb)).** With an opt-in setting on, our decodes appear on pskreporter.info with our call as the receiver, as WSJT-X's do.
 
 **Constraints:**
 * [system.md](../architecture/system.md)'s inversion: third parties are reached by the phone, never by the device, and the sidekick never speaks TLS.
@@ -127,14 +127,14 @@ The app cannot load once the sidekick is packed away (§2). A page on the releas
   - **This is the fallback** if Ask 1.1 is no or the 6-hour window proves too short (Ask 5).
 * **The sidekick subscribes ([I37](../ROADMAP.md#I37)).** It has no internet in AP mode, so it gets nothing on a summit, and it costs flash and DIRAM. It breaks the inversion for ground the browser already covers.
 * **Polling the query interface alone.** This is the use Philip steered us away from, and it is slower than the feed.
-* **[f4kb](../ROADMAP.md#f4kb) from the sidekick, over UDP.** The sidekick sends only when the operator has opted in and it has internet: home WiFi, or the phone's hotspot. It sends nothing in AP mode.
+* **[f4kb](../roadmap/ideas.md#f4kb) from the sidekick, over UDP.** The sidekick sends only when the operator has opted in and it has internet: home WiFi, or the phone's hotspot. It sends nothing in AP mode.
   - **What it gains:** every decode the sidekick relays is reported, whether or not the phone is locked. UDP needs no TLS, so "the sidekick never speaks TLS" holds.
   - **What it costs:**
     - a firmware encoder, and a table of recently reported calls (flash and DIRAM to be measured; the S3 has no PSRAM, [sidekick.md](../architecture/sidekick.md), **Hardware**)
     - **a second named exception** to "third parties are reached by the phone, never by the device", beside the firmware fetch
   - **This is a later slice** (S5), worth it only if reporting while the phone is locked matters (Ask 4).
-* **[f4kb](../ROADMAP.md#f4kb) from a UDP relay host of our own.** No longer needed now that TCP is accepted, and it would be a server we run.
-* **[f4kb](../ROADMAP.md#f4kb) from the P4 over Ethernet.** It works at home only, and the P4's Ethernet is unused by decision ([main_board.md](../architecture/main_board.md)). [RFC 0012](rejected/0012-home-decode-server.md), a draft, proposes reversing that for the LAN.
+* **[f4kb](../roadmap/ideas.md#f4kb) from a UDP relay host of our own.** No longer needed now that TCP is accepted, and it would be a server we run.
+* **[f4kb](../roadmap/ideas.md#f4kb) from the P4 over Ethernet.** It works at home only, and the P4's Ethernet is unused by decision ([main_board.md](../architecture/main_board.md)). [RFC 0012](rejected/0012-home-decode-server.md), a draft, proposes reversing that for the LAN.
 
 ## 5. Slices
 
@@ -146,14 +146,14 @@ Each slice states which verifiability category from [AGENTS.md](../../AGENTS.md)
    - **Done-when:** a CQ shows its receiving stations with band, SNR and distance within minutes; a ten-minute lock is filled after unlocking; offline, the card says so.
 2. **S2: the map layer.** Built 2026-10-08 with S1's live half. Category 1 for the listener (`test_pskr_live.js`); the operator looks at the drawing.
 3. **S3: `heard.html` on the release host,** if Ask 3 is yes. Graduates in the next commit, once the Pages and Worker deploy is green ([README.md](README.md), **RFC lifecycle**).
-4. **S4 ([f4kb](../ROADMAP.md#f4kb)): batches from the browser, and the Worker's TCP sender, opt-in.** No firmware.
+4. **S4 ([f4kb](../roadmap/ideas.md#f4kb)): batches from the browser, and the Worker's TCP sender, opt-in.** No firmware.
    - Verification: a host test of the Worker's encoder against the golden message, and of the browser's batching and pacing (category 1). Field: with the option on, a session's decodes appear on pskreporter.info with our call as the receiver (category 2). The Worker half graduates once its deploy is green.
-5. **S5 ([f4kb](../ROADMAP.md#f4kb), optional): the sidekick's UDP sender** (§4), only if Ask 4 chooses it. This is a firmware slice.
+5. **S5 ([f4kb](../roadmap/ideas.md#f4kb), optional): the sidekick's UDP sender** (§4), only if Ask 4 chooses it. This is a firmware slice.
 
 ## 6. What changes elsewhere on acceptance
 
 * **[ROADMAP.md](../ROADMAP.md):**
-  - [I37](../ROADMAP.md#I37) and [f4kb](../ROADMAP.md#f4kb) are reduced to pointers at §3.1–3.5 and §3.6.
+  - [I37](../ROADMAP.md#I37) and [f4kb](../roadmap/ideas.md#f4kb) are reduced to pointers at §3.1–3.5 and §3.6.
   - [I37](../ROADMAP.md#I37)'s Done-when stops deleting the route.
   - [I37](../ROADMAP.md#I37)'s "§12.2" citation, which points at no section, goes.
   - [dmyu](../ROADMAP.md#dmyu) drops.
@@ -169,10 +169,10 @@ Each slice states which verifiability category from [AGENTS.md](../../AGENTS.md)
 1. **For Philip** (S0). If his 2026-09-24 reply already answers these, pasting it settles them.
    1. Is a history query after a gap acceptable? At most one per call per five minutes, cached by our Worker, from Cloudflare's shared addresses, carrying `appcontact`.
    2. How far back does a query reach, 6 hours or 24? Can `rptlimit` raise the default 100?
-   3. For [f4kb](../ROADMAP.md#f4kb): may our Worker send reports over TCP for many receivers, from Cloudflare's shared addresses? Are reports hours old accepted, so a summit's decodes can go out on the way down?
+   3. For [f4kb](../roadmap/ideas.md#f4kb): may our Worker send reports over TCP for many receivers, from Cloudflare's shared addresses? Are reports hours old accepted, so a summit's decodes can go out on the way down?
 2. **Accept the design:** the live feed in the browser, the history query for gaps, and the route kept?
 3. **Build `heard.html`** (S3), so an activation can be looked at without the sidekick?
-4. **[f4kb](../ROADMAP.md#f4kb): who sends.** Recommended: the browser through the Worker over TCP (S4), which keeps the inversion and reports what the page sees. Or add the sidekick over UDP (S5) as well: it also reports while the phone is locked, but needs firmware and a second exception to the inversion.
+4. **[f4kb](../roadmap/ideas.md#f4kb): who sends.** Recommended: the browser through the Worker over TCP (S4), which keeps the inversion and reports what the page sees. Or add the sidekick over UDP (S5) as well: it also reports while the phone is locked, but needs firmware and a second exception to the inversion.
 5. **Keep our own recorder (§4) as the fallback** if 1.1 is no or the window proves too short?
 6. **`appcontact`:** which address?
 7. **When the browser connects.** Either whenever the page is open with a call set (simplest; an idle connection costs a ping a minute), or from the first transmission of the session (fewer connections to M0LTE's broker). Recommended: from the first transmission, or when the card or layer opens. Built that way on 2026-10-08, pending your answer.

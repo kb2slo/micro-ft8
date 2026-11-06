@@ -173,7 +173,7 @@ further constraints:
 
 1. **The scale must be relative to the noise floor.** A fixed −120..0 window spends most of 16 levels on
    dB values no signal reaches. The per-block AGC in `ft8_audio_pipeline_run()` already pins the floor near
-   a known level, which is what makes an anchored 4-bit scale possible. That AGC is also one of [I26](../ROADMAP.md#I26)'s audio-path
+   a known level, which is what makes an anchored 4-bit scale possible. That AGC is also one of [I26](../roadmap/ideas.md#I26)'s audio-path
    suspects, so the two are tested together.
 2. **Simulating is cheap; packing is not.** Every read of a cell goes through `WF_ELEM_MAG()` /
    `WF_ELEM_MAG_INT()` in `vendor/ft8/decode.h`, so quantising values to 16 levels while keeping one per byte

@@ -22,7 +22,7 @@ anything that belongs here or in `docs/` — workflow, style, or the roadmap and
 
 ## Starting a session
 
-Read `docs/ROADMAP.md` (what is next) and the architecture doc for the area you touch; before touching an epic's rows, read its file under `docs/roadmap/` (or the RFC not yet dissolved into one). Follow
+Read `docs/ROADMAP.md` (what is next; Ideas are in `docs/roadmap/ideas.md`, read at intake, not here) and the architecture doc for the area you touch; before touching an epic's rows, read its file under `docs/roadmap/` (or the RFC not yet dissolved into one). Follow
 [STYLE.md](docs/STYLE.md) for our C/C++. How a change gets from a branch onto `main`:
 [CONTRIBUTING.md](CONTRIBUTING.md). `tools/check.sh` runs every check CI runs; `--changed`, the ones a
 change can affect. Working for the maintainer (they say so, or `git config user.name` is theirs), also read

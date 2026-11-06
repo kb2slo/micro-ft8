@@ -1,10 +1,11 @@
 # The roadmap: rows, epics, intake and grooming
 
-How the roadmap is kept: the index [ROADMAP.md](../ROADMAP.md), the epic files beside it in [roadmap/](../roadmap/), and [roadmap/declined.md](../roadmap/declined.md).
+How the roadmap is kept: the index [ROADMAP.md](../ROADMAP.md), the epic files beside it in [roadmap/](../roadmap/), [roadmap/ideas.md](../roadmap/ideas.md) and [roadmap/declined.md](../roadmap/declined.md).
 
 ## The shape
 
-* **`ROADMAP.md` is the index:** Next groom, Epics, Now, Backlog, Blocked, Ideas. It holds the order, and every session reads it, so it stays small.
+* **`ROADMAP.md` is the index:** Now, Backlog, Blocked, Epics, Next groom, in that order: Now and Backlog read as one priority list from the top, and what only grooming needs comes last. It holds the order, and every session reads it, so it stays small.
+* **`roadmap/ideas.md`** holds Ideas, unscheduled rows in the same table form. Read it at intake and grooming, not at session start.
 * **An epic file, `roadmap/<name>.md`, holds one epic:** a body of work too big for one row. Only a session touching that epic's rows reads it.
 * **`roadmap/declined.md`** holds rejected ideas, one line each, so they are not proposed again. Read it when an idea comes up, not at session start.
 
@@ -25,7 +26,7 @@ How the roadmap is kept: the index [ROADMAP.md](../ROADMAP.md), the epic files b
 
 **Declined lives in [roadmap/declined.md](../roadmap/declined.md).** A rejected row or epic moves there as one line — ID, name, why. The why is the reason that also rules out the idea's close variants, so a reworded proposal still meets it. Git keeps the full row; a line for something long, such as a rejected RFC, ends with the `git show <sha>:<path>` that prints it. An outside idea declined in its issue needs no line: the closed issue says why.
 
-**Every row has an anchor named by its ID:** `<a id="<id>"></a>` at the start of its Item cell in the index or `declined.md`, and at the start of its entry in its epic file. A row in an epic links to that entry (`Epic [knpp](roadmap/hl2-support.md#abkw)`), so a click from the index lands on its detail. Mentions of a row anywhere link to it ([AGENTS.md](../../AGENTS.md), **Link every roadmap row you name**); `tools/check_docs.py` fails a roadmap link whose anchor is gone, and `tools/roadmap_rows.sh` measures a row without its anchors and link targets.
+**Every row has an anchor named by its ID:** `<a id="<id>"></a>` at the start of its Item cell in the index, `ideas.md` or `declined.md`, and at the start of its entry in its epic file. A row in an epic links to that entry (`Epic [knpp](roadmap/hl2-support.md#abkw)`), so a click from the index lands on its detail. Mentions of a row anywhere link to it ([AGENTS.md](../../AGENTS.md), **Link every roadmap row you name**); `tools/check_docs.py` fails a roadmap link whose anchor is gone, and `tools/roadmap_rows.sh` measures a row without its anchors and link targets.
 
 **IDs are opaque.** New rows and epics get a random ID from `tools/roadmap_rows.sh new`, which checks it has never appeared in git history. Existing `B`/`I` IDs stay. Section is stage, position is priority; the ID encodes neither. Lineage — split from, merged into, replaced by — goes in the commit message that made the change, not in the row; `git log -S'<id>' --reverse -- docs/ROADMAP.md` finds where a row came from.
 
@@ -39,8 +40,8 @@ What stays is ID, name, a line of why, Done-when, and a link. A row stays long o
 
 Update the roadmap in the **same turn** as the work:
 
-- New idea → **Ideas** (do not implement until moved up)
-- Agreed / sequenced → **Backlog**
+- New idea → **Ideas**, in `roadmap/ideas.md` (do not implement until moved up)
+- Agreed / sequenced → **Backlog** (an idea moving up leaves `ideas.md` for the index, its links repointed)
 - Decided or conditional, waiting on a named condition → **Blocked** (not picked up until it clears)
 - Next to build → **Now**
 - Rejected → one line in `roadmap/declined.md`
@@ -93,16 +94,16 @@ GitHub issues are where the roadmap's inputs arrive and are talked through; the 
 
 If the maintainer asks to add an idea or “add to the backlog”:
 1. **Give the verdict,** then draft it in chat with its epic test's outcome ([AGENTS.md](../../AGENTS.md), **Before proposing a new row, epic or idea**): a row in an epic is drafted with its child entry and **Lands in:** line, together; a new epic is proposed as one. Do not commit yet.
-2. New items go in **Ideas**. Use **Backlog** only when they give a Done-when or say it is sequenced.
+2. New items go in **Ideas** (`roadmap/ideas.md`). Use **Backlog** only when they give a Done-when or say it is sequenced.
 3. After they approve, commit that row. Push `origin` only when they ask to push. Never `upstream` unless they explicitly ask.
-4. **Fast path for Ideas.** A change that only adds or edits rows in **Ideas**, and touches nothing else in any file, goes straight to `main`: once the maintainer approves the row, commit it on a branch from `main`, run `tools/check.sh --changed`, and push it to `main` with no pull request. Approving the row is the push instruction, since an idea is unscheduled and one revert undoes it. Everything else on the roadmap (a Backlog or Now row, an order change, an epic file, `declined.md`) keeps its own branch and pull request, pushed only when they ask.
+4. **Fast path for Ideas.** A change that only adds or edits rows in `roadmap/ideas.md`, and touches no other file, goes straight to `main`: once the maintainer approves the row, commit it on a branch from `main`, run `tools/check.sh --changed`, and push it to `main` with no pull request. Approving the row is the push instruction, since an idea is unscheduled and one revert undoes it. Everything else on the roadmap (a Backlog or Now row, an order change, an epic file, `declined.md`) keeps its own branch and pull request, pushed only when they ask.
 
 ## Backlog grooming
 
 **A groom is a timeboxed session.**
 
 1. **Open:** ask the maintainer for a rough timebox (e.g. 30 min, 1 h) and tune the pace to it. Read `ROADMAP.md`'s **Next groom** section — carried items come first. Run `tools/roadmap_rows.sh health` if you can and state the budget in one line.
-2. **Passes, in order, until the timebox runs out:** ① Now: drop what shipped, move out what is not the epic or theme in focus; ② Epics: for each, does the next child have the design it needs, which Later slices are now next (they become rows), which Open questions can be settled or need naming for a child, is the file still only plan, does each still have live children, and does each still meet **What qualifies**; ③ Backlog: drops, demotions, splits, missing Done-whens, over-size rows, then order; ④ Blocked: does each condition still hold; ⑤ Ideas: drops, declines, over-size rows; ⑥ pick Now.
+2. **Passes, in order, until the timebox runs out:** ① Now: drop what shipped, move out what is not the epic or theme in focus; ② Epics: for each, does the next child have the design it needs, which Later slices are now next (they become rows), which Open questions can be settled or need naming for a child, is the file still only plan, does each still have live children, and does each still meet **What qualifies**; ③ Backlog: drops, demotions, splits, missing Done-whens, over-size rows, then order; ④ Blocked: does each condition still hold; ⑤ Ideas (`roadmap/ideas.md`): drops, declines, over-size rows; ⑥ pick Now.
 3. **Wrap:** re-run `health`; rewrite **Next groom** in `ROADMAP.md` with what was not reached (delete the section's items, or the section, when nothing carries over); a short retro — what in this process to change, applied to the doc it changes in the same wrap; propose the commits (process changes separate from the groom). **Nothing is queued in chat:** each follow-up becomes a row or is done in the wrap. Carry-over state lives in the file every agent reads, never only in a commit message.
 
 **A groom may focus on one epic.** The passes then run over its file, its rows and the rows that bear on them; the rest waits for a full groom.

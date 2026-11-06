@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Roadmap hygiene: ROADMAP.md, its epic files and declined.md (docs/maintainer/roadmap.md).
+# Roadmap hygiene: ROADMAP.md, its epic files, ideas.md and declined.md (docs/maintainer/roadmap.md).
 #
 #   tools/roadmap_rows.sh                  rows over the size limit, median length, long-ok count
 #   tools/roadmap_rows.sh new              print a fresh random row ID never seen in git history
@@ -30,6 +30,7 @@ FLOW_DAYS=14            # window for rows added vs removed
 ROADMAP="docs/ROADMAP.md"
 EPICS_DIR="docs/roadmap"
 DECLINED="$EPICS_DIR/declined.md"
+IDEAS="$EPICS_DIR/ideas.md"
 TEST_PLAN="docs/TEST_PLAN.md"
 UPSTREAM="docs/maintainer/upstream.md"
 
@@ -48,14 +49,26 @@ rows() {
     }'
 }
 
-# The roadmap as one text: ROADMAP.md, then declined.md under a "## Declined" heading so its
-# lines count as rows of that section. Worktree, or REV when given (declined.md may predate it).
-index_text() {
+# The live rows as one text: ROADMAP.md, then ideas.md under a "## Ideas" heading so its rows
+# count as rows of that section. Worktree, or REV when given (ideas.md may predate it).
+live_text() {
   local rev="${1:-}"
   if [[ -z "$rev" ]]; then
-    cat "$ROADMAP"; [[ -f "$DECLINED" ]] && { printf '\n## Declined\n'; sed '/^#/d' "$DECLINED"; }
+    cat "$ROADMAP"; [[ -f "$IDEAS" ]] && { printf '\n## Ideas\n'; sed '/^#/d' "$IDEAS"; }
   else
     git show "$rev:$ROADMAP"
+    git show "$rev:$IDEAS" 2>/dev/null | { printf '\n## Ideas\n'; sed '/^#/d'; } || true
+  fi
+}
+
+# The roadmap as one text: the live rows, then declined.md under a "## Declined" heading so its
+# lines count as rows of that section (declined.md may predate REV).
+index_text() {
+  local rev="${1:-}"
+  live_text "$rev"
+  if [[ -z "$rev" ]]; then
+    [[ -f "$DECLINED" ]] && { printf '\n## Declined\n'; sed '/^#/d' "$DECLINED"; }
+  else
     git show "$rev:$DECLINED" 2>/dev/null | { printf '\n## Declined\n'; sed '/^#/d'; } || true
   fi
 }
@@ -76,7 +89,7 @@ new_id() {
 
 report() {
   local data total over longok median
-  data="$(rows <"$ROADMAP" | awk '{ print $2, $3, $4 }' | sort -n)"
+  data="$(live_text | rows | awk '{ print $2, $3, $4 }' | sort -n)"
   total="$(wc -l <<<"$data" | tr -d ' ')"
   over="$(awk -v L="$LIMIT" '$1 > L' <<<"$data" | sort -rn)"
   longok="$(awk '$3 == 1' <<<"$data" | wc -l | tr -d ' ')"
@@ -88,14 +101,14 @@ report() {
   fi
 }
 
-# Row IDs that were once rows in ROADMAP.md (as of REV) but are not rows now,
+# Row IDs that were once rows in ROADMAP.md or ideas.md (as of REV) but are not rows now,
 # in any section -- Declined lines count as rows, so a declined ID is not dead.
 # Only real ID shapes: B12 / I28a / D7, or an opaque 4-char ID.
 dead_ids() {
   local rev="$1" text="$2"
   local id_re='^([BID][0-9]+[a-z]?|[a-z][a-z2-9]{3})$'
   comm -23 \
-    <(git log -p "$rev" -- "$ROADMAP" "$DECLINED" | awk -F'|' '/^[-+ ]\| *[A-Za-z0-9]+ *\|/ && !/^[-+ ]\| *(ID|---)/ { id = $2; gsub(/ /, "", id); print id }' \
+    <(git log -p "$rev" -- "$ROADMAP" "$IDEAS" "$DECLINED" | awk -F'|' '/^[-+ ]\| *[A-Za-z0-9]+ *\|/ && !/^[-+ ]\| *(ID|---)/ { id = $2; gsub(/ /, "", id); print id }' \
         | grep -E "$id_re" | sort -u) \
     <(rows <<<"$text" | awk '{ print $3 }' | sort -u)
 }
@@ -120,9 +133,10 @@ dangling() {
 
 pct() { awk -v a="$1" -v b="$2" 'BEGIN { printf "%d", (b ? 100 * a / b : 0) }'; }
 
-# IDs added / removed by ROADMAP.md diffs in git log args "$@".
+# IDs added / removed by roadmap diffs in git log args "$@". A row moved between the index and
+# ideas.md is removed from one and added to the other, so it nets out.
 flow() {
-  git log -p "$@" -- "$ROADMAP" "$DECLINED" | awk '
+  git log -p "$@" -- "$ROADMAP" "$IDEAS" "$DECLINED" | awk '
     /^[-+]\| *[A-Za-z0-9]+ *\|/ && !/^[-+]\| *(ID|---)/ {
       split(substr($0, 2), x, "|"); id = x[2]; gsub(/ /, "", id)
       if (substr($0, 1, 1) == "+") add[id] = 1; else del[id] = 1
@@ -136,7 +150,7 @@ health() {
   local text tp up now since
   if (( worktree )); then
     text="$(index_text)"; tp="$(cat "$TEST_PLAN")"; up="$(cat "$UPSTREAM")"; now="$(date +%s)"
-    bytes="$(wc -c <"$ROADMAP" | tr -d ' ')"
+    bytes="$(wc -c <"$ROADMAP" | tr -d ' ')"   # the index only: ideas.md is not read at session start
   else
     text="$(index_text "$rev")"; tp="$(git show "$rev:$TEST_PLAN")"
     bytes="$(git show "$rev:$ROADMAP" | wc -c | tr -d ' ')"
@@ -164,10 +178,10 @@ health() {
       if (s !~ /^(pass|answered|superseded|n\/a)/) n++ }
     END { print n + 0 }' <<<"$tp")"
 
-  # Oldest Backlog row, by intake (first commit that added its row), not last edit.
+  # Oldest Backlog row, by intake (first commit that added its row, here or in ideas.md), not last edit.
   local oldest_id="" oldest_days=0 id t d
   for id in $(awk '$1 == "Backlog" { print $3 }' <<<"$data"); do
-    t="$(git log --reverse --format=%ct -S"| $id " "$rev" -- "$ROADMAP" | awk 'NR == 1')"
+    t="$(git log --reverse --format=%ct -S"| $id " "$rev" -- "$ROADMAP" "$IDEAS" | awk 'NR == 1')"
     [[ -z "$t" ]] && continue
     d="$(( (now - t) / 86400 ))"
     if (( d > oldest_days )); then oldest_days="$d"; oldest_id="$id"; fi
@@ -209,9 +223,9 @@ health() {
   # (maintainer/roadmap.md, Epics). Files are named in plain words, so the row's link pairs them.
   local files epic_ids linked epic_bad=() eid f
   if (( worktree )); then
-    files="$(ls "$EPICS_DIR"/*.md 2>/dev/null | grep -v "/declined.md$" || true)"
+    files="$(ls "$EPICS_DIR"/*.md 2>/dev/null | grep -vE "/(declined|ideas).md$" || true)"
   else
-    files="$(git ls-tree --name-only "$rev" "$EPICS_DIR/" 2>/dev/null | grep '\.md$' | grep -v "/declined.md$" || true)"
+    files="$(git ls-tree --name-only "$rev" "$EPICS_DIR/" 2>/dev/null | grep '\.md$' | grep -vE "/(declined|ideas).md$" || true)"
   fi
   epic_ids="$(awk '$1 == "Epics" { print $3 }' <<<"$data")"
   linked="$(awk '/^## / { sec = $0 } sec == "## Epics" && /^\| / { while (match($0, /\(roadmap\/[^)]+\.md\)/)) {
@@ -236,14 +250,14 @@ health() {
   (( deps_days < 0 || deps_days > BUDGET_DEPS_DAYS )) && why+=("dependency watch $( (( deps_days < 0 )) && echo "never run" || echo "${deps_days} days old")")
   # Inflow beating outflow only counts if the Backlog also grew since the last groom.
   local last_groom bl_then
-  last_groom="$(git log -1 --format=%H --grep='^ROADMAP: groom' "$rev" -- "$ROADMAP" || true)"
+  last_groom="$(git log -1 --format=%H --grep='^ROADMAP: groom' "$rev" -- "$ROADMAP" "$IDEAS" || true)"
   if (( added > removed )) && [[ -n "$last_groom" ]]; then
     bl_then="$(git show "$last_groom:$ROADMAP" | rows | awk '$1 == "Backlog"' | wc -l | tr -d ' ')"
     (( bl > bl_then )) && why+=("inflow > outflow, Backlog ${bl_then} -> ${bl}")
   fi
   # Carry-over from the last groom lives in ROADMAP.md's "## Next groom" section, not git.
   local carry
-  carry="$(awk '/^## Next groom/ { p = 1; next } /^## / { p = 0 } p && /^- /' <<<"$text")"
+  carry="$(awk '/^## Next groom/ { p = 1; next } /^## / { p = 0 } p && /^[-*] /' <<<"$text")"
   if [[ -n "$carry" ]]; then
     printf '  next groom       %d carried item(s):\n%s\n' "$(wc -l <<<"$carry" | tr -d ' ')" "$(sed 's/^/    /' <<<"$carry")"
   fi

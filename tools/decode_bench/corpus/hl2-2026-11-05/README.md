@@ -148,7 +148,7 @@ Paired, +20 minus +14 dB per turn (60 pairs): `jt9` −0.43 ± 1.06 decodes a sl
 
 ## What this settles
 
-* **The shared filter's cost:** on 10, 15 and 20 m with this antenna, four receivers through the 10 m low-pass decoded as one receiver through each band's own filter did, within about 10%. Which four bands to listen to is then a choice of activity and antenna (row [vjur](../../../../docs/ROADMAP.md#vjur)).
+* **The shared filter's cost:** on 10, 15 and 20 m with this antenna, four receivers through the 10 m low-pass decoded as one receiver through each band's own filter did, within about 10%. Which four bands to listen to is then a choice of activity and antenna (row [vjur](../../../../docs/roadmap/ideas.md#vjur)).
 * **The LNA's first second and its steps down cost nothing measured:** from +5 dB (the survey's 40 m) to +20 dB, decodes did not move on these bands, and the rule's 1% clip trigger is far more sensitive than decoding needs: 40 m decoded the same with 42% of status words flagged. So neither ignoring the start-up second nor stepping back up when a band quiets would gain anything this measures; both are declined (rows [ujnx](../../../../docs/roadmap/declined.md#ujnx) and [zdmr](../../../../docs/roadmap/declined.md#zdmr)).
 * **Our decoder's share is unchanged by the radio**, so its gap to `jt9` is the decoder's own.
 

@@ -11,7 +11,7 @@ outside fenced code blocks, and fails on:
     such as `poe_p4/main/main.cpp:386`. A path in another repo is written as a link to it;
   - a link into the roadmap (docs/ROADMAP.md, docs/roadmap/) whose #fragment names no <a id> there:
     a row's anchor is its ID, so a link to a dropped or moved row breaks here;
-  - a row ID cited after its row left docs/ROADMAP.md, when REV's docs did not already cite it
+  - a row ID cited after its row left the roadmap (docs/ROADMAP.md, docs/roadmap/ideas.md), when REV's docs did not already cite it
     (tools/roadmap_rows.sh dangling). Citations REV already had are counted, not failed;
   - an ESP-IDF version (a vX.Y.Z on a line that names IDF) that CI does not build with, so README.md,
     CONTRIBUTING.md and AGENTS.md cannot keep an old version after a toolchain bump. Plan docs (RFCs,
@@ -238,7 +238,7 @@ def main():
         return 2
     new = sorted(now - dangling(base)) if base else []
     for path, row in new:
-        print(f'{path}: cites row {row}, which is no longer in docs/ROADMAP.md')
+        print(f'{path}: cites row {row}, which is no longer a roadmap row')
     print(f'dangling row IDs: {len(now)} citations, {len(new)} new'
           + ('' if base else ' (no --base, so none is counted as new)'))
     if new:
