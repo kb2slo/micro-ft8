@@ -92,7 +92,7 @@ GitHub issues are where the roadmap's inputs arrive and are talked through; the 
 ## Roadmap intake (ideas)
 
 If the maintainer asks to add an idea or “add to the backlog”:
-1. Draft it in chat with its epic test's outcome ([AGENTS.md](../../AGENTS.md), **Before proposing a new row, epic or idea**): a row in an epic is drafted with its child entry and **Lands in:** line, together; a new epic is proposed as one. Do not commit yet.
+1. **Give the verdict,** then draft it in chat with its epic test's outcome ([AGENTS.md](../../AGENTS.md), **Before proposing a new row, epic or idea**): a row in an epic is drafted with its child entry and **Lands in:** line, together; a new epic is proposed as one. Do not commit yet.
 2. New items go in **Ideas**. Use **Backlog** only when they give a Done-when or say it is sequenced.
 3. After they approve, commit that row. Push `origin` only when they ask to push. Never `upstream` unless they explicitly ask.
 4. **Fast path for Ideas.** A change that only adds or edits rows in **Ideas**, and touches nothing else in any file, goes straight to `main`: once the maintainer approves the row, commit it on a branch from `main`, run `tools/check.sh --changed`, and push it to `main` with no pull request. Approving the row is the push instruction, since an idea is unscheduled and one revert undoes it. Everything else on the roadmap (a Backlog or Now row, an order change, an epic file, `declined.md`) keeps its own branch and pull request, pushed only when they ask.
