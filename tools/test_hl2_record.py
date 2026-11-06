@@ -160,6 +160,17 @@ def test_stream():
     assert all(p[11] & 0x01 == 0 and p[11 + h.FRAME_LEN] & 0x01 == 0 for p in sock.sent), "MOX always clear"
 
 
+def test_sequence_wrap():
+    sock = FakeSock()
+    s = h.Hl2Stream(sock, ("169.254.0.2", h.PORT), [7074000], log=lambda *_: None, start_utc=0.0)
+    for i, seq in enumerate((0xFFFFE, 0xFFFFF, 0, 1)):  # the HL2's 20-bit counter wraps to 0
+        assert s.handle(packet(seq), 0.01 * i) is not None, f"sequence {seq:#x} is next, not late"
+    frames, gap = s.handle(packet(3), 0.05)
+    assert gap and len(frames[0]) == 2 * 126 * 6, "a gap just past the wrap is one lost packet"
+    assert s.handle(packet(0xFFFFF), 0.06) is None, "the packet before the wrap, again: late"
+    assert len(sock.sent) == 5, "a control packet for every packet that is not late"
+
+
 def test_temperature_and_abort():
     s = h.Hl2Stream(FakeSock(), ("169.254.0.2", h.PORT), [14074000], log=lambda *_: None, max_temp_c=30.0,
                     start_utc=0.0)

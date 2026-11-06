@@ -287,17 +287,18 @@ void hl2_apply_status(const Hl2Status& s, Hl2Telemetry* t)
 
 uint32_t hl2_sequence_note(Hl2SequenceTracker* t, uint32_t sequence)
 {
+    sequence &= kHl2SequenceMask;
     if (!t->started) {
         t->started = true;
-        t->expected = sequence + 1;
+        t->expected = (sequence + 1) & kHl2SequenceMask;
         return 0;
     }
-    const uint32_t ahead = sequence - t->expected;  // wraps
-    if (ahead >= 0x80000000u) {                     // behind the expected number
+    const uint32_t ahead = (sequence - t->expected) & kHl2SequenceMask;  // wraps at 2^20
+    if (ahead > kHl2SequenceMask / 2) {                                 // behind the expected number
         ++t->out_of_order;
         return 0;
     }
-    t->expected = sequence + 1;
+    t->expected = (sequence + 1) & kHl2SequenceMask;
     if (ahead == 0) {
         return 0;
     }

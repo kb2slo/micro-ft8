@@ -84,6 +84,7 @@ MAX_RECEIVERS = 4  # the standard hl2b5up_main gateware
 BOARD_ID = 0x06
 REG_CONFIG, REG_NCO0, REG_LNA = 0x00, 0x02, 0x0A
 LNA_START_DB, LNA_FLOOR_DB, LNA_STEP_DB = 20, -12, 3
+SEQ_MASK = (1 << 20) - 1  # the HL2's ep6 sequence is 20 bits, sent as 32 (usopenhpsdr1.v:89)
 MAX_FILL_PACKETS = 400  # past ~1 s of loss the stream is lost anyway, as on the P4
 STREAM_LOST_S = 1.0
 WATCHDOG_WAIT_S = 50  # the HL2 reports running for ~43 s after a host goes quiet (bench, 2026-11-03)
@@ -308,8 +309,10 @@ class Hl2Stream:
             return None
         sequence, pcm, status = p
         slot = self._slot(now)
-        missing = 0 if self.expected is None else (sequence - self.expected) & 0xFFFFFFFF
-        if missing >= 1 << 31:
+        # Modulo the HL2's 20-bit counter: compared as 32 bits, the wrap to 0 after 2^20 packets (13.8 min
+        # with four receivers, 45.6 with one) read as a million behind, every later packet as late.
+        missing = 0 if self.expected is None else (sequence - self.expected) & SEQ_MASK
+        if missing > SEQ_MASK >> 1:
             # A duplicate or a late packet: its place was already written, zero-filled if it was missing,
             # so its samples are dropped and the next one expected stays where it was.
             if slot is not None:
@@ -317,7 +320,7 @@ class Hl2Stream:
             return None
         if missing > MAX_FILL_PACKETS:  # a restart, or more loss than the stream survives: no fill
             missing = 0
-        self.expected = (sequence + 1) & 0xFFFFFFFF
+        self.expected = (sequence + 1) & SEQ_MASK
         for address, c in status:
             if address == 1:
                 t = temperature_c(struct.unpack(">H", c[0:2])[0])
