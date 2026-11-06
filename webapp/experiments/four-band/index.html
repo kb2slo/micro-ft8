@@ -35,6 +35,19 @@
   @media (min-width: 640px) { ol.top { columns: 3; } }
   .pair { display: grid; gap: 1.25rem; }
   @media (min-width: 720px) { .pair.two { grid-template-columns: 1fr 1fr; } }
+  .fartables { display: grid; gap: 0.5rem 1.5rem; }
+  @media (min-width: 640px) { .fartables { grid-template-columns: 1fr 1fr; } }
+  .tablebox { overflow-x: auto; margin: 0.25rem 0 0.75rem; }
+  table.data { border-collapse: collapse; width: 100%; font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+  table.data caption { text-align: left; font-weight: 600; padding: 0.3rem 0; }
+  table.data th, table.data td { text-align: right; padding: 0.3rem 0.4rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.data th:first-child, table.data td:first-child { text-align: left; }
+  table.data thead th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }
+  table.data .sub { display: block; color: var(--muted); font-size: 0.8rem; }
+  table.data .lead-fig { display: block; font-weight: 600; }
+  table.data td.muted { color: var(--muted); }
+  table.data tbody th { white-space: nowrap; }
+  #vsTable td, #vsTable thead th { text-align: left; }
   details { border-top: 1px solid var(--line); margin-top: 1.6rem; padding-top: 1rem; }
   summary { cursor: pointer; font-weight: 600; }
   dl { margin: 0.75rem 0 0; }
@@ -63,6 +76,7 @@
     <strong>Station:</strong> one 40&nbsp;m end-fed half-wave, which is good on 40, 20, 15 and
     10&nbsp;m. A Hermes-Lite&nbsp;2, gateware 74.2, with the N2ADR filter board; with four
     receivers it uses the 10&nbsp;m low-pass for all of them. Receive only.
+    <span id="stationWhere"></span>
   </p>
 
   <div class="runbar">
@@ -100,6 +114,21 @@
         <ol class="top" id="topGrids" aria-labelledby="topHead"></ol>
       </section>
 
+      <section id="far">
+        <h2>How far away they were</h2>
+        <p class="hint">Decodes by great-circle distance from <span data-station></span>, in <span data-bin></span>&nbsp;km bins, every band on the same two scales. A decode is placed at its sender's grid square; <span id="farPlaced"></span></p>
+        <div class="chart" id="dist"></div>
+        <h3>The farthest stations</h3>
+        <p class="hint">Per band, each heard at least twice, with its best SNR.</p>
+        <div class="fartables" id="farthest"></div>
+      </section>
+
+      <section id="snrfar">
+        <h2>Distance against signal strength</h2>
+        <p class="hint">Each band's decodes by distance and SNR, every band on the same two scales. A cell's shade is how many decodes fell in it, against that band's busiest cell; the line is the median SNR in each distance bin.</p>
+        <div class="chart" id="snrdist"></div>
+      </section>
+
       <section id="strength">
         <h2>How strong they were</h2>
         <p class="hint">Each band's decodes by signal-to-noise ratio as <code>jt9</code> reports it (in 2.5&nbsp;kHz), every band on the same two scales.</p>
@@ -128,6 +157,19 @@
         </div>
       </section>
 
+      <section id="lnafind" hidden>
+        <h2>What the shared filter and the LNA cost</h2>
+        <p id="lnaVerdict"></p>
+        <h3 id="abHead"></h3>
+        <p class="hint" id="abHint"></p>
+        <div class="tablebox"><table class="data" id="abTable"></table></div>
+        <p class="hint">Paired difference per turn, +<span data-arm-a></span> minus +<span data-arm-b></span>&nbsp;dB, decodes a slot, with one standard error either side. Zero is no difference.</p>
+        <div class="chart" id="abPaired"></div>
+        <h3>Four bands against one, on the same clock window</h3>
+        <p id="winVerdict"></p>
+        <p class="hint">Different days, so propagation moves the counts too: these are not a same-night test, which the 40&nbsp;m A/B above is. Nor are they a claim about other antennas, or about a quiet 10&nbsp;m on a short antenna.</p>
+      </section>
+
       <section id="baseline">
         <h2>Against one band at a time</h2>
         <p class="hint" id="baseHint"></p>
@@ -136,6 +178,7 @@
           <li><i style="background: var(--s1)"></i><span id="baseLegendB">Four bands at once</span></li>
         </ul>
         <div class="chart" id="vs"></div>
+        <div class="tablebox"><table class="data" id="vsTable"></table></div>
         <p class="hint">A band's count mixes the radio with that day's propagation, so this is a baseline, not a verdict on the shared filter.</p>
       </section>
     </div>
@@ -152,16 +195,20 @@
       <dd>A station is the sender of a decoded message, counted once however often it was heard: the call after <code>CQ</code> (or after <code>CQ</code> and one word such as <code>DX</code> or <code>POTA</code>), or the second call of a <code>TO FROM …</code> message. It counts only when it is a well-formed callsign: a prefix, a digit and a suffix ending in a letter (up to seven characters, for a special-event station), with or without a portable part such as <code>/P</code> or <code>VE3/</code>; a call <code>jt9</code> resolved from a hash, shown in angle brackets, counts as that call. Every other message goes under <strong>unknown or other</strong>, counted by messages, not as stations: a sender sent as a hash <code>jt9</code> could not resolve (<code>&lt;...&gt;</code>), free text, a telemetry message, and any message whose sender cannot be told.</dd>
       <dt>Grid squares</dt>
       <dd>The four-character locator a message ends with, drawn at its centre.</dd>
+      <dt>Distances</dt>
+      <dd>Great-circle (haversine) from the centre of the run's four-character grid square to the centre of each heard square, in km (miles alongside: 1&nbsp;mi = 1.609&nbsp;km). A square is about 110 by 190&nbsp;km here, so a distance is rough under about 150&nbsp;km. A decode is placed at its sender's grid square, the one that sender's own messages carried most often in the run; a decode whose sender never sent one, or is unknown, has no distance. The farthest stations are those heard at least twice on the band, since <code>jt9 -d 3</code> makes the odd false decode.</dd>
+      <dt>Distance against SNR</dt>
+      <dd>Not every decode drawn: the build tool counts decodes in cells of one distance bin by 1&nbsp;dB of SNR, per band, and takes the median SNR of each distance bin, which keeps the run's data small.</dd>
       <dt>Same time of day</dt>
-      <dd>A band's four-band figure is its mean over the clock window, in Central time, that the band had in the one-band survey.</dd>
+      <dd>For 10, 15 and 20&nbsp;m, the four-band side is the 120 slots on the same clock window, in Central time, that the band had in the one-band survey, every slot scored with <code>jt9</code> and our decoder (<code>tools/decode_bench/score_ab.py</code>). A band without such a window falls back to the sampled <code>jt9</code> decodes in it, when they cover at least half of it.</dd>
+      <dt>The LNA A/B</dt>
+      <dd>After the four-band day, one receiver on 40&nbsp;m with <code>tools/hl2_record.py --lna-ab</code>: the LNA held, not stepped, at one gain for two slots, then the other for two, and so on, every slot scored with <code>score_ab.py --arm-field lna_arm_db</code>. Each turn of one gain is paired with the turn of the other after it, which takes the band's drift out of the difference. Clipping per slot is from the run's manifest.</dd>
       <dt>Left out</dt>
       <dd>
-        <ul id="leftOut">
-          <li>Distances: the station's location is not in the data.</li>
-        </ul>
+        <ul id="leftOut"></ul>
       </dd>
       <dt>Built with</dt>
-      <dd><code>tools/decode_bench/build_four_band_run.py</code>, from the recording's manifests and the sampled decodes, into this page's <code>runs/</code> folder. Source on <a href="https://github.com/kb2slo/micro-ft8">GitHub</a>.</dd>
+      <dd><code>tools/decode_bench/build_four_band_run.py</code>, from the recording's manifests, the sampled decodes, the scored windows and the A/B's score, into this page's <code>runs/</code> folder. Source on <a href="https://github.com/kb2slo/micro-ft8">GitHub</a>.</dd>
     </dl>
   </details>
 

@@ -169,3 +169,8 @@ ul.experiments { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.
 .legend li { margin: 0; line-height: 1.3; }
 .legend i.dash { height: 0; border-top: 2px dashed var(--base); border-radius: 0; width: 0.9rem; }
 .hint { font-size: 0.85rem; color: var(--muted); margin: 0 0 0.4rem; }
+.map-ring { fill: none; stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; opacity: 0.8; }
+.map-ring-label { font-size: 10px; }
+.map-station { fill: var(--ink); stroke: var(--paper); stroke-width: 1.5; }
+.chart-text.map-station-label { fill: var(--ink); font-weight: 600; paint-order: stroke; stroke: var(--paper); stroke-width: 3px; }
+.median-line { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
