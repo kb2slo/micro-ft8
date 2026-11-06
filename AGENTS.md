@@ -210,6 +210,8 @@ the only place every agent and every person can see them — see "Memory lives i
 
   **Token-guarded calls** (`PUT /api/config` and the rest) go through `webapp/tools/sidekick.py`, as `desk_push.py` does. It caches the pairing token at `webapp/tools/.sidekick_token` (git-ignored, owner-only), claims one with the sidekick's button the first time or when the cache is refused, and retries on a 401. Each write needs the person you work for to approve it explicitly, in that turn: say what you will send and what it changes, then wait. A write that can make the station transmit (a CQ, a reply, Tune) also needs them at the station as its control operator, since the licence is theirs. What an agent reads this way is evidence from a run they set up; the TEST_PLAN rules on who closes a field check are unchanged.
 
+  **One write needs no approval: setting the clock.** When the main board's clock is unset (SLOT indices count from boot, events carry `t` 0) or reads more than a second off, an agent sends `POST /api/time` with its own machine's time, the call the web app makes, provided that machine's clock is synced to NTP (check it first), and says in chat that it did. It sets the clock and nothing else, so it cannot key the radio or change a setting. Every other write still needs approval in that turn.
+
 - **WSJT-X is the on-air standard.** Where our behaviour on the air differs from WSJT-X's (the message
   sequence, a message's format, what a tap sends), WSJT-X's is the default, and we differ only by a recorded
   decision. Check its source first: the `WSJTX/wsjtx` mirror, `widgets/mainwindow.cpp` for sequencing.
