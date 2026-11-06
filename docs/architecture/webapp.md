@@ -198,7 +198,7 @@ What the operator consults *instead of* looking at the radio. **The test for a T
 
 **Sources** are called directly when they send CORS, and a Worker route is added only when they do not ([system.md](system.md), **Third-party services**). Payload size is part of the choice: a phone on cellular must not pay for a large file to show one number.
 
-* **Space weather** (`app.html`): NOAA SWPC's small current-value endpoints (10.7 cm flux, X-ray flare class, solar wind speed and Bz/Bt, the R/S/G scales) and the planetary K-index, whose `a_running` supplies the A-index. Not hamqsl.com: no CORS and no JSON, and its per-band verdict is an undocumented formula (row [B80](../ROADMAP.md#B80) adds it through a Worker). Not NOAA's aurora file (922 KB) or sunspot history (no small endpoint).
+* **Space weather** (`app.html`): NOAA SWPC's small current-value endpoints (10.7 cm flux, X-ray flare class, solar wind speed and Bz/Bt, the R/S/G scales) and the planetary K-index, whose `a_running` supplies the A-index. Not hamqsl.com: no CORS and no JSON, and its per-band verdict is an undocumented formula (row [B80](../roadmap/ideas.md#B80) adds it through a Worker). Not NOAA's aurora file (922 KB) or sunspot history (no small endpoint).
 * **POTA and SOTA** (`map.html`): `api.pota.app` activator spots and `api-db2.sota.org.uk/api/spots/{n}/all/all`, both CORS-open. SOTA's API terms restrict AI-authored clients without prior approval; the operator chose to build against it anyway (2026-09-21).
 * **Not in Tools:** self-spotting to POTA/SOTA — an authenticated outward write is a different risk class from a read-only card.
 

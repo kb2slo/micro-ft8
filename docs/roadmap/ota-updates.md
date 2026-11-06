@@ -1,6 +1,6 @@
 # OTA updates (epic ukk6)
 
-After the first install, every firmware update, for every board, happens over the air from the web app. Rows: [wanw](#wanw), [v697](#v697), [hstv](#hstv), [yme5](#yme5) ([ROADMAP.md](../ROADMAP.md)).
+After the first install, every firmware update, for every board, happens over the air from the web app. Rows: [wanw](#wanw), [v697](#v697), [hstv](#hstv), [yme5](#yme5), [nufg](#nufg) ([ROADMAP.md](../ROADMAP.md)).
 
 ## Goal
 
@@ -12,7 +12,7 @@ After the first install, every firmware update, for every board, happens over th
 * **No TLS and no signing on the device.** Trust comes from the browser's HTTPS fetch of the manifest, as for the app bundle ([system.md](../architecture/system.md), **The inversion** and **Why not signing**).
 * **An update never starts by itself, and the radio never restarts by itself afterwards.** The operator starts it, and taps **Resume operating** when it is done.
 * **The main board has no network.** Its image reaches it over Port A.
-* **The `continuous` channel only.** Choosing a channel is **Later**.
+* **The `continuous` channel only,** until [nufg](#nufg) adds versioned releases.
 
 ## Decided
 
@@ -82,10 +82,10 @@ In order: each needs the one before it.
 * <a id="v697"></a>**v697: the sidekick updates itself** (**Download**). **Done-when:** a sidekick updates from the web app; a forced bad image rolls back (field). **Lands in:** sidekick.md **Firmware updates** (its "not yet built" label goes); system.md (its label); TEST_PLAN Pending.
 * <a id="hstv"></a>**hstv: main boards update over Port A, P4 first** (**Main board over Port A**, **Update mode**). **Done-when:** the receiver `host_mock`-tested; a P4 updates from the web app with transfer time measured, and a forced bad image rolls back (field). **Lands in:** main_board.md (partitions, rollback, update mode); sidekick.md **Port A** (the `FW_*` messages, the transfer time); RELEASE_PROCESS.md (the image carries a version); system.md (its label); TEST_PLAN Pending; README and site audits (the one-time USB reflash for the new partition table).
 * <a id="yme5"></a>**yme5: the web app's update flow** (**Version pairing**, **The web app**). **Done-when:** **The web app**'s steps 1–6 walked with a QSO in progress, the phone locked mid-transfer, and a second phone open (field). **Lands in:** webapp.md **Screens**; TEST_PLAN Pending; site audit (Settings' Updates section, and Getting started if it says how to update).
+* <a id="nufg"></a>**nufg: versioned releases, and a version an operator can read.** After [yme5](#yme5); epic [eu2t](release-1-0.md) needs it. A build from a `v*` tag reports that version (`1.0.0`), any other build its SHA as today; a board running a versioned release is offered only the next versioned release, a `continuous` build only `continuous` ([RELEASE_PROCESS.md](../RELEASE_PROCESS.md)). **Done-when:** the manifest carries both channels; a board flashed from a `v*` tag shows its version in Settings and is offered the next tag, not `continuous` (field). **Lands in:** RELEASE_PROCESS.md (an image carries its version; what each channel publishes); webapp.md (**Updates**); TEST_PLAN Pending.
 
 ### Later
 
-* **Choosing a release channel:** `continuous`, or versioned `v*` releases ([RELEASE_PROCESS.md](../RELEASE_PROCESS.md)).
 * **The app bundle relay** (`/update`) moving to the sidekick-downloads path.
 * **A window on `FW_CHUNK`,** if [hstv](#hstv)'s measured transfer time is too long.
 

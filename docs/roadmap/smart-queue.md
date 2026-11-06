@@ -1,6 +1,6 @@
 # Smart queue ordering (epic qxy5)
 
-Spend each transmission where it can be answered: order the queue, and hold entries back, so transmissions go where an answer is likely, without adding a station to the queue that a person did not choose. Rows: [jqpm](#jqpm) ([ROADMAP.md](../ROADMAP.md)). How the queue works now: [autoseq.md](../architecture/autoseq.md), **The queue**.
+Spend each transmission where it can be answered: order the queue, and hold entries back, so transmissions go where an answer is likely, without adding a station to the queue that a person did not choose. Rows: [jqpm](#jqpm), [k4ag](#k4ag) ([ROADMAP.md](../ROADMAP.md)). How the queue works now: [autoseq.md](../architecture/autoseq.md), **The queue**.
 
 ## Goal
 
@@ -101,10 +101,10 @@ An opening call gets `min(tries, AUTOSEQ_OPENING_TRIES)`, the constant 4; every 
 In order.
 
 * <a id="jqpm"></a>**jqpm: opening calls get at most 4 tries** (**Opening tries**). **Done-when:** a host test shows REPLYING ends after 4 with `tries` at 6, after 2 with `tries` at 2, and after the entry's own count when one is set. **Lands in:** autoseq.md (**Tries**), with why 4; webapp.md if the row's count shows the cap.
+* <a id="k4ag"></a>**k4ag: hold a station that is working someone else** (**The busy hold**). After [jqpm](#jqpm); epic [eu2t](release-1-0.md) needs it. **Done-when:** `host_mock` scenarios hold an entry while its station works another call, release it on RR73 and transmit in the next slot, end a hold at 5 minutes, never charge a try while held, and settle mixed parity; a held entry is seen waiting on Operate and goes out after its station's RR73 (field). **Lands in:** autoseq.md (**The queue**: the hold, its release and its limit); webapp.md (the held row's text); TEST_PLAN Pending.
 
 ### Later
 
-* **Q1, the busy hold** (**The busy hold**). Done-when: `host_mock` scenarios hold an entry while its station works another call, release it on RR73 and transmit in the next slot, end a hold at 5 minutes, never charge a try while held, and settle mixed parity; a held entry is seen waiting on Operate and goes out after its station's RR73 (field).
 * **Q4, the ladder and callers to our CQ** (**The ladder**). Done-when: host tests order two simultaneous callers by each rung; the Station sheet's order survives a reload and applies to the next sort.
 * **Q3, manual order** (**Moving entries by hand**). Done-when: host tests for pin, up, down and Next, refusals across stages included; on the phone each action moves the row and changes what transmits next (field).
 * **Q5, POTA and SOTA rungs** and park to park. Done-when: host tests mark a call from `CQ POTA` and order by the rungs, and P2P ranks the same whoever called. Whether the ladder follows the CQ type, as Field Day does, is settled then.

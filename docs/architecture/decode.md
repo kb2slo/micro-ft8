@@ -1,6 +1,6 @@
 # Decode: how fast it runs, and how that is measured
 
-What the decoder costs on each main board today, the tool that measures it, and how the SNR it reports is held to WSJT-X's. How it compares with other decoders, and what was measured and not taken, are here too; what is still planned is in its rows ([kkap](../ROADMAP.md#kkap), [qauk](../ROADMAP.md#qauk), [B86](../ROADMAP.md#B86), [n2e7](../ROADMAP.md#n2e7), [I26](../roadmap/ideas.md#I26)), and the decode's time budget in epic [u8mc](../roadmap/several-channels.md). The decoder itself is `ft8_lib` ([ft8_lib.md](ft8_lib.md)).
+What the decoder costs on each main board today, the tool that measures it, and how the SNR it reports is held to WSJT-X's. How it compares with other decoders, and what was measured and not taken, are here too; what is still planned is in its rows ([kkap](../ROADMAP.md#kkap), [qauk](../ROADMAP.md#qauk), [B86](../roadmap/ideas.md#B86), [n2e7](../ROADMAP.md#n2e7), [I26](../roadmap/ideas.md#I26)), and the decode's time budget in epic [u8mc](../roadmap/several-channels.md). The decoder itself is `ft8_lib` ([ft8_lib.md](ft8_lib.md)).
 
 ## The time budget
 
@@ -123,7 +123,7 @@ Flags select every shipped tunable: `time_osr`, `freq_osr`, candidates, `DEC_MAX
 
 The synthetic tier encodes two messages with the vendored GFSK synthesiser, adds white noise at a known SNR in a 2500 Hz bandwidth, and scores whether that message comes back. It is an absolute curve for this decoder. It is not a capture-path test: USB audio, the front end, and whether a full slot arrived stay on the device.
 
-**Truth is tiered, and `jt9` is not the top tier.** Scoring against another decoder caps recall at that decoder. Built: **synthetic** (we encoded it, so recall is exact and the curve absolute) and **off-air against `jt9`** (the two corpora). Not built: synthetic through a fading channel, synthetic injected over recorded band noise (which makes congestion a dial), and **consensus** across independent decoders such as `jt9` and JTDX, the only tier that can score above WSJT-X (row [B86](../ROADMAP.md#B86)). **A synthesis trap:** `synth_fsk()` in `tests/tx_e2e/synth.c` is plain FSK without Gaussian shaping, an easier signal than a real one, so the recall tier uses the vendored GFSK synthesiser instead.
+**Truth is tiered, and `jt9` is not the top tier.** Scoring against another decoder caps recall at that decoder. Built: **synthetic** (we encoded it, so recall is exact and the curve absolute) and **off-air against `jt9`** (the two corpora). Not built: synthetic through a fading channel, synthetic injected over recorded band noise (which makes congestion a dial), and **consensus** across independent decoders such as `jt9` and JTDX, the only tier that can score above WSJT-X (row [B86](../roadmap/ideas.md#B86)). **A synthesis trap:** `synth_fsk()` in `tests/tx_e2e/synth.c` is plain FSK without Gaussian shaping, an easier signal than a real one, so the recall tier uses the vendored GFSK synthesiser instead.
 
 **Comparing two configurations uses the discordant decodes,** those one found and the other missed on the same file: on 428 messages a couple of points of total recall is noise, a discordant count of 15–2 is not.
 
