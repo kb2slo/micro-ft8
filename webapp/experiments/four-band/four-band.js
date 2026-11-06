@@ -568,6 +568,114 @@
     });
   }
 
+  // ---- Our decoder against jt9, per stream and band -----------------------------------------------
+  function drawOurs() {
+    var hs = run.hour_scores, sec = $("ours");
+    sec.hidden = !hs || !hs.length;
+    if (sec.hidden) return;
+    // By hour: a line per band through each stream's middle.
+    var wrap = clear("oursHour"), m = { t: 10, r: 40, b: 24, l: 40 };
+    var ch = C.svg(wrap, 220, "Line chart of our decoder's share of jt9's decodes by hour, one line per band; use the arrow keys to step through the hours.");
+    var mid = function (h) { return h.start_min + h.slots * 0.125; };  // 15 s slots: half the stream, in minutes
+    var lo = Math.min.apply(null, hs.map(function (h) { return h.start_min; }));
+    var hi = Math.max.apply(null, hs.map(function (h) { return h.start_min + h.slots / 4; }));
+    var pl = Math.min.apply(null, hs.map(function (h) { return h.ours_pct; })), ph = Math.max.apply(null, hs.map(function (h) { return h.ours_pct; }));
+    var yt = C.ticks(Math.floor(pl / 10) * 10, Math.ceil(ph / 10) * 10, 4);
+    var x = C.scale(lo, hi, m.l, ch.w - m.r), y = C.scale(yt[0], yt[yt.length - 1], ch.h - m.b, m.t);
+    yt.forEach(function (v) {
+      C.el("line", { class: "chart-grid", x1: m.l, x2: ch.w - m.r, y1: y(v), y2: y(v) }, ch.node);
+      C.text(ch.node, m.l - 6, y(v), v + "%", { "text-anchor": "end", dy: "0.35em" });
+    });
+    timeAxis(ch, x, lo, hi, m, ch.h - m.b);
+    var ends = [], starts = [];
+    run.bands.forEach(function (b) {
+      var v = hs.filter(function (h) { return h.band === b; });
+      if (!v.length) return;
+      var d = v.map(function (h, i) { return (i ? "L" : "M") + x(mid(h)).toFixed(1) + "," + y(h.ours_pct).toFixed(1); }).join("");
+      C.el("path", { d: d, fill: "none", "stroke-width": 2, "stroke-linejoin": "round", style: "stroke:" + color(b) }, ch.node);
+      v.forEach(function (h) { C.el("circle", { cx: x(mid(h)).toFixed(1), cy: y(h.ours_pct).toFixed(1), r: 3, style: "fill:" + color(b) }, ch.node); });
+      var last = v[v.length - 1];
+      ends.push({ b: b, x: x(mid(last)), y: y(last.ours_pct) });
+    });
+    ends.sort(function (a, b) { return a.y - b.y; });
+    for (var i = 1; i < ends.length; i++) ends[i].y = Math.max(ends[i].y, ends[i - 1].y + 12);
+    ends.forEach(function (e) { C.text(ch.node, e.x + 6, e.y, bandLabel(e.b), { dy: "0.35em", class: "chart-text ink" }); });
+    var times = [];
+    hs.forEach(function (h) { if (times.indexOf(h.start_min) < 0) times.push(h.start_min); });
+    times.sort(function (a, b) { return a - b; });
+    var xs = times.map(function (t) { var h = hs.filter(function (q) { return q.start_min === t; })[0]; return x(mid(h)); });
+    C.cursor({
+      chart: ch, wrap: wrap, count: times.length, rule: [m.t, ch.h - m.b],
+      at: function (k) { return { x: xs[k], y: m.t + 20 }; },
+      tip: function (k) {
+        var v = hs.filter(function (h) { return h.start_min === times[k]; });
+        return { head: clock(times[k]) + "\u2013" + clock(times[k] + v[0].slots / 4) + " " + tz + ", " + v[0].slots + " slots",
+                 lines: run.bands.map(function (b) {
+                   var h = v.filter(function (q) { return q.band === b; })[0];
+                   return [color(b), bandLabel(b) + ": " + (h ? fmt1(h.ours_pct) + "% of " + fmt1(h.jt9) + " a slot" : "not scored")];
+                 }) };
+      },
+      pick: function (px) { return C.nearest(xs, px); },
+    });
+
+    // Against crowding: a dot per band and hour; shape as well as colour tells the bands apart.
+    var wrap2 = clear("oursCrowd"), m2 = { t: 10, r: 14, b: 34, l: 40 };
+    var ch2 = C.svg(wrap2, 240, "Scatter of our decoder's share against jt9's decodes a slot, a dot per band and hour; use the arrow keys to read each.");
+    var jmax = Math.max.apply(null, hs.map(function (h) { return h.jt9; }));
+    var xt = C.ticks(0, jmax, 5), x2 = C.scale(0, Math.max(jmax, xt[xt.length - 1]), m2.l, ch2.w - m2.r);
+    var y2 = C.scale(yt[0], yt[yt.length - 1], ch2.h - m2.b, m2.t);
+    yt.forEach(function (v) {
+      C.el("line", { class: "chart-grid", x1: m2.l, x2: ch2.w - m2.r, y1: y2(v), y2: y2(v) }, ch2.node);
+      C.text(ch2.node, m2.l - 6, y2(v), v + "%", { "text-anchor": "end", dy: "0.35em" });
+    });
+    xt.forEach(function (v) {
+      C.el("line", { class: "chart-axis", x1: x2(v), x2: x2(v), y1: ch2.h - m2.b, y2: ch2.h - m2.b + 4 }, ch2.node);
+      C.text(ch2.node, x2(v), ch2.h - m2.b + 15, String(v), { "text-anchor": "middle" });
+    });
+    C.text(ch2.node, ch2.w - m2.r, ch2.h - 4, "jt9 decodes a slot", { "text-anchor": "end", class: "chart-text ink" });
+    var shapes = ["circle", "square", "diamond", "triangle"], pts = [];
+    function mark(kind, cx, cy, fill) {
+      var r = 4.5, d;
+      if (kind === "circle") return C.el("circle", { cx: cx, cy: cy, r: r, style: fill }, ch2.node);
+      if (kind === "square") d = "M" + (cx - r) + "," + (cy - r) + "h" + 2 * r + "v" + 2 * r + "h" + -2 * r + "Z";
+      else if (kind === "diamond") d = "M" + cx + "," + (cy - r - 1) + "L" + (cx + r + 1) + "," + cy + "L" + cx + "," + (cy + r + 1) + "L" + (cx - r - 1) + "," + cy + "Z";
+      else d = "M" + cx + "," + (cy - r - 1) + "L" + (cx + r + 1) + "," + (cy + r) + "L" + (cx - r - 1) + "," + (cy + r) + "Z";
+      return C.el("path", { d: d, style: fill }, ch2.node);
+    }
+    hs.slice().sort(function (a, b) { return a.jt9 - b.jt9; }).forEach(function (h) {
+      var px = x2(h.jt9), py = y2(h.ours_pct), k = run.bands.indexOf(h.band);
+      mark(shapes[k % 4], px, py, "fill:" + color(h.band) + "; stroke: var(--paper); stroke-width: 1");
+      pts.push({ h: h, x: px, y: py });
+    });
+    C.cursor({
+      chart: ch2, wrap: wrap2, count: pts.length,
+      at: function (i) { return { x: pts[i].x, y: pts[i].y, r: 5 }; },
+      tip: function (i) {
+        var h = pts[i].h;
+        return { head: bandLabel(h.band) + ", " + clock(h.start_min) + " " + tz,
+                 lines: [[color(h.band), fmt1(h.ours_pct) + "% of jt9's " + fmt1(h.jt9) + " a slot (ours " + fmt1(h.ours) + ")"]] };
+      },
+      pick: function (px, py) {
+        var best = -1, bd = 12;
+        pts.forEach(function (p, i) { var d = Math.hypot(p.x - px, p.y - py); if (d < bd) { bd = d; best = i; } });
+        return best;
+      },
+    });
+    var lg = document.createElement("ul");
+    lg.className = "legend";
+    run.bands.forEach(function (b, k) {
+      var li = document.createElement("li"), sp = document.createElement("span");
+      var ic = document.createElement("span");
+      ic.textContent = ["\u25cf", "\u25a0", "\u25c6", "\u25b2"][k % 4] + " ";
+      ic.style.color = color(b);
+      ic.setAttribute("aria-hidden", "true");
+      sp.textContent = bandLabel(b);
+      li.append(ic, sp);
+      lg.appendChild(li);
+    });
+    wrap2.insertBefore(lg, wrap2.firstChild);
+  }
+
   // ---- SNR histograms -------------------------------------------------------------------------
   function drawSnr() {
     var wrap = clear("snr");
@@ -762,6 +870,7 @@
     if (run.distance) { drawDist(); drawFarthest(); drawSnrDist(); }
     $("far").hidden = $("snrfar").hidden = !run.distance;
     drawSnr();
+    drawOurs();
     drawRadio();
     drawLnaFind();
     drawBaseline();
@@ -780,7 +889,7 @@
       if (r.corpus_url) {
         var a = document.createElement("a");
         a.href = r.corpus_url;
-        a.textContent = "corpus";
+        a.textContent = "corpus README";
         $("runMeta").append(" \u00b7 ", a);
       }
       var sw = $("stationWhere");
@@ -806,7 +915,7 @@
           ? "the scored windows and the LNA A/B." : "nothing in this run yet."));
       if (!r.station) leftOut("Distances: the run does not say where it listened from.");
       if (r.note) leftOut(r.note);
-      if (!r.corpus_url) leftOut("The audio: this run is not released as a corpus yet.");
+      if (!r.release_url) leftOut("The audio: " + (r.corpus_url ? "its release is to come; the corpus README holds the manifests and every score." : "this run is not released as a corpus yet."));
       status.hidden = true;
       body.hidden = false;
       $("run").removeAttribute("aria-busy");
