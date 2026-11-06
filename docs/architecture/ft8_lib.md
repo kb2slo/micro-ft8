@@ -4,7 +4,8 @@
 
 ## Layout
 
-* **The pin** is the git submodule `components/ft8_lib/vendor` → [kb2slo/ft8_lib](https://github.com/kb2slo/ft8_lib), a fork of [kgoba/ft8_lib](https://github.com/kgoba/ft8_lib) (Karlis) by way of [wcheng95/ft8_lib](https://github.com/wcheng95/ft8_lib) (Wei). Clone this repo with `--recurse-submodules`.
+* **The pin** is the git submodule `components/ft8_lib/vendor` → [kb2slo/ft8_lib](https://github.com/kb2slo/ft8_lib), a fork of [kgoba/ft8_lib](https://github.com/kgoba/ft8_lib) (Karlis). Its `master` is Karlis's plus our protocol commits, and is what the pin tracks. Clone this repo with `--recurse-submodules`.
+* **A change for Karlis** is a topic branch off his `master` holding only that change, opened as a pull request on `kgoba/ft8_lib`, and cherry-picked onto our `master` for the pin.
 * **Our wrappers** live in `components/ft8_lib/`, outside the submodule: `common/fft_wrapper`, `common/monitor` (static BSS arenas), the IDF `CMakeLists.txt`, and `common/stpcpy_compat` (Windows host builds only). Do not compile `vendor/common/monitor.c`.
 * **Protocol patches** are rebaseable commits on `kb2slo/ft8_lib`: Wei's Field Day (`d8a41e6`, `bb3d94d`, also [kgoba#54](https://github.com/kgoba/ft8_lib/pull/54)) and DXpedition type 0.1 (`5d095f4`). Nonstd is already upstream (`9fec6ca`). Do not push DXpedition onto Wei's `master` or onto #54.
 

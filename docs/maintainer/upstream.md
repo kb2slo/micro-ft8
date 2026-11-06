@@ -4,7 +4,7 @@ Four watches, different cadences. Network fail → skip (any of them); do not in
 
 ## `ft8_lib` pin — every maintainer session
 
-Scoped to the submodule pin ([architecture/ft8_lib.md](../architecture/ft8_lib.md)) only. General Micro-FT8 firmware drift is the separate watch below, not this one. The pin has **two** parents and both need watching. GitHub **Sync fork** on `kb2slo/ft8_lib` is off (parent is Wei, not Karlis).
+Scoped to the submodule pin ([architecture/ft8_lib.md](../architecture/ft8_lib.md)) only. General Micro-FT8 firmware drift is the separate watch below, not this one. The pin has **two** parents and both need watching. `kb2slo/ft8_lib` is forked from Karlis; GitHub **Sync fork** stays off, since our `master` carries commits his does not.
 
 **Karlis** — protocol upstream:
 
