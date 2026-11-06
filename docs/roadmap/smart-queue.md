@@ -29,7 +29,7 @@ Spend each transmission where it can be answered: order the queue, and hold entr
 
 ## Evidence
 
-From the maintainer's WSJT-X `ALL.TXT`, 2026-05-28 to 2026-08-06: 75,525 decodes and 3,303 of our transmissions, mostly 20 and 40 m FT8. The log is private and not committed; the scripts that read it are owed (**Open**).
+What informed **Decided**, from the maintainer's own WSJT-X log (2026-05-28 to 2026-08-06: 75,525 decodes and 3,303 of our transmissions, mostly 20 and 40 m FT8). The log and the scripts that read it are not kept, so these numbers cannot be re-checked and nothing here depends on them: the decisions are the maintainer's, and a child that needs a number measures it on this station, from a recorded `/api/events` log or `host_mock`.
 
 Our transmissions to a station, by what it was doing in the four slots before (answered = decoded within two slots):
 
@@ -100,7 +100,7 @@ An opening call gets `min(tries, AUTOSEQ_OPENING_TRIES)`, the constant 4; every 
 
 In order.
 
-* <a id="jqpm"></a>**jqpm: opening calls get at most 4 tries** (**Opening tries**). **Done-when:** a host test shows REPLYING ends after 4 with `tries` at 6, after 2 with `tries` at 2, and after the entry's own count when one is set. **Lands in:** autoseq.md (**Tries**), and the evidence that sets 4 beside it; webapp.md if the row's count shows the cap.
+* <a id="jqpm"></a>**jqpm: opening calls get at most 4 tries** (**Opening tries**). **Done-when:** a host test shows REPLYING ends after 4 with `tries` at 6, after 2 with `tries` at 2, and after the entry's own count when one is set. **Lands in:** autoseq.md (**Tries**), with why 4; webapp.md if the row's count shows the cap.
 
 ### Later
 
@@ -110,10 +110,6 @@ In order.
 * **Q5, POTA and SOTA rungs** and park to park. Done-when: host tests mark a call from `CQ POTA` and order by the rungs, and P2P ranks the same whoever called. Whether the ladder follows the CQ type, as Field Day does, is settled then.
 * **Live spots** as a second source for the activation rungs, once there is a path from the sidekick to the main board.
 * **"Needed" rungs** after row [I32](ideas.md#I32).
-
-## Open
-
-* **The analysis and simulation scripts** behind **Evidence** are not in the repo; they read any WSJT-X `ALL.TXT` and belong in `tools/` beside a README, the log kept private. Before Q1 relies on them again.
 
 ## Why not
 
