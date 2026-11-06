@@ -44,15 +44,12 @@ static const char* TAG = "DECODE";
 // Bare forward declarations for the seams this pipeline needs but doesn't
 // own: the main board's own file (poe_p4/main) defines each.
 //
-//   arm_from_autoseq/ignorelist_matches_normalized_dxcall: the
-//     TX-arming trigger and its ignorelist filter (the P4 has no ignorelist
-//     yet, row j4xh).
+//   arm_from_autoseq: the TX-arming trigger.
 //   porta_emit_decode: the sidekick link. Safe to call unconditionally --
 //     no-op until porta_start() has run.
 //
 // Each is called from decode_pipeline_apply(), on the main loop.
 void arm_from_autoseq();
-bool ignorelist_matches_normalized_dxcall(const std::string& dxcall_norm);
 void porta_emit_decode(uint32_t decode_id, const char* text, int snr, int offset_hz,
                        float dt_s, bool is_cq, bool is_to_me, bool is_recent_qso,
                        uint32_t slot_idx, uint8_t slot_len_ds, uint32_t dial_hz);
@@ -533,12 +530,6 @@ static void apply_slot_result(DecodeSlotResult& r) {
     std::vector<UiRxLine> to_me_auto;
     for (int i = 0; i < r.count; ++i) {
       if (!r.dec[i].is_to_me) break;  // sorted, so once we pass to_me we're done
-      char dxnorm[DEC_FIELD_MAX];
-      dec_normalize_call(r.dec[i].field2, dxnorm, DEC_FIELD_MAX);
-      if (ignorelist_matches_normalized_dxcall(std::string(dxnorm))) {
-        ESP_LOGI(TAG, "IgnoreList: skip auto reply to %s", dxnorm);
-        continue;
-      }
       // A recently worked call is not dropped here: autoseq refuses it a new
       // QSO itself (decode_pipeline_recently_logged), and a QSO still in the
       // queue needs the station's closing 73 -- which arrives after our RR73

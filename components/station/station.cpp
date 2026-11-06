@@ -190,8 +190,6 @@ enum class StationKey {
     Call,
     Grid,
     Comment1,
-    IgnorePrefixes,
-    RxtxLog,
     AmpSwrGuard,
     AmpPrimeOnBandChange,
     SkipTx1,
@@ -216,8 +214,6 @@ StationKey key_from_name(const std::string& name)
     if (name == "call") return StationKey::Call;
     if (name == "grid") return StationKey::Grid;
     if (name == "comment1") return StationKey::Comment1;
-    if (name == "ignore_prefixes") return StationKey::IgnorePrefixes;
-    if (name == "rxtx_log") return StationKey::RxtxLog;
     if (name == "amp_swr_guard") return StationKey::AmpSwrGuard;
     if (name == "amp_prime_on_band_change") return StationKey::AmpPrimeOnBandChange;
     if (name == "skiptx1") return StationKey::SkipTx1;
@@ -283,14 +279,6 @@ void apply_key(StationSettings* io, StationKey key, const std::string& value)
         }
         case StationKey::Comment1:
             io->comment1 = trim_copy(value);
-            break;
-        case StationKey::IgnorePrefixes:
-            io->ignore_prefixes = trim_upper_copy(value);
-            break;
-        case StationKey::RxtxLog:
-            if (sscanf(value.c_str(), "%d", &val) == 1) {
-                io->rxtx_log = (val != 0);
-            }
             break;
         case StationKey::AmpSwrGuard:
             if (sscanf(value.c_str(), "%d", &val) == 1) {
@@ -446,8 +434,6 @@ std::string station_serialize(const StationSettings& in)
     put_int(out, "radio", in.radio);
     put_int(out, "gps_baud", normalize_gps_baud(in.gps_baud));
     put_str(out, "comment1", in.comment1);
-    put_str(out, "ignore_prefixes", in.ignore_prefixes);
-    put_int(out, "rxtx_log", in.rxtx_log ? 1 : 0);
     put_str(out, "active_bands", in.active_bands);
     put_int(out, "tries", in.tries);
     put_int(out, "tx_min_delay_ms", in.tx_min_delay_ms);

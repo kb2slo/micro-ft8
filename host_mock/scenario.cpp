@@ -123,21 +123,6 @@ static bool on_heard_grid(const std::string& dxcall_norm, std::string* grid_out)
     return heard_grid_lookup(dxcall_norm.c_str(), mock_clock_get(), grid_out);
 }
 
-static bool on_cabrillo(const std::string& dxcall, const std::string& exchange)
-{
-    if (!s_current) {
-        return true;
-    }
-    char buf[160];
-    snprintf(buf, sizeof(buf), "%s exchange=%s", dxcall.c_str(), exchange.c_str());
-    printf(">>> Cabrillo FD log: %s\n", buf);
-    if (!s_current->period_cabrillo.empty()) {
-        s_current->period_cabrillo += " | ";
-    }
-    s_current->period_cabrillo += buf;
-    return true;
-}
-
 static void apply_period_slot(UiRxLine& rx, int slot_parity)
 {
     if (rx.slot_id == 0 && slot_parity != 0) {
@@ -168,7 +153,6 @@ void scenario_begin(Scenario& s, const TestData& data)
     autoseq_set_station(s.station_call, s.station_grid);
     autoseq_set_adif_callback(on_adif);
     autoseq_set_heard_grid_callback(on_heard_grid);
-    autoseq_set_cabrillo_fd_callback(on_cabrillo);
     autoseq_set_tries(data.config.tries);
     autoseq_set_skip_tx1(data.config.skip_tx1);
 
@@ -450,7 +434,6 @@ bool scenario_step(Scenario& s)
     }
     s_current = &s;
     s.period_log.clear();
-    s.period_cabrillo.clear();
 
     if (s.wall_slots) {
         stamp(s);
@@ -546,10 +529,6 @@ bool scenario_step(Scenario& s)
         const std::string expect_log = tp.has_expect_log ? tp.expect_log : "";
         if (expect_log != s.period_log) {
             fail_period(s, "log", expect_log, s.period_log);
-        }
-        const std::string expect_cab = tp.has_expect_cabrillo ? tp.expect_cabrillo : "";
-        if (expect_cab != s.period_cabrillo) {
-            fail_period(s, "cabrillo", expect_cab, s.period_cabrillo);
         }
     }
 

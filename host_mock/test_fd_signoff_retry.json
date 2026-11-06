@@ -44,7 +44,7 @@
       }
     },
     {
-      "comment": "Period 3 (odd): DX sends R + FD exchange (TX3). We send RR73, and the QSO logs here (ADIF and Cabrillo).",
+      "comment": "Period 3 (odd): DX sends R + FD exchange (TX3). We send RR73, and the QSO logs here.",
       "messages": [
         {
           "call_to": "${MY_CALLSIGN}",
@@ -56,8 +56,7 @@
       ],
       "expect": {
         "tx": "N6HAN AG6AQ RR73",
-        "log": "N6HAN CM87 rst_sent=-8 rst_rcvd=-99",
-        "cabrillo": "N6HAN exchange=1A SCV"
+        "log": "N6HAN CM87 rst_sent=-8 rst_rcvd=-99"
       }
     },
     {

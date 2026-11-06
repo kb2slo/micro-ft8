@@ -4,7 +4,7 @@
  *   ./host_test <test_file.json>
  *   ./host_test --dump-events <test_file.json>
  *
- * Each period's expect.tx / expect.log / expect.cabrillo is checked.
+ * Each period's expect.tx / expect.log is checked.
  * When <name>.events sits beside the JSON, the Port A event rows are
  * checked against it. --dump-events rewrites that file from this run.
  */

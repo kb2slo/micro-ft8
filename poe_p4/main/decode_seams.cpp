@@ -19,6 +19,3 @@ void arm_from_autoseq() {
     tx_scheduler_arm_from_autoseq();
 }
 
-bool ignorelist_matches_normalized_dxcall(const std::string & /*dxcall_norm*/) {
-    return false;
-}

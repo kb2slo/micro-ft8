@@ -52,13 +52,11 @@ struct TestPeriod {
     bool          has_freetext_event = false;
     FreeTextEvent freetext_event;
     // expect.tx is required. Empty means this period transmits nothing.
-    // log and cabrillo are optional; absent means that line must not appear.
+    // log is optional; absent means that line must not appear.
     bool        has_expect_tx = false;
     std::string expect_tx;
     bool        has_expect_log = false;
     std::string expect_log;
-    bool        has_expect_cabrillo = false;
-    std::string expect_cabrillo;
 };
 
 struct TestData {

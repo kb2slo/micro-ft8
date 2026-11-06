@@ -78,8 +78,7 @@
       ],
       "expect": {
         "tx": "W6ABC AG6AQ 73",
-        "log": "W6ABC CM88 rst_sent=-8 rst_rcvd=-99",
-        "cabrillo": "W6ABC exchange=2A ORG"
+        "log": "W6ABC CM88 rst_sent=-8 rst_rcvd=-99"
       }
     },
     {

@@ -40,7 +40,6 @@ struct Scenario {
     std::string station_call;
     std::string station_grid;
     std::string period_log;
-    std::string period_cabrillo;
     std::vector<std::string> events;   // JSON objects, no leading comma
     std::map<uint32_t, UiRxLine> decodes;
     std::vector<uint16_t> last_ids;

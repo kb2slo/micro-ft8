@@ -33,8 +33,6 @@ struct StationSettings {
     int radio;  // kStationRadioQmx or kStationRadioHl2
     int gps_baud;
     std::string comment1;
-    std::string ignore_prefixes;
-    bool rxtx_log;
     std::string active_bands;
     int tx_min_delay_ms = kStationTxMinDelayDefaultMs;  // 0..kStationTxMinDelayMaxMs
     bool amp_swr_guard = false;  // recover from the QMX's SWR-protection trips (architecture/radio.md)

@@ -134,11 +134,6 @@ bool load_test_data(const std::string& filename, TestData& out) {
                 period.expect_log = ex.value("log", std::string(""));
                 substitute(period.expect_log, out.config);
             }
-            if (ex.contains("cabrillo")) {
-                period.has_expect_cabrillo = true;
-                period.expect_cabrillo = ex.value("cabrillo", std::string(""));
-                substitute(period.expect_cabrillo, out.config);
-            }
         }
 
         out.periods.push_back(std::move(period));

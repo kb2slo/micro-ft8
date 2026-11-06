@@ -198,75 +198,6 @@ bool list_files_locked(std::vector<std::string>& files) {
     return true;
 }
 
-bool cabrillo_ensure_header_locked(const std::string& path,
-                                   const std::string& mycall,
-                                   const std::string& location) {
-    struct stat info {};
-    if (stat(path.c_str(), &info) == 0 && info.st_size > 0) {
-        return true;
-    }
-
-    FILE* file = fopen(path.c_str(), "wb");
-    if (!file) {
-        return false;
-    }
-    bool ok = fprintf(file, "START-OF-LOG: 3.0\n") >= 0;
-    ok = ok && fprintf(file, "CREATED-BY: Micro-FT8\n") >= 0;
-    ok = ok && fprintf(file, "CONTEST: ARRL-FIELD-DAY\n") >= 0;
-    ok = ok && fprintf(file, "CALLSIGN: %s\n", mycall.c_str()) >= 0;
-    ok = ok && fprintf(file, "CATEGORY-OPERATOR: SINGLE-OP\n") >= 0;
-    ok = ok && fprintf(file, "CATEGORY-TRANSMITTER: ONE\n") >= 0;
-    ok = ok && fprintf(file, "CATEGORY-ASSISTED: NON-ASSISTED\n") >= 0;
-    ok = ok && fprintf(file, "CATEGORY-BAND: ALL\n") >= 0;
-    ok = ok && fprintf(file, "CATEGORY-MODE: MIXED\n") >= 0;
-    ok = ok && fprintf(file, "CATEGORY-POWER: LOW\n") >= 0;
-    ok = ok && fprintf(file, "CATEGORY-STATION: PORTABLE\n") >= 0;
-    ok = ok && fprintf(file, "LOCATION: %s\n", location.c_str()) >= 0;
-    ok = ok && fprintf(file, "OPERATORS: %s\n", mycall.c_str()) >= 0;
-    ok = ok && fprintf(file, "END-OF-LOG:\n") >= 0;
-    ok = ok && sync_file(file);
-    if (fclose(file) != 0) {
-        ok = false;
-    }
-    return ok;
-}
-
-bool cabrillo_truncate_end_marker(FILE* file) {
-    if (!file || fseek(file, 0, SEEK_END) != 0) {
-        return false;
-    }
-    const long file_end = ftell(file);
-    if (file_end <= 0) {
-        return false;
-    }
-
-    constexpr long kMaxTail = 256;
-    const long tail_start = file_end > kMaxTail ? file_end - kMaxTail : 0;
-    if (fseek(file, tail_start, SEEK_SET) != 0) {
-        return false;
-    }
-
-    std::string tail(static_cast<size_t>(file_end - tail_start), '\0');
-    tail.resize(fread(tail.data(), 1, tail.size(), file));
-    size_t line_end = tail.size();
-    while (line_end > 0 && (tail[line_end - 1] == '\n' || tail[line_end - 1] == '\r')) {
-        --line_end;
-    }
-    if (line_end == 0) {
-        return false;
-    }
-    size_t line_start = tail.rfind('\n', line_end - 1);
-    line_start = line_start == std::string::npos ? 0 : line_start + 1;
-    if (tail.substr(line_start, line_end - line_start) != "END-OF-LOG:") {
-        return false;
-    }
-
-    const int descriptor = fileno(file);
-    const long truncate_at = tail_start + static_cast<long>(line_start);
-    return descriptor >= 0 && ftruncate(descriptor, truncate_at) == 0 &&
-           fseek(file, 0, SEEK_END) == 0;
-}
-
 }  // namespace
 
 struct StorageStream {
@@ -474,46 +405,6 @@ bool storage_file_append(const std::string& name,
     } else {
         ESP_LOGI(TAG, "append ok %s %ld -> %ld", path.c_str(), (long)size_before,
                  (long)size_after);
-    }
-    return ok;
-}
-
-bool storage_file_append_cabrillo(const std::string& mycall,
-                                  const std::string& location,
-                                  const std::string& qso_line) {
-    StorageGuard guard;
-    std::string path;
-    if (!guard.held() || !firmware_owns_storage_locked() ||
-        !build_path("fieldday.txt", path) ||
-        !cabrillo_ensure_header_locked(path, mycall, location)) {
-        return false;
-    }
-
-    FILE* file = fopen(path.c_str(), "r+b");
-    if (!file) {
-        file = fopen(path.c_str(), "a+b");
-    }
-    if (!file) {
-        return false;
-    }
-
-    cabrillo_truncate_end_marker(file);
-    if (fseek(file, 0, SEEK_END) != 0) {
-        fclose(file);
-        return false;
-    }
-    const long end = ftell(file);
-    if (end > 0 && fseek(file, -1, SEEK_END) == 0) {
-        const int last = fgetc(file);
-        fseek(file, 0, SEEK_END);
-        if (last != '\n') {
-            fputc('\n', file);
-        }
-    }
-    bool ok = fprintf(file, "%s\nEND-OF-LOG:\n", qso_line.c_str()) >= 0;
-    ok = ok && sync_file(file);
-    if (fclose(file) != 0) {
-        ok = false;
     }
     return ok;
 }

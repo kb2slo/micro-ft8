@@ -637,7 +637,6 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <p class=setnote>CQ type, grid, tries and TX offset are in Operate's Station sheet.</p>
     <div class=setrow><label>Call <input id=call autocomplete=off spellcheck=false></label></div>
     <div class=setrow><label>Comment <input id=comment1 autocomplete=off></label></div>
-    <div class=setrow><label>Ignore prefixes <input id=ignore_prefixes autocomplete=off></label></div>
 
     <div class="hd sep">Radio</div>
     <p class=setnote>Connect, tune and clock sync now live on Operate. A new radio takes over at once; the change is refused while transmitting or tuning.</p>
@@ -690,14 +689,6 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <div class=setrow>
       <label>Skip TX1
         <select id=skiptx1>
-          <option value=0>Off</option>
-          <option value=1>On</option>
-        </select>
-      </label>
-    </div>
-    <div class=setrow>
-      <label>RxTx log
-        <select id=rxtx_log>
           <option value=0>Off</option>
           <option value=1>On</option>
         </select>
@@ -1051,8 +1042,8 @@ var stationSheetMsg = document.getElementById('stationSheetMsg');
 // (setStationSheetForm()'s onchange handlers), so Settings' own Save must
 // never resend them. Settings' own fields (below) autosave one key each.
 var FIELDS = [
-  'call','comment1','ignore_prefixes',
-  'radio','protocol_mode','skiptx1','rxtx_log','tx_min_delay_ms','amp_swr_guard',
+  'call','comment1',
+  'radio','protocol_mode','skiptx1','tx_min_delay_ms','amp_swr_guard',
   'amp_prime_on_band_change'
 ];
 var CQ_TYPE_NAMES = ['CQ', 'SOTA', 'POTA', 'QRP', 'FD', 'FreeText'];

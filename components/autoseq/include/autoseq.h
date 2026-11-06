@@ -87,9 +87,7 @@ struct QsoContext {
     int try_limit = AUTOSEQ_TRIES;
     int tries_custom = 0;   // the entry's own limit; 0 follows the station default
     bool logged = false;    // Prevents duplicate ADIF logging
-    bool cabrillo_logged = false; // Prevents duplicate Field Day Cabrillo logging
     bool is_fd = false;
-    std::string fd_rx_exchange; // Last received FD exchange (for Cabrillo logging)
     // SIGNOFF handling:
     // true  -> after sending TX5, park context in inactive for possible late RR73
     // false -> after sending TX5, finish immediately (IDLE/pop)
@@ -276,10 +274,6 @@ int autoseq_queue_size();
 
 // Set the ADIF logging callback
 void autoseq_set_adif_callback(AdifLogCallback cb);
-
-// Cabrillo Field Day callback type (for ARRL-FD logging)
-using CabrilloFdLogCallback = bool (*)(const std::string& dxcall, const std::string& their_fd_exchange);
-void autoseq_set_cabrillo_fd_callback(CabrilloFdLogCallback cb);
 
 // "Worked this call recently?" -- true stops a decode from a caller with no
 // queue entry (active or inactive) starting a new QSO, so a station just

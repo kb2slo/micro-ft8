@@ -35,9 +35,6 @@ bool storage_file_append(const std::string& name,
                          const std::string& content,
                          const std::string& header_if_new = "",
                          bool sync_to_flash = false);
-bool storage_file_append_cabrillo(const std::string& mycall,
-                                  const std::string& location,
-                                  const std::string& qso_line);
 
 StorageStream* storage_stream_open(const std::string& name, StorageOpenMode mode);
 size_t storage_stream_read(StorageStream* stream, void* data, size_t size);
