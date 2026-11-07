@@ -75,6 +75,9 @@ Only the next child is a row in the index ([ROADMAP.md](../ROADMAP.md), Now: [an
 
 ## Open
 
+* **What a busy slot costs beyond its units** (2026-11-07, 40 m): a decoded message adds its unpack, SNR and subtraction, which the budget does not count (`DECODE_COST_CANDIDATE` is 0, `decode_limits.h`), so a busy slot runs slower per unit than the quiet ones the on-air rate came from. FT8 alone at its 7,300 cap kept 66 ms, not the 100 ms the budget aimed for. Measuring a decode's cost on the P4 bench and charging it would make the budget hold on busy bands as on quiet ones.
+* **Whether FT8's cap beside FT4 costs decodes:** on busy 40 m FT8 hit its 6,500 units in every slot (81 of 81) and still found 2.8 messages a slot against 2.6 alone, but the air has no truth to count what the cap missed. The host found nothing lost at 6,000 on the corpora and the HL2 captures; a capture beside the P4 on a busy 40 m evening would settle it.
+* **The audio holes with FT4 on** (2026-11-07, 20 m, 12:10 CST): 1.72 s and 0.28 s missing from the QMX stream with nothing dropped in our ring, none since in about two hours of either build. `STALL` (`ft8_audio_pipeline.cpp`) says whether ingest stalled or the radio sent nothing when it recurs ([decode.md](../architecture/decode.md), **The time budget**).
 * **What the operator sees** when admission refuses a channel, and when a channel ran only its minimum.
 * **Transmitting off the receive dial on a QMX** ([pxvh](#pxvh), for [grqg](#grqg)): a far `TA` tone, if the radio takes one, or a retune for the transmission and back; settled on the bench.
 * **A CQ in progress** on one channel when we reply on another: pause it, cancel it, or keep it ([grqg](#grqg)).
