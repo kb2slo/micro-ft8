@@ -9,6 +9,16 @@ cmake_minimum_required(VERSION 3.16)
 # Board facts: docs/architecture/main_board.md (P4).
 set(IDF_TARGET esp32p4)
 
+# Exact git SHA + dirty flag, as sidekick/CMakeLists.txt reports, not ESP-IDF's default `git describe`,
+# which names a build after the nearest tag. Honors CI's MICROFT8_GIT_SHA pin (tools/git_version.cmake).
+# Must be set before project(): the one hook ESP-IDF gives PROJECT_VER.
+set(GIT_DIR "${CMAKE_CURRENT_LIST_DIR}/..")
+include("${CMAKE_CURRENT_LIST_DIR}/../tools/git_version.cmake")  # sets SHA, DIRTY
+set(PROJECT_VER "${SHA}")
+if(DIRTY)
+    set(PROJECT_VER "${PROJECT_VER}-dirty")
+endif()
+
 # Only the specific components this project needs, not the whole components/
 # tree.
 set(EXTRA_COMPONENT_DIRS
