@@ -527,7 +527,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         </select>
         <button id=dvReply type=button aria-pressed=false>Replyable</button>
         <button id=dvPark type=button aria-pressed=false>POTA/SOTA</button>
-        <button id=dvMode type=button aria-pressed=false hidden>FT8+FT4</button>
+        <button id=dvMode type=button aria-pressed=false hidden aria-label="Mode">All</button>
         <span id=dvHidden></span>
       </div>
       <div id=opDecodeRows></div>
@@ -4145,9 +4145,13 @@ function renderDecodeControls() {
   sort.classList.toggle('on', decodeView.sort !== 'default');
   document.getElementById('dvReply').setAttribute('aria-pressed', decodeView.reply ? 'true' : 'false');
   document.getElementById('dvPark').setAttribute('aria-pressed', decodeView.park ? 'true' : 'false');
+  // The bar is one row that never wraps: with the mode chip it drops its "Decodes" label to fit a 375 pt
+  // phone (webapp.md, Decode sort and filter), and the chip's both-modes state reads "All".
   var mode = document.getElementById('dvMode');
-  mode.hidden = !decodeModeChipOn();
-  mode.textContent = decodeView.mode === 'all' ? 'FT8+FT4' : decodeView.mode;
+  var modeOn = decodeModeChipOn();
+  mode.hidden = !modeOn;
+  document.querySelector('#dvBar .dvlabel').hidden = modeOn;
+  mode.textContent = decodeView.mode === 'all' ? 'All' : decodeView.mode;
   mode.setAttribute('aria-pressed', decodeView.mode !== 'all' ? 'true' : 'false');
 }
 document.getElementById('dvSort').onchange = function () {
