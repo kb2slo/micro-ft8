@@ -268,7 +268,7 @@ static void usage(const char* argv0)
             "defaults are the firmware's: time-osr 2, freq-osr 2, candidates %d, decodes 32,\n"
             "min-score 5, ldpc 25, sample-rate 6000, agc on, levels 256,\n"
             "subtract-passes %d, subtract-neighbors %d, subtract-fraction 0.5,\n"
-            "budget-units %d, cost-search %d, cost-candidate %d, lookahead 0\n",
+            "budget-units %d, cost-search %d, cost-candidate %d, lookahead 0, workers 1\n",
             argv0, argv0, DECODE_MAX_CANDIDATES, DECODE_SUBTRACT_PASSES, DECODE_SUBTRACT_NEIGHBORS,
             DECODE_BUDGET_UNITS, DECODE_COST_SEARCH, DECODE_COST_CANDIDATE);
 }
@@ -311,6 +311,7 @@ int main(int argc, char** argv)
         { "cost-search", required_argument, NULL, 'S' },
         { "cost-candidate", required_argument, NULL, 'C' },
         { "lookahead", required_argument, NULL, 'L' },
+        { "workers", required_argument, NULL, 'W' },
         { "synth", required_argument, NULL, 'y' },
         { "help", no_argument, NULL, 'h' },
         { NULL, 0, NULL, 0 },
@@ -341,6 +342,7 @@ int main(int argc, char** argv)
             case 'S': config.cost_search = atoi(optarg); break;
             case 'C': config.cost_candidate = atoi(optarg); break;
             case 'L': config.lookahead = atoi(optarg); break;
+            case 'W': config.workers = atoi(optarg); break;
             case 'y': synth_dir = optarg; break;
             default:
                 usage(argv[0]);

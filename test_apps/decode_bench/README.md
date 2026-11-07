@@ -59,8 +59,10 @@ The P4 build uses `poe_p4/partitions.csv`, so writing only `0x10000` leaves the 
 
 ## Reading the output
 
-- `RESULT <config> <slot> ... find_ms decode_ms total_ms process_ms searches tried iters`
-  - `searches`, `tried` and `iters` are the work the decode budget counts; the P4's cost per unit is fitted from them against `find_ms` and `decode_ms` (docs/architecture/decode.md, **The work budget**).
+- `RESULT <config> <slot> ... find_ms decode_ms total_ms process_ms searches tried iters units cut redone wasted`
+  - `searches`, `tried` and `iters` are the work the decode budget counts, `units` its total and `cut` whether it stopped the slot; the P4's cost per unit is fitted from them against `find_ms` and `decode_ms` (docs/architecture/decode.md, **The work budget**).
+  - `redone` and `wasted` are what the second worker cost: decodes run again at their commit, and decodes run ahead and never committed. The `_2w` rows run it (`today_2w`, `full_2w`, `full3_2w`), the bench task on core 0 and the helper on core 1; each prints the same `MSG` lines as its one-worker row.
+  - `python3 test_apps/decode_bench/tools/fit_units.py <log>` fits `total_ms` on `units` for one and for two workers, from the `today`, `full` and `full3` rows and their `_2w` twins, and says how many units two workers fit in the 2.36 s guard; it fails if a `_2w` row printed other messages (docs/architecture/decode.md, **Channels**).
   - `total_ms` (find + decode) is what must fit the 2.36 s FT8 guard band.
   - `process_ms` is capture-time CPU, spread across the slot.
 - `MSG <config> <slot> <Hz> <DT> <text>`: diff these against the host log for parity.

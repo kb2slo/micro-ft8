@@ -40,6 +40,9 @@ typedef struct {
     // sharing a search do (decode_core.h). The output does not change; `redone` and `wasted` do.
     // BENCH_LOOKAHEAD_PASS = every candidate decoded at the start of its search, the farthest ahead.
     int lookahead;
+    // 0 or 1 = one worker. 2 = a helper thread decodes the next candidate ahead (decode_workers.h), on the
+    // other core from the caller's on the P4. Ignored when lookahead is set.
+    int workers;
 } BenchConfig;
 
 #define BENCH_LOOKAHEAD_PASS BENCH_MAX_CANDIDATES
