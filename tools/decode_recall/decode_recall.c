@@ -268,9 +268,9 @@ static void usage(const char* argv0)
             "defaults are the firmware's: time-osr 2, freq-osr 2, candidates %d, decodes 32,\n"
             "min-score 5, ldpc 25, sample-rate 6000, agc on, levels 256,\n"
             "subtract-passes %d, subtract-neighbors %d, subtract-fraction 0.5,\n"
-            "budget-units %d, cost-search %d, cost-candidate %d, lookahead 0, workers 1\n",
+            "budget-units %d, cost-search %d, cost-candidate %d, lookahead 0, workers 1, mode ft8 (ft4: cost-search %d)\n",
             argv0, argv0, DECODE_MAX_CANDIDATES, DECODE_SUBTRACT_PASSES, DECODE_SUBTRACT_NEIGHBORS,
-            DECODE_BUDGET_UNITS, DECODE_COST_SEARCH, DECODE_COST_CANDIDATE);
+            DECODE_BUDGET_UNITS, DECODE_COST_SEARCH, DECODE_COST_CANDIDATE, DECODE_COST_SEARCH_FT4);
 }
 
 int main(int argc, char** argv)
@@ -294,6 +294,8 @@ int main(int argc, char** argv)
         .cost_candidate = DECODE_COST_CANDIDATE,
     };
     const char* synth_dir = NULL;
+    int search_given = 0;
+    int ft4_search_default = 0;
     static const struct option options[] = {
         { "time-osr", required_argument, NULL, 't' },
         { "freq-osr", required_argument, NULL, 'f' },
@@ -312,6 +314,7 @@ int main(int argc, char** argv)
         { "cost-candidate", required_argument, NULL, 'C' },
         { "lookahead", required_argument, NULL, 'L' },
         { "workers", required_argument, NULL, 'W' },
+        { "mode", required_argument, NULL, 'M' },
         { "synth", required_argument, NULL, 'y' },
         { "help", no_argument, NULL, 'h' },
         { NULL, 0, NULL, 0 },
@@ -339,10 +342,21 @@ int main(int argc, char** argv)
             case 'n': config.subtract_neighbors = atoi(optarg); break;
             case 'F': config.subtract_fraction = (float)atof(optarg); break;
             case 'b': config.budget_units = atoi(optarg); break;
-            case 'S': config.cost_search = atoi(optarg); break;
+            case 'S': config.cost_search = atoi(optarg); search_given = 1; break;
             case 'C': config.cost_candidate = atoi(optarg); break;
             case 'L': config.lookahead = atoi(optarg); break;
             case 'W': config.workers = atoi(optarg); break;
+            case 'M':
+                if (strcmp(optarg, "ft4") == 0) {
+                    config.ft4 = 1;
+                    ft4_search_default = 1;
+                }
+                else if (strcmp(optarg, "ft8") == 0) config.ft4 = 0;
+                else {
+                    usage(argv[0]);
+                    return 2;
+                }
+                break;
             case 'y': synth_dir = optarg; break;
             default:
                 usage(argv[0]);
@@ -362,6 +376,8 @@ int main(int argc, char** argv)
                 BENCH_MAX_CANDIDATES, BENCH_LOOKAHEAD_PASS);
         return 2;
     }
+    // FT4's search is its own cost (decode_limits.h), unless one was given.
+    if (ft4_search_default && !search_given) config.cost_search = DECODE_COST_SEARCH_FT4;
     if (synth_dir != NULL) return synth_grid(synth_dir);
     if (optind >= argc) {
         usage(argv[0]);
