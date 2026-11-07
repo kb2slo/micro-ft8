@@ -46,6 +46,9 @@ typedef struct {
     // 0 = FT8, the station's mode; 1 = FT4: 7.5 s periods, decoded once its 105 symbols are in, as the
     // firmware's channel triggers on its mode's total_symbols (docs/roadmap/several-channels.md, an8x).
     int ft4;
+    // 0 = decode once the mode's total_symbols blocks are in, as the firmware does; N = once N are in, for
+    // the decode-start sweep (docs/architecture/decode.md, Decoding later in the slot).
+    int trigger_blocks;
 } BenchConfig;
 
 #define BENCH_LOOKAHEAD_PASS BENCH_MAX_CANDIDATES

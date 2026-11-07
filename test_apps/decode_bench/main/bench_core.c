@@ -162,7 +162,7 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
     // ft8_audio_pipeline_run() triggers decode once the mode's total_symbols blocks are in the waterfall: FT8_NN
     // (79), 12.64 s after the slot boundary, or FT4_NN (105), 5.04 s into a 7.5 s period; its total_symbols + 1
     // fill limit is never reached before the trigger.
-    const int target_blocks = config->ft4 ? FT4_NN : FT8_NN;
+    const int target_blocks = config->trigger_blocks > 0 ? config->trigger_blocks : (config->ft4 ? FT4_NN : FT8_NN);
     const int block_size = monitor.block_size;
     float* block = (float*)malloc(sizeof(float) * (size_t)block_size);
     float* block_gain = (float*)malloc(sizeof(float) * (size_t)monitor.wf.max_blocks);

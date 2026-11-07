@@ -137,8 +137,18 @@ static int16_t* decimate_12k_to_6k(const int16_t* in, size_t in_count, size_t* o
     return out;
 }
 
-static int decode_file(const char* path, const BenchConfig* config)
+// A path "ft4:<file>" is decoded as FT4, with FT4's search cost unless one was given; any other as the run's
+// mode. One run can so mix both modes through the same decoder and helper thread, as the P4's two channels do.
+static int decode_file(const char* arg, const BenchConfig* run_config, int search_given)
 {
+    BenchConfig mixed = *run_config;
+    const char* path = arg;
+    if (strncmp(arg, "ft4:", 4) == 0) {
+        path = arg + 4;
+        mixed.ft4 = 1;
+        if (!search_given) mixed.cost_search = DECODE_COST_SEARCH_FT4;
+    }
+    const BenchConfig* config = &mixed;
     int rate = 0;
     size_t count = 0;
     int16_t* samples = read_wav(path, &rate, &count);
@@ -160,7 +170,7 @@ static int decode_file(const char* path, const BenchConfig* config)
         free(samples);
         return 1;
     }
-    printf("FILE %s\n", path);
+    printf("FILE %s\n", arg);
     BenchResult result;
     int64_t t0 = clock_us();
     bench_run_slot(config, samples, count, clock_us, on_message, NULL, &result);
@@ -260,6 +270,59 @@ static int synth_grid(const char* dir)
     return 0;
 }
 
+// FT4 periods for the mixed-mode test: each 7.5 s at 6 kHz with stations at several frequencies and SNRs in
+// white noise, each starting 0.5 s in, as on the air; written to DIR as ft4_<n>.wav. Deterministic.
+static int synth_ft4(const char* dir)
+{
+    static const char* messages[] = { "CQ KB2SLO EM10", "W1AW K1ABC FN42", "K1ABC W1AW R-12", "CQ DX JA1XYZ PM95",
+                                      "N0CALL KB2SLO -05", "KB2SLO N0CALL RR73" };
+    static const float freqs[] = { 600.0f, 950.0f, 1300.0f, 1650.0f, 2000.0f, 2350.0f };
+    static const int snrs[] = { -8, -12, -14, -6, -16, -10 };
+    const int rate = BENCH_SAMPLE_RATE;
+    const int n_period = (int)(0.5f + FT4_SLOT_TIME * rate);
+    const int n_signal = (int)(0.5f + FT4_NN * FT4_SYMBOL_PERIOD * rate);
+    const int start = rate / 2;
+    float* period = (float*)calloc((size_t)n_period, sizeof(float));
+    float* one = (float*)calloc((size_t)n_period, sizeof(float));
+    if (period == NULL || one == NULL) return 1;
+    for (int p = 0; p < 4; ++p) {
+        memset(period, 0, sizeof(float) * (size_t)n_period);
+        double noise_ref = 0.0;
+        for (int k = 0; k < 6; ++k) {
+            ftx_message_t msg;
+            if (ftx_message_encode(&msg, NULL, messages[(k + p) % 6]) != FTX_MESSAGE_RC_OK) return 1;
+            uint8_t tones[FT4_NN];
+            ft4_encode(msg.payload, tones);
+            memset(one, 0, sizeof(float) * (size_t)n_period);
+            synth_gfsk(tones, FT4_NN, freqs[k] + 17.0f * (float)p, 1.0f, FT4_SYMBOL_PERIOD, rate, one + start);
+            double power = 0.0;
+            for (int i = 0; i < n_signal; ++i) power += (double)one[start + i] * one[start + i];
+            power /= n_signal;
+            // Every station scaled so the white noise below puts it at its SNR in 2500 Hz.
+            const double scale = pow(10.0, snrs[(k + p) % 6] / 20.0);
+            if (k == 0) noise_ref = power;
+            const double gain = sqrt(noise_ref / power) * scale;
+            for (int i = 0; i < n_period; ++i) period[i] += (float)(one[i] * gain);
+        }
+        const double sigma = sqrt(noise_ref * (double)rate / 5000.0);
+        g_rng = 0xF74Bu + (uint32_t)p * 7919u;
+        float peak = 0.0f;
+        for (int i = 0; i < n_period; ++i) {
+            period[i] += gauss() * (float)sigma;
+            if (fabsf(period[i]) > peak) peak = fabsf(period[i]);
+        }
+        const float norm = peak > 0.95f ? 0.95f / peak : 1.0f;
+        for (int i = 0; i < n_period; ++i) period[i] *= norm;
+        char path[512];
+        snprintf(path, sizeof(path), "%s/ft4_%d.wav", dir, p);
+        if (save_wav(period, n_period, rate, path) != 0) return 1;
+        printf("%s\n", path);
+    }
+    free(period);
+    free(one);
+    return 0;
+}
+
 static void usage(const char* argv0)
 {
     fprintf(stderr,
@@ -294,6 +357,7 @@ int main(int argc, char** argv)
         .cost_candidate = DECODE_COST_CANDIDATE,
     };
     const char* synth_dir = NULL;
+    const char* synth_ft4_dir = NULL;
     int search_given = 0;
     int ft4_search_default = 0;
     static const struct option options[] = {
@@ -316,6 +380,8 @@ int main(int argc, char** argv)
         { "workers", required_argument, NULL, 'W' },
         { "mode", required_argument, NULL, 'M' },
         { "synth", required_argument, NULL, 'y' },
+        { "synth-ft4", required_argument, NULL, 'Y' },
+        { "trigger-blocks", required_argument, NULL, 'T' },
         { "help", no_argument, NULL, 'h' },
         { NULL, 0, NULL, 0 },
     };
@@ -358,6 +424,8 @@ int main(int argc, char** argv)
                 }
                 break;
             case 'y': synth_dir = optarg; break;
+            case 'Y': synth_ft4_dir = optarg; break;
+            case 'T': config.trigger_blocks = atoi(optarg); break;
             default:
                 usage(argv[0]);
                 return 2;
@@ -379,13 +447,14 @@ int main(int argc, char** argv)
     // FT4's search is its own cost (decode_limits.h), unless one was given.
     if (ft4_search_default && !search_given) config.cost_search = DECODE_COST_SEARCH_FT4;
     if (synth_dir != NULL) return synth_grid(synth_dir);
+    if (synth_ft4_dir != NULL) return synth_ft4(synth_ft4_dir);
     if (optind >= argc) {
         usage(argv[0]);
         return 2;
     }
     int failed = 0;
     for (int i = optind; i < argc; ++i) {
-        if (decode_file(argv[i], &config) != 0) failed = 1;
+        if (decode_file(argv[i], &config, search_given) != 0) failed = 1;
     }
     return failed;
 }
