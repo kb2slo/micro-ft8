@@ -276,7 +276,7 @@ static uint8_t s_last_reply_verb;
 static bool s_last_reply_ok;
 static char s_last_reply_reason[PORTA_EVENT_TEXT_MAX + 1];
 
-// How many times wait_action_reply() has had to resend a CONFIG_GET because
+// How many times wait_reply() has had to resend a CONFIG_GET because
 // nothing answered halfway through the wait -- see that function. Relayed to
 // the browser alongside the CRC/frame counters (sidekick_facts_json()) so a
 // flaky link shows up as a number, not a vague slowness the operator can't
@@ -441,7 +441,7 @@ static esp_err_t send_config_reply(httpd_req_t *req, const char *why)
 
 // FILE_LIST / FILE_READ (I28d, docs/architecture/webapp.md (Screens)): the reply is a burst of
 // FILE_DATA rows followed by ACK, same shape as CONFIG_GET-all above --
-// gathered here into a complete JSON response body, so wait_action_reply()
+// gathered here into a complete JSON response body, so wait_message_reply()
 // can send it as-is once the ACK for PORTA_MSG_FILE_LIST/PORTA_MSG_FILE_READ
 // arrives. Each buffer starts as its own complete `{"ok":true,...` wrapper,
 // same trick config_json_begin() uses, so there is nothing to assemble later.
@@ -653,7 +653,14 @@ static void gather_abandon(void)
 // Wait briefly for the host's ACK/NAK. One frame at PORTA_BAUD, answered
 // from the main loop, so this is milliseconds -- but the browser should be
 // told what happened rather than assuming success.
-static esp_err_t wait_action_reply(httpd_req_t *req, uint8_t verb)
+//
+// An ACK names what it answers by one byte, which is a message type for
+// CONFIG_GET, FILE_LIST and FILE_READ and an action verb for everything else,
+// and the two numberings overlap (PORTA_ACT_CQ_CALL and PORTA_MSG_FILE_READ are
+// both 0x0C). So `message` says which this is: only a message gets a gathered
+// body or a longer wait. One request is outstanding at a time (the HTTP server
+// runs one handler), so the byte alone matches the reply to its request.
+static esp_err_t wait_reply(httpd_req_t *req, uint8_t verb, bool message)
 {
     // CONFIG_GET-all can enqueue many VALUE frames (one per tick on the host),
     // so allow longer than a single ACTION. CONNECT may wait on USB enum.
@@ -662,18 +669,12 @@ static esp_err_t wait_action_reply(httpd_req_t *req, uint8_t verb)
     // porta_host_file_read_begin()'s comment in main.cpp), so they get the
     // same generous budget as CONFIG_GET-all rather than a single ACTION's.
     int tries = 40;
-    switch (verb) {
-    case PORTA_MSG_CONFIG_GET:
-    case PORTA_MSG_FILE_LIST:
-    case PORTA_MSG_FILE_READ:
+    if (message) {
         tries = 200;
-        break;
-    case PORTA_ACT_CONNECT:
+    } else if (verb == PORTA_ACT_CONNECT) {
         tries = 120;
-        break;
-    default:
-        break;
     }
+    const bool config_get = message && verb == PORTA_MSG_CONFIG_GET;
 
     // CONFIG_GET is a pure read -- resending it duplicates nothing, unlike an
     // ACTION verb (TUNE, QUEUE_REPLY, ...) where a duplicate could double up
@@ -690,7 +691,7 @@ static esp_err_t wait_action_reply(httpd_req_t *req, uint8_t verb)
     const uint32_t wait_t0 = now_ms();
     struct reply_view got = {0};
     for (int i = 0; i < tries && !got.ready; ++i) {
-        if (i == retry_at && verb == PORTA_MSG_CONFIG_GET) {
+        if (i == retry_at && config_get) {
             // Same hold as the ready check: an ACK that landed since the last
             // poll is kept, and the buffer reset cannot tear an append.
             bool resend = false;
@@ -737,16 +738,16 @@ static esp_err_t wait_action_reply(httpd_req_t *req, uint8_t verb)
     httpd_resp_set_type(req, "application/json");
     if (!got.ready) {
         ESP_LOGW(TAG, "no ACK for verb 0x%02x", verb);
-        if (verb == PORTA_MSG_CONFIG_GET) {
+        if (config_get) {
             return send_config_reply(req, "no reply from host");
         }
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"no reply from host\"}");
     }
     if (got.ok) {
-        if (verb == PORTA_MSG_CONFIG_GET) {
+        if (config_get) {
             return send_config_reply(req, NULL);
         }
-        if (verb == PORTA_MSG_FILE_LIST || verb == PORTA_MSG_FILE_READ) {
+        if (message && (verb == PORTA_MSG_FILE_LIST || verb == PORTA_MSG_FILE_READ)) {
             static char body[FILE_ENTRIES_JSON_MAX];
             const bool list = verb == PORTA_MSG_FILE_LIST;
             const char *src = list ? s_file_list_json : s_file_entries_json;
@@ -762,12 +763,24 @@ static esp_err_t wait_action_reply(httpd_req_t *req, uint8_t verb)
         }
         return httpd_resp_sendstr(req, "{\"ok\":true}");
     }
-    if (verb == PORTA_MSG_CONFIG_GET) {
+    if (config_get) {
         return send_config_reply(req, got.reason);
     }
     char out[PORTA_EVENT_TEXT_MAX + 32];
     snprintf(out, sizeof(out), "{\"ok\":false,\"why\":\"%s\"}", got.reason);
     return httpd_resp_sendstr(req, out);
+}
+
+// An ACTION's ACK or NAK: {"ok":true} or {"ok":false,"why":...}.
+static esp_err_t wait_action_reply(httpd_req_t *req, uint8_t verb)
+{
+    return wait_reply(req, verb, false);
+}
+
+// CONFIG_GET, FILE_LIST or FILE_READ: the body gathered from the frames before the ACK.
+static esp_err_t wait_message_reply(httpd_req_t *req, uint8_t type)
+{
+    return wait_reply(req, type, true);
 }
 
 // POST /api/time  body: epoch_ms
@@ -1099,7 +1112,7 @@ static esp_err_t get_log_files(httpd_req_t *req)
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
     }
-    return wait_action_reply(req, PORTA_MSG_FILE_LIST);
+    return wait_message_reply(req, PORTA_MSG_FILE_LIST);
 }
 
 // GET /api/log/entries?file=&skip=&take=  -- parsed QSO rows from one day
@@ -1138,7 +1151,7 @@ static esp_err_t get_log_entries(httpd_req_t *req)
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
     }
-    return wait_action_reply(req, PORTA_MSG_FILE_READ);
+    return wait_message_reply(req, PORTA_MSG_FILE_READ);
 }
 
 // DELETE /api/log/files[?file=] — clear all daily QSO logs, or one basename.
@@ -1215,7 +1228,7 @@ static esp_err_t get_config(httpd_req_t *req)
         gather_abandon();
         return send_config_reply(req, "host link busy");
     }
-    return wait_action_reply(req, PORTA_MSG_CONFIG_GET);
+    return wait_message_reply(req, PORTA_MSG_CONFIG_GET);
 }
 
 // PUT /api/config  body: one or more Station.txt lines (key=value\n).
