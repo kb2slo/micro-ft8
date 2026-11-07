@@ -43,6 +43,9 @@ typedef struct {
     // 0 or 1 = one worker. 2 = a helper thread decodes the next candidate ahead (decode_workers.h), on the
     // other core from the caller's on the P4. Ignored when lookahead is set.
     int workers;
+    // 0 = FT8, the station's mode; 1 = FT4: 7.5 s periods, decoded once its 105 symbols are in, as the
+    // firmware's channel triggers on its mode's total_symbols (docs/roadmap/several-channels.md, an8x).
+    int ft4;
 } BenchConfig;
 
 #define BENCH_LOOKAHEAD_PASS BENCH_MAX_CANDIDATES

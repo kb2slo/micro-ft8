@@ -15,3 +15,16 @@
 #define DECODE_BUDGET_UNITS 10800
 #define DECODE_COST_SEARCH 370
 #define DECODE_COST_CANDIDATE 0
+
+// FT4 beside FT8 on one source (docs/architecture/decode.md, FT4). An LDPC iteration costs FT4 what it
+// costs FT8, and an FT4 search 0.24 of an FT8 one, on the host (tools/decode_bench/score_ft4_edge.py
+// --ours, 2026-11-07): about 90 units on the P4, scaled from DECODE_COST_SEARCH. Estimated, not yet
+// timed on the P4.
+#define DECODE_COST_SEARCH_FT4 90
+// FT4's second period decodes in the window FT8's slot does, both due at the FT8 boundary, so with both
+// channels they split DECODE_BUDGET_UNITS: FT8 keeps what the corpora's busiest slot needs (7,580) with
+// room, FT4 the rest. Its first period decodes alone and has the whole budget. Sized on one 20 m
+// corpus with about 8 FT4 stations a period, where FT4 at 3,000 lost no more than at 4,000; a busy FT4
+// band is unmeasured.
+#define DECODE_BUDGET_FT8_BESIDE_FT4 7800
+#define DECODE_BUDGET_FT4_BESIDE_FT8 3000
