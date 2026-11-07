@@ -5,7 +5,7 @@
 # different SHA than github.event.pull_request.head.sha, so a bare
 # rev-parse there would silently disagree with the pinned value.
 #
-# Used by sidekick/CMakeLists.txt.
+# Used by sidekick/CMakeLists.txt and poe_p4/CMakeLists.txt.
 #
 # Input:  GIT_DIR (required), MICROFT8_GIT_SHA (optional override)
 # Output: SHA, DIRTY (0 or 1) — set in the caller's scope
