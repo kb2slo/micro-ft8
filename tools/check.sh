@@ -304,6 +304,7 @@ check_decode_recall() {
   need_submodule
   python3 tools/decode_recall/report.py
   python3 tools/decode_recall/test_budget.py
+  python3 tools/decode_recall/test_lookahead.py
 }
 
 # The recorders and the capture converter, each against synthetic streams: no

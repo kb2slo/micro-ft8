@@ -16,6 +16,8 @@
 
 // Same placement as the firmware's decode working set (memory.md).
 static DECODE_PSRAM_BSS decode_core_t s_core;
+static DECODE_PSRAM_BSS decode_core_attempt_t s_ahead[DECODE_MAX_CANDIDATES];
+static DECODE_PSRAM_BSS uint8_t s_have[DECODE_MAX_CANDIDATES];
 
 #ifdef ESP_PLATFORM
 // On the device the monitor works in static PSRAM buffers sized as the firmware's channel's (FT8 at t2/f2,
@@ -181,7 +183,8 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
     };
     int candidate_count = 0;
     int searches = 0;
-    int iterations = 0;
+    int wasted = 0;
+    const int lookahead = config->lookahead < 0 ? 0 : config->lookahead;
     int decoded = 0;
     int64_t find_us = 0;
     int64_t decode_us = 0;
@@ -197,17 +200,33 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
         if (s_core.pass == 0) candidate_count = found;
 
         int64_t decode_t0 = clock_us();
-        for (int i = 0; i < found && decoded < config->max_decodes; ++i) {
-            if (decode_core_skip(&s_core, i)) continue;
+        // Decodes run ahead: s_ahead[k] is candidate k's, s_have[k] whether it ran. Candidates up to
+        // i + lookahead are decoded once the candidates before i are committed, and candidate i itself, if
+        // not yet, once it is afforded: lookahead 0 is the serial order exactly.
+        memset(s_have, 0, sizeof(s_have));
+        int ahead = 1;
+        int i = 0;
+        for (; i < found && decoded < config->max_decodes; ++i) {
+            if (ahead <= i) ahead = i + 1;
+            for (; ahead < found && ahead <= i + lookahead; ++ahead) {
+                if (decode_core_skip(&s_core, ahead)) continue;
+                decode_core_decode(&s_core, ahead, &s_ahead[ahead]);
+                s_have[ahead] = 1;
+            }
+            if (decode_core_skip(&s_core, i)) {
+                wasted += s_have[i];
+                continue;
+            }
             if (!decode_core_afford(&s_core)) break;
-            decode_core_attempt_t attempt;
+            // Skipped when it was reached ahead, but a subtraction since has touched it.
+            if (!s_have[i]) decode_core_decode(&s_core, i, &s_ahead[i]);
+            s_have[i] = 0;
             decode_core_message_t message;
-            decode_core_decode(&s_core, i, &attempt);
-            iterations += attempt.iterations;
-            if (decode_core_commit(&s_core, i, &attempt, &message) != DECODE_CORE_NEW) continue;
+            if (decode_core_commit(&s_core, i, &s_ahead[i], &message) != DECODE_CORE_NEW) continue;
             ++decoded;
             if (on_message != NULL) on_message(context, message.text, message.freq_hz, message.time_s, message.snr);
         }
+        for (; i < found; ++i) wasted += s_have[i];
         decode_us += clock_us() - decode_t0;
     } while (decoded < config->max_decodes && decode_core_next_pass(&s_core));
     int64_t t2 = t1 + find_us;
@@ -221,7 +240,9 @@ void bench_run_slot(const BenchConfig* config, const int16_t* samples, size_t sa
     result->decode_us = t3 - t2;
     result->searches = searches;
     result->tried = s_core.tried;
-    result->iterations = iterations;
+    result->iterations = s_core.iterations;
+    result->redone = s_core.redone;
+    result->wasted = wasted;
     result->units = s_core.spent;
     result->cut = s_core.cut;
     free(block_gain);

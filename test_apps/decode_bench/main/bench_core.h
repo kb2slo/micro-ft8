@@ -35,7 +35,14 @@ typedef struct {
     int budget_units;     // decode_core_config_t: 0 = no limit
     int cost_search;      // decode_core_config_t
     int cost_candidate;   // decode_core_config_t
+    // 0 = each candidate decoded just before its commit, as decode_slot() does. N = each decoded N
+    // candidates ahead of its commit, on the waterfall as the commits so far left it: what N + 1 workers
+    // sharing a search do (decode_core.h). The output does not change; `redone` and `wasted` do.
+    // BENCH_LOOKAHEAD_PASS = every candidate decoded at the start of its search, the farthest ahead.
+    int lookahead;
 } BenchConfig;
+
+#define BENCH_LOOKAHEAD_PASS BENCH_MAX_CANDIDATES
 
 typedef struct {
     int ok;               // 0 if the monitor could not be set up (e.g. allocation failed)
@@ -46,9 +53,11 @@ typedef struct {
     int64_t decode_us;    // candidate loop incl. unpack: on the decode clock
     int searches;         // ftx_find_candidates() calls
     int tried;            // candidates decoded, every search
-    int iterations;       // LDPC iterations run, every candidate
+    int iterations;       // LDPC iterations charged: the committed decodes'
     int units;            // decode_core_t spent: what the budget counted
     int cut;              // 1 when the budget stopped the slot early
+    int redone;           // decodes run again at commit (decode_core_t redone)
+    int wasted;           // decodes run ahead for a candidate skipped, cut or past the last decode
 } BenchResult;
 
 typedef int64_t (*bench_clock_fn)(void);
