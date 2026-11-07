@@ -215,6 +215,13 @@ static TxStart tx_start(int skip_tones, std::string &skip_reason) {
         skip_reason = kSwrReason;
         return TxStart::Skipped;
     }
+    if (!rtc_is_set()) {
+        // Until a browser sets the clock the slot phase is uptime's (docs/architecture/time.md),
+        // so a transmission would land in no one's period. The entry stays armed and goes out
+        // in its next slot once the clock is set.
+        skip_reason = "clock not set";
+        return TxStart::Skipped;
+    }
     if (!s_pending_tx_valid || s_pending_tx.text.empty()) {
         skip_reason = "no pending TX";
         return TxStart::Skipped;
