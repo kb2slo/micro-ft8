@@ -527,6 +527,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         </select>
         <button id=dvReply type=button aria-pressed=false>Replyable</button>
         <button id=dvPark type=button aria-pressed=false>POTA/SOTA</button>
+        <button id=dvMode type=button aria-pressed=false hidden>FT8+FT4</button>
         <span id=dvHidden></span>
       </div>
       <div id=opDecodeRows></div>
@@ -3923,7 +3924,16 @@ function isReplyableDecode(d) {
 // always on top and never filtered. `distKmOf(d)` answers the sender's distance in km, or null
 // when the grid is not known (such a decode fails a distance filter and sorts last under Nearest).
 var DV_KEY = 'microft8_decode_view_v1';
-var decodeView = { sort: 'default', reply: false, park: false };
+var decodeView = { sort: 'default', reply: false, park: false, mode: 'all' };
+// The mode chip cycles both, FT8 only, FT4 only. It shows while FT4 is decoded beside FT8 (rx_ft4) or any
+// FT4 batch is listed; hidden, it filters nothing.
+var DV_MODES = ['all', 'FT8', 'FT4'];
+function decodeModeChipOn() {
+  return String(lastCfg.rx_ft4) === '1' || decodeSlots.some(function (s) { return slotMode(s) === 'FT4'; });
+}
+function decodeSlotModeShown(slot) {
+  return decodeView.mode === 'all' || !decodeModeChipOn() || slotMode(slot) === decodeView.mode;
+}
 
 function decodeIsPark(d) {
   return /^CQ (POTA|SOTA)\b/.test(String(d.x || '').trim().toUpperCase());
@@ -4121,6 +4131,7 @@ function loadDecodeView() {
     if (v) {
       decodeView.reply = !!v.reply;
       decodeView.park = !!v.park;
+      if (DV_MODES.indexOf(v.mode) >= 0) decodeView.mode = v.mode;
     }
   } catch (e) { /* the default view stands */ }
 }
@@ -4134,6 +4145,10 @@ function renderDecodeControls() {
   sort.classList.toggle('on', decodeView.sort !== 'default');
   document.getElementById('dvReply').setAttribute('aria-pressed', decodeView.reply ? 'true' : 'false');
   document.getElementById('dvPark').setAttribute('aria-pressed', decodeView.park ? 'true' : 'false');
+  var mode = document.getElementById('dvMode');
+  mode.hidden = !decodeModeChipOn();
+  mode.textContent = decodeView.mode === 'all' ? 'FT8+FT4' : decodeView.mode;
+  mode.setAttribute('aria-pressed', decodeView.mode !== 'all' ? 'true' : 'false');
 }
 document.getElementById('dvSort').onchange = function () {
   decodeView.sort = this.value; saveDecodeView(); renderDecodeControls(); renderDecodes();
@@ -4143,6 +4158,10 @@ document.getElementById('dvReply').onclick = function () {
 };
 document.getElementById('dvPark').onclick = function () {
   decodeView.park = !decodeView.park; saveDecodeView(); renderDecodeControls(); renderDecodes();
+};
+document.getElementById('dvMode').onclick = function () {
+  decodeView.mode = DV_MODES[(DV_MODES.indexOf(decodeView.mode) + 1) % DV_MODES.length];
+  saveDecodeView(); renderDecodeControls(); renderDecodes();
 };
 
 // ===================== Operate: activation progress (webapp.md, Activation progress) =====================
@@ -4235,7 +4254,12 @@ function renderDecodesNow() {
   var actRefs = parseActRefs(lastCfg);
   var dupes = dupeIndex(opLog.rows, actRefs);
   var qcalls = showQueueMarks ? queuedCalls() : [], myCall = lastCfg.call;
-  var shownSlots = decodeSlots.map(function (slot) {
+  renderDecodeControls();  // the mode chip appears with the first FT4 batch
+  var shownSlots = decodeSlots.filter(function (slot) {
+    if (decodeSlotModeShown(slot)) return true;
+    hidden += slot.length;  // a batch of the other mode counts as filtered, like any row
+    return false;
+  }).map(function (slot) {
     var involves = function (d) { var v = queueInvolvementAt(d.x, qcalls, myCall, slot.ts); return !!v && v.kind !== 'you'; };
     var shown = decodeViewOf(slot, decodeView, decodeDistKm, involves);
     hidden += slot.length - shown.length;
@@ -4311,8 +4335,21 @@ function fmtSlotTime(slot) {
   return fmtSlotSpan(slot).replace(/^\d{4}-\d{2}-\d{2} /, '');
 }
 
+// A decode in an FT4 batch beside FT8: this station transmits FT8, and FT4 replies are row grqg's. Asked before
+// the frequency check, whose advice (tune to FT4's dial) would be wrong here. The main board refuses too.
+function replyModeRefusal(id) {
+  for (var i = 0; i < decodeSlots.length; i++) {
+    for (var k = 0; k < decodeSlots[i].length; k++) {
+      if (String(decodeSlots[i][k].id) !== String(id)) continue;
+      return slotMode(decodeSlots[i]) === 'FT4' && lastCfg.protocol_mode !== 'FT4'
+        ? 'Replies on FT4 are not built yet: this station transmits FT8.' : null;
+    }
+  }
+  return null;
+}
+
 function tryReply(id) {
-  var why = replyTooOld(id) || replyFrequencyMismatch(id);
+  var why = replyTooOld(id) || replyModeRefusal(id) || replyFrequencyMismatch(id);
   if (why) {
     setMsg(why);
     alert(why);
