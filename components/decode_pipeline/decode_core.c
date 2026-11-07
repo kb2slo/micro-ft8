@@ -86,7 +86,9 @@ void decode_core_decode(const decode_core_t* core, int i, decode_core_attempt_t*
     ftx_decode_status_t status;
     memset(&attempt->message, 0, sizeof(attempt->message));
     memset(&status, 0, sizeof(status));
-    attempt->stamp = core->pass_subs;
+    // Acquire: every subtraction this count includes is complete in the waterfall this decode reads
+    // (decode_workers.c runs it on another thread than the commits).
+    attempt->stamp = __atomic_load_n(&core->pass_subs, __ATOMIC_ACQUIRE);
     attempt->ok = ftx_decode_candidate(&core->monitor->wf, &core->candidates[i], core->config->ldpc_iterations,
                                        &attempt->message, &status)
                       ? 1
@@ -166,7 +168,11 @@ decode_core_result_t decode_core_commit(decode_core_t* core, int i, const decode
                                 core->config->subtract_fraction);
         decode_retry_note_subtracted(&core->retry, c);
         // A search commits at most its candidates, so this never fills.
-        if (core->pass_subs < DECODE_MAX_CANDIDATES) core->pass_bins[core->pass_subs++] = (int16_t)c->freq_offset;
+        if (core->pass_subs < DECODE_MAX_CANDIDATES) {
+            core->pass_bins[core->pass_subs] = (int16_t)c->freq_offset;
+            // Release, after the subtraction and its bin are written (decode_core_decode()'s acquire).
+            __atomic_store_n(&core->pass_subs, core->pass_subs + 1, __ATOMIC_RELEASE);
+        }
     }
     return fresh ? DECODE_CORE_NEW : DECODE_CORE_REPEAT;
 }

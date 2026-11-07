@@ -5,6 +5,7 @@ LIB  := $(ROOT)/components/ft8_lib
 BENCH := $(ROOT)/test_apps/decode_bench/main
 SRCS := decode_recall.c $(BENCH)/bench_core.c \
         $(ROOT)/components/decode_pipeline/decode_core.c \
+        $(ROOT)/components/decode_pipeline/decode_workers.c \
         $(ROOT)/components/decode_pipeline/decode_subtract.c \
         $(ROOT)/components/decode_pipeline/decode_retry.c \
         $(ROOT)/components/decode_pipeline/decode_snr.c \
@@ -27,7 +28,7 @@ gen_ft8.o: $(LIB)/vendor/demo/gen_ft8.c
 
 decode_recall: $(SRCS) gen_ft8.o $(BENCH)/bench_core.h \
         $(ROOT)/components/decode_pipeline/include/decode_core.h
-	$(CC) $(CFLAGS) -o $@ $(SRCS) gen_ft8.o -lm
+	$(CC) $(CFLAGS) -o $@ $(SRCS) gen_ft8.o -lm -pthread
 
 clean:
 	rm -f decode_recall gen_ft8.o

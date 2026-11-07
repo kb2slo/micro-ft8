@@ -1,10 +1,11 @@
 idf_component_register(SRCS "bench_main.c" "bench_core.c"
                             "../../../components/decode_pipeline/decode_core.c"
+                            "../../../components/decode_pipeline/decode_workers.c"
                             "../../../components/decode_pipeline/decode_subtract.c"
                             "../../../components/decode_pipeline/decode_retry.c"
                             "../../../components/decode_pipeline/decode_snr.c"
                        INCLUDE_DIRS "."
-                       REQUIRES ft8_lib esp_timer)
+                       REQUIRES ft8_lib esp_timer pthread)
 
 target_include_directories(${COMPONENT_TARGET} PRIVATE
                            "${CMAKE_CURRENT_LIST_DIR}/../../../components/decode_pipeline/include")

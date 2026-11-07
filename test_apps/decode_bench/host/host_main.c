@@ -64,11 +64,11 @@ int main(int argc, char** argv)
             MessageContext where = { config->name, s - 1 };
             BenchResult result;
             bench_run_slot(config, samples, count, bench_clock_us, print_message, &where, &result);
-            printf("RESULT %s %d ok=%d cand=%d dec=%d find_ms=%.1f decode_ms=%.1f total_ms=%.1f process_ms=%.1f searches=%d tried=%d iters=%d\n",
+            printf("RESULT %s %d ok=%d cand=%d dec=%d find_ms=%.1f decode_ms=%.1f total_ms=%.1f process_ms=%.1f searches=%d tried=%d iters=%d units=%d cut=%d redone=%d wasted=%d\n",
                    config->name, s - 1, result.ok, result.candidates, result.decoded,
                    result.find_us / 1000.0, result.decode_us / 1000.0,
                    (result.find_us + result.decode_us) / 1000.0, result.process_us / 1000.0,
-                   result.searches, result.tried, result.iterations);
+                   result.searches, result.tried, result.iterations, result.units, result.cut, result.redone, result.wasted);
             free(samples);
         }
     }

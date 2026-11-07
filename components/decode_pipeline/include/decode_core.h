@@ -136,9 +136,10 @@ int decode_core_skip(const decode_core_t* core, int i);
 // iteration. 0 marks the slot cut; try no more of this search's candidates.
 int decode_core_afford(decode_core_t* core);
 
-// LDPC on candidate i. Reads the waterfall, and the count of this search's subtractions, only. A driver
-// that runs it on another worker than the commits reads that count before the waterfall, and sees every
-// subtraction it counts complete.
+// LDPC on candidate i. Reads the candidate, the config, the waterfall and the count of this search's
+// subtractions, only, so another thread may run it while the commits go on (decode_workers.h): the count
+// is read with acquire before the waterfall, and a commit publishes it with release once its subtraction
+// is complete.
 void decode_core_decode(const decode_core_t* core, int i, decode_core_attempt_t* attempt);
 
 // Commits candidate i's attempt and charges what it cost: notes a failure, or unpacks, measures the

@@ -35,6 +35,7 @@ extern "C" {
 #include "ft8/message.h"
 #include "decode_core.h"
 #include "decode_subtract.h"
+#include "decode_workers.h"
 }
 
 #include "adif.h"
@@ -322,6 +323,90 @@ static void log_slot_summary(const ft8_slot_t* slot, const decode_core_t* core, 
   debug_log_line(buf);
 }
 
+// What decode_slot() does with each new message, in candidate order (decode_workers.h): the DXpedition
+// rewrite, the list's text dedupe, and the entry's fields. Returns 0 once the list is full.
+struct NewMessageContext {
+  DecodeChannel* dc;
+  const char* mycall_up;
+  int slot_id;
+};
+
+static int on_new_message(void* context, const decode_core_message_t* message) {
+  NewMessageContext& c = *static_cast<NewMessageContext*>(context);
+  DecodeChannel& dc = *c.dc;
+  const char* mycall_up = c.mycall_up;
+  const int slot_id = c.slot_id;
+  const char* text = message->text;
+  const int snr_q = message->snr;
+  const float freq_hz = message->freq_hz;
+  const float time_s = message->time_s;
+
+  char final_text[DEC_TEXT_MAX];
+  snprintf(final_text, sizeof(final_text), "%s", text);
+  if (decode_dxpedition_rewrite(text, mycall_up, final_text, sizeof(final_text))) {
+    ESP_LOGI(TAG, "DXpedition raw match: %s", text);
+  }
+
+  // UI text dedup (linear scan — 32 entries max, no hash map needed)
+  int dup_idx = -1;
+  for (int j = 0; j < dc.count; ++j) {
+    if (strcmp(dc.dec[j].text, final_text) == 0) { dup_idx = j; break; }
+  }
+  if (dup_idx >= 0) {
+    if (snr_q > dc.dec[dup_idx].snr) {
+      dc.dec[dup_idx].snr = snr_q;
+      dc.dec[dup_idx].offset_hz = (int)lrintf(freq_hz);
+      dc.dec[dup_idx].slot_id = slot_id;
+    }
+    return dc.count < DEC_MAX;
+  }
+
+  ESP_LOGD(TAG, "Decoded[%d] t=%.2fs f=%.1fHz snr=%d : %s",
+           dc.count, time_s, freq_hz, snr_q, final_text);
+
+  // Fill static entry
+  DecodeMsg* d = &dc.dec[dc.count];
+  // final_text is always NUL-terminated above; a same-size copy keeps -O2's stringop-truncation check quiet (B89).
+  static_assert(sizeof(d->text) == sizeof(final_text), "RX list text and decode text buffers must match");
+  memcpy(d->text, final_text, sizeof(d->text));
+  d->snr = snr_q;
+  d->offset_hz = (int)lrintf(freq_hz);
+  d->slot_id = slot_id;
+  d->time_s = time_s;
+
+  decode_fields_fill(d);
+  dc.standard[dc.count] = message->standard != 0;
+
+  d->is_cq = (strncmp(d->text, "CQ ", 3) == 0 || strcmp(d->text, "CQ") == 0);
+
+  char f1_norm[DEC_FIELD_MAX];
+  dec_normalize_call(d->field1, f1_norm, DEC_FIELD_MAX);
+  d->is_to_me = (mycall_up[0] != '\0' && strcmp(f1_norm, mycall_up) == 0);
+
+  // The recently-worked table is the main loop's: decode_pipeline_apply() sets this.
+  d->is_recent_qso = false;
+
+  dc.count++;
+  return dc.count < DEC_MAX;
+}
+
+// The second worker: decodes the next candidate ahead on core 0 while this task commits on core 1
+// (docs/architecture/main_board.md, Tasks). Priority 1, the main loop's, so it takes only what the main
+// loop, USB, ingest and Port A leave. Started on first use; NULL, and decode is serial, if it cannot.
+static decode_helper_t* decode_helper() {
+  static decode_helper_t* helper = nullptr;
+  static bool tried = false;
+  if (!tried) {
+    tried = true;
+    helper = decode_helper_start(0, 1);
+    if (!helper) {
+      ESP_LOGE(TAG, "decode helper could not start: decoding on one core");
+      debug_log_line("DECODE helper could not start: one core");
+    }
+  }
+  return helper;
+}
+
 void decode_slot(const ft8_slot_t* slot) {
   monitor_t* mon = slot->monitor;
   DecodeChannel& dc = s_channels[slot->channel];
@@ -399,66 +484,10 @@ void decode_slot(const ft8_slot_t* slot) {
       return;
     }
 
-    for (int i = 0; i < found && dc.count < DEC_MAX; ++i) {
-      if (decode_core_skip(&core, i)) continue;
-      if (!decode_core_afford(&core)) break;
-      decode_core_attempt_t attempt;
-      decode_core_message_t message;
-      decode_core_decode(&core, i, &attempt);
-      // A repeated payload is the same station again: subtracted, not listed twice.
-      if (decode_core_commit(&core, i, &attempt, &message) != DECODE_CORE_NEW) continue;
-      const char* text = message.text;
-      const int snr_q = message.snr;
-      const float freq_hz = message.freq_hz;
-      const float time_s = message.time_s;
-
-      char final_text[DEC_TEXT_MAX];
-      snprintf(final_text, sizeof(final_text), "%s", text);
-      if (decode_dxpedition_rewrite(text, mycall_up, final_text, sizeof(final_text))) {
-        ESP_LOGI(TAG, "DXpedition raw match: %s", text);
-      }
-
-      // UI text dedup (linear scan — 32 entries max, no hash map needed)
-      int dup_idx = -1;
-      for (int j = 0; j < dc.count; ++j) {
-        if (strcmp(dc.dec[j].text, final_text) == 0) { dup_idx = j; break; }
-      }
-      if (dup_idx >= 0) {
-        if (snr_q > dc.dec[dup_idx].snr) {
-          dc.dec[dup_idx].snr = snr_q;
-          dc.dec[dup_idx].offset_hz = (int)lrintf(freq_hz);
-          dc.dec[dup_idx].slot_id = slot_id;
-        }
-        continue;
-      }
-
-      ESP_LOGD(TAG, "Decoded[%d] t=%.2fs f=%.1fHz snr=%d : %s",
-               dc.count, time_s, freq_hz, snr_q, final_text);
-
-      // Fill static entry
-      DecodeMsg* d = &dc.dec[dc.count];
-      // final_text is always NUL-terminated above; a same-size copy keeps -O2's stringop-truncation check quiet (B89).
-      static_assert(sizeof(d->text) == sizeof(final_text), "RX list text and decode text buffers must match");
-      memcpy(d->text, final_text, sizeof(d->text));
-      d->snr = snr_q;
-      d->offset_hz = (int)lrintf(freq_hz);
-      d->slot_id = slot_id;
-      d->time_s = time_s;
-
-      decode_fields_fill(d);
-      dc.standard[dc.count] = message.standard != 0;
-
-      d->is_cq = (strncmp(d->text, "CQ ", 3) == 0 || strcmp(d->text, "CQ") == 0);
-
-      char f1_norm[DEC_FIELD_MAX];
-      dec_normalize_call(d->field1, f1_norm, DEC_FIELD_MAX);
-      d->is_to_me = (mycall_up[0] != '\0' && strcmp(f1_norm, mycall_up) == 0);
-
-      // The recently-worked table is the main loop's: decode_pipeline_apply() sets this.
-      d->is_recent_qso = false;
-
-      dc.count++;
-    }
+    // Candidates in order, the next one ahead on core 0's helper (decode_workers.h).
+    NewMessageContext new_context = { &dc, mycall_up, slot_id };
+    int wasted = 0;
+    decode_drive_search(&core, found, decode_helper(), on_new_message, &new_context, &wasted);
   } while (dc.count < DEC_MAX && decode_core_next_pass(&core));
 
   ESP_LOGD(TAG, "Decoded %d unique messages", dc.count);

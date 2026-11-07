@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Host test of decodes run ahead of their commits (decode_core.h; docs/architecture/decode.md, Channels).
+"""Host test of decodes run ahead of their commits (decode_core.h, decode_workers.h; docs/architecture/decode.md,
+Channels).
 
 On both corpora, with no budget and with the firmware's, decoding each candidate 1, 2 or 3 candidates ahead
 of its commit, or every candidate at the start of its search, lists byte for byte what the serial order
-lists and counts the same work. Also prints what running ahead cost: decodes run again at commit, and
-decodes thrown away, as a share of the candidates committed.
+lists and counts the same work; and so does the firmware's driver with its helper thread (two workers),
+run several times, since each run's timing differs. Also prints what running ahead cost: decodes run again
+at commit, and decodes thrown away, as a share of the candidates committed.
 
     python3 tools/decode_recall/test_lookahead.py
 """
@@ -23,6 +25,7 @@ VARIES = re.compile(r" (wall_ms|find_ms|decode_ms|find_us|decode_us|redone|waste
 COST = re.compile(r"tried=(\d+).* redone=(\d+) wasted=(\d+)")
 PASS = 256  # BENCH_LOOKAHEAD_PASS
 LOOKAHEADS = [1, 2, 3, PASS]
+THREADED_RUNS = 3  # two-worker runs per corpus and budget
 
 
 def run(config, wavs):
@@ -44,9 +47,17 @@ def main():
     corpora = [("in_tree", report.wavs_12k(report.IN_TREE)), ("busy", report.wavs_12k(report.fetch_busy()))]
     fails = []
     jobs = [(name, wavs, budget, lookahead) for name, wavs in corpora
-            for budget in (0, report.TODAY["budget_units"]) for lookahead in [0] + LOOKAHEADS]
+            for budget in (0, report.TODAY["budget_units"])
+            for lookahead in [0] + LOOKAHEADS + [-r for r in range(1, THREADED_RUNS + 1)]]
+
+    def config(job):
+        lookahead = job[3]
+        if lookahead < 0:  # a two-worker run
+            return dict(report.TODAY, budget_units=job[2], lookahead=0, workers=2)
+        return dict(report.TODAY, budget_units=job[2], lookahead=lookahead)
+
     with ThreadPoolExecutor(max_workers=os.cpu_count() or 2) as pool:
-        logs = list(pool.map(lambda j: run(dict(report.TODAY, budget_units=j[2], lookahead=j[3]), j[1]), jobs))
+        logs = list(pool.map(lambda j: run(config(j), j[1]), jobs))
     by_job = {(name, budget, lookahead): log for (name, _w, budget, lookahead), log in zip(jobs, logs)}
     for name, _wavs, budget, lookahead in jobs:
         log = by_job[(name, budget, lookahead)]
@@ -54,11 +65,11 @@ def main():
             if cost(log)[1:] != (0, 0):
                 fails.append(f"{name} budget {budget}: the serial order redid or wasted a decode")
             continue
-        label = "pass" if lookahead == PASS else str(lookahead)
+        label = "pass" if lookahead == PASS else f"2 workers #{-lookahead}" if lookahead < 0 else str(lookahead)
         if VARIES.sub("", log) != VARIES.sub("", by_job[(name, budget, 0)]):
             fails.append(f"{name} budget {budget} lookahead {label}: output differs from serial")
         tried, redone, wasted = cost(log)
-        print(f"{name:8} budget {budget:5} lookahead {label:>4}: {tried} committed, "
+        print(f"{name:8} budget {budget:5} lookahead {label:>12}: {tried} committed, "
               f"{redone} redone ({100 * redone / tried:.1f}%), {wasted} wasted ({100 * wasted / tried:.1f}%)")
     for fail in fails:
         print("FAIL: " + fail)
