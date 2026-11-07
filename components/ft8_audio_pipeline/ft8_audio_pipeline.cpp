@@ -59,6 +59,17 @@ struct ChannelBuffers {
 };
 static DECODE_PSRAM_BSS ChannelBuffers s_channel_buffers[RX_MAX_CHANNELS];
 
+// Diagnostics for a slot whose audio came up short with nothing dropped (`lost` without `drop`, 2026-11-07):
+// the longest wait between reads that returned samples, when it ended, and the reads that returned none.
+// The ingest task writes them, the station's channel takes them at its boundary and logs a STALL line when
+// the wait passed kStallLogUs. A stalled ingest task shows a long wait with no empty reads; a source that
+// sent nothing shows the empty reads, each up to the read's own timeout.
+static std::atomic<uint32_t> s_ingest_gap_max_us{0};
+static std::atomic<int64_t> s_ingest_gap_end_ms{0};
+static std::atomic<uint32_t> s_ingest_empty{0};
+static constexpr uint32_t kStallLogUs = 50000;
+
+
 // One channel's capture state (docs/roadmap/several-channels.md, A channel): its monitor and waterfall,
 // the AGC, its ring, and where it is in its slot. Lives on the capture task's stack for one run;
 // ft8_audio_pipeline_run() does not return while the decode task still reads any of it.
@@ -336,6 +347,17 @@ static void channel_block(Ft8Channel* ch, int64_t queued)
                      (long long)ch->slot_monitor_us, chan->station ? frontend_us : 0u);
             debug_log_line(buf);
         }
+        if (chan->station) {
+            const uint32_t gap_us = s_ingest_gap_max_us.exchange(0, std::memory_order_relaxed);
+            const int64_t gap_end_ms = s_ingest_gap_end_ms.load(std::memory_order_relaxed);
+            const uint32_t empty = s_ingest_empty.exchange(0, std::memory_order_relaxed);
+            if (gap_us > kStallLogUs) {
+                char buf[64];
+                snprintf(buf, sizeof(buf), "STALL %lld gap%u empty%u at%lld", (long long)ch->slot_idx,
+                         (unsigned)(gap_us / 1000), (unsigned)empty, (long long)(gap_end_ms % ch->slot_ms));
+                debug_log_line(buf);
+            }
+        }
         // A slot handed to decode is marked applied by decode_slot(), after it publishes; one never
         // decoded (cut short, or dropped by a clock step) is marked here.
         if (ch->slot_idx != ch->handed_slot_idx) mark_applied(ch, ch->slot_idx);
@@ -411,6 +433,7 @@ static void channel_block(Ft8Channel* ch, int64_t queued)
     }
 }
 
+
 // One read's samples per channel. A QMX read is 1 ms of USB audio, 6 samples at 6 kHz; this is room for a
 // burst. Static: one ingest task runs at a time.
 static constexpr int kIngestBlock = 512;
@@ -429,12 +452,23 @@ static void audio_ingest_task(void *arg)
     float* outs[RX_MAX_CHANNELS];
     for (int c = 0; c < RX_MAX_CHANNELS; ++c) outs[c] = s_ingest_tmp[c];
     const int n_channels = in->cfg->n_channels;
+    int64_t last_ok_us = 0;
     while (!in->stop && !in->cfg->should_stop(in->cfg->ctx)) {
         int n = in->cfg->read(in->cfg->ctx, outs, n_channels, kIngestBlock);
         if (n <= 0) {
+            s_ingest_empty.fetch_add(1, std::memory_order_relaxed);
             vTaskDelay(pdMS_TO_TICKS(1));
             continue;
         }
+        const int64_t now_us = esp_timer_get_time();
+        if (last_ok_us != 0) {
+            const uint32_t gap = (uint32_t)(now_us - last_ok_us);
+            if (gap > s_ingest_gap_max_us.load(std::memory_order_relaxed)) {
+                s_ingest_gap_max_us.store(gap, std::memory_order_relaxed);
+                s_ingest_gap_end_ms.store(rtc_now_ms(), std::memory_order_relaxed);
+            }
+        }
+        last_ok_us = now_us;
         if (n > kIngestBlock) n = kIngestBlock;
         for (int c = 0; c < n_channels; ++c) ft8_sample_ring_write(in->rings[c], outs[c], (unsigned)n);
     }
