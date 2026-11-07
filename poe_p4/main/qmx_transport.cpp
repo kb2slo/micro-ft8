@@ -153,14 +153,17 @@ static constexpr int kUacStartMaxAttempts = 8;
 static constexpr double kIqChannelHz = kQmxIqFt8CenterHz;
 static iq_frontend_t s_iq_frontend;
 // The second channel, FT4 beside FT8 (docs/architecture/decode.md, FT4): PSRAM, since internal RAM is the
-// budget (memory.md), as the HL2's front end is. Set up by the reader, the ingest task, when the offset it
-// was set up for or the stream changes, and the FT8 instance reset with it, so both decimate in step and
-// every read gives each channel the same count.
+// budget (memory.md), as the HL2's front end is. Set up by the reader, the ingest task, afresh for every
+// pipeline run that asks for it (qmx_audio_set_ft4_dial_offset_hz()) and for every stream, and the FT8
+// instance reset with it, so both decimate in step and every read gives each channel the same count.
+// Not merely when the offset changes: a run of FT8 alone between two FT4 runs leaves FT4's filters stale
+// and FT8's decimator wherever the reads left it.
 static EXT_RAM_BSS_ATTR iq_frontend_t s_iq_frontend_ft4;
 static std::atomic<int32_t> s_ft4_dial_offset_hz{0};
+static std::atomic<uint32_t> s_ft4_request{0};  // bumped by each run that asks for FT4
 static std::atomic<uint32_t> s_stream_gen{0};  // bumped at each stream publish
-static uint32_t s_ft4_gen = 0;                 // ingest task only: the stream and offset FT4 was set up for
-static int32_t s_ft4_offset_applied = 0;
+static uint32_t s_ft4_gen = 0;                 // ingest task only: the stream and request FT4 was set up for
+static uint32_t s_ft4_request_applied = 0;
 static bool s_ft4_ready = false;
 static float s_iq_frames[2 * (UAC_READ_BUFFER_SIZE / 6)];  // one read's frames, I then Q, ±1
 static std::atomic<uint32_t> s_frontend_us;  // the front end's time, for BDRY's fe
@@ -771,14 +774,16 @@ bool qmx_audio_ready(void) {
 
 void qmx_audio_set_ft4_dial_offset_hz(int32_t dial_offset_hz) {
     s_ft4_dial_offset_hz.store(dial_offset_hz);
+    s_ft4_request.fetch_add(1);
 }
 
 // Sets the FT4 channel's front end up for the stream and offset now current, if it is not already, and
 // resets FT8's with it. Ingest task.
 static bool ensure_ft4_frontend(void) {
     const uint32_t gen = s_stream_gen.load();
+    const uint32_t request = s_ft4_request.load();
     const int32_t offset = s_ft4_dial_offset_hz.load();
-    if (s_ft4_ready && gen == s_ft4_gen && offset == s_ft4_offset_applied) {
+    if (s_ft4_ready && gen == s_ft4_gen && request == s_ft4_request_applied) {
         return true;
     }
     const iq_frontend_config_t config = {
@@ -792,7 +797,7 @@ static bool ensure_ft4_frontend(void) {
     s_ft4_ready = iq_frontend_init(&s_iq_frontend_ft4, &config) == IQ_FRONTEND_OK;
     iq_frontend_reset(&s_iq_frontend);
     s_ft4_gen = gen;
-    s_ft4_offset_applied = offset;
+    s_ft4_request_applied = request;
     ESP_LOGI(TAG, "FT4 channel front end at %.0f Hz above the LO: %s", config.center_hz,
              s_ft4_ready ? "ok" : "init failed");
     return s_ft4_ready;
