@@ -114,6 +114,8 @@ The person you work for reviews in chat, then green-lights each step. A good pre
 
 4. **Commit / push only when asked.** Local edits are fine when they asked for the work. `git commit` waits until they have seen the plan or diff and said to commit. `git push` waits until they said to push, and so does opening a pull request. “Commit and push” is both, using the agreed message. Do not treat “ship on main”, a green host test, or “local commits are fine” as standing permission. The one standing exception is an approved Ideas-only roadmap change, which goes straight to `main` ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md), **Roadmap intake**, fast path).
 
+   **"Push" means `git push` and nothing else**, in chat and in these docs. Putting the web app on a sidekick is *installing the app* (`webapp/tools/install_app.py`), and writing firmware to a board is *flashing*: neither is a push, and permission for one is never permission for the other.
+
    **A scope instruction is not a push instruction, even mid-session.** Each push needs its own explicit trigger in that turn — "push", "commit and push", or equivalent — not inferred from momentum, from how the last few turns went, or from the change being correct and well-tested.
 
 5. **Undo with git, not a second edit.** Do not invert your last turn by re-editing files. That is slow and easy to get wrong when other uncommitted work is in the same tree.
@@ -169,7 +171,7 @@ the only place every agent and every person can see them — see "Memory lives i
 - **`webapp/app/` is source; what ships is its build** (`python3 webapp/tools/build.py`, after
   `npm ci --prefix webapp/tools` once per clone): minified into `webapp/dist/app/`, manifest written from the output,
   size budget checked ([architecture/webapp.md](docs/architecture/webapp.md), **Build**). Never commit a
-  manifest or build output; both are ignored. Pages, CI's Host tests and `desk_push.py` each build, so an edit
+  manifest or build output; both are ignored. Pages, CI's Host tests and `install_app.py` each build, so an edit
   under `webapp/app/` needs no extra step. Before pushing one, run `tools/check.sh --changed`: it runs that
   build, as CI does.
 
@@ -207,7 +209,7 @@ the only place every agent and every person can see them — see "Memory lives i
 
 - **Read the station before asking about it.** On the bench the sidekick is on the LAN at `http://micro-ft8.local`, and its reads need no token ([sidekick.md](docs/architecture/sidekick.md), **Port A: the link to the main board**): `GET /api/config` is the station's settings (call, grid, radio, band, active bands), `GET /api/state?slots=<n>` the station as it is now, and `GET /api/events?since=<seq>` every decode and radio event as Operate shows it, and the three builds a bench pass records: the sidekick's in `/api/config` (`sk_fw_version`), the web app's as the `<sha> <date>` string in `GET /app.html` (what Settings shows as **App:**), and the P4's in its boot log (`App version`). The sidekick keeps only the last 64 events, so to follow a run, poll every few seconds. The P4's own console is its PROG port (an Espressif USB serial device, `/dev/ttyACM*` on Linux). Before asking the person you work for what the station shows or is set to (decodes, band, grid, radio), read it there, and ask only for what neither shows: a screen, a sound, a cable.
 
-  **Token-guarded calls** (`PUT /api/config` and the rest) go through `webapp/tools/sidekick.py`, as `desk_push.py` does. It caches the pairing token at `webapp/tools/.sidekick_token` (git-ignored, owner-only), claims one with the sidekick's button the first time or when the cache is refused, and retries on a 401. Each write needs the person you work for to approve it explicitly, in that turn: say what you will send and what it changes, then wait. A write that can make the station transmit (a CQ, a reply, Tune) also needs them at the station as its control operator, since the licence is theirs. What an agent reads this way is evidence from a run they set up; the TEST_PLAN rules on who closes a field check are unchanged.
+  **Token-guarded calls** (`PUT /api/config` and the rest) go through `webapp/tools/sidekick.py`, as `install_app.py` does. It caches the pairing token at `webapp/tools/.sidekick_token` (git-ignored, owner-only), claims one with the sidekick's button the first time or when the cache is refused, and retries on a 401. Each write needs the person you work for to approve it explicitly, in that turn: say what you will send and what it changes, then wait. A write that can make the station transmit (a CQ, a reply, Tune) also needs them at the station as its control operator, since the licence is theirs. What an agent reads this way is evidence from a run they set up; the TEST_PLAN rules on who closes a field check are unchanged.
 
   **One write needs no approval: setting the clock.** When the main board's clock is unset (SLOT indices count from boot, events carry `t` 0) or reads more than a second off, an agent sends `POST /api/time` with its own machine's time, the call the web app makes, provided that machine's clock is synced to NTP (check it first), and says in chat that it did. It sets the clock and nothing else, so it cannot key the radio or change a setting. Every other write still needs approval in that turn.
 

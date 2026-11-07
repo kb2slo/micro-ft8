@@ -1109,7 +1109,7 @@ function esc(s) {
 // Not crypto.subtle -- that's unavailable on this page's own origin, since
 // docs/architecture/system.md (The inversion) means the sidekick never speaks TLS and a plain-HTTP origin is
 // not a secure context (SubtleCrypto requires one). FNV-1a over the UTF-8
-// bytes is plenty for "did this desk_push actually land": desk_push.py
+// bytes is plenty for "did this app install actually land": install_app.py
 // prints the identical hash (same algorithm, over the same file's bytes on
 // disk) so the two can be eyeballed against each other without needing a
 // build step or a server-side version endpoint.
@@ -1127,7 +1127,7 @@ function fnv1a(bytes) {
 // of the file on disk in spirit (both are the served bytes, not a rendering
 // of them) -- FNV-1a instead of sha256 only because of the secure-context
 // gap above, but the "same bytes in, same hash out" property is what makes
-// this a useful A/B against desk_push.py's own printed hash.
+// this a useful A/B against install_app.py's own printed hash.
 var loadedAppHash = null;
 // webapp/tools/build.py replaces this with "<git sha>[-dirty] <UTC date>";
 // the unbuilt source (a local preview) keeps the placeholder and shows "source".
@@ -1162,7 +1162,7 @@ window.addEventListener('pageshow', function (ev) {
 });
 
 // Checks when the tab regains focus -- this is the common case, an operator
-// stepping away and a desk_push landing meanwhile, and it's free (no network
+// stepping away and an app install landing meanwhile, and it's free (no network
 // traffic while backgrounded). Offers a reload on Settings' App line rather
 // than forcing one, unlike the bfcache case above: the operator may be
 // mid-QSO, and reloading unprompted would be worse than a stale version.
@@ -1170,7 +1170,7 @@ var appIsStale = false;
 
 // Field-found 2026-09-21: the stale notice could pin itself on permanently after a
 // single transient glitch (a dropped/retried fetch on a weak AP-mode link, or
-// this landing mid-desk_push while the file was only half-written) and never
+// this landing mid-install while the file was only half-written) and never
 // let go, even though a Reload's own fresh fetch would have matched fine --
 // appIsStale was write-only, set true on a mismatch but never cleared on a
 // later match, and r.ok was never checked at all, so a transient error
@@ -1193,7 +1193,7 @@ async function checkAppStale() {
 document.addEventListener('visibilitychange', checkAppStale);
 document.getElementById('appReload').onclick = function () { location.reload(); };
 // Also on a slow timer (operator-requested 2026-09-19): a tab left open and
-// visible through an entire desk_push never fires visibilitychange at all,
+// visible through an entire app install never fires visibilitychange at all,
 // so that path alone can miss it indefinitely. The guard above already
 // no-ops this while backgrounded, so the timer itself costs nothing then.
 // 60s of a ~112 KB fetch averages under 2 KB/s -- nothing like the 2 Hz
@@ -6068,7 +6068,7 @@ applyHashRoute();
 window.addEventListener('hashchange', applyHashRoute);
 
 // Seeds every live-state variable from localStorage before the first real
-// fetch/poll lands, so a reload or a fresh desk_push doesn't flash blank/
+// fetch/poll lands, so a reload or a fresh app install doesn't flash blank/
 // "Loading..." for state the browser already knows -- operator-requested,
 // prompted by trying the new "reload available" banner for the first time.
 // Never a substitute for the wire: the first pollEvents() replaces the decodes,

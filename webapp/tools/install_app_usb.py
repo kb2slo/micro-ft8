@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""USB-C half of desk_push.py: pack webapp/dist/app into a LittleFS image and
+"""USB-C half of install_app.py: pack webapp/dist/app into a LittleFS image and
 write it to the sidekick's `web` partition with esptool, no network needed.
 
 The bundle API (docs/architecture/sidekick.md (Installing the app bundle))
@@ -51,7 +51,7 @@ def build_image(size: int) -> bytes:
     try:
         from littlefs import LittleFS
     except ImportError:
-        raise SystemExit("USB push needs littlefs-python: pip install littlefs-python")
+        raise SystemExit("USB install needs littlefs-python: pip install littlefs-python")
     fs = LittleFS(
         block_size=BLOCK_SIZE,
         block_count=size // BLOCK_SIZE,
@@ -84,7 +84,7 @@ def build_image(size: int) -> bytes:
     return bytes(fs.context.buffer)
 
 
-def push(port: str) -> None:
+def install(port: str) -> None:
     offset, size = web_partition()
     image = build_image(size)
     with tempfile.TemporaryDirectory() as tmp:
