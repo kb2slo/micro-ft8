@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Desk-push the built web bundle onto a sidekick (docs/architecture/sidekick.md (Installing the app bundle) bundle API).
+"""Install the built web app onto a sidekick (docs/architecture/sidekick.md (Installing the app bundle) bundle API).
 
 Builds webapp/dist/app first (webapp/tools/build.py, docs/architecture/webapp.md
 (Build)), so what lands on the bench is what Pages ships; resolves the host once (mDNS is slow per-request),
-then pushes using a cached pairing token if one is on disk (see sidekick.py)
+then installs using a cached pairing token if one is on disk (see sidekick.py)
 — the button is only needed the first time, or if the cached token gets
 rejected (401), or with --forget-token.
 
@@ -11,14 +11,14 @@ Close any browser tab on micro-ft8.local first if the button *is* needed —
 pairing.js also claims the token, and the first successful GET wins.
 
 Usage:
-  python3 webapp/tools/desk_push.py
-  python3 webapp/tools/desk_push.py --host http://192.168.50.128
-  python3 webapp/tools/desk_push.py --token HEX…   # skip cache + button
-  python3 webapp/tools/desk_push.py --forget-token # clear cache, re-pair
-  python3 webapp/tools/desk_push.py --no-build     # push webapp/dist/app as it is
-  python3 webapp/tools/desk_push.py --usb [--port /dev/cu.usbmodemXXX]
+  python3 webapp/tools/install_app.py
+  python3 webapp/tools/install_app.py --host http://192.168.50.128
+  python3 webapp/tools/install_app.py --token HEX…   # skip cache + button
+  python3 webapp/tools/install_app.py --forget-token # clear cache, re-pair
+  python3 webapp/tools/install_app.py --no-build     # install webapp/dist/app as it is
+  python3 webapp/tools/install_app.py --usb [--port /dev/cu.usbmodemXXX]
       # no network: write the build to the sidekick's web partition over USB-C
-      # (usb_push.py; replaces the whole web filesystem, keeps WiFi and pairing)
+      # (install_app_usb.py; replaces the whole web filesystem, keeps WiFi and pairing)
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ def build_bundle() -> dict:
 def fnv1a(data: bytes) -> str:
     """Matches app.html's own fnv1a() exactly -- same algorithm over the same
     bytes, so its printed hash for app.html can be eyeballed directly against
-    the "App: ..." line Settings shows after a push, without needing
+    the "App: ..." line Settings shows after an install, without needing
     crypto.subtle (unavailable on the sidekick's plain-HTTP origin) or a
     server-side version endpoint."""
     h = 0x811C9DC5
@@ -73,7 +73,7 @@ def _check(code: int, body: bytes, what: str) -> None:
         die(f"{what} → {code}: {body.decode(errors='replace')}")
 
 
-def push(host: str, token: str, doc: dict) -> None:
+def install(host: str, token: str, doc: dict) -> None:
     man_bytes = MANIFEST.read_bytes()
     code, body = http(
         "POST",
@@ -121,25 +121,25 @@ def main() -> int:
     import argparse
 
     ap = argparse.ArgumentParser(
-        description="Build webapp/app and desk-push the result to a sidekick via a cached pairing token or the button."
+        description="Build webapp/app and install the result on a sidekick via a cached pairing token or the button."
     )
     ap.add_argument("--host", default=DEFAULT_HOST, help=f"sidekick base URL (default {DEFAULT_HOST})")
     ap.add_argument("--token", default="", help="pairing token hex; skips the cache and the button")
     ap.add_argument("--wait", type=float, default=WAIT_S, help=f"seconds to wait for the button (default {int(WAIT_S)})")
-    ap.add_argument("--no-build", action="store_true", help="push webapp/dist/app as it is, without rebuilding")
+    ap.add_argument("--no-build", action="store_true", help="install webapp/dist/app as it is, without rebuilding")
     ap.add_argument("--forget-token", action="store_true", help="clear the cached token before running (forces the button)")
-    ap.add_argument("--usb", action="store_true", help="write the build over USB-C instead of the network (see usb_push.py)")
+    ap.add_argument("--usb", action="store_true", help="write the build over USB-C instead of the network (see install_app_usb.py)")
     ap.add_argument("--port", default="", help="serial port for --usb (default: esptool auto-detects)")
     args = ap.parse_args()
 
     if args.usb:
-        import usb_push
+        import install_app_usb
 
         if not args.no_build:
             build_bundle()
         elif not MANIFEST.is_file():
             die(f"missing {MANIFEST}; run without --no-build")
-        usb_push.push(args.port)
+        install_app_usb.install(args.port)
         return 0
 
     if args.forget_token:
@@ -167,9 +167,9 @@ def main() -> int:
     try:
         if token:
             print("using --token from CLI (not cached)")
-            push(host, token, doc)
+            install(host, token, doc)
         else:
-            with_token_retry(host, args.wait, lambda tok: push(host, tok, doc))
+            with_token_retry(host, args.wait, lambda tok: install(host, tok, doc))
     except SidekickError as e:
         die(str(e))
     return 0

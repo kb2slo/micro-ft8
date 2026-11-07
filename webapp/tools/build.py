@@ -9,7 +9,7 @@ docs/architecture/webapp.md (Build). Steps, in order:
   5. write manifest.json from the output;
   6. fail if a file or the whole bundle breaks the size budget.
 
-Pages, CI and desk_push.py all run this, so what is tested is what ships.
+Pages, CI and install_app.py all run this, so what is tested is what ships.
 
 Usage:
   npm ci --prefix webapp/tools      # once per clone, and after package-lock.json changes

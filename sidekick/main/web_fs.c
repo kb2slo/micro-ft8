@@ -388,7 +388,7 @@ static esp_err_t get_static(httpd_req_t *req)
     }
 
     httpd_resp_set_type(req, mime_for(rel));
-    // Seed updates on reflash/hydrate, or a desk_push bundle push; do not
+    // Seed updates on reflash/hydrate, or an install_app.py bundle install; do not
     // keep a stale browser copy. no-cache (was here before) still permits a
     // conditional-revalidation cache entry in principle -- moot without an
     // ETag/Last-Modified for the browser to revalidate against, but no-store
