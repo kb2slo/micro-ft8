@@ -216,6 +216,8 @@ static void publish_slot_result(const ft8_slot_t* slot, const DecodeChannel& dc)
 }
 
 // Main loop.
+// Copies every field of DecodeSlotResult but the unused tails of its arrays: a field added there and not
+// here reads the heap's leftovers on the main loop (an8x's station and dial offset did, 2026-11-07).
 static bool take_slot_result(int c, DecodeSlotResult* out) {
   xSemaphoreTake(result_mutex(), portMAX_DELAY);
   const DecodeSlotResult* r = s_result[c];
@@ -223,6 +225,8 @@ static bool take_slot_result(int c, DecodeSlotResult* out) {
   if (pending) {
     out->channel = r->channel;
     out->mode = r->mode;
+    out->station = r->station;
+    out->dial_offset_hz = r->dial_offset_hz;
     out->slot_idx = r->slot_idx;
     out->published_us = r->published_us;
     out->count = r->count;
@@ -640,7 +644,12 @@ static void apply_slot_result(DecodeSlotResult& r) {
 void decode_pipeline_apply(void) {
   static DecodeSlotResult* rp = nullptr;  // the main loop's copy, one for every channel; too big for its stack
   if (!rp) {
-    if (!decode_pipeline_result_pending()) return;  // nothing yet; allocate with the first result
+    // Nothing yet: allocate with the first result, any channel's.
+    xSemaphoreTake(result_mutex(), portMAX_DELAY);
+    bool any = false;
+    for (int c = 0; c < RX_MAX_CHANNELS; ++c) any = any || s_result_pending[c];
+    xSemaphoreGive(result_mutex());
+    if (!any) return;
     rp = alloc_slot_result();
     if (!rp) {
       ESP_LOGE(TAG, "DECODE apply: no RAM for the main loop's copy");
