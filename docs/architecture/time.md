@@ -40,7 +40,7 @@ After each decoded slot with more than three decodes, `decode_pipeline.cpp` take
 
 * **It fixes fine error, never gross error.** It needs decodes, and a clock off by more than a couple of seconds produces none. Gross error needs a full set. Making it visible is row [I15](../roadmap/ideas.md#I15).
 * **Where it settles** (derived from the code, **unmeasured**). FT8 transmitters start 0.5 s after the UTC boundary, and capture starts at the main board's boundary. So a clock set exactly to UTC sees a median of about +0.5 s plus any audio-path latency, and auto-sync pulls it back until the median is within ±0.3 s. After a browser set, then, the main board's clock runs a few tenths of a second **behind** UTC. Consequences, all inferred:
-  * Capture starts roughly when signals do, so the decode trigger at 12.64 s ([decode.md](decode.md)) cuts less of a typical signal than the "last ~0.5 s" figure there, which assumes a clock exactly on UTC.
+  * Capture starts roughly when signals do, so the decode trigger at 13.28 s ([decode.md](decode.md)) cuts less of a typical signal than the "last ~0.5 s" figure there, which assumes a clock exactly on UTC.
   * `TX;` goes out on the main board's slot boundary (`tx_scheduler.cpp`) and the first tone 0.5 s later, WSJT-X's own start, so a QMX transmission starts where the convention puts it, a few tenths after UTC on a board that is that late.
   * The DT the web app shows is raw `time_s`, not WSJT-X's DT with 0.5 s subtracted, yet it reads near zero for a typical station because auto-sync centres the median there.
 

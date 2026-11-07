@@ -6,6 +6,7 @@ BENCH := $(ROOT)/test_apps/decode_bench/main
 SRCS := decode_recall.c $(BENCH)/bench_core.c \
         $(ROOT)/components/decode_pipeline/decode_core.c \
         $(ROOT)/components/decode_pipeline/decode_workers.c \
+        $(ROOT)/components/decode_pipeline/decode_budget.c \
         $(ROOT)/components/decode_pipeline/decode_subtract.c \
         $(ROOT)/components/decode_pipeline/decode_retry.c \
         $(ROOT)/components/decode_pipeline/decode_snr.c \

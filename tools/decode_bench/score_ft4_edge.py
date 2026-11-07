@@ -12,8 +12,9 @@ Each I/Q slot in BAND_DIR's manifest.jsonl goes through tools/iq_convert at --ce
 then is cut into its two 7.5 s FT4 periods for `jt9 -5 -d 3`. With --ours, the same periods also go to
 tools/decode_recall/decode_recall --mode ft4 (the firmware's decode, row an8x) and its messages are
 scored against jt9's: found, and extras (not all false: jt9 misses some). Each period at the firmware's
-budget for it (decode_limits.h): the first, which decodes alone, at DECODE_BUDGET_UNITS, the second,
-which shares FT8's window, at DECODE_BUDGET_FT4_BESIDE_FT8; decoder flags that follow replace both.
+start and budget for it beside FT8 (decode_limits.h): the first at DECODE_TRIGGER_FT4 and DECODE_BUDGET_FT4,
+the second, which must be done before FT8 starts, at DECODE_TRIGGER_FT4_BESIDE_FT8 and
+DECODE_BUDGET_FT4_BESIDE_FT8; decoder flags that follow replace both.
 --costs also times our decoder on each slot as FT8 (its channel at 13,500 Hz) and on its FT4 periods,
 no budget, one file at a time, and prints what an FT4 search and an FT4 LDPC iteration cost against
 FT8's on this machine: the ratio DECODE_COST_SEARCH_FT4 is scaled from. Needs `jt9` on PATH and tools/iq_convert built (and
@@ -116,9 +117,13 @@ def decode(paths, flags):
 
 
 def score_ours(tmp, truth, flags):
-    for half, budget_name in (("p0", "DECODE_BUDGET_UNITS"), ("p1", "DECODE_BUDGET_FT4_BESIDE_FT8")):
+    # Each half where the firmware decodes it beside FT8 (decode_budget.h): the first at FT4's start and budget,
+    # the second earlier, with what is left before FT8 starts.
+    halves = (("p0", "DECODE_BUDGET_FT4", "DECODE_TRIGGER_FT4"),
+              ("p1", "DECODE_BUDGET_FT4_BESIDE_FT8", "DECODE_TRIGGER_FT4_BESIDE_FT8"))
+    for half, budget_name, trigger_name in halves:
         names = [n for n in sorted(truth) if n.endswith(half + ".wav")]
-        use = flags or ["--budget-units", str(limit(budget_name))]
+        use = flags or ["--budget-units", str(limit(budget_name)), "--trigger-blocks", str(limit(trigger_name))]
         ours, ends = decode([os.path.join(tmp, n) for n in names], use)
         found = sum(len(truth[n] & ours.get(n, set())) for n in names)
         total = sum(len(truth[n]) for n in names)
