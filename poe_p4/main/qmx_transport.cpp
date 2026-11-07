@@ -14,6 +14,8 @@
 #include "qmx_transport.h"
 #include "cat_reply_parser.h"
 #include "iq_frontend.h"
+#include "qmx_iq_channel.h"
+#include "esp_attr.h"
 #include "radio_transport.h"
 #include "usb/cdc_acm_host.h"
 #include "usb/uac_host.h"
@@ -148,8 +150,18 @@ static constexpr int kUacStartMaxAttempts = 8;
 // tools/decode_bench/corpus/qmx-2026-11-02). Internal RAM, .bss: sizeof(iq_frontend_t) plus the
 // conversion buffer, checked by tools/check_ram_budget.py. Used only by the ingest task, which
 // calls qmx_audio_read_ft8_samples(); initialised on the UAC task before a stream is published.
-static constexpr double kIqChannelHz = 13500.0;
+static constexpr double kIqChannelHz = kQmxIqFt8CenterHz;
 static iq_frontend_t s_iq_frontend;
+// The second channel, FT4 beside FT8 (docs/architecture/decode.md, FT4): PSRAM, since internal RAM is the
+// budget (memory.md), as the HL2's front end is. Set up by the reader, the ingest task, when the offset it
+// was set up for or the stream changes, and the FT8 instance reset with it, so both decimate in step and
+// every read gives each channel the same count.
+static EXT_RAM_BSS_ATTR iq_frontend_t s_iq_frontend_ft4;
+static std::atomic<int32_t> s_ft4_dial_offset_hz{0};
+static std::atomic<uint32_t> s_stream_gen{0};  // bumped at each stream publish
+static uint32_t s_ft4_gen = 0;                 // ingest task only: the stream and offset FT4 was set up for
+static int32_t s_ft4_offset_applied = 0;
+static bool s_ft4_ready = false;
 static float s_iq_frames[2 * (UAC_READ_BUFFER_SIZE / 6)];  // one read's frames, I then Q, ±1
 static std::atomic<uint32_t> s_frontend_us;  // the front end's time, for BDRY's fe
 static DMA_ATTR uint8_t s_usb_buffer[UAC_READ_BUFFER_SIZE];
@@ -492,6 +504,7 @@ static void try_open_uac(uint8_t addr, uint8_t iface_num) {
         ESP_LOGI(TAG, "I/Q front end init: uac_lib stack high-water mark %u bytes free",
                  (unsigned)uxTaskGetStackHighWaterMark(nullptr));
     }
+    s_stream_gen.fetch_add(1);
     // Before the handle is published: a reader may start the moment it is.
     s_uac_handle = handle;
     s_uac_starting_handle = nullptr;
@@ -756,8 +769,38 @@ bool qmx_audio_ready(void) {
     return s_uac_handle != nullptr;
 }
 
-// The 24-bit stereo frames in s_usb_buffer as I/Q, through the front end into `out` at 6 kHz.
-static int read_iq_samples(int frames, float *out, int max_samples) {
+void qmx_audio_set_ft4_dial_offset_hz(int32_t dial_offset_hz) {
+    s_ft4_dial_offset_hz.store(dial_offset_hz);
+}
+
+// Sets the FT4 channel's front end up for the stream and offset now current, if it is not already, and
+// resets FT8's with it. Ingest task.
+static bool ensure_ft4_frontend(void) {
+    const uint32_t gen = s_stream_gen.load();
+    const int32_t offset = s_ft4_dial_offset_hz.load();
+    if (s_ft4_ready && gen == s_ft4_gen && offset == s_ft4_offset_applied) {
+        return true;
+    }
+    const iq_frontend_config_t config = {
+        .input_rate_hz = kUacSampleRate,
+        .output_rate_hz = 6000,
+        .center_hz = qmx_iq_channel_center_hz(offset),
+        .if_trim_hz = 0.0,
+        .swap_iq = false,
+        .negate_q = false,
+    };
+    s_ft4_ready = iq_frontend_init(&s_iq_frontend_ft4, &config) == IQ_FRONTEND_OK;
+    iq_frontend_reset(&s_iq_frontend);
+    s_ft4_gen = gen;
+    s_ft4_offset_applied = offset;
+    ESP_LOGI(TAG, "FT4 channel front end at %.0f Hz above the LO: %s", config.center_hz,
+             s_ft4_ready ? "ok" : "init failed");
+    return s_ft4_ready;
+}
+
+// The 24-bit stereo frames in s_usb_buffer as I/Q, through each channel's front end into out[] at 6 kHz:
+// FT8 first, then FT4 if asked for.
+static int read_iq_samples(int frames, float *const *out, int n_channels, int max_samples) {
     static_assert(kUacBitResolution == 24 && kUacChannels == 2, "the I/Q path reads 24-bit stereo");
     if (frames <= 0 || frames > (int)(sizeof(s_iq_frames) / sizeof(s_iq_frames[0]) / 2)) {
         return 0;
@@ -771,19 +814,34 @@ static int read_iq_samples(int frames, float *out, int max_samples) {
         }
         s_iq_frames[i] = (float)v / 8388608.0f;
     }
-    const int n = iq_frontend_process(&s_iq_frontend, s_iq_frames, (size_t)frames, out,
-                                      (size_t)max_samples);
+    if (n_channels > 1 && !ensure_ft4_frontend()) {
+        n_channels = 1;
+    }
+    int n = iq_frontend_process(&s_iq_frontend, s_iq_frames, (size_t)frames, out[0], (size_t)max_samples);
+    if (n_channels > 1) {
+        const int n4 = iq_frontend_process(&s_iq_frontend_ft4, s_iq_frames, (size_t)frames, out[1],
+                                           (size_t)max_samples);
+        if (n4 != n) {
+            // Reset together, they decimate in step; a mismatch would slide one channel against the other.
+            static bool logged = false;
+            if (!logged) {
+                logged = true;
+                ESP_LOGE(TAG, "FT4 channel gave %d samples to FT8's %d", n4, n);
+            }
+            if (n4 < n) n = n4;
+        }
+    }
     s_frontend_us.fetch_add((uint32_t)(esp_timer_get_time() - t0), std::memory_order_relaxed);
     return n > 0 ? n : 0;
 }
 
-int qmx_audio_read_ft8_samples(void * /*ctx*/, float *out, int max_samples) {
+int qmx_audio_read_ft8_samples(void * /*ctx*/, float *const *out, int n_channels, int max_samples) {
     // Snapshot: disconnect nulls s_uac_handle before queuing close; a
     // concurrent close must not race a read that still holds the old
     // pointer only if we re-load it after the null. Local copy is enough
     // for the should_stop / ready handshake; close is deferred 250ms.
     uac_host_device_handle_t handle = s_uac_handle;
-    if (!handle || !out) {
+    if (!handle || !out || n_channels < 1) {
         return 0;
     }
 
@@ -799,7 +857,7 @@ int qmx_audio_read_ft8_samples(void * /*ctx*/, float *out, int max_samples) {
         return 0;
     }
 
-    return read_iq_samples((int)bytes_read / frame_bytes, out, max_samples);
+    return read_iq_samples((int)bytes_read / frame_bytes, out, n_channels, max_samples);
 }
 
 uint32_t qmx_audio_take_frontend_us(void * /*ctx*/) {

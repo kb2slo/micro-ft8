@@ -21,7 +21,10 @@ bool qmx_audio_ready(void);
 
 // ft8_audio_pipeline_config_t's read/should_stop callbacks -- pass these
 // directly. `ctx` is unused (nullptr is fine).
-int qmx_audio_read_ft8_samples(void *ctx, float *out, int max_samples);
+int qmx_audio_read_ft8_samples(void *ctx, float *const *out, int n_channels, int max_samples);
+// The FT4 channel's dial against FT8's, for the second channel the read fills (docs/architecture/decode.md,
+// FT4). Set before a pipeline with two channels starts; the read sets that channel's front end up from it.
+void qmx_audio_set_ft4_dial_offset_hz(int32_t dial_offset_hz);
 bool qmx_audio_should_stop(void *ctx);
 
 // ft8_audio_pipeline_config_t::take_frontend_us: the front end's time since the last call.

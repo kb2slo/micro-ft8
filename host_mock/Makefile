@@ -69,11 +69,13 @@ AMP_BAND_PRIME_TARGET = host_test_amp_band_prime
 SWR_SWEEP_TARGET = host_test_swr_sweep
 SWR_TRIP_TARGET = host_test_swr_trip
 QMX_IQ_LINK_TARGET = host_test_qmx_iq_link
+QMX_IQ_CHANNEL_TARGET = host_test_qmx_iq_channel
 SLOT_DEFICIT_TARGET = host_test_slot_deficit
 SAMPLE_RING_TARGET = host_test_sample_ring
 BLOCK_ACTIVITY_TARGET = host_test_block_activity
 CORE_BUSY_TARGET = host_test_core_busy
 DECODE_RETRY_TARGET = host_test_decode_retry
+DECODE_BUDGET_TARGET = host_test_decode_budget
 DECODE_SYNC_TARGET = host_test_decode_sync
 DECODE_SNR_TARGET = host_test_decode_snr
 PORTA_OUT_QUEUE_TARGET = host_test_porta_out_queue
@@ -91,9 +93,9 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARG
      $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
      $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(EVENT_STATE_TARGET) $(BUNDLE_HOST_TARGET) \
      $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(ROGERS_ONCE_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
-     $(CAT_REPLY_PARSER_TARGET) $(AMP_BAND_PRIME_TARGET) $(SWR_SWEEP_TARGET) $(SWR_TRIP_TARGET) $(QMX_IQ_LINK_TARGET) \
+     $(CAT_REPLY_PARSER_TARGET) $(AMP_BAND_PRIME_TARGET) $(SWR_SWEEP_TARGET) $(SWR_TRIP_TARGET) $(QMX_IQ_LINK_TARGET) $(QMX_IQ_CHANNEL_TARGET) \
      $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(BLOCK_ACTIVITY_TARGET) $(CORE_BUSY_TARGET) \
-     $(DECODE_RETRY_TARGET) $(DECODE_SYNC_TARGET) $(DECODE_SNR_TARGET) \
+     $(DECODE_RETRY_TARGET) $(DECODE_BUDGET_TARGET) $(DECODE_SYNC_TARGET) $(DECODE_SNR_TARGET) \
      $(PORTA_OUT_QUEUE_TARGET) $(HEARD_GRID_TARGET) $(DECODE_FIELDS_TARGET) $(RTC_CORE_TARGET) \
      $(HL2_PROTO_TARGET) $(RADIO_CONTROL_TARGET) $(IQ_FRONTEND_TARGET) $(HL2_FRONTEND_TARGET) \
      $(SIM_TARGET)
@@ -201,6 +203,14 @@ test_radio_control.o: test_radio_control.cpp
 $(RADIO_CONTROL_TARGET): $(RADIO_CONTROL_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
+QMX_IQ_CHANNEL_OBJ = qmx_iq_channel.o test_qmx_iq_channel.o
+qmx_iq_channel.o: ../components/radio_control/qmx_iq_channel.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+test_qmx_iq_channel.o: test_qmx_iq_channel.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+$(QMX_IQ_CHANNEL_TARGET): $(QMX_IQ_CHANNEL_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
 QMX_IQ_LINK_OBJ = test_qmx_iq_link.o
 test_qmx_iq_link.o: test_qmx_iq_link.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
@@ -252,6 +262,14 @@ decode_retry.o: ../components/decode_pipeline/decode_retry.c
 test_decode_retry.o: test_decode_retry.cpp
 	$(CXX) $(CXXFLAGS) $(DECODE_RETRY_INC) -c $< -o $@
 $(DECODE_RETRY_TARGET): $(DECODE_RETRY_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+DECODE_BUDGET_OBJ = decode_budget.o test_decode_budget.o
+decode_budget.o: ../components/decode_pipeline/decode_budget.c
+	$(CC) $(CFLAGS) $(DECODE_RETRY_INC) -c $< -o $@
+test_decode_budget.o: test_decode_budget.cpp
+	$(CXX) $(CXXFLAGS) $(DECODE_RETRY_INC) -c $< -o $@
+$(DECODE_BUDGET_TARGET): $(DECODE_BUDGET_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 DECODE_SYNC_OBJ = decode_sync.o test_decode_sync.o
@@ -405,9 +423,11 @@ clean:
 	      $(AMP_BAND_PRIME_OBJ) $(AMP_BAND_PRIME_TARGET) \
 	      $(SWR_SWEEP_OBJ) $(SWR_SWEEP_TARGET) \
 	      $(QMX_IQ_LINK_OBJ) $(QMX_IQ_LINK_TARGET) \
+	      $(QMX_IQ_CHANNEL_OBJ) $(QMX_IQ_CHANNEL_TARGET) \
 	      $(PORTA_PROTO_OBJ) $(PORTA_PROTO_TARGET) \
 	      $(PORTA_OUT_QUEUE_OBJ) $(PORTA_OUT_QUEUE_TARGET) \
 	      $(DECODE_RETRY_OBJ) $(DECODE_RETRY_TARGET) \
+	      $(DECODE_BUDGET_OBJ) $(DECODE_BUDGET_TARGET) \
 	      $(DECODE_SYNC_OBJ) $(DECODE_SYNC_TARGET) \
 	      $(DECODE_SNR_OBJ) $(DECODE_SNR_TARGET) \
 	      $(BLOCK_ACTIVITY_OBJ) $(BLOCK_ACTIVITY_TARGET) \

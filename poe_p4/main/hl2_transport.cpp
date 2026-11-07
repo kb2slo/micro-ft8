@@ -594,11 +594,13 @@ uint32_t hl2_audio_take_frontend_us(void* /*ctx*/)
     return s_frontend_us.exchange(0, std::memory_order_relaxed);
 }
 
-int hl2_audio_read_ft8_samples(void* /*ctx*/, float* out, int max_samples)
+// One receiver is one channel: the pipeline asks for one.
+int hl2_audio_read_ft8_samples(void* /*ctx*/, float* const* outs, int n_channels, int max_samples)
 {
-    if (!s_ring || !out || max_samples <= 0) {
+    if (!s_ring || !outs || n_channels != 1 || max_samples <= 0) {
         return 0;
     }
+    float* out = outs[0];
     const uint32_t gen = s_stream_gen.load();
     if (gen != s_reader_gen) {
         iq_frontend_reset(&s_frontend);  // a new stream: no filter history from the last one

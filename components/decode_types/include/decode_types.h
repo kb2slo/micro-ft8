@@ -16,6 +16,8 @@ struct UiRxLine {
     bool is_cq = false;
     bool is_to_me = false;
     bool is_recent_qso = false;
+    // Heard on a channel that only listens (row an8x): no reply can go out on it yet (row grqg).
+    bool listen_only = false;
 };
 
 // Plain-C RX entry used for zero-heap decode/display pipeline.

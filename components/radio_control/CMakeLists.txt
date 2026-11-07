@@ -8,6 +8,7 @@ idf_component_register(
     SRCS "radio_control.cpp"
          "cat_reply_parser.cpp"
          "radio_control_qmx.cpp"
+         "qmx_iq_channel.cpp"
     INCLUDE_DIRS "include"
     REQUIRES esp_common esp_timer log dial_history rtc_core
 )
