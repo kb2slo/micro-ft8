@@ -42,8 +42,9 @@ typedef struct {
     int freq_osr;
 } ft8_audio_pipeline_config_t;
 
-// One channel's finished slot, handed to decode (decode_slot(), decode_pipeline.h) on the capture task.
-// The waterfall is the channel's own and decode subtracts from it; it is reset after decode returns.
+// One channel's finished slot, handed to decode (decode_slot(), decode_pipeline.h) on the decode task.
+// The waterfall is one of the channel's two and decode subtracts from it; capture fills the other
+// meanwhile, and takes this one back once decode_slot() returns.
 typedef struct {
     int channel;
     const ProtocolConfig* mode;

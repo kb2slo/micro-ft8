@@ -10,7 +10,7 @@
 // The decode/autoseq-arm/RTC-auto-sync pipeline (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)) -- extracted
 // out of main.cpp; this is what P4's "RX decode" milestone build-forces into
 // components/, per STYLE's module-placement rule). Called once per slot of each channel by
-// ft8_audio_pipeline_run(), on the capture task, with the channel's finished slot. Decodes it
+// ft8_audio_pipeline_run()'s decode task (ft8_decode, core 1), with the channel's finished slot. Decodes it
 // with the channel's own decode state (decode_core.h) and steps the clock on the decode task,
 // then hands the slot's decodes to decode_pipeline_apply().
 void decode_slot(const ft8_slot_t* slot);

@@ -132,7 +132,7 @@ typedef RxDecodeEntry DecodeMsg;
 
 // ---- One channel's decode (docs/roadmap/several-channels.md, A channel): the slot's decode in progress
 // (decode_core.h) and the list it builds. In PSRAM on the P4 (memory.md), one per channel; used only
-// on the capture task, during decode_slot(). ----
+// on the decode task, during decode_slot(). ----
 struct DecodeChannel {
   decode_core_t core;
   DecodeMsg dec[DEC_MAX];
@@ -288,7 +288,7 @@ static void sample_decode_cores(void) {
 // dec is esp_timer, sampled before that send: a clock step in this function
 // must not land in the duration. left is the soft clock's time until the
 // boundary. y is the sync step this slot, 0 if none: the console UART is not written, since a line
-// per message at 115200 was inside this function's timer, on the capture task. b is each core's busy
+// per message at 115200 was inside this function's timer. b is each core's busy
 // percent over this decode (core 0, then core 1). The text fits
 // PORTA_EVENT_TEXT_MAX (64). A line that does not is resent without y, so a
 // truncated event cannot clip b into a different number.
