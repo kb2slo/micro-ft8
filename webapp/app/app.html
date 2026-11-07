@@ -4250,9 +4250,9 @@ function renderDecodesNow() {
     var slotBand = slotBandName(slot), slotModeName = slotMode(slot);
     // One line: band and frequency left, the slot's time and age right.
     var freqMHz = fmtSlotFreqMHz(slot.freqKhz);
-    // An FT4 batch beside FT8 says so; FT8, the station's mode, reads as it always has.
+    // Band, mode and frequency: FT8 and FT4 batches sit side by side when FT4 is decoded too.
     var header = '<div class=day><span>' +
-      esc(slotBand) + (slotModeName === 'FT4' ? ' FT4' : '') + (freqMHz ? ' · ' + freqMHz + ' MHz' : '') +
+      esc(slotBand) + ' ' + slotModeName + (freqMHz ? ' · ' + freqMHz + ' MHz' : '') +
       '</span><span>' + fmtSlotTime(slot) + ' · ' +
       '<span class=ago data-ts="' + slot.ts + '">' + fmtAgo(slot.ts) + '</span></span></div>';
     // Each slot in its own box, so its sticky header lets go when the slot ends.
