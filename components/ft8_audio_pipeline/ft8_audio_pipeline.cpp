@@ -5,9 +5,11 @@
 #include "decode_tx_state.h"
 #include "debug_log.h"
 
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <new>
 
 #include "esp_heap_caps.h"
 #include "esp_memory_utils.h"
@@ -15,6 +17,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "freertos/portmacro.h"
 
 extern "C" {
@@ -32,19 +35,21 @@ int64_t rtc_now_ms();
 #define FT8_SAMPLE_RATE 6000
 #endif
 
-// 2.7 s at 6 kHz. The 20 m run dropped about 2 s of audio while decode held
-// the capture task; the ingest task fills this while that decode runs.
+// 2.7 s at 6 kHz. Sized when decode held the capture task for about 2 s (the 20 m run dropped about
+// 2 s of audio); decode now runs on its own task, so the ring covers USB jitter and a busy core only.
 static constexpr unsigned kIngestRingSamples = 16384;
 
 // One channel's capture buffers, sized for the largest configuration a channel runs: FT8 at t2/f2,
 // 93 blocks x 2 x 2 x 433 bins of waterfall (FT4 needs less: 156 x 2 x 2 x 131 = 81,744) and nfft
-// 1920. One set per channel, static, in PSRAM (docs/architecture/memory.md): the CPU copies into the
+// 1920. Two waterfalls in turn: capture writes one while decode reads and subtracts from the other
+// (docs/architecture/decode.md, Channels). One set per channel, static, in PSRAM (docs/architecture/memory.md): the CPU copies into the
 // ring, so no DMA reaches it. A channel that needs more is refused at start, never moved to the heap.
 // Only the P4 links this component.
 static constexpr int kChannelNfftMax = 1920;
 static constexpr size_t kChannelWaterfallBytes = 161076;
+static constexpr int kWaterfalls = 2;
 struct ChannelBuffers {
-    WF_ELEM_T mag[kChannelWaterfallBytes / sizeof(WF_ELEM_T)];
+    WF_ELEM_T mag[kWaterfalls][kChannelWaterfallBytes / sizeof(WF_ELEM_T)];
     alignas(16) uint8_t fft_work[MONITOR_FFT_WORK_BYTES(kChannelNfftMax)];
     float window[kChannelNfftMax];
     float last_frame[kChannelNfftMax];
@@ -55,15 +60,25 @@ struct ChannelBuffers {
 static DECODE_PSRAM_BSS ChannelBuffers s_channel_buffers[RX_MAX_CHANNELS];
 
 // One channel's capture state (docs/roadmap/several-channels.md, A channel): its monitor and waterfall,
-// the AGC, its ring, and where it is in its slot. Lives on the capture task's stack for one run.
+// the AGC, its ring, and where it is in its slot. Lives on the capture task's stack for one run;
+// ft8_audio_pipeline_run() does not return while the decode task still reads any of it.
 struct Ft8Channel {
     const ft8_audio_pipeline_config_t* cfg;
     const char* tag;
     monitor_config_t mon_cfg;
-    monitor_t mon;
+    monitor_t mon;      // capture's: its wf.mag is the waterfall being filled, mag[filling]
     float* block;       // the block being filled, heap
     int block_fill;
-    float* block_gain;  // the AGC gain applied to each waterfall block: the decode SNR divides it back out (decode.md, SNR)
+    // The AGC gain applied to each waterfall block, one array per waterfall: the decode SNR divides it
+    // back out (decode.md, SNR). Heap.
+    float* block_gain[kWaterfalls];
+    int filling;        // the waterfall capture writes
+    // Per waterfall: the monitor as it stood at the decode trigger, which the decode task reads, and
+    // whether the decode task still has it. Capture sets `decoding` before the hand-off; the decode task
+    // clears it, with release, once decode_slot() has returned.
+    monitor_t decode_mon[kWaterfalls];
+    std::atomic<bool> decoding[kWaterfalls];
+    int64_t handed_slot_idx;  // the last slot handed to decode, which marks it applied itself
     Ft8SampleRing ring;
     int64_t slot_ms;
     int target_blocks;
@@ -87,17 +102,59 @@ struct Ft8Channel {
 static void channel_free(Ft8Channel* ch)
 {
     free(ch->block);
-    free(ch->block_gain);
     ch->block = nullptr;
-    ch->block_gain = nullptr;
+    for (int w = 0; w < kWaterfalls; ++w) {
+        free(ch->block_gain[w]);
+        ch->block_gain[w] = nullptr;
+    }
     monitor_free(&ch->mon);
+}
+
+// ---- The decode task: decodes each finished slot off the capture task (docs/architecture/main_board.md,
+// Tasks). One for every channel, created on first use and kept, so a radio's restart does not churn it. ----
+// A finished slot, and the flag the decode task clears when it is done with that slot's waterfall.
+struct DecodeJob {
+    ft8_slot_t slot;
+    std::atomic<bool>* done;
+};
+static QueueHandle_t s_decode_queue;
+
+static void decode_task(void*)
+{
+    for (;;) {
+        DecodeJob job;
+        if (xQueueReceive(s_decode_queue, &job, portMAX_DELAY) != pdTRUE) continue;
+        decode_slot(&job.slot);
+        job.done->store(false, std::memory_order_release);
+    }
+}
+
+// Below the capture task's priority on the same core (main.cpp pins that to core 1 at 4), so a block
+// is processed as it arrives while a decode runs; the stack decode_slot() had on the capture task.
+static constexpr UBaseType_t kDecodePriority = 3;
+static constexpr uint32_t kDecodeStack = 8192;
+
+static bool decode_task_start(const char* tag)
+{
+    if (s_decode_queue) return true;
+    static StaticQueue_t queue_buffer;
+    static uint8_t queue_storage[kWaterfalls * RX_MAX_CHANNELS * sizeof(DecodeJob)];
+    s_decode_queue = xQueueCreateStatic(kWaterfalls * RX_MAX_CHANNELS, sizeof(DecodeJob), queue_storage, &queue_buffer);
+    if (xTaskCreatePinnedToCore(decode_task, "ft8_decode", kDecodeStack, nullptr, kDecodePriority, nullptr, 1) != pdPASS) {
+        ESP_LOGE(tag, "decode task create failed");
+        vQueueDelete(s_decode_queue);
+        s_decode_queue = nullptr;
+        return false;
+    }
+    return true;
 }
 
 // Sets up the channel in its own buffers. False, logged, when they cannot hold its configuration or
 // the heap has no room for its block buffers.
 static bool channel_start(Ft8Channel* ch, const ft8_audio_pipeline_config_t* cfg, const char* tag)
 {
-    memset(ch, 0, sizeof(*ch));
+    new (ch) Ft8Channel();  // every field zero, the atomics false
+    ch->handed_slot_idx = -1;
     ch->cfg = cfg;
     ch->tag = tag;
     if (cfg->channel < 0 || cfg->channel >= RX_MAX_CHANNELS || cfg->mode == nullptr) {
@@ -115,8 +172,8 @@ static bool channel_start(Ft8Channel* ch, const ft8_audio_pipeline_config_t* cfg
         .protocol = cfg->mode->protocol_id,
     };
     const monitor_buffers_t monitor_buffers = {
-        .mag = buffers->mag,
-        .mag_bytes = sizeof(buffers->mag),
+        .mag = buffers->mag[0],
+        .mag_bytes = sizeof(buffers->mag[0]),
         .fft_work = buffers->fft_work,
         .fft_work_bytes = sizeof(buffers->fft_work),
         .window = buffers->window,
@@ -139,8 +196,13 @@ static bool channel_start(Ft8Channel* ch, const ft8_audio_pipeline_config_t* cfg
     monitor_reset(&ch->mon);
 
     ch->block = (float*)heap_caps_malloc(sizeof(float) * ch->mon.block_size, MALLOC_CAP_DEFAULT);
-    ch->block_gain = (float*)heap_caps_malloc(sizeof(float) * ch->mon.wf.max_blocks, MALLOC_CAP_DEFAULT);
-    if (!ch->block || !ch->block_gain) {
+    bool gains = true;
+    for (int w = 0; w < kWaterfalls; ++w) {
+        ch->block_gain[w] = (float*)heap_caps_malloc(sizeof(float) * ch->mon.wf.max_blocks, MALLOC_CAP_DEFAULT);
+        gains = gains && ch->block_gain[w];
+    }
+    ch->filling = 0;
+    if (!ch->block || !gains) {
         ESP_LOGE(tag, "pipeline buffer allocation failed");
         channel_free(ch);
         return false;
@@ -187,7 +249,7 @@ static void channel_block(Ft8Channel* ch, int64_t queued)
     int activity_level = -1;
     uint8_t activity_mask[FT8_ACTIVITY_MASK_BYTES];
     if (mon.wf.num_blocks < ch->target_blocks && mon.wf.num_blocks < mon.wf.max_blocks) {
-        ch->block_gain[mon.wf.num_blocks] = gain;
+        ch->block_gain[ch->filling][mon.wf.num_blocks] = gain;
         const int64_t monitor_t0 = esp_timer_get_time();
         monitor_process(&mon, block);
         ch->slot_monitor_us += esp_timer_get_time() - monitor_t0;
@@ -242,7 +304,9 @@ static void channel_block(Ft8Channel* ch, int64_t queued)
                      (long long)ch->slot_monitor_us, frontend_us);
             debug_log_line(buf);
         }
-        if (ch->slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
+        // A slot handed to decode is marked applied by decode_slot(), after it publishes; one never
+        // decoded (cut short, or dropped by a clock step) is marked here.
+        if (ch->slot_idx != ch->handed_slot_idx && ch->slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
             decode_tx_state_set_decode_applied_slot_idx(ch->slot_idx);
         }
         if (ch->slot_idx == decode_tx_state_get_tx_slot_idx()) {
@@ -258,7 +322,7 @@ static void channel_block(Ft8Channel* ch, int64_t queued)
                mon.wf.num_blocks >= cfg->mode->total_symbols) {
         ESP_LOGD(ch->tag, "Triggering decode at slot %lld blocks=%d wf=%d",
                  (long long)ch->slot_idx, ch->slot_blocks, mon.wf.num_blocks);
-        // The decode holds this task for about 2 s: send the slot's last blocks first.
+        // The slot's last blocks close its activity at the trigger, as its decodes follow.
         if (cfg->on_activity && ft8_activity_batch_take(&ch->activity, &ch->activity_out)) {
             send_activity(ch, ch->activity_out);
         }
@@ -276,18 +340,39 @@ static void channel_block(Ft8Channel* ch, int64_t queued)
             if (ch->slot_idx == decode_tx_state_get_tx_slot_idx()) {
                 decode_tx_state_set_tx_slot_idx(-1);
             }
+        } else if (decode_tx_state_get_decode_enabled() &&
+                   ch->decoding[1 - ch->filling].load(std::memory_order_acquire)) {
+            // The decode task still has the other waterfall, from a slot ago: a decode a whole slot
+            // long. Capture cannot hand this one over without a waterfall to fill, so it is not decoded.
+            char buf[32];
+            snprintf(buf, sizeof(buf), "BUSY %lld", (long long)ch->slot_idx);
+            debug_log_line(buf);
+            if (ch->slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
+                decode_tx_state_set_decode_applied_slot_idx(ch->slot_idx);
+            }
         } else if (decode_tx_state_get_decode_enabled()) {
-            const ft8_slot_t slot = {
-                .channel = cfg->channel,
-                .mode = cfg->mode,
-                .monitor = &mon,
-                .block_gain = ch->block_gain,
-                .slot_idx = ch->slot_idx,
-                .capture_clean =
-                    ch->slot_clean && ft8_sample_ring_dropped(&ch->ring) == ch->dropped_at_boundary,
+            // Hand this waterfall to the decode task, and fill the other from here on.
+            const int w = ch->filling;
+            ch->decode_mon[w] = mon;
+            const DecodeJob job = {
+                .slot = {
+                    .channel = cfg->channel,
+                    .mode = cfg->mode,
+                    .monitor = &ch->decode_mon[w],
+                    .block_gain = ch->block_gain[w],
+                    .slot_idx = ch->slot_idx,
+                    .capture_clean =
+                        ch->slot_clean && ft8_sample_ring_dropped(&ch->ring) == ch->dropped_at_boundary,
+                },
+                .done = &ch->decoding[w],
             };
+            ch->decoding[w].store(true, std::memory_order_relaxed);
             decode_tx_state_set_decode_in_progress(true);
-            decode_slot(&slot);
+            ch->handed_slot_idx = ch->slot_idx;
+            // The queue holds every waterfall of every channel, so this never waits.
+            xQueueSend(s_decode_queue, &job, portMAX_DELAY);
+            ch->filling = 1 - w;
+            mon.wf.mag = s_channel_buffers[cfg->channel].mag[ch->filling];
         } else {
             char buf[32];
             snprintf(buf, sizeof(buf), "PAUSED %lld", (long long)ch->slot_idx);
@@ -331,7 +416,9 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
     if (!cfg || !cfg->read || !cfg->should_stop) return false;
     const char* tag = cfg->tag ? cfg->tag : "FT8_AUDIO";
 
-    // On this task's stack: pointers and counters only, under 1 KB; the buffers are the channel's statics.
+    if (!decode_task_start(tag)) return false;
+    // On this task's stack: pointers, counters and two monitor copies, about 1 KB; the buffers are the
+    // channel's statics.
     Ft8Channel ch;
     if (!channel_start(&ch, cfg, tag)) return false;
 
@@ -393,6 +480,11 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
     ingest.stop = true;
     for (int i = 0; i < 50 && !ingest.done; ++i) {
         vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    // The decode task reads this channel's waterfalls, gains and monitor copies until it is done
+    // with them; the next run would overwrite them. A decode is about 2 s.
+    for (int w = 0; w < kWaterfalls; ++w) {
+        while (ch.decoding[w].load(std::memory_order_acquire)) vTaskDelay(pdMS_TO_TICKS(10));
     }
     free(temp_dec);
     channel_free(&ch);
