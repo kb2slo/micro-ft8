@@ -5,7 +5,9 @@ Channels).
 On both corpora, with no budget and with the firmware's, decoding each candidate 1, 2 or 3 candidates ahead
 of its commit, or every candidate at the start of its search, lists byte for byte what the serial order
 lists and counts the same work; and so does the firmware's driver with its helper thread (two workers),
-run several times, since each run's timing differs. Also prints what running ahead cost: decodes run again
+run several times, since each run's timing differs. And a mix of channels: the in-tree FT8 slots interleaved
+with synthetic FT4 periods (decode_recall --synth-ft4) in one run, as the P4's two channels share one decoder
+and helper, list each file byte for byte as its mode alone does, with one worker or two. Also prints what running ahead cost: decodes run again
 at commit, and decodes thrown away, as a share of the candidates committed.
 
     python3 tools/decode_recall/test_lookahead.py
@@ -13,7 +15,9 @@ at commit, and decodes thrown away, as a share of the candidates committed.
 
 import os
 import re
+import subprocess
 import sys
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -40,6 +44,47 @@ def cost(log):
         redone += int(match.group(2))
         wasted += int(match.group(3))
     return tried, redone, wasted
+
+
+def per_file_lines(log):
+    """Per FILE: its message and END lines, timings and run-ahead counts removed."""
+    out, current = {}, None
+    for line in VARIES.sub("", log).splitlines():
+        if line.startswith("FILE "):
+            current = line[5:]
+            out[current] = []
+        elif current is not None and (line.startswith("000000") or line.startswith("END ")):
+            out[current].append(line)
+    return out
+
+
+def mixed_channels():
+    fails = []
+    ft8 = [str(p) for p in report.wavs_12k(report.IN_TREE)][:12]
+    with tempfile.TemporaryDirectory() as tmp:
+        subprocess.run([str(report.DECODER), "--synth-ft4", tmp], check=True, capture_output=True)
+        ft4 = ["ft4:" + os.path.join(tmp, n) for n in sorted(os.listdir(tmp))]
+        mix = [f for pair in zip(ft8, ft4 * 3) for f in pair]
+
+        def decode(files, workers):
+            out = subprocess.run([str(report.DECODER), "--workers", str(workers)] + files,
+                                 capture_output=True, text=True, check=True).stdout
+            return per_file_lines(out)
+
+        alone = dict(decode(ft8, 1), **decode(ft4, 1))
+        if sum(1 for lines in alone.values() for l in lines if l.startswith("000000")) == 0:
+            fails.append("mix: nothing decoded, so it tested nothing")
+        runs = [decode(mix, 1)] + [decode(mix, 2) for _ in range(THREADED_RUNS)]
+        for k, run in enumerate(runs):
+            label = "one worker" if k == 0 else f"two workers #{k}"
+            for f in mix:
+                if run.get(f) != alone.get(f):
+                    fails.append(f"mix, {label}: {os.path.basename(f)} differs from its mode alone")
+                    break
+        n4 = sum(1 for f in ft4 for l in alone[f] if l.startswith("000000"))
+        print(f"mix: {len(ft8)} FT8 slots and {len(ft4)} FT4 periods interleaved, {n4} FT4 messages; "
+              f"one and two workers list each file as its mode alone")
+    return fails
 
 
 def main():
@@ -71,6 +116,7 @@ def main():
         tried, redone, wasted = cost(log)
         print(f"{name:8} budget {budget:5} lookahead {label:>12}: {tried} committed, "
               f"{redone} redone ({100 * redone / tried:.1f}%), {wasted} wasted ({100 * wasted / tried:.1f}%)")
+    fails += mixed_channels()
     for fail in fails:
         print("FAIL: " + fail)
     print("lookahead: " + ("FAIL" if fails else "ok"))
