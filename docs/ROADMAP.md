@@ -8,7 +8,7 @@ How things work now: `architecture/` (start at [architecture/system.md](architec
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| an8x | <a id="an8x"></a>FT8 and FT4 at once from one QMX, receive | Epic [u8mc](roadmap/several-channels.md#an8x). Built on 2026-11-07 (Settings › Also decode FT4, receive only, experimental; [decode.md](architecture/decode.md), **FT4**); the field hour is owed. **Done-when:** a recorded 20 m I/Q slot decodes both modes on the host to the same messages as each mode alone, in replay (category 1); on the air, both channels decode for an hour on 20 m with every slot inside its deadline, each channel's depth logged, and FT8's decodes within its recall of FT8 alone (field). |
+| an8x | <a id="an8x"></a>FT8 and FT4 at once from one QMX, receive | Epic [u8mc](roadmap/several-channels.md#an8x). Built on 2026-11-07 (Settings › Also decode FT4, receive only, experimental; [decode.md](architecture/decode.md), **FT4**); the field hour is owed. **Done-when:** on the host, a mix of FT8 slots and synthesized FT4 periods decodes each to what that mode finds alone at the same budget (`test_lookahead.py`, category 1); on the air, both channels decode for an hour on 20 m with every slot inside its deadline, each channel's depth logged, and FT8's decodes within its recall of FT8 alone (field). |
 
 ## Backlog
 
