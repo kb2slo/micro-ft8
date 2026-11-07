@@ -27,8 +27,9 @@ extern "C" {
 #include "ft8/decode.h"
 }
 
-// Defined by decode_pipeline (decode_pipeline.h), which this component does not depend on.
+// Defined by decode_pipeline (decode_pipeline.h, decode_budget.h), which this component does not depend on.
 void decode_slot(const ft8_slot_t* slot);
+extern "C" int decode_trigger_blocks(int ft4, int64_t period_idx, int beside_other);
 int64_t rtc_now_ms();
 
 #ifndef FT8_SAMPLE_RATE
@@ -234,7 +235,11 @@ static bool channel_start(Ft8Channel* ch, const ft8_audio_pipeline_config_t* cfg
 
     ft8_sample_ring_init(&ch->ring, buffers->ring, kIngestRingSamples);
     ch->slot_ms = chan->mode->slot_time_ms;
-    ch->target_blocks = chan->mode->total_symbols + 1;
+    // Filled up to the latest start this mode can have (decode_trigger_blocks()), and one block more.
+    const int ft4 = chan->mode->protocol_id == FTX_PROTOCOL_FT4;
+    const int t0 = decode_trigger_blocks(ft4, 0, ch->beside_other);
+    const int t1 = decode_trigger_blocks(ft4, 1, ch->beside_other);
+    ch->target_blocks = (t0 > t1 ? t0 : t1) + 1;
     ch->block_ms = (int)lroundf(chan->mode->symbol_period * 1000.0f);
     ft8_activity_batch_init(&ch->activity, ch->block_ms);
     ch->activity_lo_hz = (int)lroundf(ch->mon.min_bin / ch->mon.symbol_period);
@@ -257,6 +262,13 @@ static void mark_applied(const Ft8Channel* ch, int64_t slot_idx)
     if (ch->chan->station && slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
         decode_tx_state_set_decode_applied_slot_idx(slot_idx);
     }
+}
+
+// Blocks this slot's decode starts after: its mode's, and for FT4's second period beside FT8 an earlier one
+// (decode_limits.h; docs/architecture/decode.md, Decoding later in the slot).
+static int trigger_blocks(const Ft8Channel* ch)
+{
+    return decode_trigger_blocks(ch->chan->mode->protocol_id == FTX_PROTOCOL_FT4, ch->slot_idx, ch->beside_other);
 }
 
 static void log_slot_event(const Ft8Channel* ch, const char* what, int64_t slot_idx)
@@ -370,8 +382,7 @@ static void channel_block(Ft8Channel* ch, int64_t queued)
         ch->slot_monitor_us = 0;
         mon.wf.num_blocks = 0;
         monitor_reset(&mon);
-    } else if (ch->slot_blocks >= chan->mode->total_symbols &&
-               mon.wf.num_blocks >= chan->mode->total_symbols) {
+    } else if (ch->slot_blocks >= trigger_blocks(ch) && mon.wf.num_blocks >= trigger_blocks(ch)) {
         ESP_LOGD(ch->tag, "Triggering decode at slot %lld blocks=%d wf=%d",
                  (long long)ch->slot_idx, ch->slot_blocks, mon.wf.num_blocks);
         // The slot's last blocks close its activity at the trigger, as its decodes follow.

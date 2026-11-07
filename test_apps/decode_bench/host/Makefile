@@ -9,6 +9,7 @@ SRCS := host_main.c ../main/bench_core.c \
         $(LIB)/common/monitor.c $(LIB)/common/fft_wrapper.c \
         $(ROOT)/components/decode_pipeline/decode_core.c \
         $(ROOT)/components/decode_pipeline/decode_workers.c \
+        $(ROOT)/components/decode_pipeline/decode_budget.c \
         $(ROOT)/components/decode_pipeline/decode_subtract.c \
         $(ROOT)/components/decode_pipeline/decode_retry.c \
         $(ROOT)/components/decode_pipeline/decode_snr.c

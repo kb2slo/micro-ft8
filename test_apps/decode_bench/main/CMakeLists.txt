@@ -1,6 +1,7 @@
 idf_component_register(SRCS "bench_main.c" "bench_core.c"
                             "../../../components/decode_pipeline/decode_core.c"
                             "../../../components/decode_pipeline/decode_workers.c"
+                            "../../../components/decode_pipeline/decode_budget.c"
                             "../../../components/decode_pipeline/decode_subtract.c"
                             "../../../components/decode_pipeline/decode_retry.c"
                             "../../../components/decode_pipeline/decode_snr.c"
