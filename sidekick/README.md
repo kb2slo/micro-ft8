@@ -40,9 +40,8 @@ esptool.py --chip esp32s3 -b 460800 \
     read_flash 0x0 0x800000 stock_backup/atoms3_stock_backup.bin
 ```
 
-Note both changes from the NanoC6 form: `--chip esp32s3`, and `0x800000` because the AtomS3 Lite has 8 MB
-where the Nano had 4 MB. Reading only the first 4 MB would produce a backup that silently restores garbage
-over the upper half.
+`0x800000` is the AtomS3 Lite's whole 8 MB. Reading less would produce a backup that silently restores
+garbage over the rest.
 
 `../tools/restore_sidekick_stock.sh` writes it back afterward (port optional; it autodetects). `stock_backup/` is gitignored on purpose (vendor firmware, and a snapshot of one specific unit) — this is a personal safety net you (re)create per device, not a repo asset.
 

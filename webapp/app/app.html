@@ -682,10 +682,11 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       <label>Protocol
         <select id=protocol_mode>
           <option value=FT8>FT8</option>
-          <option value=FT4>FT4</option>
+          <option value=FT4 disabled>FT4</option>
         </select>
       </label>
     </div>
+    <p class=setnote>FT4 is not built yet: the main board runs FT8 whatever is chosen here.</p>
     <div class=setrow>
       <label>Skip TX1
         <select id=skiptx1>
@@ -2910,7 +2911,7 @@ async function loadConfig(quiet) {
     }
     if (quiet) return;
     setMsg(MicroFT8Pairing.getToken()
-      ? ('Loaded ' + n + ' fields from the main board — edit and save')
+      ? ('Loaded ' + n + ' fields from the main board')
       : 'Loaded from the main board — press the sidekick button to pair before saving');
   } catch (e) {
     clearTimeout(timer);
@@ -5986,7 +5987,7 @@ function paired() { return !!MicroFT8Pairing.getToken(); }
 MicroFT8Pairing.boot({
   onPaired: function () {
     enableWrites(true);
-    setMsg('Paired — edit and save');
+    setMsg('Paired');
     renderRadioBar();
     autoSyncClock();
   }

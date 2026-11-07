@@ -624,10 +624,11 @@
       Join the Atom’s own Wi‑Fi network directly (no router needed — a summit has
       no camp router any more than it has cell service), or put it on your home
       or camp network instead. Either way: no app-store install, just Safari or
-      Chrome on a phone, tablet, or laptop. Three tabs: <strong>Operate</strong> drives
+      Chrome on a phone, tablet, or laptop. Four tabs: <strong>Operate</strong> drives
       the radio, <strong>QSOs</strong> is your log, <strong>Tools</strong> is everything
       around operating: who is hearing you (from PSKReporter, on the map or as a list), space
-      weather, the map, and an SWR sweep for tuning an antenna.
+      weather, the map, and an SWR sweep for tuning an antenna; <strong>Settings</strong> is
+      the station, the radio and the network.
     </p>
     <p class="note">
       <strong>The phone is optional once you’re set up.</strong> Open the page again
@@ -745,7 +746,7 @@
       <li>
         <strong>Logs are safer, and easier to get off the station.</strong> Download a
         day’s <code>.adi</code> file straight to your phone and upload it to whatever
-        logging software you use. Direct QRZ.com logging is coming soon. A QSO logs the
+        logging software you use. A QSO logs the
         other station’s grid even when the exchange never carried one, from the last
         grid it sent in the past four hours.
       </li>
@@ -788,10 +789,14 @@
     <h3 class="sub">Not yet, or not claimed</h3>
     <ul class="checks no">
       <li>
-        <strong>Decode sensitivity hasn’t been measured</strong> against WSJT-X or any
-        phone app. Micro-FT8 decodes with Karlis Goba’s
-        <a href="https://github.com/kgoba/ft8_lib">ft8_lib</a>. We’ll publish numbers
-        once we’ve measured them.
+        <strong>Decode depth is about two thirds of WSJT-X’s.</strong> Scored against
+        WSJT-X’s own decoder (<code>jt9 -d 3</code>) on two recorded corpora, the station’s
+        decoder found 67% of its decodes (66.6% and 67.1%, measured 2026-09-23 and held by a
+        check on every change). That is the trade: size, portability, low power and low cost,
+        for decode depth. It decodes with Karlis Goba’s
+        <a href="https://github.com/kgoba/ft8_lib">ft8_lib</a>; how it is measured, and what is
+        planned to close the gap:
+        <a href="https://github.com/kb2slo/micro-ft8/blob/main/docs/architecture/decode.md">decode.md</a>.
       </li>
       <li>
         <strong>Every QSO so far was on a QMX.</strong> The Hermes-Lite&nbsp;2 receives and
@@ -818,15 +823,6 @@
       <li>
         <strong>Deeper decode</strong> — using more of the ESP32-P4’s headroom for better
         recall on busy bands.
-      </li>
-      <li>
-        <strong>Per-band conditions</strong> — a band-by-band read alongside the space
-        weather numbers.
-      </li>
-      <li>
-        <strong>QRZ.com realtime logging</strong> — upload completed QSOs from the browser
-        with your own credentials (callsign links to QRZ are already in; this is the log-sync
-        half). The radio never holds those credentials.
       </li>
     </ul>
   </section>
