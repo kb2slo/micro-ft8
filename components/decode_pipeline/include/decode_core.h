@@ -7,7 +7,8 @@
 //
 // The work is in steps so a scheduler can order and share it (docs/roadmap/several-channels.md, The
 // scheduler). decode_core_decode() reads the waterfall and nothing else, so it may run ahead of the
-// commits before it; every other step writes the state and runs in candidate order. Driven in order:
+// commits before it, on another worker; every other step writes the state and runs in candidate order,
+// one at a time. Driven in order:
 //
 //     decode_core_begin(&core, monitor, block_gain, &config);
 //     do {
@@ -24,6 +25,14 @@
 // candidate tried cost_candidate plus the LDPC iterations it ran. A slot stops at the first candidate
 // whose worst case would take it past budget_units, so where it stops depends on the waterfall alone:
 // the host replays it exactly, whatever its speed.
+//
+// Run ahead, a decode may have read bins that a commit before it then subtracted. The commit sees that,
+// since a decode reads only its candidate's tone bins and a subtraction lowers only the decoded signal's
+// (decode_retry.h), and decodes the candidate again on the waterfall as the serial order would have it.
+// So the output is the serial order's byte for byte, however far ahead decodes run, and `redone` counts
+// what that cost (docs/architecture/decode.md, Channels). Every
+// decode_core_skip() and decode_core_afford() is still asked at commit time, in order; a decode run
+// ahead for a candidate they then refuse is discarded.
 //
 // One decode_core_t per channel: it is a slot's decode in progress, not a worker's scratch.
 
@@ -77,6 +86,11 @@ typedef struct {
     int spent;                           // units charged this slot
     int tried;                           // candidates decoded this slot, every search
     int cut;                             // 1 once the budget stopped work the slot would have done
+    int iterations;                      // LDPC iterations charged this slot: the committed decodes'
+    int redone;                          // decodes run again at commit, since an earlier commit's subtraction
+                                         // touched what they read
+    int16_t pass_bins[DECODE_MAX_CANDIDATES];  // this search's subtractions, in commit order: freq_offset
+    int pass_subs;                       // entries in pass_bins
     decode_retry_t retry;
     decode_snr_slot_t snr;
     ftx_message_t decoded[DECODE_CORE_HASH_SLOTS];
@@ -87,6 +101,7 @@ typedef struct {
 typedef struct {
     int ok;
     int iterations;  // LDPC iterations run
+    int stamp;       // the search's subtractions committed when this decode read the waterfall
     ftx_message_t message;
 } decode_core_attempt_t;
 
@@ -121,12 +136,14 @@ int decode_core_skip(const decode_core_t* core, int i);
 // iteration. 0 marks the slot cut; try no more of this search's candidates.
 int decode_core_afford(decode_core_t* core);
 
-// LDPC on candidate i. Reads the waterfall only.
+// LDPC on candidate i. Reads the waterfall, and the count of this search's subtractions, only. A driver
+// that runs it on another worker than the commits reads that count before the waterfall, and sees every
+// subtraction it counts complete.
 void decode_core_decode(const decode_core_t* core, int i, decode_core_attempt_t* attempt);
 
 // Commits candidate i's attempt and charges what it cost: notes a failure, or unpacks, measures the
-// SNR, subtracts. Fills
-// *message for DECODE_CORE_REPEAT and DECODE_CORE_NEW.
+// SNR, subtracts. An attempt that read bins a commit since its stamp subtracted is decoded again first,
+// and only that decode is charged. Fills *message for DECODE_CORE_REPEAT and DECODE_CORE_NEW.
 decode_core_result_t decode_core_commit(decode_core_t* core, int i, const decode_core_attempt_t* attempt,
                                         decode_core_message_t* message);
 

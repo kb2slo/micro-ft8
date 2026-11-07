@@ -170,11 +170,11 @@ static int decode_file(const char* path, const BenchConfig* config)
         printf("FAIL %s\n", path);
         return 1;
     }
-    printf("END cand=%d dec=%d wall_ms=%lld find_ms=%lld decode_ms=%lld searches=%d tried=%d iters=%d units=%d cut=%d find_us=%lld decode_us=%lld\n",
+    printf("END cand=%d dec=%d wall_ms=%lld find_ms=%lld decode_ms=%lld searches=%d tried=%d iters=%d units=%d cut=%d find_us=%lld decode_us=%lld redone=%d wasted=%d\n",
            result.candidates, result.decoded, (long long)wall_ms,
            (long long)(result.find_us / 1000), (long long)(result.decode_us / 1000), result.searches,
            result.tried, result.iterations, result.units, result.cut, (long long)result.find_us,
-           (long long)result.decode_us);
+           (long long)result.decode_us, result.redone, result.wasted);
     return 0;
 }
 
@@ -268,7 +268,7 @@ static void usage(const char* argv0)
             "defaults are the firmware's: time-osr 2, freq-osr 2, candidates %d, decodes 32,\n"
             "min-score 5, ldpc 25, sample-rate 6000, agc on, levels 256,\n"
             "subtract-passes %d, subtract-neighbors %d, subtract-fraction 0.5,\n"
-            "budget-units %d, cost-search %d, cost-candidate %d\n",
+            "budget-units %d, cost-search %d, cost-candidate %d, lookahead 0\n",
             argv0, argv0, DECODE_MAX_CANDIDATES, DECODE_SUBTRACT_PASSES, DECODE_SUBTRACT_NEIGHBORS,
             DECODE_BUDGET_UNITS, DECODE_COST_SEARCH, DECODE_COST_CANDIDATE);
 }
@@ -310,6 +310,7 @@ int main(int argc, char** argv)
         { "budget-units", required_argument, NULL, 'b' },
         { "cost-search", required_argument, NULL, 'S' },
         { "cost-candidate", required_argument, NULL, 'C' },
+        { "lookahead", required_argument, NULL, 'L' },
         { "synth", required_argument, NULL, 'y' },
         { "help", no_argument, NULL, 'h' },
         { NULL, 0, NULL, 0 },
@@ -339,6 +340,7 @@ int main(int argc, char** argv)
             case 'b': config.budget_units = atoi(optarg); break;
             case 'S': config.cost_search = atoi(optarg); break;
             case 'C': config.cost_candidate = atoi(optarg); break;
+            case 'L': config.lookahead = atoi(optarg); break;
             case 'y': synth_dir = optarg; break;
             default:
                 usage(argv[0]);
@@ -350,11 +352,12 @@ int main(int argc, char** argv)
         config.subtract_passes < 0 || config.subtract_passes > 3 ||
         (config.subtract_neighbors != 0 && config.subtract_neighbors != 1) ||
         config.subtract_fraction < 0.0f || config.subtract_fraction > 1.0f || config.budget_units < 0 ||
-        config.cost_search < 0 || config.cost_candidate < 0) {
+        config.cost_search < 0 || config.cost_candidate < 0 || config.lookahead < 0 ||
+        config.lookahead > BENCH_LOOKAHEAD_PASS) {
         fprintf(stderr, "candidates must be 1..%d; osr and decodes must be >= 1; "
                         "subtract-passes is 0..3; subtract-neighbors is 0 or 1; "
-                        "subtract-fraction is 0 (half) or (0, 1]; budget and costs are >= 0\n",
-                BENCH_MAX_CANDIDATES);
+                        "subtract-fraction is 0 (half) or (0, 1]; budget and costs are >= 0; lookahead is 0..%d\n",
+                BENCH_MAX_CANDIDATES, BENCH_LOOKAHEAD_PASS);
         return 2;
     }
     if (synth_dir != NULL) return synth_grid(synth_dir);
