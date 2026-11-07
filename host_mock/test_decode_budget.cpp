@@ -42,15 +42,16 @@ int main()
     expect_int(decode_budget_units(1, -1, 1), DECODE_BUDGET_FT4_BESIDE_FT8, "a negative index keeps its parity");
     // An FT4 period index 2k and 2k+1 lie in FT8 slot k: the second half starts at the FT8 slot's middle.
     expect_int((239209447LL * 7500) / 15000, 119604723, "FT4 period 2k+1 is in FT8 slot k");
-    // The timing the design rests on, at the rates two workers run on the air (decode_limits.h): every start
-    // leaves its deadline, and FT4's second period is done before FT8 starts, so they never share the cores.
+    // The timing the design rests on, at the rates two workers run on the air with the hand-off (decode_limits.h:
+    // 0.221 ms a unit alone, 0.243 beside FT4): every start leaves its deadline, and FT4's second period is
+    // done before FT8 starts, so they never share the cores.
     const double ft8_start_ms = DECODE_TRIGGER_FT8 * 160.0;
     const double ft4_second_start_ms = 7500.0 + DECODE_TRIGGER_FT4_BESIDE_FT8 * 48.0;
     const double ft4_first_start_ms = DECODE_TRIGGER_FT4 * 48.0;
-    expect(ft8_start_ms + 14 + DECODE_BUDGET_UNITS * 0.20 < 15000.0, "FT8 alone ends before its boundary");
-    expect(ft8_start_ms + 14 + DECODE_BUDGET_FT8_BESIDE_FT4 * 0.23 < 15000.0, "FT8 beside FT4 ends before it");
-    expect(ft4_first_start_ms + 14 + DECODE_BUDGET_FT4 * 0.23 < 7500.0, "FT4's first period ends before its own");
-    expect(ft4_second_start_ms + 14 + DECODE_BUDGET_FT4_BESIDE_FT8 * 0.23 < ft8_start_ms,
+    expect(ft8_start_ms + 14 + DECODE_BUDGET_UNITS * 0.221 < 15000.0, "FT8 alone ends before its boundary");
+    expect(ft8_start_ms + 14 + DECODE_BUDGET_FT8_BESIDE_FT4 * 0.243 < 15000.0, "FT8 beside FT4 ends before it");
+    expect(ft4_first_start_ms + 14 + DECODE_BUDGET_FT4 * 0.243 < 7500.0, "FT4's first period ends before its own");
+    expect(ft4_second_start_ms + 14 + DECODE_BUDGET_FT4_BESIDE_FT8 * 0.243 < ft8_start_ms,
            "FT4's second period ends before FT8 starts");
     // Each start fits its waterfall: FT8 93 blocks a slot, FT4 156 a period.
     expect(DECODE_TRIGGER_FT8 < 93 && DECODE_TRIGGER_FT4 < 156, "starts fit the waterfalls");

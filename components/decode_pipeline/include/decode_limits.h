@@ -18,13 +18,13 @@
 // a search DECODE_COST_SEARCH, a candidate tried DECODE_COST_CANDIDATE beside its iterations. The costs are
 // decode_bench's on the P4 (2026-11-06): a search about 370 iterations, a candidate nothing the five slots
 // could separate from its iterations. Each budget is what the time from its start to its deadline holds at
-// the rate two workers run on the air, about 0.20 ms a unit for FT8 alone and 0.23 beside FT4 (the SLOT
-// lines of 2026-11-07), with about 100 ms to spare: FT8 alone 7,800 in 1.72 s; FT8 beside FT4 7,000; FT4's
-// first period 7,000 in its 1.74 s; its second 2,800 in the 0.74 s before FT8 starts. On the corpora and
-// the captures none of them costs a message against no budget (decode.md). The recall harness scores these
-// values, like the cap above.
-#define DECODE_BUDGET_UNITS 7800
-#define DECODE_BUDGET_FT8_BESIDE_FT4 7000
+// the rate two workers run on the air, hand-off and SLOT line included: 0.221 ms a unit for FT8 alone and
+// 0.243 beside FT4 (the SLOT lines of 2026-11-07, its costliest slots), with about 100 ms to spare: FT8
+// alone 7,300 in 1.72 s; FT8 beside FT4 6,500; FT4's first period 7,000 in its 1.74 s; its second 2,800 in
+// the 0.74 s before FT8 starts. On the corpora and the captures none of them costs a message against no
+// budget (decode.md). The recall harness scores these values, like the cap above.
+#define DECODE_BUDGET_UNITS 7300
+#define DECODE_BUDGET_FT8_BESIDE_FT4 6500
 #define DECODE_BUDGET_FT4 7000
 #define DECODE_BUDGET_FT4_BESIDE_FT8 2800
 #define DECODE_COST_SEARCH 370
