@@ -36,6 +36,7 @@ extern "C" {
 #include "decode_core.h"
 #include "decode_subtract.h"
 #include "decode_workers.h"
+#include "decode_budget.h"
 }
 
 #include "adif.h"
@@ -91,7 +92,7 @@ static uint32_t s_next_decode_id = 1;  // 0 is "not a real decode"
 
 // Assigns the next id, remembers enough of `e` to reconstruct a UiRxLine for
 // a later reply, and returns the id for porta_emit_decode() to carry.
-static uint32_t remember_decode_for_reply(const RxDecodeEntry& e) {
+static uint32_t remember_decode_for_reply(const RxDecodeEntry& e, bool listen_only) {
   uint32_t id = s_next_decode_id++;
   if (s_next_decode_id == 0) {
     s_next_decode_id = 1;  // skip the sentinel on wrap
@@ -109,6 +110,7 @@ static uint32_t remember_decode_for_reply(const RxDecodeEntry& e) {
   slot.rx.is_cq       = e.is_cq;
   slot.rx.is_to_me    = e.is_to_me;
   slot.rx.is_recent_qso = e.is_recent_qso;
+  slot.rx.listen_only = listen_only;
   return id;
 }
 
@@ -153,6 +155,8 @@ static DECODE_PSRAM_BSS DecodeChannel s_channels[RX_MAX_CHANNELS];
 struct DecodeSlotResult {
   int channel;
   const ProtocolConfig* mode;
+  bool station;            // the station's channel: its decodes go to autoseq
+  int32_t dial_offset_hz;  // the channel's dial against the radio's (ft8_audio_pipeline.h)
   int64_t slot_idx;
   int64_t published_us;  // esp_timer
   int count;
@@ -194,6 +198,8 @@ static void publish_slot_result(const ft8_slot_t* slot, const DecodeChannel& dc)
   if (s_result_pending[c]) dropped_slot = r->slot_idx;
   r->channel = c;
   r->mode = slot->mode;
+  r->station = slot->station;
+  r->dial_offset_hz = slot->dial_offset_hz;
   r->slot_idx = slot->slot_idx;
   r->published_us = esp_timer_get_time();
   r->count = dc.count;
@@ -231,7 +237,8 @@ static bool take_slot_result(int c, DecodeSlotResult* out) {
 bool decode_pipeline_result_pending(void) {
   xSemaphoreTake(result_mutex(), portMAX_DELAY);
   bool pending = false;
-  for (int c = 0; c < RX_MAX_CHANNELS; ++c) pending = pending || s_result_pending[c];
+  // The station's channel only: a listening channel's decodes never arm a transmission.
+  for (int c = 0; c < RX_MAX_CHANNELS; ++c) pending = pending || (s_result_pending[c] && s_result[c]->station);
   xSemaphoreGive(result_mutex());
   return pending;
 }
@@ -307,16 +314,19 @@ static void log_slot_summary(const ft8_slot_t* slot, const decode_core_t* core, 
       (uint32_t)ulTaskGetIdleRunTimeCounterForCore(1) - s_idle_at_decode[1], elapsed);
   // The work counted: units, searches run, and '!' when the budget cut the slot short.
   const char* cut = core->cut ? "!" : "";
+  // "SLOT" for the station's channel, which tools/ parse; "SLOT/FT4" for one that only listens.
+  char suffix[8] = "";
+  if (!slot->station) snprintf(suffix, sizeof(suffix), "/%s", slot->mode->name);
   const int searches = core->pass + 1;
   // 128 covers a full int64 print. The event field keeps 64 characters.
   char buf[128];
   int n = snprintf(buf, sizeof(buf),
-                   "SLOT %lld c%d m%d t%d dec%lld left%lld y%d u%dp%d%s b%d/%d",
+                   "SLOT%s %lld c%d m%d t%d dec%lld left%lld y%d u%dp%d%s b%d/%d", suffix,
                    (long long)slot_idx, num_candidates, msg_count, tome,
                    (long long)dec_ms, (long long)left_ms, sync_ms, core->spent, searches, cut, busy0, busy1);
   if (n > 64) {
     snprintf(buf, sizeof(buf),
-             "SLOT %lld c%d m%d t%d dec%lld left%lld u%dp%d%s b%d/%d",
+             "SLOT%s %lld c%d m%d t%d dec%lld left%lld u%dp%d%s b%d/%d", suffix,
              (long long)slot_idx, num_candidates, msg_count, tome,
              (long long)dec_ms, (long long)left_ms, core->spent, searches, cut, busy0, busy1);
   }
@@ -407,6 +417,16 @@ static decode_helper_t* decode_helper() {
   return helper;
 }
 
+// The station's slot is published: mark it applied for the TX gate, then clear the in-progress flag, in
+// that order (decode_tx_state.h). Another channel's slots touch neither.
+static void mark_station_slot_done(const ft8_slot_t* slot) {
+  if (!slot->station) return;
+  if (slot->slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
+    decode_tx_state_set_decode_applied_slot_idx(slot->slot_idx);
+  }
+  decode_tx_state_set_decode_in_progress(false);
+}
+
 void decode_slot(const ft8_slot_t* slot) {
   monitor_t* mon = slot->monitor;
   DecodeChannel& dc = s_channels[slot->channel];
@@ -429,8 +449,9 @@ void decode_slot(const ft8_slot_t* slot) {
   const int64_t slot_idx = slot->slot_idx;
   int slot_id = (int)(slot_idx & 1);
 
+  // Aged by the station's slots: another channel counts its own, shorter, periods.
   static int64_t s_last_aged_slot = -1;
-  if (slot_idx != s_last_aged_slot) {
+  if (slot->station && slot_idx != s_last_aged_slot) {
     s_last_aged_slot = slot_idx;
     hashtable_age_all();
   }
@@ -438,7 +459,9 @@ void decode_slot(const ft8_slot_t* slot) {
   // ---- the slot's decode (decode_core.h): two searches, each decode lowering its tones so the
   // second reads what that uncovered; half the estimated SNR, including the neighbouring time
   // subdivision (decode.md) ----
-  static const decode_core_config_t kCoreConfig = {
+  // The slot's budget and search cost, by its mode and what shares its window (decode_budget.h).
+  const int ft4 = slot->mode->protocol_id == FTX_PROTOCOL_FT4;
+  const decode_core_config_t kCoreConfig = {
       .max_candidates = max_cand,
       .min_score = 5,
       .ldpc_iterations = 25,
@@ -446,8 +469,8 @@ void decode_slot(const ft8_slot_t* slot) {
       .subtract_neighbors = DECODE_SUBTRACT_NEIGHBORS,
       .subtract_fraction = DECODE_SUBTRACT_FRACTION,
       .hash_if = &hash_if,
-      .budget_units = DECODE_BUDGET_UNITS,
-      .cost_search = DECODE_COST_SEARCH,
+      .budget_units = decode_budget_units(ft4, slot->slot_idx, slot->beside_other ? 1 : 0),
+      .cost_search = decode_cost_search(ft4),
       .cost_candidate = DECODE_COST_CANDIDATE,
   };
   decode_core_t& core = dc.core;
@@ -476,10 +499,7 @@ void decode_slot(const ft8_slot_t* slot) {
       // empty, so the main loop arms after it and a quiet band cannot stall
       // the CQ. Published before the marker, as below.
       publish_slot_result(slot, dc);
-      if (slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
-        decode_tx_state_set_decode_applied_slot_idx(slot_idx);
-      }
-      decode_tx_state_set_decode_in_progress(false);
+      mark_station_slot_done(slot);
       log_slot_summary(slot, &core, 0, 0, 0, 0, decode_t0_us);
       return;
     }
@@ -497,7 +517,9 @@ void decode_slot(const ft8_slot_t* slot) {
   {
     float times_s[DEC_MAX];
     for (int i = 0; i < dc.count; ++i) times_s[i] = dc.dec[i].time_s;
-    const int delta_ms = decode_sync_step_ms(times_s, dc.count, slot->capture_clean ? 1 : 0);
+    // The station's channel steps the clock; one source, so two modes cannot step it twice a slot.
+    const int delta_ms =
+        slot->station ? decode_sync_step_ms(times_s, dc.count, slot->capture_clean ? 1 : 0) : 0;
     if (delta_ms != 0) {
       rtc_apply_decode_sync(delta_ms);
       sync_ms = delta_ms;
@@ -528,10 +550,7 @@ void decode_slot(const ft8_slot_t* slot) {
   // marker, then decode_pipeline_result_pending(): once it sees the marker, the
   // slot's result is already waiting for decode_pipeline_apply(), and the
   // trigger holds until the main loop has applied it.
-  if (slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
-    decode_tx_state_set_decode_applied_slot_idx(slot_idx);
-  }
-  decode_tx_state_set_decode_in_progress(false);
+  mark_station_slot_done(slot);
 }
 
 // One channel's slot, on the main loop.
@@ -562,7 +581,8 @@ static void apply_slot_result(DecodeSlotResult& r) {
   qsort(r.dec, r.count, sizeof(DecodeMsg), dec_sort_cmp);
 
   // ---- Autoseq: build small to_me vector at boundary (only to_me entries) ----
-  if (!decode_tx_state_get_was_txing()) {
+  // The station's channel only: a listening channel cannot transmit a reply (row grqg).
+  if (r.station && !decode_tx_state_get_was_txing()) {
     std::vector<UiRxLine> to_me_auto;
     for (int i = 0; i < r.count; ++i) {
       if (!r.dec[i].is_to_me) break;  // sorted, so once we pass to_me we're done
@@ -604,13 +624,13 @@ static void apply_slot_result(DecodeSlotResult& r) {
         (int64_t)(r.mode->total_symbols * r.mode->symbol_period * 500.0f);
     for (int i = 0; i < r.count; ++i) {
       const RxDecodeEntry& e = r.dec[i];
-      uint32_t decode_id = remember_decode_for_reply(e);
+      uint32_t decode_id = remember_decode_for_reply(e, !r.station);
       const int64_t mid_ms =
           emit_slot_idx * emit_slot_ms + (int64_t)(e.time_s * 1000.0f) + half_signal_ms;
       porta_emit_decode(decode_id, e.text, e.snr, e.offset_hz, e.time_s,
                         e.is_cq, e.is_to_me, e.is_recent_qso,
                         (uint32_t)emit_slot_idx, (uint8_t)(emit_slot_ms / 100),
-                        dial_history_at(mid_ms));
+                        dial_history_at(mid_ms) + (uint32_t)r.dial_offset_hz);
     }
   } else {
     ESP_LOGD(TAG, "No messages decoded; keeping RX list");

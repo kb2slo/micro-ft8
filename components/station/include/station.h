@@ -37,6 +37,7 @@ struct StationSettings {
     int tx_min_delay_ms = kStationTxMinDelayDefaultMs;  // 0..kStationTxMinDelayMaxMs
     bool amp_swr_guard = false;  // recover from the QMX's SWR-protection trips (architecture/radio.md)
     bool amp_prime_on_band_change = false;  // brief QMX SWR Tune pulse after an explicit band change
+    bool rx_ft4 = false;  // also decode FT4 beside FT8 from the QMX's I/Q, listen only (docs/architecture/decode.md, FT4)
     int tries;  // transmissions per QSO message, and a CQ's to start (autoseq.md, Tries)
     bool protocol_ft4;
     bool serialize_ft4_band_keys;

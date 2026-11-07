@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "decode_pipeline.cpp" "decode_core.c" "decode_workers.c" "decode_subtract.c" "decode_retry.c" "decode_core_busy.c"
+    SRCS "decode_pipeline.cpp" "decode_core.c" "decode_budget.c" "decode_workers.c" "decode_subtract.c" "decode_retry.c" "decode_core_busy.c"
          "decode_sync.c" "decode_snr.c" "decode_fields.cpp" "heard_grid.cpp"
     INCLUDE_DIRS "include"
     REQUIRES decode_types ft8_lib ft8_audio_pipeline autoseq callsign_hashtable decode_tx_state pthread

@@ -688,6 +688,15 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     </div>
     <p class=setnote>FT4 is not built yet: the main board runs FT8 whatever is chosen here.</p>
     <div class=setrow>
+      <label>Also decode FT4
+        <select id=rx_ft4>
+          <option value=0>Off</option>
+          <option value=1>On</option>
+        </select>
+      </label>
+    </div>
+    <p class=setnote>QMX only. On: FT4 decodes at the same time as FT8, from the same radio, as its own batch in Operate. Listen only: a tap on an FT4 decode cannot reply yet. Not on 15 m or 10 m, where FT4 is outside the QMX's receive window.</p>
+    <div class=setrow>
       <label>Skip TX1
         <select id=skiptx1>
           <option value=0>Off</option>
@@ -1045,7 +1054,7 @@ var stationSheetMsg = document.getElementById('stationSheetMsg');
 var FIELDS = [
   'call','comment1',
   'radio','protocol_mode','skiptx1','tx_min_delay_ms','amp_swr_guard',
-  'amp_prime_on_band_change'
+  'amp_prime_on_band_change','rx_ft4'
 ];
 var CQ_TYPE_NAMES = ['CQ', 'SOTA', 'POTA', 'QRP', 'FD', 'FreeText'];
 // AutoseqState wire values (main/autoseq.h). 6 = IDLE = remove from display.
@@ -4241,8 +4250,9 @@ function renderDecodesNow() {
     var slotBand = slotBandName(slot), slotModeName = slotMode(slot);
     // One line: band and frequency left, the slot's time and age right.
     var freqMHz = fmtSlotFreqMHz(slot.freqKhz);
+    // An FT4 batch beside FT8 says so; FT8, the station's mode, reads as it always has.
     var header = '<div class=day><span>' +
-      esc(slotBand) + (freqMHz ? ' · ' + freqMHz + ' MHz' : '') +
+      esc(slotBand) + (slotModeName === 'FT4' ? ' FT4' : '') + (freqMHz ? ' · ' + freqMHz + ' MHz' : '') +
       '</span><span>' + fmtSlotTime(slot) + ' · ' +
       '<span class=ago data-ts="' + slot.ts + '">' + fmtAgo(slot.ts) + '</span></span></div>';
     // Each slot in its own box, so its sticky header lets go when the slot ends.

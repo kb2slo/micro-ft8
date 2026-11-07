@@ -18,7 +18,7 @@ void hl2_transport_set_dial(uint32_t hz);
 // Ready while a stream is arriving; read and the front end run on the pipeline's ingest task.
 bool hl2_audio_ready(void);
 bool hl2_audio_should_stop(void* ctx);
-int hl2_audio_read_ft8_samples(void* ctx, float* out, int max_samples);
+int hl2_audio_read_ft8_samples(void* ctx, float* const* out, int n_channels, int max_samples);
 uint32_t hl2_audio_take_frontend_us(void* ctx);
 
 // What the transport knows of the HL2, for the app (porta_host.cpp's live status, `hl2=`): "off" (not the chosen

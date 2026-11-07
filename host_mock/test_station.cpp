@@ -93,6 +93,14 @@ int main()
         station_parse("amp_swr_guard=0\n", &s);
         expect_true(!s.amp_swr_guard, "and turns off");
         expect_true(station_key_known("amp_swr_guard"), "key known to CONFIG");
+        expect_true(!s.rx_ft4, "FT4 beside FT8 is off by default");
+        station_parse("rx_ft4=1\n", &s);
+        expect_true(s.rx_ft4, "rx_ft4 parsed");
+        StationSettings u;
+        station_settings_init(&u);
+        station_parse(station_serialize(s), &u);
+        expect_true(u.rx_ft4, "rx_ft4 round-trips");
+        expect_true(station_key_known("rx_ft4"), "rx_ft4 known to CONFIG");
         station_parse("amp_prime_on_band_change=0\n", &s);
         expect_true(!s.amp_prime_on_band_change, "amp prime turns off");
         expect_true(station_key_known("amp_prime_on_band_change"), "amp prime key known to CONFIG");

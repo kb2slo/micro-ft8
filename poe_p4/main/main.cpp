@@ -1,3 +1,6 @@
+#include <atomic>
+#include <climits>
+#include <cstdio>
 #include <string>
 
 #include "esp_log.h"
@@ -17,6 +20,8 @@
 #include "porta.h"
 #include "porta_host.h"
 #include "protocol.h"
+#include "qmx_iq_channel.h"
+#include "station.h"
 #include "qmx_transport.h"
 #include "radio_control.h"
 #include "radio_select.h"
@@ -45,10 +50,39 @@ static void send_activity(void * /*ctx*/, int64_t slot_idx, int block_ms, int fi
                         (uint8_t)n, (uint16_t)lo_hz, (uint16_t)hi_hz);
 }
 
+// Which channels the QMX's I/Q feeds (docs/architecture/decode.md, FT4): FT8, the station's, always; FT4
+// beside it while Station's rx_ft4 is on and its channel fits the radio's window on this band. The main
+// loop works it out each pass from the Station settings it owns, as FT4's dial against FT8's, or kNoFt4;
+// a run of the pipeline is built for one plan and ends when the plan changes.
+static constexpr int32_t kNoFt4 = INT32_MIN;
+static std::atomic<int32_t> s_rx_plan{kNoFt4};
+static int32_t s_run_plan = kNoFt4;  // decode_audio task only
+
+static void rx_plan_tick(void) {
+    static const char *s_refusal = nullptr;
+    int32_t plan = kNoFt4;
+    const char *refusal = nullptr;
+    if (porta_p4_station_rx_ft4() && porta_p4_station_radio() == kStationRadioQmx) {
+        const int32_t offset = porta_p4_station_ft4_dial_offset_hz();
+        refusal = qmx_iq_channel_refusal(offset);
+        if (!refusal) plan = offset;
+    }
+    if (refusal != s_refusal) {
+        s_refusal = refusal;
+        if (refusal) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "FT4 not decoded: %s", refusal);
+            debug_log_line(buf);
+        }
+    }
+    s_rx_plan.store(plan);
+}
+
 // A radio's samples feed decode only while it is the active radio (radio_select.h); choosing another radio ends
-// the pipeline run, as a QMX unplugged does, and the task starts one on the radio now chosen.
+// the pipeline run, as a QMX unplugged does, and the task starts one on the radio now chosen. So does a change
+// of channels: FT4 turned on or off, or a band where its channel sits elsewhere.
 static bool qmx_decode_should_stop(void *ctx) {
-    return qmx_audio_should_stop(ctx) || !radio_select_qmx_feeds_decode();
+    return qmx_audio_should_stop(ctx) || !radio_select_qmx_feeds_decode() || s_rx_plan.load() != s_run_plan;
 }
 
 static bool hl2_decode_should_stop(void *ctx) {
@@ -62,6 +96,14 @@ constexpr int kRxTimeOsr = 2;
 constexpr int kRxFreqOsr = 2;
 
 static void decode_audio_task(void * /*arg*/) {
+    const ft8_audio_channel_config_t station_channel = {
+        .channel = kRxChannel,
+        .mode = g_protocol,
+        .time_osr = kRxTimeOsr,
+        .freq_osr = kRxFreqOsr,
+        .dial_offset_hz = 0,
+        .station = true,
+    };
     const ft8_audio_pipeline_config_t hl2_cfg = {
         .tag = TAG,
         .ctx = nullptr,
@@ -70,10 +112,8 @@ static void decode_audio_task(void * /*arg*/) {
         .on_block_processed = nullptr,
         .on_activity = send_activity,
         .take_frontend_us = hl2_audio_take_frontend_us,
-        .channel = kRxChannel,
-        .mode = g_protocol,
-        .time_osr = kRxTimeOsr,
-        .freq_osr = kRxFreqOsr,
+        .n_channels = 1,
+        .channels = {station_channel},
     };
     ft8_audio_pipeline_config_t pipe_cfg = {
         .tag = TAG,
@@ -83,10 +123,8 @@ static void decode_audio_task(void * /*arg*/) {
         .on_block_processed = nullptr,
         .on_activity = send_activity,
         .take_frontend_us = qmx_audio_take_frontend_us,
-        .channel = kRxChannel,
-        .mode = g_protocol,
-        .time_osr = kRxTimeOsr,
-        .freq_osr = kRxFreqOsr,
+        .n_channels = 1,
+        .channels = {station_channel},
     };
     // QMX CAT/UAC comes back only after a radio power cycle (QMX quirk);
     // keep this task alive so a replug restarts decode without resetting P4.
@@ -94,6 +132,22 @@ static void decode_audio_task(void * /*arg*/) {
         const ft8_audio_pipeline_config_t *cfg = nullptr;
         while (!cfg) {
             if (radio_select_qmx_feeds_decode() && qmx_audio_ready()) {
+                // FT8, and FT4 beside it if the plan has it (rx_plan_tick()).
+                s_run_plan = s_rx_plan.load();
+                pipe_cfg.n_channels = 1;
+                if (s_run_plan != kNoFt4) {
+                    pipe_cfg.channels[1] = {
+                        .channel = kRxChannel + 1,
+                        .mode = &kProtocolFT4,
+                        .time_osr = kRxTimeOsr,
+                        .freq_osr = kRxFreqOsr,
+                        .dial_offset_hz = s_run_plan,
+                        .station = false,
+                    };
+                    pipe_cfg.n_channels = 2;
+                    qmx_audio_set_ft4_dial_offset_hz(s_run_plan);
+                    ESP_LOGI(TAG, "FT4 beside FT8, its dial %+ld Hz from FT8's", (long)s_run_plan);
+                }
                 cfg = &pipe_cfg;
                 ESP_LOGI(TAG, "QMX UAC streaming; starting decode pipeline");
             } else if (radio_select_hl2_feeds_decode() && hl2_audio_ready()) {
@@ -146,6 +200,7 @@ extern "C" void app_main(void) {
         // The decode task hands each slot here: this loop alone touches autoseq
         // and the armed TX (docs/architecture/main_board.md, P4).
         decode_pipeline_apply();
+        rx_plan_tick();
         tx_scheduler_tick();
         amp_band_prime_tick(esp_timer_get_time() / 1000);
         // A sweep request accepted just before a TX started waits for it to end; one already

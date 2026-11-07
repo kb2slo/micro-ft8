@@ -1,4 +1,5 @@
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -50,6 +51,12 @@ static const char *kBandNames[kStationBandCount] = {
 static const float kFt8DefaultKhz[kStationBandCount] = {
     1840.f, 3573.f, 5357.f, 7074.f, 10136.f, 14074.f,
     18100.f, 21074.f, 24915.f, 28074.f, 50313.f, 144174.f,
+};
+// FT4's dials, as webapp/app/bands.js has them: where an FT4 channel beside FT8 listens unless Station.txt
+// sets ft4_band<N> (docs/architecture/decode.md, FT4).
+static const float kFt4DefaultKhz[kStationBandCount] = {
+    1843.f, 3575.f, 5357.f, 7047.5f, 10140.f, 14080.f,
+    18104.f, 21140.f, 24919.f, 28180.f, 50318.f, 144170.f,
 };
 
 static std::string grid_ft8_4(const std::string &grid) {
@@ -333,6 +340,22 @@ int porta_p4_station_radio(void) {
 
 bool porta_p4_tune_active(void) {
     return s_tune;
+}
+
+bool porta_p4_station_rx_ft4(void) {
+    ensure_seeded();
+    return s_station.rx_ft4;
+}
+
+int32_t porta_p4_station_ft4_dial_offset_hz(void) {
+    ensure_seeded();
+    const int idx = s_station.band_sel;
+    if (idx < 0 || idx >= kStationBandCount) {
+        return 0;
+    }
+    const double ft8_khz = s_station.band_freq_set[idx] ? s_station.band_freq[idx] : kFt8DefaultKhz[idx];
+    const double ft4_khz = s_station.ft4_band_freq_set[idx] ? s_station.ft4_band_freq[idx] : kFt4DefaultKhz[idx];
+    return (int32_t)lround((ft4_khz - ft8_khz) * 1000.0);
 }
 
 bool porta_p4_station_amp_swr_guard(void) {
@@ -938,6 +961,10 @@ const char *porta_host_queue_reply(uint32_t decode_id) {
     UiRxLine msg;
     if (!find_decode_for_reply(decode_id, &msg)) {
         return "unknown decode";
+    }
+    if (msg.listen_only) {
+        // A decode on FT4 beside FT8: listened to, not yet answerable (row grqg).
+        return "replies on FT4 are not built yet";
     }
     tx_scheduler_swr_operator_start(false);
     const char *why = apply_reply_touch(msg);
