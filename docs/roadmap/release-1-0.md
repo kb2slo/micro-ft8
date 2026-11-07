@@ -17,7 +17,7 @@ The first versioned release meant for someone other than the maintainer, and the
 Rows other epics and the index own; 1.0 is not cut until each has shipped. Each stays where it is: this list names them, it does not own them.
 
 * **OTA, epic [ukk6](ota-updates.md):** [wanw](ota-updates.md#wanw), [v697](ota-updates.md#v697), [hstv](ota-updates.md#hstv), [yme5](ota-updates.md#yme5), [nufg](ota-updates.md#nufg). First in order, so testers make the one USB reflash ([hstv](ota-updates.md#hstv)'s partition table) early and take everything after it over the air.
-* **FT8 and FT4 at once on a QMX, operated, epic [u8mc](several-channels.md):** [yv9w](several-channels.md#yv9w), [pxvh](several-channels.md#pxvh), [an8x](several-channels.md#an8x), [grqg](several-channels.md#grqg). The feature 1.0 leads with.
+* **FT8 and FT4 at once on a QMX, operated, epic [u8mc](several-channels.md):** [an8x](several-channels.md#an8x), [pxvh](several-channels.md#pxvh), [grqg](several-channels.md#grqg). The feature 1.0 leads with.
 * **Autoseq:** [jqpm](smart-queue.md#jqpm) and [k4ag](smart-queue.md#k4ag) (epic [qxy5](smart-queue.md)), [B88](../ROADMAP.md#B88).
 * **Safety:** [u4dw](../ROADMAP.md#u4dw), [bfkb](../ROADMAP.md#bfkb), [vcng](../ROADMAP.md#vcng).
 * **The settings format:** [mtd6](../ROADMAP.md#mtd6), so the first update after 1.0 is not a migration.
