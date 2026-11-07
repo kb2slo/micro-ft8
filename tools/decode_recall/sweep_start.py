@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Where a mode's decode should start, at the budget two workers fit in what is left (row yv9w;
-docs/architecture/decode.md, Decoding later in the slot).
+"""Where a mode's decode should start, at the budget two workers fit in what is left
+(docs/architecture/decode.md, Decoding later in the slot).
 
 A later start sees more of each signal's tail but leaves less time before the deadline, so each start is
 scored at the units the P4's two workers fit in what remains: decode_bench's fit, 14 ms + 0.2123 ms a unit

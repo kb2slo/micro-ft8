@@ -4,7 +4,7 @@
 The "today", "full" and "full3" rows are one worker; "today_2w", "full_2w" and "full3_2w" the same with the
 second (bench_configs.h). Per worker count, a least-squares line of total_ms (search plus decode) on units,
 and from it the time a slot of 6,000 and of 10,800 units would take: the budget today, and the 1.8 times
-row yv9w asks of two workers inside the 2.36 s guard (docs/roadmap/several-channels.md). Also checks that
+two workers were asked to fit in the 2.36 s guard (docs/architecture/decode.md, The work budget). Also checks that
 each two-worker row printed exactly the messages its one-worker row did.
 
     python3 test_apps/decode_bench/tools/fit_units.py p4_bench.log
