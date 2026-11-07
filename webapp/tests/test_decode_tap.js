@@ -60,10 +60,10 @@ assert.strictEqual(sb.decodeTapAction(false, true), 'reply', 'anywhere else on a
 assert.strictEqual(sb.decodeTapAction(false, false), 'none', 'a row that is not replyable does nothing');
 
 // The row's markup carries the rule: a tappable row is a button with the callsign in its label,
-// and the reply goes through the same checks as before (too old, another frequency).
+// and the reply goes through the same checks as before (too old, the mode, another frequency).
 assert(/role=button tabindex=0 aria-label="Reply to /.test(src), 'a replyable row is a button for assistive technology');
-assert(/function tryReply\(id\) \{\s*var why = replyTooOld\(id\) \|\| replyFrequencyMismatch\(id\);/.test(src),
-  'a tap is refused for an aged slot or another frequency, as Reply was');
+assert(/function tryReply\(id\) \{\s*var why = replyTooOld\(id\) \|\| replyModeRefusal\(id\) \|\| replyFrequencyMismatch\(id\);/.test(src),
+  'a tap is refused for an aged slot, an FT4 decode while we transmit FT8, or another frequency');
 
 // A redraw never moves rows under a finger: held while touched, just after the lift (the tap's
 // click comes after it), and while a flick coasts; free once all three have passed.
