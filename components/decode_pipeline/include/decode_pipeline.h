@@ -22,10 +22,10 @@ void decode_slot(const ft8_slot_t* slot);
 // before the slot cycle.
 void decode_pipeline_apply(void);
 
-// True while any channel's decoded slot waits for decode_pipeline_apply(). The TX trigger
-// holds on it as on decode_in_progress: a slot's decode is not applied until
-// the main loop has applied it.
-bool decode_pipeline_result_pending(void);
+// True while the channel that gates this transmission has a decoded slot waiting for decode_pipeline_apply():
+// the station's for FT8, the FT4 channel beside it for FT4. The TX trigger holds on it as on
+// decode_in_progress: a slot's decode is not applied until the main loop has applied it.
+bool decode_pipeline_result_pending(bool ft4);
 
 // The station call the decode task tests decodes against (addressed to us,
 // the DXpedition rewrite). The main loop sets it whenever the call changes;

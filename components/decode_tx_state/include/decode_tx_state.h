@@ -36,6 +36,10 @@ void decode_tx_state_set_decode_enabled(bool enabled);
 // it half-written.
 int64_t decode_tx_state_get_decode_applied_slot_idx(void);
 void    decode_tx_state_set_decode_applied_slot_idx(int64_t slot_idx);
+// The same for the FT4 channel beside FT8, counted in FT4's 7.5 s periods: an FT4 transmission in period P
+// waits for period P-1's decode, as FT8's does for its slot (docs/architecture/autoseq.md, The slot cycle).
+int64_t decode_tx_state_get_ft4_applied_period_idx(void);
+void    decode_tx_state_set_ft4_applied_period_idx(int64_t period_idx);
 bool    decode_tx_state_get_decode_in_progress(void);
 void    decode_tx_state_set_decode_in_progress(bool in_progress);
 
@@ -52,6 +56,11 @@ void decode_tx_state_set_was_txing(bool was_txing);
 // 32-bit store is one write on the P4.
 int64_t decode_tx_state_get_tx_slot_idx(void);
 void    decode_tx_state_set_tx_slot_idx(int64_t slot_idx);
+// FT4 period a transmission covered, for the FT4 channel beside FT8, skipped and cleared the same way: an
+// FT4 transmission ends before that period's decode starts, so tx_active alone does not cover it. Deaf by
+// overlap (docs/roadmap/several-channels.md): an FT4 transmission sets this and FT8's tx_slot_idx both.
+int64_t decode_tx_state_get_tx_ft4_period_idx(void);
+void    decode_tx_state_set_tx_ft4_period_idx(int64_t period_idx);
 
 // --- Stream state (set by stream_uac.cpp, read by the slot loop) -----------
 bool decode_tx_state_get_streaming(void);

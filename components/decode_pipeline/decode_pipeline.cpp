@@ -94,9 +94,14 @@ static DecodeIdEntry s_decode_ring[kDecodeIdRingLen];
 static int s_decode_ring_next = 0;
 static uint32_t s_next_decode_id = 1;  // 0 is "not a real decode"
 
+// The mode a channel's decodes, and a QSO from one, run in.
+static RxMode rx_mode_of(const ProtocolConfig* mode) {
+  return mode->protocol_id == FTX_PROTOCOL_FT4 ? RxMode::FT4 : RxMode::FT8;
+}
+
 // Assigns the next id, remembers enough of `e` to reconstruct a UiRxLine for
 // a later reply, and returns the id for porta_emit_decode() to carry.
-static uint32_t remember_decode_for_reply(const RxDecodeEntry& e, bool listen_only) {
+static uint32_t remember_decode_for_reply(const RxDecodeEntry& e, RxMode mode) {
   uint32_t id = s_next_decode_id++;
   if (s_next_decode_id == 0) {
     s_next_decode_id = 1;  // skip the sentinel on wrap
@@ -114,7 +119,7 @@ static uint32_t remember_decode_for_reply(const RxDecodeEntry& e, bool listen_on
   slot.rx.is_cq       = e.is_cq;
   slot.rx.is_to_me    = e.is_to_me;
   slot.rx.is_recent_qso = e.is_recent_qso;
-  slot.rx.listen_only = listen_only;
+  slot.rx.mode = mode;
   return id;
 }
 
@@ -242,11 +247,15 @@ static bool take_slot_result(int c, DecodeSlotResult* out) {
   return pending;
 }
 
-bool decode_pipeline_result_pending(void) {
+bool decode_pipeline_result_pending(bool ft4) {
   xSemaphoreTake(result_mutex(), portMAX_DELAY);
   bool pending = false;
-  // The station's channel only: a listening channel's decodes never arm a transmission.
-  for (int c = 0; c < RX_MAX_CHANNELS; ++c) pending = pending || (s_result_pending[c] && s_result[c]->station);
+  // The channel whose decodes gate this transmission: the station's for FT8, FT4's beside it for FT4.
+  for (int c = 0; c < RX_MAX_CHANNELS; ++c) {
+    if (!s_result_pending[c]) continue;
+    const DecodeSlotResult* r = s_result[c];
+    pending = pending || (ft4 ? (!r->station && rx_mode_of(r->mode) == RxMode::FT4) : r->station);
+  }
   xSemaphoreGive(result_mutex());
   return pending;
 }
@@ -426,9 +435,15 @@ static decode_helper_t* decode_helper() {
 }
 
 // The station's slot is published: mark it applied for the TX gate, then clear the in-progress flag, in
-// that order (decode_tx_state.h). Another channel's slots touch neither.
+// that order (decode_tx_state.h). The FT4 channel beside it marks its own period for FT4's gate; any other
+// channel's slots touch neither.
 static void mark_station_slot_done(const ft8_slot_t* slot) {
-  if (!slot->station) return;
+  if (!slot->station) {
+    if (rx_mode_of(slot->mode) == RxMode::FT4 && slot->slot_idx > decode_tx_state_get_ft4_applied_period_idx()) {
+      decode_tx_state_set_ft4_applied_period_idx(slot->slot_idx);
+    }
+    return;
+  }
   if (slot->slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
     decode_tx_state_set_decode_applied_slot_idx(slot->slot_idx);
   }
@@ -595,8 +610,10 @@ static void apply_slot_result(DecodeSlotResult& r) {
   qsort(r.dec, r.count, sizeof(DecodeMsg), dec_sort_cmp);
 
   // ---- Autoseq: build small to_me vector at boundary (only to_me entries) ----
-  // The station's channel only: a listening channel cannot transmit a reply (row grqg).
-  if (r.station && !decode_tx_state_get_was_txing()) {
+  // The station's channel, and FT4's beside it: each decode addressed to us goes to autoseq in its mode
+  // (docs/architecture/autoseq.md, The queue). Not while transmitting, as ever.
+  const RxMode rx_mode = rx_mode_of(r.mode);
+  if ((r.station || rx_mode == RxMode::FT4) && !decode_tx_state_get_was_txing()) {
     std::vector<UiRxLine> to_me_auto;
     for (int i = 0; i < r.count; ++i) {
       if (!r.dec[i].is_to_me) break;  // sorted, so once we pass to_me we're done
@@ -614,6 +631,7 @@ static void apply_slot_result(DecodeSlotResult& r) {
       rx.slot_id = r.dec[i].slot_id;
       rx.is_cq = r.dec[i].is_cq;
       rx.is_to_me = true;
+      rx.mode = rx_mode;
       to_me_auto.push_back(std::move(rx));
     }
 
@@ -638,7 +656,7 @@ static void apply_slot_result(DecodeSlotResult& r) {
         (int64_t)(r.mode->total_symbols * r.mode->symbol_period * 500.0f);
     for (int i = 0; i < r.count; ++i) {
       const RxDecodeEntry& e = r.dec[i];
-      uint32_t decode_id = remember_decode_for_reply(e, !r.station);
+      uint32_t decode_id = remember_decode_for_reply(e, rx_mode);
       const int64_t mid_ms =
           emit_slot_idx * emit_slot_ms + (int64_t)(e.time_s * 1000.0f) + half_signal_ms;
       porta_emit_decode(decode_id, e.text, e.snr, e.offset_hz, e.time_s,

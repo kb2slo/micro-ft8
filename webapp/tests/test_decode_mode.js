@@ -33,7 +33,8 @@ function extractFunction(text, name) {
 
 const sandbox = { lastCfg: {}, decodeSlots: [], decodeView: { mode: 'all' }, DV_MODES: ['all', 'FT8', 'FT4'] };
 vm.createContext(sandbox);
-vm.runInContext(['slotMode', 'decodeModeChipOn', 'decodeSlotModeShown', 'replyModeRefusal']
+vm.runInContext(['slotMode', 'decodeModeChipOn', 'decodeSlotModeShown', 'replyModeRefusal', 'currentFt4DialKhz',
+  'currentDockFreqKhz', 'bandFreq']
   .map((n) => extractFunction(src, n)).join('\n'), sandbox);
 
 const ft8 = Object.assign([{ id: 1, x: 'CQ K1ABC FN42' }], { lenMs: 15000 });
@@ -56,9 +57,12 @@ sandbox.decodeView.mode = 'FT8';
 assert.deepStrictEqual([ft8, ft4].map(sandbox.decodeSlotModeShown), [true, false], 'FT8 only');
 sandbox.decodeView.mode = 'FT4';
 assert.deepStrictEqual([ft8, ft4].map(sandbox.decodeSlotModeShown), [false, true], 'FT4 only');
-// A tap on an FT4 decode while the station transmits FT8 is refused; an FT8 one is not.
-sandbox.lastCfg = { protocol_mode: 'FT8' };
-assert.ok(/not built yet/.test(sandbox.replyModeRefusal(2)), 'an FT4 decode is refused');
+// A tap on an FT4 decode replies on FT4 (row grqg), except where FT4's dial is below FT8's (40 m, row xvfn).
+sandbox.BANDS = [{ i: 0, name: '40m', ft8: 7074, ft4: 7047.5 }, { i: 1, name: '20m', ft8: 14074, ft4: 14080 }];
+sandbox.lastCfg = { band_sel: '1' };
+assert.strictEqual(sandbox.replyModeRefusal(2), null, '20 m: an FT4 decode goes on to the other checks');
+sandbox.lastCfg = { band_sel: '0' };
+assert.ok(/not built on this band yet/.test(sandbox.replyModeRefusal(2)), '40 m: an FT4 decode is refused');
 assert.strictEqual(sandbox.replyModeRefusal(1), null, 'an FT8 decode goes on to the other checks');
 assert.strictEqual(sandbox.replyModeRefusal(99), null, 'an unknown id is left to the other checks');
 console.log('PASS: decode mode filter and FT4 tap');

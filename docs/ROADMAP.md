@@ -8,7 +8,7 @@ How things work now: `architecture/` (start at [architecture/system.md](architec
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| grqg | <a id="grqg"></a>Reply on the channel heard | Epic [u8mc](roadmap/several-channels.md#grqg). A tap on any decoded message, FT8 or FT4, replies in that mode's next valid slot and logs it with its mode. **Done-when:** autoseq, the queue, the overlap rule and the band table in `host_mock` (category 1); listening on FT8 and FT4 on one QMX, a tap on a CQ on each completes a QSO in that mode and logs it with its mode, and the FT8 channel is deaf only in the slots the overlap rule names (field). |
+| grqg | <a id="grqg"></a>Reply on the channel heard | Epic [u8mc](roadmap/several-channels.md#grqg). A tap on any decoded message, FT8 or FT4, replies in that mode's next valid slot and logs it with its mode. **Done-when:** autoseq, the queue and the overlap rule in host tests (category 1); listening on FT8 and FT4 on one QMX, a tap on a CQ on each completes a QSO in that mode and logs it with its mode, and the FT8 channel is deaf only in the slots the overlap rule names (field). |
 
 ## Backlog
 
