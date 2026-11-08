@@ -447,4 +447,6 @@ clean:
 
 .PHONY: all clean
 
--include $(wildcard *.d)
+# autoseq.o is built beside its source, so its .d is there too (a stale autoseq.o after a decode_types.h change
+# failed the scenarios, 2026-11-07).
+-include $(wildcard *.d) $(wildcard ../components/autoseq/*.d)
