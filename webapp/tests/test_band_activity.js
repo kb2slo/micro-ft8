@@ -174,4 +174,26 @@ for (const e of lines) {
 assert.deepStrictEqual(cued, [699, 700, 701, 702, 703, 704, 705, 706, 707, 708],
   'the cue shows for the ten bad-clock slots and no others');
 
+// An FT4 QSO beside FT8 (2026-11-08): each FT4 transmission makes the P4 skip the FT8 slot it falls in
+// (SKIP <slot>), which still heard signals. Not decoded is not a failed decode, so no cue; and FT4's own
+// decodes (sl 75, FT4 period numbers) count toward no FT8 slot.
+{
+  const heard = Array(90).fill(20);
+  let s = { act: { si: 0, bm: 0, lv: [] }, tallies: [], decodes: {}, paused: {} };
+  const ev = [];
+  for (let k = 0; k < 4; k++) {
+    const si = SI + k;
+    ev.push({ d: 8, si, bm: 160, lo: 0, hi: 0, v: heard, m: [] });
+    ev.push({ d: 1, si: 2 * si + 1, sl: 75, x: 'CQ K8DXR EN90' });
+    ev.push({ d: 0, x: 'SKIP/FT4 ' + (2 * si + 1) });
+    ev.push({ d: 0, x: 'SKIP ' + si });
+  }
+  ev.push({ d: 8, si: SI + 4, bm: 160, lo: 0, hi: 0, v: heard, m: [] });
+  for (const e of ev) s = ctx.noteBandEvent(s, e, P);
+  assert.strictEqual(s.tallies.length >= 2, true, 'the skipped slots are tallied');
+  assert.strictEqual(s.tallies.every((t) => t.paused), true, 'SKIP marks each as not decoded');
+  assert.strictEqual(ctx.clockCue(s.tallies), '', 'so an FT4 QSO shows no clock cue');
+  assert.strictEqual(Object.keys(s.decodes).length, 0, 'and FT4 decodes count toward no FT8 slot');
+}
+
 console.log('band activity OK');

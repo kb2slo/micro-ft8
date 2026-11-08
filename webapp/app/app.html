@@ -3329,12 +3329,15 @@ function tallySlot(tallies, act, period, decodes, paused) {
   return tallies.slice(-4);
 }
 
-// Folds one event into `st` (the shape of `band`): a decode counts toward its slot, PAUSED marks
-// one, and an ACTIVITY event from a later slot closes the one before it (tallySlot()).
+// Folds one event into `st` (the shape of `band`): an FT8 decode counts toward its slot, PAUSED or SKIP
+// marks one the main board did not decode, and an ACTIVITY event from a later slot closes the one before it
+// (tallySlot()). Activity is FT8's slots: an FT4 decode (sl 75) counts toward none, and SKIP/FT4 is not
+// matched. SKIP is a slot deaf by overlap, such as one an FT4 transmission fell in, which still heard
+// signals: counted as a failed decode, an FT4 QSO cued "Clock?" every slot (2026-11-08).
 function noteBandEvent(st, e, period) {
-  if (e.d === 1 && e.si) {
+  if (e.d === 1 && e.si && e.sl !== 75) {
     st.decodes[e.si] = (st.decodes[e.si] || 0) + 1;
-  } else if (e.d === 0 && /^PAUSED \d+/.test(e.x || '')) {
+  } else if (e.d === 0 && /^(PAUSED|SKIP) \d+/.test(e.x || '')) {
     st.paused[e.x.split(' ')[1]] = true;
   } else if (e.d === 8) {
     if ((e.si | 0) > st.act.si && st.act.si) {
