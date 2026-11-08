@@ -136,6 +136,18 @@ static void skip_values() {
     check(tx_first_rf_ms(1234, 50) == 1284, "first RF is the delay after TX;", label);
 }
 
+// FT4 beside FT8 on a QMX (tx_timing.h): its base tone, the tone range, and the FT8 slot it deafens.
+static void ft4_beside_ft8() {
+    const std::string label = "FT4 beside FT8";
+    check(tx_base_hz(1500, 6000) == 7500, "20 m: 1,500 Hz above FT4's dial is TA 7,500", label);
+    check(tx_tones_in_range(tx_base_hz(1500, 6000), 7500.0f + 3 * 20.8333f), "20 m's FT4 is in range", label);
+    check(!tx_tones_in_range(tx_base_hz(2500, -26500), -24000.0f), "40 m's FT4, below the dial, is not", label);
+    check(tx_tones_in_range(500, 543.75f) && !tx_tones_in_range(99, 150.0f), "the floor is 100 Hz", label);
+    check(tx_tones_in_range(9000, 10000.0f) && !tx_tones_in_range(9000, 10000.5f), "the ceiling is 10 kHz", label);
+    check(tx_ft8_slot_of_ft4_period(239211836) == 119605918 && tx_ft8_slot_of_ft4_period(239211837) == 119605918,
+          "both FT4 periods of an FT8 slot deafen that slot", label);
+}
+
 static void cancelled(const Proto& p) {
     const std::string label = std::string(p.name) + " cancel";
     const int64_t s = p.slot_ms;
@@ -159,6 +171,7 @@ int main() {
     printf("L5 TX CAT Sequence Test\n");
     printf("======================================\n");
     skip_values();
+    ft4_beside_ft8();
     for (const auto& p : kProtos) {
         on_time(p);
         armed_late(p);

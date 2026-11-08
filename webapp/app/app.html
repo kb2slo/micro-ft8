@@ -689,14 +689,14 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     </div>
     <p class=setnote>FT4 is not built yet: the main board runs FT8 whatever is chosen here.</p>
     <div class=setrow>
-      <label>Also decode FT4 (receive only)
+      <label>Also decode FT4
         <select id=rx_ft4>
           <option value=0>Off</option>
           <option value=1>On</option>
         </select>
       </label>
     </div>
-    <p class=setnote>QMX only. On: FT4 decodes at the same time as FT8, from the same radio, as its own batch in Operate. Receive only: a tap on an FT4 decode cannot reply yet. Not on 15 m or 10 m, where FT4 is outside the QMX's receive window.</p>
+    <p class=setnote>QMX only. On: FT4 decodes at the same time as FT8, from the same radio, as its own batch in Operate, and a tap on an FT4 decode replies on FT4. Calling CQ is FT8 only. Not on 15 m or 10 m, where FT4 is outside the QMX's receive window; on 40 m it decodes but cannot reply yet.</p>
     <div class=setrow>
       <label>Skip TX1
         <select id=skiptx1>
@@ -1337,6 +1337,16 @@ function bandForKhz(khz) {
 // The operating band's current frequency in kHz: an explicit bandN=/
 // ft4_bandN= override when CONFIG carries one, else BANDS[i]'s default for
 // the active protocol. Null when band_sel itself is unknown (no config yet).
+// The operating band's FT4 dial in kHz, where an FT4 channel beside FT8 listens: an ft4_bandN= override,
+// else BANDS[i]'s default. Null when band_sel is unknown.
+function currentFt4DialKhz(cfg) {
+  var idx = (cfg.band_sel !== undefined && cfg.band_sel !== null) ? parseInt(cfg.band_sel, 10) : NaN;
+  var band = BANDS[idx];
+  if (!band) return null;
+  var fk = 'ft4_band' + idx;
+  return parseFloat(cfg[fk] !== undefined && cfg[fk] !== null && cfg[fk] !== '' ? cfg[fk] : band.ft4);
+}
+
 function currentDockFreqKhz(cfg) {
   var idx = (cfg.band_sel !== undefined && cfg.band_sel !== null) ? parseInt(cfg.band_sel, 10) : NaN;
   var band = BANDS[idx];
@@ -4345,8 +4355,11 @@ function replyModeRefusal(id) {
   for (var i = 0; i < decodeSlots.length; i++) {
     for (var k = 0; k < decodeSlots[i].length; k++) {
       if (String(decodeSlots[i][k].id) !== String(id)) continue;
-      return slotMode(decodeSlots[i]) === 'FT4' && lastCfg.protocol_mode !== 'FT4'
-        ? 'Replies on FT4 are not built yet: this station transmits FT8.' : null;
+      // FT4 beside FT8 replies on FT4 (webapp.md, Decodes), except where FT4's dial is below FT8's (40 m),
+      // which a QMX cannot reach from FT8's dial (radio.md, TX timing on a QMX); the main board refuses it too.
+      if (slotMode(decodeSlots[i]) !== 'FT4') return null;
+      var ft4 = currentFt4DialKhz(lastCfg), ft8 = currentDockFreqKhz(lastCfg);
+      return ft4 && ft8 && ft4 < ft8 ? 'Replies on FT4 are not built on this band yet.' : null;
     }
   }
   return null;
@@ -4565,7 +4578,9 @@ function replyFrequencyMismatch(decodeId) {
   var who = (decode && extractSenderCall(decode.x)) || 'This station';
   // The decode's own frequency from a v2 host, else its slot's label.
   var heard = (decode && decode.fq) || (slot ? parseFloat(slot.freqKhz) : NaN);
-  var now = currentDockFreqKhz(lastCfg) || parseFloat(lastCfg.freq_khz);
+  // An FT4 decode beside FT8 was heard on FT4's dial, which is where its reply goes.
+  var now = (slot && slotMode(slot) === 'FT4' && currentFt4DialKhz(lastCfg)) ||
+    currentDockFreqKhz(lastCfg) || parseFloat(lastCfg.freq_khz);
   if (!heard || !now || Math.abs(heard - now) < 0.05) return null;
   return who + ' was heard on ' + fmtSlotFreqMHz(heard) + ' MHz, and the radio is on ' +
     fmtSlotFreqMHz(now) + ' MHz now. Tune back to ' + fmtSlotFreqMHz(heard) + ' MHz to reply.';

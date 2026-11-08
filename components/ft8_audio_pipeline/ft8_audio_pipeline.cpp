@@ -260,10 +260,32 @@ static void send_activity(const Ft8Channel* ch, const ft8_activity_batch_t& b)
 // `queued` is the samples behind this block's last one, which dates the block by its audio.
 // Marks a slot of the station's channel applied for the TX gate (decode_tx_state.h); another channel's
 // slots are not the station's and touch nothing.
+// The FT4 channel beside FT8, which an FT4 transmission is timed and gated by (decode_tx_state.h).
+static bool is_ft4_beside(const Ft8Channel* ch)
+{
+    return !ch->chan->station && ch->chan->mode->protocol_id == FTX_PROTOCOL_FT4;
+}
+
+// The transmission index this channel's slot is skipped by: FT8's slot for the station, FT4's period beside it.
+static bool is_tx_slot(const Ft8Channel* ch)
+{
+    if (ch->chan->station) return ch->slot_idx == decode_tx_state_get_tx_slot_idx();
+    return is_ft4_beside(ch) && ch->slot_idx == decode_tx_state_get_tx_ft4_period_idx();
+}
+
+static void clear_tx_slot(const Ft8Channel* ch)
+{
+    if (!is_tx_slot(ch)) return;
+    if (ch->chan->station) decode_tx_state_set_tx_slot_idx(-1);
+    else decode_tx_state_set_tx_ft4_period_idx(-1);
+}
+
 static void mark_applied(const Ft8Channel* ch, int64_t slot_idx)
 {
     if (ch->chan->station && slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
         decode_tx_state_set_decode_applied_slot_idx(slot_idx);
+    } else if (is_ft4_beside(ch) && slot_idx > decode_tx_state_get_ft4_applied_period_idx()) {
+        decode_tx_state_set_ft4_applied_period_idx(slot_idx);
     }
 }
 
@@ -376,9 +398,7 @@ static void channel_block(Ft8Channel* ch, int64_t queued)
         // A slot handed to decode is marked applied by decode_slot(), after it publishes; one never
         // decoded (cut short, or dropped by a clock step) is marked here.
         if (ch->slot_idx != ch->handed_slot_idx) mark_applied(ch, ch->slot_idx);
-        if (chan->station && ch->slot_idx == decode_tx_state_get_tx_slot_idx()) {
-            decode_tx_state_set_tx_slot_idx(-1);
-        }
+        clear_tx_slot(ch);
         ch->slot_idx = now_idx;
         ch->slot_from_boundary = true;
         ch->slot_blocks = 0;
@@ -395,17 +415,15 @@ static void channel_block(Ft8Channel* ch, int64_t queued)
         }
         // tx_slot_idx outlives was_txing. The slot loop clears that
         // flag ~10 ms after the tones end, and the tones end at the
-        // 79th block, so the flag is often already false here. tx_slot_idx
-        // counts the station's slots, so another channel goes by the flags: an
-        // FT8 transmission keys from 0.5 to 13.14 s, over both FT4 periods'
-        // triggers (5.04 and 12.54 s), so each sees tx_active.
-        if (decode_tx_state_get_tx_active() || decode_tx_state_get_was_txing() ||
-            (chan->station && ch->slot_idx == decode_tx_state_get_tx_slot_idx())) {
+        // 79th block, so the flag is often already false here. Deaf by overlap
+        // (docs/roadmap/several-channels.md): an FT8 transmission keys from 0.5 to
+        // 13.14 s, over both FT4 periods' triggers (5.76 and 12.54 s), so each sees
+        // tx_active; an FT4 one ends at 5.6 s into its period, before its own trigger,
+        // so it names its period (tx_ft4_period_idx) and the FT8 slot it falls in.
+        if (decode_tx_state_get_tx_active() || decode_tx_state_get_was_txing() || is_tx_slot(ch)) {
             log_slot_event(ch, "SKIP", ch->slot_idx);
             mark_applied(ch, ch->slot_idx);
-            if (chan->station && ch->slot_idx == decode_tx_state_get_tx_slot_idx()) {
-                decode_tx_state_set_tx_slot_idx(-1);
-            }
+            clear_tx_slot(ch);
         } else if (decode_tx_state_get_decode_enabled() &&
                    ch->decoding[1 - ch->filling].load(std::memory_order_acquire)) {
             // The decode task still has the other waterfall, from a slot ago: a decode a whole slot

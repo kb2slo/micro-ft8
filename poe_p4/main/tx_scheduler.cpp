@@ -25,7 +25,11 @@
 #include "swr_sweep.h"
 #include "swr_trip.h"
 
-extern const ProtocolConfig *g_protocol;
+// The protocol a transmission goes out in is its autoseq entry's (AutoseqTxEntry::mode), not a station-wide
+// one: FT8, or FT4 beside it (docs/architecture/autoseq.md, The slot cycle).
+static const ProtocolConfig *proto_of(RxMode mode) {
+    return mode == RxMode::FT4 ? &kProtocolFT4 : &kProtocolFT8;
+}
 
 void log_rxtx_line(char dir, int snr, int offset_hz, const std::string &text, int repeat_counter);
 
@@ -48,14 +52,17 @@ static int s_tx_lead_ms = 0;
 static bool s_tx_keyed_down = false;
 static int64_t s_tx_rx_at_ms = 0;
 static int64_t s_tx_slot_idx = 0;
+// The protocol of the transmission on the air, or of the last one.
+static const ProtocolConfig *s_tx_proto = &kProtocolFT8;
 static bool s_tx_cancel_requested = false;
-// Slot a cancel landed in; the trigger will not start a TX in it.
-static int64_t s_tx_cancel_slot_idx = -1;
+// The end of the slot a cancel landed in; the trigger will not start a TX before it. A time, not a slot
+// index, so it holds whichever mode is armed next.
+static int64_t s_tx_cancel_until_ms = 0;
 // The slot whose skip the TX HUD shows as Not keyed, and why (tx_scheduler_hud_not_keyed_reason()).
-static int64_t s_not_keyed_slot_idx = -1;
+static int64_t s_not_keyed_until_ms = 0;
 static std::string s_not_keyed_reason;
-// Slot tx_start() skipped; the trigger will not try again in it.
-static int64_t s_tx_skip_slot_idx = -1;
+// The end of the slot tx_start() skipped; the trigger will not try again before it.
+static int64_t s_tx_skip_until_ms = 0;
 static int s_tx_last_ta_int = -1;
 static int s_tx_last_ta_frac = -1;
 
@@ -71,7 +78,7 @@ static SwrTrip s_swr_trip;
 static bool s_swr_operator_start_pending = false;
 static bool s_swr_operator_clear_anyway = false;
 // Slot a trip or a Tune trip ended a transmission in; the TX HUD shows it for the rest of it.
-static int64_t s_swr_abort_slot_idx = -1;
+static int64_t s_swr_abort_until_ms = 0;
 static constexpr const char *kSwrReason = "SWR protection";
 
 static int resolve_tx_offset(const AutoseqTxEntry &e) {
@@ -128,13 +135,13 @@ void tx_scheduler_rearm(void) {
 bool tx_scheduler_call_cq(void) {
     tx_scheduler_swr_operator_start(false);
     const int64_t now_ms = rtc_now_ms();
-    const int slot_period = g_protocol->slot_time_ms;
+    const int slot_period = kProtocolFT8.slot_time_ms;  // the CQ is FT8's
     const int64_t slot_idx = now_ms / slot_period;
     const int slot_ms = (int)(now_ms % slot_period);
     // The slot under way can still be keyed inside the trigger's window
     // (check_slot_boundary()), unless the trigger refuses it.
     const bool keyable = slot_ms < (slot_period * 4 / 15) && !decode_tx_state_get_tx_active() &&
-                         slot_idx != s_tx_cancel_slot_idx && slot_idx != s_tx_skip_slot_idx;
+                         now_ms >= s_tx_cancel_until_ms && now_ms >= s_tx_skip_until_ms;
     if (!autoseq_call_cq(autoseq_cq_parity((int)(slot_idx & 1), keyable))) {
         return false;
     }
@@ -151,7 +158,14 @@ void tx_scheduler_cancel(void) {
     // this it restarted in the same slot as a late start whenever the cancel
     // came in its first 4/15 -- on the old band, so a band change found a TX
     // on air and could not retune.
-    s_tx_cancel_slot_idx = rtc_now_ms() / g_protocol->slot_time_ms;
+    {
+        // The rest of the slot it landed in: the transmission's own, or the armed entry's.
+        const ProtocolConfig *p = decode_tx_state_get_tx_active() ? s_tx_proto
+                                  : s_pending_tx_valid               ? proto_of(s_pending_tx.mode)
+                                                                     : &kProtocolFT8;
+        const int64_t now_ms = rtc_now_ms();
+        s_tx_cancel_until_ms = (now_ms / p->slot_time_ms + 1) * p->slot_time_ms;
+    }
     s_qso_xmit = false;
     if (!decode_tx_state_get_tx_active()) {
         // Idle/armed: drop the pending TX now. Do not leave
@@ -228,7 +242,8 @@ static TxStart tx_start(int skip_tones, std::string &skip_reason) {
     }
 
     const int64_t now_ms = rtc_now_ms();
-    const int slot_period = g_protocol->slot_time_ms;
+    const ProtocolConfig *proto = proto_of(s_pending_tx.mode);
+    const int slot_period = proto->slot_time_ms;
     s_tx_slot_idx = now_ms / slot_period;
 
     ESP_LOGI(TAG, "tx_start: TX=%s offset=%d skip=%d slot=%lld", s_pending_tx.text.c_str(),
@@ -242,15 +257,24 @@ static TxStart tx_start(int skip_tones, std::string &skip_reason) {
         autoseq_on_tx_starting();
         return TxStart::EncodeFailed;
     }
-    if (g_protocol->protocol_id == FTX_PROTOCOL_FT4) {
+    if (proto->protocol_id == FTX_PROTOCOL_FT4) {
         ft4_encode(msg.payload, s_tx_tones);
     } else {
         ft8_encode(msg.payload, s_tx_tones);
     }
 
-    const int tx_base_hz = s_pending_tx.offset_hz;
+    // FT4 beside FT8 goes out at FT8's dial plus FT4's offset plus its audio offset (tx_timing.h).
+    const int tx_base_hz = ::tx_base_hz(s_pending_tx.offset_hz, proto->protocol_id == FTX_PROTOCOL_FT4
+                                                                       ? porta_p4_station_ft4_dial_offset_hz()
+                                                                       : 0);
+    if (!tx_tones_in_range(tx_base_hz, tx_base_hz + proto->tone_spacing * (proto->protocol_id == FTX_PROTOCOL_FT4 ? 3 : 7))) {
+        // Below the dial (40 m's FT4, row xvfn) or a wild offset: never keyed. Not counted, so the entry
+        // waits to be cancelled rather than spending tries.
+        skip_reason = "TX tone " + std::to_string(tx_base_hz) + " Hz out of range";
+        return TxStart::Skipped;
+    }
     const int tone_idx =
-        (skip_tones >= g_protocol->total_symbols) ? g_protocol->total_symbols : skip_tones;
+        (skip_tones >= proto->total_symbols) ? proto->total_symbols : skip_tones;
 
     // Key the radio before autoseq is told: autoseq_on_tx_starting() records the
     // entry as transmitting and logs a QSO on RR73 or 73, so it must not run
@@ -266,11 +290,11 @@ static TxStart tx_start(int skip_tones, std::string &skip_reason) {
         return TxStart::Skipped;
     }
     const int64_t keyed_ms = rtc_now_ms();  // after TX; returned, so the gap is not cut short
-    const int remaining = g_protocol->total_symbols - tone_idx;
+    const int remaining = proto->total_symbols - tone_idx;
     const size_t n = remaining > 0 ? (size_t)remaining : 0;
     const esp_err_t cpfsk = radio_control_begin_cpfsk_tx(
         static_cast<float>(tx_base_hz), n ? s_tx_tones + tone_idx : nullptr, n,
-        g_protocol->tone_spacing, g_protocol->samples_per_symbol);
+        proto->tone_spacing, proto->samples_per_symbol);
     if (cpfsk != ESP_OK && cpfsk != ESP_ERR_NOT_SUPPORTED) {
         radio_control_end_tx();
         skip_reason = std::string("CPFSK start failed: ") + esp_err_to_name(cpfsk);
@@ -282,7 +306,8 @@ static TxStart tx_start(int skip_tones, std::string &skip_reason) {
     s_tx_base_hz = tx_base_hz;
     s_tx_slot_start_ms = (now_ms / slot_period) * slot_period;
     s_tx_tone_idx = tone_idx;
-    const int sym_ms = (int)roundf(g_protocol->symbol_period * 1000.0f);
+    s_tx_proto = proto;
+    const int sym_ms = (int)roundf(proto->symbol_period * 1000.0f);
     s_tx_lead_ms = radio_control_tone_lead_ms();
     // The first TA waits the minimum TX delay after TX; however late this TX
     // is armed (tx_timing.h). Later tones are slot-anchored again.
@@ -300,7 +325,14 @@ static TxStart tx_start(int skip_tones, std::string &skip_reason) {
     // the RF s_tx_lead_ms after the slot boundary.
 
     decode_tx_state_set_tx_active(true);
-    decode_tx_state_set_tx_slot_idx(s_tx_slot_idx);
+    // Deaf by overlap: the FT8 slot this transmission is in, and for FT4 its own period too, which its
+    // decode would otherwise start after the tones end (decode_tx_state.h).
+    if (proto->protocol_id == FTX_PROTOCOL_FT4) {
+        decode_tx_state_set_tx_ft4_period_idx(s_tx_slot_idx);
+        decode_tx_state_set_tx_slot_idx(tx_ft8_slot_of_ft4_period(s_tx_slot_idx));
+    } else {
+        decode_tx_state_set_tx_slot_idx(s_tx_slot_idx);
+    }
     return TxStart::Started;
 }
 
@@ -346,19 +378,18 @@ bool tx_scheduler_swr_tripped(void) {
 }
 
 void tx_scheduler_swr_abort_note(void) {
-    s_swr_abort_slot_idx = rtc_now_ms() / g_protocol->slot_time_ms;
+    const int64_t now_ms = rtc_now_ms();
+    s_swr_abort_until_ms = (now_ms / s_tx_proto->slot_time_ms + 1) * s_tx_proto->slot_time_ms;
 }
 
 const char *tx_scheduler_hud_not_keyed_reason(void) {
-    return s_not_keyed_slot_idx >= 0 &&
-                   s_not_keyed_slot_idx == rtc_now_ms() / g_protocol->slot_time_ms
+    return rtc_now_ms() < s_not_keyed_until_ms
                ? s_not_keyed_reason.c_str()
                : nullptr;
 }
 
 const char *tx_scheduler_hud_abort_reason(void) {
-    return s_swr_abort_slot_idx >= 0 &&
-                   s_swr_abort_slot_idx == rtc_now_ms() / g_protocol->slot_time_ms
+    return rtc_now_ms() < s_swr_abort_until_ms
                ? kSwrReason
                : nullptr;
 }
@@ -374,8 +405,8 @@ static void tx_swr_tripped(void) {
     s_tx_cancel_requested = false;
     s_tx_keyed_down = false;
     decode_tx_state_set_was_txing(false);
-    s_tx_cancel_slot_idx = s_tx_slot_idx;
-    s_swr_abort_slot_idx = s_tx_slot_idx;
+    s_tx_cancel_until_ms = s_tx_slot_start_ms + s_tx_proto->slot_time_ms;
+    s_swr_abort_until_ms = s_tx_cancel_until_ms;
 
     if (swr_trip_on_trip(s_swr_trip) == SwrTripAction::Retry) {
         ESP_LOGW(TAG, "TX tripped the radio's SWR protection at tone %d: lock cleared, entry re-armed",
@@ -510,7 +541,7 @@ static void tx_tick(void) {
         return;
     }
 
-    if (!s_tx_keyed_down && s_tx_tone_idx >= g_protocol->total_symbols) {
+    if (!s_tx_keyed_down && s_tx_tone_idx >= s_tx_proto->total_symbols) {
         // The last tone has run its symbol. Key down, then release PTT after
         // the tail, so an amplifier on the radio's PTT sees no RF at release.
         // A radio with no key-up goes straight to RX;.
@@ -521,7 +552,7 @@ static void tx_tick(void) {
         if (now_ms < s_tx_rx_at_ms) {
             return;
         }
-        ESP_LOGI(TAG, "tx_tick: TX complete, all %d tones sent", g_protocol->total_symbols);
+        ESP_LOGI(TAG, "tx_tick: TX complete, all %d tones sent", s_tx_proto->total_symbols);
         radio_control_end_tx();
         autoseq_mark_sent(s_tx_slot_idx);
         swr_trip_on_clean(s_swr_trip);
@@ -532,17 +563,20 @@ static void tx_tick(void) {
         return;
     }
 
-    const float tone_hz = s_tx_base_hz + g_protocol->tone_spacing * s_tx_tones[s_tx_tone_idx];
+    const float tone_hz = s_tx_base_hz + s_tx_proto->tone_spacing * s_tx_tones[s_tx_tone_idx];
     tx_send_ta(tone_hz);
     s_tx_tone_idx++;
     s_tx_next_tone_time =
         tx_tone_time_ms(s_tx_slot_start_ms, s_tx_tone_idx,
-                        (int)roundf(g_protocol->symbol_period * 1000.0f), s_tx_lead_ms);
+                        (int)roundf(s_tx_proto->symbol_period * 1000.0f), s_tx_lead_ms);
 }
 
 static void check_slot_boundary(void) {
     const int64_t now_ms = rtc_now_ms();
-    const int slot_period = g_protocol->slot_time_ms;
+    // The armed entry's own slots: FT4's 7.5 s periods for an FT4 one, FT8's otherwise.
+    const ProtocolConfig *proto = (s_qso_xmit && s_pending_tx_valid) ? proto_of(s_pending_tx.mode) : &kProtocolFT8;
+    const bool ft4 = proto->protocol_id == FTX_PROTOCOL_FT4;
+    const int slot_period = proto->slot_time_ms;
     const int64_t slot_idx = now_ms / slot_period;
     const int slot_ms = (int)(now_ms % slot_period);
     const int slot_parity = (int)(slot_idx & 1);
@@ -578,29 +612,32 @@ static void check_slot_boundary(void) {
     // The previous slot's decode is applied once the decode task has marked it
     // and this loop has taken its result (decode_pipeline_apply()). Read in this
     // order: the decode task publishes before it marks (decode_pipeline.cpp).
-    if (s_qso_xmit && s_target_slot_parity == slot_parity && slot_idx != s_tx_cancel_slot_idx &&
-        slot_idx != s_tx_skip_slot_idx &&
-        slot_ms < (g_protocol->slot_time_ms * 4 / 15) && !decode_tx_state_get_tx_active() &&
+    // FT4 is gated by its own channel's previous period, as FT8 by the station's previous slot.
+    const int64_t applied = ft4 ? decode_tx_state_get_ft4_applied_period_idx()
+                                : decode_tx_state_get_decode_applied_slot_idx();
+    if (s_qso_xmit && s_target_slot_parity == slot_parity && now_ms >= s_tx_cancel_until_ms &&
+        now_ms >= s_tx_skip_until_ms &&
+        slot_ms < (slot_period * 4 / 15) && !decode_tx_state_get_tx_active() &&
         !amp_band_prime_busy() &&
         !decode_tx_state_get_decode_in_progress() &&
-        decode_tx_state_get_decode_applied_slot_idx() >= slot_idx - 1 &&
-        !decode_pipeline_result_pending()) {
+        applied >= slot_idx - 1 &&
+        !decode_pipeline_result_pending(ft4)) {
 
         ESP_LOGI(TAG, "TX trigger: starting TX in slot %lld (parity %d)", (long long)slot_idx,
                  slot_parity);
 
-        const int sym_ms = (int)roundf(g_protocol->symbol_period * 1000.0f);
+        const int sym_ms = (int)roundf(proto->symbol_period * 1000.0f);
         const int skip_tones =
             tx_skip_tones(slot_ms, sym_ms, radio_control_tone_lead_ms(), tx_min_delay_ms());
-        if (skip_tones < g_protocol->total_symbols) {
+        if (skip_tones < proto->total_symbols) {
             if (s_pending_tx_valid && !s_pending_tx.text.empty()) {
                 std::string skip_reason;
                 const TxStart started = tx_start(skip_tones, skip_reason);
                 if (started == TxStart::Skipped) {
                     // Armed still, so the entry goes out in its next slot; the
                     // guard stops another attempt in this one.
-                    s_tx_skip_slot_idx = slot_idx;
-                    s_not_keyed_slot_idx = slot_idx;
+                    s_tx_skip_until_ms = (slot_idx + 1) * slot_period;
+                    s_not_keyed_until_ms = s_tx_skip_until_ms;
                     s_not_keyed_reason = skip_reason;
                     ESP_LOGW(TAG, "TX slot %lld skipped, not counted: %s", (long long)slot_idx,
                              skip_reason.c_str());

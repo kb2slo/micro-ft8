@@ -962,9 +962,10 @@ const char *porta_host_queue_reply(uint32_t decode_id) {
     if (!find_decode_for_reply(decode_id, &msg)) {
         return "unknown decode";
     }
-    if (msg.listen_only) {
-        // A decode on FT4 beside FT8: listened to, not yet answerable (row grqg).
-        return "replies on FT4 are not built yet";
+    if (msg.mode == RxMode::FT4 && porta_p4_station_ft4_dial_offset_hz() < 0) {
+        // FT4 below FT8's dial (40 m): a QMX cannot transmit below its dial with TA, and the receive dial is
+        // FT8's (docs/architecture/radio.md, TX timing on a QMX; row xvfn).
+        return "replies on FT4 are not built on this band yet";
     }
     tx_scheduler_swr_operator_start(false);
     const char *why = apply_reply_touch(msg);

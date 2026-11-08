@@ -38,3 +38,27 @@ inline int tx_skip_tones(int slot_ms, int sym_ms, int lead_ms, int min_delay_ms)
 inline int64_t tx_first_rf_ms(int64_t keyed_ms, int min_delay_ms) {
     return keyed_ms + min_delay_ms;
 }
+
+// ---- A transmission on the FT4 channel beside FT8 (docs/roadmap/several-channels.md, row grqg) ----
+// The QMX transmits at its dial plus the TA tone, and its dial is FT8's, so an FT4 transmission is FT8's dial
+// plus FT4's dial offset plus the audio offset: 7,500 Hz on 20 m, measured on the air (docs/architecture/radio.md,
+// TX timing on a QMX). The radio keys up on a TA under 10 Hz, so a channel below the dial cannot go out this way.
+inline int tx_base_hz(int audio_offset_hz, int32_t dial_offset_hz) {
+    return audio_offset_hz + (int)dial_offset_hz;
+}
+
+// The tones a transmission may use, base to top tone: none near the key-up threshold, none further from the
+// dial than the far TA measured on the air reaches with room for every band's FT4 offset. A wild offset (a bug)
+// never keys the radio somewhere odd. Not a band table: the frequency is the operator's.
+constexpr int kTxToneMinHz = 100;
+constexpr int kTxToneMaxHz = 10000;
+inline bool tx_tones_in_range(int base_hz, float top_tone_hz) {
+    return base_hz >= kTxToneMinHz && top_tone_hz <= (float)kTxToneMaxHz;
+}
+
+// FT8's slots are two of FT4's 7.5 s periods, aligned: the FT8 slot an FT4 period falls in, which an FT4
+// transmission in that period deafens (deaf by overlap; an FT8 transmission deafens both its FT4 periods
+// through tx_active).
+inline int64_t tx_ft8_slot_of_ft4_period(int64_t ft4_period_idx) {
+    return ft4_period_idx / 2;
+}
