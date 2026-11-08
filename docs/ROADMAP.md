@@ -8,7 +8,7 @@ How things work now: `architecture/` (start at [architecture/system.md](architec
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| grqg | <a id="grqg"></a>Reply on the channel heard | Epic [u8mc](roadmap/several-channels.md#grqg). A tap on any decoded message, FT8 or FT4, replies in that mode's next valid slot and logs it with its mode. **Done-when:** autoseq, the queue and the overlap rule in host tests (category 1); listening on FT8 and FT4 on one QMX, a tap on a CQ on each completes a QSO in that mode and logs it with its mode, and the FT8 channel is deaf only in the slots the overlap rule names (field). |
+| xvfn | <a id="xvfn"></a>FT4 replies on 40 m, below FT8's dial | Epic [u8mc](roadmap/several-channels.md#xvfn). A QMX keys up on a `TA` under 10 Hz, and 40 m's FT4 dial is 26.5 kHz below FT8's, so an FT4 reply there needs a split, a retune or another way, settled on the bench first. **Done-when:** the chosen way measured on the bench on QMX 1_04_010 (field); a tap on an FT4 CQ on 40 m completes a QSO logged as MFSK/FT4 at 7.0475 (field). |
 
 ## Backlog
 
@@ -53,7 +53,7 @@ Each epic is one row here and one file under `roadmap/`, read only when touching
 
 | ID | Epic | Why / constraint |
 | --- | --- | --- |
-| u8mc | <a id="u8mc"></a>Several channels at once | [roadmap/several-channels.md](roadmap/several-channels.md): receive, decode and transmit on 1–N channels, whatever the radio; FT8 and FT4 at once on one QMX first. Children: [grqg](roadmap/several-channels.md#grqg), [xvfn](roadmap/several-channels.md#xvfn). |
+| u8mc | <a id="u8mc"></a>Several channels at once | [roadmap/several-channels.md](roadmap/several-channels.md): receive, decode and transmit on 1–N channels, whatever the radio; FT8 and FT4 at once on one QMX first. Children: [xvfn](roadmap/several-channels.md#xvfn). |
 | knpp | <a id="knpp"></a>HL2 support | [roadmap/hl2-support.md](roadmap/hl2-support.md): the Hermes-Lite 2 as a second radio on the P4, receive then transmit, at home then in the park. Children: [nngr](roadmap/hl2-support.md#nngr), [abkw](roadmap/hl2-support.md#abkw), [kgyh](roadmap/hl2-support.md#kgyh). |
 | ukk6 | <a id="ukk6"></a>OTA updates | [roadmap/ota-updates.md](roadmap/ota-updates.md): after the first install over USB, every update to either board is over the air, started from the web app. Children: [wanw](roadmap/ota-updates.md#wanw), [v697](roadmap/ota-updates.md#v697), [hstv](roadmap/ota-updates.md#hstv), [yme5](roadmap/ota-updates.md#yme5), [nufg](roadmap/ota-updates.md#nufg). |
 | I18 | <a id="I18"></a>Activator mode: POTA and SOTA | [roadmap/activator-mode.md](roadmap/activator-mode.md): a whole activation run offline, its log accepted by pota.app and the SOTA database unedited, and what helps an activator pick a reference, check the grid and plan. Children: [rrsp](roadmap/activator-mode.md#rrsp), [w5nj](roadmap/activator-mode.md#w5nj). |

@@ -60,7 +60,7 @@ Every feature the QMX station has, against what the HL2 needs for it. **Fits**: 
 | Feature (QMX today) | On the HL2 | |
 |---|---|---|
 | Decode FT8 from I/Q through the front end | One receiver through the same front end (**Receive**). | Fits (built) |
-| FT4 (receive beside FT8 on a QMX shipped, [decode.md](../architecture/decode.md), **FT4**; row [grqg](several-channels.md#grqg), both radios) | Same pipeline; on transmit, BT 1.0. | Fits |
+| FT4 (receive beside FT8 on a QMX shipped, [decode.md](../architecture/decode.md), **FT4**; replies beside FT8 shipped on a QMX, [autoseq.md](../architecture/autoseq.md), **The slot cycle**; both radios) | Same pipeline; on transmit, BT 1.0. | Fits |
 | Transmit: the QMX makes the tones from `TA` | The P4 makes the waveform and streams it, 381 packets/s on core 0, with no gap allowed (Safety 10). Core 0's headroom while transmitting is unmeasured. | Work ([abkw](#abkw)) |
 | Band change: `FA`, and the QMX's own filters | NCO plus the N2ADR byte, both ours, re-chosen on every band change; its relays click. The receive filter is shared once several receivers run (**Receive**). | Fits (built) |
 | Power and SWR while transmitting (`PC;SW;`, slot bar) | Forward and reverse telemetry through a calibration table. Which word is forward on this unit, and how often telemetry refreshes while keyed, are unread; until calibrated, the watts are Quisk's table, not this unit's. | Work ([abkw](#abkw)) |
