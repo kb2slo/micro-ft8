@@ -25,6 +25,14 @@ void host_link_start(void);
 // Adds the viewer and its polling endpoint to an already-started server.
 void host_link_register_uris(httpd_handle_t server);
 
+// The sidekick's own line in the event ring, as a log event like the main board's: /api/events and the app's
+// log show it. Truncated to one event's text. Takes the ring's lock, so not from inside it.
+void host_link_log(const char *text);
+
+// A request or a Port A wait slower than this is logged (row dlu3, docs/ROADMAP.md): the server runs one
+// request at a time, so a slow one holds every other.
+#define HOST_LINK_SLOW_MS 500
+
 // Asks the main board to reset its Station settings (and, when `logs`, delete its QSO logs).
 // Blocks for the answer. true = the host did it; false = it did not, with the reason in `why`
 // ("host link busy", "no reply from host", or the host's own refusal such as "transmitting").
