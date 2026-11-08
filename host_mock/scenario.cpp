@@ -90,7 +90,7 @@ static std::string time_on_for(int period)
 }
 
 static bool on_adif(const std::string& dxcall, const std::string& dxgrid,
-                    int rst_sent, int rst_rcvd)
+                    int rst_sent, int rst_rcvd, RxMode)
 {
     if (!s_current) {
         return true;

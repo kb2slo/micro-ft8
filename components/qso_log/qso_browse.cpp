@@ -142,7 +142,9 @@ bool parse_record_line(const std::string& line,
     const std::string grid = field_after_tag(line, s_lower, "gridsquare:");
     const std::string my_grid = field_after_tag(line, s_lower, "my_gridsquare:");
     const std::string comment = field_after_tag(line, s_lower, "comment:");
-    const std::string mode = field_after_tag(line, s_lower, "mode:");
+    // FT4 is written as MODE MFSK, SUBMODE FT4 (adif_format_log_record()); the chain carries the submode.
+    const std::string submode = field_after_tag(line, s_lower, "submode:");
+    const std::string mode = submode.empty() ? field_after_tag(line, s_lower, "mode:") : submode;
     const std::string station_callsign = field_after_tag(line, s_lower, "station_callsign:");
     const std::string rst_rcvd_raw = field_after_tag(line, s_lower, "rst_rcvd:");
     const std::string rst_sent_raw = field_after_tag(line, s_lower, "rst_sent:");

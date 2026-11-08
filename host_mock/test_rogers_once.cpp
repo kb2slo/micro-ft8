@@ -19,13 +19,13 @@
 static int s_log_count = 0;
 static bool s_log_fails = false;
 
-static bool adif_cb(const std::string&, const std::string&, int, int) {
+static bool adif_cb(const std::string&, const std::string&, int, int, RxMode) {
     if (s_log_fails) return false;
     ++s_log_count;
     return true;
 }
 
-static bool always_recent(const std::string&) {
+static bool always_recent(const std::string&, RxMode) {
     return true;
 }
 

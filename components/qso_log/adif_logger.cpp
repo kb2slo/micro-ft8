@@ -101,8 +101,9 @@ bool adif_log_qso(const AdifLogQsoInput& in, AdifLoggerDedupe* dedupe) {
 
     const int64_t now_ms = rtc_now_ms();
     const std::string call_norm = normalize_call_token(in.dxcall);
-    if (dedupe && adif_logger_dedupe_is_duplicate(dedupe, call_norm, now_ms)) {
-        ESP_LOGI(TAG, "ADIF dedupe skip %s (within 10 min)", call_norm.c_str());
+    const std::string key = adif_logger_dedupe_key(call_norm, in.band, in.mode);
+    if (dedupe && adif_logger_dedupe_is_duplicate(dedupe, key, now_ms)) {
+        ESP_LOGI(TAG, "ADIF dedupe skip %s %s %s (within 10 min)", call_norm.c_str(), in.band.c_str(), in.mode.c_str());
         return true;
     }
 
@@ -141,7 +142,7 @@ bool adif_log_qso(const AdifLogQsoInput& in, AdifLoggerDedupe* dedupe) {
         return false;
     }
     if (dedupe) {
-        adif_logger_dedupe_remember(dedupe, call_norm, now_ms);
+        adif_logger_dedupe_remember(dedupe, key, now_ms);
     }
     ESP_LOGI(TAG, "ADIF wrote %s -> %s", call_norm.c_str(), path);
     return true;

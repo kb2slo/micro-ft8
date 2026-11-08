@@ -22,13 +22,13 @@
 static std::set<std::string> s_logged;
 static int s_log_count = 0;
 
-static bool adif_cb(const std::string& dxcall, const std::string&, int, int) {
+static bool adif_cb(const std::string& dxcall, const std::string&, int, int, RxMode) {
     s_logged.insert(dxcall);
     ++s_log_count;
     return true;
 }
 
-static bool recent_cb(const std::string& dxcall_norm) {
+static bool recent_cb(const std::string& dxcall_norm, RxMode = RxMode::FT8) {
     return s_logged.count(dxcall_norm) != 0;
 }
 

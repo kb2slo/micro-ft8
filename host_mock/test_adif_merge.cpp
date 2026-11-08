@@ -169,6 +169,17 @@ static void test_log_record_omits_empty_grid() {
                 "call runs straight into mode when the grid is absent");
 }
 
+static void test_log_record_ft4_is_mfsk_submode() {
+    // ADIF: FT4 is SUBMODE FT4 of MODE MFSK (LoTW takes it as MFSK/FT4); FT8 stays MODE FT8, byte for byte.
+    AdifLogFields f = sample_fields();
+    f.mode = "FT4";
+    f.freq = "14.080";
+    const std::string out = adif_format_log_record(f);
+    expect_true(out.find("<mode:4>MFSK<submode:3>FT4 <qso_date:8>") != std::string::npos, "FT4 is MFSK/FT4");
+    expect_true(out.find("<mode:3>FT4") == std::string::npos, "never MODE FT4");
+    expect_true(adif_format_log_record(sample_fields()).find("submode") == std::string::npos, "FT8 has no submode");
+}
+
 static void test_log_record_omits_unset_fields() {
     AdifLogFields f = sample_fields();
     f.rst_sent = kAdifNoReport;
@@ -450,6 +461,27 @@ int main() {
                         &cap, "C" + std::to_string(kAdifLoggerDedupeMaxEntries), 0),
                     "newest kept");
     }
+    {
+        // The window is per call, band and mode: POTA counts each as its own contact.
+        AdifLoggerDedupe d;
+        adif_logger_dedupe_remember(&d, adif_logger_dedupe_key("K1ABC", "20M", "FT8"), 1000);
+        expect_true(adif_logger_dedupe_is_duplicate(&d, adif_logger_dedupe_key("K1ABC", "20m", "ft8"), 1000),
+                    "same call, band and mode, whatever the case");
+        expect_true(!adif_logger_dedupe_is_duplicate(&d, adif_logger_dedupe_key("K1ABC", "20m", "FT4"), 1000),
+                    "FT4 after FT8 is a new contact");
+        expect_true(!adif_logger_dedupe_is_duplicate(&d, adif_logger_dedupe_key("K1ABC", "40m", "FT8"), 1000),
+                    "40 m after 20 m is a new contact");
+        expect_true(adif_logger_dedupe_key("", "20m", "FT8").empty(), "no call, no key");
+        expect_true(std::string(adif_band_for_hz(14074000)) == "20m" &&
+                        std::string(adif_band_for_hz(14081500)) == "20m" &&
+                        std::string(adif_band_for_hz(7047500)) == "40m" &&
+                        std::string(adif_band_for_hz(13999999)).empty(),
+                    "a frequency's ADIF band, FT4's dial included");
+        expect_true(adif_freq_mhz(14074000) == "14.074" && adif_freq_mhz(14080000) == "14.080" &&
+                        adif_freq_mhz(7047500) == "7.0475" && adif_freq_mhz(144174000) == "144.174" &&
+                        adif_freq_mhz(14075530) == "14.07553",
+                    "FREQ in MHz, three decimals at least, none rounded away");
+    }
 
     if (g_fails != 0) {
         fprintf(stderr, "%d failure(s)\n", g_fails);
@@ -457,6 +489,7 @@ int main() {
     }
     test_log_record_byte_compatible();
     test_log_record_omits_empty_grid();
+    test_log_record_ft4_is_mfsk_submode();
     test_log_record_omits_unset_fields();
     test_log_record_lengths_match_values();
     test_log_record_roundtrips_through_parser();

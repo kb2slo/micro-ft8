@@ -137,7 +137,7 @@ static void test_expires_four_hours_after_last_heard() {
 static std::string s_logged_grid;
 static int s_log_count = 0;
 
-static bool adif_cb(const std::string&, const std::string& grid, int, int) {
+static bool adif_cb(const std::string&, const std::string& grid, int, int, RxMode) {
     s_logged_grid = grid;
     ++s_log_count;
     return true;

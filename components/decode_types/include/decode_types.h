@@ -1,8 +1,12 @@
 #pragma once
+#include <cstdint>
 #include <string>
 
 // Decode-result data types shared by autoseq and the decode pipeline. Plain
-// data, no dependency beyond <string>.
+// data, no dependency beyond the standard headers.
+
+// The mode a decode was heard in, and so the mode a QSO from it runs in (docs/architecture/autoseq.md, The queue).
+enum class RxMode : uint8_t { FT8 = 0, FT4 = 1 };
 
 // A lightweight RX line format you can fill from your decoder
 struct UiRxLine {
@@ -18,6 +22,7 @@ struct UiRxLine {
     bool is_recent_qso = false;
     // Heard on a channel that only listens (row an8x): no reply can go out on it yet (row grqg).
     bool listen_only = false;
+    RxMode mode = RxMode::FT8;
 };
 
 // Plain-C RX entry used for zero-heap decode/display pipeline.

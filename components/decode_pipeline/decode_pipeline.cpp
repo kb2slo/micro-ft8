@@ -63,8 +63,12 @@ AdifLoggerDedupe s_adif_logger_dedupe;
 static_assert(AUTOSEQ_INACTIVE_EXPIRY_MS == kAdifLoggerDedupeWindowMs,
               "parked-entry expiry must match the recently-worked window");
 
-bool decode_pipeline_recently_logged(const std::string& dxcall_norm) {
-  return adif_logger_dedupe_is_duplicate(&s_adif_logger_dedupe, dxcall_norm, rtc_now_ms());
+// The window is per call, band and mode (adif_logger_dedupe_key()); the band is the radio's dial's now.
+bool decode_pipeline_recently_logged(const std::string& dxcall_norm, RxMode mode) {
+  const int64_t now_ms = rtc_now_ms();
+  const std::string key = adif_logger_dedupe_key(dxcall_norm, adif_band_for_hz(dial_history_at(now_ms)),
+                                                 mode == RxMode::FT4 ? "FT4" : "FT8");
+  return adif_logger_dedupe_is_duplicate(&s_adif_logger_dedupe, key, now_ms);
 }
 
 // ---- Heard grids (heard_grid.h). Main loop only, so not locked:
@@ -576,8 +580,14 @@ static void apply_slot_result(DecodeSlotResult& r) {
     heard_grid_note(d->field2, d->field3, r.standard[i], uptime_ms);
     char dxnorm[DEC_FIELD_MAX];
     dec_normalize_call(d->field2, dxnorm, DEC_FIELD_MAX);
+    // Recently worked in this channel's band and mode (adif_logger_dedupe_key()).
     d->is_recent_qso = (dxnorm[0] != '\0') &&
-                       adif_logger_dedupe_is_duplicate(&s_adif_logger_dedupe, std::string(dxnorm), now_ms);
+                       adif_logger_dedupe_is_duplicate(
+                           &s_adif_logger_dedupe,
+                           adif_logger_dedupe_key(std::string(dxnorm),
+                                                  adif_band_for_hz(dial_history_at(now_ms) + (uint32_t)r.dial_offset_hz),
+                                                  r.mode->name),
+                           now_ms);
   }
 
   // ---- Sort in-place: to_me, fresh CQ, other fresh, recent QSOs ----

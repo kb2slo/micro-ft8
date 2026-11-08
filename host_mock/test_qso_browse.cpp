@@ -93,6 +93,15 @@ int main()
     expect_str(pager2.entries[0].my_grid, "", "my_grid empty when absent");
     expect_str(pager2.entries[0].comment, "", "comment empty when absent");
 
+    // FT4 is stored as MODE MFSK, SUBMODE FT4; the Log tab and the wire carry FT4.
+    const std::string rec_ft4 =
+        "<call:5>K1ABC <mode:4>MFSK<submode:3>FT4 <qso_date:8>20260819 "
+        "<time_on:6>153000 <freq:6>14.080 <station_callsign:6>KB2SLO <eor>";
+    QsoBrowsePager pager3;
+    qso_browse_pager_reset(&pager3, 0, 6);
+    qso_browse_pager_feed(&pager3, rec_ft4, bands, 2);
+    expect_str(pager3.entries[0].mode, "FT4", "MFSK/FT4 reads as FT4");
+
     qso_browse_format_entry_lines(pager.entries, QsoBrowsePageView::Default, &lines);
     expect_true(lines[0].find("15:30") != std::string::npos, "default has time");
     expect_true(lines[0].find("20m") != std::string::npos, "default has band");

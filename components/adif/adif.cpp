@@ -476,15 +476,50 @@ AdifMergeStatus adif_merge_stdio(std::FILE* archive, std::FILE* incoming, std::F
     return AdifMergeStatus::OK;
 }
 
-bool adif_logger_dedupe_is_duplicate(AdifLoggerDedupe* io,
-                                     const std::string& call_norm,
-                                     std::int64_t now_ms) {
+std::string adif_logger_dedupe_key(const std::string& call_norm, const std::string& band,
+                                   const std::string& mode) {
     if (call_norm.empty()) {
+        return "";
+    }
+    std::string key = call_norm + "|";
+    for (char c : band) key += (char)std::tolower((unsigned char)c);
+    key += "|";
+    for (char c : mode) key += (char)std::toupper((unsigned char)c);
+    return key;
+}
+
+const char* adif_band_for_hz(std::uint32_t hz) {
+    // ADIF's band table (the ADIF specification, Band enumeration), the bands a QMX or an HL2 reaches.
+    static const struct { std::uint32_t lo, hi; const char* name; } kBands[] = {
+        {1800000, 2000000, "160m"},   {3500000, 4000000, "80m"},    {5060000, 5450000, "60m"},
+        {7000000, 7300000, "40m"},    {10100000, 10150000, "30m"},  {14000000, 14350000, "20m"},
+        {18068000, 18168000, "17m"},  {21000000, 21450000, "15m"},  {24890000, 24990000, "12m"},
+        {28000000, 29700000, "10m"},  {50000000, 54000000, "6m"},   {144000000, 148000000, "2m"},
+    };
+    for (const auto& b : kBands) {
+        if (hz >= b.lo && hz <= b.hi) return b.name;
+    }
+    return "";
+}
+
+std::string adif_freq_mhz(std::uint32_t hz) {
+    char buf[24];
+    std::snprintf(buf, sizeof(buf), "%u.%06u", (unsigned)(hz / 1000000u), (unsigned)(hz % 1000000u));
+    std::string s = buf;
+    const std::size_t min_len = s.find('.') + 4;  // three decimals
+    while (s.size() > min_len && s.back() == '0') s.pop_back();
+    return s;
+}
+
+bool adif_logger_dedupe_is_duplicate(AdifLoggerDedupe* io,
+                                     const std::string& key,
+                                     std::int64_t now_ms) {
+    if (key.empty()) {
         return false;
     }
     logger_dedupe_prune(io, now_ms);
     for (const AdifLoggerDedupeEntry& e : io->recent) {
-        if (e.call == call_norm) {
+        if (e.call == key) {
             return true;
         }
     }
@@ -492,19 +527,19 @@ bool adif_logger_dedupe_is_duplicate(AdifLoggerDedupe* io,
 }
 
 void adif_logger_dedupe_remember(AdifLoggerDedupe* io,
-                                 const std::string& call_norm,
+                                 const std::string& key,
                                  std::int64_t now_ms) {
-    if (call_norm.empty()) {
+    if (key.empty()) {
         return;
     }
     logger_dedupe_prune(io, now_ms);
     for (AdifLoggerDedupeEntry& e : io->recent) {
-        if (e.call == call_norm) {
+        if (e.call == key) {
             e.logged_ms = now_ms;
             return;
         }
     }
-    io->recent.push_back(AdifLoggerDedupeEntry{call_norm, now_ms});
+    io->recent.push_back(AdifLoggerDedupeEntry{key, now_ms});
 }
 
 // ---------------------------------------------------------------------------
@@ -554,7 +589,11 @@ std::string adif_format_log_record(const AdifLogFields& f) {
     // written. ADIF fields are self-delimiting by length, so it parses either
     // way, but keeping it byte-compatible means existing archives and freshly
     // written records still merge on identical keys.
-    append_field(out, "mode", f.mode, /*trailing_space=*/false);
+    // In ADIF FT4 is a submode of MFSK, not a mode (LoTW takes it as MFSK/FT4); FT8 is a mode. The rest of
+    // the chain carries "FT4" (docs/architecture/logging.md, The four-place field chain).
+    const bool ft4 = f.mode == "FT4";
+    append_field(out, "mode", ft4 ? std::string("MFSK") : f.mode, /*trailing_space=*/false);
+    if (ft4) append_field(out, "submode", f.mode);
     append_field(out, "qso_date", f.qso_date);
     append_field(out, "time_on", f.time_on);
     append_field(out, "freq", f.freq);

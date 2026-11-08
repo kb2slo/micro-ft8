@@ -26,7 +26,7 @@ static void check(bool ok, const char* what)
     }
 }
 
-static bool adif_cb(const std::string&, const std::string&, int, int) { return true; }
+static bool adif_cb(const std::string&, const std::string&, int, int, RxMode) { return true; }
 
 static UiRxLine to_me(const char* dx, const char* f3)
 {
