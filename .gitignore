@@ -99,3 +99,7 @@ webapp/app/manifest.json
 # The getting-started page, generated from webapp/getting-started.md by
 # webapp/tools/getting_started.mjs (its printed PDF goes to webapp/dist/, above).
 webapp/getting-started.html
+
+# tools/qmx_tx_probe: the tone printer its README builds
+tools/qmx_tx_probe/ftx_tones
+tools/qmx_tx_probe/ftx_tones.exe
