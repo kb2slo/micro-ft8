@@ -109,6 +109,9 @@ struct Ft8Channel {
     int64_t slot_monitor_us;
     // The first slot has no boundary behind it to vouch for its start.
     bool slot_clean;
+    // The slot began at a boundary, not where this run started: a run's first slot is cut short by the
+    // restart and its read gap is the source coming up, so it sends no STALL.
+    bool slot_from_boundary;
     ft8_activity_batch_t activity;
     ft8_activity_batch_t activity_out;
     // The waterfall's span: bins are tone-spacing wide, from min_bin up to max_bin.
@@ -363,7 +366,7 @@ static void channel_block(Ft8Channel* ch, int64_t queued)
             const uint32_t gap_us = s_ingest_gap_max_us.exchange(0, std::memory_order_relaxed);
             const int64_t gap_end_ms = s_ingest_gap_end_ms.load(std::memory_order_relaxed);
             const uint32_t empty = s_ingest_empty.exchange(0, std::memory_order_relaxed);
-            if (gap_us > kStallLogUs) {
+            if (gap_us > kStallLogUs && ch->slot_from_boundary) {
                 char buf[64];
                 snprintf(buf, sizeof(buf), "STALL %lld gap%u empty%u at%lld", (long long)ch->slot_idx,
                          (unsigned)(gap_us / 1000), (unsigned)empty, (long long)(gap_end_ms % ch->slot_ms));
@@ -377,6 +380,7 @@ static void channel_block(Ft8Channel* ch, int64_t queued)
             decode_tx_state_set_tx_slot_idx(-1);
         }
         ch->slot_idx = now_idx;
+        ch->slot_from_boundary = true;
         ch->slot_blocks = 0;
         ch->slot_samples = 0;
         ch->slot_monitor_us = 0;
