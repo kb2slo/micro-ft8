@@ -42,6 +42,10 @@ bool find_decode_for_reply(uint32_t decode_id, UiRxLine* out);
 // only before starting a new QSO.
 bool decode_pipeline_recently_logged(const std::string& dxcall_norm, RxMode mode);
 
+// True while a station slot in the last two minutes showed the clock on its slots (decode_sync_phase_good()):
+// a browser clock set may then move it only by whole slots (clock_set_decide(), docs/architecture/time.md).
+bool decode_pipeline_phase_good(void);
+
 // The grid dxcall_norm last sent in any decode (heard_grid.h). Each board
 // registers it with autoseq_set_heard_grid_callback(), which consults it only
 // when a QSO logs with no grid of its own.

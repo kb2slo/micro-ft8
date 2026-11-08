@@ -75,6 +75,17 @@ bool decode_pipeline_recently_logged(const std::string& dxcall_norm, RxMode mode
 // decode_pipeline_apply() notes each decode, and autoseq reads the table when
 // a QSO logs. Times are uptime, not rtc_now_ms(): the table empties on reboot
 // anyway, so it never waits on the clock being set. ----
+// When the station's last slot showed the clock on its slots (decode_sync_phase_good()), in uptime seconds,
+// so a clock set does not move it; 0 for never. Written by the decode task, read on the main loop: 32 bits,
+// one store on the P4.
+static constexpr int32_t kPhaseGoodForS = 120;
+static volatile int32_t s_phase_good_uptime_s = 0;
+
+bool decode_pipeline_phase_good(void) {
+  const int32_t at = s_phase_good_uptime_s;
+  return at != 0 && (int32_t)(esp_timer_get_time() / 1000000) - at <= kPhaseGoodForS;
+}
+
 bool decode_pipeline_heard_grid(const std::string& dxcall_norm, std::string* grid_out) {
   return heard_grid_lookup(dxcall_norm.c_str(), esp_timer_get_time() / 1000, grid_out);
 }
@@ -543,6 +554,9 @@ void decode_slot(const ft8_slot_t* slot) {
     // The station's channel steps the clock; one source, so two modes cannot step it twice a slot.
     const int delta_ms =
         slot->station ? decode_sync_step_ms(times_s, dc.count, slot->capture_clean ? 1 : 0) : 0;
+    if (slot->station && decode_sync_phase_good(times_s, dc.count, slot->capture_clean ? 1 : 0)) {
+      s_phase_good_uptime_s = (int32_t)(esp_timer_get_time() / 1000000);
+    }
     if (delta_ms != 0) {
       rtc_apply_decode_sync(delta_ms);
       sync_ms = delta_ms;
