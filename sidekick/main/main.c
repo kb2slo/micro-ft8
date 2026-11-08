@@ -241,8 +241,11 @@ void app_main(void)
         }
         button_check_hold();
         if (heartbeat % 5 == 0) {
-            ESP_LOGI(TAG, "alive: %" PRIu32 " wifi=%s", heartbeat / 5,
-                     wifi_prov_is_online() ? "up" : (wifi_prov_ap_active() ? "ap" : "down"));
+            // With the link's health: on the console, out of band, so a stalled web server still shows (row dlu3).
+            char health[128];
+            host_link_health(health, sizeof(health));
+            ESP_LOGI(TAG, "alive: %" PRIu32 " wifi=%s %s", heartbeat / 5,
+                     wifi_prov_is_online() ? "up" : (wifi_prov_ap_active() ? "ap" : "down"), health);
         }
         ++heartbeat;
         vTaskDelay(pdMS_TO_TICKS(LOOP_TICK_MS));
