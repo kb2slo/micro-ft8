@@ -439,7 +439,9 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 .frow-extra>:last-child:not(:first-child){margin-left:auto}
 .frow-extra .degrid{font-family:ui-monospace,monospace;font-weight:700}
 .frow-extra .distbearing{font-family:ui-monospace,monospace}
-.frow-extra .comment{font-style:italic;overflow-wrap:anywhere}
+/* One line, as long as the station comment fits, then an ellipsis: wrapped, it fell to a line of its own
+   only on rows whose distance was longer, so rows were two or three lines at random (2026-11-08). */
+.frow-extra .comment{font-style:italic;flex:1 1 0;min-width:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #logMore{padding:.7rem 1rem;text-align:center;color:GrayText;font-size:.8rem}
 
 /* ---- tools ---- */
