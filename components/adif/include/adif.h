@@ -100,7 +100,7 @@ static constexpr std::int64_t kAdifLoggerDedupeWindowMs = 10 * 60 * 1000LL;
 static constexpr std::size_t kAdifLoggerDedupeMaxEntries = 32;
 
 struct AdifLoggerDedupeEntry {
-    std::string call;
+    std::string call;  // adif_logger_dedupe_key(): call, band and mode
     std::int64_t logged_ms = 0;
 };
 
@@ -108,10 +108,24 @@ struct AdifLoggerDedupe {
     std::vector<AdifLoggerDedupeEntry> recent;
 };
 
+// The window's key: call, band and mode, since POTA and the awards count a contact by each (docs/architecture/
+// logging.md, POTA). call_norm upper case with <> stripped; band as "20m" or "20M"; mode as "FT8" or "FT4".
+// "" for an empty call, which is never a duplicate.
+std::string adif_logger_dedupe_key(const std::string& call_norm, const std::string& band,
+                                   const std::string& mode);
+
+// The ADIF band a frequency is in, lower case ("20m" for 14,074,000 Hz); "" outside the amateur bands below
+// 2 m. Names the band of a decode for the window's key; it is not a transmit check.
+const char* adif_band_for_hz(std::uint32_t hz);
+
+// FREQ's value in MHz: at least three decimals, more only where the dial has them ("14.074", "14.080",
+// "7.0475"), so FT4's 40 m dial is not rounded and every FT8 record reads as it always has.
+std::string adif_freq_mhz(std::uint32_t hz);
+
 bool adif_logger_dedupe_is_duplicate(AdifLoggerDedupe* io,
-                                     const std::string& call_norm,
+                                     const std::string& key,
                                      std::int64_t now_ms);
 
 void adif_logger_dedupe_remember(AdifLoggerDedupe* io,
-                                 const std::string& call_norm,
+                                 const std::string& key,
                                  std::int64_t now_ms);

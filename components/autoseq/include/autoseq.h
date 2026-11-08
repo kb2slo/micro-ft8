@@ -97,7 +97,10 @@ struct QsoContext {
     int64_t inactive_since_ms = 0;
 
     int offset_hz = 1500;   // TX audio offset
-    int slot_id = 0;        // TX slot (0=even, 1=odd)
+    int slot_id = 0;        // TX slot (0=even, 1=odd), in its own mode's slots
+    // The mode it runs in: a decode continues the entry for its call in its own mode only, so an FT8 QSO and
+    // an FT4 QSO with one station are two entries. The CQ is FT8's.
+    RxMode mode = RxMode::FT8;
 
     // CQ and Free Text entries share the CALLING state but differ in sort
     // priority: FT must TX first (preempts QSOs), CQ stays at bottom (QSOs
@@ -119,12 +122,13 @@ struct AutoseqTxEntry {
     int repeat_counter = AUTOSEQ_TRIES;  // tries left, this one included
     bool is_signoff = false; // True for TX4/TX5 (priority scheduling)
     uint16_t entry_id = 0;   // QsoContext::entry_id of the queue[0] this came from
+    RxMode mode = RxMode::FT8;  // the mode it goes out in: its slots, waveform and channel
 };
 
 // ADIF logging callback type
 using AdifLogCallback = std::function<bool(const std::string& dxcall,
                                             const std::string& dxgrid,
-                                            int rst_sent, int rst_rcvd)>;
+                                            int rst_sent, int rst_rcvd, RxMode mode)>;
 
 // ============== Public API ==============
 // Not locked: every call, and every callback, runs on the board's main loop
@@ -281,8 +285,9 @@ void autoseq_set_adif_callback(AdifLogCallback cb);
 // never filtered: a QSO is logged when we send RR73, so the station's 73 or a
 // resent R+report arrives after it is "recent" and must still reach its
 // entry. A touch is not filtered either. dxcall_norm is upper case with <>
-// stripped. Null (the default) filters nothing.
-using AutoseqRecentQsoCallback = bool (*)(const std::string& dxcall_norm);
+// stripped; mode is the decode's, and a board answers for its band in that mode,
+// as POTA counts a contact. Null (the default) filters nothing.
+using AutoseqRecentQsoCallback = bool (*)(const std::string& dxcall_norm, RxMode mode);
 void autoseq_set_recent_qso_callback(AutoseqRecentQsoCallback cb);
 
 // "What grid did this call last send?" -- consulted only when a QSO is logged

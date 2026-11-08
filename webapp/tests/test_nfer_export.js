@@ -186,6 +186,14 @@ check('a POTA bucket writes MY_SIG/MY_SIG_INFO, not the raw MY_POTA_REF list', (
   assert(!out.includes('my_pota_ref'), 'the comma list must not leak into the per-park file');
 });
 
+check('an FT4 QSO exports as MODE MFSK, SUBMODE FT4, as the main board writes it; FT8 stays MODE FT8', () => {
+  const sb = freshSandbox();
+  const ft4 = sb.buildAdifRecord(row({ mode: 'FT4', freq: '14.080' }), '20260929');
+  assert(ft4.includes('<mode:4>MFSK<submode:3>FT4 <qso_date:8>'), ft4);
+  const ft8 = sb.buildAdifRecord(row({ mode: 'FT8' }), '20260929');
+  assert(ft8.includes('<mode:3>FT8<qso_date:8>') && !ft8.includes('submode'), ft8);
+});
+
 check('a SOTA bucket writes MY_SOTA_REF scoped to its one summit', () => {
   const sb = freshSandbox();
   const q = row({ my_sota_ref: 'W7O/CC-001' });

@@ -5646,7 +5646,10 @@ function buildAdifRecord(q, dateStr, sig) {
   var out = '';
   out += adifField('call', q.call || '');
   out += adifFieldIfSet('gridsquare', q.grid);
-  out += adifField('mode', q.mode || '', false);
+  // In ADIF FT4 is a submode of MFSK (adif_format_log_record() writes it the same way); FT8 is a mode.
+  var ft4 = q.mode === 'FT4';
+  out += adifField('mode', ft4 ? 'MFSK' : (q.mode || ''), false);
+  if (ft4) out += adifField('submode', 'FT4');
   out += adifField('qso_date', dateStr);
   out += adifField('time_on', (q.time || '').replace(':', ''));
   out += adifField('freq', q.freq || '');

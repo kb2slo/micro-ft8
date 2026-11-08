@@ -99,14 +99,14 @@ static QsoContext* append_ctx();
 static void move_to_inactive(int idx);
 static void evict_oldest_inactive();
 static void expire_inactive();
-static int find_inactive_by_dxcall(const std::string& dxcall);
+static int find_inactive_by_dxcall(const std::string& dxcall, RxMode mode);
 static void remove_active_at(int idx);
 static void force_active_to_front(int idx);
 static void force_active_behind_head(int idx);
 static bool same_dxcall(const std::string& a, const std::string& b);
 static bool is_live_qso_state(AutoseqState state);
 static bool is_dx_queue_marker(const std::string& dxcall);
-static bool purge_dxcall_for_touch(const std::string& dxcall, bool* blocked_live);
+static bool purge_dxcall_for_touch(const std::string& dxcall, RxMode mode, bool* blocked_live);
 static void reactivate(int inactive_idx);
 static void sort_and_clean();
 static bool looks_like_grid(const std::string& s);
@@ -238,10 +238,11 @@ bool autoseq_rotate_same_parity() {
     if (s_active_count < 2) return false;
 
     int parity = s_queue[0].slot_id & 1;
+    const RxMode mode = s_queue[0].mode;
 
     int last = -1;
     for (int i = 1; i < s_active_count; ++i) {
-        if ((s_queue[i].slot_id & 1) == parity) last = i;
+        if ((s_queue[i].slot_id & 1) == parity && s_queue[i].mode == mode) last = i;
         else break; // optional: only rotate within the front same-parity run
     }
     if (last == -1) return false;
@@ -297,7 +298,9 @@ bool autoseq_call_cq(int slot_parity) {
 
 int autoseq_cq_parity(int current_slot_parity, bool current_slot_keyable) {
     for (int i = 0; i < s_active_count; ++i) {
-        if (is_live_qso_state(s_queue[i].state) && !s_queue[i].is_freetext) {
+        // The CQ is FT8's: an FT4 QSO's parity counts FT4's periods.
+        if (is_live_qso_state(s_queue[i].state) && !s_queue[i].is_freetext &&
+            s_queue[i].mode == RxMode::FT8) {
             return s_queue[i].slot_id & 1;
         }
     }
@@ -426,14 +429,15 @@ static bool is_dx_queue_marker(const std::string& dxcall) {
     return dxcall.empty() || dxcall == "CQ" || dxcall == "(FT)";
 }
 
-// Drop every active + inactive entry for dxcall. Returns true if queue[0] was
-// a live QSO for that call (caller should ignore the tap).
-static bool purge_dxcall_for_touch(const std::string& dxcall, bool* blocked_live) {
+// Drop every active + inactive entry for dxcall in this mode. Returns true if queue[0] was
+// a live QSO for that call in this mode (caller should ignore the tap). A QSO with the
+// same station in the other mode is its own and stays.
+static bool purge_dxcall_for_touch(const std::string& dxcall, RxMode mode, bool* blocked_live) {
     *blocked_live = false;
     if (is_dx_queue_marker(dxcall)) return false;
 
     if (s_active_count > 0 &&
-        same_dxcall(s_queue[0].dxcall, dxcall) &&
+        same_dxcall(s_queue[0].dxcall, dxcall) && s_queue[0].mode == mode &&
         is_live_qso_state(s_queue[0].state) &&
         !s_queue[0].is_freetext) {
         *blocked_live = true;
@@ -442,19 +446,19 @@ static bool purge_dxcall_for_touch(const std::string& dxcall, bool* blocked_live
 
     for (int i = s_active_count - 1; i >= 0; --i) {
         if (s_queue[i].is_freetext) continue;
-        if (same_dxcall(s_queue[i].dxcall, dxcall)) {
+        if (same_dxcall(s_queue[i].dxcall, dxcall) && s_queue[i].mode == mode) {
             remove_active_at(i);
         }
     }
 
-    int inact = find_inactive_by_dxcall(dxcall);
+    int inact = find_inactive_by_dxcall(dxcall, mode);
     while (inact >= 0) {
         // Same removal pattern as evict_oldest_inactive for one index.
         for (int i = inact; i > s_inactive_start; --i) {
             s_queue[i] = s_queue[i - 1];
         }
         ++s_inactive_start;
-        inact = find_inactive_by_dxcall(dxcall);
+        inact = find_inactive_by_dxcall(dxcall, mode);
     }
     return false;
 }
@@ -473,7 +477,7 @@ AutoseqTouchResult autoseq_on_touch(const UiRxLine& msg, bool hold_queue_head) {
     }
 
     bool blocked_live = false;
-    if (purge_dxcall_for_touch(dxcall, &blocked_live)) {
+    if (purge_dxcall_for_touch(dxcall, msg.mode, &blocked_live)) {
         if (blocked_live) {
             ESP_LOGI(TAG, "Touch ignored: live QSO with %s at queue head",
                      dxcall.c_str());
@@ -493,6 +497,7 @@ AutoseqTouchResult autoseq_on_touch(const UiRxLine& msg, bool hold_queue_head) {
     if (!ctx) {
         return AutoseqTouchResult::NoRoom;
     }
+    ctx->mode = msg.mode;
 
     // Check if it's addressed to me (normalize to handle <> wrapped hashed calls)
     std::string f1_norm = normalize_call_token(msg.field1);
@@ -504,7 +509,7 @@ AutoseqTouchResult autoseq_on_touch(const UiRxLine& msg, bool hold_queue_head) {
         // Keep the operator's pick as next TX even if another QSO is "ahead"
         // by state. Find the new ctx (may have moved during sort).
         for (int i = 0; i < s_active_count; ++i) {
-            if (same_dxcall(s_queue[i].dxcall, dxcall) && !s_queue[i].is_freetext) {
+            if (same_dxcall(s_queue[i].dxcall, dxcall) && s_queue[i].mode == msg.mode && !s_queue[i].is_freetext) {
                 promote_touched(i, hold_queue_head);
                 break;
             }
@@ -533,7 +538,7 @@ AutoseqTouchResult autoseq_on_touch(const UiRxLine& msg, bool hold_queue_head) {
               open_with_tx2 ? TxMsgType::TX2 : TxMsgType::TX1);
     sort_and_clean();
     for (int i = 0; i < s_active_count; ++i) {
-        if (same_dxcall(s_queue[i].dxcall, dxcall) && !s_queue[i].is_freetext) {
+        if (same_dxcall(s_queue[i].dxcall, dxcall) && s_queue[i].mode == msg.mode && !s_queue[i].is_freetext) {
             promote_touched(i, hold_queue_head);
             break;
         }
@@ -667,6 +672,7 @@ bool autoseq_fetch_pending_tx(AutoseqTxEntry& out) {
     out.dxcall = ctx->dxcall;
     out.offset_hz = ctx->offset_hz;
     out.slot_id = ctx->slot_id;
+    out.mode = ctx->mode;
     out.repeat_counter = ctx->try_limit - ctx->tries_sent;
     out.is_signoff = (ctx->next_tx == TxMsgType::TX4 ||
                       ctx->next_tx == TxMsgType::TX5);
@@ -1088,7 +1094,7 @@ static void log_qso_if_needed(QsoContext* ctx) {
     std::string grid = ctx->dxgrid;
     const bool heard = grid.empty() && s_heard_grid_callback &&
                        s_heard_grid_callback(normalize_call_token(ctx->dxcall), &grid);
-    if (!s_adif_callback(ctx->dxcall, grid, ctx->snr_tx, ctx->snr_rx)) {
+    if (!s_adif_callback(ctx->dxcall, grid, ctx->snr_tx, ctx->snr_rx, ctx->mode)) {
         ESP_LOGW(TAG, "ADIF log failed for %s; will retry", ctx->dxcall.c_str());
         return;
     }
@@ -1324,7 +1330,7 @@ static void on_decode(const UiRxLine& msg) {
         QsoContext* ctx = &s_queue[i];
         std::string ctx_dxcall = ctx->dxcall;
         for (auto& ch : ctx_dxcall) ch = toupper((unsigned char)ch);
-        if (ctx_dxcall == dxcall) {
+        if (ctx_dxcall == dxcall && ctx->mode == msg.mode) {
             // Re-anchor slot_id to the current RX slot's opposite parity.
             // This preserves the queue-parity invariant across any edge cases
             // where parity might drift (band switch, external intervention).
@@ -1339,7 +1345,7 @@ static void on_decode(const UiRxLine& msg) {
     }
 
     // Check inactive zone for matching context — reactivate if found
-    int inact_idx = find_inactive_by_dxcall(dxcall);
+    int inact_idx = find_inactive_by_dxcall(dxcall, msg.mode);
     if (inact_idx >= 0) {
         ESP_LOGI(TAG, "on_decode: reactivating inactive ctx for %s", dxcall.c_str());
         reactivate(inact_idx);
@@ -1379,7 +1385,7 @@ static void on_decode(const UiRxLine& msg) {
     // Worked recently: do not start a second QSO. Checked here, after the
     // active and inactive lookups, and never before them -- the station's
     // closing 73 arrives after our RR73 has already logged it.
-    if (s_recent_qso_callback && s_recent_qso_callback(dxcall)) {
+    if (s_recent_qso_callback && s_recent_qso_callback(dxcall, msg.mode)) {
         ESP_LOGI(TAG, "on_decode: %s worked recently, not starting a new QSO",
                  dxcall.c_str());
         return;
@@ -1395,6 +1401,7 @@ static void on_decode(const UiRxLine& msg) {
     }
 
     QsoContext* ctx = append_ctx();
+    ctx->mode = msg.mode;
     generate_response(ctx, msg, true);
     ESP_LOGI(TAG, "on_decode: NEW ctx %s, state=%s next=%s",
              ctx->dxcall.c_str(), state_name(ctx->state), tx_name(ctx->next_tx));
@@ -1527,9 +1534,10 @@ static void expire_inactive() {
     s_inactive_start = write;
 }
 
-// Find an inactive entry by dxcall (case-insensitive). Returns array index or -1.
-static int find_inactive_by_dxcall(const std::string& dxcall) {
+// Find an inactive entry by dxcall (case-insensitive) in this mode. Returns array index or -1.
+static int find_inactive_by_dxcall(const std::string& dxcall, RxMode mode) {
     for (int i = s_inactive_start; i < AUTOSEQ_MAX_QUEUE; ++i) {
+        if (s_queue[i].mode != mode) continue;
         std::string ctx_dxcall = s_queue[i].dxcall;
         for (auto& ch : ctx_dxcall) ch = toupper((unsigned char)ch);
         if (ctx_dxcall == dxcall) return i;

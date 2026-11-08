@@ -17,6 +17,7 @@
 #include "hl2_transport.h"
 #include "porta.h"
 #include "porta_proto.h"
+#include "porta_host.h"
 #include "protocol.h"
 #include "qmx_transport.h"
 #include "qso_browse.h"
@@ -292,16 +293,15 @@ const char *porta_p4_sync_vfo(const char *reason) {
 }
 
 static bool log_adif_entry(const std::string &dxcall, const std::string &dxgrid, int rst_sent,
-                           int rst_rcvd) {
+                           int rst_rcvd, RxMode mode) {
     ensure_seeded();
     AdifStationSnapshot station;
     station.call = s_station.call;
     station.my_gridsquare = grid_ft8_4(s_station.grid);
-    station.mode = g_protocol ? g_protocol->name : "FT8";
-    char freq_str[16];
-    // station_freq_hz is Hz; ADIF wants MHz (e.g. 14.074).
-    snprintf(freq_str, sizeof(freq_str), "%.3f", (double)station_freq_hz() / 1e6);
-    station.freq_mhz = freq_str;
+    station.mode = mode == RxMode::FT4 ? "FT4" : "FT8";
+    // The QSO's own dial, as WSJT-X logs it: FT4's beside FT8 is FT8's plus the band's FT4 offset.
+    const int dial_hz = station_freq_hz() + (mode == RxMode::FT4 ? porta_p4_station_ft4_dial_offset_hz() : 0);
+    station.freq_mhz = adif_freq_mhz((uint32_t)dial_hz);
     {
         const int idx = s_station.band_sel;
         station.band_name = (idx >= 0 && idx < kStationBandCount) ? kBandNames[idx] : "";

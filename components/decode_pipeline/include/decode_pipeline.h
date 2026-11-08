@@ -37,10 +37,10 @@ void decode_pipeline_set_my_call(const std::string& call);
 // (see porta_emit_decode) back to the UiRxLine a QUEUE_REPLY names. Main loop.
 bool find_decode_for_reply(uint32_t decode_id, UiRxLine* out);
 
-// True if dxcall_norm was logged within the ADIF dedupe window (10 min). Each
+// True if dxcall_norm was logged within the ADIF dedupe window (10 min) on the radio's band in this mode. Each
 // board registers it with autoseq_set_recent_qso_callback(), which consults it
 // only before starting a new QSO.
-bool decode_pipeline_recently_logged(const std::string& dxcall_norm);
+bool decode_pipeline_recently_logged(const std::string& dxcall_norm, RxMode mode);
 
 // The grid dxcall_norm last sent in any decode (heard_grid.h). Each board
 // registers it with autoseq_set_heard_grid_callback(), which consults it only
