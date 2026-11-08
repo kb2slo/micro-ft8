@@ -5549,8 +5549,7 @@ function appendLogRows(file, rows, prependGroup) {
         '<div><span><span class="call callink" data-call="' + esc(q.call) + '">' + esc(q.call) + '</span>' +
         (q.grid ? '<span class=grid>' + CallInfo.gridLink(q.grid) + (qShortLoc ? ' · ' + esc(qShortLoc) : '') + '</span>' : '') + '</span>' +
         (qts !== null ? '<span class=ago data-ts="' + qts + '">' + fmtAgo(qts) + '</span>' : '') + '</div>' +
-        '<span class=sub><span>' + esc(q.time) + '</span><span>' + esc(q.band) +
-        (q.freq ? ' · ' + esc(q.freq) + ' MHz' : '') + '</span><span>' +
+        '<span class=sub><span>' + esc(q.time) + '</span><span>' + esc(qsoBandText(q)) + '</span><span>' +
         fmtRst(q.rst_sent) + '/' + fmtRst(q.rst_rcvd) + '</span></span>' +
       '</div>' +
       (function () {
@@ -5688,6 +5687,14 @@ function buildAdifRecord(q, dateStr, sig) {
   }
   out += '<eor>\n';
   return out;
+}
+
+// A logged QSO's band, mode and frequency, as a decode batch's header names them: "20m FT4 · 14.080 MHz"
+// (webapp.md, QSOs). The mode is what the main board logged, FT8 or FT4 (qso_browse.cpp folds ADIF's
+// MFSK/FT4 back to FT4).
+function qsoBandText(q) {
+  var head = [q.band, q.mode].filter(function (x) { return x; }).join(' ');
+  return head + (q.freq ? ' · ' + q.freq + ' MHz' : '');
 }
 
 // Distinct POTA/SOTA references logged across a set of rows (each row's
