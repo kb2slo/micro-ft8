@@ -37,5 +37,33 @@ int main()
         return 1;
     }
     printf("ok\n");
+    // Decode times show the phase: clean, four or more, median within 0.5 s.
+    expect_int(decode_sync_phase_good(aligned, 7, 1), 1, "aligned decodes: the phase is good");
+    expect_int(decode_sync_phase_good(aligned, 7, 0), 0, "not from an unclean slot");
+    expect_int(decode_sync_phase_good(backlog, 8, 1), 0, "not 1.7 s off");
+    expect_int(decode_sync_phase_good(small, 3, 1), 0, "not from three decodes");
+
+    // A browser clock set (time.md, Browser sync over Port A).
+    int64_t held = 0, apply = 0;
+    expect_int(clock_set_decide(0, -31000, 1, &held, &apply), CLOCK_SET_APPLY, "an unset clock takes any set");
+    expect_int((int)apply, -31000, "as sent");
+    expect_int(clock_set_decide(1, 1500, 0, &held, &apply), CLOCK_SET_IGNORE, "within 2 s: nothing");
+    expect_int(clock_set_decide(1, -31000, 1, &held, &apply), CLOCK_SET_DISREGARD,
+               "2026-11-07: 31 s back with decodes on the slots is disregarded");
+    expect_int((int)held, 0, "and nothing is held");
+    expect_int(clock_set_decide(1, 30200, 1, &held, &apply), CLOCK_SET_APPLY, "two slots forward, phase good");
+    expect_int((int)apply, 30000, "applied as exactly two slots");
+    expect_int(clock_set_decide(1, -30100, 1, &held, &apply), CLOCK_SET_HOLD, "two slots back is held");
+    expect_int((int)held, -30000, "held as exactly two slots");
+    expect_int(clock_set_decide(1, 300, 1, &held, &apply), CLOCK_SET_DROP, "the next set agrees with the clock: dropped");
+    expect_int((int)held, 0, "nothing held after a drop");
+    expect_int(clock_set_decide(1, -45000, 0, &held, &apply), CLOCK_SET_HOLD, "no decodes, 45 s back: held");
+    expect_int(clock_set_decide(1, -44000, 0, &held, &apply), CLOCK_SET_APPLY, "the next asks the same: applied");
+    expect_int((int)apply, -44000, "the step the confirming set asked");
+    expect_int(clock_set_decide(1, -45000, 0, &held, &apply), CLOCK_SET_HOLD, "held again");
+    expect_int(clock_set_decide(1, -20000, 0, &held, &apply), CLOCK_SET_HOLD, "a different step replaces it");
+    expect_int((int)held, -20000, "the newer step is held");
+    expect_int(clock_set_decide(1, 90000, 0, &held, &apply), CLOCK_SET_APPLY, "no decodes, forward: applied");
+    expect_int((int)held, 0, "and the held step cleared");
     return 0;
 }

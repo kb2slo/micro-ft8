@@ -10,6 +10,8 @@
 #include "amp_band_prime.h"
 #include "autoseq.h"
 #include "decode_pipeline.h"
+#include "decode_sync.h"
+#include "debug_log.h"
 #include "decode_tx_state.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -518,18 +520,42 @@ void porta_p4_tx_hud_tick(void) {
     porta_emit_tx_hud(true, false, false, tx_text, power_w, swr, -1, offset_hz, "");
 }
 
+// A backward step waiting for the next browser set to confirm it (clock_set_decide()); 0 for none.
+static int64_t s_clock_held_step_ms = 0;
+
+// A browser set is decided by clock_set_decide() (decode_sync.h; docs/architecture/time.md): it may have waited
+// in a stalled sidekick and carry an old time. Every set it does not apply says so in the log.
 const char *porta_host_set_clock(uint32_t epoch_secs, uint16_t millis) {
     if (epoch_secs < 1700000000u) {
         return "implausible time";
     }
-    const time_t now = rtc_current_epoch_seconds();
-    const long drift = (long)((time_t)epoch_secs - now);
-    if (rtc_is_set() && drift > -2 && drift < 2) {
-        return nullptr;
+    const int64_t now_ms = rtc_now_ms();
+    const int64_t step_ms = (int64_t)epoch_secs * 1000 + millis - now_ms;
+    int64_t apply_ms = 0;
+    const bool phase_good = decode_pipeline_phase_good();
+    char line[64];
+    switch (clock_set_decide(rtc_is_set() ? 1 : 0, step_ms, phase_good ? 1 : 0, &s_clock_held_step_ms, &apply_ms)) {
+        case CLOCK_SET_APPLY: {
+            const int64_t new_ms = now_ms + apply_ms;
+            rtc_seed_epoch((time_t)(new_ms / 1000), esp_timer_get_time() / 1000 - new_ms % 1000);
+            rtc_sync_to_esp_rtc();
+            ESP_LOGI(TAG, "clock set epoch=%lld (%+lld ms)", (long long)(new_ms / 1000), (long long)apply_ms);
+            return nullptr;
+        }
+        case CLOCK_SET_IGNORE:
+            return nullptr;
+        case CLOCK_SET_DISREGARD:
+            snprintf(line, sizeof(line), "CLOCK set %+lld ms disregarded: off the slots", (long long)step_ms);
+            break;
+        case CLOCK_SET_HOLD:
+            snprintf(line, sizeof(line), "CLOCK set %+lld ms held for the next to confirm", (long long)step_ms);
+            break;
+        case CLOCK_SET_DROP:
+            snprintf(line, sizeof(line), "CLOCK held step dropped: this set agrees with the clock");
+            break;
     }
-    rtc_seed_epoch((time_t)epoch_secs, esp_timer_get_time() / 1000 - (int64_t)millis);
-    rtc_sync_to_esp_rtc();
-    ESP_LOGI(TAG, "clock set epoch=%lu (%+ld s)", (unsigned long)epoch_secs, drift);
+    ESP_LOGW(TAG, "%s", line);
+    debug_log_line(line);
     return nullptr;
 }
 
