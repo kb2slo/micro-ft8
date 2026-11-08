@@ -10,6 +10,7 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 
+#include "host_link.h"
 #include "pairing_http.h"
 #include "pairing_http_cap.h"
 
@@ -200,7 +201,16 @@ static esp_err_t dispatch(httpd_req_t *req)
     }
     // Hand the handler the context it was registered with, not ours.
     req->user_ctx = route->user_ctx;
-    return route->handler(req);
+    // Every request runs on the server's one task, so a slow one holds all the others (row dlu3): log it.
+    const int64_t t0 = esp_timer_get_time();
+    const esp_err_t err = route->handler(req);
+    const int64_t ms = (esp_timer_get_time() - t0) / 1000;
+    if (ms > HOST_LINK_SLOW_MS) {
+        char line[72];
+        snprintf(line, sizeof(line), "SK slow %s %.40s %lld ms", http_method_name(req->method), req->uri, (long long)ms);
+        host_link_log(line);
+    }
+    return err;
 }
 
 esp_err_t pairing_http_register(httpd_handle_t server, const httpd_uri_t *uri, pairing_policy_t policy)

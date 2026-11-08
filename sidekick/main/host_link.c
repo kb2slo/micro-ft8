@@ -111,6 +111,16 @@ static void ring_push(event_t *e)
     xSemaphoreGive(s_lock);
 }
 
+void host_link_log(const char *text)
+{
+    event_t e;
+    memset(&e, 0, sizeof(e));
+    e.kind = PORTA_EVT_LOG;
+    snprintf(e.u.log.text, sizeof(e.u.log.text), "%s", text);
+    ESP_LOGW(TAG, "%s", e.u.log.text);
+    ring_push(&e);
+}
+
 // JSON string escaping. Decoded FT8 text is normally plain ASCII, but it comes
 // off a radio: a corrupt decode can contain anything, and one stray quote or
 // backslash would turn the whole response into a parse error in the browser
@@ -677,6 +687,7 @@ static esp_err_t wait_action_reply(httpd_req_t *req, uint8_t verb)
     // what the link-health counters below exist to measure) then costs one
     // extra round-trip instead of the whole timeout.
     const int retry_at = tries / 2;
+    const uint32_t wait_t0 = now_ms();
     struct reply_view got = {0};
     for (int i = 0; i < tries && !got.ready; ++i) {
         if (i == retry_at && verb == PORTA_MSG_CONFIG_GET) {
@@ -712,6 +723,15 @@ static esp_err_t wait_action_reply(httpd_req_t *req, uint8_t verb)
             s_file_entries_gathering = false;
         }
         lock_give();
+    }
+
+    // A slow wait holds the whole server (row dlu3): say which message, how long, and whether the main
+    // board ever answered.
+    const uint32_t wait_ms = now_ms() - wait_t0;
+    if (wait_ms > HOST_LINK_SLOW_MS) {
+        char line[PORTA_EVENT_TEXT_MAX + 1];
+        snprintf(line, sizeof(line), "SK wait 0x%02x %lu ms%s", verb, (unsigned long)wait_ms, got.ready ? "" : " no ACK");
+        host_link_log(line);
     }
 
     httpd_resp_set_type(req, "application/json");
