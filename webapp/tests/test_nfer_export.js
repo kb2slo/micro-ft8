@@ -81,6 +81,7 @@ const extracted = [
   extractFunction(src, 'adifFieldIfSet'),
   extractFunction(src, 'adifBandTag'),
   extractFunction(src, 'buildAdifRecord'),
+  extractFunction(src, 'qsoBandText'),
   extractFunction(src, 'dayActivationRefs'),
   extractFunction(src, 'groupRowsByReference'),
   extractFunction(src, 'exportFileBaseName'),
@@ -192,6 +193,13 @@ check('an FT4 QSO exports as MODE MFSK, SUBMODE FT4, as the main board writes it
   assert(ft4.includes('<mode:4>MFSK<submode:3>FT4 <qso_date:8>'), ft4);
   const ft8 = sb.buildAdifRecord(row({ mode: 'FT8' }), '20260929');
   assert(ft8.includes('<mode:3>FT8<qso_date:8>') && !ft8.includes('submode'), ft8);
+});
+
+check('a QSO row names its band, mode and frequency, as a decode batch header does', () => {
+  const sb = freshSandbox();
+  assert.strictEqual(sb.qsoBandText(row({ band: '20m', mode: 'FT4', freq: '14.080' })), '20m FT4 · 14.080 MHz');
+  assert.strictEqual(sb.qsoBandText(row({ band: '40m', mode: 'FT8', freq: '7.074' })), '40m FT8 · 7.074 MHz');
+  assert.strictEqual(sb.qsoBandText(row({ band: '20m', mode: '', freq: '' })), '20m', 'nothing invented when absent');
 });
 
 check('a SOTA bucket writes MY_SOTA_REF scoped to its one summit', () => {
