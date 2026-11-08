@@ -146,18 +146,53 @@ static void json_escape(const char *in, char *out, size_t out_cap)
 
 // One /api/events row, comma-led after the first. Not under s_lock: `e` is the
 // caller's copy.
+// An events or state reply is written into one buffer and sent a few KB at a time. One chunk per row was
+// six small socket writes an event (each chunk is its size, its data and a CRLF; the comma was a chunk too),
+// so a full ring was hundreds of them, each held back by TCP until the last was acknowledged: one reply
+// took 1 to 2.5 s and every other request waited behind it (2026-11-08; row dlu3). The server runs one
+// request at a time, so one static buffer serves every reply.
+#define EVENTS_BATCH_BYTES 4096
+static char s_batch[EVENTS_BATCH_BYTES];
+static size_t s_batch_len;
+
+static void batch_flush(httpd_req_t *req)
+{
+    if (s_batch_len > 0) {
+        httpd_resp_send_chunk(req, s_batch, s_batch_len);
+        s_batch_len = 0;
+    }
+}
+
+static void batch_add(httpd_req_t *req, const char *text)
+{
+    const size_t n = strlen(text);
+    if (s_batch_len + n > sizeof(s_batch)) {
+        batch_flush(req);
+    }
+    if (n > sizeof(s_batch)) {
+        httpd_resp_send_chunk(req, text, n);  // larger than the buffer: on its own
+        return;
+    }
+    memcpy(s_batch + s_batch_len, text, n);
+    s_batch_len += n;
+}
+
+static void batch_begin(httpd_req_t *req)
+{
+    s_batch_len = 0;
+    batch_add(req, "{\"events\":[");
+}
+
 static void send_event_row(httpd_req_t *req, const event_t *e, bool *first)
 {
     // Worst case: text fully \u-escaped (6 bytes a char) plus a DECODE's
-    // fixed fields, the largest (~165 bytes with v2's slot and dial).
-    char row[PORTA_EVENT_TEXT_MAX * 6 + 224];
-    if (event_json(e, row, sizeof(row)) == 0) {
+    // fixed fields, the largest (~165 bytes with v2's slot and dial), and the comma before it.
+    char row[PORTA_EVENT_TEXT_MAX * 6 + 226];
+    row[0] = ',';
+    if (event_json(e, row + 1, sizeof(row) - 1) == 0) {
         return;
     }
-    if (!*first) {
-        httpd_resp_sendstr_chunk(req, ",");
-    }
-    httpd_resp_sendstr_chunk(req, row);
+    batch_add(req, *first ? row + 1 : row);
     *first = false;
 }
 
@@ -169,7 +204,8 @@ static esp_err_t send_events_tail(httpd_req_t *req, uint32_t head)
     char tail[80];
     snprintf(tail, sizeof(tail), "],\"seq\":%" PRIu32 ",\"hold\":%d,\"hold_of\":%d}", head,
              wifi_prov_ap_reset_hold(), WIFI_PROV_AP_RESET_HOLD_SECS);
-    httpd_resp_sendstr_chunk(req, tail);
+    batch_add(req, tail);
+    batch_flush(req);
     return httpd_resp_send_chunk(req, NULL, 0);
 }
 
@@ -192,7 +228,7 @@ static esp_err_t get_events(httpd_req_t *req)
     }
 
     httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr_chunk(req, "{\"events\":[");
+    batch_begin(req);
 
     bool first = true;
     uint32_t head;
@@ -249,7 +285,7 @@ static esp_err_t get_state(httpd_req_t *req)
     }
 
     httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr_chunk(req, "{\"events\":[");
+    batch_begin(req);
 
     bool first = true;
     event_t e;
