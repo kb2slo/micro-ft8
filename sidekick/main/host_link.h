@@ -29,6 +29,11 @@ void host_link_register_uris(httpd_handle_t server);
 // log show it. Truncated to one event's text. Takes the ring's lock, so not from inside it.
 void host_link_log(const char *text);
 
+// The link's health for the console heartbeat (main.c's alive line): internal heap free, lowest and largest
+// block, the ring's next sequence number and gap count, and Port A's frames and CRC errors. Out of band, so
+// it keeps reporting while the web server is stalled (row dlu3).
+void host_link_health(char *out, size_t cap);
+
 // A request or a Port A wait slower than this is logged (row dlu3, docs/ROADMAP.md): the server runs one
 // request at a time, so a slow one holds every other.
 #define HOST_LINK_SLOW_MS 500

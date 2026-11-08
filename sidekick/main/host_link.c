@@ -1,3 +1,4 @@
+#include "esp_heap_caps.h"
 #include "host_link.h"
 
 #include <inttypes.h>
@@ -60,12 +61,13 @@ static bool porta_send(const uint8_t *frame, size_t n)
     return true;
 }
 
-// Ring of recent events. 64 is a couple of FT8 slots' worth of decodes plus
-// their log lines when nothing else is happening -- but the main board also
-// re-sends every live queue entry each second, so on a busy band it can be well
-// under one slot. A page that has been away reads /api/state (s_state below)
+// Ring of recent events: the window a reader may fall behind by before it skips some (sk_ring_gaps).
+// At 64, about 27 s on a quiet band and 13 s on a busy one with FT8 and FT4, so a stalled web server lost
+// events in under a minute (2026-11-07; row dlu3). 128, at 180 bytes an event, adds 11.5 KB of internal
+// RAM, which is all the S3FN8 has (no PSRAM); more waits for a heap reading (sk_heap_min below).
+// docs/architecture/sidekick.md, Port A. A page that has been away reads /api/state (s_state below)
 // instead of relying on this.
-#define RING_LEN 64
+#define RING_LEN 128
 
 static event_t s_ring[RING_LEN];
 static uint32_t s_next_seq = 1;     // 0 is "before anything", so a new client gets all
@@ -288,6 +290,18 @@ static volatile uint32_t s_config_get_retries;
 // lock: a count one frame stale is still the right answer to "how healthy".
 static porta_decoder_t s_rx_dec;
 
+void host_link_health(char *out, size_t cap)
+{
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    const uint32_t seq = s_next_seq;
+    xSemaphoreGive(s_lock);
+    snprintf(out, cap, "heap=%u min=%u big=%u seq=%" PRIu32 " gaps=%" PRIu32 " rx_ok=%" PRIu32 " crc=%" PRIu32,
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), seq, s_ring_gap_events,
+             s_rx_dec.frames_ok, s_rx_dec.crc_errors);
+}
+
 // CONFIG_GET all: VALUE frames arrive before the ACK; gather into JSON here.
 #define CONFIG_JSON_MAX 3072
 static char s_config_json[CONFIG_JSON_MAX];
@@ -358,13 +372,18 @@ static void config_json_stop_locked(void)
 //                                 the main board cannot see; its own
 //                                 counterparts are porta_crc_errors/frames_ok
 //   sk_ring_gaps / sk_config_retries  the browser-facing side of this file
+//   sk_heap_free / sk_heap_min / sk_heap_largest  internal heap now, its lowest since boot, and the
+//                                 largest free block, in bytes: what the ring and the sockets can afford
 static size_t sidekick_facts_json(char *out, size_t cap)
 {
-    char num[4][12];
+    char num[7][12];
     snprintf(num[0], sizeof(num[0]), "%" PRIu32, s_rx_dec.crc_errors);
     snprintf(num[1], sizeof(num[1]), "%" PRIu32, s_rx_dec.frames_ok);
     snprintf(num[2], sizeof(num[2]), "%" PRIu32, s_ring_gap_events);
     snprintf(num[3], sizeof(num[3]), "%" PRIu32, s_config_get_retries);
+    snprintf(num[4], sizeof(num[4]), "%u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    snprintf(num[5], sizeof(num[5]), "%u", (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
+    snprintf(num[6], sizeof(num[6]), "%u", (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
     const struct {
         const char *key;
         const char *value;
@@ -373,6 +392,9 @@ static size_t sidekick_facts_json(char *out, size_t cap)
         { "sk_frames_ok", num[1] },
         { "sk_ring_gaps", num[2] },
         { "sk_config_retries", num[3] },
+        { "sk_heap_free", num[4] },
+        { "sk_heap_min", num[5] },
+        { "sk_heap_largest", num[6] },
         { "sk_wifi_mode", wifi_prov_ap_active() ? "ap" : "station" },
         { "sk_network_name", wifi_prov_network_name() },
         { "sk_ip", wifi_prov_ip_str() },
