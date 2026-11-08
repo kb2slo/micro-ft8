@@ -5369,7 +5369,7 @@ function pskrRowsHtml(state, now) {
       esc(r.rx) + '</span></span>' +
       '<span class=snr>' + (r.snr == null ? '' : esc((r.snr > 0 ? '+' : '') + r.snr) + ' dB') + '</span>' +
       '<span class=sub>' + esc(grid) + (dist ? ' · <span class=k-dist>' + esc(dist) + '</span>' : '') + '</span>' +
-      '<span class="sub r">' + esc(r.band) + (r.count > 1 ? ' · <span title="' + r.count + ' reports">×' + r.count + '</span>' : '') +
+      '<span class="sub r">' + esc([r.band, (r.modes || []).join('+')].filter(Boolean).join(' ')) + (r.count > 1 ? ' · <span title="' + r.count + ' reports">×' + r.count + '</span>' : '') +
       ' · <span class="toolsnote k-age" data-ts="' + r.t + '">' + fmtAgo(r.t) + '</span></span></div>';
   }).join('') + (v.more ? '<div class=pskrsum>' + v.more + ' more not shown.</div>' : '');
 }

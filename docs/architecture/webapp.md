@@ -232,7 +232,7 @@ Stations that reported hearing our call, from PSKReporter's live MQTT feed. Onli
 * **Gaps are shown, not hidden.** Where a spot of ours could have arrived (a transmission through 15 minutes after it) and no page was subscribed for a minute or more, an italic **Not listening 14:10–14:25z** row sits in the list. A quiet stretch never reads as nobody hearing us.
 * **The summary** (the Tools card and the list) covers the last hour: how many distinct stations, the bands they heard us on, and the farthest of them with its distance. The farthest call is tappable.
 * **The list** is a full-screen sub-page over Tools (`#pskrList`, the same overlay mechanics as Settings). Its rows are built only while it is open.
-  - **One row per receiver and band:** its newest report (SNR, age) and how many it sent (×3). One row per report would let a single far station fill the top of a distance sort.
+  - **One row per receiver and band:** its newest report (SNR, age) and how many it sent (×3). One row per report would let a single far station fill the top of a distance sort. The row names the modes it heard us in beside the band, newest first, "20m FT4+FT8", from each report's mode (`md`), so an FT4 transmission's spots read apart from FT8's; its SNR and age are the newest report's, the first mode named.
   - **Filter by band** (chips for the bands in the stored spots, and All).
   - **Sort by Time** (newest first), **Distance** (farthest first) or **dB** (loudest first). A row with no grid or no SNR sorts last. The field sorted by is shown in bold.
   - **Not listening** rows show only in the Time sort, since they are about time.

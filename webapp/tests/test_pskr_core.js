@@ -189,6 +189,15 @@ same(P.receivers(s, { sort: 'snr', distKm }).map((r) => r.rx + '/' + r.band),
   ['LOUD/15m', 'LATE/20m', 'NEAR/20m', 'NEAR/40m', 'FAR/20m', 'NOGRID/20m'], 'receivers: loudest first, no SNR last');
 same(P.receivers(s, { band: '20m', sort: 'time', distKm }).map((r) => r.rx),
   ['NEAR', 'NOGRID', 'FAR', 'LATE'], 'receivers: one band');
+{
+  // FT4 beside FT8 (2026-11-08): one row per receiver and band still, naming the modes it heard us in, newest first.
+  const m = P.newState('KB2SLO');
+  const ft4 = Object.assign(spot2('BOTH', T0 + 9 * MIN, '20m', -3, 'FN42'), { mode: 'FT4' });
+  P.addSpots(m, [ft4, spot2('BOTH', T0 + 4 * MIN, '20m', -7, 'FN42'), spot2('ONE', T0 + 2 * MIN, '20m', -9, 'FN42')]);
+  const mr = P.receivers(m, { sort: 'time', distKm });
+  same(mr.map((r) => r.rx + '/' + r.modes.join('+')), ['BOTH/FT4+FT8', 'ONE/FT8'], 'receivers: the modes heard, newest first');
+  same([mr[0].count, mr[0].snr], [2, -3], 'receivers: still one row, its newest report showing');
+}
 same(P.bandsIn(s), ['40m', '20m', '15m'], 'bands: longest wavelength first');
 same(P.sortBands(['70cm', '6m', '160m', '2m', 'x']), ['160m', '6m', '2m', '70cm', 'x'], 'bands: cm after m, unknown last');
 

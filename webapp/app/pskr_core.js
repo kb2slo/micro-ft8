@@ -218,7 +218,8 @@ var PskrCore = (function () {
     return { stations: Object.keys(seen).length, bands: sortBands(Object.keys(bands)), farthest: far };
   }
 
-  // One row per receiver and band: its newest report, how many it sent, and its distance. opts.band keeps one
+  // One row per receiver and band: its newest report, how many it sent, its distance, and the modes it heard us
+  // in, newest first (FT4 beside FT8 reaches the same receivers). opts.band keeps one
   // band ('' for all); opts.sort is 'time' (newest first), 'distance' (farthest first) or 'snr' (loudest first),
   // an unknown value sorting last, ties newest first.
   function receivers(state, opts) {
@@ -227,10 +228,11 @@ var PskrCore = (function () {
       if (opts.band && s.band !== opts.band) return;
       var k = s.rx + '|' + s.band, r = by[k];
       if (!r) {
-        r = by[k] = { rx: s.rx, grid: s.grid, band: s.band, snr: s.snr, t: s.t, count: 0, km: null };
+        r = by[k] = { rx: s.rx, grid: s.grid, band: s.band, snr: s.snr, t: s.t, count: 0, km: null, modes: [] };
         list.push(r);
       }
       r.count++;
+      if (s.mode && r.modes.indexOf(s.mode) < 0) r.modes.push(s.mode);
       if (!r.grid && s.grid) r.grid = s.grid; // a newer report without a locator still has an older one's
     });
     list.forEach(function (r) { r.km = r.grid && opts.distKm ? opts.distKm(r.grid) : null; });
