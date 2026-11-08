@@ -8,7 +8,7 @@ How things work now: `architecture/` (start at [architecture/system.md](architec
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| an8x | <a id="an8x"></a>FT8 and FT4 at once from one QMX, receive | Epic [u8mc](roadmap/several-channels.md#an8x). Built on 2026-11-07 (Settings › Also decode FT4, receive only, experimental; [decode.md](architecture/decode.md), **FT4**); the field hour is owed. **Done-when:** on the host, a mix of FT8 slots and synthesized FT4 periods decodes each to what that mode finds alone at the same budget (`test_lookahead.py`, category 1); on the air, both channels decode for an hour on 20 m with every slot inside its deadline, each channel's depth logged, and FT8's decodes within its recall of FT8 alone (field). |
+| pxvh | <a id="pxvh"></a>Can a QMX transmit off its receive dial? | Epic [u8mc](roadmap/several-channels.md#pxvh). A bench session into a dummy load, before [grqg](roadmap/several-channels.md#grqg) replies on FT4: does `TA` take a tone about 6 kHz above today's offsets, and if not, what a retune to FT4's dial and back costs receive. **Done-when:** both answered on QMX 1_04_010 and recorded (field). |
 
 ## Backlog
 
@@ -53,7 +53,7 @@ Each epic is one row here and one file under `roadmap/`, read only when touching
 
 | ID | Epic | Why / constraint |
 | --- | --- | --- |
-| u8mc | <a id="u8mc"></a>Several channels at once | [roadmap/several-channels.md](roadmap/several-channels.md): receive, decode and transmit on 1–N channels, whatever the radio; FT8 and FT4 at once on one QMX first. Children: [pxvh](roadmap/several-channels.md#pxvh), [an8x](roadmap/several-channels.md#an8x), [grqg](roadmap/several-channels.md#grqg). |
+| u8mc | <a id="u8mc"></a>Several channels at once | [roadmap/several-channels.md](roadmap/several-channels.md): receive, decode and transmit on 1–N channels, whatever the radio; FT8 and FT4 at once on one QMX first. Children: [pxvh](roadmap/several-channels.md#pxvh), [grqg](roadmap/several-channels.md#grqg). |
 | knpp | <a id="knpp"></a>HL2 support | [roadmap/hl2-support.md](roadmap/hl2-support.md): the Hermes-Lite 2 as a second radio on the P4, receive then transmit, at home then in the park. Children: [nngr](roadmap/hl2-support.md#nngr), [abkw](roadmap/hl2-support.md#abkw), [kgyh](roadmap/hl2-support.md#kgyh). |
 | ukk6 | <a id="ukk6"></a>OTA updates | [roadmap/ota-updates.md](roadmap/ota-updates.md): after the first install over USB, every update to either board is over the air, started from the web app. Children: [wanw](roadmap/ota-updates.md#wanw), [v697](roadmap/ota-updates.md#v697), [hstv](roadmap/ota-updates.md#hstv), [yme5](roadmap/ota-updates.md#yme5), [nufg](roadmap/ota-updates.md#nufg). |
 | I18 | <a id="I18"></a>Activator mode: POTA and SOTA | [roadmap/activator-mode.md](roadmap/activator-mode.md): a whole activation run offline, its log accepted by pota.app and the SOTA database unedited, and what helps an activator pick a reference, check the grid and plan. Children: [rrsp](roadmap/activator-mode.md#rrsp), [w5nj](roadmap/activator-mode.md#w5nj). |
