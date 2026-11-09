@@ -13,7 +13,8 @@ forward ([AGENTS.md](AGENTS.md), **Pre-alpha**). The maintainer is Jeff, KB2SLO.
 
 - **A bug fix** can go straight to a pull request.
 - **Anything else** — a feature, a renamed label, a changed behaviour — starts as an issue the maintainer
-  has agreed to, even when a host test proves it. `docs/ROADMAP.md` is the plan; an idea
+  has agreed to, even when a host test proves it. Agreed means it carries the `accepted` label: a row on
+  the roadmap cites it. `docs/ROADMAP.md` is the plan; an idea
   that is not on it is an issue first, not a pull request.
 
 ## Setup

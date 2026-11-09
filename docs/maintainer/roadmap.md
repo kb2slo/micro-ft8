@@ -87,6 +87,7 @@ GitHub issues are where the roadmap's inputs arrive and are talked through; the 
 
 * **Uses:** a contributor's idea, a bug or field report from an operator, and design discussion for an epic not yet decided.
 * **Never the only home of a decision.** When an issue settles something, the pull request that acts on it puts the outcome in the index, an epic file or an architecture doc, and cites `#N` for the history. Closing the issue then loses nothing.
+* **`accepted` means a roadmap row cites the issue,** nothing more: agreement in principle stays a comment. It goes on in the session the row lands; when the row ships the issue closes, and when it is declined the label comes off and the issue closes, linking its `declined.md` line.
 * **Plain issues only:** the templates in `.github/ISSUE_TEMPLATE/` and a few labels. No Projects boards, milestones, assignees or sub-issues; epics are files here, not issues.
 * **Agents read issues freely,** and comment on, open or close one only when the person they work for says to in that turn ([AGENTS.md](../../AGENTS.md), **Commit / push only when asked**): an issue comment is public.
 
@@ -99,6 +100,7 @@ GitHub issues are where the roadmap's inputs arrive and are talked through; the 
 * **Triage is a conversation, like a groom.** One item at a time, with: its class (bug, feature, question, field report); the evidence (a bug against its area's architecture doc and the code, a feature against the roadmap and [declined.md](../roadmap/declined.md), a field report against [TEST_PLAN.md](../TEST_PLAN.md) Pending); the outcome proposed (answer, fix in a slice, roadmap intake with its verdict and epic test, decline, or ask the reporter for something); and a draft reply in plain words for an operator, any row named glossed.
 * **Nothing goes out unasked.** A reply is posted, and an issue closed, labelled or converted, only when the maintainer says so in that turn (**Issues** above).
 * **A reply that commits us lands in the docs.** "I plan to add X" becomes a row through intake, citing `#N`, in the same session.
+* **Check `accepted` both ways:** every open issue with it has a row citing `#N`, and every row citing an open issue has it (**Issues** above).
 * **Wrap:** say what was not reached. Nothing carries over in chat: the next triage finds it again.
 
 ## Roadmap intake (ideas)
