@@ -87,8 +87,21 @@ GitHub issues are where the roadmap's inputs arrive and are talked through; the 
 
 * **Uses:** a contributor's idea, a bug or field report from an operator, and design discussion for an epic not yet decided.
 * **Never the only home of a decision.** When an issue settles something, the pull request that acts on it puts the outcome in the index, an epic file or an architecture doc, and cites `#N` for the history. Closing the issue then loses nothing.
+* **`accepted` means a roadmap row cites the issue,** nothing more: agreement in principle stays a comment. It goes on in the session the row lands; when the row ships the issue closes, and when it is declined the label comes off and the issue closes, linking its `declined.md` line.
 * **Plain issues only:** the templates in `.github/ISSUE_TEMPLATE/` and a few labels. No Projects boards, milestones, assignees or sub-issues; epics are files here, not issues.
 * **Agents read issues freely,** and comment on, open or close one only when the person they work for says to in that turn ([AGENTS.md](../../AGENTS.md), **Commit / push only when asked**): an issue comment is public.
+
+## Issue and discussion triage
+
+**Awaiting us:** an open issue or discussion whose last word (its newest comment, or its opening post if it has none) is not the maintainer's. It is read from GitHub each time, so nothing records what was triaged.
+
+* **Find them:** `gh issue list --state open --json number,title,author,updatedAt,comments`, and for discussions `gh api graphql` on the repository's `discussions` with each one's last comment's author.
+* **One question per turn.** Each reply puts one decision to the maintainer and waits for the answer before the next, even when one item raises several; the rest wait, listed in a line.
+* **Triage is a conversation, like a groom.** One item at a time, with: its class (bug, feature, question, field report); the evidence (a bug against its area's architecture doc and the code, a feature against the roadmap and [declined.md](../roadmap/declined.md), a field report against [TEST_PLAN.md](../TEST_PLAN.md) Pending); the outcome proposed (answer, fix in a slice, roadmap intake with its verdict and epic test, decline, or ask the reporter for something); and a draft reply in plain words for an operator, any row named glossed.
+* **Nothing goes out unasked.** A reply is posted, and an issue closed, labelled or converted, only when the maintainer says so in that turn (**Issues** above).
+* **A reply that commits us lands in the docs.** "I plan to add X" becomes a row through intake, citing `#N`, in the same session.
+* **Check `accepted` both ways:** every open issue with it has a row citing `#N`, and every row citing an open issue has it (**Issues** above).
+* **Wrap:** say what was not reached. Nothing carries over in chat: the next triage finds it again.
 
 ## Roadmap intake (ideas)
 
@@ -96,7 +109,7 @@ If the maintainer asks to add an idea or “add to the backlog”:
 1. **Give the verdict,** then draft it in chat with its epic test's outcome ([AGENTS.md](../../AGENTS.md), **Before proposing a new row, epic or idea**): a row in an epic is drafted with its child entry and **Lands in:** line, together; a new epic is proposed as one. Do not commit yet.
 2. New items go in **Ideas** (`roadmap/ideas.md`). Use **Backlog** only when they give a Done-when or say it is sequenced.
 3. After they approve, commit that row. Push `origin` only when they ask to push. Never `upstream` unless they explicitly ask.
-4. **Fast path for Ideas.** A change that only adds or edits rows in `roadmap/ideas.md`, and touches no other file, goes straight to `main`: once the maintainer approves the row, commit it on a branch from `main`, run `tools/check.sh --changed`, and push it to `main` with no pull request. Approving the row is the push instruction, since an idea is unscheduled and one revert undoes it. Everything else on the roadmap (a Backlog or Now row, an order change, an epic file, `declined.md`) keeps its own branch and pull request, pushed only when they ask.
+4. **Direct to `main`.** A roadmap-only change (`ROADMAP.md` and files under `roadmap/`, touching nothing else) goes straight to `main` with no pull request: commit it on a branch from `main`, run `tools/check.sh --changed`, and push that commit to `main`. Propose this path; do not open a pull request for one. **The push:** for a change that only adds or edits rows in `roadmap/ideas.md`, approving the row is the push instruction, since an idea is unscheduled. Anything else on the roadmap (a Backlog or Now row, an order change, an epic file, `declined.md`) is pushed when they say to push.
 
 ## Backlog grooming
 

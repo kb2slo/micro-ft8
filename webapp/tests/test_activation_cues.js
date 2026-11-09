@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Activation cues on Operate (docs/architecture/webapp.md, Activation cues on decodes): runs the real dupe, badge and progress functions from
-// app.html. Without references neither cue shows; a dupe is the same call, band, mode and reference
-// (today's file is the day); another band, mode or reference is not a dupe; P2P/S2S only when the
+// Worked and activation cues on Operate (docs/architecture/webapp.md, Worked and activation cues on
+// decodes): runs the real dupe, badge and progress functions from app.html. A dupe is the same call,
+// band and mode in today's file, and with references, logged at one of them; without references
+// every QSO in the file counts. Another band, mode or reference is not a dupe; P2P/S2S only when the
 // program is ours. Progress: a park counts calls unique by band and mode, a summit different calls,
 // and an n-fer record counts for each of its references.
 'use strict';
@@ -49,7 +50,18 @@ assert(!dupe(idx, 'W1AW', '20m', 'FT4'), 'another mode is not a dupe');
 assert(!dupe(idx, 'K9XYZ', '20m', 'FT8'), 'logged at another reference');
 assert(dupe(idx, 'N0ABC', '40m', 'FT8'), 'an n-fer record counts for each of its references');
 assert(dupe(idx, 'n0abc', '40m', 'ft8'), 'case does not matter');
-assert.strictEqual(Object.keys(sandbox.dupeIndex(rows, [])).length, 0, 'no references, no cue');
+idx = sandbox.dupeIndex(rows, []);
+assert(dupe(idx, 'W1AW', '20m', 'FT8'), 'no references: any QSO in today\'s file is a dupe');
+assert(dupe(idx, 'K9XYZ', '20m', 'FT8'), 'no references: the reference it was logged at does not matter');
+assert(!dupe(idx, 'K9XYZ', '40m', 'FT8'), 'no references: another band is still not a dupe');
+assert(dupe(sandbox.dupeIndex([{ call: 'KB2SLO', band: '20m', mode: 'FT4' }], []), 'KB2SLO', '20m', 'FT4'),
+       'no references: a QSO logged with no reference at all');
+
+// The poll interval is assigned before the timer reads it; read while undefined it was 0, and
+// Operate re-read today's log back to back (85 reads in 25 s on the bench, 2026-11-09).
+const refreshDef = src.indexOf('var LOG_REFRESH_MS = ');
+assert(refreshDef !== -1 && refreshDef < src.indexOf('setInterval(refreshOpLog, LOG_REFRESH_MS)'),
+       'LOG_REFRESH_MS is assigned before setInterval(refreshOpLog) reads it');
 
 const pota = { program: 'POTA', ref: 'US-77' }, sota = { program: 'SOTA', ref: 'W7O/CC-001' };
 assert.strictEqual(sandbox.spotBadgeLabel(pota, refs), 'P2P US-77');

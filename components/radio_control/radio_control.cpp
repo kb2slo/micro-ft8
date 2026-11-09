@@ -1,3 +1,5 @@
+#include <cstdio>
+
 #include "dial_history.h"
 #include "rtc_core.h"
 #include "radio_control.h"
@@ -170,6 +172,60 @@ esp_err_t radio_control_query_version(void) {
 bool radio_control_get_version(char* out, size_t cap) {
     const radio_control_ops_t* ops = current_ops();
     return ops && ops->get_version && ops->get_version(out, cap);
+}
+
+bool radio_control_get_config(radio_config_t* out) {
+    const radio_control_ops_t* ops = current_ops();
+    return ops && ops->get_config && ops->get_config(out);
+}
+
+const char* radio_control_set_ptt_outputs(radio_ptt_keying_t keying) {
+    const radio_control_ops_t* ops = current_ops();
+    if (!ops || !ops->set_ptt_outputs) return "this radio cannot set its PTT outputs";
+    return ops->set_ptt_outputs(keying);
+}
+
+bool radio_control_config_write_status(char* out, size_t cap) {
+    const radio_control_ops_t* ops = current_ops();
+    return ops && ops->config_write_status && ops->config_write_status(out, cap);
+}
+
+static char flag_char(int8_t flag) {
+    return flag == 1 ? '1' : flag == 0 ? '0' : '?';
+}
+
+size_t radio_config_format(const radio_config_t* config, char* out, size_t cap) {
+    if (!out || cap == 0) {
+        return 0;
+    }
+    out[0] = 0;
+    if (!config) {
+        return 0;
+    }
+    size_t len = 0;
+    auto put = [&](const char* fmt, auto... args) {
+        if (len < cap) {
+            const int n = snprintf(out + len, cap - len, fmt, args...);
+            len = n < 0 ? len : (len + (size_t)n < cap ? len + (size_t)n : cap - 1);
+        }
+    };
+    const int count = config->band_count < RADIO_CONFIG_BANDS_MAX ? config->band_count : RADIO_CONFIG_BANDS_MAX;
+    put("radio_model=%s\nradio_bands=", config->model);
+    for (int i = 0; i < count; ++i) {
+        put(i ? " %d" : "%d", config->bands[i].band_m);
+    }
+    put("\nradio_band_tx=");
+    for (int i = 0; i < count; ++i) {
+        put(i ? " %c" : "%c", flag_char(config->bands[i].transmit));
+    }
+    put("\nradio_ptt=");
+    for (int i = 0; i < count; ++i) {
+        const radio_band_config_t& b = config->bands[i];
+        put(i ? " %c%c%c%c" : "%c%c%c%c", flag_char(b.tx_ptt_5v), flag_char(b.tx_ptt_ground), flag_char(b.rx_ptt_5v),
+            flag_char(b.rx_ptt_ground));
+    }
+    put("\nradio_ptt_serial=%c\n", flag_char(config->ptt_is_serial));
+    return len;
 }
 
 radio_rx_path_event_t radio_control_rx_path_tick(bool busy) {

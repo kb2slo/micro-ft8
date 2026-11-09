@@ -86,9 +86,9 @@ The Decodes bar (`#dvBar`), sticky at the top of the list: the label and one non
 
 **The mode chip** (`#dvMode`, `decodeSlotModeShown()`) shows while FT4 is decoded beside FT8 (`rx_ft4`) or any FT4 batch is listed, and cycles **All**, **FT8**, **FT4**: it hides whole batches of the other mode, which count in the bar's shown/total like filtered rows, and is saved with the rest of the view. Hidden, it filters nothing. While it shows the bar drops its "Decodes" label, so the row fits: measured in Chromium with a "28/30" count, the label and an "FT8+FT4" chip overran by 70, 55 and 29 px at 375, 390 and 430 px wide; without the label and with "All", 0 at each (2026-11-07). Host test: `webapp/tests/test_decode_mode.js`.
 
-### Activation cues on decodes
+### Worked and activation cues on decodes
 
-Only while the station has references (`act_refs`, Station sheet). `refreshOpLog()` loads today's UTC day file (`YYYYMMDD.adi`) itself every `LOG_REFRESH_MS` while Operate is showing, into `opLog.rows` (the Log tab's list is separate), and primes `callinfo.js`'s activator-spot cache. A decode whose sender is in the log on this band and mode, at one of our current references (`dupeIndex()`; an n-fer record counts for each reference), gets a grey **Worked** flag. A cue, never a block: a tap still replies. A decode whose sender is a spotted FT8 activator (`CallInfo.activeSpotFor()`, online only) gets a badge with their reference: **P2P** for a POTA spot when we are at a park, **S2S** for a SOTA spot when we are at a summit, else the plain program. A decode's mode comes from its slot length. Host-tested by `webapp/tests/test_activation_cues.js`.
+`refreshOpLog()` loads today's UTC day file (`YYYYMMDD.adi`) itself every `LOG_REFRESH_MS` into `opLog.rows` (the Log tab's list is separate): while Operate is showing, and on every tab while the station has references (`act_refs`, Station sheet), for the progress line. A decode whose sender is in that file on this band and mode gets a grey **Worked** flag (`dupeIndex()`). With references, only a QSO logged at one of them counts, since each park or summit is its own log (an n-fer record counts for each reference). Only today's file is read, so a station worked yesterday is not flagged; the whole log waits on row [I32](../roadmap/ideas.md#I32). A cue, never a block: a tap still replies. While the station has references, `refreshOpLog()` also primes `callinfo.js`'s activator-spot cache, and a decode whose sender is a spotted FT8 activator (`CallInfo.activeSpotFor()`, online only) gets a badge with their reference: **P2P** for a POTA spot when we are at a park, **S2S** for a SOTA spot when we are at a summit, else the plain program. A decode's mode comes from its slot length. Host-tested by `webapp/tests/test_activation_cues.js`.
 
 ### The slot bar's activity trace
 
@@ -148,6 +148,14 @@ A full-screen overlay (`#stationSheet`, same slide-up mechanics as Who hears me'
 * **Not in the sheet:** Call CQ and an entry's own count (the queue's rows) and band/frequency (the radio drawer) — each control has one home.
 * **Settings does not carry these keys** (`cq_type`, `free_text`, `grid`, `tries`, `offset`, `offset_src`): its `FIELDS` array no longer lists them, and each Settings field writes only its own key, so a save never overwrites a value an Operate control just wrote. `free_text` is the Free text CQ's message and, with Type FD, our Field Day exchange ([autoseq.md](autoseq.md), **Field Day follows the CQ type**); there is no separate CQ free-text key.
 * **Not yet in the sheet:** the grid check against a station's references (epic [I18](../roadmap/activator-mode.md), **Later**).
+
+### Settings › Amplifier: the PTT check
+
+**Amp keyed by** (`amp_ptt` in Station.txt: 0 Not checked, the default; 1 TX PTT grounded; 2 TX PTT +5V) says which of the QMX's PTT outputs keys the amplifier. A Micro PA100+ keys from TX PTT grounded (operator, 2026-11-09). Below it, `ampPttCheck()` (host-tested by `webapp/tests/test_amp_ptt_check.js`) compares the radio's own per-band PTT outputs, which the main board reads when the radio connects ([radio.md](radio.md), **The QMX's settings, read at link-up**), on each active band the radio has:
+
+* **Right:** the chosen output alone on. Another TX output on with it would key the amp from both, and an RX output keys it on receive, so either is named. The line then says the radio's model and that every active band is right.
+* **Wrong:** an amber line names each active band that differs and what it has on ("40 m: no PTT output on"), and Serial 6 on PTT when it makes the jack a serial port. Below it, **Set the radio's PTT outputs** asks first, naming the bands the radio transmits on (`radioTransmitBands()`), then posts `/api/radio/ptt` with the keying; the main board writes the radio ([radio.md](radio.md), **Setting the PTT outputs**). While `radio_ptt_write` reads `writing` the button is disabled and the line says so; a failure is shown under the bands.
+* **Not read yet,** before the read finishes, it says so; Not checked hides the line. It is redrawn on every config poll (`applyOperateLive()`), so a radio plugged in while Settings is open updates it.
 
 ### Decisions a reference app would make differently
 

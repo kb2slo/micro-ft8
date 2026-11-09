@@ -743,6 +743,27 @@ static void test_tx_hud_not_keyed()
     }
 }
 
+static void test_action_radio_set_ptt()
+{
+    porta_decoder_t d;
+    porta_decoder_init(&d);
+    uint8_t buf[PORTA_PROTO_MAX_FRAME];
+    size_t n = porta_proto_encode_radio_set_ptt(1, buf, sizeof(buf));
+    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1 && got[0].len == 2, "radio_set_ptt is the verb and the keying");
+    if (got.size() == 1) {
+        uint8_t keying = 0;
+        check(porta_proto_parse_radio_set_ptt(&got[0], &keying) && keying == 1, "radio_set_ptt parses, grounded");
+        check(!porta_proto_parse_radio_read(&got[0]), "radio_set_ptt is not radio_read");
+    }
+    porta_decoder_init(&d);
+    n = porta_proto_encode_radio_set_ptt(3, buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    if (got.size() == 1) {
+        check(!porta_proto_parse_radio_set_ptt(&got[0], nullptr), "an unknown keying does not parse");
+    }
+}
+
 static void test_action_radio_read()
 {
     porta_decoder_t d;
@@ -1782,6 +1803,7 @@ int main()
     test_action_cq_tries_parity();
     test_tx_hud_not_keyed();
     test_action_radio_read();
+    test_action_radio_set_ptt();
     test_action_queue_cancel_and_reply();
     test_action_file_delete();
     test_action_sweep_start();

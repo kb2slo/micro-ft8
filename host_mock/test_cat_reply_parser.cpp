@@ -192,6 +192,31 @@ int main()
     cat_reply_parser_forget_version(&parser);
     expect(parser.vn[0], 0, "forget clears the version");
 
+    // MM: a Menu Manager value, counted; "?;": a refusal, counted. Neither count is reset.
+    {
+        cat_reply_parser_t mm;
+        cat_reply_parser_init(&mm);
+        expect((int)mm.mm_replies, 0, "init: no MM reply");
+        expect((int)mm.refusals, 0, "init: no refusal");
+        feed(&mm, "MMENABLED;");
+        expect(strcmp(mm.mm, "ENABLED"), 0, "MM value");
+        expect((int)mm.mm_replies, 1, "MM counted");
+        feed(&mm, "MMQMX+ 160-6m\x1b[0m;");
+        expect(strcmp(mm.mm, "QMX+ 160-6m"), 0, "MM value with a space and a plus, display code dropped");
+        feed(&mm, "MMENABLED;");
+        expect((int)mm.mm_replies, 3, "the same value again is counted again");
+        feed(&mm, "MM;");
+        expect(strcmp(mm.mm, ""), 0, "an empty MM value");
+        feed(&mm, "?;");
+        expect((int)mm.refusals, 1, "a refusal is counted");
+        expect((int)mm.mm_replies, 4, "and is no MM reply");
+        cat_reply_parser_reset(&mm);
+        expect((int)mm.mm_replies, 4, "reset keeps the MM count");
+        expect((int)mm.refusals, 1, "and the refusal count");
+        feed(&mm, "FA00007074000;");
+        expect((int)mm.mm_replies, 4, "another reply is no MM reply");
+    }
+
     if (g_fails == 0) {
         printf("PASS: cat_reply_parser\n");
     }

@@ -93,7 +93,9 @@ extern "C" {
 // sidekick ignores it. Both ends are flashed together.
 // v12 (2026-10-27): ACTIVITY carries a frequency mask per block and the span it covers, for the
 // slot bar's strip. A v11 peer refuses the longer frame. Both ends are flashed together.
-#define PORTA_PROTO_VERSION 12u
+// v13 (2026-11-09): the RADIO_SET_PTT action (set the QMX's PTT outputs for an amplifier). An older
+// host NAKs it as unknown. Both ends are flashed together.
+#define PORTA_PROTO_VERSION 13u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -495,6 +497,7 @@ typedef enum {
     PORTA_ACT_QUEUE_TRIES  = 0x0D,  // payload: u16 entry_id, u8 tries (0 = station default)
     PORTA_ACT_QUEUE_PARITY = 0x0E,  // payload: u16 entry_id, u8 parity (the CQ only)
     PORTA_ACT_RADIO_READ   = 0x0F,  // verb only: ask the radio for its state (IF;); the answer is in the config snapshot
+    PORTA_ACT_RADIO_SET_PTT = 0x10, // payload: u8 keying (1 TX PTT grounded, 2 TX PTT +5V); progress in the config snapshot
 } porta_action_verb_t;
 
 // FACTORY_RESET flags. Station settings are always reset; the QSO logs only when asked,
@@ -529,6 +532,10 @@ size_t porta_proto_encode_cq_call(uint8_t *out, size_t out_cap);
 bool porta_proto_parse_cq_call(const porta_frame_t *f);
 size_t porta_proto_encode_radio_read(uint8_t *out, size_t out_cap);
 bool porta_proto_parse_radio_read(const porta_frame_t *f);
+// Set the radio's PTT outputs: verb + u8 keying, 1 TX PTT grounded or 2 TX PTT +5V; anything else
+// does not parse.
+size_t porta_proto_encode_radio_set_ptt(uint8_t keying, uint8_t *out, size_t out_cap);
+bool porta_proto_parse_radio_set_ptt(const porta_frame_t *f, uint8_t *keying_out);
 
 // Queue tries: verb + u16 entry_id + u8 tries. 0 returns the entry to the
 // station default; the host refuses a count out of range for that entry.

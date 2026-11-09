@@ -11,7 +11,7 @@ The agreement every agent follows is [AGENTS.md](../../AGENTS.md).
 
 When the person you work for is the maintainer, once per session: `tools/roadmap_rows.sh health`
 ([roadmap.md](roadmap.md), **Health, not the calendar, decides when**), and the upstream watches that are due
-([upstream.md](upstream.md)), the dependency watch (`python3 tools/dep_watch.py`) among them. A contributor's session runs neither.
+([upstream.md](upstream.md)), the dependency watch (`python3 tools/dep_watch.py`) among them. Then list the issues and discussions awaiting a reply, by number and age ([roadmap.md](roadmap.md), **Issue and discussion triage**), once. A contributor's session runs neither.
 
 ## Running agents
 

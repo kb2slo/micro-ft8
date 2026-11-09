@@ -1033,6 +1033,28 @@ static esp_err_t post_radio_read(httpd_req_t *req)
     return wait_action_reply(req, PORTA_ACT_RADIO_READ);
 }
 
+// POST /api/radio/ptt  body: "1" (TX PTT grounded) or "2" (TX PTT +5V): set the radio's PTT outputs
+// for an amplifier, written to its EEPROM (docs/architecture/radio.md, Setting the PTT outputs). The
+// main board answers at once; the write's progress arrives in later config polls as radio_ptt_write.
+// Token required like every POST.
+static esp_err_t post_radio_ptt(httpd_req_t *req)
+{
+    char body[8] = {0};
+    const int received = httpd_req_recv(req, body, sizeof(body) - 1);
+    if (received <= 0 || (body[0] != '1' && body[0] != '2')) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "body: 1 or 2");
+        return ESP_FAIL;
+    }
+    uint8_t frame[PORTA_PROTO_MAX_FRAME];
+    const size_t n = porta_proto_encode_radio_set_ptt((uint8_t)(body[0] - '0'), frame, sizeof(frame));
+    reply_reset();
+    if (!porta_send(frame, n)) {
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
+    }
+    return wait_action_reply(req, PORTA_ACT_RADIO_SET_PTT);
+}
+
 // POST /api/queue/tries   body: "<entry_id> <tries>" (0 = the station default)
 // POST /api/queue/parity  body: "<entry_id> <parity>" (0 even, 1 odd; the CQ only)
 // Both address an entry by its id, as /api/queue/cancel does. Token required.
@@ -1804,6 +1826,9 @@ void host_link_register_uris(httpd_handle_t server)
     static const httpd_uri_t radio_read = {
         .uri = "/api/radio/read", .method = HTTP_POST, .handler = post_radio_read,
     };
+    static const httpd_uri_t radio_ptt = {
+        .uri = "/api/radio/ptt", .method = HTTP_POST, .handler = post_radio_ptt,
+    };
     static const httpd_uri_t swr_start = {
         .uri = "/api/swr/start", .method = HTTP_POST, .handler = post_swr_start,
     };
@@ -1860,6 +1885,7 @@ void host_link_register_uris(httpd_handle_t server)
         { &radio_connect, PAIRING_REQUIRED },
         { &radio_tune, PAIRING_REQUIRED },
         { &radio_read, PAIRING_REQUIRED },
+        { &radio_ptt, PAIRING_REQUIRED },
         { &cq, PAIRING_REQUIRED },
         { &swr_start, PAIRING_REQUIRED },
         { &link_test_get, PAIRING_OPEN },

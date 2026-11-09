@@ -93,6 +93,18 @@ int main()
         station_parse("amp_swr_guard=0\n", &s);
         expect_true(!s.amp_swr_guard, "and turns off");
         expect_true(station_key_known("amp_swr_guard"), "key known to CONFIG");
+        expect_true(s.amp_ptt == kStationAmpPttNone, "amp PTT keying is none by default");
+        station_parse("amp_ptt=1\n", &s);
+        expect_true(s.amp_ptt == kStationAmpPttGround, "amp_ptt=1 is TX PTT grounded");
+        StationSettings p;
+        station_settings_init(&p);
+        station_parse(station_serialize(s), &p);
+        expect_true(p.amp_ptt == kStationAmpPttGround, "amp_ptt round-trips");
+        station_parse("amp_ptt=2\n", &s);
+        expect_true(s.amp_ptt == kStationAmpPtt5v, "amp_ptt=2 is TX PTT +5V");
+        station_parse("amp_ptt=7\n", &s);
+        expect_true(s.amp_ptt == kStationAmpPttNone, "an unknown amp_ptt reads as none");
+        expect_true(station_key_known("amp_ptt"), "amp_ptt known to CONFIG");
         expect_true(!s.rx_ft4, "FT4 beside FT8 is off by default");
         station_parse("rx_ft4=1\n", &s);
         expect_true(s.rx_ft4, "rx_ft4 parsed");

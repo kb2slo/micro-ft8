@@ -3,6 +3,7 @@
 // the QMX's ops table, so the test sees exactly which calls reach a radio.
 
 #include <cstdio>
+#include <cstring>
 
 #include "dial_history.h"
 #include "radio_control.h"
@@ -82,6 +83,24 @@ int main()
     expect(radio_control_set_tune(true, 14074000, 1500) != ESP_OK, "or to tune");
     expect(radio_control_sync_frequency_mode(14074000) != ESP_OK, "or to retune");
     expect(radio_control_end_tx() != ESP_OK, "and has nothing to un-key");
+    radio_config_t cfg;
+    expect(!radio_control_get_config(&cfg), "NONE reports no configuration");
+    {
+        radio_config_t c = {};
+        snprintf(c.model, sizeof(c.model), "QMX 60-15m");
+        c.band_count = 2;
+        c.bands[0] = {60, 1, 0, 1, 0, 0};
+        c.bands[1] = {40, 0, 0, 0, 0, -1};
+        c.ptt_is_serial = 0;
+        char text[256];
+        radio_config_format(&c, text, sizeof(text));
+        expect(strcmp(text, "radio_model=QMX 60-15m\nradio_bands=60 40\nradio_band_tx=1 0\n"
+                            "radio_ptt=0100 000?\nradio_ptt_serial=0\n") == 0,
+               "config reply lines: bands, Transmit and the four PTT outputs a band");
+        char small[20];
+        const size_t n = radio_config_format(&c, small, sizeof(small));
+        expect(n == sizeof(small) - 1 && small[n] == 0, "a short buffer is filled and terminated");
+    }
     expect(g_calls == 0, "no call reaches the QMX's ops while NONE is selected");
     const radio_control_capabilities_t* caps = radio_control_get_capabilities();
     expect(caps && !caps->has_swr && !caps->has_wattmeter, "NONE has no capabilities");

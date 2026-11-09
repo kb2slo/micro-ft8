@@ -488,6 +488,8 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
   border:0;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent);
   border-radius:0;padding:.3rem 0;font-size:.9rem;background:transparent;color:CanvasText}
 .setnote{padding:0 1rem;font-size:.8rem;color:GrayText;margin-top:0}
+.setnote.warn{color:#fbbf24}
+#ampPttCheck{white-space:pre-line}
 .bandcheck{display:flex;align-items:center;gap:.4rem;font-size:.85rem;text-transform:none;letter-spacing:normal;color:CanvasText;margin:0}
 .bandcheck input{width:auto;margin:0}
 .callink{text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
@@ -653,7 +655,19 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     </div>
 
     <div class="hd sep">Amplifier</div>
-    <p class=setnote>For an external amplifier keyed from the QMX's PTT output. With no amplifier, leave both as they are.</p>
+    <p class=setnote>For an external amplifier keyed from the QMX's PTT output. With no amplifier, leave these as they are.</p>
+    <div class=setrow>
+      <label>Amp keyed by
+        <select id=amp_ptt>
+          <option value=0>Not checked</option>
+          <option value=1>TX PTT grounded</option>
+          <option value=2>TX PTT +5V</option>
+        </select>
+      </label>
+    </div>
+    <p class=setnote>Which of the QMX's PTT outputs keys your amplifier. A Micro PA100+ keys from TX PTT grounded. The radio's own menu sets this for each band (Band config.); when it connects, the main board reads those settings and they are checked here against your active bands.</p>
+    <p class="setnote warn" id=ampPttCheck hidden></p>
+    <div class=setrow id=ampPttSetRow hidden><button id=ampPttSet type=button>Set the radio's PTT outputs</button></div>
     <div class=setrow>
       <label>Min TX delay (ms)
         <input id=tx_min_delay_ms type=number min=0 max=500 step=10 inputmode=numeric autocomplete=off>
@@ -1056,7 +1070,7 @@ var stationSheetMsg = document.getElementById('stationSheetMsg');
 // never resend them. Settings' own fields (below) autosave one key each.
 var FIELDS = [
   'call','comment1',
-  'radio','protocol_mode','skiptx1','tx_min_delay_ms','amp_swr_guard',
+  'radio','protocol_mode','skiptx1','tx_min_delay_ms','amp_ptt','amp_swr_guard',
   'amp_prime_on_band_change','rx_ft4'
 ];
 var CQ_TYPE_NAMES = ['CQ', 'SOTA', 'POTA', 'QRP', 'FD', 'FreeText'];
@@ -2186,7 +2200,81 @@ async function readRadioBack() {
   } catch (e) { /* the drawer keeps its last reading */ }
 }
 
+// Settings › Amplifier: the QMX's own PTT outputs (radio_bands, radio_ptt: four characters a band,
+// TX PTT +5V, TX PTT grounded, RX PTT +5V, RX PTT grounded) against how the amp is keyed (amp_ptt:
+// 1 grounded, 2 +5V), on each active band the radio has. The keying output alone on: either TX
+// output on with it would key the amp from both, and an RX one keys it on receive. Returns
+// {state: 'off' | 'unread' | 'ok' | 'bad', lines}: off when amp_ptt is not set, unread before the
+// main board has read this radio's settings.
+function ampPttCheck(cfg) {
+  var mode = parseInt(cfg.amp_ptt, 10);
+  if (mode !== 1 && mode !== 2) return { state: 'off', lines: [] };
+  if (cfg.radio_bands === undefined || cfg.radio_ptt === undefined) return { state: 'unread', lines: [] };
+  var NAMES = ['TX PTT +5V', 'TX PTT grounded', 'RX PTT +5V', 'RX PTT grounded'];
+  var want = mode === 1 ? '0100' : '1000';
+  var bands = String(cfg.radio_bands).trim().split(/\s+/);
+  var ptt = String(cfg.radio_ptt).trim().split(/\s+/);
+  var active = parseActiveBands(cfg.active_bands);
+  var lines = [];
+  if (String(cfg.radio_ptt_serial) === '1') {
+    lines.push('The PTT jack is a serial port (System config › GPS & Ser. ports › Serial 6 on PTT is ENABLED): the amplifier will not key.');
+  }
+  bands.forEach(function (b, i) {
+    var m = parseInt(b, 10);
+    if (!(m > 0) || (active.any && !active.want[m])) return;
+    var got = ptt[i] || '????';
+    if (got === want) return;
+    var on = [];
+    var unread = false;
+    for (var k = 0; k < 4; k++) {
+      if (got[k] === '1') on.push(NAMES[k]);
+      else if (got[k] !== '0') unread = true;
+    }
+    lines.push(m + ' m: ' + (unread ? 'not read' : on.length ? on.join(', ') + ' on' : 'no PTT output on'));
+  });
+  return { state: lines.length ? 'bad' : 'ok', lines: lines };
+}
+
+function renderAmpPttCheck(cfg) {
+  var el = document.getElementById('ampPttCheck');
+  if (!el) return;
+  var c = ampPttCheck(cfg);
+  el.hidden = c.state === 'off';
+  el.classList.toggle('warn', c.state === 'bad');
+  var keyed = parseInt(cfg.amp_ptt, 10) === 2 ? 'TX PTT +5V' : 'TX PTT grounded';
+  if (c.state === 'unread') el.textContent = 'The QMX\'s PTT settings are read when it connects; not read yet.';
+  else if (c.state === 'ok') el.textContent = 'The QMX (' + (cfg.radio_model || 'model unknown') + ') has ' + keyed + ' alone on every active band.';
+  else if (c.state === 'bad') el.textContent = 'The QMX will not key the amp as set. It needs ' + keyed + ' alone on, set in its menu (Band config.) or with the button below:\n' + c.lines.join('\n');
+  // Set it: the main board writes the radio's own settings (architecture/radio.md, Setting the PTT
+  // outputs), and its progress comes back as radio_ptt_write.
+  var w = String(cfg.radio_ptt_write || '');
+  var writing = w === 'writing';
+  document.getElementById('ampPttSetRow').hidden = !(c.state === 'bad' || writing);
+  document.getElementById('ampPttSet').disabled = writing;
+  if (writing) el.textContent += '\nWriting to the radio…';
+  else if (w.indexOf('failed') === 0) el.textContent += '\nThe last write ' + w + '.';
+}
+
+// The bands the radio transmits on (radio_band_tx 1), which Set it writes: the operator's choice in
+// the radio, left as it is.
+function radioTransmitBands(cfg) {
+  var bands = String(cfg.radio_bands || '').trim().split(/\s+/);
+  var tx = String(cfg.radio_band_tx || '').trim().split(/\s+/);
+  return bands.filter(function (b, i) { return tx[i] === '1'; });
+}
+
+document.getElementById('ampPttSet').onclick = function () {
+  var mode = parseInt(lastCfg.amp_ptt, 10);
+  if (mode !== 1 && mode !== 2) return;
+  var keyed = mode === 2 ? 'TX PTT +5V' : 'TX PTT grounded';
+  var bands = radioTransmitBands(lastCfg);
+  if (!confirm('Set ' + keyed + ' on the QMX for each band it transmits on (' + bands.join(', ') +
+               ' m), and turn its other PTT outputs off? This changes the settings saved in the radio, as its menu would.')) return;
+  radioPost('/api/radio/ptt', String(mode), 'Setting the radio\'s PTT outputs…');
+};
+
 function applyOperateLive(cfg) {
+  renderAmpPttCheck(cfg);
   updateLogFree(cfg);
   syncDockBandGrid(cfg);
   syncFreqInput(cfg);
@@ -4064,11 +4152,11 @@ function decodeDistKm(d) {
   return a && b ? greatCircle(a, b).km : null;
 }
 
-// ===================== Operate: activation cues (docs/architecture/webapp.md) =====================
-// Only while the station has references. The dupe cue reads today's day file (opLog, loaded by
-// refreshOpLog() below, not the Log tab's list); the badges read callinfo.js's spot cache.
-// A dupe is the same call, band, mode and UTC day (the file) on a QSO logged at one of our
-// current references. A cue, never a block.
+// ===================== Operate: worked and activation cues (docs/architecture/webapp.md) =====================
+// The dupe cue reads today's day file (opLog, loaded by refreshOpLog() below, not the Log tab's
+// list); the badges, only while the station has references, read callinfo.js's spot cache.
+// A dupe is the same call, band, mode and UTC day (the file); with references, only a QSO logged
+// at one of them counts, since each park or summit is its own log. A cue, never a block.
 function refsOverlap(q, refs) {
   var mine = {};
   (q.my_pota_ref || '').split(',').forEach(function (r) { if (r.trim()) mine['POTA:' + r.trim()] = true; });
@@ -4080,12 +4168,12 @@ function dupeKey(call, band, mode) {
   return String(call).toUpperCase() + '|' + band + '|' + String(mode).toUpperCase();
 }
 
-// Set of dupeKey()s for the rows logged at any of refs ([{program, ref, token}], parseActRefs()).
+// Set of dupeKey()s for the rows logged at any of refs ([{program, ref, token}], parseActRefs()),
+// or for every row when refs is empty.
 function dupeIndex(rows, refs) {
   var set = {};
-  if (!refs.length) return set;
   rows.forEach(function (q) {
-    if (q.call && refsOverlap(q, refs)) set[dupeKey(q.call, q.band || '', q.mode || '')] = true;
+    if (q.call && (!refs.length || refsOverlap(q, refs))) set[dupeKey(q.call, q.band || '', q.mode || '')] = true;
   });
   return set;
 }
@@ -4104,6 +4192,11 @@ function slotMode(slot) {
 }
 
 var opLog = { file: '', rows: [], busy: false };
+// How often Operate (refreshOpLog()) and the open Log tab (refreshLogHead()) check today's file
+// for new QSOs: a QSO just logged shows without a reload, and steady polling stays modest on the
+// sidekick's one-request server. Assigned before either setInterval() below reads it: read while
+// still undefined, the interval was 0 and Operate re-read the log back to back.
+var LOG_REFRESH_MS = 8000;
 
 function utcDayFile() {
   var t = new Date();
@@ -4111,11 +4204,11 @@ function utcDayFile() {
          String(t.getUTCDate()).padStart(2, '0') + '.adi';
 }
 
-// Follows today's file for new QSOs while the station has references, on any tab, since the
-// activation line under the slot bar is on every tab; activationCounts() counts from opLog.rows
-// too. A day with no file yet reads as no rows.
+// Follows today's file for new QSOs: on Operate, for the Worked flag, and while the station has
+// references on any tab too, since the activation line under the slot bar is on every tab;
+// activationCounts() counts from opLog.rows too. A day with no file yet reads as no rows.
 async function refreshOpLog() {
-  if (opLog.busy || !parseActRefs(lastCfg).length) return;
+  if (opLog.busy || (currentView !== 'operate' && !parseActRefs(lastCfg).length)) return;
   opLog.busy = true;
   try {
     var file = utcDayFile();
@@ -4317,8 +4410,10 @@ function renderDecodesNow() {
       // its own fetch, so the badge just appears on a later redraw.
       var shortLoc = theirGrid ? CallInfo.shortLocation(theirGrid) : '';
       var flags = '';
+      if (senderCall && dupes[dupeKey(senderCall, slotBand, slotModeName)]) {
+        flags += '<span class="wflag wflag-worked">Worked</span>';
+      }
       if (actRefs.length && senderCall) {
-        if (dupes[dupeKey(senderCall, slotBand, slotModeName)]) flags += '<span class="wflag wflag-worked">Worked</span>';
         var badge = spotBadgeLabel(CallInfo.activeSpotFor(senderCall), actRefs);
         if (badge) flags += '<span class="wflag wflag-act">' + esc(badge) + '</span>';
       }
@@ -4850,10 +4945,6 @@ var dayFullRowsCache = {};  // filename -> Promise<full day's rows> (fetchAllEnt
 
 var LOG_ENTRY_FETCH = 10;    // rows per /api/log/entries call
 var LOG_ENTRY_GOAL = 15;     // rows to append per loadMoreLog() batch
-var LOG_REFRESH_MS = 8000;   // how often to check today's file for new QSOs while the
-                             // Log tab is open -- a QSO just logged should show up
-                             // without a page reload, but this stays modest given this
-                             // session's earlier finding about steady polling and WiFi
 
 function dayLabel(name) {
   // name is "YYYYMMDD.adi" (qso_browse.cpp / file_list.cpp). Always renders
