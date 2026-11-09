@@ -6,7 +6,7 @@ tone far from its dial ([radio.md](../../docs/architecture/radio.md), **TX timin
 measurement on another firmware or band.
 
 These are real transmissions: run them only as, or beside, the station's control operator, on a frequency your
-licence allows. The script refuses anything outside 20 m.
+licence allows. The script refuses anything outside 20 m and 40 m.
 
 ## Setup
 
@@ -38,3 +38,24 @@ python3 tools/qmx_tx_probe/key_qmx.py --port <QMX serial port> --mode FT4 --base
 The dial stays at `--dial` (default 14.074 MHz, FT8's); `--base 7500` puts FT4 at 14.0815 MHz, FT4's 14.080 plus
 1,500 Hz. Each spot prints the receiver's reported frequency: a tone the radio clamped would show near the dial plus
 the clamp, not where it was aimed. If the control draws no spots, the keying is at fault, not the tone.
+
+## Below the dial: split or retune (row [xvfn](../../docs/roadmap/several-channels.md#xvfn))
+
+A `TA` under 10 Hz keys a QMX up, so a channel below the receive dial (40 m's FT4, 26.5 kHz below FT8's) cannot
+go out as a far tone. `--tx-dial` moves the transmission there, `--via` chooses how:
+
+```bash
+python3 tools/qmx_tx_probe/key_qmx.py --port <QMX serial port> --mode FT8 --dial 7074000 --base 1500 --count 3 --message "CQ <CALL> <GRID>"
+python3 tools/qmx_tx_probe/key_qmx.py --port <QMX serial port> --mode FT4 --dial 7074000 --tx-dial 7047500 --via split --base 1500 --count 6 --message "CQ <CALL> <GRID>"
+python3 tools/qmx_tx_probe/key_qmx.py --port <QMX serial port> --mode FT4 --dial 7074000 --tx-dial 7047500 --via retune --base 1500 --count 6 --message "CQ <CALL> <GRID>"
+```
+
+* **split:** `SP1;` then `FB<tx-dial>;` a second before the slot, `SP;` read back, and after `RX;` `FB<dial>;` `SP0;`
+  `FR0;` `FT0;`, with `SP;` `FR;` `FT;` read back. `FB` is written only while split is on and never read back:
+  qmx-panadapter found a QMX refuses `FB` once split is off, and `SP0;` leaves the VFO mode at Split until `FR0;`; the
+  CAT manual has `FB;` answer with an `FA`-prefixed reply.
+* **retune:** `FA<tx-dial>;` a second before the slot, then `FA;` read back, and `FA<dial>;` after `RX;`.
+
+Each line prints the read-back and how long the set took to read back; a read-back that does not match skips that
+transmission, so nothing is keyed at the wrong place. The FT4 spots should read near 7.049000 MHz (7.0475 plus
+1,500 Hz). What receive loses after a transmission is not visible from here: the main board measures that.
