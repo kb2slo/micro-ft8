@@ -26,6 +26,16 @@ The QMX streams either its audio or its I/Q on the same USB stream: `Q9 0;` audi
 * **A radio that does not go to IQ** decodes nothing, so it is warned about once per link-up, on the console and the debug log: `QMX Q9; reads audio, not IQ` when it answers `Q90;`, and `Q9; unanswered: … may lack IQ mode` when it does not answer, which is what a firmware without `Q9` does (it answers `?;`). Neither is retried: a radio that refused once refuses again.
 * **The receive dial is FT8's, and FT4 fits beside it on most bands** (operator decision 2026-11-07). The LO is 12 kHz below the dial, so FT8's channel is 13,500 Hz above it, and an FT4 channel is that plus FT4's dial minus FT8's (`qmx_iq_channel.h`): 19,500 Hz on 20 m, near the window's top, where FT4 decoded without thinning on the 2026-11-02 corpus ([decode.md](decode.md), **FT4**); 13,000 Hz below the LO on 40 m, on FT8's mirror side, where image rejection (about 32 dB uncorrected) separates them. A channel's audio may reach 21.0 kHz either side of the LO and may not cover the LO itself; on 15 m and 10 m FT4 is 66 and 106 kHz from FT8, outside the 48 kHz window, and is not decoded. Transmitting off it is a far `TA` tone (**TX timing on a QMX**); replying on FT4 is built beside FT8 ([autoseq.md](autoseq.md), **The slot cycle**), except on 40 m: **not yet built: row [xvfn](../roadmap/several-channels.md#xvfn)**.
 
+## The QMX's settings, read at link-up
+
+Once IQ mode is settled at a link-up (above), the backend reads the radio's settings with the Menu Manager (**Menu Manager**, below), one `MM` query at a time: each column's `Band name (m)` from column 0 until one reads `0` or the table's 16 columns end, then each band's `Transmit` and four PTT outputs, then System config's **Band version** and **Serial 6 on PTT**. The sequence is `qmx_menu_read.h` (host-tested, against the two radios' tables as `tools/qmx_menu_probe/` read them); `radio_control_qmx.cpp` sends it from the main loop and logs the result on the console, one line for the radio and one per band.
+
+* **About 75 queries for a QMX+'s 12 bands, read in under a second** (0.4 s for a mid-band QMX's 6, 0.9 s for a QMX+'s 12, on 1_04_010), left the radio on the band and mode it was on.
+* **A refused item (`?;`) reads as unknown and the read goes on; a query unanswered in 1 s ends it**, logged once (`QMX menus: … unanswered`), until the link drops. The parser counts `MM` replies and `?;` refusals since boot, never resetting either, so a reply is matched to its query by the count moving.
+* **Nothing is sent while a transmission, Tune, sweep or prime runs;** a query in flight then is asked again after. **A link that drops forgets the settings,** so a radio plugged in next is read afresh.
+* **`OM;` cannot tell a QMX from a QMX+:** both answer `OMQC` (1_04_010). Band version can.
+* **Nothing acts on the settings yet** (**not yet built: row [vcng](../ROADMAP.md#vcng)**).
+
 ## TX timing on a QMX
 
 The QMX takes its tones over CAT, so the main board sets the timing (`tx_scheduler.cpp`; the constants and arithmetic in `components/radio_control/include/tx_timing.h`, which the host model in `tests/tx_e2e/tx_state_machine.cpp` shares):
@@ -93,7 +103,7 @@ Measured on a QMX at firmware 1_04_003 with `tools/qmx_swr_probe.py` (2026-09-30
 * **Reading the menus over CAT leaves the radio where it was** (QMX 1_04_010, 2026-11-09, `tools/qmx_menu_probe/`): a read of every Band config. cell and every System config item, 18 s in all, left `IF;` unchanged. `MM` reads an item by its path and does not walk the menus, so the panadapter's report that leaving the Band config. menus drops the radio on 160 m (its v1.16.10, which walked them) does not apply to it. What that read found:
   * **Band config.** is a table of 16 columns, one per band, read with a subscript: `MMBand config.|Transmit[1];` answers `MMENABLED;`. Rows read by name: `Band name (m)` (a number; `0` in a column with no band), `Frequency min.`/`center`/`max.` in Hz, `Transmit`, and the four PTT outputs `TX PTT +5V`, `TX PTT grounded`, `RX PTT +5V` and `RX PTT grounded`, each `DISABLED` or `ENABLED`. Columns hold the bands in order from 0; a QMX 60–15 m filled 0 to 5.
   * **The PTT jack is keyed per band:** a Micro PA100+ keyed from it takes `TX PTT grounded` alone ENABLED on each band it is used on (operator, 2026-11-09). **System config|GPS & Ser. ports|Serial 6 on PTT** makes the jack a serial port instead, so keying an amplifier from it needs `DISABLED`.
-  * A menu's model and band set are System config › **Band version** (`QMX 60-15m`, or `QMX 80-20m`, `QMX 20-10m`, `QMX+ 160-6m`); `OM;` answered `OMQC` on that unit.
+  * A radio's model and band set are System config › **Band version** (`QMX 60-15m`, `QMX 80-20m`, `QMX 20-10m` or `QMX+ 160-6m`). A QMX+ 160–6 m (2026-11-09) filled columns 0 to 11, 11 m (CB) among them with Transmit ENABLED, and every PTT output DISABLED.
 * **The radio appends terminal display codes** (`ESC[7m` and similar) after some replies; a parser must strip them and read a reply by pattern.
 
 ## The radio pushes its state (`AI2;`)

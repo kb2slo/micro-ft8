@@ -1,5 +1,7 @@
 #include "radio_control_backend.h"
+#include "cat_reply_parser.h"
 #include "qmx_iq_link.h"
+#include "qmx_menu_read.h"
 #include "radio_ta_format.h"
 
 #include <cstdio>
@@ -280,7 +282,53 @@ static esp_err_t qmx_query_version(void) {
 // stays in audio mode, or does not answer, is warned about once; neither is retried.
 static QmxIqLink s_iq_link;
 
-static radio_rx_path_event_t qmx_rx_path_tick(bool busy) {
+// Reads, after IQ mode is settled, each band's Transmit flag and PTT outputs and the PTT jack's
+// serial setting with the Menu Manager (architecture/radio.md, Menu Manager). Logged on the console.
+static QmxMenuRead s_menu_read;
+
+static void log_radio_settings(const QmxRadioSettings& r) {
+    static const char* const kFlag[] = {"?", "off", "on"};
+    ESP_LOGI(TAG, "QMX menus: band version \"%s\", %d bands, Serial 6 on PTT %s", r.band_version, r.band_count,
+             kFlag[r.serial6_on_ptt + 1]);
+    for (int c = 0; c < r.band_count; ++c) {
+        const QmxBandSettings& b = r.bands[c];
+        ESP_LOGI(TAG, "QMX band %d m: Transmit %s, TX PTT +5V %s, TX PTT grounded %s, RX PTT +5V %s, RX PTT grounded %s",
+                 b.band_m, kFlag[b.flag[kQmxFlagTransmit] + 1], kFlag[b.flag[kQmxFlagTxPtt5v] + 1],
+                 kFlag[b.flag[kQmxFlagTxPttGround] + 1], kFlag[b.flag[kQmxFlagRxPtt5v] + 1],
+                 kFlag[b.flag[kQmxFlagRxPttGround] + 1]);
+    }
+}
+
+static void qmx_menu_read_tick(bool ready, bool busy) {
+    char value[CAT_REPLY_FRAME_MAX];
+    const uint32_t mm_count = cat_cdc_get_mm(value, sizeof(value));
+    const int64_t now_ms = esp_timer_get_time() / 1000;
+    switch (qmx_menu_read_step(s_menu_read, ready, busy, mm_count, value, cat_cdc_refusals(), now_ms)) {
+        case QmxMenuReadAction::None:
+            return;
+        case QmxMenuReadAction::Send: {
+            char cmd[64];
+            qmx_menu_read_command(s_menu_read, cmd, sizeof(cmd));
+            if (qmx_send_cmd(cmd, 200) != ESP_OK) {
+                // Asked again after a link that stays down resets the read; one that comes back
+                // misses this reply and ends the read as unanswered.
+                ESP_LOGW(TAG, "QMX menus: %s not sent", cmd);
+            }
+            return;
+        }
+        case QmxMenuReadAction::Done:
+            log_radio_settings(s_menu_read.result);
+            return;
+        case QmxMenuReadAction::NoReply: {
+            char cmd[64];
+            qmx_menu_read_command(s_menu_read, cmd, sizeof(cmd));
+            ESP_LOGW(TAG, "QMX menus: %s unanswered; band and PTT settings are unread", cmd);
+            return;
+        }
+    }
+}
+
+static radio_rx_path_event_t qmx_iq_path_tick(bool busy) {
     int reply = -1;
     (void)cat_cdc_get_parsed_q9(&reply);
     switch (qmx_iq_link_step(s_iq_link, cat_cdc_ready(), busy, reply, esp_timer_get_time() / 1000)) {
@@ -310,6 +358,14 @@ static radio_rx_path_event_t qmx_rx_path_tick(bool busy) {
             return RADIO_RX_PATH_NO_REPLY;
     }
     return RADIO_RX_PATH_NONE;
+}
+
+static radio_rx_path_event_t qmx_rx_path_tick(bool busy) {
+    const radio_rx_path_event_t event = qmx_iq_path_tick(busy);
+    // Stepped on every pass, so a link that drops resets the read for the next radio; it starts
+    // once IQ mode is settled, so the two link-up reads do not interleave.
+    qmx_menu_read_tick(cat_cdc_ready() && s_iq_link.phase == QmxIqLinkPhase::Done, busy);
+    return event;
 }
 
 static bool qmx_get_version(char* out, size_t cap) {
