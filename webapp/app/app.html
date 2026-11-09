@@ -4672,6 +4672,9 @@ function applyEvent(e) {
                           me: !!e.me, cq: !!e.cq, rq: !!e.rq,
                           fq: e.fq ? Math.round(e.fq / 100) / 10 : 0 });
     learnCallsignGrid(e.x); // opportunistic, regardless of who this was addressed to
+    // A CQ POTA/SOTA is an activation whether or not it is spotted (callinfo.js, learnCq()).
+    if (typeof CallInfo !== 'undefined') CallInfo.learnCq(e.x, e.fq ? e.fq / 1000 : 0, (e.sl || 0) === 75 ? 'FT4' : 'FT8',
+                                          e.t ? e.t * 1000 : Date.now());
   } else if (e.d === 2) {
     if (e.st === QUEUE_STATE_IDLE) {
       delete queue[e.eid]; // IDLE is the removal signal (docs/architecture/webapp.md (Screens))
