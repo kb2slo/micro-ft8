@@ -39,6 +39,11 @@ void cat_cdc_reset_parsed_if(void);
 // The radio's firmware version from its VN reply ("1_04_004"), copied into `out`; false when it
 // has not answered since the radio connected.
 bool cat_cdc_get_version(char* out, size_t cap);
+// How many Menu Manager (MM) replies have arrived since boot, and the last one's value copied into
+// `out` (without `MM` and `;`). Never reset: a caller remembers the count it saw when it asked.
+uint32_t cat_cdc_get_mm(char* out, size_t cap);
+// How many "?;" replies (a command the radio refused) have arrived since boot. Never reset.
+uint32_t cat_cdc_refusals(void);
 // How many IF replies have differed from the one before, since boot. A reader that remembers the
 // count it last saw learns of a change without a clear that could lose one.
 uint32_t cat_cdc_if_changes(void);

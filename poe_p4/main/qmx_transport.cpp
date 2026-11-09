@@ -716,6 +716,19 @@ bool cat_cdc_get_version(char* out, size_t cap) {
     return true;
 }
 
+uint32_t cat_cdc_get_mm(char* out, size_t cap) {
+    // The count first: the value is written before it, so this value came with that count or later.
+    const uint32_t count = s_cat_parser.mm_replies;
+    if (out && cap > 0) {
+        snprintf(out, cap, "%s", s_cat_parser.mm);
+    }
+    return count;
+}
+
+uint32_t cat_cdc_refusals(void) {
+    return s_cat_parser.refusals;
+}
+
 uint32_t cat_cdc_if_changes(void) {
     return s_cat_parser.if_changes;
 }

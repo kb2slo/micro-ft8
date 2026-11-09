@@ -710,6 +710,26 @@ bool porta_proto_parse_radio_read(const porta_frame_t *f)
     return f && f->type == PORTA_MSG_ACTION && f->len == 1 && f->payload[0] == PORTA_ACT_RADIO_READ;
 }
 
+size_t porta_proto_encode_radio_set_ptt(uint8_t keying, uint8_t *out, size_t out_cap)
+{
+    const uint8_t payload[2] = {PORTA_ACT_RADIO_SET_PTT, keying};
+    return porta_proto_encode(PORTA_MSG_ACTION, payload, sizeof(payload), out, out_cap);
+}
+
+bool porta_proto_parse_radio_set_ptt(const porta_frame_t *f, uint8_t *keying_out)
+{
+    if (!f || f->type != PORTA_MSG_ACTION || f->len != 2 || f->payload[0] != PORTA_ACT_RADIO_SET_PTT) {
+        return false;
+    }
+    if (f->payload[1] != 1 && f->payload[1] != 2) {
+        return false;
+    }
+    if (keying_out) {
+        *keying_out = f->payload[1];
+    }
+    return true;
+}
+
 // verb | entry_id(2) | value: QUEUE_TRIES and QUEUE_PARITY share the shape.
 static size_t encode_entry_u8(uint8_t verb, uint16_t entry_id, uint8_t value,
                               uint8_t *out, size_t out_cap)

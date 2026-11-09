@@ -72,7 +72,18 @@ static void parse_if(cat_reply_parser_t* parser, const char* payload, size_t len
 static void parse_frame(cat_reply_parser_t* parser)
 {
     const char* frame = parser->frame;
+    if (frame[0] == '?' && frame[1] == 0) {
+        parser->refusals = parser->refusals + 1;
+        return;
+    }
     if (frame[0] == 0 || frame[1] == 0) {
+        return;
+    }
+    if (frame[0] == 'M' && frame[1] == 'M') {
+        // A value, as the radio printed it; "MM;" is an empty one.
+        memcpy(parser->mm, frame + 2, parser->frame_len - 2);
+        parser->mm[parser->frame_len - 2] = 0;
+        parser->mm_replies = parser->mm_replies + 1;
         return;
     }
     if (frame[0] == 'V' && frame[1] == 'N') {

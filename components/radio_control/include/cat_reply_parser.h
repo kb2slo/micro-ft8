@@ -3,8 +3,8 @@
 // Turns the bytes a QMX sends back over CAT into the few replies this
 // firmware reads: PC (power, tenths of a watt), SW (SWR, hundredths), FA
 // (the VFO A frequency), SR (the SWR-protection lock: 1 locked, 0 clear), Q9 (the QMX's receive output: 1 IQ, 0 audio), IF (the radio's
-// state in one reply: frequency, TX or RX, mode, split) and VN (its firmware version). Everything else, including the radio's "?;" for a
-// command it refused, is ignored.
+// state in one reply: frequency, TX or RX, mode, split), VN (its firmware version) and MM (a Menu Manager value). The radio's "?;"
+// for a command it refused is only counted. Everything else is ignored.
 //
 // The radio appends terminal display codes (ESC [ ... final byte, for example
 // ESC[7m) after some replies. They are dropped here; left in, they would glue
@@ -40,6 +40,14 @@ typedef struct {
     // readings above, reset() leaves it: it is a fact about the radio, not about the last
     // transmission. forget_version() clears it when the radio goes.
     char vn[16];
+    // MM: the last Menu Manager reply's value ("ENABLED", "40", "QMX+ 160-6m"), and how many MM
+    // replies have arrived since boot. The value is written before the count, so a reader that
+    // sees the count move reads the value that came with it. Never reset: a reader remembers the
+    // count it saw when it asked.
+    char mm[CAT_REPLY_FRAME_MAX];
+    volatile uint32_t mm_replies;
+    // How many "?;" replies (a command refused) have arrived since boot. Never reset, as mm_replies.
+    volatile uint32_t refusals;
     char frame[CAT_REPLY_FRAME_MAX];
     size_t frame_len;
     int escape_state;  // 0 text, 1 after ESC, 2 inside a CSI sequence
