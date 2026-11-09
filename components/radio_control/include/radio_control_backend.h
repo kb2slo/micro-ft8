@@ -11,7 +11,9 @@ typedef struct {
     bool (*ready)(void);
     esp_err_t (*on_audio_start)(void);
     esp_err_t (*sync_frequency_mode)(int freq_hz);
-    esp_err_t (*begin_tx)(int freq_hz, int tx_base_hz);
+    // tx_dial_hz differs from rx_dial_hz when the transmission retunes (tx_timing.h, tx_plan()): the radio moves
+    // there before keying and back to rx_dial_hz in end_tx(). Equal, nothing is retuned.
+    esp_err_t (*begin_tx)(int tx_dial_hz, int tx_base_hz, int rx_dial_hz);
     esp_err_t (*set_tone_hz)(float tone_hz);
     esp_err_t (*end_tx)(void);
     esp_err_t (*key_up)(void);         // stop RF but stay keyed; null = RX; is the only way

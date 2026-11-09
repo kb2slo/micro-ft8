@@ -46,13 +46,28 @@ static esp_err_t qmx_sync_frequency_mode(int freq_hz) {
     return err;
 }
 
-static esp_err_t qmx_begin_tx(int freq_hz, int tx_base_hz) {
-    (void)freq_hz;
+// The receive dial to return to after a transmission that retuned (row xvfn); 0 when none did.
+static int s_restore_dial_hz = 0;
+
+static esp_err_t qmx_begin_tx(int tx_dial_hz, int tx_base_hz, int rx_dial_hz) {
     (void)tx_base_hz;
 
     const char* md = "MD6;";
     esp_err_t err = qmx_send_cmd(md, 200);
     if (err != ESP_OK) return err;
+
+    // Below the receive dial a TA tone cannot reach (40 m's FT4): move the dial for this transmission, as WSJT-X's
+    // Fake It does, and qmx_end_tx() moves it back. Not split with VFO B: that left the radio's display on A/B
+    // (docs/roadmap/several-channels.md, Decided). A FA is answered in about 1 ms; TX; follows at once, and the
+    // first tone 500 ms later (tx_timing.h).
+    if (tx_dial_hz != rx_dial_hz) {
+        s_restore_dial_hz = rx_dial_hz;  // set first: a failed FA is still undone by the caller's end_tx()
+        char fa[32];
+        snprintf(fa, sizeof(fa), "FA%011d;", tx_dial_hz);
+        err = qmx_send_cmd(fa, 200);
+        if (err != ESP_OK) return err;
+        ESP_LOGI(TAG, "QMX TX retune %d -> %d", rx_dial_hz, tx_dial_hz);
+    }
 
     const char* tx = "TX;";
     err = qmx_send_cmd(tx, 200);
@@ -74,6 +89,16 @@ static esp_err_t qmx_end_tx(void) {
     esp_err_t err = qmx_send_cmd(rx, 200);
     if (err == ESP_OK) {
         ESP_LOGI(TAG, "QMX TX stop");
+    }
+    // After RX;, so the dial never moves under RF. Sent even if RX; failed: the next link-up's sync sets FA again
+    // either way (qmx_sync_frequency_mode()).
+    if (s_restore_dial_hz > 0) {
+        char fa[32];
+        snprintf(fa, sizeof(fa), "FA%011d;", s_restore_dial_hz);
+        const esp_err_t back = qmx_send_cmd(fa, 200);
+        ESP_LOGI(TAG, "QMX TX retune back -> %d%s", s_restore_dial_hz, back == ESP_OK ? "" : " (failed)");
+        s_restore_dial_hz = 0;
+        if (err == ESP_OK) err = back;
     }
     return err;
 }

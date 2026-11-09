@@ -698,7 +698,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         </select>
       </label>
     </div>
-    <p class=setnote>QMX only. On: FT4 decodes at the same time as FT8, from the same radio, as its own batch in Operate, and a tap on an FT4 decode replies on FT4. Calling CQ is FT8 only. Not on 15 m or 10 m, where FT4 is outside the QMX's receive window; on 40 m it decodes but cannot reply yet.</p>
+    <p class=setnote>QMX only. On: FT4 decodes at the same time as FT8, from the same radio, as its own batch in Operate, and a tap on an FT4 decode replies on FT4. Calling CQ is FT8 only. Not on 15 m or 10 m, where FT4 is outside the QMX's receive window.</p>
     <div class=setrow>
       <label>Skip TX1
         <select id=skiptx1>
@@ -4356,22 +4356,8 @@ function fmtSlotTime(slot) {
 
 // A decode in an FT4 batch beside FT8: this station transmits FT8, and FT4 replies are row grqg's. Asked before
 // the frequency check, whose advice (tune to FT4's dial) would be wrong here. The main board refuses too.
-function replyModeRefusal(id) {
-  for (var i = 0; i < decodeSlots.length; i++) {
-    for (var k = 0; k < decodeSlots[i].length; k++) {
-      if (String(decodeSlots[i][k].id) !== String(id)) continue;
-      // FT4 beside FT8 replies on FT4 (webapp.md, Decodes), except where FT4's dial is below FT8's (40 m),
-      // which a QMX cannot reach from FT8's dial (radio.md, TX timing on a QMX); the main board refuses it too.
-      if (slotMode(decodeSlots[i]) !== 'FT4') return null;
-      var ft4 = currentFt4DialKhz(lastCfg), ft8 = currentDockFreqKhz(lastCfg);
-      return ft4 && ft8 && ft4 < ft8 ? 'Replies on FT4 are not built on this band yet.' : null;
-    }
-  }
-  return null;
-}
-
 function tryReply(id) {
-  var why = replyTooOld(id) || replyModeRefusal(id) || replyFrequencyMismatch(id);
+  var why = replyTooOld(id) || replyFrequencyMismatch(id);
   if (why) {
     setMsg(why);
     alert(why);

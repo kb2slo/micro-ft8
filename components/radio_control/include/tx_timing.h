@@ -56,6 +56,22 @@ inline bool tx_tones_in_range(int base_hz, float top_tone_hz) {
     return base_hz >= kTxToneMinHz && top_tone_hz <= (float)kTxToneMaxHz;
 }
 
+// Where a transmission goes (row xvfn, docs/roadmap/several-channels.md, Decided): the dial the radio is set
+// to for it, as a shift from the receive dial, and its base TA tone. A channel whose tones fit as a far TA tone
+// from the receive dial goes out that way, unshifted (20 m's FT4). One that does not, such as 40 m's FT4,
+// 26.5 kHz below FT8's dial, retunes: the dial moves to the channel's own for the transmission and back after
+// RX;, as WSJT-X's Fake It does, and the base is the audio offset. A wild audio offset is still out of range
+// either way, which the caller checks on base_hz.
+struct TxPlan {
+    int32_t dial_shift_hz;
+    int base_hz;
+};
+inline TxPlan tx_plan(int audio_offset_hz, int32_t dial_offset_hz, float tones_span_hz) {
+    const int far = tx_base_hz(audio_offset_hz, dial_offset_hz);
+    if (tx_tones_in_range(far, (float)far + tones_span_hz)) return {0, far};
+    return {dial_offset_hz, audio_offset_hz};
+}
+
 // FT8's slots are two of FT4's 7.5 s periods, aligned: the FT8 slot an FT4 period falls in, which an FT4
 // transmission in that period deafens (deaf by overlap; an FT8 transmission deafens both its FT4 periods
 // through tx_active).

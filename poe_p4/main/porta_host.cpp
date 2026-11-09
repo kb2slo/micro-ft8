@@ -440,9 +440,20 @@ void porta_p4_radio_push_tick(void) {
         return;
     }
     s_last_ms = now_ms;
+    // A transmission that retuned the radio (row xvfn) is ours too: hold back while it lasts and for the quiet
+    // window after, the radio's answer to the retune back included. Seen on this 100 ms tick, so the window
+    // runs from within 100 ms of the retune's end.
+    static uint32_t s_retuned_seen_ms = 0;
+    static bool s_retune_seen = false;
+    if (radio_control_tx_retuned_hz() != 0) {
+        s_retuned_seen_ms = now_ms;
+        s_retune_seen = true;
+        return;
+    }
     if (s_syncing.load() > 0 || amp_band_prime_busy() ||
         now_ms - s_sync_end_ms.load() < kRadioPushQuietMs ||
-        now_ms - s_amp_prime_end_ms.load() < kRadioPushQuietMs) {
+        now_ms - s_amp_prime_end_ms.load() < kRadioPushQuietMs ||
+        (s_retune_seen && now_ms - s_retuned_seen_ms < kRadioPushQuietMs)) {
         return;
     }
     const uint32_t changes = radio_control_state_changes();
@@ -695,7 +706,9 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
     if (radio_control_get_state(&rs)) {
         char rbuf[96];
         snprintf(rbuf, sizeof(rbuf), "radio_hz=%d\nradio_tx=%d\nradio_mode=%d\nradio_split=%d\nwant_hz=%d\n",
-                 rs.freq_hz, rs.transmitting ? 1 : 0, rs.mode, rs.split ? 1 : 0, station_freq_hz());
+                 rs.freq_hz, rs.transmitting ? 1 : 0, rs.mode, rs.split ? 1 : 0,
+                 // Where we put it: during a transmission that retuned (row xvfn), the dial it retuned to.
+                 radio_control_tx_retuned_hz() ? radio_control_tx_retuned_hz() : station_freq_hz());
         text += rbuf;
     }
 
@@ -987,11 +1000,6 @@ const char *porta_host_queue_reply(uint32_t decode_id) {
     UiRxLine msg;
     if (!find_decode_for_reply(decode_id, &msg)) {
         return "unknown decode";
-    }
-    if (msg.mode == RxMode::FT4 && porta_p4_station_ft4_dial_offset_hz() < 0) {
-        // FT4 below FT8's dial (40 m): a QMX cannot transmit below its dial with TA, and the receive dial is
-        // FT8's (docs/architecture/radio.md, TX timing on a QMX; row xvfn).
-        return "replies on FT4 are not built on this band yet";
     }
     tx_scheduler_swr_operator_start(false);
     const char *why = apply_reply_touch(msg);

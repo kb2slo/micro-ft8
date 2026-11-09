@@ -263,13 +263,15 @@ static TxStart tx_start(int skip_tones, std::string &skip_reason) {
         ft8_encode(msg.payload, s_tx_tones);
     }
 
-    // FT4 beside FT8 goes out at FT8's dial plus FT4's offset plus its audio offset (tx_timing.h).
-    const int tx_base_hz = ::tx_base_hz(s_pending_tx.offset_hz, proto->protocol_id == FTX_PROTOCOL_FT4
-                                                                       ? porta_p4_station_ft4_dial_offset_hz()
-                                                                       : 0);
-    if (!tx_tones_in_range(tx_base_hz, tx_base_hz + proto->tone_spacing * (proto->protocol_id == FTX_PROTOCOL_FT4 ? 3 : 7))) {
-        // Below the dial (40 m's FT4, row xvfn) or a wild offset: never keyed. Not counted, so the entry
-        // waits to be cancelled rather than spending tries.
+    // FT4 beside FT8 goes out at FT8's dial plus FT4's offset plus its audio offset as a far TA tone, or, below
+    // the dial (40 m), from FT4's own dial by a retune (tx_timing.h, tx_plan()).
+    const float tones_span_hz = proto->tone_spacing * (proto->protocol_id == FTX_PROTOCOL_FT4 ? 3 : 7);
+    const TxPlan plan = tx_plan(s_pending_tx.offset_hz,
+                                proto->protocol_id == FTX_PROTOCOL_FT4 ? porta_p4_station_ft4_dial_offset_hz() : 0,
+                                tones_span_hz);
+    const int tx_base_hz = plan.base_hz;
+    if (!tx_tones_in_range(tx_base_hz, tx_base_hz + tones_span_hz)) {
+        // A wild offset: never keyed. Not counted, so the entry waits to be cancelled rather than spending tries.
         skip_reason = "TX tone " + std::to_string(tx_base_hz) + " Hz out of range";
         return TxStart::Skipped;
     }
@@ -283,7 +285,8 @@ static TxStart tx_start(int skip_tones, std::string &skip_reason) {
         skip_reason = "CAT not ready";
         return TxStart::Skipped;
     }
-    const esp_err_t err = radio_control_begin_tx(porta_p4_station_freq_hz(), tx_base_hz);
+    const int rx_dial_hz = porta_p4_station_freq_hz();
+    const esp_err_t err = radio_control_begin_tx(rx_dial_hz + (int)plan.dial_shift_hz, tx_base_hz, rx_dial_hz);
     if (err != ESP_OK) {
         radio_control_end_tx();
         skip_reason = std::string("radio TX begin failed: ") + esp_err_to_name(err);

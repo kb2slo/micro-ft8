@@ -7,9 +7,13 @@
 
 #include "esp_log.h"
 
+#include <atomic>
+
 static const char* TAG = "RADIO_CTRL";
 
 static radio_control_backend_t s_backend = RADIO_CONTROL_QMX;
+// The TX scheduler keys and ends a transmission from one task; the Port A tick reads this from another.
+static std::atomic<int> s_tx_retuned_hz{0};
 
 static const radio_control_capabilities_t k_capabilities_none = {};
 
@@ -74,11 +78,13 @@ esp_err_t radio_control_sync_frequency_mode(int freq_hz) {
     return err;
 }
 
-esp_err_t radio_control_begin_tx(int freq_hz, int tx_base_hz) {
+esp_err_t radio_control_begin_tx(int tx_dial_hz, int tx_base_hz, int rx_dial_hz) {
     radio_control_reset_tx_power_swr();
     const radio_control_ops_t* ops = current_ops();
     if (!ops || !ops->begin_tx) return ESP_ERR_INVALID_STATE;
-    return ops->begin_tx(freq_hz, tx_base_hz);
+    // Set before the radio is told, so a failed begin is still undone by the end_tx() its caller sends.
+    s_tx_retuned_hz.store(tx_dial_hz != rx_dial_hz ? tx_dial_hz : 0);
+    return ops->begin_tx(tx_dial_hz, tx_base_hz, rx_dial_hz);
 }
 
 esp_err_t radio_control_set_tone_hz(float tone_hz) {
@@ -90,7 +96,13 @@ esp_err_t radio_control_set_tone_hz(float tone_hz) {
 esp_err_t radio_control_end_tx(void) {
     const radio_control_ops_t* ops = current_ops();
     if (!ops || !ops->end_tx) return ESP_ERR_INVALID_STATE;
-    return ops->end_tx();
+    const esp_err_t err = ops->end_tx();
+    s_tx_retuned_hz.store(0);
+    return err;
+}
+
+int radio_control_tx_retuned_hz(void) {
+    return s_tx_retuned_hz.load();
 }
 
 esp_err_t radio_control_key_up(void) {

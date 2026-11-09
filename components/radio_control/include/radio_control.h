@@ -103,9 +103,14 @@ radio_rx_path_event_t radio_control_rx_path_tick(bool busy);
 
 esp_err_t radio_control_on_audio_start(void);
 esp_err_t radio_control_sync_frequency_mode(int freq_hz);
-esp_err_t radio_control_begin_tx(int freq_hz, int tx_base_hz);
+// tx_dial_hz other than rx_dial_hz retunes the radio for this transmission and back in radio_control_end_tx()
+// (tx_timing.h, tx_plan()). Not a sync: the dial's history (dial_history.h) keeps rx_dial_hz.
+esp_err_t radio_control_begin_tx(int tx_dial_hz, int tx_base_hz, int rx_dial_hz);
 esp_err_t radio_control_set_tone_hz(float tone_hz);
 esp_err_t radio_control_end_tx(void);
+// The dial a transmission retuned the radio to, from radio_control_begin_tx() until radio_control_end_tx(); 0 when
+// it is on its receive dial. What the radio reports meanwhile is ours, not the operator's.
+int radio_control_tx_retuned_hz(void);
 // RF off with PTT still held (QMX TA0;); ESP_ERR_NOT_SUPPORTED where end_tx() is the only stop.
 esp_err_t radio_control_key_up(void);
 // How long after the slot boundary this radio's first tone is due (tx_timing.h).
