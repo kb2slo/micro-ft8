@@ -1265,6 +1265,8 @@ function showView(name) {
     logLoadedOnce = true;
     document.getElementById('logList').innerHTML = '<p style="padding:0 1rem;color:GrayText">Loading…</p>';
     loadMoreLog();
+  } else if (name === 'log') {
+    refreshLogHead(); // whatever was logged while another tab was open, now rather than on the next poll
   }
   if (name === 'tools' && !toolsLoadedOnce) {
     toolsLoadedOnce = true;
@@ -4695,7 +4697,10 @@ function applyEvent(e) {
   } else if (e.d === 3) {
     slotState = { sp: e.sp, hz: e.hz };
   } else if (e.d === 4) {
-    if (e.active && !(txHud && txHud.active)) txKeyedAt = Date.now();
+    if (e.active && !(txHud && txHud.active)) {
+      txKeyedAt = Date.now();
+      if (txLogsQso(e.x)) kickLogRefresh();
+    }
     txHud = { active: !!e.active, aborted: !!e.aborted, wrblk: !!e.wrblk, nk: !!e.nk,
              pw: e.pw, swr: e.swr, batt: e.batt, hz: e.hz, reason: e.reason || '', x: e.x };
     lastTxHudEventMs = Date.now();
@@ -4846,6 +4851,7 @@ var logEntriesByCall = {};  // callsign -> [{file,time,band,freq,rst_sent,rst_rc
 var logDone = false;         // every file drained, nothing left anywhere
 var logLoading = false;
 var logRefreshing = false;
+var logRefreshAgain = false; // a refresh asked for while one runs: run it again after, or it misses a QSO written meanwhile
 var logRenderedAny = false;
 var dayFullRowsCache = {};  // filename -> Promise<full day's rows> (fetchAllEntries()),
                              // memoized per file so the activation-count link text and a
@@ -6033,7 +6039,8 @@ async function checkForNewDayFiles() {
 // checkForNewDayFiles() runs first so a midnight rollover mid-session
 // retargets logFiles[0] before this fetches its entries.
 async function refreshLogHead() {
-  if (!logLoadedOnce || logLoading || logRefreshing) return;
+  if (logRefreshing) { logRefreshAgain = true; return; }
+  if (!logLoadedOnce || logLoading) return;
   if (currentView !== 'log') return;
   if (!logFiles.length) return; // first loadMoreLog() hasn't run yet
   logRefreshing = true;
@@ -6052,9 +6059,23 @@ async function refreshLogHead() {
     }
   } catch (e) { /* next tick */ } finally {
     logRefreshing = false;
+    if (logRefreshAgain) { logRefreshAgain = false; setTimeout(refreshLogHead, 0); }
   }
 }
 setInterval(refreshLogHead, LOG_REFRESH_MS);
+
+// A QSO is logged on the main board as its RR73, RRR or 73 starts (autoseq.md, The slot cycle): a TX
+// event turning active with such a message is the moment to read today's file, rather than the next
+// poll up to 8 s later (webapp.md, Screens: QSOs). Read twice, in case the first read races the write.
+function txLogsQso(x) {
+  return /\s(RR73|RRR|73)$/.test(String(x || '').trim());
+}
+var LOG_KICK_MS = [500, 2000];
+function kickLogRefresh() {
+  LOG_KICK_MS.forEach(function (ms) {
+    setTimeout(function () { refreshLogHead(); refreshOpLog(); }, ms);
+  });
+}
 
 // ===================== boot =====================
 
