@@ -4152,11 +4152,11 @@ function decodeDistKm(d) {
   return a && b ? greatCircle(a, b).km : null;
 }
 
-// ===================== Operate: activation cues (docs/architecture/webapp.md) =====================
-// Only while the station has references. The dupe cue reads today's day file (opLog, loaded by
-// refreshOpLog() below, not the Log tab's list); the badges read callinfo.js's spot cache.
-// A dupe is the same call, band, mode and UTC day (the file) on a QSO logged at one of our
-// current references. A cue, never a block.
+// ===================== Operate: worked and activation cues (docs/architecture/webapp.md) =====================
+// The dupe cue reads today's day file (opLog, loaded by refreshOpLog() below, not the Log tab's
+// list); the badges, only while the station has references, read callinfo.js's spot cache.
+// A dupe is the same call, band, mode and UTC day (the file); with references, only a QSO logged
+// at one of them counts, since each park or summit is its own log. A cue, never a block.
 function refsOverlap(q, refs) {
   var mine = {};
   (q.my_pota_ref || '').split(',').forEach(function (r) { if (r.trim()) mine['POTA:' + r.trim()] = true; });
@@ -4168,12 +4168,12 @@ function dupeKey(call, band, mode) {
   return String(call).toUpperCase() + '|' + band + '|' + String(mode).toUpperCase();
 }
 
-// Set of dupeKey()s for the rows logged at any of refs ([{program, ref, token}], parseActRefs()).
+// Set of dupeKey()s for the rows logged at any of refs ([{program, ref, token}], parseActRefs()),
+// or for every row when refs is empty.
 function dupeIndex(rows, refs) {
   var set = {};
-  if (!refs.length) return set;
   rows.forEach(function (q) {
-    if (q.call && refsOverlap(q, refs)) set[dupeKey(q.call, q.band || '', q.mode || '')] = true;
+    if (q.call && (!refs.length || refsOverlap(q, refs))) set[dupeKey(q.call, q.band || '', q.mode || '')] = true;
   });
   return set;
 }
@@ -4192,6 +4192,11 @@ function slotMode(slot) {
 }
 
 var opLog = { file: '', rows: [], busy: false };
+// How often Operate (refreshOpLog()) and the open Log tab (refreshLogHead()) check today's file
+// for new QSOs: a QSO just logged shows without a reload, and steady polling stays modest on the
+// sidekick's one-request server. Assigned before either setInterval() below reads it: read while
+// still undefined, the interval was 0 and Operate re-read the log back to back.
+var LOG_REFRESH_MS = 8000;
 
 function utcDayFile() {
   var t = new Date();
@@ -4199,11 +4204,11 @@ function utcDayFile() {
          String(t.getUTCDate()).padStart(2, '0') + '.adi';
 }
 
-// Follows today's file for new QSOs while the station has references, on any tab, since the
-// activation line under the slot bar is on every tab; activationCounts() counts from opLog.rows
-// too. A day with no file yet reads as no rows.
+// Follows today's file for new QSOs: on Operate, for the Worked flag, and while the station has
+// references on any tab too, since the activation line under the slot bar is on every tab;
+// activationCounts() counts from opLog.rows too. A day with no file yet reads as no rows.
 async function refreshOpLog() {
-  if (opLog.busy || !parseActRefs(lastCfg).length) return;
+  if (opLog.busy || (currentView !== 'operate' && !parseActRefs(lastCfg).length)) return;
   opLog.busy = true;
   try {
     var file = utcDayFile();
@@ -4405,8 +4410,10 @@ function renderDecodesNow() {
       // its own fetch, so the badge just appears on a later redraw.
       var shortLoc = theirGrid ? CallInfo.shortLocation(theirGrid) : '';
       var flags = '';
+      if (senderCall && dupes[dupeKey(senderCall, slotBand, slotModeName)]) {
+        flags += '<span class="wflag wflag-worked">Worked</span>';
+      }
       if (actRefs.length && senderCall) {
-        if (dupes[dupeKey(senderCall, slotBand, slotModeName)]) flags += '<span class="wflag wflag-worked">Worked</span>';
         var badge = spotBadgeLabel(CallInfo.activeSpotFor(senderCall), actRefs);
         if (badge) flags += '<span class="wflag wflag-act">' + esc(badge) + '</span>';
       }
@@ -4952,10 +4959,6 @@ var dayFullRowsCache = {};  // filename -> Promise<full day's rows> (fetchAllEnt
 
 var LOG_ENTRY_FETCH = 10;    // rows per /api/log/entries call
 var LOG_ENTRY_GOAL = 15;     // rows to append per loadMoreLog() batch
-var LOG_REFRESH_MS = 8000;   // how often to check today's file for new QSOs while the
-                             // Log tab is open -- a QSO just logged should show up
-                             // without a page reload, but this stays modest given this
-                             // session's earlier finding about steady polling and WiFi
 
 function dayLabel(name) {
   // name is "YYYYMMDD.adi" (qso_browse.cpp / file_list.cpp). Always renders
