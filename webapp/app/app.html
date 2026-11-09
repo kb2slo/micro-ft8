@@ -667,6 +667,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     </div>
     <p class=setnote>Which of the QMX's PTT outputs keys your amplifier. A Micro PA100+ keys from TX PTT grounded. The radio's own menu sets this for each band (Band config.); when it connects, the main board reads those settings and they are checked here against your active bands.</p>
     <p class="setnote warn" id=ampPttCheck hidden></p>
+    <div class=setrow id=ampPttSetRow hidden><button id=ampPttSet type=button>Set the radio's PTT outputs</button></div>
     <div class=setrow>
       <label>Min TX delay (ms)
         <input id=tx_min_delay_ms type=number min=0 max=500 step=10 inputmode=numeric autocomplete=off>
@@ -2243,8 +2244,34 @@ function renderAmpPttCheck(cfg) {
   var keyed = parseInt(cfg.amp_ptt, 10) === 2 ? 'TX PTT +5V' : 'TX PTT grounded';
   if (c.state === 'unread') el.textContent = 'The QMX\'s PTT settings are read when it connects; not read yet.';
   else if (c.state === 'ok') el.textContent = 'The QMX (' + (cfg.radio_model || 'model unknown') + ') has ' + keyed + ' alone on every active band.';
-  else if (c.state === 'bad') el.textContent = 'The QMX will not key the amp as set. It needs ' + keyed + ' alone on, set in its menu (Band config.):\n' + c.lines.join('\n');
+  else if (c.state === 'bad') el.textContent = 'The QMX will not key the amp as set. It needs ' + keyed + ' alone on, set in its menu (Band config.) or with the button below:\n' + c.lines.join('\n');
+  // Set it: the main board writes the radio's own settings (architecture/radio.md, Setting the PTT
+  // outputs), and its progress comes back as radio_ptt_write.
+  var w = String(cfg.radio_ptt_write || '');
+  var writing = w === 'writing';
+  document.getElementById('ampPttSetRow').hidden = !(c.state === 'bad' || writing);
+  document.getElementById('ampPttSet').disabled = writing;
+  if (writing) el.textContent += '\nWriting to the radio…';
+  else if (w.indexOf('failed') === 0) el.textContent += '\nThe last write ' + w + '.';
 }
+
+// The bands the radio transmits on (radio_band_tx 1), which Set it writes: the operator's choice in
+// the radio, left as it is.
+function radioTransmitBands(cfg) {
+  var bands = String(cfg.radio_bands || '').trim().split(/\s+/);
+  var tx = String(cfg.radio_band_tx || '').trim().split(/\s+/);
+  return bands.filter(function (b, i) { return tx[i] === '1'; });
+}
+
+document.getElementById('ampPttSet').onclick = function () {
+  var mode = parseInt(lastCfg.amp_ptt, 10);
+  if (mode !== 1 && mode !== 2) return;
+  var keyed = mode === 2 ? 'TX PTT +5V' : 'TX PTT grounded';
+  var bands = radioTransmitBands(lastCfg);
+  if (!confirm('Set ' + keyed + ' on the QMX for each band it transmits on (' + bands.join(', ') +
+               ' m), and turn its other PTT outputs off? This changes the settings saved in the radio, as its menu would.')) return;
+  radioPost('/api/radio/ptt', String(mode), 'Setting the radio\'s PTT outputs…');
+};
 
 function applyOperateLive(cfg) {
   renderAmpPttCheck(cfg);

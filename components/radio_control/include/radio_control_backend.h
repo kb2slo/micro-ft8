@@ -37,6 +37,8 @@ typedef struct {
     esp_err_t (*set_push)(bool on);    // null = the radio cannot push its state (QMX AI2; / AI0;)
     uint32_t (*state_changes)(void);   // null = no pushes; counts changes of the radio's reported state
     bool (*get_config)(radio_config_t* out);  // null = the radio cannot report its configuration
+    const char* (*set_ptt_outputs)(radio_ptt_keying_t keying);  // null = cannot set them
+    bool (*config_write_status)(char* out, size_t cap);
 } radio_control_ops_t;
 
 const radio_control_ops_t* radio_control_qmx_get_ops(void);

@@ -110,6 +110,15 @@ bool radio_control_get_state(radio_state_t* out);
 // The radio's configuration once it has been read since this radio connected; false before that,
 // after a read that went unanswered, and for a radio that cannot report it.
 bool radio_control_get_config(radio_config_t* out);
+// Sets the radio's PTT outputs for an amplifier keyed from its PTT jack (QMX: the Menu Manager write,
+// architecture/radio.md, Setting the PTT outputs): on every band whose Transmit is on, `keying`'s TX
+// output alone, and the jack not a serial port; then the radio is read again. Starts the write and
+// returns nullptr, or says why not. Its progress is radio_control_config_write_status().
+typedef enum { RADIO_PTT_GROUND = 1, RADIO_PTT_5V = 2 } radio_ptt_keying_t;
+const char* radio_control_set_ptt_outputs(radio_ptt_keying_t keying);
+// The last write's state for the config reply ("writing", "done 12", "nothing to write",
+// "failed at <path>: ..."); false when none has run since this radio connected.
+bool radio_control_config_write_status(char* out, size_t cap);
 // `config` as the config reply's lines (architecture/webapp.md, Settings > Amplifier): radio_model,
 // radio_bands (metres, space-separated, as active_bands), radio_band_tx (1, 0 or ? a band),
 // radio_ptt (four characters a band: TX PTT +5V, TX PTT grounded, RX PTT +5V, RX PTT grounded, each

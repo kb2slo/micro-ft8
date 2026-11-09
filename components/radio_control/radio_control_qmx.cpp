@@ -2,6 +2,7 @@
 #include "cat_reply_parser.h"
 #include "qmx_iq_link.h"
 #include "qmx_menu_read.h"
+#include "qmx_menu_write.h"
 #include "radio_ta_format.h"
 
 #include <cstdio>
@@ -332,12 +333,105 @@ static void log_radio_settings(const QmxRadioSettings& r) {
     }
 }
 
+// Setting the PTT outputs (architecture/radio.md, Setting the PTT outputs). Asked for from the Port A
+// task, run here in the main loop, which owns the read it plans from.
+static QmxMenuWrite s_menu_write;
+static volatile int s_write_requested;  // a QmxPttKeying, 0 none
+static volatile bool s_write_running;
+static char s_write_status[96];
+static volatile bool s_write_status_set;
+
+static void set_write_status(const char* text) {
+    s_write_status_set = false;
+    snprintf(s_write_status, sizeof(s_write_status), "%s", text);
+    s_write_status_set = true;
+}
+
+static const char* qmx_set_ptt_outputs(radio_ptt_keying_t keying) {
+    if (keying != RADIO_PTT_GROUND && keying != RADIO_PTT_5V) return "unknown keying";
+    if (!s_config_valid) return "the radio's settings are not read yet";
+    if (s_write_requested || s_write_running) return "already writing";
+    set_write_status("writing");
+    s_write_requested = keying;
+    return nullptr;
+}
+
+static bool qmx_config_write_status(char* out, size_t cap) {
+    if (!s_write_status_set) return false;
+    if (out && cap) snprintf(out, cap, "%s", s_write_status);
+    return true;
+}
+
+// Reads the radio afresh, so the app sees what the write left.
+static void reread_radio(void) {
+    s_config_valid = false;
+    s_menu_read = QmxMenuRead{};
+}
+
+// True while a write runs, so the read waits.
+static bool qmx_menu_write_tick(bool ready, bool busy) {
+    if (s_write_requested && !s_write_running) {
+        const QmxPttKeying keying = static_cast<QmxPttKeying>(s_write_requested);
+        const int cells = qmx_menu_write_plan(s_menu_read.result, keying, s_menu_write);
+        s_write_requested = 0;
+        if (cells == 0) {
+            set_write_status("nothing to write");
+            return false;
+        }
+        ESP_LOGI(TAG, "QMX PTT outputs: writing %d cells", cells);
+        s_write_running = true;
+    }
+    if (!s_write_running) return false;
+    char value[CAT_REPLY_FRAME_MAX];
+    const uint32_t mm_count = cat_cdc_get_mm(value, sizeof(value));
+    const int64_t now_ms = esp_timer_get_time() / 1000;
+    switch (qmx_menu_write_step(s_menu_write, ready, busy, mm_count, value, cat_cdc_refusals(), now_ms)) {
+        case QmxMenuWriteAction::None:
+            break;
+        case QmxMenuWriteAction::Send: {
+            char cmd[160];
+            qmx_menu_write_command(s_menu_write, cmd, sizeof(cmd));
+            if (qmx_send_cmd(cmd, 200) != ESP_OK) {
+                ESP_LOGW(TAG, "QMX PTT outputs: %s not sent", cmd);
+            }
+            break;
+        }
+        case QmxMenuWriteAction::Reload:
+            (void)qmx_send_cmd("MU;", 200);
+            break;
+        case QmxMenuWriteAction::Done: {
+            char text[32];
+            snprintf(text, sizeof(text), "done %d", s_menu_write.count);
+            ESP_LOGI(TAG, "QMX PTT outputs: %d cells written, MU; sent; reading the radio again",
+                     s_menu_write.count);
+            set_write_status(text);
+            s_write_running = false;
+            reread_radio();
+            break;
+        }
+        case QmxMenuWriteAction::Failed: {
+            char path[64];
+            char text[96];
+            qmx_menu_write_path(s_menu_write.items[s_menu_write.next], path, sizeof(path));
+            snprintf(text, sizeof(text), "failed at %s: %s", path,
+                     !ready ? "radio gone" : s_menu_write.refused ? "refused" : "not read back");
+            ESP_LOGW(TAG, "QMX PTT outputs: %s (%d of %d written)", text, s_menu_write.next, s_menu_write.count);
+            set_write_status(text);
+            s_write_running = false;
+            if (ready) reread_radio();
+            break;
+        }
+    }
+    return true;
+}
+
 static void qmx_menu_read_tick(bool ready, bool busy) {
     char value[CAT_REPLY_FRAME_MAX];
     const uint32_t mm_count = cat_cdc_get_mm(value, sizeof(value));
     const int64_t now_ms = esp_timer_get_time() / 1000;
     if (!ready) {
         s_config_valid = false;  // the next radio may be another
+        if (!s_write_running) s_write_status_set = false;
     }
     switch (qmx_menu_read_step(s_menu_read, ready, busy, mm_count, value, cat_cdc_refusals(), now_ms)) {
         case QmxMenuReadAction::None:
@@ -401,7 +495,10 @@ static radio_rx_path_event_t qmx_rx_path_tick(bool busy) {
     const radio_rx_path_event_t event = qmx_iq_path_tick(busy);
     // Stepped on every pass, so a link that drops resets the read for the next radio; it starts
     // once IQ mode is settled, so the two link-up reads do not interleave.
-    qmx_menu_read_tick(cat_cdc_ready() && s_iq_link.phase == QmxIqLinkPhase::Done, busy);
+    const bool menus_ready = cat_cdc_ready() && s_iq_link.phase == QmxIqLinkPhase::Done;
+    if (!qmx_menu_write_tick(menus_ready, busy)) {
+        qmx_menu_read_tick(menus_ready, busy);
+    }
     return event;
 }
 
@@ -458,6 +555,8 @@ static const radio_control_ops_t k_ops = {
     .set_push = qmx_set_push,
     .state_changes = qmx_state_changes,
     .get_config = qmx_get_config,
+    .set_ptt_outputs = qmx_set_ptt_outputs,
+    .config_write_status = qmx_config_write_status,
 };
 
 const radio_control_ops_t* radio_control_qmx_get_ops(void) {

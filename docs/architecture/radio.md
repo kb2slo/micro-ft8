@@ -36,6 +36,15 @@ Once IQ mode is settled at a link-up (above), the backend reads the radio's sett
 * **`OM;` cannot tell a QMX from a QMX+:** both answer `OMQC` (1_04_010). Band version can.
 * **The settings go to the app in the main board's config reply** (`radio_control_get_config()`, formatted by `radio_config_format()`, host-tested): `radio_model`, `radio_bands`, `radio_band_tx`, `radio_ptt` and `radio_ptt_serial`, absent until this radio's read has finished. Settings › Amplifier checks the PTT outputs against how the amp is keyed ([webapp.md](webapp.md), **Settings › Amplifier: the PTT check**). The bands do not yet bound transmit or Settings' band choices (**not yet built: row [vcng](../ROADMAP.md#vcng)**).
 
+## Setting the PTT outputs
+
+Settings › Amplifier's **Set the radio's PTT outputs** (`POST /api/radio/ptt`, the `RADIO_SET_PTT` action, `porta_host_radio_set_ptt()`) writes the radio's own settings with the Menu Manager, as its menu would: on every band whose Transmit is ENABLED, the chosen TX PTT output ENABLED and the other three DISABLED (an RX one would key the amp on receive), and Serial 6 on PTT DISABLED. The sequence is `qmx_menu_write.h` (host-tested); `radio_control_qmx.cpp` runs it in the main loop in place of the read.
+
+* **Which bands transmit is the operator's, in the radio** (maintainer, 2026-11-09): the write follows the Transmit flags the read found and changes none, so a band the operator transmits on gets the amp keyed, 11 m included on a QMX+ that has it enabled. Disabling a band is done in the radio.
+* **Only cells that differ are written,** since each lands in the radio's EEPROM: a radio already right gets none (`nothing to write`). Then `MU;`, so the radio takes them at once whatever **MM Effect** says, and the radio is read again, which is what Settings then shows.
+* **Each cell is its write and a read of it in one send** (`MM<path>=<value>;MM<path>;`), and is done when an `MM` reply carries the new value. The manual does not say what a write answers; this holds whether or not it echoes. `?;`, or no such reply in 1 s, stops the write; what was written stays, and the re-read shows the radio as it is.
+* **Refused while anything keys the radio** (a transmission, Tune, a sweep, a prime) or before the read has finished; a transmission starting mid-write pauses it, and the cell in flight is sent again after. Its progress is the config reply's `radio_ptt_write`: `writing`, `done <cells>`, `nothing to write` or `failed at <path>: refused | not read back | radio gone`.
+
 ## TX timing on a QMX
 
 The QMX takes its tones over CAT, so the main board sets the timing (`tx_scheduler.cpp`; the constants and arithmetic in `components/radio_control/include/tx_timing.h`, which the host model in `tests/tx_e2e/tx_state_machine.cpp` shares):

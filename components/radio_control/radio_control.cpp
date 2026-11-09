@@ -167,6 +167,17 @@ bool radio_control_get_config(radio_config_t* out) {
     return ops && ops->get_config && ops->get_config(out);
 }
 
+const char* radio_control_set_ptt_outputs(radio_ptt_keying_t keying) {
+    const radio_control_ops_t* ops = current_ops();
+    if (!ops || !ops->set_ptt_outputs) return "this radio cannot set its PTT outputs";
+    return ops->set_ptt_outputs(keying);
+}
+
+bool radio_control_config_write_status(char* out, size_t cap) {
+    const radio_control_ops_t* ops = current_ops();
+    return ops && ops->config_write_status && ops->config_write_status(out, cap);
+}
+
 static char flag_char(int8_t flag) {
     return flag == 1 ? '1' : flag == 0 ? '0' : '?';
 }

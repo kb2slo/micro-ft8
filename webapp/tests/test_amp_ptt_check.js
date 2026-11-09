@@ -32,7 +32,7 @@ function extractFunction(text, name) {
 const ctx = {};
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(app, 'bands.js'), 'utf8'), ctx);
-vm.runInContext(extractFunction(src, 'ampPttCheck'), ctx);
+vm.runInContext(extractFunction(src, 'ampPttCheck') + '\n' + extractFunction(src, 'radioTransmitBands'), ctx);
 
 const midBand = {
   radio_model: 'QMX 60-15m',
@@ -94,5 +94,9 @@ assert.strictEqual(serial.lines.length, 1);
 
 // An active band the radio does not have is not this check's (row vcng's band ceiling).
 assert.strictEqual(check(Object.assign({ amp_ptt: '1' }, midBand, { active_bands: '80 40' })).state, 'ok');
+
+// Set it writes the bands the radio transmits on, as its Transmit flags say: the operator's choice.
+assert.deepStrictEqual(Array.from(ctx.radioTransmitBands({ radio_bands: '60 40 30', radio_band_tx: '0 1 1' })), ['40', '30']);
+assert.deepStrictEqual(Array.from(ctx.radioTransmitBands({})), []);
 
 console.log('amp PTT check: ok');
