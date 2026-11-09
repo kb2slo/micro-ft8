@@ -90,6 +90,16 @@ GitHub issues are where the roadmap's inputs arrive and are talked through; the 
 * **Plain issues only:** the templates in `.github/ISSUE_TEMPLATE/` and a few labels. No Projects boards, milestones, assignees or sub-issues; epics are files here, not issues.
 * **Agents read issues freely,** and comment on, open or close one only when the person they work for says to in that turn ([AGENTS.md](../../AGENTS.md), **Commit / push only when asked**): an issue comment is public.
 
+## Issue and discussion triage
+
+**Awaiting us:** an open issue or discussion whose last word (its newest comment, or its opening post if it has none) is not the maintainer's. It is read from GitHub each time, so nothing records what was triaged.
+
+* **Find them:** `gh issue list --state open --json number,title,author,updatedAt,comments`, and for discussions `gh api graphql` on the repository's `discussions` with each one's last comment's author.
+* **Triage is a conversation, like a groom.** One item at a time, with: its class (bug, feature, question, field report); the evidence (a bug against its area's architecture doc and the code, a feature against the roadmap and [declined.md](../roadmap/declined.md), a field report against [TEST_PLAN.md](../TEST_PLAN.md) Pending); the outcome proposed (answer, fix in a slice, roadmap intake with its verdict and epic test, decline, or ask the reporter for something); and a draft reply in plain words for an operator, any row named glossed.
+* **Nothing goes out unasked.** A reply is posted, and an issue closed, labelled or converted, only when the maintainer says so in that turn (**Issues** above).
+* **A reply that commits us lands in the docs.** "I plan to add X" becomes a row through intake, citing `#N`, in the same session.
+* **Wrap:** say what was not reached. Nothing carries over in chat: the next triage finds it again.
+
 ## Roadmap intake (ideas)
 
 If the maintainer asks to add an idea or “add to the backlog”:
