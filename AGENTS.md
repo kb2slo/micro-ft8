@@ -44,7 +44,7 @@ No open-ended codebase exploration to be helpful — that is exactly the token s
 
 Do not mix a feature change with an unrelated fix in the same commit.
 
-**The roadmap is the maintainer's.** A change that ships a `ROADMAP.md` row drops the row in the same change. Any other roadmap edit — a new row, a new order, a move between sections — is the maintainer's ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md)), and goes on its own branch from `main` with its own pull request, never into a work branch and never pushed straight to `main` unless the maintainer says so for that change, or it is an Ideas-only change on the fast path ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md), **Roadmap intake**). A contributor's new idea is an issue.
+**The roadmap is the maintainer's.** A change that ships a `ROADMAP.md` row drops the row in the same change. Any other roadmap edit — a new row, a new order, a move between sections — is the maintainer's ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md)), and goes on its own branch from `main`, never into a work branch, and straight to `main` with no pull request ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md), **Roadmap intake**, direct to `main`). A contributor's new idea is an issue.
 
 **Fix defects in the slice.** A defect found while working in an area gets fixed in that slice, not filed for later. What was wrong and why is still recorded — in a `ROADMAP.md` row when working for the maintainer, in the pull request otherwise — and it is not a promise to act later.
 
@@ -96,7 +96,7 @@ State which of these you did in the turn you report the work, and in the pull re
 
 What belongs in `poe_p4/main/`: [STYLE.md](docs/STYLE.md). Radio and `ft8_lib` boundaries: [architecture/radio.md](docs/architecture/radio.md), [architecture/ft8_lib.md](docs/architecture/ft8_lib.md).
 
-Changes reach `main` (`kb2slo/micro-ft8`) through a pull request ([CONTRIBUTING.md](CONTRIBUTING.md)). Its base is always `main`: never stack a pull request on another branch (a merge there never reaches `main`), and state the base in chat before opening one. There is no `upstream` git remote: Wei's `wcheng95/Mini-FT8` is watched for portable fixes ([docs/maintainer/upstream.md](docs/maintainer/upstream.md)), not tracked as a fork. Never push to, or open a pull request on, any repo but this one unless the person you work for asks in so many words.
+Changes reach `main` (`kb2slo/micro-ft8`) through a pull request ([CONTRIBUTING.md](CONTRIBUTING.md)), except the maintainer's roadmap-only changes, which go straight to `main`. Its base is always `main`: never stack a pull request on another branch (a merge there never reaches `main`), and state the base in chat before opening one. There is no `upstream` git remote: Wei's `wcheng95/Mini-FT8` is watched for portable fixes ([docs/maintainer/upstream.md](docs/maintainer/upstream.md)), not tracked as a fork. Never push to, or open a pull request on, any repo but this one unless the person you work for asks in so many words.
 
 ## Reproducibility
 
@@ -114,7 +114,7 @@ The person you work for reviews in chat, then green-lights each step. A good pre
 
 3. **Commit message in chat.** Propose the message here: a subject of one sentence, at most 72 characters, saying what changed, then a blank line and the why in the body. `tools/check_commits.py` holds commits to that shape, in CI on pull requests, and with them a pull request's title: a squash merge makes it, or a lone commit's subject, the subject on `main`, with ` (#N)` added. Also propose the README and site deltas, or say why neither needs a change (**README and site stay current**). Wait for them to accept or edit. Do not commit in the same turn as the proposal unless they already asked to commit.
 
-4. **Commit / push only when asked.** Local edits are fine when they asked for the work. `git commit` waits until they have seen the plan or diff and said to commit. `git push` waits until they said to push, and so does opening a pull request. “Commit and push” is both, using the agreed message. Do not treat “ship on main”, a green host test, or “local commits are fine” as standing permission. The one standing exception is an approved Ideas-only roadmap change, which goes straight to `main` ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md), **Roadmap intake**, fast path).
+4. **Commit / push only when asked.** Local edits are fine when they asked for the work. `git commit` waits until they have seen the plan or diff and said to commit. `git push` waits until they said to push, and so does opening a pull request. “Commit and push” is both, using the agreed message. Do not treat “ship on main”, a green host test, or “local commits are fine” as standing permission. The one standing exception is an approved Ideas-only roadmap change, which is pushed straight to `main` ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md), **Roadmap intake**, direct to `main`).
 
    **"Push" means `git push` and nothing else**, in chat and in these docs. Putting the web app on a sidekick is *installing the app* (`webapp/tools/install_app.py`), and writing firmware to a board is *flashing*: neither is a push, and permission for one is never permission for the other.
 
