@@ -183,6 +183,10 @@ static void amp_band_prime_event(const amp_band_prime_event_t *event, void * /*u
     ESP_LOGW(TAG, "amplifier band prime aborted: %s", why);
 }
 
+// The band last primed, or tried where the radio cannot prime: a transmission due on another band primes
+// first (porta_p4_amp_prime_before_tx()). AMP_BAND_PRIME_NONE at boot.
+static std::atomic<int> s_primed_band{AMP_BAND_PRIME_NONE};
+
 static void request_amp_band_prime() {
     if (!s_station.amp_prime_on_band_change) {
         return;
@@ -194,14 +198,31 @@ static void request_amp_band_prime() {
     switch (amp_band_prime_request_start(radio_control_swr_io(), amp_band_prime_event, nullptr)) {
         case AMP_BAND_PRIME_START_OK:
             ESP_LOGI(TAG, "amplifier band prime queued");
+            s_primed_band.store(s_station.band_sel);
             break;
         case AMP_BAND_PRIME_START_BUSY:
             ESP_LOGW(TAG, "amplifier band prime skipped: already busy");
             break;
         case AMP_BAND_PRIME_START_UNSUPPORTED:
             ESP_LOGW(TAG, "amplifier band prime skipped: radio has no SWR Tune mode");
+            s_primed_band.store(s_station.band_sel);  // tried: never asked again for this band
             break;
     }
+}
+
+bool porta_p4_amp_prime_before_tx(void) {
+    if (!amp_band_prime_needed(s_station.amp_prime_on_band_change, s_primed_band.load(), s_station.band_sel)) {
+        return false;
+    }
+    const int idx = s_station.band_sel;
+    ESP_LOGI(TAG, "amplifier band prime before the first TX on %s (band set while the radio was away)",
+             (idx >= 0 && idx < kStationBandCount) ? kBandNames[idx] : "?");
+    request_amp_band_prime();
+    return amp_band_prime_busy();
+}
+
+int porta_p4_amp_primed_band(void) {
+    return s_primed_band.load();
 }
 
 // A sync sets the radio in several commands and the radio answers each with its state (AI2;), so

@@ -62,8 +62,15 @@ The QMX takes its tones over CAT, so the main board sets the timing (`tx_schedul
 Station `amp_prime_on_band_change` is Settings > Amplifier > **Prime RF-sensing amp on band change**,
 off by default. After an explicit `band_sel` change has successfully moved the QMX, the P4 sends `MD8;`,
 waits 500 ms, then sends `RX;` and `MD6;`. QMX SWR Tune uses the radio's configured Tune %, so this gives
-an RF-sensing amplifier a low-power carrier on the new band before the next FT8 transmission. It does not
-run on boot, reconnect, a same-band frequency edit or a pushed radio state.
+an RF-sensing amplifier a low-power carrier on the new band before the next FT8 transmission. It never keys on
+its own at boot, at reconnect, on a same-band frequency edit or on a pushed radio state. **A band set while the
+radio was away** (at boot, or changed with CAT down, when the band change cannot move the QMX and so does not
+prime) **is primed before its first transmission instead:** the P4 remembers the band last primed or tried
+(`porta_p4_amp_prime_before_tx()`, the decision `amp_band_prime_needed()`, host-tested), and a transmission due on
+another band starts the pulse and waits it out, starting late in the same slot, so it only keys when a
+transmission was already wanted. Found 2026-11-09: 40 m set during a QMX power cycle, never primed, and the first
+40 m transmission tripped the SWR protection at tone 2. A trip's log line names the dial, the band last primed and
+the seconds since the previous transmission, so a trip with no band change behind it can be told apart.
 
 `components/amp_band_prime` owns the bounded state machine. While a request is pending or keyed, normal TX,
 manual Tune, a sweep, another VFO sync and the SWR-lock probe stay out; a TX due then waits and starts late in
