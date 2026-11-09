@@ -285,6 +285,39 @@ static QmxIqLink s_iq_link;
 // Reads, after IQ mode is settled, each band's Transmit flag and PTT outputs and the PTT jack's
 // serial setting with the Menu Manager (architecture/radio.md, Menu Manager). Logged on the console.
 static QmxMenuRead s_menu_read;
+// The finished read, for get_config(): main-loop writes, other tasks read. Valid is cleared before
+// the copy changes and set after, and a reader checks it on both sides of its copy.
+static radio_config_t s_config;
+static volatile bool s_config_valid;
+
+static void publish_config(const QmxRadioSettings& r) {
+    s_config_valid = false;
+    radio_config_t c = {};
+    snprintf(c.model, sizeof(c.model), "%s", r.band_version);
+    c.band_count = r.band_count;
+    for (int i = 0; i < r.band_count && i < RADIO_CONFIG_BANDS_MAX; ++i) {
+        const QmxBandSettings& b = r.bands[i];
+        c.bands[i] = {b.band_m, b.flag[kQmxFlagTransmit], b.flag[kQmxFlagTxPtt5v], b.flag[kQmxFlagTxPttGround],
+                      b.flag[kQmxFlagRxPtt5v], b.flag[kQmxFlagRxPttGround]};
+    }
+    c.ptt_is_serial = r.serial6_on_ptt;
+    s_config = c;
+    s_config_valid = true;
+}
+
+static bool qmx_get_config(radio_config_t* out) {
+    if (!s_config_valid) {
+        return false;
+    }
+    radio_config_t copy = s_config;
+    if (!s_config_valid) {
+        return false;
+    }
+    if (out) {
+        *out = copy;
+    }
+    return true;
+}
 
 static void log_radio_settings(const QmxRadioSettings& r) {
     static const char* const kFlag[] = {"?", "off", "on"};
@@ -303,6 +336,9 @@ static void qmx_menu_read_tick(bool ready, bool busy) {
     char value[CAT_REPLY_FRAME_MAX];
     const uint32_t mm_count = cat_cdc_get_mm(value, sizeof(value));
     const int64_t now_ms = esp_timer_get_time() / 1000;
+    if (!ready) {
+        s_config_valid = false;  // the next radio may be another
+    }
     switch (qmx_menu_read_step(s_menu_read, ready, busy, mm_count, value, cat_cdc_refusals(), now_ms)) {
         case QmxMenuReadAction::None:
             return;
@@ -318,6 +354,7 @@ static void qmx_menu_read_tick(bool ready, bool busy) {
         }
         case QmxMenuReadAction::Done:
             log_radio_settings(s_menu_read.result);
+            publish_config(s_menu_read.result);
             return;
         case QmxMenuReadAction::NoReply: {
             char cmd[64];
@@ -420,6 +457,7 @@ static const radio_control_ops_t k_ops = {
     .rx_path_tick = qmx_rx_path_tick,
     .set_push = qmx_set_push,
     .state_changes = qmx_state_changes,
+    .get_config = qmx_get_config,
 };
 
 const radio_control_ops_t* radio_control_qmx_get_ops(void) {

@@ -691,6 +691,14 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
             ESP_LOGI(TAG, "radio firmware %s", fw);
         }
     }
+    // The radio's own band and PTT settings, read at link-up, for Settings > Amplifier's check.
+    // Absent until the read has finished on this radio.
+    radio_config_t radio_cfg;
+    if (radio_control_get_config(&radio_cfg)) {
+        char cbuf[320];
+        radio_config_format(&radio_cfg, cbuf, sizeof(cbuf));
+        text += cbuf;
+    }
     radio_state_t rs;
     if (radio_control_get_state(&rs)) {
         char rbuf[96];

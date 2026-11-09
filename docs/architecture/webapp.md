@@ -149,6 +149,14 @@ A full-screen overlay (`#stationSheet`, same slide-up mechanics as Who hears me'
 * **Settings does not carry these keys** (`cq_type`, `free_text`, `grid`, `tries`, `offset`, `offset_src`): its `FIELDS` array no longer lists them, and each Settings field writes only its own key, so a save never overwrites a value an Operate control just wrote. `free_text` is the Free text CQ's message and, with Type FD, our Field Day exchange ([autoseq.md](autoseq.md), **Field Day follows the CQ type**); there is no separate CQ free-text key.
 * **Not yet in the sheet:** the grid check against a station's references (epic [I18](../roadmap/activator-mode.md), **Later**).
 
+### Settings › Amplifier: the PTT check
+
+**Amp keyed by** (`amp_ptt` in Station.txt: 0 Not checked, the default; 1 TX PTT grounded; 2 TX PTT +5V) says which of the QMX's PTT outputs keys the amplifier. A Micro PA100+ keys from TX PTT grounded (operator, 2026-11-09). Below it, `ampPttCheck()` (host-tested by `webapp/tests/test_amp_ptt_check.js`) compares the radio's own per-band PTT outputs, which the main board reads when the radio connects ([radio.md](radio.md), **The QMX's settings, read at link-up**), on each active band the radio has:
+
+* **Right:** the chosen output alone on. Another TX output on with it would key the amp from both, and an RX output keys it on receive, so either is named. The line then says the radio's model and that every active band is right.
+* **Wrong:** an amber line names each active band that differs and what it has on ("40 m: no PTT output on"), and Serial 6 on PTT when it makes the jack a serial port. The fix is in the radio's menu for now.
+* **Not read yet,** before the read finishes, it says so; Not checked hides the line. It is redrawn on every config poll (`applyOperateLive()`), so a radio plugged in while Settings is open updates it.
+
 ### Decisions a reference app would make differently
 
 Surveyed 2026-09-14: WSJT-X, FT8CN, iFTx and the standalone touchscreen builds.

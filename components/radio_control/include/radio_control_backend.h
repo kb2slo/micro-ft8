@@ -36,6 +36,7 @@ typedef struct {
     radio_rx_path_event_t (*rx_path_tick)(bool busy);  // null = one receive output only
     esp_err_t (*set_push)(bool on);    // null = the radio cannot push its state (QMX AI2; / AI0;)
     uint32_t (*state_changes)(void);   // null = no pushes; counts changes of the radio's reported state
+    bool (*get_config)(radio_config_t* out);  // null = the radio cannot report its configuration
 } radio_control_ops_t;
 
 const radio_control_ops_t* radio_control_qmx_get_ops(void);

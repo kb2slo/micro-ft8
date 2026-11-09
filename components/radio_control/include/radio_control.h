@@ -64,6 +64,25 @@ typedef struct {
     bool split;
 } radio_state_t;
 
+// The radio's own configuration, as it reports it (QMX: the Menu Manager read at link-up,
+// architecture/radio.md, The QMX's settings, read at link-up). Flags: 1 on, 0 off, -1 not read.
+#define RADIO_CONFIG_BANDS_MAX 16
+typedef struct {
+    int band_m;  // 160, 80, ... 6
+    int8_t transmit;
+    int8_t tx_ptt_5v;
+    int8_t tx_ptt_ground;
+    int8_t rx_ptt_5v;
+    int8_t rx_ptt_ground;
+} radio_band_config_t;
+
+typedef struct {
+    char model[24];  // the radio's band set, such as "QMX+ 160-6m"; empty when not read
+    int band_count;
+    radio_band_config_t bands[RADIO_CONFIG_BANDS_MAX];
+    int8_t ptt_is_serial;  // 1 the PTT jack is a serial port instead (QMX Serial 6 on PTT)
+} radio_config_t;
+
 // What a radio_control_rx_path_tick() did.
 typedef enum {
     RADIO_RX_PATH_NONE = 0,
@@ -88,6 +107,14 @@ esp_err_t radio_control_query_version(void);
 bool radio_control_get_version(char* out, size_t cap);
 // The last IF reply; false when none has arrived since the radio's replies were last reset.
 bool radio_control_get_state(radio_state_t* out);
+// The radio's configuration once it has been read since this radio connected; false before that,
+// after a read that went unanswered, and for a radio that cannot report it.
+bool radio_control_get_config(radio_config_t* out);
+// `config` as the config reply's lines (architecture/webapp.md, Settings > Amplifier): radio_model,
+// radio_bands (metres, space-separated, as active_bands), radio_band_tx (1, 0 or ? a band),
+// radio_ptt (four characters a band: TX PTT +5V, TX PTT grounded, RX PTT +5V, RX PTT grounded, each
+// 1, 0 or ?) and radio_ptt_serial. Writes at most `cap` bytes, always terminated; returns the length.
+size_t radio_config_format(const radio_config_t* config, char* out, size_t cap);
 // Asks the radio to push its state when it changes (QMX AI2;), or to stop (AI0;);
 // ESP_ERR_NOT_SUPPORTED where it cannot. A radio without the command ignores it.
 esp_err_t radio_control_set_push(bool on);

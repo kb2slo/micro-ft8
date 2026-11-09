@@ -34,7 +34,7 @@ Once IQ mode is settled at a link-up (above), the backend reads the radio's sett
 * **A refused item (`?;`) reads as unknown and the read goes on; a query unanswered in 1 s ends it**, logged once (`QMX menus: … unanswered`), until the link drops. The parser counts `MM` replies and `?;` refusals since boot, never resetting either, so a reply is matched to its query by the count moving.
 * **Nothing is sent while a transmission, Tune, sweep or prime runs;** a query in flight then is asked again after. **A link that drops forgets the settings,** so a radio plugged in next is read afresh.
 * **`OM;` cannot tell a QMX from a QMX+:** both answer `OMQC` (1_04_010). Band version can.
-* **Nothing acts on the settings yet** (**not yet built: row [vcng](../ROADMAP.md#vcng)**).
+* **The settings go to the app in the main board's config reply** (`radio_control_get_config()`, formatted by `radio_config_format()`, host-tested): `radio_model`, `radio_bands`, `radio_band_tx`, `radio_ptt` and `radio_ptt_serial`, absent until this radio's read has finished. Settings › Amplifier checks the PTT outputs against how the amp is keyed ([webapp.md](webapp.md), **Settings › Amplifier: the PTT check**). The bands do not yet bound transmit or Settings' band choices (**not yet built: row [vcng](../ROADMAP.md#vcng)**).
 
 ## TX timing on a QMX
 

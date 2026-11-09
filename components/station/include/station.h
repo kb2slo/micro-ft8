@@ -16,6 +16,13 @@ static constexpr int kStationTxMinDelayMaxMs = 500;
 constexpr int kStationRadioQmx = 2;
 constexpr int kStationRadioHl2 = 6;
 
+// Station.txt's amp_ptt= values: how an amplifier is keyed from the QMX's PTT jack, which Settings
+// checks against the radio's own per-band PTT outputs (architecture/radio.md, The QMX's settings).
+// Anything else reads as none.
+constexpr int kStationAmpPttNone = 0;
+constexpr int kStationAmpPttGround = 1;  // TX PTT grounded: a Micro PA100+
+constexpr int kStationAmpPtt5v = 2;      // TX PTT +5V
+
 struct StationSettings {
     float band_freq[kStationBandCount];
     bool band_freq_set[kStationBandCount];
@@ -36,6 +43,7 @@ struct StationSettings {
     std::string active_bands;
     int tx_min_delay_ms = kStationTxMinDelayDefaultMs;  // 0..kStationTxMinDelayMaxMs
     bool amp_swr_guard = false;  // recover from the QMX's SWR-protection trips (architecture/radio.md)
+    int amp_ptt = kStationAmpPttNone;  // kStationAmpPtt*: how the amp is keyed from the QMX's PTT jack
     bool amp_prime_on_band_change = false;  // brief QMX SWR Tune pulse after an explicit band change
     bool rx_ft4 = false;  // also decode FT4 beside FT8 from the QMX's I/Q, listen only (docs/architecture/decode.md, FT4)
     int tries;  // transmissions per QSO message, and a CQ's to start (autoseq.md, Tries)
