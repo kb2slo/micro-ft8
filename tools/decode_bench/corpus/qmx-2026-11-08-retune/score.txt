@@ -1,0 +1,65 @@
+261109_030615.wav  idle  :15  FT8  53  FT4  1  2
+261109_030630.wav  idle  :30  FT8  46  FT4  0  0
+261109_030645.wav  idle  :45  FT8  61  FT4  0  0
+261109_030700.wav  moved :00  FT8  26  FT4  0  0
+261109_030715.wav  moved :15  FT8  46  FT4  1  0
+261109_030730.wav  moved :30  FT8  42  FT4  0  1
+261109_030745.wav  moved :45  FT8  53  FT4  0  1
+261109_030800.wav  moved :00  FT8  18  FT4  0  1
+261109_030815.wav  moved :15  FT8  53  FT4  0  1
+261109_030830.wav  moved :30  FT8  44  FT4  0  0
+261109_030845.wav  moved :45  FT8  53  FT4  0  1
+261109_030900.wav  moved :00  FT8  23  FT4  0  1
+261109_030915.wav  moved :15  FT8  59  FT4  0  1
+261109_030930.wav  moved :30  FT8  34  FT4  0  1
+261109_030945.wav  moved :45  FT8  46  FT4  0  0
+261109_031000.wav  moved :00  FT8  22  FT4  0  1
+261109_031015.wav  moved :15  FT8  53  FT4  0  1
+261109_031030.wav  moved :30  FT8  45  FT4  0  1
+261109_031045.wav  moved :45  FT8  57  FT4  0  1
+261109_031100.wav  moved :00  FT8  24  FT4  0  0
+261109_031115.wav  moved :15  FT8  59  FT4  0  1
+261109_031130.wav  moved :30  FT8  44  FT4  0  1
+261109_031145.wav  moved :45  FT8  56  FT4  0  1
+261109_031200.wav  moved :00  FT8  25  FT4  0  0
+261109_031215.wav  moved :15  FT8  60  FT4  0  0
+261109_031230.wav  moved :30  FT8  37  FT4  0  0
+261109_031245.wav  moved :45  FT8  56  FT4  0  0
+261109_031300.wav  moved :00  FT8  22  FT4  0  0
+261109_031315.wav  moved :15  FT8  56  FT4  0  0
+261109_031330.wav  moved :30  FT8  53  FT4  0  0
+261109_031345.wav  moved :45  FT8  58  FT4  0  0
+261109_031400.wav  moved :00  FT8  22  FT4  0  0
+261109_031415.wav  moved :15  FT8  57  FT4  0  0
+261109_031430.wav  moved :30  FT8  38  FT4  0  0
+261109_031445.wav  moved :45  FT8  55  FT4  1  0
+261109_031500.wav  moved :00  FT8  23  FT4  0  0
+261109_031515.wav  moved :15  FT8  53  FT4  0  0
+261109_031530.wav  moved :30  FT8  44  FT4  0  0
+261109_031545.wav  moved :45  FT8  64  FT4  0  0
+261109_031600.wav  moved :00  FT8  17  FT4  0  0
+261109_031615.wav  moved :15  FT8  55  FT4  1  0
+261109_031630.wav  moved :30  FT8  43  FT4  0  0
+261109_031645.wav  moved :45  FT8  51  FT4  0  0
+261109_031700.wav  moved :00  FT8  16  FT4  0  0
+261109_031715.wav  moved :15  FT8  55  FT4  0  0
+261109_031730.wav  moved :30  FT8  47  FT4  0  0
+261109_031745.wav  moved :45  FT8  58  FT4  0  0
+261109_031800.wav  moved :00  FT8  25  FT4  0  0
+261109_031815.wav  moved :15  FT8  70  FT4  0  0
+261109_031830.wav  moved :30  FT8  45  FT4  0  0
+261109_031845.wav  moved :45  FT8  56  FT4  0  0
+261109_031900.wav  idle  :00  FT8  47  FT4  1  0
+261109_031915.wav  idle  :15  FT8  58  FT4  1  0
+261109_031930.wav  idle  :30  FT8  46  FT4  1  0
+261109_031945.wav  idle  :45  FT8  63  FT4  0  0
+261109_032000.wav  idle  :00  FT8  41  FT4  0  0
+261109_032015.wav  idle  :15  FT8  63  FT4  0  0
+261109_032030.wav  idle  :30  FT8  41  FT4  0  0
+261109_032045.wav  idle  :45  FT8  60  FT4  1  0
+261109_032100.wav  idle  :00  FT8  42  FT4  1  0
+
+12 moved minutes, paired within each minute (after vs control):
+  FT8 after 676 (56.3 a slot), control 663 (55.2); after minus control per minute: [-7, 0, 13, -4, 3, 4, -2, 2, -11, 4, -3, 14]
+  FT4 after 3 (0.2 a half), control 4 (0.3); after minus control per minute: [-1, 1, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0]
+  FT8 in the moved :00 slot 263 (21.9 a slot), even control :30 516 (43.0): what an FT4 transmission's deafness already costs
