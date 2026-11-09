@@ -40,6 +40,8 @@ No open-ended codebase exploration to be helpful — that is exactly the token s
 
 **Smallest fix first.** Do not build tooling, scanners, CI gates or config files nobody asked for. If a larger approach seems warranted, propose it in two or three sentences and wait for a yes before writing it. Throwaway scaffolding in a scratch directory, never committed, is not tooling. A scratch script that produces a result the docs record, or that would be run again to re-check one, is not throwaway: commit it next to the result it produced, for example a scorer beside its corpus in `tools/decode_bench/`.
 
+**Smallest means the smallest correct fix, not the least code today.** Lead with the fix that stays, even when it costs a reflash or another board, and say what it costs and where it belongs. Code the correct fix would later delete is not a smaller fix: offer such a stopgap only when the correct fix is blocked, and say plainly that it is temporary and what replaces it.
+
 Do not mix a feature change with an unrelated fix in the same commit.
 
 **The roadmap is the maintainer's.** A change that ships a `ROADMAP.md` row drops the row in the same change. Any other roadmap edit — a new row, a new order, a move between sections — is the maintainer's ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md)), and goes on its own branch from `main` with its own pull request, never into a work branch and never pushed straight to `main` unless the maintainer says so for that change, or it is an Ideas-only change on the fast path ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md), **Roadmap intake**). A contributor's new idea is an issue.
