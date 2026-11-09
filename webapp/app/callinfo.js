@@ -154,6 +154,56 @@ function learnGrid(call, grid) {
   } catch (e) { /* localStorage unavailable -- cache just stays cold */ }
 }
 
+// ---- CQ POTA / CQ SOTA heard here (operator-requested 2026-11-09) ----
+// A station calling CQ POTA or CQ SOTA is activating, whether or not anyone has spotted it, so every decode
+// is offered here (app.html's decode intake) and the card says so beside the internet spots. Kept for the UTC
+// day in this browser only, newest sighting per call, capped; a CQ decoded while no page listened is not seen.
+var CQ_HEARD_KEY = 'microft8_cq_heard_v1';
+var CQ_HEARD_MAX = 500;
+function utcDayOf(ms) {
+  var d = new Date(ms);
+  return d.getUTCFullYear() * 10000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate();
+}
+// {program, call} for "CQ POTA K1ABC FN42" or "CQ SOTA K1ABC/P", else null.
+function parseActivatorCq(text) {
+  var t = String(text || '').trim().toUpperCase().split(/\s+/);
+  if (t.length < 3 || t[0] !== 'CQ' || (t[1] !== 'POTA' && t[1] !== 'SOTA')) return null;
+  var call = t[2].replace(/^<|>$/g, '');
+  if (!/^[A-Z0-9/]*[0-9][A-Z0-9/]*$/.test(call) || !/[A-Z]/.test(call)) return null;
+  return { program: t[1], call: call };
+}
+function readCqHeard(now) {
+  try {
+    var c = JSON.parse(localStorage.getItem(CQ_HEARD_KEY) || 'null');
+    if (c && c.day === utcDayOf(now) && c.calls) return c;
+  } catch (e) { /* unavailable or unreadable: start the day empty */ }
+  return { day: utcDayOf(now), calls: {} };
+}
+// text: a decode's message; dialKhz: its dial (fq); mode: 'FT8' or 'FT4'; ms: when it was heard.
+function learnCq(text, dialKhz, mode, ms) {
+  var cq = parseActivatorCq(text);
+  if (!cq) return;
+  var now = ms || Date.now();
+  var c = readCqHeard(now);
+  c.calls[cq.call] = { program: cq.program, band: dialKhz ? khzToBandName(dialKhz) : '', mode: mode || '', ts: now };
+  var calls = Object.keys(c.calls);
+  if (calls.length > CQ_HEARD_MAX) {
+    calls.sort(function (a, b) { return c.calls[a].ts - c.calls[b].ts; });
+    calls.slice(0, calls.length - CQ_HEARD_MAX).forEach(function (k) { delete c.calls[k]; });
+  }
+  try { localStorage.setItem(CQ_HEARD_KEY, JSON.stringify(c)); } catch (e) { /* stays in this page only */ }
+}
+// The day's latest CQ POTA/SOTA heard from call, or null.
+function heardCqFor(call, now) {
+  return readCqHeard(now || Date.now()).calls[String(call || '').toUpperCase()] || null;
+}
+function heardCqHtml(h) {
+  if (!h) return '';
+  return '<div class=ci-heard>Called CQ ' + esc(h.program) + ' here · ' +
+    esc([h.band, h.mode].filter(Boolean).join(' ')) + ' · <span class=ago data-ts="' + h.ts + '">' +
+    esc(fmtAgo(h.ts)) + '</span></div>';
+}
+
 // ---- live POTA/SOTA spot awareness (operator-requested 2026-09-22) ----
 // On-demand, not a background poll: fetched the first time a card actually
 // needs it, cached for a short window (SPOT_CACHE_MS) so browsing several
@@ -531,8 +581,9 @@ async function show(call, opts) {
   // card on a network round trip), filled in once the fetch resolves --
   // the modal may already be closed by then, so this only ever touches the
   // DOM if it's still showing this same callsign.
+  var heard = heardCqFor(call);
   body += '<div class=ci-row id=ciPotaSota><div class=ci-label>POTA / SOTA</div>' +
-    '<span style="color:GrayText">checking…</span></div>';
+    '<span style="color:GrayText">checking spots…</span>' + heardCqHtml(heard) + '</div>';
 
   document.getElementById('callInfoBody').innerHTML = body;
   document.getElementById('callInfoQrz').href = qrzUrl(call);
@@ -560,8 +611,10 @@ async function show(call, opts) {
     if (!section || modal.hidden || nameEl.textContent !== call) return;
     var spot = rows.filter(function (r) { return r.call === call; })
       .sort(function (a, b) { return parseUtcIso(b.ts) - parseUtcIso(a.ts); })[0];
+    heard = heardCqFor(call);
     if (!spot) {
-      section.innerHTML = '<div class=ci-label>POTA / SOTA</div>No active spot right now';
+      section.innerHTML = '<div class=ci-label>POTA / SOTA</div>' +
+        (heard ? 'Not spotted' : 'No active spot right now') + heardCqHtml(heard);
       return;
     }
     var link = officialLink(spot.program, spot.ref);
@@ -573,7 +626,7 @@ async function show(call, opts) {
       (spot.name ? ' · ' + esc(spot.name) : '') +
       (spot.program === 'SOTA' && spot.points != null ? ' · ' + esc(spot.points) + ' pts' : '') +
       '<div class=ci-heard>' + esc(spot.band || '') + ' · <span class=ago data-ts="' +
-        parseUtcIso(spot.ts) + '">' + esc(fmtAgo(parseUtcIso(spot.ts))) + '</span></div>';
+        parseUtcIso(spot.ts) + '">' + esc(fmtAgo(parseUtcIso(spot.ts))) + '</span></div>' + heardCqHtml(heard);
   });
 }
 
@@ -605,5 +658,5 @@ if (document.readyState === 'loading') {
 // silently going without it until whatever happens to open the modal first.
 loadGeoData();
 
-window.CallInfo = { loadActiveSpots: loadActiveSpots, activeSpotFor: activeSpotFor, show: show, hide: hide, learnGrid: learnGrid, cachedGrid: cachedGrid, shortLocation: shortLocation, countryCode: countryCode, gridLink: gridLink, qrzUrl: qrzUrl };
+window.CallInfo = { learnCq: learnCq, heardCqFor: heardCqFor, loadActiveSpots: loadActiveSpots, activeSpotFor: activeSpotFor, show: show, hide: hide, learnGrid: learnGrid, cachedGrid: cachedGrid, shortLocation: shortLocation, countryCode: countryCode, gridLink: gridLink, qrzUrl: qrzUrl };
 })();
