@@ -59,3 +59,21 @@ python3 tools/qmx_tx_probe/key_qmx.py --port <QMX serial port> --mode FT4 --dial
 Each line prints the read-back and how long the set took to read back; a read-back that does not match skips that
 transmission, so nothing is keyed at the wrong place. The FT4 spots should read near 7.049000 MHz (7.0475 plus
 1,500 Hz). What receive loses after a transmission is not visible from here: the main board measures that.
+
+## What receive loses after a retune
+
+Nothing need be keyed: both dial moves happen while the radio receives. `--no-key` moves the dial at the times an
+FT4 transmission would (`FA` to `--tx-dial` a second before the slot, back where `RX;` would go), and
+`--every 8` does it once a minute, at :00. Record the radio's I/Q stream alongside, set to IQ mode (`Q9 1;`),
+with `tools/qmx_record.py`, which needs no serial port given `--dial-hz`, so the probe keeps CAT to itself:
+
+```bash
+python3 tools/qmx_record.py --device QMX --mode-tag iq --dial-hz 7074000 --minutes 15 --out DIR
+python3 tools/qmx_tx_probe/key_qmx.py --port <QMX serial port> --mode FT4 --dial 7074000 --tx-dial 7047500 \
+  --via retune --no-key --every 8 --count 12 --base 1500 --message "CQ <CALL> <GRID>" | tee probe.log
+python3 tools/qmx_tx_probe/score_retune.py DIR probe.log
+```
+
+`score_retune.py` decodes each slot's FT8 and FT4 with `jt9` and pairs, within each minute, the slot after the
+dial came back with one of the same parity that it did not touch (its docstring says which). The 2026-11-08 run
+and why the retune was chosen: [several-channels.md](../../docs/roadmap/several-channels.md), **Decided**.

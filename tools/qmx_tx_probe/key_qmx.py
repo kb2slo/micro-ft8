@@ -8,7 +8,9 @@ Per transmission: FA<dial>; TX; then one TA<base + tone * spacing>; per symbol, 
 slot start + 0.5 s (the P4's lead), then TA0; 5 ms RX;. With --tx-dial, the transmission goes out
 at --tx-dial plus the tones instead (row xvfn): --via split puts VFO B there (SP1; FB; before TX;,
 FB<dial>; SP0; FR0; FT0; after RX;), --via retune moves VFO A there and back (FA). Each set is read
-back and timed before keying; a read-back that does not match skips that transmission. Transmits in alternate slots (even ones)
+back and timed before keying; a read-back that does not match skips that transmission.
+--every K transmits in one slot of every K (default 2). --no-key does the split or retune at the
+times a transmission would, and keys nothing: what receive loses to the move alone. Transmits in alternate slots (even ones)
 so a test does not hog the frequency. The laptop's clock must be NTP-synced. These are real
 transmissions: the control operator is at the station. Ctrl-C sends TA0; and RX;.
 """
@@ -36,11 +38,17 @@ def main():
     ap.add_argument("--count", type=int, default=3, help="transmissions")
     ap.add_argument("--tx-dial", type=int, help="transmit around this dial instead of --dial, Hz")
     ap.add_argument("--via", choices=("split", "retune"), help="how --tx-dial is reached")
+    ap.add_argument("--every", type=int, default=2, help="transmit in one slot of every K (slot index a multiple of K)")
+    ap.add_argument("--no-key", action="store_true", help="with --via: move the dial at TX times, never key")
     ap.add_argument("--dry-run", action="store_true", help="print what would be sent; open no port")
     a = ap.parse_args()
 
     if (a.tx_dial is None) != (a.via is None):
         sys.exit("--tx-dial and --via go together")
+    if a.no_key and a.via is None:
+        sys.exit("--no-key needs --tx-dial and --via")
+    if a.every < 1:
+        sys.exit("--every is 1 or more")
     tx_dial = a.tx_dial if a.tx_dial is not None else a.dial
     slot_s, sym_s, spacing = MODES[a.mode]
     tones = [int(t) for t in subprocess.check_output(
@@ -52,7 +60,8 @@ def main():
         sys.exit(f"refused: dial {a.dial}, RF {lo:.0f}-{hi:.0f} Hz is not inside one of " + ", ".join(BANDS))
     print(f"{a.mode} '{a.message}': {len(tones)} tones, RF {lo/1e6:.6f}-{hi/1e6:.6f} MHz on {band} "
           f"(dial {a.dial}" + (f", TX dial {tx_dial} by {a.via}" if a.via else "")
-          + f", TA {a.base:.0f}-{a.base + max(tones) * spacing:.1f}), {a.count} transmissions")
+          + f", TA {a.base:.0f}-{a.base + max(tones) * spacing:.1f}), {a.count} transmissions, "
+          f"one slot in {a.every}" + (", NOT KEYED: dial moves only" if a.no_key else ""))
 
     before, after = [], []
     if a.via == "split":
@@ -61,6 +70,9 @@ def main():
     elif a.via == "retune":
         before = ["FA%011d;" % tx_dial]
         after = ["FA%011d;" % a.dial]
+    if a.dry_run and a.no_key:
+        print(" ".join(before) + " ... (no TX;, no tones) ... " + " ".join(after))
+        return
     if a.dry_run:
         print(" ".join(before + ["TX;"]) + " " + " ".join("TA%.2f;" % (a.base + t * spacing) for t in tones[:4])
               + " ... TA0; RX; " + " ".join(after))
@@ -75,8 +87,8 @@ def main():
         """Send a query and return (reply, ms) for the first reply to it; with want, wait for that reply."""
         port.reset_input_buffer(); t0 = time.time(); cmd(q); buf = ""
         while time.time() - t0 < timeout:
-            buf += port.read(64).decode(errors="replace")
-            for r in buf.split(";"):
+            buf += port.read(max(1, port.in_waiting)).decode(errors="replace")  # returns on the first byte
+            for r in buf.split(";")[:-1]:  # whole replies only
                 if r.startswith(q[:2]) and (want is None or r == want):
                     return r + ";", (time.time() - t0) * 1000
         return buf.strip() or "(none)", None
@@ -97,11 +109,10 @@ def main():
     while sent < a.count:
         now = time.time()
         slot = int(now // slot_s) + 1
-        if slot % 2:
-            slot += 1  # even slots only
+        slot += -slot % a.every  # a slot index that is a multiple of --every
         start = slot * slot_s
         if start - now < SETUP_S + 0.5:
-            slot += 2; start = slot * slot_s
+            slot += a.every; start = slot * slot_s
         if before:
             time.sleep(max(0.0, start - SETUP_S - time.time()))
             t0 = time.time(); run(before)
@@ -112,19 +123,23 @@ def main():
             print(f"  {' '.join(before)} then read back {got} in {(time.time() - t0) * 1000:.0f} ms"
                   + ("" if ms is not None else ": no match, skipped"))
             if ms is None:
-                run(after); slot += 2; continue
-        time.sleep(max(0.0, start - 0.3 - time.time()))
-        cmd("TX;")
+                run(after); continue
+        end = start + LEAD_S + len(tones) * sym_s
         late = []
-        for i, t in enumerate(tones):
-            due = start + LEAD_S + i * sym_s
-            d = due - time.time()
-            if d > 0:
-                time.sleep(d)
-            late.append(time.time() - due)
-            cmd("TA%.2f;" % (a.base + t * spacing))
-        time.sleep(max(0.0, start + LEAD_S + len(tones) * sym_s - time.time()))
-        cmd("TA0;"); time.sleep(0.005); cmd("RX;")
+        if a.no_key:
+            time.sleep(max(0.0, end - time.time()))  # where RX; would go; nothing was keyed
+        else:
+            time.sleep(max(0.0, start - 0.3 - time.time()))
+            cmd("TX;")
+            for i, t in enumerate(tones):
+                due = start + LEAD_S + i * sym_s
+                d = due - time.time()
+                if d > 0:
+                    time.sleep(d)
+                late.append(time.time() - due)
+                cmd("TA%.2f;" % (a.base + t * spacing))
+            time.sleep(max(0.0, end - time.time()))
+            cmd("TA0;"); time.sleep(0.005); cmd("RX;")
         if after:
             time.sleep(0.03); t0 = time.time(); run(after)
             if a.via == "split":
@@ -134,7 +149,8 @@ def main():
             print(f"  {' '.join(after)} then read back {got} in {(time.time() - t0) * 1000:.0f} ms")
         sent += 1
         print(time.strftime("%H:%M:%S", time.localtime(start)),
-              f"sent {sent}/{a.count}, symbol lateness max {max(late)*1000:.1f} ms")
+              f"{'moved' if a.no_key else 'sent'} {sent}/{a.count}"
+              + (f", symbol lateness max {max(late)*1000:.1f} ms" if late else ""))
     port.close()
 
 
