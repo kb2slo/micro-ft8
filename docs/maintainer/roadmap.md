@@ -95,6 +95,7 @@ GitHub issues are where the roadmap's inputs arrive and are talked through; the 
 **Awaiting us:** an open issue or discussion whose last word (its newest comment, or its opening post if it has none) is not the maintainer's. It is read from GitHub each time, so nothing records what was triaged.
 
 * **Find them:** `gh issue list --state open --json number,title,author,updatedAt,comments`, and for discussions `gh api graphql` on the repository's `discussions` with each one's last comment's author.
+* **One question per turn.** Each reply puts one decision to the maintainer and waits for the answer before the next, even when one item raises several; the rest wait, listed in a line.
 * **Triage is a conversation, like a groom.** One item at a time, with: its class (bug, feature, question, field report); the evidence (a bug against its area's architecture doc and the code, a feature against the roadmap and [declined.md](../roadmap/declined.md), a field report against [TEST_PLAN.md](../TEST_PLAN.md) Pending); the outcome proposed (answer, fix in a slice, roadmap intake with its verdict and epic test, decline, or ask the reporter for something); and a draft reply in plain words for an operator, any row named glossed.
 * **Nothing goes out unasked.** A reply is posted, and an issue closed, labelled or converted, only when the maintainer says so in that turn (**Issues** above).
 * **A reply that commits us lands in the docs.** "I plan to add X" becomes a row through intake, citing `#N`, in the same session.
