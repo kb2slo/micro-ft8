@@ -1,6 +1,6 @@
 # Activator mode (epic I18)
 
-POTA and SOTA from the field: the operator at a park or on a summit, others working them, the whole activation run offline and logged so pota.app and the SOTA database accept it unedited. Rows: [rrsp](#rrsp), [w5nj](#w5nj) ([ROADMAP.md](../ROADMAP.md)). Built so far: the activation's references, its log and the n-fer export ([logging.md](../architecture/logging.md)); the Station sheet's references, the progress line and the cues on decodes ([webapp.md](../architecture/webapp.md), **The Station sheet**, **Activation progress**, **Activation cues on decodes**).
+POTA and SOTA from the field: the operator at a park or on a summit, others working them, the whole activation run offline and logged so pota.app and the SOTA database accept it unedited. Rows: [rrsp](#rrsp), [w5nj](#w5nj) ([ROADMAP.md](../ROADMAP.md)). Built so far: the activation's references, its log and the n-fer export ([logging.md](../architecture/logging.md)); the Station sheet's references, the progress line and the cues on decodes ([webapp.md](../architecture/webapp.md), **The Station sheet**, **Activation progress**, **Worked and activation cues on decodes**).
 
 ## Goal
 
