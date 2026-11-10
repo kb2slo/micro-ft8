@@ -4,7 +4,6 @@
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_app_desc.h"
-#include "esp_ota_ops.h"
 #include "esp_idf_version.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -12,6 +11,7 @@
 
 #include "esp_timer.h"
 
+#include "fw_update.h"
 #include "host_link.h"
 #include "pairing_http.h"
 #include "porta_proto.h"
@@ -100,34 +100,6 @@ static void porta_beacon_send(void) {
 // (higher stakes: bugs there affect every boot, not just updates) — see
 // docs/architecture/sidekick.md (Installing the sidekick from the main board)'s "Future phase" note. USB-C stays the only flash path
 // until that's built.
-
-// With CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE an image installed by OTA boots
-// in PENDING_VERIFY and is rolled back on the next restart unless it declares
-// itself good. "Good" here means the companion link works — an image that
-// boots but cannot beacon is useless to the main board, so the beacon is the check
-// rather than merely reaching app_main(). Images written over USB-C are not
-// pending and this is a no-op for them.
-static void mark_valid_once_beaconing(uint32_t beacons_sent)
-{
-    static bool done = false;
-    if (done || beacons_sent < 3) {
-        return;
-    }
-    done = true;
-    const esp_partition_t *running = esp_ota_get_running_partition();
-    esp_ota_img_states_t state;
-    if (esp_ota_get_state_partition(running, &state) != ESP_OK) {
-        return;
-    }
-    if (state != ESP_OTA_IMG_PENDING_VERIFY) {
-        return;
-    }
-    if (esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
-        ESP_LOGI(TAG, "Image marked valid (beacon confirmed); rollback cancelled");
-    } else {
-        ESP_LOGE(TAG, "Could not mark image valid — it will roll back on restart");
-    }
-}
 
 // The AtomS3 Lite's user button -- the one that is not reset. GPIO41, read
 // active low against the board's own pull-up: taken from the M5Unified this
@@ -230,11 +202,13 @@ void app_main(void)
     }
 
     uint32_t heartbeat = 0;
+    uint32_t beacons_sent = 0;
     while (1) {
         if (heartbeat % BEACON_EVERY == 0) {
             porta_beacon_send();
+            ++beacons_sent;
         }
-        mark_valid_once_beaconing(heartbeat);
+        fw_update_tick((uint32_t)(esp_timer_get_time() / 1000000), beacons_sent);
         if (s_button_pressed) {
             s_button_pressed = false;
             pairing_http_open_disclosure();

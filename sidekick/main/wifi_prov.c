@@ -21,6 +21,7 @@
 #include "pairing_http.h"
 #include "pairing_http_cap.h"
 #include "bundle_host.h"
+#include "fw_update.h"
 #include "web_bundle.h"
 #include "web_page.h"
 #include "web_fs.h"
@@ -865,6 +866,7 @@ static void httpd_start_provisioning(void)
     host_link_register_uris(s_httpd);
     web_bundle_register(s_httpd);
     bundle_host_register(s_httpd);
+    fw_update_register(s_httpd);
     web_fs_register_rehydrate(s_httpd);
     // Same error handler and static route station mode uses -- a missing
     // file 404s plainly, same in both modes now. B74 follow-up, 2026-09-21:
@@ -1042,6 +1044,7 @@ static void httpd_start_status(void)
     host_link_register_uris(s_httpd);
     web_bundle_register(s_httpd);
     bundle_host_register(s_httpd);
+    fw_update_register(s_httpd);
     web_fs_register_rehydrate(s_httpd);
     // Static GET /* last so exact /api/... routes win.
     web_fs_register_static(s_httpd);
@@ -1164,6 +1167,7 @@ void wifi_prov_start(void)
     if (bundle_host_init() != ESP_OK) {
         ESP_LOGE(TAG, "Bundle host URL unavailable — using compile default if possible");
     }
+    fw_update_init();
 
     // Before any HTTP handler: mount the web FS and hydrate seed pages from
     // the firmware embed (docs/architecture/sidekick.md (Web root)). Not ESP_ERROR_CHECK'd — a sidekick

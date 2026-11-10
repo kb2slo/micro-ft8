@@ -157,6 +157,15 @@ A full-screen overlay (`#stationSheet`, same slide-up mechanics as Who hears me'
 * **Wrong:** an amber line names each active band that differs and what it has on ("40 m: no PTT output on"), and Serial 6 on PTT when it makes the jack a serial port. Below it, **Set the radio's PTT outputs** asks first, naming the bands the radio transmits on (`radioTransmitBands()`), then posts `/api/radio/ptt` with the keying; the main board writes the radio ([radio.md](radio.md), **Setting the PTT outputs**). While `radio_ptt_write` reads `writing` the button is disabled and the line says so; a failure is shown under the bands.
 * **Not read yet,** before the read finishes, it says so; Not checked hides the line. It is redrawn on every config poll (`applyOperateLive()`), so a radio plugged in while Settings is open updates it.
 
+### Settings › Updates
+
+**Updates** lists each board the release manifest has a different build for: its running version, the published one, the image's size and an **Update** button. Today that is the sidekick alone; the main board, the review screen, the full-screen progress and the notices on Operate are **not yet built: rows [hstv](../roadmap/ota-updates.md#hstv), [yme5](../roadmap/ota-updates.md#yme5)**.
+
+* **The page reads the manifest, the sidekick fetches the image.** `checkFwUpdates()` fetches `https://micro-ft8.kalikstein.com/download/manifest.json` when the page opens, when it becomes visible and every 60 s while it is. The HTTPS fetch is what authenticates the hashes ([system.md](system.md), **The inversion**). With no internet from the phone's network, the section says updates cannot be checked from here.
+* **Versions are commits, with no order,** so a board is offered the published build whenever it reports a different version; a locally built or `-dirty` board always is.
+* **Update** asks first (a `confirm()`, which also tells the operator to stop calling, since the main board is not stopped for them yet), then posts the offer to `/api/fw/start` and polls `/api/fw/status` once a second ([sidekick.md](sidekick.md), **Firmware updates**). The line under the list reads Downloading with a percentage, Verifying, Restarting the sidekick, Confirming the new version, then "Updated to d18f9b2", or the reason and the version still running ("Verification failed — still on 7e61488", "New version did not start — rolled back to 7e61488"). A poll that fails is taken as the restart; after 8 minutes with no result the line says to check the phone's network and reload.
+* **The logic is `updates.js`** (`FwUpdates`: the offers, the request body, every sentence), host-tested by `webapp/tests/test_updates.js`, which also reads the sidekick's sources and fails when it can report a failure code the page has no words for.
+
 ### Decisions a reference app would make differently
 
 Surveyed 2026-09-14: WSJT-X, FT8CN, iFTx and the standalone touchscreen builds.

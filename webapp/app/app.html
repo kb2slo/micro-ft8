@@ -619,6 +619,10 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     </div>
     <p id=netMsg class=setnote></p>
 
+    <div class="hd sep">Updates</div>
+    <div id=updList></div>
+    <p id=updMsg class=setnote>Not checked yet.</p>
+
     <div class="hd sep">Sidekick's own network</div>
     <p class=setnote>The network the sidekick raises when it has no WiFi to join. A password keeps phones that are only looking for internet from joining it. Saving restarts it, and a phone on it must rejoin. Whatever you name it, the app is at micro-ft8.local or 192.168.4.1.</p>
     <div class=setrow><label>Name <input id=apSsid enterkeyhint=done maxlength=32 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false placeholder=micro-ft8.local></label></div>
@@ -1059,6 +1063,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 <script src=pskr_core.js></script>
 <script src=pskr_live.js></script>
 <script src=geo_handoff.js></script>
+<script src=updates.js></script>
 <script>
 var settingsMsg = document.getElementById('settingsMsg');
 var stationSheetMsg = document.getElementById('stationSheetMsg');
@@ -1217,6 +1222,123 @@ document.getElementById('appReload').onclick = function () { location.reload(); 
 // already carries a fix for (see setInterval(pollLiveStatus) below); this
 // is a much bigger request far less often, not the same shape of load.
 setInterval(checkAppStale, 60000);
+
+// ===================== Settings: Updates =====================
+// Firmware updates (docs/architecture/webapp.md, Updates). This page reads the release manifest
+// over HTTPS and hands the sidekick an image's URL, size and hash; the sidekick downloads and
+// installs it and reports progress at /api/fw/status, so the update goes on with this page
+// closed. What the manifest offers, the request and every sentence are FwUpdates' (updates.js).
+var fwManifest = null;      // the last manifest read, or null
+var fwManifestErr = false;  // the last read failed: no internet from here
+var fwRunning = {};         // board -> the version it reports
+var fwActive = null;        // the offer being installed, while this page follows it
+
+async function checkFwUpdates() {
+  if (document.visibilityState !== 'visible' || fwActive) return;
+  try {
+    var r = await fetch(FwUpdates.MANIFEST_URL, { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    fwManifest = await r.json();
+    fwManifestErr = false;
+  } catch (e) {
+    fwManifestErr = true;
+  }
+  renderFwUpdates();
+}
+
+function renderFwUpdates() {
+  if (fwActive) return;  // the row shows the update in flight
+  var list = document.getElementById('updList');
+  var msg = document.getElementById('updMsg');
+  var offers = FwUpdates.offers(fwManifest, fwRunning);
+  list.textContent = '';
+  offers.forEach(function (o) {
+    var row = document.createElement('div');
+    row.className = 'setrow';
+    var line = document.createElement('div');
+    line.className = 'diagrow';
+    var name = document.createElement('span');
+    name.textContent = o.label;
+    var what = document.createElement('span');
+    what.textContent = o.from + ' \u2192 ' + o.to + ' \u00b7 ' + FwUpdates.sizeText(o.size) + ' ';
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = 'Update';
+    btn.onclick = function () { startFwUpdate(o); };
+    what.appendChild(btn);
+    line.appendChild(name);
+    line.appendChild(what);
+    row.appendChild(line);
+    list.appendChild(row);
+  });
+  if (offers.length) msg.textContent = 'An update restarts the board it installs on.';
+  else if (!fwManifest) msg.textContent = fwManifestErr ? 'Updates cannot be checked from here: this phone has no internet on this network.' : 'Not checked yet.';
+  else msg.textContent = 'No updates: this is the published build.';
+}
+
+async function startFwUpdate(offer) {
+  var msg = document.getElementById('updMsg');
+  if (!MicroFT8Pairing.getToken()) {
+    msg.textContent = 'Press the sidekick button to pair first.';
+    MicroFT8Pairing.needsReauth();
+    return;
+  }
+  // Until the main board has an update mode that stops it first, the operator is told to.
+  if (!confirm('Update the sidekick to ' + offer.to + '? It restarts, and the app is away for about a minute. ' +
+               'The main board keeps doing what it is doing and cannot be stopped from here meanwhile: ' +
+               'stop calling CQ and let any QSO finish first.')) return;
+  try {
+    var r = await MicroFT8Pairing.authFetch('/api/fw/start', {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: FwUpdates.startBody(offer),
+    });
+    if (r.status == 401) {
+      MicroFT8Pairing.needsReauth();
+      msg.textContent = 'Press the sidekick button to pair';
+      return;
+    }
+    var j = null;
+    try { j = await r.json(); } catch (e) { /* an older sidekick answers 404 with no JSON */ }
+    if (!r.ok || !j || j.ok !== true) {
+      msg.textContent = j && j.why ? FwUpdates.whyText(j.why) + '.' : 'This sidekick\u2019s firmware cannot update itself yet; flash it over USB once.';
+      return;
+    }
+  } catch (e) {
+    msg.textContent = 'The sidekick did not answer.';
+    return;
+  }
+  followFwUpdate(offer);
+}
+
+// Polls the sidekick once a second until the update ends. A poll that fails is the restart; one
+// that never comes back within FW_FOLLOW_MS is reported as that, since the sidekick may have come
+// up on another address or on its own network.
+var FW_FOLLOW_MS = 8 * 60 * 1000;
+async function followFwUpdate(offer) {
+  var list = document.getElementById('updList');
+  var msg = document.getElementById('updMsg');
+  fwActive = offer;
+  list.textContent = '';
+  var began = Date.now();
+  var end = null;
+  while (!end && Date.now() - began < FW_FOLLOW_MS) {
+    var status = null, reachable = true;
+    try {
+      var r = await fetch('/api/fw/status', { cache: 'no-store' });
+      if (r.ok) status = await r.json(); else reachable = false;
+    } catch (e) { reachable = false; }
+    end = FwUpdates.outcome(status, offer.to);
+    if (!end) {
+      msg.textContent = offer.label + ': ' + FwUpdates.progressText(status, reachable);
+      await new Promise(function (resolve) { setTimeout(resolve, 1000); });
+    }
+  }
+  fwActive = null;
+  renderFwUpdates();
+  msg.textContent = offer.label + ': ' + (end ? end.text : 'No answer from the sidekick. Check that this phone is on its network, then reload.') + '.';
+}
+checkFwUpdates();
+document.addEventListener('visibilitychange', checkFwUpdates);
+setInterval(checkFwUpdates, 60000);
 
 // ===================== Operate: lost contact =====================
 // The drawer's dots are deliberately quiet (a glance, not an alarm) and
@@ -1817,6 +1939,10 @@ function updateNetInfo(cfg) {
   document.getElementById('netIp').textContent = cfg.sk_ip || '—';
   document.getElementById('netVersion').textContent = cfg.sk_fw_version || '—';
   document.getElementById('netUptime').textContent = cfg.sk_uptime || '—';
+  if (cfg.sk_fw_version && cfg.sk_fw_version !== fwRunning.sidekick) {
+    fwRunning.sidekick = cfg.sk_fw_version;
+    renderFwUpdates();
+  }
   var isStation = mode === 'station';
   document.getElementById('netForget').hidden = !isStation;
   document.getElementById('netModeSwitch').hidden = !isStation;

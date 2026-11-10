@@ -59,6 +59,7 @@ WEB_PAGE_TARGET = host_test_web_page
 WEB_MANIFEST_TARGET = host_test_web_manifest
 EVENT_STATE_TARGET = host_test_event_state
 BUNDLE_HOST_TARGET = host_test_bundle_host
+FW_POLICY_TARGET = host_test_fw_policy
 RECENT_QSO_TARGET = host_test_recent_qso
 QUEUE_HEAD_TARGET = host_test_queue_head
 MODE_ENTRIES_TARGET = host_test_mode_entries
@@ -94,7 +95,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARG
      $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) \
      $(FILE_LIST_TARGET) \
      $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
-     $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(EVENT_STATE_TARGET) $(BUNDLE_HOST_TARGET) \
+     $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(EVENT_STATE_TARGET) $(BUNDLE_HOST_TARGET) $(FW_POLICY_TARGET) \
      $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(MODE_ENTRIES_TARGET) $(ROGERS_ONCE_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
      $(CAT_REPLY_PARSER_TARGET) $(AMP_BAND_PRIME_TARGET) $(SWR_SWEEP_TARGET) $(SWR_TRIP_TARGET) $(QMX_IQ_LINK_TARGET) $(QMX_MENU_READ_TARGET) $(QMX_MENU_WRITE_TARGET) $(QMX_IQ_CHANNEL_TARGET) \
      $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(BLOCK_ACTIVITY_TARGET) $(CORE_BUSY_TARGET) \
@@ -393,6 +394,14 @@ test_bundle_host.o: test_bundle_host.cpp
 $(BUNDLE_HOST_TARGET): $(BUNDLE_HOST_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
+FW_POLICY_OBJ = fw_policy.o test_fw_policy.o
+fw_policy.o: ../sidekick/main/fw_policy.c
+	$(CC) $(CFLAGS) -I../sidekick/main -c $< -o $@
+test_fw_policy.o: test_fw_policy.cpp
+	$(CXX) $(CXXFLAGS) -I../sidekick/main -c $< -o $@
+$(FW_POLICY_TARGET): $(FW_POLICY_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
 QSO_BROWSE_OBJ = qso_browse.o test_qso_browse.o
 qso_browse.o: ../components/qso_log/qso_browse.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
@@ -436,6 +445,7 @@ clean:
 	      $(WEB_MANIFEST_OBJ) $(WEB_MANIFEST_TARGET) \
 	      $(EVENT_STATE_OBJ) $(EVENT_STATE_TARGET) \
 	      $(BUNDLE_HOST_OBJ) $(BUNDLE_HOST_TARGET) \
+	      $(FW_POLICY_OBJ) $(FW_POLICY_TARGET) \
 	      $(DIAL_HISTORY_OBJ) $(DIAL_HISTORY_TARGET) \
 	      $(ADIF_LOGGER_OBJ) $(ADIF_LOGGER_TARGET) \
 	      $(CAT_REPLY_PARSER_OBJ) $(CAT_REPLY_PARSER_TARGET) \

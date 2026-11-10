@@ -28,12 +28,10 @@ Facts it rests on, checked 2026-11-10: the release host serves `/download/manife
 
 ### Download ([v697](#v697))
 
-The web app fetches the manifest over HTTPS, so the browser authenticates it. It POSTs to the sidekick, behind the pairing token: which board, the image URL, size and SHA-256. The sidekick downloads the image over plain HTTP into its staging slot and refuses it unless the hash matches. Tampering in transit can only make the download fail.
+Built, for the sidekick's own image: the request, the download, the checks, the trial and the roll back are in [sidekick.md](../architecture/sidekick.md), **Firmware updates**, and the page's side in [webapp.md](../architecture/webapp.md), **Settings › Updates**. The row stays open for its field check ([TEST_PLAN.md](../TEST_PLAN.md), Pending). Left for [hstv](#hstv):
 
-* **The phone makes one short request,** then polls for progress, so a screen lock mid-update does not matter.
-* **Updates need the sidekick on a network with internet** (home WiFi or the phone's hotspot). In AP mode they are refused with that reason.
-* **Staging:** the sidekick has no PSRAM, so an image is staged in flash, in its **inactive OTA slot** (3 MB): its own next image or a main board's. The `web` partition is too small for a main-board image, so one image is staged at a time, and a sidekick update and a main-board update run one after the other.
-* **Sidekick self-update:** download into the inactive slot, verify, set the boot partition, restart. The existing rollback covers an image that boots but cannot talk to the main board.
+* **A main board's image is staged in the same slot,** so one image is staged at a time, and a sidekick update and a main-board update run one after the other (the `web` partition is too small for a main-board image). `esp_ota_end()` refuses an image for another chip, so a main board's is written with the partition calls and checked by its hash and its app description alone. `/api/fw/start` answers `unsupported` for `board=main` until then.
+* **The sidekick's own update does not stop the radio yet** (**Decided**, above): the page only asks the operator to. It goes through update mode once that exists.
 
 ### Main board over Port A ([hstv](#hstv))
 
@@ -74,7 +72,7 @@ Only the next child is a row in the index ([ROADMAP.md](../ROADMAP.md), Backlog:
 
 In order: each needs the one before it.
 
-* <a id="v697"></a>**v697: the sidekick updates itself** (**Download**). **Done-when:** a sidekick updates from the web app; a forced bad image rolls back (field). **Lands in:** sidekick.md **Firmware updates** (its "not yet built" label goes); system.md (its label); TEST_PLAN Pending.
+* <a id="v697"></a>**v697: the sidekick updates itself** (**Download**). **Done-when:** a sidekick updates from the web app; a forced bad image rolls back (field). Built; open for the field check. **Lands in:** sidekick.md **Firmware updates**, webapp.md **Settings › Updates**, system.md and TEST_PLAN Pending, all done; this entry and **Download**'s first paragraph go when the check passes.
 * <a id="hstv"></a>**hstv: main boards update over Port A, P4 first** (**Main board over Port A**, **Update mode**). **Done-when:** the receiver `host_mock`-tested; a P4 updates from the web app with transfer time measured, and a forced bad image rolls back (field). **Lands in:** main_board.md (partitions, rollback, update mode); sidekick.md **Port A** (the `FW_*` messages, the transfer time); RELEASE_PROCESS.md (the image carries a version); system.md (its label); TEST_PLAN Pending; README and site audits (the one-time USB reflash for the new partition table).
 * <a id="yme5"></a>**yme5: the web app's update flow** (**Version pairing**, **The web app**). **Done-when:** **The web app**'s steps 1–6 walked with a QSO in progress, the phone locked mid-transfer, and a second phone open (field). **Lands in:** webapp.md **Screens**; TEST_PLAN Pending; site audit (Settings' Updates section, and Getting started if it says how to update).
 * <a id="nufg"></a>**nufg: versioned releases, and a version an operator can read.** After [yme5](#yme5); epic [eu2t](release-1-0.md) needs it. A build from a `v*` tag reports that version (`1.0.0`), any other build its SHA as today; a board running a versioned release is offered only the next versioned release, a `continuous` build only `continuous` ([RELEASE_PROCESS.md](../RELEASE_PROCESS.md)). **Done-when:** the manifest carries both channels; a board flashed from a `v*` tag shows its version in Settings and is offered the next tag, not `continuous` (field). **Lands in:** RELEASE_PROCESS.md (an image carries its version; what each channel publishes); webapp.md (**Updates**); TEST_PLAN Pending.

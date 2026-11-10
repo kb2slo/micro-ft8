@@ -14,8 +14,10 @@ CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
 # Roll back automatically if a new image never confirms itself. The app marks
-# itself valid only once the PORTA beacon is confirmed working, so an update
-# that boots but cannot talk reverts on its own rather than needing a cable.
+# itself valid only once it has sent its Port A beacons and is back on the
+# network, and restarts if it is not within five minutes (fw_policy.h,
+# fw_confirm_decide()), so an update that boots but cannot be reached reverts
+# on its own rather than needing a cable.
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
 # IDF default (10) is a global ceiling shared by every socket in the system --
