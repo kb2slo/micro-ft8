@@ -51,6 +51,15 @@ void amp_band_prime_request_cancel(void);
 int amp_band_prime_busy(void);
 int amp_band_prime_active(void);
 
+// No band primed yet, as at boot.
+#define AMP_BAND_PRIME_NONE (-1)
+
+// Whether a transmission due on `band` must prime first: priming is on and `band` is not the one last
+// primed or tried (`primed_band`). A band set while the radio was away (at boot, or with CAT down) was
+// never primed by its band change, so its first transmission primes it (docs/architecture/radio.md,
+// Prime an RF-sensing amplifier on a band change).
+int amp_band_prime_needed(int enabled, int primed_band, int band);
+
 // One state-machine step, issuing at most one CAT command. Tick at least every
 // 100 ms. A tick delayed by over a second while keyed de-keys and aborts.
 void amp_band_prime_tick(int64_t now_ms);

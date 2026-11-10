@@ -67,6 +67,11 @@ void note_cat_failure()
 
 }  // namespace
 
+int amp_band_prime_needed(int enabled, int primed_band, int band)
+{
+    return enabled && band >= 0 && band != primed_band;
+}
+
 amp_band_prime_start_result_t amp_band_prime_request_start(
     const radio_swr_io_t* io, amp_band_prime_event_fn on_event, void* user)
 {

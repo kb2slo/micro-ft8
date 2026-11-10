@@ -45,6 +45,9 @@ static uint8_t s_tx_tones[FT4_NN];
 static int s_tx_tone_idx = 0;
 static int s_tx_base_hz = 1500;
 static int64_t s_tx_slot_start_ms = 0;
+// When the transmission before this one started, 0 before any: a trip's log line says how long the radio was idle.
+static int64_t s_prev_tx_start_ms = 0;
+static int64_t s_this_tx_start_ms = 0;
 static int64_t s_tx_next_tone_time = 0;
 // First tone is due this long after the slot boundary (radio_control_tone_lead_ms()).
 static int s_tx_lead_ms = 0;
@@ -308,6 +311,8 @@ static TxStart tx_start(int skip_tones, std::string &skip_reason) {
 
     s_tx_base_hz = tx_base_hz;
     s_tx_slot_start_ms = (now_ms / slot_period) * slot_period;
+    s_prev_tx_start_ms = s_this_tx_start_ms;
+    s_this_tx_start_ms = now_ms;
     s_tx_tone_idx = tone_idx;
     s_tx_proto = proto;
     const int sym_ms = (int)roundf(proto->symbol_period * 1000.0f);
@@ -412,8 +417,12 @@ static void tx_swr_tripped(void) {
     s_swr_abort_until_ms = s_tx_cancel_until_ms;
 
     if (swr_trip_on_trip(s_swr_trip) == SwrTripAction::Retry) {
-        ESP_LOGW(TAG, "TX tripped the radio's SWR protection at tone %d: lock cleared, entry re-armed",
-                 s_tx_tone_idx);
+        // What the trip happened after, so a trip with no band change behind it can be told apart (radio.md, Prime an
+        // RF-sensing amplifier on a band change).
+        ESP_LOGW(TAG, "TX tripped the radio's SWR protection at tone %d: lock cleared, entry re-armed "
+                 "(%.1f MHz, amp primed band %d, %lld s after the previous TX)",
+                 s_tx_tone_idx, porta_p4_station_freq_hz() / 1e6, porta_p4_amp_primed_band(),
+                 s_prev_tx_start_ms ? (long long)((s_this_tx_start_ms - s_prev_tx_start_ms) / 1000) : -1LL);
         debug_log_line("TX slot " + std::to_string((long long)s_tx_slot_idx) +
                        " tripped SWR protection: lock cleared, not counted");
         swr_lock_clear("trip");
@@ -626,6 +635,11 @@ static void check_slot_boundary(void) {
         applied >= slot_idx - 1 &&
         !decode_pipeline_result_pending(ft4)) {
 
+        // A band never primed (set at boot or while CAT was down) primes now; this TX waits out the pulse and
+        // starts late in the same slot (docs/architecture/radio.md, Prime an RF-sensing amplifier).
+        if (porta_p4_amp_prime_before_tx()) {
+            return;
+        }
         ESP_LOGI(TAG, "TX trigger: starting TX in slot %lld (parity %d)", (long long)slot_idx,
                  slot_parity);
 

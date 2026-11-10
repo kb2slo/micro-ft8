@@ -21,6 +21,11 @@ bool porta_p4_station_amp_swr_guard(void);  // handle the QMX's SWR-protection t
 bool porta_p4_station_rx_ft4(void);  // Station's rx_ft4: also decode FT4 beside FT8, listen only
 // FT4's dial minus FT8's on the Station band, in Hz (ft4_band<N> and band<N>, else their defaults). Main loop.
 int32_t porta_p4_station_ft4_dial_offset_hz(void);
+// A transmission is due: prime the amplifier first when its band was never primed (set at boot or while CAT
+// was down; docs/architecture/radio.md, Prime an RF-sensing amplifier). True while that prime runs.
+bool porta_p4_amp_prime_before_tx(void);
+// The band last primed or tried, AMP_BAND_PRIME_NONE (-1) before any: for a trip's log line.
+int porta_p4_amp_primed_band(void);
 int porta_p4_station_tx_min_delay_ms(void);  // least TX;-to-first-RF gap, 0..500
 void porta_p4_companion_status_tick(void);
 void porta_p4_tx_hud_tick(void);

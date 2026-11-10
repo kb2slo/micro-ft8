@@ -118,6 +118,13 @@ int main()
                last_event.abort_reason == AMP_BAND_PRIME_ABORT_CANCELLED,
            "cancel is reported");
 
+    // Before a transmission: prime a band set while the radio was away, once.
+    expect(amp_band_prime_needed(1, AMP_BAND_PRIME_NONE, 3), "boot: the first transmission primes");
+    expect(amp_band_prime_needed(1, 5, 3), "a band set while CAT was down: its first transmission primes");
+    expect(!amp_band_prime_needed(1, 3, 3), "a band already primed or tried: no prime");
+    expect(!amp_band_prime_needed(0, AMP_BAND_PRIME_NONE, 3), "priming off: never");
+    expect(!amp_band_prime_needed(1, AMP_BAND_PRIME_NONE, -1), "no band selected: never");
+
     if (fails) {
         fprintf(stderr, "%d amp band-prime test(s) failed\n", fails);
         return 1;
