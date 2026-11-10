@@ -184,10 +184,11 @@ the only place every agent and every person can see them — see "Memory lives i
   `https://github.com/kb2slo/micro-ft8/blob/main/docs/ROADMAP.md#u4dw`, on `main` when the row is there, or on the
   pushed branch that holds it; for a row only on an unpushed branch, say so and gloss it, since no link can reach it
   yet. `tools/check_docs.py` fails a roadmap link whose anchor is gone. Left bare: commit messages and pull request titles, code comments, code spans and headings.
-- **Gloss roadmap IDs in chat, too.** Write "u4dw (a watchdog that stops a runaway transmitter)", linked as
-  above, not a bare "u4dw": a link takes a click, a gloss takes none, and nobody holds the ID-to-topic
-  mapping in their head. Applies to every row ID (the four-character ones and the older `B*`/`I*`) and epic
-  section numbers. Test-plan row IDs are fine bare when the surrounding text already says what the check does.
+- **In chat, name a row, epic or child by what it is, not its ID** (maintainer, 2026-11-09): "the transmit
+  watchdog that stops a runaway transmitter", linked as above where a link helps, not "u4dw". Nobody holds the
+  ID-to-topic mapping in their head. Give the ID only where a decision or an edit needs the exact row, and then
+  beside the name. Applies to every row ID (the four-character ones and the older `B*`/`I*`) and epic section
+  numbers. Test-plan row IDs are fine bare when the surrounding text already says what the check does.
   **When asking for a decision, put all the
   context it needs in the chat itself** — what the row said, what was found, what each option does — so the
   person you work for never has to open a row, an epic file, or an earlier message to answer.
