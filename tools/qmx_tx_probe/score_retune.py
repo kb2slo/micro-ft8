@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Score a no-key retune run: do decodes thin out after the dial moves away and back? (row xvfn)
+"""Score a no-key retune run: do decodes thin out after the dial moves away and back? (docs/architecture/radio.md, TX timing on a QMX)
 
     python3 tools/qmx_tx_probe/score_retune.py REC_DIR PROBE_LOG [--ft8-center-hz 13500] [--ft4-center-hz -13000]
 

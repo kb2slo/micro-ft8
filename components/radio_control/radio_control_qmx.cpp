@@ -49,7 +49,7 @@ static esp_err_t qmx_sync_frequency_mode(int freq_hz) {
     return err;
 }
 
-// The receive dial to return to after a transmission that retuned (row xvfn); 0 when none did.
+// The receive dial to return to after a transmission that retuned (radio.md, TX timing on a QMX); 0 when none did.
 static int s_restore_dial_hz = 0;
 
 static esp_err_t qmx_begin_tx(int tx_dial_hz, int tx_base_hz, int rx_dial_hz) {

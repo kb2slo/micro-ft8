@@ -449,7 +449,7 @@ void porta_p4_companion_status_tick(void) {
     s_last_active_count = filled;
 }
 
-// Where the main board means the radio to be now: during a transmission that retuned it (row xvfn), the
+// Where the main board means the radio to be now: during a transmission that retuned it (radio.md, TX timing on a QMX), the
 // dial it retuned to; otherwise the station's. The config poll's want_hz and every RADIO_STATE carry it.
 static int want_dial_hz(void) {
     const int retuned = radio_control_tx_retuned_hz();
@@ -468,7 +468,7 @@ void porta_p4_radio_push_tick(void) {
         return;
     }
     s_last_ms = now_ms;
-    // A transmission that retuned the radio (row xvfn) is ours too: hold back while it lasts and for the quiet
+    // A transmission that retuned the radio (radio.md, TX timing on a QMX) is ours too: hold back while it lasts and for the quiet
     // window after, the radio's answer to the retune back included. Seen on this 100 ms tick, so the window
     // runs from within 100 ms of the retune's end.
     static uint32_t s_retuned_seen_ms = 0;

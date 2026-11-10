@@ -1,6 +1,6 @@
 # QMX retune corpus, 2026-11-08
 
-Row [xvfn](../../../../docs/roadmap/several-channels.md#xvfn) (FT4 replies on 40 m, below FT8's dial): does
+FT4 replies on 40 m, below FT8's dial ([radio.md](../../../../docs/architecture/radio.md), **TX timing on a QMX**): does
 a QMX's receive lose anything after its dial moves to FT4's and back for a transmission? The audio is not in
 git. It is the release [`corpus-2026-11-08`](https://github.com/kb2slo/micro-ft8/releases/tag/corpus-2026-11-08),
 one tar holding the run's 60 WAVs and its `manifest.jsonl`. The manifest here is a copy (`40m.jsonl`), so every

@@ -50,7 +50,7 @@ static int g_history_notes = 0;
 int64_t rtc_now_ms() { return 0; }
 void dial_history_note(int64_t, uint32_t) { ++g_history_notes; }
 
-// A transmission that retunes (row xvfn, tx_timing.h tx_plan()): the backend gets both dials, the dispatcher
+// A transmission that retunes (tx_timing.h tx_plan(); radio.md, TX timing on a QMX): the backend gets both dials, the dispatcher
 // says the radio is retuned until end_tx(), and the dial's history, which labels decodes, keeps the receive dial.
 static void retune()
 {

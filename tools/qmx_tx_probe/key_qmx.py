@@ -6,7 +6,7 @@
 
 Per transmission: FA<dial>; TX; then one TA<base + tone * spacing>; per symbol, the first at the
 slot start + 0.5 s (the P4's lead), then TA0; 5 ms RX;. With --tx-dial, the transmission goes out
-at --tx-dial plus the tones instead (row xvfn): --via split puts VFO B there (SP1; FB; before TX;,
+at --tx-dial plus the tones instead (docs/architecture/radio.md, TX timing on a QMX): --via split puts VFO B there (SP1; FB; before TX;,
 FB<dial>; SP0; FR0; FT0; after RX;), --via retune moves VFO A there and back (FA). Each set is read
 back and timed before keying; a read-back that does not match skips that transmission.
 --every K transmits in one slot of every K (default 2). --no-key does the split or retune at the

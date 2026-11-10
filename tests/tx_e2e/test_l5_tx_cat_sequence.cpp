@@ -142,7 +142,7 @@ static void ft4_beside_ft8() {
     check(tx_base_hz(1500, 6000) == 7500, "20 m: 1,500 Hz above FT4's dial is TA 7,500", label);
     check(tx_tones_in_range(tx_base_hz(1500, 6000), 7500.0f + 3 * 20.8333f), "20 m's FT4 is in range", label);
     check(!tx_tones_in_range(tx_base_hz(2500, -26500), -24000.0f), "40 m's FT4, below the dial, is not", label);
-    // Where each goes (tx_plan(), row xvfn): 20 m as a far TA from FT8's dial, 40 m by a retune to FT4's own.
+    // Where each goes (tx_plan(); radio.md, TX timing on a QMX): 20 m as a far TA from FT8's dial, 40 m by a retune to FT4's own.
     const float ft4_span = 3 * 20.8333f;
     const TxPlan p20 = tx_plan(1500, 6000, ft4_span);
     check(p20.dial_shift_hz == 0 && p20.base_hz == 7500, "20 m's FT4: no retune, TA 7,500", label);

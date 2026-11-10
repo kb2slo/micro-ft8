@@ -39,7 +39,7 @@ The dial stays at `--dial` (default 14.074 MHz, FT8's); `--base 7500` puts FT4 a
 1,500 Hz. Each spot prints the receiver's reported frequency: a tone the radio clamped would show near the dial plus
 the clamp, not where it was aimed. If the control draws no spots, the keying is at fault, not the tone.
 
-## Below the dial: split or retune (row [xvfn](../../docs/roadmap/several-channels.md#xvfn))
+## Below the dial: split or retune
 
 A `TA` under 10 Hz keys a QMX up, so a channel below the receive dial (40 m's FT4, 26.5 kHz below FT8's) cannot
 go out as a far tone. `--tx-dial` moves the transmission there, `--via` chooses how:

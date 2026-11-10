@@ -56,7 +56,7 @@ inline bool tx_tones_in_range(int base_hz, float top_tone_hz) {
     return base_hz >= kTxToneMinHz && top_tone_hz <= (float)kTxToneMaxHz;
 }
 
-// Where a transmission goes (row xvfn, docs/roadmap/several-channels.md, Decided): the dial the radio is set
+// Where a transmission goes (docs/architecture/radio.md, TX timing on a QMX): the dial the radio is set
 // to for it, as a shift from the receive dial, and its base TA tone. A channel whose tones fit as a far TA tone
 // from the receive dial goes out that way, unshifted (20 m's FT4). One that does not, such as 40 m's FT4,
 // 26.5 kHz below FT8's dial, retunes: the dial moves to the channel's own for the transmission and back after
