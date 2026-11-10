@@ -5,15 +5,15 @@ file is the working agreement, this one is what CI publishes and what a human mu
 
 Two paths, both defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). Nothing else publishes.
 
-| Path | Trigger | Job | Tag | PoE-P4 asset | Sidekick | Source | Getting-started sheet |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Rolling | push to `main` that can change the binary | `release-main` | `continuous`, force-moved every run | `YYYYMMDD-microft8-poe-p4-<commit>.bin` | `YYYYMMDD-microft8-sidekick-<commit>.bin` | `YYYYMMDD-microft8-source-<commit>.tar.gz` | `YYYYMMDD-microft8-getting-started-<commit>.pdf` |
-| Versioned | push of a tag matching `v*` | `release` | the tag you pushed, immovable | `MicroFT8-PoE-P4-<tag>-Merged.bin` | — | — | `MicroFT8-Getting-Started-<tag>.pdf` |
+| Path | Trigger | Job | Tag | PoE-P4 asset | Sidekick | OTA images | Source | Getting-started sheet |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Rolling | push to `main` that can change the binary | `release-main` | `continuous`, force-moved every run | `YYYYMMDD-microft8-poe-p4-<commit>.bin` | `YYYYMMDD-microft8-sidekick-<commit>.bin` | `YYYYMMDD-microft8-poe-p4-ota-<commit>.bin`, `YYYYMMDD-microft8-sidekick-ota-<commit>.bin` | `YYYYMMDD-microft8-source-<commit>.tar.gz` | `YYYYMMDD-microft8-getting-started-<commit>.pdf` |
+| Versioned | push of a tag matching `v*` | `release` | the tag you pushed, immovable | `MicroFT8-PoE-P4-<tag>-Merged.bin` | — | — | — | `MicroFT8-Getting-Started-<tag>.pdf` |
 
 Both rolling and versioned publish the M5Stack Unit PoE-P4 merged image (esp32p4, 0x0, custom LittleFS
 `storage` partition in `poe_p4/partitions.csv`). Rolling also publishes a **standalone merged sidekick** image
 (merged by `tools/merge_sidekick_bin.sh` in the sidekick job) and a **history-free source tarball**
-(vendored `ft8_lib`, no `.git`). The firmware artifacts are skipped entirely for docs-only commits (the
+(vendored `ft8_lib`, no `.git`), and each board's **OTA image** (below). The firmware artifacts are skipped entirely for docs-only commits (the
 `changes` path filter), so a roadmap-only merge neither rebuilds nor re-tags any binary.
 
 Both paths also publish the **getting-started sheet**, the one-page PDF that goes in the box with a unit.
@@ -23,10 +23,17 @@ nothing, so the posted PDF can trail the site's Getting started page, which depl
 is set in fonts the build embeds (`webapp/tools/getting_started.mjs`), so CI's copy breaks the same way
 as one printed on a Mac.
 
-**No image carries a version identity.** The ADV's `rel`/`dev` build machinery went with the ADV (dropped 2026-10-02),
-so every release ships whatever it builds to at that commit, with no version string in the image. The web
-app will show one once the P4 reports its version over Port A — which OTA updates need (row [hstv](roadmap/ota-updates.md#hstv),
-epic [ukk6](roadmap/ota-updates.md)).
+**An image's version is its commit.** Both projects set `PROJECT_VER` to the short SHA
+(`tools/git_version.cmake`), with `-dirty` added for a build from a changed tree, so it is in the image's app
+description and in each board's boot log (`App version`). No image carries a release number: a build from a
+`v*` tag reports its SHA like any other, until versioned releases do (row [nufg](roadmap/ota-updates.md#nufg)).
+The web app shows the sidekick's version; the P4's waits on its reporting one over Port A (row
+[hstv](roadmap/ota-updates.md#hstv), epic [ukk6](roadmap/ota-updates.md)).
+
+**An OTA image is a board's app image alone** (`poe_p4.bin`, `sidekick.bin`), which is what an over-the-air
+update writes into an OTA slot; the merged `0x0` images stay for first install and recovery over USB. Nothing
+installs one yet: the sidekick's download is row [v697](roadmap/ota-updates.md#v697). The manifest describes
+each in an `ota` entry under its board (**Public Cloudflare mirror**).
 
 ## The rolling `continuous` release
 
@@ -58,16 +65,18 @@ Corollaries an agent should not re-derive:
 ## Public Cloudflare mirror (anonymous downloads)
 
 GitHub's `continuous` assets carry dated names that change every run, so nothing can link to them for long. After
-each successful `release-main`, CI also mirrors the four rolling payloads to Cloudflare **R2** bucket
+each successful `release-main`, CI also mirrors the rolling payloads to Cloudflare **R2** bucket
 `micro-ft8-downloads`, served under the site origin by [`webapp/worker.js`](../webapp/worker.js), whose `/download/*` route is one of the two that run the Worker ([webapp.md](architecture/webapp.md), **Serving the site**):
 
 | Stable URL | Contents |
 | --- | --- |
 | `https://micro-ft8.kalikstein.com/download/microft8-poe-p4-continuous.bin` | PoE-P4 merged image |
 | `https://micro-ft8.kalikstein.com/download/microft8-sidekick-continuous.bin` | Sidekick merged image |
+| `https://micro-ft8.kalikstein.com/download/microft8-poe-p4-continuous-ota.bin` | PoE-P4 OTA image |
+| `https://micro-ft8.kalikstein.com/download/microft8-sidekick-continuous-ota.bin` | Sidekick OTA image |
 | `https://micro-ft8.kalikstein.com/download/microft8-source-continuous.tar.gz` | Source tarball |
 | `https://micro-ft8.kalikstein.com/download/microft8-getting-started-continuous.pdf` | Getting-started sheet |
-| `https://micro-ft8.kalikstein.com/download/manifest.json` | Commit, dated filenames, SHA-256 |
+| `https://micro-ft8.kalikstein.com/download/manifest.json` | Commit, dated filenames, SHA-256; each board's `ota` entry |
 
 Human entry: [`https://micro-ft8.kalikstein.com/downloads.html`](https://micro-ft8.kalikstein.com/downloads.html).
 
@@ -75,6 +84,19 @@ Human entry: [`https://micro-ft8.kalikstein.com/downloads.html`](https://micro-f
 remains the operator/dev record; R2 exists so the site and the printed sheet can link to names that never change.
 Stable keys are overwritten every run. Firmware merges do **not** redeploy the Worker (`pages.yml` stays
 path-filtered to `webapp/**`).
+
+**The manifest is written by `tools/make_manifest.py`,** before `release-main` publishes anything. Under
+`assets`, each of `poe_p4`, `sidekick`, `source` and `getting_started` has `stable` (its name here),
+`filename` (its dated name on GitHub) and `sha256`. The two boards also have an `ota` entry: `stable`,
+`filename`, `size` in bytes, `sha256`, `version` (the string built into the image) and `proto` (the
+`PORTA_PROTO_VERSION` that build speaks). The script reads the version out of the image and refuses to write a
+manifest, which fails the job with nothing published, when an OTA image is not an app image, was built as
+the other board's project, reports a version other than the commit's, or is larger than the sidekick's 3 MB
+OTA slot, where every image is staged. Host-tested (`tools/test_make_manifest.py`).
+
+**The stable files are replaced one at a time, the manifest last.** For the seconds between, the old manifest
+names a hash the new image does not have, so a download checked against it fails and is retried; it cannot
+install the wrong image.
 
 ### One-time setup
 

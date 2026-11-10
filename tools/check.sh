@@ -48,7 +48,7 @@ triggers() {
     sim)             echo 'components/* host_mock/* sidekick/main/* webapp/tests/*' ;;
     tx_e2e)          echo 'components/* tests/tx_e2e/*' ;;
     decode_recall)   echo 'components/* tools/decode_recall/* tools/iq_convert/*' ;;
-    tools)           echo 'tools/qmx_record.py tools/hl2_record.py tools/hl2_pcap.py tools/test_*.py' ;;
+    tools)           echo 'tools/qmx_record.py tools/hl2_record.py tools/hl2_pcap.py tools/make_manifest.py tools/test_*.py components/porta_proto/include/porta_proto.h sidekick/partitions.csv' ;;
     getting_started) echo 'webapp/app/* webapp/tools/* webapp/getting-started.md' ;;
     # The paths filter of ci.yml's `changes` job, which gates CI's firmware jobs.
     sidekick|p4)     echo 'components/* sidekick/* poe_p4/* idf_component.yml */idf_component.yml tools/*.cmake tools/check_ram_budget.py .github/workflows/ci.yml' ;;
@@ -307,9 +307,10 @@ check_decode_recall() {
   python3 tools/decode_recall/test_lookahead.py
 }
 
-# The recorders and the capture converter, each against synthetic streams: no
-# radio, no audio device, no packages.
+# The recorders, the capture converter and the download manifest, each against
+# synthetic input: no radio, no audio device, no build, no packages.
 check_tools() {
+  python3 tools/test_make_manifest.py
   python3 tools/test_qmx_record.py
   python3 tools/test_hl2_record.py
   python3 tools/test_hl2_pcap.py

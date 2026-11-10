@@ -1,6 +1,6 @@
 # OTA updates (epic ukk6)
 
-After the first install, every firmware update, for every board, happens over the air from the web app. Rows: [wanw](#wanw), [v697](#v697), [hstv](#hstv), [yme5](#yme5), [nufg](#nufg) ([ROADMAP.md](../ROADMAP.md)).
+After the first install, every firmware update, for every board, happens over the air from the web app. Rows: [v697](#v697), [hstv](#hstv), [yme5](#yme5), [nufg](#nufg) ([ROADMAP.md](../ROADMAP.md)).
 
 ## Goal
 
@@ -24,11 +24,7 @@ After the first install, every firmware update, for every board, happens over th
 
 ## Design
 
-Facts it rests on, checked 2026-11-06: the release host serves `/download/manifest.json` over plain HTTP as well as HTTPS, with no redirect; each build's version string is its git SHA (`PROJECT_VER`, `tools/git_version.cmake`); `porta_proto.h` reserves `PORTA_MSG_FW_BEGIN`/`FW_CHUNK`/`FW_END` (`0x10`–`0x12`), unused; the sidekick already has two 3 MB OTA slots and rollback (`sidekick/partitions.csv`, `esp_ota_mark_app_valid_cancel_rollback()` in `sidekick/main/main.c`); the P4 has one `factory` slot, no rollback, no build version, and sends no HELLO (`poe_p4/partitions.csv`, `poe_p4/CMakeLists.txt`).
-
-### Manifest ([wanw](#wanw))
-
-OTA writes an **app image**, not the merged `0x0` image. CI adds, per board, an `ota` entry: file, size, SHA-256, version (the SHA), and the `PORTA_PROTO_VERSION` it speaks. The merged images stay for first install.
+Facts it rests on, checked 2026-11-10: the release host serves `/download/manifest.json` over plain HTTP as well as HTTPS, with no redirect; each build's version string is its git SHA (`PROJECT_VER`, `tools/git_version.cmake`), the P4's included, and the manifest's `ota` entry carries it ([RELEASE_PROCESS.md](../RELEASE_PROCESS.md), **Public Cloudflare mirror**); `porta_proto.h` reserves `PORTA_MSG_FW_BEGIN`/`FW_CHUNK`/`FW_END` (`0x10`–`0x12`), unused; the sidekick already has two 3 MB OTA slots and rollback (`sidekick/partitions.csv`, `esp_ota_mark_app_valid_cancel_rollback()` in `sidekick/main/main.c`); the P4 has one `factory` slot, no rollback, and sends no HELLO (`poe_p4/partitions.csv`).
 
 ### Download ([v697](#v697))
 
@@ -41,7 +37,7 @@ The web app fetches the manifest over HTTPS, so the browser authenticates it. It
 
 ### Main board over Port A ([hstv](#hstv))
 
-* **A build version for the P4** (`tools/git_version.cmake`, as the sidekick's), and **the main board sends HELLO** with its `PORTA_PROTO_VERSION` and build version, on the sidekick's cadence. The sidekick adds both to its config JSON.
+* **The main board sends HELLO** with its `PORTA_PROTO_VERSION` and build version, on the sidekick's cadence. The sidekick adds both to its config JSON.
 * **Partitions:** `nvs`, `otadata`, `phy_init`, `ota_0` and `ota_1` (4 MB each), `storage` 3 MB, in 16 MB. A new table is written only over USB, so each board gets it once, from the merged image; `storage` is lost (pre-alpha). `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE` on.
 * **Transfer:** after the image is staged, verified, and the board is in update mode, the sidekick sends `FW_BEGIN` (size, SHA-256, version), `FW_CHUNK` (offset, up to ~240 bytes, each acknowledged), `FW_END`. The main board writes the chunks into its inactive slot (`esp_ota_begin/write/end`), checks the SHA-256 itself, and refuses the image unless the version embedded in it (`esp_ota_get_partition_description`) equals `FW_BEGIN`'s; then it sets the boot partition and restarts.
 * **An interrupted transfer resumes** from the last acknowledged offset: a transfer takes minutes.
@@ -74,11 +70,10 @@ While an update runs, the app suppresses its lost-contact banner and its device-
 
 ## Children
 
-Only the next child is a row in the index ([ROADMAP.md](../ROADMAP.md), Backlog: [wanw](#wanw)); the others wait here, in order, until it ships.
+Only the next child is a row in the index ([ROADMAP.md](../ROADMAP.md), Backlog: [v697](#v697)); the others wait here, in order, until it ships.
 
 In order: each needs the one before it.
 
-* <a id="wanw"></a>**wanw: CI publishes app-only OTA images** (**Manifest**). **Done-when:** `/download/manifest.json` carries a per-board `ota` entry (file, size, SHA-256, version, protocol version) and the files are served. **Lands in:** RELEASE_PROCESS.md (what a release publishes); TEST_PLAN's Automated table if CI gains a check of the manifest.
 * <a id="v697"></a>**v697: the sidekick updates itself** (**Download**). **Done-when:** a sidekick updates from the web app; a forced bad image rolls back (field). **Lands in:** sidekick.md **Firmware updates** (its "not yet built" label goes); system.md (its label); TEST_PLAN Pending.
 * <a id="hstv"></a>**hstv: main boards update over Port A, P4 first** (**Main board over Port A**, **Update mode**). **Done-when:** the receiver `host_mock`-tested; a P4 updates from the web app with transfer time measured, and a forced bad image rolls back (field). **Lands in:** main_board.md (partitions, rollback, update mode); sidekick.md **Port A** (the `FW_*` messages, the transfer time); RELEASE_PROCESS.md (the image carries a version); system.md (its label); TEST_PLAN Pending; README and site audits (the one-time USB reflash for the new partition table).
 * <a id="yme5"></a>**yme5: the web app's update flow** (**Version pairing**, **The web app**). **Done-when:** **The web app**'s steps 1–6 walked with a QSO in progress, the phone locked mid-transfer, and a second phone open (field). **Lands in:** webapp.md **Screens**; TEST_PLAN Pending; site audit (Settings' Updates section, and Getting started if it says how to update).
