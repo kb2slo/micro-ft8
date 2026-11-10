@@ -37,6 +37,7 @@ Both boards' updates are built and their field checks are owed ([TEST_PLAN.md](.
 Still open for [hstv](#hstv):
 
 * **Time:** unmeasured. Stop-and-wait, one answer per chunk, at `PORTA_BAUD`; a window on `FW_CHUNK` is **Later**.
+* **The QMX after the restart:** a P4 reset with the QMX streaming has wedged the QMX's USB three times out of three ([main_board.md](../architecture/main_board.md), **Two USB-C ports**), and an update ends in one. As built the P4 closes nothing first and the result tells the operator to switch the radio off and on if it does not reconnect. The bench says how often it happens, and whether closing the audio and CAT before the restart is worth building.
 * **USB audio in update mode:** the design said update mode stops USB audio. As built, nothing reads the QMX's stream but the P4 leaves it open, since closing and reopening it is where the USB stack has failed before. The bench decides: if flash writes with the stream open disturb USB, close it.
 
 ### The web app ([yme5](#yme5))

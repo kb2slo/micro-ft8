@@ -1467,7 +1467,11 @@ async function followFw() {
   fwShow('result', {
     title: end ? end.text : 'No answer from the sidekick',
     steps: end && !end.ok && fwStatus && fwStatus.state === 'failed' ? FwUpdates.stepRows(fwStatus, true) : [],
-    note: end ? 'The radio is stopped until you resume.' : 'Check that this phone is on the sidekick’s network, then reload.',
+    // A main board's restart can leave a QMX's USB wedged until the QMX restarts (main_board.md, Two USB-C ports).
+    note: !end ? 'Check that this phone is on the sidekick’s network, then reload.'
+      : 'The radio is stopped until you resume.' +
+        (mine && mine.steps.some(function (o) { return o.board === 'main'; })
+          ? ' The main board restarted: if the radio does not reconnect, switch the radio off and on.' : ''),
     failed: failed, retry: failed && !!end, resume: !!end, cancel: 'Close',
   });
   checkFwUpdates();
