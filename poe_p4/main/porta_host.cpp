@@ -105,7 +105,7 @@ static void station_seed_adv_defaults(void) {
     s_station.offset_src = 0;  // RANDOM
     s_station.radio = 2;       // QMX (also station_settings_init)
     s_station.gps_baud = 115200;
-    s_station.comment1 = "MicroFT8 /Radio";
+    s_station.comment1 = "micro-ft8 /Radio";
     s_station.active_bands = "80 40 30 20 17 15 12 10";
     s_station.tries = AUTOSEQ_TRIES;
     s_station.protocol_ft4 = false;
