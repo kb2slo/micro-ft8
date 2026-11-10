@@ -1002,7 +1002,7 @@ void porta_emit_usb_status(bool present, uint8_t kind, uint16_t vid, uint16_t pi
   enqueue(buf, n);
 }
 
-void porta_emit_radio_state(uint32_t freq_hz, bool tx, uint8_t mode, bool split) {
+void porta_emit_radio_state(uint32_t freq_hz, bool tx, uint8_t mode, bool split, uint32_t want_hz) {
   if (!s_running) return;
   porta_radio_state_event_t r = {};
   r.epoch_secs = host_epoch_secs();
@@ -1010,6 +1010,7 @@ void porta_emit_radio_state(uint32_t freq_hz, bool tx, uint8_t mode, bool split)
   r.tx = tx ? 1 : 0;
   r.mode = mode;
   r.split = split ? 1 : 0;
+  r.want_hz = want_hz;
   uint8_t buf[PORTA_PROTO_MAX_FRAME];
   const size_t n = porta_proto_encode_radio_state(&r, buf, sizeof(buf));
   enqueue(buf, n);

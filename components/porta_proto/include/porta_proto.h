@@ -95,7 +95,9 @@ extern "C" {
 // slot bar's strip. A v11 peer refuses the longer frame. Both ends are flashed together.
 // v13 (2026-11-09): the RADIO_SET_PTT action (set the QMX's PTT outputs for an amplifier). An older
 // host NAKs it as unknown. Both ends are flashed together.
-#define PORTA_PROTO_VERSION 13u
+// v14 (2026-11-09): RADIO_STATE carries the wanted dial. A v13 peer refuses the longer frame. Both ends
+// are flashed together.
+#define PORTA_PROTO_VERSION 14u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -353,13 +355,16 @@ bool porta_proto_parse_usb_status(const porta_frame_t *f, porta_usb_status_event
 
 // RADIO_STATE: what the radio last said of itself, sent when it changes (a knob turn, a mode or
 // split change, TX starting or ending). The fields are IF;'s: `tx` 1 = transmitting, `mode` is
-// the MD digit, `split` 1 = on.
+// the MD digit, `split` 1 = on. `want_hz` is the dial the main board means the radio to be on at the
+// same instant: the station's, or a retuned transmission's. The page compares the radio's report only
+// with the wanted dial sent with it (docs/architecture/webapp.md, The radio bar).
 typedef struct {
     uint32_t epoch_secs;
     uint32_t freq_hz;
     uint8_t  tx;
     uint8_t  mode;
     uint8_t  split;
+    uint32_t want_hz;
 } porta_radio_state_event_t;
 
 size_t porta_proto_encode_radio_state(const porta_radio_state_event_t *r,

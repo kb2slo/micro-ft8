@@ -532,6 +532,7 @@ static void test_radio_state_event()
     in.tx = 1;
     in.mode = 6;
     in.split = 1;
+    in.want_hz = 7047500u;
     size_t n = porta_proto_encode_radio_state(&in, buf, sizeof(buf));
     auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
     check(got.size() == 1, "radio_state event decodes");
@@ -541,6 +542,7 @@ static void test_radio_state_event()
         check(out.epoch_secs == 1789012345u, "radio_state epoch round-trips");
         check(out.freq_hz == 14074300u, "radio_state frequency round-trips");
         check(out.tx == 1 && out.mode == 6 && out.split == 1, "radio_state flags round-trip");
+        check(out.want_hz == 7047500u, "radio_state wanted dial round-trips");
         porta_usb_status_event_t usb;
         check(!porta_proto_parse_usb_status(&got[0], &usb),
               "a radio_state event is not a usb_status event");
@@ -1430,8 +1432,9 @@ static void test_event_json()
     radio.freq_hz = 14074300;
     radio.tx = 1;
     radio.mode = 6;
+    radio.want_hz = 7047500;
     check(porta_event_json_radio(row, sizeof(row), 10, &radio) > 0, "radio row encodes");
-    check_row(row, "{\"s\":10,\"t\":1700000004,\"d\":7,\"hz\":14074300,\"tx\":1,\"md\":6,\"sp\":0}",
+    check_row(row, "{\"s\":10,\"t\":1700000004,\"d\":7,\"hz\":14074300,\"tx\":1,\"md\":6,\"sp\":0,\"want\":7047500}",
               "radio row");
 
     porta_sweep_event_t sweep;

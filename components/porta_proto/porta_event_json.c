@@ -155,9 +155,9 @@ size_t porta_event_json_radio(char *out, size_t cap, uint32_t seq,
     }
     const int n = snprintf(out, cap,
                            "{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":7,"
-                           "\"hz\":%" PRIu32 ",\"tx\":%u,\"md\":%u,\"sp\":%u}",
+                           "\"hz\":%" PRIu32 ",\"tx\":%u,\"md\":%u,\"sp\":%u,\"want\":%" PRIu32 "}",
                            seq, ev->epoch_secs, ev->freq_hz, ev->tx ? 1u : 0u, ev->mode,
-                           ev->split ? 1u : 0u);
+                           ev->split ? 1u : 0u, ev->want_hz);
     return finish(out, cap, n);
 }
 

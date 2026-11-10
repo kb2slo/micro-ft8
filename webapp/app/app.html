@@ -1880,12 +1880,15 @@ function radioReadBack(cfg) {
            mode: parseInt(cfg.radio_mode, 10), split: yn(cfg.radio_split) === 'yes' };
 }
 
-// A RADIO_STATE event (d 7) in the poll's own keys, so radioReadBack() reads it unchanged.
+// A RADIO_STATE event (d 7) in the poll's own keys, so radioReadBack() reads it unchanged: the radio's
+// report and the wanted dial of the same instant (want_hz), never one without the other (webapp.md, The
+// radio bar).
 function applyRadioPush(cfg, e) {
   cfg.radio_hz = String(e.hz);
   cfg.radio_tx = e.tx ? '1' : '0';
   cfg.radio_mode = String(e.md);
   cfg.radio_split = e.sp ? '1' : '0';
+  if (e.want) cfg.want_hz = String(e.want);
 }
 
 // 'none' | 'unknown' | 'found' | 'ready' | 'drift' | 'lost' | 'nodecode'. The radio is "where we put it" when

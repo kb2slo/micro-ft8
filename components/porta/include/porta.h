@@ -103,8 +103,9 @@ void porta_emit_tx_not_keyed(const char* text, int offset_hz, const char* reason
 void porta_emit_usb_status(bool present, uint8_t kind, uint16_t vid, uint16_t pid);
 
 // The radio's own state changed (RADIO_STATE, see porta_proto.h): frequency in Hz, TX or RX, the
-// MD digit, split. Not for a state the main board set itself; the caller sends what the radio said.
-void porta_emit_radio_state(uint32_t freq_hz, bool tx, uint8_t mode, bool split);
+// MD digit, split, and the dial the main board wants at the same instant. Not for a state the main
+// board set itself; the caller sends what the radio said.
+void porta_emit_radio_state(uint32_t freq_hz, bool tx, uint8_t mode, bool split, uint32_t want_hz);
 
 // Band activity for `n` blocks of `block_ms`, the first at block `first` of slot `slot_idx`: a
 // level and a PORTA_ACTIVITY_MASK_BYTES mask per block, cells spanning lo_hz..hi_hz (ACTIVITY,

@@ -64,4 +64,16 @@ assert.strictEqual(ctx.radioChipState(cfg), 'drift', 'a knob turn during Tune st
 cfg.tune = '0';
 ctx.applyRadioPush(cfg, { hz: 14074000, tx: 0, md: 3, sp: 0 });
 assert.strictEqual(ctx.radioChipState(cfg), 'drift', 'CW once Tune is off is a move');
+
+// A transmission that retunes (row xvfn): the radio leaves the station's dial for FT4's and comes back. Each
+// push carries the wanted dial of its own instant, so the return is not read against the poll's older one
+// (webapp.md, The radio bar). Field-found 2026-11-09: without it the bar read Radio moved for up to a poll.
+cfg.want_hz = '7074000';
+cfg.radio_hz = '7074000';
+ctx.applyRadioPush(cfg, { hz: 7047500, tx: 1, md: 6, sp: 0, want: 7047500 });
+assert.strictEqual(ctx.radioChipState(cfg), 'ready', 'a retuned transmission, with its own wanted dial, reads ready');
+ctx.applyRadioPush(cfg, { hz: 7074000, tx: 0, md: 6, sp: 0, want: 7074000 });
+assert.strictEqual(ctx.radioChipState(cfg), 'ready', 'a retune\'s return, with its own wanted dial, reads ready');
+ctx.applyRadioPush(cfg, { hz: 7075000, tx: 0, md: 6, sp: 0, want: 7074000 });
+assert.strictEqual(ctx.radioChipState(cfg), 'drift', 'a knob turn is still Radio moved');
 console.log('radio push: all checks passed');

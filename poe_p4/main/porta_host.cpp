@@ -428,6 +428,13 @@ void porta_p4_companion_status_tick(void) {
     s_last_active_count = filled;
 }
 
+// Where the main board means the radio to be now: during a transmission that retuned it (row xvfn), the
+// dial it retuned to; otherwise the station's. The config poll's want_hz and every RADIO_STATE carry it.
+static int want_dial_hz(void) {
+    const int retuned = radio_control_tx_retuned_hz();
+    return retuned ? retuned : station_freq_hz();
+}
+
 // The radio pushes its state when it changes (AI2;); send what it settled on as one RADIO_STATE
 // event, so the page's chip follows a knob turn at once. Coalesced to at most one per 100 ms, and
 // held back while a sync is setting the radio ourselves.
@@ -465,7 +472,9 @@ void porta_p4_radio_push_tick(void) {
     if (!radio_control_get_state(&rs)) {
         return;  // a read of ours cleared it; its reply counts as a change and lands here again
     }
-    porta_emit_radio_state((uint32_t)rs.freq_hz, rs.transmitting, (uint8_t)rs.mode, rs.split);
+    // With the wanted dial of this same instant, never paired with an older one (webapp.md, The radio bar).
+    porta_emit_radio_state((uint32_t)rs.freq_hz, rs.transmitting, (uint8_t)rs.mode, rs.split,
+                           (uint32_t)want_dial_hz());
 }
 
 // Phone Operate panel TX HUD.
@@ -719,8 +728,7 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
         char rbuf[96];
         snprintf(rbuf, sizeof(rbuf), "radio_hz=%d\nradio_tx=%d\nradio_mode=%d\nradio_split=%d\nwant_hz=%d\n",
                  rs.freq_hz, rs.transmitting ? 1 : 0, rs.mode, rs.split ? 1 : 0,
-                 // Where we put it: during a transmission that retuned (row xvfn), the dial it retuned to.
-                 radio_control_tx_retuned_hz() ? radio_control_tx_retuned_hz() : station_freq_hz());
+                 want_dial_hz());
         text += rbuf;
     }
 
