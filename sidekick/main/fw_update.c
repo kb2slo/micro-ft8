@@ -73,11 +73,15 @@ static bool state_busy(fw_state_t s)
 // by the httpd task, under s_lock.
 static struct {
     fw_state_t   state;
-    fw_request_t req;
+    fw_request_t plan[FW_PLAN_MAX];  // the images asked for, in order
+    size_t       n_plan;
+    size_t       step;               // which of them is in hand
+    fw_request_t req;                // plan[step]
     uint32_t     got;
     const char  *why;     // a failure's code; "" otherwise
+    const char  *at;      // the state it failed in; "" otherwise
     int          detail;  // an HTTP status or esp_err_t beside it, 0 if none
-} s_st = {.why = ""};
+} s_st = {.why = "", .at = ""};
 
 static SemaphoreHandle_t s_lock;
 static volatile bool     s_cancel;
@@ -118,6 +122,9 @@ static void fail(const char *why, int detail)
 {
     ESP_LOGW(TAG, "update failed: %s (%d)", why, detail);
     lock();
+    if (s_st.state != FW_FAILED) {
+        s_st.at = STATE_NAMES[s_st.state];
+    }
     s_st.state = FW_FAILED;
     s_st.why = why;
     s_st.detail = detail;
@@ -491,18 +498,19 @@ static bool transfer_to_host(const fw_request_t *req, const esp_partition_t *slo
 }
 
 // A main board's image: check it is one, send it, and wait for the board to
-// come back saying it runs the new version.
-static void install_on_host(const fw_request_t *req, const esp_partition_t *slot, unsigned char *buf)
+// come back saying it runs the new version. True when it does; otherwise it
+// has called fail().
+static bool install_on_host(const fw_request_t *req, const esp_partition_t *slot, unsigned char *buf)
 {
     char version[FW_VERSION_MAX];
     if (esp_partition_read(slot, 0, buf, FW_IMAGE_HEAD) != ESP_OK || !fw_image_version(buf, FW_IMAGE_HEAD, version)) {
         fail("image", 0);
-        return;
+        return false;
     }
     if (strcmp(version, req->version) != 0) {
         ESP_LOGW(TAG, "image says it is %s, expected %s", version, req->version);
         fail("version", 0);
-        return;
+        return false;
     }
     set_got(0);
     set_state(FW_TRANSFERRING);
@@ -510,7 +518,7 @@ static void install_on_host(const fw_request_t *req, const esp_partition_t *slot
     const bool sent = transfer_to_host(req, slot, buf);
     host_link_fw_active(false);
     if (!sent) {
-        return;
+        return false;
     }
     set_state(FW_RESTARTING);
     const uint32_t t_end = now_ms();
@@ -521,30 +529,53 @@ static void install_on_host(const fw_request_t *req, const esp_partition_t *slot
         switch (fw_host_result(now_ms() - t_end, seen, age, hello, req->version)) {
             case FW_HOST_UPDATED:
                 ESP_LOGI(TAG, "main board is running %s", hello);
-                set_state(FW_DONE);
-                return;
+                return true;
             case FW_HOST_ROLLED_BACK:
                 ESP_LOGW(TAG, "main board came back on %s", hello);
                 fail("rolled_back", 0);
-                return;
+                return false;
             case FW_HOST_SILENT:
                 fail("no_host", 0);
-                return;
+                return false;
             default:
                 vTaskDelay(pdMS_TO_TICKS(500));
         }
     }
 }
 
+// One image of the plan: download it into the spare slot, check it, and
+// install it. True to go on to the next; the sidekick's own never returns
+// true, since it ends in a restart or a failure.
+static bool run_step(const fw_request_t *req, unsigned char *buf)
+{
+    const bool for_host = req->board == FW_BOARD_MAIN;
+    ESP_LOGI(TAG, "updating %s to %s: %" PRIu32 " bytes from %s", fw_board_name(req->board), req->version, req->size,
+             req->url);
+    sink_t sink = {.slot = esp_ota_get_next_update_partition(NULL), .raw = for_host};
+    esp_err_t err = sink.slot ? ESP_OK : ESP_ERR_NOT_FOUND;
+    if (err == ESP_OK && !for_host) {
+        err = esp_ota_begin(sink.slot, OTA_WITH_SEQUENTIAL_WRITES, &sink.ota);
+    }
+    if (err != ESP_OK) {
+        fail("flash", err);
+        return false;
+    }
+    if (!download_into(req, &sink, buf)) {
+        if (!for_host) {
+            esp_ota_abort(sink.ota);
+        }
+        return false;
+    }
+    if (for_host) {
+        return install_on_host(req, sink.slot, buf);
+    }
+    install_own(req, &sink);
+    return false;
+}
+
 static void update_task(void *arg)
 {
     (void)arg;
-    lock();
-    const fw_request_t req = s_st.req;
-    unlock();
-    const bool for_host = req.board == FW_BOARD_MAIN;
-    ESP_LOGI(TAG, "updating %s to %s: %" PRIu32 " bytes from %s", fw_board_name(req.board), req.version, req.size, req.url);
-
     // The main board was put into update mode before this task started
     // (post_start()); a transmission it was in the middle of takes a moment to end.
     const uint32_t t0 = now_ms();
@@ -555,24 +586,46 @@ static void update_task(void *arg)
         }
         vTaskDelay(pdMS_TO_TICKS(100));
     }
-    set_state(FW_DOWNLOADING);
 
-    sink_t sink = {.slot = esp_ota_get_next_update_partition(NULL), .raw = for_host};
     unsigned char *buf = malloc(DOWNLOAD_CHUNK);
-    esp_err_t      err = (sink.slot && buf) ? ESP_OK : ESP_ERR_NO_MEM;
-    if (err == ESP_OK && !for_host) {
-        err = esp_ota_begin(sink.slot, OTA_WITH_SEQUENTIAL_WRITES, &sink.ota);
+    if (!buf) {
+        fail("flash", ESP_ERR_NO_MEM);
+        vTaskDelete(NULL);
     }
-    if (err != ESP_OK) {
-        fail("flash", err);
-    } else if (!download_into(&req, &sink, buf)) {
-        if (!for_host) {
-            esp_ota_abort(sink.ota);
+    for (;;) {
+        lock();
+        const fw_request_t req = s_st.req;
+        const bool         later = s_st.step > 0;
+        s_st.got = 0;
+        s_st.state = later ? FW_STOPPING : FW_DOWNLOADING;
+        unlock();
+        // A main board that just restarted into its new image is operating again: stop it once
+        // more before the sidekick's own update takes the phone's controls away.
+        if (later && host_linked()) {
+            char reason[PORTA_EVENT_TEXT_MAX + 1];
+            if (!host_link_update_mode(true, reason, sizeof(reason))) {
+                ESP_LOGW(TAG, "main board would not enter update mode: %s", reason);
+                fail("host_mode", 0);
+                break;
+            }
+            set_state(FW_DOWNLOADING);
+        } else if (later) {
+            set_state(FW_DOWNLOADING);
         }
-    } else if (for_host) {
-        install_on_host(&req, sink.slot, buf);
-    } else {
-        install_own(&req, &sink);
+        if (!run_step(&req, buf)) {
+            break;  // failed, and fail() has said why
+        }
+        lock();
+        const bool more = s_st.step + 1 < s_st.n_plan;
+        if (more) {
+            s_st.req = s_st.plan[++s_st.step];
+        } else {
+            s_st.state = FW_DONE;
+        }
+        unlock();
+        if (!more) {
+            break;
+        }
     }
     free(buf);
     vTaskDelete(NULL);
@@ -602,13 +655,20 @@ static esp_err_t get_status(httpd_req_t *req)
         host_version[0] = '\0';
     }
     const bool linked = host_linked();
-    char       body[640];
+    char       plan[FW_PLAN_MAX * 96] = "";
+    char       body[896];
     lock();
+    size_t w = 0;
+    for (size_t i = 0; i < s_st.n_plan; ++i) {
+        w += (size_t)snprintf(plan + w, sizeof(plan) - w, "%s{\"board\":\"%s\",\"version\":\"%s\",\"size\":%" PRIu32 "}",
+                              i ? "," : "", fw_board_name(s_st.plan[i].board), s_st.plan[i].version, s_st.plan[i].size);
+    }
     snprintf(body, sizeof(body),
              "{\"state\":\"%s\",\"board\":\"%s\",\"version\":\"%s\",\"got\":%" PRIu32 ",\"size\":%" PRIu32
-             ",\"why\":\"%s\",\"detail\":%d,\"running\":\"%s\",\"host\":\"%s\",\"host_linked\":%s,\"online\":%s%s}",
+             ",\"step\":%u,\"plan\":[%s],\"why\":\"%s\",\"at\":\"%s\",\"detail\":%d,\"running\":\"%s\",\"host\":\"%s\","
+             "\"host_linked\":%s,\"online\":%s%s}",
              STATE_NAMES[s_st.state], fw_board_name(s_st.req.board), s_st.req.version, s_st.got, s_st.req.size,
-             s_st.why, s_st.detail, running, host_version, linked ? "true" : "false",
+             (unsigned)s_st.step, plan, s_st.why, s_st.at, s_st.detail, running, host_version, linked ? "true" : "false",
              wifi_prov_is_online() ? "true" : "false", last);
     unlock();
     // A client got an answer from this image, which counts as reachable even on its own access point.
@@ -625,7 +685,7 @@ static esp_err_t refuse(httpd_req_t *req, const char *status, const char *why)
 
 static esp_err_t post_start(httpd_req_t *req)
 {
-    char body[FW_URL_MAX + 192];
+    static char body[FW_BODY_MAX];  // httpd task only
     if (req->content_len == 0 || req->content_len >= sizeof(body)) {
         return refuse(req, "400 Bad Request", "body");
     }
@@ -639,8 +699,9 @@ static esp_err_t post_start(httpd_req_t *req)
     }
     body[got] = '\0';
 
-    fw_request_t parsed;
-    const char  *bad = fw_request_parse(body, &parsed);
+    static fw_request_t parsed[FW_PLAN_MAX];
+    size_t              n = 0;
+    const char         *bad = fw_plan_parse(body, parsed, &n);
     if (bad) {
         return refuse(req, "400 Bad Request", bad);
     }
@@ -655,12 +716,19 @@ static esp_err_t post_start(httpd_req_t *req)
         .slot_bytes = slot ? slot->size : 0,
         .host_linked = linked,
     };
-    const char *why = fw_start_refusal(&parsed, &gate);
+    const char *why = NULL;
+    for (size_t i = 0; i < n && !why; ++i) {
+        why = fw_start_refusal(&parsed[i], &gate);
+    }
     if (!why) {
         s_st.state = FW_STOPPING;
-        s_st.req = parsed;
+        memcpy(s_st.plan, parsed, sizeof(s_st.plan));
+        s_st.n_plan = n;
+        s_st.step = 0;
+        s_st.req = parsed[0];
         s_st.got = 0;
         s_st.why = "";
+        s_st.at = "";
         s_st.detail = 0;
         s_cancel = false;
     }

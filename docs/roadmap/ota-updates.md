@@ -39,20 +39,13 @@ Still open for [hstv](#hstv):
 * **Time:** unmeasured. Stop-and-wait, one answer per chunk, at `PORTA_BAUD`; a window on `FW_CHUNK` is **Later**.
 * **USB audio in update mode:** the design said update mode stops USB audio. As built, nothing reads the QMX's stream but the P4 leaves it open, since closing and reopening it is where the USB stack has failed before. The bench decides: if flash writes with the stream open disturb USB, close it.
 
-### Version pairing ([yme5](#yme5))
-
-The web app compares each board's running version against the manifest and offers an update per board. Settings shows both boards' versions beside the sidekick's. It refuses a combination whose `PORTA_PROTO_VERSION`s differ: a board that can no longer talk to the sidekick can only be recovered over USB.
-
 ### The web app ([yme5](#yme5))
 
-1. **Available.** When the app opens, and on its 60 s check (`checkAppStale`), it fetches the manifest. For each board with a newer version: a dot on the Settings gear and an **Updates** section in Settings listing each board's current and new version, size and rough time; and, **when no QSO is in progress**, one line where `#opQueueEmpty` reads "No active QSOs": "Update available", linking to Updates. It disappears while a QSO is active. No background notification: Web Push needs a secure origin ([webapp.md](../architecture/webapp.md), **A non-secure origin**).
-2. **Not now.** Nothing stops; the notices stay. No "skip this version": the next build replaces it.
-3. **Review.** **Update** opens a screen that says what will happen before anything does: which boards, in which order, roughly how long, and **what stopping the radio costs**, concretely ("Your CQ will end", "QSO with K1ABC will be abandoned", "2 queued replies will be cleared"), a QSO in progress shown as a warning. With no internet on the sidekick the button is disabled with the reason ("Connect the sidekick to WiFi with internet"). Two buttons: **Stop radio and update** (destructive) and **Cancel**.
-4. **Progress.** A full-screen step list: stop radio → download → verify → transfer (percent and time left) → restart → confirm new version. The state lives on the sidekick, so locking or closing the phone does not matter, reopening the app shows where it is, and a second phone sees the same screen and cannot transmit. **Cancel** until the image is fully written; the old firmware is untouched until then.
-5. **Result.** "Updated to d18f9b2", or a plain reason ("Verification failed — still on 7e61488", "New version did not start — rolled back to 7e61488"), with **Retry**.
-6. **After.** The radio **stays stopped** until **Resume operating**, whether the update succeeded, failed or was cancelled.
+Built: the plan, the pairing rule, Review, Progress, Result and Resume operating are in [webapp.md](../architecture/webapp.md), **Settings › Updates**. Where the app as it now is made the sketch here wrong, the build follows the app:
 
-While an update runs, the app suppresses its lost-contact banner and its device-reset banner; both would fire on a planned restart.
+* **No "Update available" line on Operate.** The line it was to sit in is gone, and Operate has no banners (operator decision 2026-10-25). The Settings tab's dot is the notice.
+* **No banners to suppress.** The lost-contact state is the radio bar's, which reads **Stopped for an update** instead while one runs; there is no device-reset banner.
+* **No time left** on the transfer step, only a percentage: the transfer has not been timed.
 
 ## Children
 
@@ -62,7 +55,7 @@ In order: each needs the one before it.
 
 * <a id="v697"></a>**v697: the sidekick updates itself** (**Built, awaiting the bench**). **Done-when:** a sidekick updates from the web app; a forced bad image rolls back (field). Built; open for the field check. **Lands in:** sidekick.md **Firmware updates**, webapp.md **Settings › Updates**, system.md and TEST_PLAN Pending, all done; this entry goes when the check passes.
 * <a id="hstv"></a>**hstv: main boards update over Port A, P4 first** (**Built, awaiting the bench**). **Done-when:** the receiver `host_mock`-tested; a P4 updates from the web app with transfer time measured, and a forced bad image rolls back (field). Built; open for the field check and the transfer time. **Lands in:** main_board.md **Firmware updates** and its partitions, sidekick.md **Firmware updates** and **Port A**, RELEASE_PROCESS.md, system.md and TEST_PLAN Pending, all done; the measured transfer time goes into sidekick.md. No README or site note for the one-time USB reflash: only a board flashed before the two-slot table needs it, and pre-alpha carries no upgrade notes.
-* <a id="yme5"></a>**yme5: the web app's update flow** (**Version pairing**, **The web app**). **Done-when:** **The web app**'s steps 1–6 walked with a QSO in progress, the phone locked mid-transfer, and a second phone open (field). **Lands in:** webapp.md **Screens**; TEST_PLAN Pending; site audit (Settings' Updates section, and Getting started if it says how to update).
+* <a id="yme5"></a>**yme5: the web app's update flow** (**The web app**). **Done-when:** **The web app**'s steps 1–6 walked with a QSO in progress, the phone locked mid-transfer, and a second phone open (field). Built; open for the field check. **Lands in:** webapp.md **Settings › Updates** and **The radio bar**, sidekick.md and TEST_PLAN Pending, all done; the site audit (Settings' Updates section, and Getting started's Updates line) is owed when the check passes.
 * <a id="nufg"></a>**nufg: versioned releases, and a version an operator can read.** After [yme5](#yme5); epic [eu2t](release-1-0.md) needs it. A build from a `v*` tag reports that version (`1.0.0`), any other build its SHA as today; a board running a versioned release is offered only the next versioned release, a `continuous` build only `continuous` ([RELEASE_PROCESS.md](../RELEASE_PROCESS.md)). **Done-when:** the manifest carries both channels; a board flashed from a `v*` tag shows its version in Settings and is offered the next tag, not `continuous` (field). **Lands in:** RELEASE_PROCESS.md (an image carries its version; what each channel publishes); webapp.md (**Updates**); TEST_PLAN Pending.
 
 ### Later

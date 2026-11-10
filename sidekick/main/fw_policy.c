@@ -283,6 +283,50 @@ const char *fw_request_parse(const char *body, fw_request_t *out)
     return NULL;
 }
 
+const char *fw_plan_parse(const char *body, fw_request_t out[FW_PLAN_MAX], size_t *n_out)
+{
+    *n_out = 0;
+    if (!body || strlen(body) >= FW_BODY_MAX) {
+        return "body";
+    }
+    static const char SEP[] = "next";
+    char        block[FW_BODY_MAX];
+    const char *p = body;
+    for (;;) {
+        // This block ends at a line that reads `next`, or at the end of the body.
+        const char *end = p;
+        const char *after = NULL;
+        while (*end) {
+            const char *eol = end + strcspn(end, "\r\n");
+            if ((size_t)(eol - end) == sizeof(SEP) - 1 && memcmp(end, SEP, sizeof(SEP) - 1) == 0) {
+                after = eol + strspn(eol, "\r\n");
+                break;
+            }
+            end = eol + strspn(eol, "\r\n");
+        }
+        if (*n_out == FW_PLAN_MAX) {
+            return "plan";
+        }
+        memcpy(block, p, (size_t)(end - p));
+        block[end - p] = '\0';
+        const char *bad = fw_request_parse(block, &out[*n_out]);
+        if (bad) {
+            return bad;
+        }
+        for (size_t i = 0; i < *n_out; ++i) {
+            // Each board once, and nothing after the sidekick's own image.
+            if (out[i].board == out[*n_out].board || out[i].board == FW_BOARD_SIDEKICK) {
+                return "plan";
+            }
+        }
+        ++*n_out;
+        if (!after) {
+            return NULL;
+        }
+        p = after;
+    }
+}
+
 const char *fw_start_refusal(const fw_request_t *req, const fw_gate_t *gate)
 {
     if (gate->busy) {

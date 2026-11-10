@@ -59,11 +59,21 @@ int fw_http_head_parse(const char *buf, size_t len, int *status, int64_t *conten
 // True for a version string an app image can carry and JSON can quote as it is.
 bool fw_version_ok(const char *version);
 
-// Parses POST /api/fw/start's body: one `key=value` per line, the keys board,
-// url, size, sha256 and version, each exactly once, in any order. Returns
-// NULL on success, else the name of the field that is missing, repeated or
-// malformed ("body" when a line is not key=value or the key is unknown).
+// Parses one image's request: one `key=value` per line, the keys board, url,
+// size, sha256 and version, each exactly once, in any order. Returns NULL on
+// success, else the name of the field that is missing, repeated or malformed
+// ("body" when a line is not key=value or the key is unknown).
 const char *fw_request_parse(const char *body, fw_request_t *out);
+
+// Parses POST /api/fw/start's body: one request, or FW_PLAN_MAX of them
+// separated by a line reading `next`, carried out in that order with no page
+// needed in between. Each board appears once, and the sidekick's own image is
+// last, since installing it restarts the sidekick. Returns NULL with the
+// requests in `out` and their count in `*n_out`, else the field at fault as
+// fw_request_parse() names it, or "plan" for a plan that breaks those rules.
+#define FW_PLAN_MAX  2
+#define FW_BODY_MAX  (FW_PLAN_MAX * (FW_URL_MAX + 192))
+const char *fw_plan_parse(const char *body, fw_request_t out[FW_PLAN_MAX], size_t *n_out);
 
 typedef struct {
     bool     online;          // joined to a WiFi network (not its own AP)

@@ -77,6 +77,43 @@ static void test_parse()
     check(blames(std::string("url=http://h/") + std::string(400, 'a') + "\n") == "body", "overlong line");
 }
 
+static void test_plan()
+{
+    static const char *P4URL = "http://micro-ft8.kalikstein.com/download/microft8-poe-p4-continuous-ota.bin";
+    const std::string main_req = body("main", P4URL, "871968", SHA, "d18f9b2");
+    const std::string sk_req = body("sidekick", URL, "1005232", SHA, "d18f9b2");
+    fw_request_t plan[FW_PLAN_MAX];
+    size_t n = 9;
+
+    check(fw_plan_parse(sk_req.c_str(), plan, &n) == nullptr && n == 1 && plan[0].board == FW_BOARD_SIDEKICK, "one image");
+    check(fw_plan_parse(main_req.c_str(), plan, &n) == nullptr && n == 1 && plan[0].board == FW_BOARD_MAIN, "one image, the main board's");
+    check(fw_plan_parse((main_req + "next\n" + sk_req).c_str(), plan, &n) == nullptr && n == 2 &&
+              plan[0].board == FW_BOARD_MAIN && plan[0].size == 871968u && std::strcmp(plan[0].url, P4URL) == 0 &&
+              plan[1].board == FW_BOARD_SIDEKICK && plan[1].size == 1005232u && std::strcmp(plan[1].url, URL) == 0,
+          "both boards, the main board first");
+    std::string crlf = main_req + "next\r\n" + sk_req;
+    check(fw_plan_parse(crlf.c_str(), plan, &n) == nullptr && n == 2, "CRLF after the separator");
+
+    auto blames_plan = [&](const std::string &b) {
+        const char *why = fw_plan_parse(b.c_str(), plan, &n);
+        return std::string(why ? why : "");
+    };
+    check(blames_plan(sk_req + "next\n" + main_req) == "plan", "nothing may follow the sidekick's own image");
+    check(blames_plan(main_req + "next\n" + main_req) == "plan", "a board twice");
+    check(blames_plan(main_req + "next\n" + sk_req + "next\n" + sk_req) == "plan", "three images");
+    check(blames_plan(main_req + "next\n") == "board", "a separator with nothing after it");
+    check(blames_plan("next\n" + sk_req) == "board", "a separator with nothing before it");
+    check(blames_plan(main_req + "next\n" + body("sidekick", URL, "0", SHA, "v")) == "size", "the second image's field at fault");
+    check(blames_plan(main_req + "nextish\n" + sk_req) == "body", "a line that only starts like the separator");
+    check(blames_plan("") == "board", "empty");
+    check(blames_plan(std::string(FW_BODY_MAX, 'x')) == "body", "longer than a plan can be");
+    // The longest plan the page can send fits: two requests with URLs as long as they may be.
+    const std::string long_url = "http://h/" + std::string(FW_URL_MAX - 10, 'a');
+    const std::string longest = body("main", long_url.c_str(), "999999999", SHA, "0123456789012345678901234567890") + "next\n" +
+                                body("sidekick", long_url.c_str(), "999999999", SHA, "0123456789012345678901234567890");
+    check(longest.size() < FW_BODY_MAX && fw_plan_parse(longest.c_str(), plan, &n) == nullptr && n == 2, "the longest plan fits");
+}
+
 static void test_url()
 {
     check(fw_url_ok(URL), "the release host over plain http");
@@ -537,6 +574,7 @@ static void test_confirm()
 int main()
 {
     test_parse();
+    test_plan();
     test_url();
     test_url_split();
     test_http_head();
