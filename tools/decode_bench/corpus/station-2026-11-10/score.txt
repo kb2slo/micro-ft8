@@ -1,0 +1,82 @@
+Window 21:19:00-22:38:37 UTC, 21896 events
+== Decode load
+FT4: 419 decoded, messages 0-12 mean 5.3, left min -96 median 234 ms, 299 at their budget
+FT8: 111 decoded, messages 17-31 mean 24.6, left min -55 median 299 ms, 0 at their budget
+Transmissions: 207
+== Decodes past their boundary (nearest transmission start, s)
+21:24:37 FT4 left -96 ms, +0
+21:44:15 FT8 left -55 ms, +0
+21:46:07 FT4 left -38 ms, +8
+== STALL, when the wait ended (gap ms, empty reads, nearest transmission start, s)
+21:34:07.6 gap 60 empty 0, -0.6
+21:46:45.1 gap 73 empty 0, -0.1
+21:48:00.2 gap 136 empty 0, -0.2
+21:53:00.1 gap 70 empty 0, -0.1
+21:54:15.1 gap 73 empty 0, -0.1
+21:54:45.1 gap 60 empty 0, -0.1
+21:59:52.6 gap 70 empty 0, -0.6
+22:02:30.1 gap 73 empty 0, -0.1
+22:03:00.1 gap 73 empty 0, -0.1
+22:04:00.1 gap 58 empty 0, -0.1
+22:04:45.1 gap 59 empty 0, -0.1
+22:08:15.1 gap 60 empty 0, -0.1
+22:09:00.1 gap 62 empty 0, -0.1
+22:19:52.7 gap 73 empty 0, -0.7
+14 STALL, 58-136 ms, 13 under 75 ms
+== Reports sent against the reply's SNR
+21:23:22 to KF0KBL: R-1, their reply +11 dB (KB2SLO KF0KBL +18)
+21:30:37 to KB3UJT: R+1, their reply +1 dB (KB2SLO KB3UJT -05)
+21:33:37 to AA6NN: R-10, their reply -10 dB (KB2SLO AA6NN +05)
+21:33:52 to N0OTS: R+17, their reply +20 dB (KB2SLO N0OTS +11)
+21:36:52 to KE4TT: R-1, their reply -1 dB (KB2SLO KE4TT -08)
+21:41:45 to D2UY: R+3, their reply +10 dB (KB2SLO D2UY -14)
+21:46:45 to N7WLC: R+4, their reply +4 dB (KB2SLO N7WLC +01)
+21:47:45 to KJ4KFJ: R-1, their reply +5 dB (KB2SLO KJ4KFJ -05)
+21:52:45 to N9PGG: R+11, their reply +18 dB (KB2SLO N9PGG +09)
+21:54:00 to N6UA: R+0, their reply +9 dB (KB2SLO N6UA +09)
+21:54:30 to N5BY: R+26, their reply +26 dB (KB2SLO N5BY +17)
+21:56:15 to JA0JWQ: R-7, their reply -7 dB (KB2SLO JA0JWQ -09)
+21:59:37 to N5ICQ: R+17, their reply +17 dB (KB2SLO N5ICQ +15)
+22:01:45 to KI5PPY: R+5, their reply -1 dB (KB2SLO KI5PPY -06)
+22:03:00 to N8CQD: R-1, their reply -2 dB (KB2SLO N8CQD -02)
+22:04:00 to LW2EDM: R+3, their reply +3 dB (KB2SLO LW2EDM -09)
+22:04:45 to VE2GT: R+5, their reply +7 dB (KB2SLO VE2GT -01)
+22:08:00 to KG7WED: R-6, their reply +2 dB (KB2SLO KG7WED -08)
+22:09:00 to KI7ZQR: R-11, their reply -5 dB (KB2SLO KI7ZQR -10)
+22:13:37 to KO4ZML: R+23, their reply +18 dB (KB2SLO KO4ZML -16)
+22:19:37 to N4JDL: R-9, their reply -7 dB (KB2SLO N4JDL +01)
+22:30:37 to KF0YUX: +5, their reply +5 dB (KB2SLO KF0YUX DM79)
+== Audio offset of each R-report, per station
+KF0KBL: 21:23:22 1045 Hz, 21:24:22 1195 Hz, 21:24:37 795 Hz
+KB3UJT: 21:30:37 1142 Hz, 21:31:52 1081 Hz, 21:32:07 1328 Hz
+AA6NN: 21:33:37 760 Hz, 21:34:22 725 Hz, 21:34:37 2374 Hz
+N0OTS: 21:33:52 2478 Hz
+KE4TT: 21:36:52 985 Hz, 21:37:07 584 Hz, 21:37:22 730 Hz
+D2UY: 21:41:45 2317 Hz, 21:42:15 702 Hz, 21:42:45 1141 Hz
+N7WLC: 21:46:45 933 Hz
+KJ4KFJ: 21:47:45 951 Hz
+N9PGG: 21:52:45 1688 Hz, 21:53:00 855 Hz
+N6UA: 21:54:00 1262 Hz
+N5BY: 21:54:30 1891 Hz
+JA0JWQ: 21:56:15 1903 Hz, 21:56:30 2488 Hz, 21:56:45 1922 Hz
+N5ICQ: 21:59:37 1441 Hz
+KI5PPY: 22:01:45 1404 Hz
+N8CQD: 22:03:00 2327 Hz
+LW2EDM: 22:04:00 955 Hz
+VE2GT: 22:04:45 654 Hz
+KG7WED: 22:08:00 827 Hz, 22:08:15 1546 Hz
+KI7ZQR: 22:09:00 1086 Hz
+KO4ZML: 22:13:37 974 Hz
+N4JDL: 22:19:37 1060 Hz
+== Waits over 60 s between transmissions within one queue entry
+W8CTO (entry 139): 390 s, 21:20:52 to 21:27:22 (W8CTO KB2SLO EM10)
+N5ICQ (entry 144): 240 s, 21:22:52 to 21:26:52 (N5ICQ KB2SLO EM10)
+AC5O (entry 145): 150 s, 21:23:07 to 21:25:37 (AC5O KB2SLO EM10)
+AA8TJ (entry 152): 495 s, 21:29:52 to 21:38:07 (AA8TJ KB2SLO EM10)
+KB3UJT (entry 153): 75 s, 21:30:37 to 21:31:52 (KB3UJT KB2SLO R+1)
+N7PMS (entry 155): 360 s, 21:31:37 to 21:37:37 (N7PMS KB2SLO EM10)
+KF0KBL (entry 161): 165 s, 21:36:37 to 21:39:22 (KF0KBL KB2SLO EM10)
+WA2DX (entry 164): 300 s, 21:40:15 to 21:45:15 (WA2DX KB2SLO EM10)
+NS7DD (entry 177): 120 s, 21:53:45 to 21:55:45 (NS7DD KB2SLO EM10)
+W8CTO (entry 187): 465 s, 22:02:15 to 22:10:00 (W8CTO KB2SLO EM10)
+KF8HGH (entry 189): 360 s, 22:03:30 to 22:09:30 (KF8HGH KB2SLO EM10)
