@@ -45,6 +45,11 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
+# An image installed over Port A boots on trial: the bootloader goes back to the one before it
+# at the next restart unless the app marks itself valid, which it does once the sidekick's HELLO
+# arrives (components/porta, porta_fw_confirm_decide()). An image flashed over USB is not on trial.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
 # Per-core busy percent on the SLOT line. The idle-task run-time counter needs
 # this. esp_timer is the clock (1 µs, the same counter on both cores). The CPU
 # cycle counter is a different clock per core, so it is not the source.
