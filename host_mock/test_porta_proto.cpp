@@ -899,6 +899,119 @@ static void test_action_factory_reset()
           "connect is not factory reset");
 }
 
+static void test_action_update_mode()
+{
+    uint8_t buf[PORTA_PROTO_MAX_FRAME];
+    porta_decoder_t d;
+    for (int on = 0; on <= 1; ++on) {
+        porta_decoder_init(&d);
+        const size_t n = porta_proto_encode_update_mode(on != 0, buf, sizeof(buf));
+        // Frozen: sync, ACTION, len 2, verb 0x11, on, crc.
+        check(n == 6 && buf[1] == PORTA_MSG_ACTION && buf[2] == 2 && buf[3] == 0x11 && buf[4] == on, "update mode bytes");
+        auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
+        bool parsed = !on;
+        check(got.size() == 1 && porta_proto_parse_update_mode(&got[0], &parsed) && parsed == (on != 0), "update mode round trip");
+    }
+    porta_frame_t f = {PORTA_MSG_ACTION, 2, {PORTA_ACT_UPDATE_MODE, 2}};
+    check(!porta_proto_parse_update_mode(&f, nullptr), "update mode: on is 0 or 1");
+    f.len = 1;
+    check(!porta_proto_parse_update_mode(&f, nullptr), "update mode: needs its byte");
+    f = {PORTA_MSG_ACTION, 2, {PORTA_ACT_TUNE, 1}};
+    check(!porta_proto_parse_update_mode(&f, nullptr), "another verb is not update mode");
+}
+
+// The firmware messages are frozen (PORTA_PROTO_VERSION's v15 note), so their bytes are pinned
+// here, not only that they round-trip.
+static void test_fw_messages()
+{
+    uint8_t buf[PORTA_PROTO_MAX_FRAME];
+    porta_decoder_t d;
+    check(PORTA_MSG_FW_BEGIN == 0x10 && PORTA_MSG_FW_CHUNK == 0x11 && PORTA_MSG_FW_END == 0x12, "fw message types");
+    check(PORTA_FW_OK == 0 && PORTA_FW_NOT_UPDATE_MODE == 1 && PORTA_FW_NO_SLOT == 2 && PORTA_FW_TOO_BIG == 3 &&
+              PORTA_FW_NO_TRANSFER == 4 && PORTA_FW_OFFSET == 5 && PORTA_FW_FLASH == 6 && PORTA_FW_SHORT == 7 &&
+              PORTA_FW_HASH == 8 && PORTA_FW_IMAGE == 9 && PORTA_FW_VERSION == 10, "fw status values");
+
+    porta_fw_begin_t begin = {};
+    begin.size = 0x000CD0C0;  // 839872
+    for (int i = 0; i < 32; ++i) begin.sha256[i] = (uint8_t)(0xA0 + i);
+    std::strcpy(begin.version, "d18f9b2");
+    size_t n = porta_proto_encode_fw_begin(&begin, buf, sizeof(buf));
+    check(n == 4 + 68 && buf[1] == 0x10 && buf[2] == 68, "begin frame");
+    check(buf[3] == 0xC0 && buf[4] == 0xD0 && buf[5] == 0x0C && buf[6] == 0x00, "begin size little-endian");
+    check(buf[7] == 0xA0 && buf[38] == 0xBF, "begin hash at 4");
+    check(std::memcmp(&buf[39], "d18f9b2\0", 8) == 0 && buf[70] == 0, "begin version at 36, NUL-padded");
+    porta_decoder_init(&d);
+    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    porta_fw_begin_t back = {};
+    check(got.size() == 1 && porta_proto_parse_fw_begin(&got[0], &back), "begin parses");
+    check(back.size == begin.size && std::memcmp(back.sha256, begin.sha256, 32) == 0 &&
+              std::strcmp(back.version, "d18f9b2") == 0, "begin round trip");
+    // A version that fills the field has no NUL on the wire and gets one on parse.
+    std::memset(begin.version, 'v', 32);
+    begin.version[32] = '\0';
+    n = porta_proto_encode_fw_begin(&begin, buf, sizeof(buf));
+    porta_decoder_init(&d);
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1 && porta_proto_parse_fw_begin(&got[0], &back) && std::strlen(back.version) == 32, "32-character version");
+    porta_frame_t f = got[0];
+    f.len = 67;
+    check(!porta_proto_parse_fw_begin(&f, &back), "begin: wrong length");
+    f.len = 68, f.type = PORTA_MSG_FW_END;
+    check(!porta_proto_parse_fw_begin(&f, &back), "begin: wrong type");
+
+    uint8_t data[PORTA_FW_CHUNK_MAX + 1];
+    for (size_t i = 0; i < sizeof(data); ++i) data[i] = (uint8_t)(i * 7 + 1);
+    n = porta_proto_encode_fw_chunk(0x00012345, data, PORTA_FW_CHUNK_MAX, buf, sizeof(buf));
+    check(n == 4 + 4 + 240 && buf[1] == 0x11 && buf[2] == 244, "chunk frame");
+    check(buf[3] == 0x45 && buf[4] == 0x23 && buf[5] == 0x01 && buf[6] == 0x00 && buf[7] == data[0], "chunk offset then data");
+    porta_decoder_init(&d);
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    uint32_t offset = 0;
+    const uint8_t *p = nullptr;
+    size_t len = 0;
+    check(got.size() == 1 && porta_proto_parse_fw_chunk(&got[0], &offset, &p, &len), "chunk parses");
+    check(offset == 0x12345 && len == 240 && std::memcmp(p, data, 240) == 0, "chunk round trip");
+    check(porta_proto_encode_fw_chunk(0, data, 1, buf, sizeof(buf)) == 4 + 5, "a one-byte chunk");
+    check(porta_proto_encode_fw_chunk(0, data, 0, buf, sizeof(buf)) == 0, "no empty chunk");
+    check(porta_proto_encode_fw_chunk(0, data, PORTA_FW_CHUNK_MAX + 1, buf, sizeof(buf)) == 0, "no oversize chunk");
+    check(porta_proto_encode_fw_chunk(0, nullptr, 4, buf, sizeof(buf)) == 0, "no null chunk");
+    f = {PORTA_MSG_FW_CHUNK, 4, {0}};
+    check(!porta_proto_parse_fw_chunk(&f, &offset, &p, &len), "chunk: offset and no data");
+    f.len = 245;
+    check(!porta_proto_parse_fw_chunk(&f, &offset, &p, &len), "chunk: longer than the maximum");
+
+    for (int abort = 0; abort <= 1; ++abort) {
+        n = porta_proto_encode_fw_end(abort != 0, buf, sizeof(buf));
+        check(n == 5 && buf[1] == 0x12 && buf[2] == 1 && buf[3] == abort, "end frame");
+        porta_decoder_init(&d);
+        got = run(&d, std::vector<uint8_t>(buf, buf + n));
+        bool parsed = !abort;
+        check(got.size() == 1 && porta_proto_parse_fw_end(&got[0], &parsed) && parsed == (abort != 0), "end round trip");
+    }
+    f = {PORTA_MSG_FW_END, 1, {2}};
+    check(!porta_proto_parse_fw_end(&f, nullptr), "end: abort is 0 or 1");
+    f = {PORTA_MSG_FW_END, 0, {0}};
+    check(!porta_proto_parse_fw_end(&f, nullptr), "end: needs its byte");
+
+    const uint8_t types[] = {PORTA_MSG_FW_BEGIN, PORTA_MSG_FW_CHUNK, PORTA_MSG_FW_END};
+    for (uint8_t type : types) {
+        n = porta_proto_encode_fw_reply(type, PORTA_FW_OFFSET, 0x00ABCDEF, buf, sizeof(buf));
+        check(n == 4 + 5 && buf[1] == type && buf[2] == 5 && buf[3] == 5 && buf[4] == 0xEF && buf[5] == 0xCD &&
+                  buf[6] == 0xAB && buf[7] == 0x00, "reply bytes: status, then offset little-endian");
+        porta_decoder_init(&d);
+        got = run(&d, std::vector<uint8_t>(buf, buf + n));
+        uint8_t got_type = 0;
+        porta_fw_reply_t reply = {};
+        check(got.size() == 1 && porta_proto_parse_fw_reply(&got[0], &got_type, &reply) && got_type == type &&
+                  reply.status == PORTA_FW_OFFSET && reply.offset == 0xABCDEF, "reply round trip");
+    }
+    check(porta_proto_encode_fw_reply(PORTA_MSG_ACK, 0, 0, buf, sizeof(buf)) == 0, "a reply is one of the three types");
+    f = {PORTA_MSG_FW_BEGIN, 4, {0}};
+    check(!porta_proto_parse_fw_reply(&f, nullptr, nullptr), "reply: wrong length");
+    f = {PORTA_MSG_ACK, 5, {0}};
+    check(!porta_proto_parse_fw_reply(&f, nullptr, nullptr), "reply: wrong type");
+}
+
 static void test_action_cq_tries_parity()
 {
     porta_decoder_t d;
@@ -1803,6 +1916,8 @@ int main()
     test_action_tx_cancel();
     test_action_connect_and_tune();
     test_action_factory_reset();
+    test_action_update_mode();
+    test_fw_messages();
     test_action_cq_tries_parity();
     test_tx_hud_not_keyed();
     test_action_radio_read();

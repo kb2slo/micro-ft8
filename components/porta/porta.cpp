@@ -9,11 +9,18 @@
 
 #include "driver/gpio.h"
 #include "driver/uart.h"
+#include "esp_app_desc.h"
 #include "esp_log.h"
+#include "esp_ota_ops.h"
+#include "esp_partition.h"
+#include "esp_system.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "mbedtls/sha256.h"
 #include "debug_log.h"
+#include "porta_fw_rx.h"
 
 // Defined by each board's main (or porta_host stubs): the clock this stamps
 // events with, and the control actions the sidekick can request. Setters
@@ -58,6 +65,10 @@ const char* porta_host_factory_reset(uint8_t flags);
 // SWR sweep (docs/architecture/radio.md, The SWR sweep): nullptr = accepted, progress follows as porta_emit_sweep() events; a
 // non-null return is the refusal's reason and nothing was started.
 const char* porta_host_sweep_start(const porta_sweep_range_t* ranges, size_t count);
+// Update mode (docs/architecture/main_board.md, Firmware updates). on: stop transmitting now and
+// clear the queue; the board then reads porta_update_mode() to stay stopped. off: nothing to do
+// but operate again. nullptr on success, else why not.
+const char* porta_host_update_mode(bool on);
 #include "porta_proto.h"
 #include "porta_out_queue.h"
 
@@ -220,6 +231,149 @@ void drain_out() {
   out_unlock();
 }
 
+// ---- Firmware updates (docs/architecture/main_board.md, Firmware updates) ----
+// What to answer and when to install is porta_fw_rx.c's, host-tested; this is the flash behind
+// it and the restart after. Main loop only.
+
+// The sidekick asked the board to stop operating (PORTA_ACT_UPDATE_MODE). Read from other tasks
+// (the decode task), so atomic.
+std::atomic<bool> s_update_mode{false};
+bool s_sidekick_hello_seen = false;
+porta_fw_rx_t s_fw;
+const esp_partition_t* s_fw_slot = nullptr;
+esp_ota_handle_t s_fw_ota = 0;
+uint32_t s_fw_restart_at_ms = 0;  // 0: no restart due
+
+bool fw_op_begin(void* /*ctx*/, uint32_t /*size*/) {
+  // Erased as it is written, a sector at a time: erasing the whole slot first would hold the main
+  // loop for seconds before the first reply.
+  const esp_err_t err = esp_ota_begin(s_fw_slot, OTA_WITH_SEQUENTIAL_WRITES, &s_fw_ota);
+  if (err != ESP_OK) ESP_LOGE(kTag, "FW: esp_ota_begin: %s", esp_err_to_name(err));
+  return err == ESP_OK;
+}
+
+bool fw_op_write(void* /*ctx*/, uint32_t offset, const uint8_t* data, size_t len) {
+  const esp_err_t err = esp_ota_write(s_fw_ota, data, len);
+  if (err != ESP_OK) ESP_LOGE(kTag, "FW: write at %" PRIu32 ": %s", offset, esp_err_to_name(err));
+  return err == ESP_OK;
+}
+
+bool fw_op_hash(void* /*ctx*/, uint32_t size, uint8_t out[PORTA_FW_SHA256_LEN]) {
+  static uint8_t buf[1024];
+  mbedtls_sha256_context sha;
+  mbedtls_sha256_init(&sha);
+  bool ok = mbedtls_sha256_starts(&sha, 0) == 0;
+  for (uint32_t at = 0; ok && at < size;) {
+    const size_t n = size - at < sizeof(buf) ? size - at : sizeof(buf);
+    ok = esp_partition_read(s_fw_slot, at, buf, n) == ESP_OK && mbedtls_sha256_update(&sha, buf, n) == 0;
+    at += (uint32_t)n;
+  }
+  ok = ok && mbedtls_sha256_finish(&sha, out) == 0;
+  mbedtls_sha256_free(&sha);
+  return ok;
+}
+
+bool fw_op_finish(void* /*ctx*/, char version_out[PORTA_FW_VERSION_LEN + 1]) {
+  // The image's own checksum, and that it was built for this chip.
+  esp_err_t err = esp_ota_end(s_fw_ota);
+  s_fw_ota = 0;
+  static esp_app_desc_t desc;
+  if (err == ESP_OK) err = esp_ota_get_partition_description(s_fw_slot, &desc);
+  if (err != ESP_OK) {
+    ESP_LOGE(kTag, "FW: not an image for this board: %s", esp_err_to_name(err));
+    return false;
+  }
+  // A main board's image is this board's own project, not another board's that fits the chip.
+  if (strncmp(desc.project_name, esp_app_get_description()->project_name, sizeof(desc.project_name)) != 0) {
+    ESP_LOGE(kTag, "FW: image is project '%s'", desc.project_name);
+    return false;
+  }
+  snprintf(version_out, PORTA_FW_VERSION_LEN + 1, "%s", desc.version);
+  return true;
+}
+
+bool fw_op_commit(void* /*ctx*/) {
+  const esp_err_t err = esp_ota_set_boot_partition(s_fw_slot);
+  if (err != ESP_OK) ESP_LOGE(kTag, "FW: set boot partition: %s", esp_err_to_name(err));
+  return err == ESP_OK;
+}
+
+void fw_op_abort(void* /*ctx*/) {
+  if (s_fw_ota != 0) esp_ota_abort(s_fw_ota);
+  s_fw_ota = 0;
+}
+
+porta_fw_ops_t s_fw_ops = {0, fw_op_begin, fw_op_write, fw_op_hash, fw_op_finish, fw_op_commit, fw_op_abort};
+
+void fw_send_reply(uint8_t type, porta_fw_reply_t r) {
+  uint8_t buf[PORTA_PROTO_MAX_FRAME];
+  enqueue(buf, porta_proto_encode_fw_reply(type, r.status, r.offset, buf, sizeof(buf)));
+  // Now, not on the next tick: the sender waits for each reply before its next chunk.
+  drain_out();
+}
+
+void handle_fw(const porta_frame_t& f) {
+  porta_fw_begin_t begin;
+  uint32_t offset = 0;
+  const uint8_t* data = nullptr;
+  size_t len = 0;
+  bool abort = false;
+  if (porta_proto_parse_fw_begin(&f, &begin)) {
+    const porta_fw_reply_t r = porta_fw_rx_begin(&s_fw, &begin, s_update_mode.load());
+    ESP_LOGI(kTag, "FW: begin %" PRIu32 " bytes, version %s: status %u, from %" PRIu32, begin.size, begin.version,
+             r.status, r.offset);
+    fw_send_reply(PORTA_MSG_FW_BEGIN, r);
+  } else if (porta_proto_parse_fw_chunk(&f, &offset, &data, &len)) {
+    const porta_fw_reply_t r = porta_fw_rx_chunk(&s_fw, offset, data, len);
+    if (r.status != PORTA_FW_OK) {
+      ESP_LOGW(kTag, "FW: chunk at %" PRIu32 ": status %u, want %" PRIu32, offset, r.status, r.offset);
+    }
+    fw_send_reply(PORTA_MSG_FW_CHUNK, r);
+  } else if (porta_proto_parse_fw_end(&f, &abort)) {
+    const porta_fw_reply_t r = porta_fw_rx_end(&s_fw, abort);
+    ESP_LOGI(kTag, "FW: end%s: status %u", abort ? " (abort)" : "", r.status);
+    fw_send_reply(PORTA_MSG_FW_END, r);
+    if (porta_fw_rx_committed(&s_fw) && s_fw_restart_at_ms == 0) {
+      ESP_LOGW(kTag, "FW: image installed; restarting into it");
+      s_fw_restart_at_ms = now_ms() + 1500;
+      if (s_fw_restart_at_ms == 0) s_fw_restart_at_ms = 1;
+    }
+  }
+}
+
+// An image installed over Port A runs on trial until the sidekick's HELLO arrives
+// (porta_fw_confirm_decide()). Once a second is plenty.
+void fw_confirm_tick() {
+  static bool s_pending = false;
+  static bool s_checked = false;
+  if (!s_checked) {
+    s_checked = true;
+    esp_ota_img_states_t state;
+    s_pending = esp_ota_get_state_partition(esp_ota_get_running_partition(), &state) == ESP_OK &&
+                state == ESP_OTA_IMG_PENDING_VERIFY;
+    if (s_pending) ESP_LOGW(kTag, "FW: this image is on trial until the sidekick is heard");
+  }
+  if (!s_pending) return;
+  switch (porta_fw_confirm_decide((uint32_t)(esp_timer_get_time() / 1000000), s_sidekick_hello_seen)) {
+  case PORTA_FW_CONFIRM_KEEP:
+    s_pending = false;
+    if (esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
+      ESP_LOGI(kTag, "FW: new image kept: the sidekick is linked");
+    } else {
+      ESP_LOGE(kTag, "FW: could not mark the image valid; it will roll back on restart");
+    }
+    break;
+  case PORTA_FW_CONFIRM_ROLL_BACK:
+    ESP_LOGE(kTag, "FW: no sidekick heard in %u s; restarting into the image before this one",
+             (unsigned)PORTA_FW_CONFIRM_TIMEOUT_S);
+    vTaskDelay(pdMS_TO_TICKS(200));
+    esp_restart();
+    break;
+  default:
+    break;
+  }
+}
+
 // HELLO replaces the ad-hoc beacon. Same purpose -- report the companion's
 // build, now framed and CRC-checked like everything else, and carrying a
 // protocol version the old beacon had no room for.
@@ -227,6 +381,7 @@ void handle_hello(const porta_frame_t& f) {
   uint8_t proto = 0;
   char remote[PORTA_HELLO_VERSION_LEN + 1] = {};
   if (!porta_proto_parse_hello(&f, &proto, remote)) return;
+  s_sidekick_hello_seen = true;
 
   if (proto != PORTA_PROTO_VERSION) {
     // Said out loud rather than failing obscurely later: the two ends are
@@ -548,7 +703,26 @@ void handle_action(const porta_frame_t& f) {
     case PORTA_ACT_QUEUE_REPLY:
     case PORTA_ACT_SWEEP_START:
     case PORTA_ACT_FACTORY_RESET:
+    case PORTA_ACT_UPDATE_MODE:
       enqueue(buf, porta_proto_encode_nak(verb, "link test", buf, sizeof(buf)));
+      return;
+    default:
+      break;
+    }
+  }
+  // In update mode nothing keys the radio or talks to it, from any phone, until the mode is left
+  // or the board restarts. Stopping (TX_CANCEL, QUEUE_CANCEL) stays allowed.
+  if (s_update_mode.load()) {
+    switch (verb) {
+    case PORTA_ACT_CONNECT:
+    case PORTA_ACT_TUNE:
+    case PORTA_ACT_CQ_CALL:
+    case PORTA_ACT_QUEUE_REPLY:
+    case PORTA_ACT_SWEEP_START:
+    case PORTA_ACT_RADIO_READ:
+    case PORTA_ACT_RADIO_SET_PTT:
+    case PORTA_ACT_FACTORY_RESET:
+      enqueue(buf, porta_proto_encode_nak(verb, "updating", buf, sizeof(buf)));
       return;
     default:
       break;
@@ -556,6 +730,25 @@ void handle_action(const porta_frame_t& f) {
   }
 
   switch (verb) {
+  case PORTA_ACT_UPDATE_MODE: {
+    bool on = false;
+    if (!porta_proto_parse_update_mode(&f, &on)) {
+      enqueue(buf, porta_proto_encode_nak(verb, "malformed", buf, sizeof(buf)));
+      return;
+    }
+    if (on != s_update_mode.load()) {
+      const char* why = porta_host_update_mode(on);
+      if (why) {
+        enqueue(buf, porta_proto_encode_nak(verb, why, buf, sizeof(buf)));
+        return;
+      }
+      s_update_mode.store(on);
+      if (!on) porta_fw_rx_reset(&s_fw);
+      ESP_LOGW(kTag, "update mode %s", on ? "on: operation stopped" : "off: operating");
+    }
+    enqueue(buf, porta_proto_encode_ack(verb, buf, sizeof(buf)));
+    return;
+  }
   case PORTA_ACT_SET_CLOCK: {
     uint32_t secs = 0;
     uint16_t ms = 0;
@@ -768,9 +961,9 @@ void handle_config_get(const porta_frame_t& f) {
   // The sidekick adds its matching sk_* counters when it relays the reply.
   // If they do not fit, the reply goes without them rather than not at all.
   const int m = snprintf(snap + n, sizeof(snap) - n,
-                         "porta_crc_errors=%lu\nporta_frames_ok=%lu\nporta_dropped=%lu\n",
+                         "porta_crc_errors=%lu\nporta_frames_ok=%lu\nporta_dropped=%lu\nupdate_mode=%d\n",
                          (unsigned long)s_dec.crc_errors, (unsigned long)s_dec.frames_ok,
-                         (unsigned long)out_dropped());
+                         (unsigned long)out_dropped(), s_update_mode.load() ? 1 : 0);
   if (m > 0 && (size_t)m < sizeof(snap) - n) {
     n += (size_t)m;
   } else {
@@ -882,6 +1075,11 @@ void handle_frame(const porta_frame_t& f) {
   case PORTA_MSG_CONFIG_SET:  handle_config_set(f);  break;
   case PORTA_MSG_FILE_LIST:   handle_file_list(f);   break;
   case PORTA_MSG_FILE_READ:   handle_file_read(f);   break;
+  case PORTA_MSG_FW_BEGIN:
+  case PORTA_MSG_FW_CHUNK:
+  case PORTA_MSG_FW_END:
+    handle_fw(f);
+    break;
   case PORTA_MSG_LINK_TEST:
   case PORTA_MSG_LINK_DATA:
     link_on_frame(f, true);
@@ -1159,6 +1357,10 @@ void porta_start() {
   porta_link_run_init(&s_link);
   s_link_radio = false;
   s_version[0] = '\0';
+  // The slot an update is written to; none on a board with a single app partition.
+  s_fw_slot = esp_ota_get_next_update_partition(nullptr);
+  s_fw_ops.slot_bytes = s_fw_slot ? s_fw_slot->size : 0;
+  porta_fw_rx_init(&s_fw, &s_fw_ops, nullptr);
   s_running = true;
   s_rx_stop.store(false);
   s_rx_hold.store(false);
@@ -1201,6 +1403,10 @@ bool porta_link_test_active() {
   return s_link_radio;
 }
 
+bool porta_update_mode() {
+  return s_update_mode.load();
+}
+
 void porta_tick() {
   if (!s_running) return;
 
@@ -1215,8 +1421,29 @@ void porta_tick() {
     consume_rx(buf, len, false);
   }
 
+  // HELLO, as the sidekick sends it: which build this is and the protocol it speaks. The sidekick
+  // shows both, and it is how an update is confirmed after the restart.
+  static uint32_t s_hello_ms = 0;
+  static uint32_t s_second_ms = 0;
+  const uint32_t tick_ms = now_ms();
+  if (s_hello_ms == 0 || tick_ms - s_hello_ms >= 5000) {
+    s_hello_ms = tick_ms ? tick_ms : 1;
+    uint8_t hello[PORTA_PROTO_MAX_FRAME];
+    enqueue(hello, porta_proto_encode_hello(PORTA_PROTO_VERSION, esp_app_get_description()->version,
+                                            hello, sizeof(hello)));
+  }
+  if (tick_ms - s_second_ms >= 1000) {
+    s_second_ms = tick_ms;
+    fw_confirm_tick();
+  }
+
   drain_out();
   link_pump();
+
+  if (s_fw_restart_at_ms != 0 && (int32_t)(tick_ms - s_fw_restart_at_ms) >= 0) {
+    uart_wait_tx_done(kPortaUart, pdMS_TO_TICKS(200));
+    esp_restart();
+  }
 
   // Report drops when the count moves. Without this the queue silently eats
   // events and the browser's view just looks thinner than the screen's, with

@@ -27,13 +27,13 @@ as one printed on a Mac.
 (`tools/git_version.cmake`), with `-dirty` added for a build from a changed tree, so it is in the image's app
 description and in each board's boot log (`App version`). No image carries a release number: a build from a
 `v*` tag reports its SHA like any other, until versioned releases do (row [nufg](roadmap/ota-updates.md#nufg)).
-The web app shows the sidekick's version; the P4's waits on its reporting one over Port A (row
-[hstv](roadmap/ota-updates.md#hstv), epic [ukk6](roadmap/ota-updates.md)).
+The web app shows both boards' versions in Settings; the P4 reports its own in its HELLO over Port A
+([main_board.md](architecture/main_board.md), **Firmware updates**).
 
 **An OTA image is a board's app image alone** (`poe_p4.bin`, `sidekick.bin`), which is what an over-the-air
-update writes into an OTA slot; the merged `0x0` images stay for first install and recovery over USB. Nothing
-installs one yet: the sidekick's download is row [v697](roadmap/ota-updates.md#v697). The manifest describes
-each in an `ota` entry under its board (**Public Cloudflare mirror**).
+update writes into an OTA slot ([sidekick.md](architecture/sidekick.md), **Firmware updates**); the merged
+`0x0` images stay for first install and recovery over USB. The manifest describes each in an `ota` entry under
+its board (**Public Cloudflare mirror**).
 
 ## The rolling `continuous` release
 

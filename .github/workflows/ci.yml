@@ -193,6 +193,10 @@ jobs:
     needs: changes
     if: startsWith(github.ref, 'refs/tags/v') || needs.changes.outputs.firmware == 'true'
     runs-on: ubuntu-latest
+    env:
+      # As for the sidekick: a pull request builds a synthesized merge commit,
+      # and the version the image reports must be the head commit's.
+      MICROFT8_GIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -206,6 +210,7 @@ jobs:
           esp_idf_version: v5.5.5
           target: esp32p4
           path: poe_p4
+          extra_docker_args: -e MICROFT8_GIT_SHA=${{ env.MICROFT8_GIT_SHA }}
           command: idf.py build
 
       - name: Upload poe_p4 firmware

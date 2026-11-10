@@ -611,6 +611,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <div class=setrow><div class=diagrow><span>Network</span><span id=netName>—</span></div></div>
     <div class=setrow><div class=diagrow><span>Address</span><span id=netIp>—</span></div></div>
     <div class=setrow><div class=diagrow><span>Firmware</span><span id=netVersion>—</span></div></div>
+    <div class=setrow><div class=diagrow><span>Main board firmware</span><span id=netHostVersion>—</span></div></div>
     <div class=setrow><div class=diagrow><span>Uptime</span><span id=netUptime>—</span></div></div>
     <div class=setrow style="display:flex;flex-direction:column;gap:.5rem">
       <button id=netForget type=button disabled>Forget WiFi</button>
@@ -622,6 +623,10 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <div class="hd sep">Updates</div>
     <div id=updList></div>
     <p id=updMsg class=setnote>Not checked yet.</p>
+    <div id=updStopped class=setrow hidden>
+      <p class=setnote>The radio is stopped for an update. It stays stopped until you resume.</p>
+      <button id=updResume type=button>Resume operating</button>
+    </div>
 
     <div class="hd sep">Sidekick's own network</div>
     <p class=setnote>The network the sidekick raises when it has no WiFi to join. A password keeps phones that are only looking for internet from joining it. Saving restarts it, and a phone on it must rejoin. Whatever you name it, the app is at micro-ft8.local or 192.168.4.1.</p>
@@ -1232,6 +1237,7 @@ var fwManifest = null;      // the last manifest read, or null
 var fwManifestErr = false;  // the last read failed: no internet from here
 var fwRunning = {};         // board -> the version it reports
 var fwActive = null;        // the offer being installed, while this page follows it
+var fwStopped = false;      // the main board is in update mode (config's update_mode)
 
 async function checkFwUpdates() {
   if (document.visibilityState !== 'visible' || fwActive) return;
@@ -1247,6 +1253,7 @@ async function checkFwUpdates() {
 }
 
 function renderFwUpdates() {
+  document.getElementById('updStopped').hidden = !fwStopped || !!fwActive;
   if (fwActive) return;  // the row shows the update in flight
   var list = document.getElementById('updList');
   var msg = document.getElementById('updMsg');
@@ -1283,10 +1290,9 @@ async function startFwUpdate(offer) {
     MicroFT8Pairing.needsReauth();
     return;
   }
-  // Until the main board has an update mode that stops it first, the operator is told to.
-  if (!confirm('Update the sidekick to ' + offer.to + '? It restarts, and the app is away for about a minute. ' +
-               'The main board keeps doing what it is doing and cannot be stopped from here meanwhile: ' +
-               'stop calling CQ and let any QSO finish first.')) return;
+  if (!confirm('Update the ' + offer.label.toLowerCase() + ' to ' + offer.to + '? The radio stops first: a CQ ends, ' +
+               'a QSO in progress is abandoned and queued replies are cleared. It stays stopped until you tap ' +
+               'Resume operating.')) return;
   try {
     var r = await MicroFT8Pairing.authFetch('/api/fw/start', {
       method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: FwUpdates.startBody(offer),
@@ -1326,7 +1332,7 @@ async function followFwUpdate(offer) {
       var r = await fetch('/api/fw/status', { cache: 'no-store' });
       if (r.ok) status = await r.json(); else reachable = false;
     } catch (e) { reachable = false; }
-    end = FwUpdates.outcome(status, offer.to);
+    end = FwUpdates.outcome(status, offer.board, offer.to);
     if (!end) {
       msg.textContent = offer.label + ': ' + FwUpdates.progressText(status, reachable);
       await new Promise(function (resolve) { setTimeout(resolve, 1000); });
@@ -1336,6 +1342,21 @@ async function followFwUpdate(offer) {
   renderFwUpdates();
   msg.textContent = offer.label + ': ' + (end ? end.text : 'No answer from the sidekick. Check that this phone is on its network, then reload.') + '.';
 }
+document.getElementById('updResume').onclick = async function () {
+  var msg = document.getElementById('updMsg');
+  try {
+    var r = await MicroFT8Pairing.authFetch('/api/fw/resume', { method: 'POST' });
+    if (r.status == 401) {
+      MicroFT8Pairing.needsReauth();
+      msg.textContent = 'Press the sidekick button to pair';
+      return;
+    }
+    var j = await r.json();
+    if (j.ok !== true) msg.textContent = FwUpdates.whyText(j.why) + '.';
+  } catch (e) {
+    msg.textContent = 'The sidekick did not answer.';
+  }
+};
 checkFwUpdates();
 document.addEventListener('visibilitychange', checkFwUpdates);
 setInterval(checkFwUpdates, 60000);
@@ -1939,10 +1960,14 @@ function updateNetInfo(cfg) {
   document.getElementById('netIp').textContent = cfg.sk_ip || '—';
   document.getElementById('netVersion').textContent = cfg.sk_fw_version || '—';
   document.getElementById('netUptime').textContent = cfg.sk_uptime || '—';
-  if (cfg.sk_fw_version && cfg.sk_fw_version !== fwRunning.sidekick) {
-    fwRunning.sidekick = cfg.sk_fw_version;
+  if ((cfg.sk_fw_version || '') !== (fwRunning.sidekick || '') || (cfg.host_fw_version || '') !== (fwRunning.main || '') ||
+      (cfg.update_mode === '1') !== fwStopped) {
+    fwRunning.sidekick = cfg.sk_fw_version || '';
+    fwRunning.main = cfg.host_fw_version || '';
+    fwStopped = cfg.update_mode === '1';
     renderFwUpdates();
   }
+  document.getElementById('netHostVersion').textContent = cfg.host_fw_version || '—';
   var isStation = mode === 'station';
   document.getElementById('netForget').hidden = !isStation;
   document.getElementById('netModeSwitch').hidden = !isStation;

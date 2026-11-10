@@ -39,6 +39,11 @@ void porta_tick();
 // refused for the duration; the test's own Tune pass is not one of them.
 bool porta_link_test_active();
 
+// True while the sidekick has the board in update mode (PORTA_ACT_UPDATE_MODE): it has stopped
+// transmitting and refuses to start, and the board's own loop stops receiving and leaves the
+// radio alone. Left by the sidekick's action or by a restart. Any task.
+bool porta_update_mode();
+
 // ---------------------------------------------------------------------------
 // Outbound events (I28a). Queued, never sent inline: the callers are the slot
 // loop and the log path, and neither can afford to wait on a UART. The queue is

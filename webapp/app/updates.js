@@ -12,8 +12,11 @@ var FwUpdates = (function () {
   var MANIFEST_URL = 'https://micro-ft8.kalikstein.com/download/manifest.json';
   var IMAGE_BASE = 'http://micro-ft8.kalikstein.com/download/';
 
-  // board: the name the sidekick's API uses. asset: its key under the manifest's `assets`.
+  // board: the name the sidekick's API uses. asset: its key under the manifest's `assets`. The main
+  // board is first: when both need updating it goes first, while the sidekick still speaks its
+  // protocol (docs/roadmap/ota-updates.md, Decided).
   var BOARDS = [
+    { board: 'main', asset: 'poe_p4', label: 'Main board' },
     { board: 'sidekick', asset: 'sidekick', label: 'Sidekick' },
   ];
 
@@ -58,7 +61,15 @@ var FwUpdates = (function () {
     offline: 'Connect the sidekick to WiFi with internet',
     busy: 'An update is already running',
     confirming: 'The last update is still being confirmed; try again in a minute',
-    unsupported: 'This sidekick cannot update that board',
+    no_host: 'The main board is not answering',
+    host_mode: 'The main board would not stop for the update',
+    tx: 'The main board did not stop transmitting',
+    no_slot: 'This main board needs one flash over USB before it can update over the air',
+    link: 'The main board stopped answering during the transfer',
+    host_restarted: 'The main board restarted during the transfer',
+    host_flash: 'The main board could not store the image',
+    host: 'The main board refused the image',
+    rolled_back: 'New version did not start',
     dns: 'Download failed: the sidekick’s WiFi has no internet',
     connect: 'Download failed: the sidekick could not reach the download server',
     download: 'Download failed',
@@ -79,21 +90,33 @@ var FwUpdates = (function () {
   function progressText(status, reachable) {
     if (!reachable) return 'Restarting the sidekick…';
     if (!status) return 'Starting…';
-    if (status.state === 'downloading') {
-      var pct = status.size > 0 ? Math.floor(status.got * 100 / status.size) : 0;
-      return 'Downloading… ' + pct + '%';
-    }
+    var pct = status.size > 0 ? Math.floor(status.got * 100 / status.size) : 0;
+    if (status.state === 'stopping') return 'Stopping the radio…';
+    if (status.state === 'downloading') return 'Downloading… ' + pct + '%';
     if (status.state === 'verifying') return 'Verifying…';
-    if (status.state === 'restarting') return 'Restarting the sidekick…';
+    if (status.state === 'transferring') return 'Sending to the main board… ' + pct + '%';
+    if (status.state === 'restarting') {
+      return status.board === 'main' ? 'Restarting the main board…' : 'Restarting the sidekick…';
+    }
     return 'Confirming the new version…';
   }
 
-  // How an update to `target` ended, from GET /api/fw/status: null while it is still running,
-  // else {ok, text}. After its restart the sidekick reports what came of it as `last`.
-  function outcome(status, target) {
+  // How an update of `board` to `target` ended, from GET /api/fw/status: null while it is still
+  // running, else {ok, text}. A main board's ends in the state `done` or `failed`. The sidekick's
+  // own ends in its restart, after which it reports what came of it as `last`.
+  function outcome(status, board, target) {
     if (!status) return null;
     if (status.state === 'failed') {
+      if (status.board === 'main') {
+        var on = !status.host ? '' :
+          (status.why === 'rolled_back' ? ' — rolled back to ' : ' — still on ') + status.host;
+        return { ok: false, text: whyText(status.why) + on };
+      }
       return { ok: false, text: whyText(status.why) + ' — still on ' + status.running };
+    }
+    if (board === 'main') {
+      return status.state === 'done' && status.board === 'main' && status.version === target
+        ? { ok: true, text: 'Updated to ' + target } : null;
     }
     if (status.state !== 'idle') return null;
     var last = status.last;

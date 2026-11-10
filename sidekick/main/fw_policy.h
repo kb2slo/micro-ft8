@@ -3,13 +3,15 @@
 // fw_policy.h -- the decisions of a firmware update, with no ESP-IDF in them
 // (docs/architecture/sidekick.md (Firmware updates)). fw_update.c does the
 // download, the flash writes and the restart, and asks here what a request
-// says, whether an update may start, what the last one came to, and whether a
-// freshly installed image has proved itself. Host-tested
-// (host_test_fw_policy).
+// says, whether an update may start, what the last one came to, whether a
+// freshly installed image has proved itself, and how a main board's image is
+// sent to it. Host-tested (host_test_fw_policy).
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+
+#include "porta_proto.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -68,11 +70,75 @@ typedef struct {
     bool     busy;            // an update is already running
     bool     pending_verify;  // the running image has not been confirmed yet
     uint32_t slot_bytes;      // size of the spare OTA slot the image is staged in
+    bool     host_linked;     // the main board's HELLO is arriving
 } fw_gate_t;
 
 // NULL if the update may start, else why not, as the code the API reports:
-// "busy", "confirming", "offline", "size" or "unsupported".
+// "busy", "confirming", "offline", "size", or "no_host" (a main-board image
+// with no main board answering, or one from before it could be updated).
 const char *fw_start_refusal(const fw_request_t *req, const fw_gate_t *gate);
+
+// 64 lowercase hex digits to 32 bytes; false for anything else.
+bool fw_sha256_bytes(const char *hex, uint8_t out[32]);
+
+// The version built into an ESP-IDF app image, from its first FW_IMAGE_HEAD
+// bytes: the image header, the first segment's header, then the app
+// description. False if those bytes are not the start of an app image. Used
+// for a main board's image, which ESP-IDF's own check here would refuse as
+// built for another chip; the main board checks the rest when it arrives.
+#define FW_IMAGE_HEAD 288u
+bool fw_image_version(const uint8_t *head, size_t len, char version_out[FW_VERSION_MAX]);
+
+// What the main board's answer to a firmware message means for the transfer
+// (porta_fw_status_t): NULL to go on from the offset it gave, else the code
+// the update fails with: "host_mode", "no_slot", "size", "host_restarted",
+// "host_flash", "hash", "image", "version" or "host".
+const char *fw_transfer_fault(uint8_t status);
+
+// Sends a staged image to the main board, a message and its answer at a time
+// (porta_proto.h, Firmware update). The main board says where to go on from
+// in every answer, so a lost frame costs one resend, and a transfer it
+// already holds part of goes on from there. Each `io` call that exchanges a
+// message returns false for no answer, and is tried FW_BEGIN_TRIES,
+// FW_CHUNK_TRIES or FW_END_TRIES times. Returns NULL once the main board has
+// accepted the whole image (it then restarts into it), else the code the
+// update fails with: fw_transfer_fault()'s, "link" (no answer), "flash" (the
+// staged image could not be read) or "cancelled" (and the main board was told
+// to forget the transfer). `*detail` gets the status or offset beside it.
+// `buf` holds PORTA_FW_CHUNK_MAX bytes.
+#define FW_BEGIN_TRIES 3
+#define FW_CHUNK_TRIES 5
+#define FW_END_TRIES   2
+
+typedef struct {
+    bool (*read)(void *ctx, uint32_t offset, uint8_t *out, size_t len);
+    bool (*begin)(void *ctx, const porta_fw_begin_t *begin, porta_fw_reply_t *out);
+    bool (*chunk)(void *ctx, uint32_t offset, const uint8_t *data, size_t len, porta_fw_reply_t *out);
+    bool (*end)(void *ctx, bool abort, porta_fw_reply_t *out);
+    bool (*cancelled)(void *ctx);
+    void (*progress)(void *ctx, uint32_t offset);
+} fw_transfer_io_t;
+
+const char *fw_transfer_run(const fw_transfer_io_t *io, void *ctx, const porta_fw_begin_t *begin, uint8_t *buf,
+                            int *detail);
+
+// After a main board was told to install an image and restart, what its
+// HELLO says. Its old image is still running for a moment after it answers,
+// so a HELLO within FW_HOST_SETTLE_MS of that is not evidence either way.
+#define FW_HOST_SETTLE_MS  4000u
+#define FW_HOST_CONFIRM_MS 240000u
+
+typedef enum {
+    FW_HOST_WAIT = 0,
+    FW_HOST_UPDATED,      // it reports the target version
+    FW_HOST_ROLLED_BACK,  // it restarted and reports another
+    FW_HOST_SILENT,       // nothing by the deadline
+} fw_host_result_t;
+
+// `since_end_ms`: time since the main board accepted the image. `hello_age_ms`:
+// how long ago its last HELLO came; `hello_seen` false if none ever has.
+fw_host_result_t fw_host_result(uint32_t since_end_ms, bool hello_seen, uint32_t hello_age_ms,
+                                const char *hello_version, const char *target);
 
 // The record kept across the restart that ends an update, so the next boot
 // can say what came of it: "board\ttarget\tfrom".

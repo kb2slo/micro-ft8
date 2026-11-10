@@ -690,6 +690,126 @@ bool porta_proto_parse_factory_reset(const porta_frame_t *f, uint8_t *flags_out)
     return true;
 }
 
+size_t porta_proto_encode_update_mode(bool on, uint8_t *out, size_t out_cap)
+{
+    const uint8_t payload[2] = {PORTA_ACT_UPDATE_MODE, on ? 1u : 0u};
+    return porta_proto_encode(PORTA_MSG_ACTION, payload, 2, out, out_cap);
+}
+
+bool porta_proto_parse_update_mode(const porta_frame_t *f, bool *on_out)
+{
+    if (!f || f->type != PORTA_MSG_ACTION || f->len != 2 ||
+        f->payload[0] != PORTA_ACT_UPDATE_MODE || f->payload[1] > 1) {
+        return false;
+    }
+    if (on_out) {
+        *on_out = (f->payload[1] != 0);
+    }
+    return true;
+}
+
+// --- Firmware update -----------------------------------------------------
+
+size_t porta_proto_encode_fw_begin(const porta_fw_begin_t *begin, uint8_t *out, size_t out_cap)
+{
+    if (!begin) {
+        return 0;
+    }
+    uint8_t payload[PORTA_FW_BEGIN_PAYLOAD_LEN];
+    memset(payload, 0, sizeof(payload));
+    put_u32(payload, begin->size);
+    memcpy(&payload[4], begin->sha256, PORTA_FW_SHA256_LEN);
+    memcpy(&payload[4 + PORTA_FW_SHA256_LEN], begin->version, strnlen(begin->version, PORTA_FW_VERSION_LEN));
+    return porta_proto_encode(PORTA_MSG_FW_BEGIN, payload, (uint8_t)sizeof(payload), out, out_cap);
+}
+
+bool porta_proto_parse_fw_begin(const porta_frame_t *f, porta_fw_begin_t *out)
+{
+    if (!f || !out || f->type != PORTA_MSG_FW_BEGIN || f->len != PORTA_FW_BEGIN_PAYLOAD_LEN) {
+        return false;
+    }
+    out->size = get_u32(f->payload);
+    memcpy(out->sha256, &f->payload[4], PORTA_FW_SHA256_LEN);
+    memcpy(out->version, &f->payload[4 + PORTA_FW_SHA256_LEN], PORTA_FW_VERSION_LEN);
+    out->version[PORTA_FW_VERSION_LEN] = '\0';
+    return true;
+}
+
+size_t porta_proto_encode_fw_chunk(uint32_t offset, const uint8_t *data, size_t len,
+                                   uint8_t *out, size_t out_cap)
+{
+    if (!data || len == 0 || len > PORTA_FW_CHUNK_MAX) {
+        return 0;
+    }
+    uint8_t payload[4 + PORTA_FW_CHUNK_MAX];
+    put_u32(payload, offset);
+    memcpy(&payload[4], data, len);
+    return porta_proto_encode(PORTA_MSG_FW_CHUNK, payload, (uint8_t)(4 + len), out, out_cap);
+}
+
+bool porta_proto_parse_fw_chunk(const porta_frame_t *f, uint32_t *offset_out,
+                                const uint8_t **data_out, size_t *len_out)
+{
+    if (!f || f->type != PORTA_MSG_FW_CHUNK || f->len < 5 || f->len > 4 + PORTA_FW_CHUNK_MAX) {
+        return false;
+    }
+    if (offset_out) {
+        *offset_out = get_u32(f->payload);
+    }
+    if (data_out) {
+        *data_out = &f->payload[4];
+    }
+    if (len_out) {
+        *len_out = (size_t)f->len - 4;
+    }
+    return true;
+}
+
+size_t porta_proto_encode_fw_end(bool abort, uint8_t *out, size_t out_cap)
+{
+    const uint8_t payload[1] = {abort ? 1u : 0u};
+    return porta_proto_encode(PORTA_MSG_FW_END, payload, 1, out, out_cap);
+}
+
+bool porta_proto_parse_fw_end(const porta_frame_t *f, bool *abort_out)
+{
+    if (!f || f->type != PORTA_MSG_FW_END || f->len != 1 || f->payload[0] > 1) {
+        return false;
+    }
+    if (abort_out) {
+        *abort_out = (f->payload[0] != 0);
+    }
+    return true;
+}
+
+size_t porta_proto_encode_fw_reply(uint8_t type, uint8_t status, uint32_t offset,
+                                   uint8_t *out, size_t out_cap)
+{
+    if (type != PORTA_MSG_FW_BEGIN && type != PORTA_MSG_FW_CHUNK && type != PORTA_MSG_FW_END) {
+        return 0;
+    }
+    uint8_t payload[PORTA_FW_REPLY_PAYLOAD_LEN];
+    payload[0] = status;
+    put_u32(&payload[1], offset);
+    return porta_proto_encode(type, payload, (uint8_t)sizeof(payload), out, out_cap);
+}
+
+bool porta_proto_parse_fw_reply(const porta_frame_t *f, uint8_t *type_out, porta_fw_reply_t *out)
+{
+    if (!f || f->len != PORTA_FW_REPLY_PAYLOAD_LEN ||
+        (f->type != PORTA_MSG_FW_BEGIN && f->type != PORTA_MSG_FW_CHUNK && f->type != PORTA_MSG_FW_END)) {
+        return false;
+    }
+    if (type_out) {
+        *type_out = f->type;
+    }
+    if (out) {
+        out->status = f->payload[0];
+        out->offset = get_u32(&f->payload[1]);
+    }
+    return true;
+}
+
 size_t porta_proto_encode_cq_call(uint8_t *out, size_t out_cap)
 {
     const uint8_t payload[1] = {PORTA_ACT_CQ_CALL};

@@ -11,7 +11,9 @@
 #include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
+#include "esp_partition.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -21,6 +23,7 @@
 #include "nvs.h"
 
 #include "fw_policy.h"
+#include "host_link.h"
 #include "pairing_http.h"
 #include "pairing_http_cap.h"
 #include "wifi_prov.h"
@@ -36,15 +39,35 @@ static const char *TAG = "fw_update";
 // the server goes away.
 #define RESTART_DELAY_MS 2500
 
+// The main board's HELLO comes every 5 s; three missed and it is not there.
+#define HOST_LINKED_MS 16000
+// A transmission ends within a slot of being cancelled.
+#define TX_STOP_WAIT_MS 20000
+// The main board answers a chunk from its 10 ms loop, and a sector erase on the way is under 100 ms.
+#define CHUNK_REPLY_MS 3000
+#define CHUNK_TRIES    5
+// FW_BEGIN opens the slot; FW_END reads the whole image back twice (our hash, then ESP-IDF's).
+#define BEGIN_REPLY_MS 10000
+#define END_REPLY_MS   30000
+
 typedef enum {
     FW_IDLE = 0,
+    FW_STOPPING,      // waiting for the main board's transmitter to stop
     FW_DOWNLOADING,
     FW_VERIFYING,
-    FW_RESTARTING,
+    FW_TRANSFERRING,  // sending a main board's image down Port A
+    FW_RESTARTING,    // this sidekick is about to, or the main board is
+    FW_DONE,          // a main board's update ended well (the sidekick's own ends in a restart)
     FW_FAILED,
 } fw_state_t;
 
-static const char *const STATE_NAMES[] = {"idle", "downloading", "verifying", "restarting", "failed"};
+static const char *const STATE_NAMES[] = {"idle", "stopping", "downloading", "verifying", "transferring",
+                                          "restarting", "done", "failed"};
+
+static bool state_busy(fw_state_t s)
+{
+    return s != FW_IDLE && s != FW_DONE && s != FW_FAILED;
+}
 
 // Everything GET /api/fw/status reports. Written by the update task and read
 // by the httpd task, under s_lock.
@@ -70,6 +93,24 @@ static void set_state(fw_state_t state)
 {
     lock();
     s_st.state = state;
+    unlock();
+}
+
+static uint32_t now_ms(void)
+{
+    return (uint32_t)(esp_timer_get_time() / 1000);
+}
+
+static bool host_linked(void)
+{
+    uint32_t age = 0;
+    return host_link_host_hello(NULL, NULL, &age) && age < HOST_LINKED_MS;
+}
+
+static void set_got(uint32_t got)
+{
+    lock();
+    s_st.got = got;
     unlock();
 }
 
@@ -209,10 +250,44 @@ static int http_open(const fw_request_t *req)
     return fd;
 }
 
-// Downloads req into the OTA handle, hashing as it goes. Returns true with
-// the image written and its hash matching; otherwise it has called fail().
+// Where a download is written: the spare OTA slot either way. The sidekick's
+// own image goes through the OTA calls, which check it as an image for this
+// chip. A main board's is for another chip, so it is written as plain bytes,
+// each flash sector erased as the write reaches it.
+typedef struct {
+    const esp_partition_t *slot;
+    bool                   raw;
+    esp_ota_handle_t       ota;
+    uint32_t               at;
+    uint32_t               erased_to;
+} sink_t;
+
+static esp_err_t sink_write(sink_t *sink, const unsigned char *data, size_t len)
+{
+    if (!sink->raw) {
+        return esp_ota_write(sink->ota, data, len);
+    }
+    const uint32_t end = sink->at + (uint32_t)len;
+    if (end > sink->erased_to) {
+        const uint32_t sector = sink->slot->erase_size;
+        const uint32_t to = (end + sector - 1) / sector * sector;
+        const esp_err_t err = esp_partition_erase_range(sink->slot, sink->erased_to, to - sink->erased_to);
+        if (err != ESP_OK) {
+            return err;
+        }
+        sink->erased_to = to;
+    }
+    const esp_err_t err = esp_partition_write(sink->slot, sink->at, data, len);
+    if (err == ESP_OK) {
+        sink->at = end;
+    }
+    return err;
+}
+
+// Downloads req into the sink, hashing as it goes. Returns true with the
+// image written and its hash matching; otherwise it has called fail().
 // `buf` is DOWNLOAD_CHUNK bytes.
-static bool download_into(const fw_request_t *req, esp_ota_handle_t ota, unsigned char *buf)
+static bool download_into(const fw_request_t *req, sink_t *sink, unsigned char *buf)
 {
     const int fd = http_open(req);
     if (fd < 0) {
@@ -261,7 +336,7 @@ static bool download_into(const fw_request_t *req, esp_ota_handle_t ota, unsigne
         }
         if (n > 0) {
             mbedtls_sha256_update(&sha, buf, n);
-            const esp_err_t err = esp_ota_write(ota, buf, n);
+            const esp_err_t err = sink_write(sink, buf, n);
             if (err != ESP_OK) {
                 // The first write checks the image's magic byte.
                 fail(err == ESP_ERR_OTA_VALIDATE_FAILED ? "image" : "flash", err);
@@ -309,68 +384,196 @@ done:
     return ok;
 }
 
+// The sidekick's own image: let ESP-IDF check it, then make it the boot image
+// and restart. Does not return on success.
+static void install_own(const fw_request_t *req, sink_t *sink)
+{
+    // The image's own checksum and chip, then what it says it is. The running
+    // image is untouched until esp_ota_set_boot_partition() below.
+    esp_err_t err = esp_ota_end(sink->ota);
+    if (err != ESP_OK) {
+        fail("image", err);
+        return;
+    }
+    esp_app_desc_t desc;
+    if (esp_ota_get_partition_description(sink->slot, &desc) != ESP_OK ||
+        strcmp(desc.project_name, esp_app_get_description()->project_name) != 0) {
+        fail("image", 0);
+        return;
+    }
+    if (strcmp(desc.version, req->version) != 0) {
+        ESP_LOGW(TAG, "image says it is %s, expected %s", desc.version, req->version);
+        fail("version", 0);
+        return;
+    }
+    if (s_cancel) {
+        fail("cancelled", 0);
+        return;
+    }
+    fw_record_t rec = {.board = req->board};
+    snprintf(rec.target, sizeof(rec.target), "%s", req->version);
+    snprintf(rec.from, sizeof(rec.from), "%s", esp_app_get_description()->version);
+    if (!store_record(&rec)) {
+        // Not fatal: the update still happens, and only the report after it is lost.
+        ESP_LOGW(TAG, "could not store the update record");
+    }
+    err = esp_ota_set_boot_partition(sink->slot);
+    if (err != ESP_OK) {
+        fail("flash", err);
+        return;
+    }
+    set_state(FW_RESTARTING);
+    ESP_LOGI(TAG, "image verified; restarting into %s", req->version);
+    vTaskDelay(pdMS_TO_TICKS(RESTART_DELAY_MS));
+    esp_restart();
+}
+
+// fw_transfer_run()'s hands: the staged image in the spare slot, and Port A.
+static bool xfer_read(void *ctx, uint32_t offset, uint8_t *out, size_t len)
+{
+    return esp_partition_read((const esp_partition_t *)ctx, offset, out, len) == ESP_OK;
+}
+
+static bool xfer_begin(void *ctx, const porta_fw_begin_t *begin, porta_fw_reply_t *out)
+{
+    (void)ctx;
+    return host_link_fw_begin(begin, BEGIN_REPLY_MS, out);
+}
+
+static bool xfer_chunk(void *ctx, uint32_t offset, const uint8_t *data, size_t len, porta_fw_reply_t *out)
+{
+    (void)ctx;
+    return host_link_fw_chunk(offset, data, len, CHUNK_REPLY_MS, out);
+}
+
+static bool xfer_end(void *ctx, bool abort, porta_fw_reply_t *out)
+{
+    (void)ctx;
+    return host_link_fw_end(abort, abort ? CHUNK_REPLY_MS : END_REPLY_MS, out);
+}
+
+static bool xfer_cancelled(void *ctx)
+{
+    (void)ctx;
+    return s_cancel;
+}
+
+static void xfer_progress(void *ctx, uint32_t offset)
+{
+    (void)ctx;
+    set_got(offset);
+}
+
+// Sends the staged image down Port A. Returns true once the main board has
+// accepted it and is restarting into it; otherwise it has called fail().
+static bool transfer_to_host(const fw_request_t *req, const esp_partition_t *slot, unsigned char *buf)
+{
+    static const fw_transfer_io_t io = {xfer_read, xfer_begin, xfer_chunk, xfer_end, xfer_cancelled, xfer_progress};
+    porta_fw_begin_t begin = {.size = req->size};
+    fw_sha256_bytes(req->sha256_hex, begin.sha256);
+    snprintf(begin.version, sizeof(begin.version), "%s", req->version);
+
+    const uint32_t t0 = now_ms();
+    int            detail = 0;
+    const char    *why = fw_transfer_run(&io, (void *)slot, &begin, buf, &detail);
+    if (why) {
+        fail(why, detail);
+        return false;
+    }
+    // The measured time, on the console and in the app's log.
+    const uint32_t ms = now_ms() - t0;
+    char           line[PORTA_EVENT_TEXT_MAX + 1];
+    snprintf(line, sizeof(line), "SK firmware transfer: %" PRIu32 " bytes in %" PRIu32 ".%" PRIu32 " s", req->size, ms / 1000,
+             ms % 1000 / 100);
+    ESP_LOGI(TAG, "%s", line);
+    host_link_log(line);
+    return true;
+}
+
+// A main board's image: check it is one, send it, and wait for the board to
+// come back saying it runs the new version.
+static void install_on_host(const fw_request_t *req, const esp_partition_t *slot, unsigned char *buf)
+{
+    char version[FW_VERSION_MAX];
+    if (esp_partition_read(slot, 0, buf, FW_IMAGE_HEAD) != ESP_OK || !fw_image_version(buf, FW_IMAGE_HEAD, version)) {
+        fail("image", 0);
+        return;
+    }
+    if (strcmp(version, req->version) != 0) {
+        ESP_LOGW(TAG, "image says it is %s, expected %s", version, req->version);
+        fail("version", 0);
+        return;
+    }
+    set_got(0);
+    set_state(FW_TRANSFERRING);
+    host_link_fw_active(true);
+    const bool sent = transfer_to_host(req, slot, buf);
+    host_link_fw_active(false);
+    if (!sent) {
+        return;
+    }
+    set_state(FW_RESTARTING);
+    const uint32_t t_end = now_ms();
+    for (;;) {
+        char     hello[PORTA_HELLO_VERSION_LEN + 1] = "";
+        uint32_t age = 0;
+        const bool seen = host_link_host_hello(NULL, hello, &age);
+        switch (fw_host_result(now_ms() - t_end, seen, age, hello, req->version)) {
+            case FW_HOST_UPDATED:
+                ESP_LOGI(TAG, "main board is running %s", hello);
+                set_state(FW_DONE);
+                return;
+            case FW_HOST_ROLLED_BACK:
+                ESP_LOGW(TAG, "main board came back on %s", hello);
+                fail("rolled_back", 0);
+                return;
+            case FW_HOST_SILENT:
+                fail("no_host", 0);
+                return;
+            default:
+                vTaskDelay(pdMS_TO_TICKS(500));
+        }
+    }
+}
+
 static void update_task(void *arg)
 {
     (void)arg;
     lock();
     const fw_request_t req = s_st.req;
     unlock();
+    const bool for_host = req.board == FW_BOARD_MAIN;
     ESP_LOGI(TAG, "updating %s to %s: %" PRIu32 " bytes from %s", fw_board_name(req.board), req.version, req.size, req.url);
 
-    const esp_partition_t *slot = esp_ota_get_next_update_partition(NULL);
-    unsigned char         *buf = malloc(DOWNLOAD_CHUNK);
-    esp_ota_handle_t       ota = 0;
-    esp_err_t              err = (slot && buf) ? esp_ota_begin(slot, OTA_WITH_SEQUENTIAL_WRITES, &ota) : ESP_ERR_NO_MEM;
+    // The main board was put into update mode before this task started
+    // (post_start()); a transmission it was in the middle of takes a moment to end.
+    const uint32_t t0 = now_ms();
+    while (host_link_tx_active() && host_linked()) {
+        if (now_ms() - t0 > TX_STOP_WAIT_MS) {
+            fail("tx", 0);
+            vTaskDelete(NULL);
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    set_state(FW_DOWNLOADING);
+
+    sink_t sink = {.slot = esp_ota_get_next_update_partition(NULL), .raw = for_host};
+    unsigned char *buf = malloc(DOWNLOAD_CHUNK);
+    esp_err_t      err = (sink.slot && buf) ? ESP_OK : ESP_ERR_NO_MEM;
+    if (err == ESP_OK && !for_host) {
+        err = esp_ota_begin(sink.slot, OTA_WITH_SEQUENTIAL_WRITES, &sink.ota);
+    }
     if (err != ESP_OK) {
         fail("flash", err);
-        goto out;
+    } else if (!download_into(&req, &sink, buf)) {
+        if (!for_host) {
+            esp_ota_abort(sink.ota);
+        }
+    } else if (for_host) {
+        install_on_host(&req, sink.slot, buf);
+    } else {
+        install_own(&req, &sink);
     }
-    if (!download_into(&req, ota, buf)) {
-        esp_ota_abort(ota);
-        goto out;
-    }
-    // The image's own checksum and chip, then what it says it is. The running
-    // image is untouched until esp_ota_set_boot_partition() below.
-    err = esp_ota_end(ota);
-    if (err != ESP_OK) {
-        fail("image", err);
-        goto out;
-    }
-    esp_app_desc_t desc;
-    if (esp_ota_get_partition_description(slot, &desc) != ESP_OK ||
-        strcmp(desc.project_name, esp_app_get_description()->project_name) != 0) {
-        fail("image", 0);
-        goto out;
-    }
-    if (strcmp(desc.version, req.version) != 0) {
-        ESP_LOGW(TAG, "image says it is %s, expected %s", desc.version, req.version);
-        fail("version", 0);
-        goto out;
-    }
-    if (s_cancel) {
-        fail("cancelled", 0);
-        goto out;
-    }
-
-    fw_record_t rec = {.board = req.board};
-    snprintf(rec.target, sizeof(rec.target), "%s", req.version);
-    snprintf(rec.from, sizeof(rec.from), "%s", esp_app_get_description()->version);
-    if (!store_record(&rec)) {
-        // Not fatal: the update still happens, and only the report after it is lost.
-        ESP_LOGW(TAG, "could not store the update record");
-    }
-    err = esp_ota_set_boot_partition(slot);
-    if (err != ESP_OK) {
-        fail("flash", err);
-        goto out;
-    }
-    set_state(FW_RESTARTING);
-    ESP_LOGI(TAG, "image verified; restarting into %s", req.version);
-    free(buf);
-    vTaskDelay(pdMS_TO_TICKS(RESTART_DELAY_MS));
-    esp_restart();
-
-out:
     free(buf);
     vTaskDelete(NULL);
 }
@@ -392,13 +595,21 @@ static esp_err_t get_status(httpd_req_t *req)
                  fw_board_name(s_last.board), s_last.target, s_last.from,
                  fw_last_name(fw_last_result(&s_last, running, s_pending_verify)));
     }
-    char body[512];
+    // The main board's version is JSON-safe only if it is one an image can carry.
+    char host_version[PORTA_HELLO_VERSION_LEN + 1] = "";
+    host_link_host_hello(NULL, host_version, NULL);
+    if (!fw_version_ok(host_version)) {
+        host_version[0] = '\0';
+    }
+    const bool linked = host_linked();
+    char       body[640];
     lock();
     snprintf(body, sizeof(body),
              "{\"state\":\"%s\",\"board\":\"%s\",\"version\":\"%s\",\"got\":%" PRIu32 ",\"size\":%" PRIu32
-             ",\"why\":\"%s\",\"detail\":%d,\"running\":\"%s\",\"online\":%s%s}",
+             ",\"why\":\"%s\",\"detail\":%d,\"running\":\"%s\",\"host\":\"%s\",\"host_linked\":%s,\"online\":%s%s}",
              STATE_NAMES[s_st.state], fw_board_name(s_st.req.board), s_st.req.version, s_st.got, s_st.req.size,
-             s_st.why, s_st.detail, running, wifi_prov_is_online() ? "true" : "false", last);
+             s_st.why, s_st.detail, running, host_version, linked ? "true" : "false",
+             wifi_prov_is_online() ? "true" : "false", last);
     unlock();
     // A client got an answer from this image, which counts as reachable even on its own access point.
     s_client_seen = true;
@@ -436,15 +647,17 @@ static esp_err_t post_start(httpd_req_t *req)
     const esp_partition_t *slot = esp_ota_get_next_update_partition(NULL);
 
     lock();
+    const bool      linked = host_linked();
     const fw_gate_t gate = {
         .online = wifi_prov_is_online(),
-        .busy = s_st.state == FW_DOWNLOADING || s_st.state == FW_VERIFYING || s_st.state == FW_RESTARTING,
+        .busy = state_busy(s_st.state),
         .pending_verify = s_pending_verify,
         .slot_bytes = slot ? slot->size : 0,
+        .host_linked = linked,
     };
     const char *why = fw_start_refusal(&parsed, &gate);
     if (!why) {
-        s_st.state = FW_DOWNLOADING;
+        s_st.state = FW_STOPPING;
         s_st.req = parsed;
         s_st.got = 0;
         s_st.why = "";
@@ -454,6 +667,17 @@ static esp_err_t post_start(httpd_req_t *req)
     unlock();
     if (why) {
         return refuse(req, "409 Conflict", why);
+    }
+    // Every update stops the radio first, the sidekick's own included: its restart takes the
+    // phone's controls away while the main board could go on transmitting. With no main board
+    // answering there is nothing to stop. It stays stopped until POST /api/fw/resume or its restart.
+    if (linked) {
+        char reason[PORTA_EVENT_TEXT_MAX + 1];
+        if (!host_link_update_mode(true, reason, sizeof(reason))) {
+            ESP_LOGW(TAG, "main board would not enter update mode: %s", reason);
+            fail("host_mode", 0);
+            return refuse(req, "409 Conflict", "host_mode");
+        }
     }
     if (xTaskCreate(update_task, "fw_update", 8192, NULL, 4, NULL) != pdPASS) {
         fail("flash", ESP_ERR_NO_MEM);
@@ -467,12 +691,31 @@ static esp_err_t post_start(httpd_req_t *req)
 static esp_err_t post_cancel(httpd_req_t *req)
 {
     lock();
-    const bool running = s_st.state == FW_DOWNLOADING || s_st.state == FW_VERIFYING;
+    const bool running = s_st.state == FW_STOPPING || s_st.state == FW_DOWNLOADING || s_st.state == FW_VERIFYING ||
+                         s_st.state == FW_TRANSFERRING;
     unlock();
     if (!running) {
         return refuse(req, "409 Conflict", "idle");
     }
     s_cancel = true;
+    return send_json(req, "200 OK", "{\"ok\":true}");
+}
+
+// Takes the main board out of update mode: the operator's Resume operating, after an update
+// succeeded, failed or was cancelled. Never by itself.
+static esp_err_t post_resume(httpd_req_t *req)
+{
+    lock();
+    const bool busy = state_busy(s_st.state);
+    unlock();
+    if (busy) {
+        return refuse(req, "409 Conflict", "busy");
+    }
+    char reason[PORTA_EVENT_TEXT_MAX + 1];
+    if (!host_link_update_mode(false, reason, sizeof(reason))) {
+        ESP_LOGW(TAG, "main board would not leave update mode: %s", reason);
+        return refuse(req, "409 Conflict", "no_host");
+    }
     return send_json(req, "200 OK", "{\"ok\":true}");
 }
 
@@ -490,6 +733,9 @@ esp_err_t fw_update_register(httpd_handle_t server)
     static const httpd_uri_t cancel = {
         .uri = "/api/fw/cancel", .method = HTTP_POST, .handler = post_cancel,
     };
+    static const httpd_uri_t resume = {
+        .uri = "/api/fw/resume", .method = HTTP_POST, .handler = post_resume,
+    };
     const struct {
         const httpd_uri_t *uri;
         pairing_policy_t   policy;
@@ -497,6 +743,7 @@ esp_err_t fw_update_register(httpd_handle_t server)
         { &status, PAIRING_OPEN },
         { &start, PAIRING_REQUIRED },
         { &cancel, PAIRING_REQUIRED },
+        { &resume, PAIRING_REQUIRED },
     };
     _Static_assert(sizeof(routes) / sizeof(routes[0]) == PAIRING_ROUTES_FW_UPDATE, "fw_update route count");
     for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i) {

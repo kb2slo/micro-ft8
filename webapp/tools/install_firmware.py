@@ -9,8 +9,13 @@ sidekick its URL, size, SHA-256 and built-in version behind the pairing token
 sidekick must be on the same network as this machine, joined to WiFi (not on
 its own access point).
 
+Every update stops the radio first (the main board's update mode), and it
+stays stopped afterwards until Resume operating in Settings, or --resume here.
+
 Usage:
   python3 webapp/tools/install_firmware.py                    # sidekick/build/sidekick.bin
+  python3 webapp/tools/install_firmware.py --board main       # poe_p4/build/poe_p4.bin, sent on down Port A
+  python3 webapp/tools/install_firmware.py --resume           # take the main board out of update mode
   python3 webapp/tools/install_firmware.py --image path/to/sidekick.bin
   python3 webapp/tools/install_firmware.py --host http://192.168.50.128
   python3 webapp/tools/install_firmware.py --wrong-hash       # the sidekick must refuse it: FAILED: hash
@@ -36,7 +41,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sidekick import ROOT, AuthError, SidekickError, die, http, resolve_base, url, with_token_retry  # noqa: E402
 
 DEFAULT_HOST = "http://micro-ft8.local"
-IMAGES = {"sidekick": ROOT / "sidekick" / "build" / "sidekick.bin"}
+IMAGES = {
+    "sidekick": ROOT / "sidekick" / "build" / "sidekick.bin",
+    "main": ROOT / "poe_p4" / "build" / "poe_p4.bin",
+}
 WAIT_S = 120.0
 FOLLOW_S = 8 * 60
 
@@ -84,26 +92,41 @@ def start(base: str, body: bytes, token: str) -> None:
         die(f"POST /api/fw/start: HTTP {code} {reply.decode('utf-8', 'replace')}")
 
 
-def follow(base: str, target: str) -> int:
+def resume(base: str, token: str) -> None:
+    code, reply = http("POST", url(base, "/api/fw/resume"), token=token, body=b"")
+    if code == 401:
+        raise AuthError()
+    if code != 200:
+        die(f"POST /api/fw/resume: HTTP {code} {reply.decode('utf-8', 'replace')}")
+
+
+def follow(base: str, board: str, target: str) -> int:
     began = time.monotonic()
     last_line = ""
     while time.monotonic() - began < FOLLOW_S:
         st = status(base)
+        on = (st or {}).get("host" if board == "main" else "running", "?")
         if st is None:
             line = "no answer (restarting)"
         elif st["state"] == "failed":
-            print(f"FAILED: {st['why']} (detail {st['detail']}); still on {st['running']}")
+            print(f"{'ROLLED BACK' if st['why'] == 'rolled_back' else 'FAILED'}: {st['why']} (detail {st['detail']}); on {on}")
             return 1
+        elif st["state"] == "done" and st["board"] == board and st["version"] == target:
+            print(f"UPDATED: running {on}, {time.monotonic() - began:.0f} s")
+            return 0
         elif st["state"] != "idle":
-            line = f"{st['state']} {st['got']}/{st['size']}"
+            line = st["state"] + (f" {st['got']}/{st['size']}" if st["state"] in ("downloading", "transferring") else "")
         elif st.get("last", {}).get("version") == target and st["last"]["result"] != "confirming":
             ok = st["last"]["result"] == "ok"
-            print(f"{'UPDATED' if ok else 'ROLLED BACK'}: running {st['running']} (from {st['last']['from']})")
+            print(f"{'UPDATED' if ok else 'ROLLED BACK'}: running {on} (from {st['last']['from']}), "
+                  f"{time.monotonic() - began:.0f} s")
             return 0 if ok else 1
         else:
             line = "confirming"
         if line != last_line:
-            print("  " + line)
+            # A transfer's count moves every poll; say it on one line.
+            end = "\r" if line.startswith(("downloading", "transferring")) and last_line.split(" ")[0] == line.split(" ")[0] else "\n"
+            print("  " + line + " " * 8, end=end, flush=True)
             last_line = line
         time.sleep(1.0)
     print("FAILED: no result within 8 minutes")
@@ -117,6 +140,7 @@ def main() -> int:
     ap.add_argument("--image", type=Path)
     ap.add_argument("--wrong-hash", action="store_true")
     ap.add_argument("--status", action="store_true")
+    ap.add_argument("--resume", action="store_true")
     args = ap.parse_args()
 
     try:
@@ -125,6 +149,13 @@ def main() -> int:
         die(str(e))
     if args.status:
         print(json.dumps(status(base), indent=2))
+        return 0
+    if args.resume:
+        try:
+            with_token_retry(base, WAIT_S, lambda token: resume(base, token))
+        except SidekickError as e:
+            die(str(e))
+        print("the main board is operating again")
         return 0
 
     image = args.image or IMAGES[args.board]
@@ -135,7 +166,8 @@ def main() -> int:
     before = status(base)
     if before is None:
         die(f"no answer from {base}")
-    print(f"{args.board}: running {before['running']}, installing {version} ({len(data)} bytes) from {image}")
+    running = before.get("host", "") if args.board == "main" else before["running"]
+    print(f"{args.board}: running {running or 'unknown'}, installing {version} ({len(data)} bytes) from {image}")
 
     server = serve(image.parent, lan_address(base))
     image_url = f"http://{server.server_address[0]}:{server.server_address[1]}/{urllib.parse.quote(image.name)}"
@@ -148,7 +180,9 @@ def main() -> int:
     except SidekickError as e:
         die(str(e))
 
-    return follow(base, version)
+    rc = follow(base, args.board, version)
+    print("the radio is stopped; Resume operating in Settings, or: python3 webapp/tools/install_firmware.py --resume")
+    return rc
 
 
 if __name__ == "__main__":

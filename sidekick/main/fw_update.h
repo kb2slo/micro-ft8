@@ -3,9 +3,11 @@
 // fw_update.h -- firmware updates over the air (docs/architecture/sidekick.md
 // (Firmware updates)). The sidekick downloads an image itself, over plain
 // HTTP, into its spare OTA slot, and refuses it unless its SHA-256 is the one
-// the web app read from the release manifest over HTTPS. Every decision is in
-// fw_policy.c, which is host-tested; this file is the part that needs the
-// network, the flash and a restart, and is verified on hardware.
+// the web app read from the release manifest over HTTPS. Its own image it
+// installs and restarts into; a main board's it sends down Port A. Every
+// decision is in fw_policy.c, which is host-tested; this file is the part
+// that needs the network, the flash and a restart, and is verified on
+// hardware.
 
 #include <stdint.h>
 
@@ -16,8 +18,8 @@
 // before any route is registered.
 void fw_update_init(void);
 
-// GET /api/fw/status (open), POST /api/fw/start and POST /api/fw/cancel
-// (pairing required).
+// GET /api/fw/status (open); POST /api/fw/start, /api/fw/cancel and
+// /api/fw/resume (pairing required).
 esp_err_t fw_update_register(httpd_handle_t server);
 
 // Once a second from the main loop. An image installed over the air runs on

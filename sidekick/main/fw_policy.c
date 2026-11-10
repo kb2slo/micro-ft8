@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "porta_proto.h"
+
 const char *fw_board_name(fw_board_t board)
 {
     return board == FW_BOARD_MAIN ? "main" : "sidekick";
@@ -296,10 +298,142 @@ const char *fw_start_refusal(const fw_request_t *req, const fw_gate_t *gate)
     if (req->size > gate->slot_bytes) {
         return "size";
     }
-    if (req->board != FW_BOARD_SIDEKICK) {
-        return "unsupported";
+    if (req->board == FW_BOARD_MAIN && !gate->host_linked) {
+        return "no_host";
     }
     return NULL;
+}
+
+bool fw_sha256_bytes(const char *hex, uint8_t out[32])
+{
+    if (!hex || !sha256_hex_ok(hex)) {
+        return false;
+    }
+    for (int i = 0; i < 32; ++i) {
+        unsigned v = 0;
+        for (int j = 0; j < 2; ++j) {
+            const char c = hex[2 * i + j];
+            v = v * 16 + (unsigned)(c <= '9' ? c - '0' : c - 'a' + 10);
+        }
+        out[i] = (uint8_t)v;
+    }
+    return true;
+}
+
+bool fw_image_version(const uint8_t *head, size_t len, char version_out[FW_VERSION_MAX])
+{
+    // esp_image_header_t (24 bytes, magic 0xE9), esp_image_segment_header_t (8),
+    // then esp_app_desc_t: magic 0xABCD5432 little-endian, and version[32] at +16.
+    if (!head || len < FW_IMAGE_HEAD || head[0] != 0xE9 || head[32] != 0x32 || head[33] != 0x54 ||
+        head[34] != 0xCD || head[35] != 0xAB) {
+        return false;
+    }
+    char version[FW_VERSION_MAX + 1];
+    memcpy(version, &head[48], FW_VERSION_MAX);
+    version[FW_VERSION_MAX] = '\0';
+    if (!fw_version_ok(version)) {
+        return false;
+    }
+    memcpy(version_out, version, strlen(version) + 1);  // fw_version_ok(): it fits
+    return true;
+}
+
+const char *fw_transfer_fault(uint8_t status)
+{
+    switch (status) {
+        case PORTA_FW_OK:
+        case PORTA_FW_OFFSET:  // go on from the offset it wants
+        case PORTA_FW_SHORT:   // likewise
+            return NULL;
+        case PORTA_FW_NOT_UPDATE_MODE: return "host_mode";
+        case PORTA_FW_NO_SLOT:         return "no_slot";
+        case PORTA_FW_TOO_BIG:         return "size";
+        case PORTA_FW_NO_TRANSFER:     return "host_restarted";
+        case PORTA_FW_FLASH:           return "host_flash";
+        case PORTA_FW_HASH:            return "hash";
+        case PORTA_FW_IMAGE:           return "image";
+        case PORTA_FW_VERSION:         return "version";
+        default:                       return "host";
+    }
+}
+
+const char *fw_transfer_run(const fw_transfer_io_t *io, void *ctx, const porta_fw_begin_t *begin, uint8_t *buf,
+                            int *detail)
+{
+    porta_fw_reply_t r = {0, 0};
+    bool             answered = false;
+    for (int i = 0; i < FW_BEGIN_TRIES && !answered; ++i) {
+        answered = io->begin(ctx, begin, &r);
+    }
+    *detail = 0;
+    if (!answered) {
+        return "link";
+    }
+    const char *fault = fw_transfer_fault(r.status);
+    if (fault || r.offset > begin->size) {
+        *detail = r.status;
+        return fault ? fault : "host";
+    }
+    uint32_t offset = r.offset;
+    for (;;) {
+        while (offset < begin->size) {
+            if (io->cancelled(ctx)) {
+                io->end(ctx, true, &r);
+                return "cancelled";
+            }
+            const size_t n = begin->size - offset < PORTA_FW_CHUNK_MAX ? begin->size - offset : PORTA_FW_CHUNK_MAX;
+            *detail = (int)offset;
+            if (!io->read(ctx, offset, buf, n)) {
+                return "flash";
+            }
+            answered = false;
+            for (int i = 0; i < FW_CHUNK_TRIES && !answered; ++i) {
+                answered = io->chunk(ctx, offset, buf, n, &r);
+            }
+            if (!answered) {
+                return "link";
+            }
+            fault = fw_transfer_fault(r.status);
+            // An answer that moves us backwards is the main board having lost bytes it acknowledged.
+            if (fault || r.offset > begin->size || (r.status == PORTA_FW_OK && r.offset != offset + n)) {
+                *detail = r.status;
+                return fault ? fault : "host";
+            }
+            offset = r.offset;
+            io->progress(ctx, offset);
+        }
+        // The main board installs on this. A second END after a lost answer is answered the same.
+        answered = false;
+        for (int i = 0; i < FW_END_TRIES && !answered; ++i) {
+            answered = io->end(ctx, false, &r);
+        }
+        *detail = (int)offset;
+        if (!answered) {
+            return "link";
+        }
+        if (r.status == PORTA_FW_SHORT && r.offset < begin->size) {
+            offset = r.offset;  // it is missing the tail: send it
+            continue;
+        }
+        fault = fw_transfer_fault(r.status);
+        if (fault || r.status != PORTA_FW_OK) {
+            *detail = r.status;
+            return fault ? fault : "host";
+        }
+        return NULL;
+    }
+}
+
+fw_host_result_t fw_host_result(uint32_t since_end_ms, bool hello_seen, uint32_t hello_age_ms,
+                                const char *hello_version, const char *target)
+{
+    // Only a HELLO sent after the old image had time to restart counts.
+    const bool fresh = hello_seen && since_end_ms >= FW_HOST_SETTLE_MS &&
+                       hello_age_ms < since_end_ms - FW_HOST_SETTLE_MS;
+    if (fresh) {
+        return strcmp(hello_version, target) == 0 ? FW_HOST_UPDATED : FW_HOST_ROLLED_BACK;
+    }
+    return since_end_ms >= FW_HOST_CONFIRM_MS ? FW_HOST_SILENT : FW_HOST_WAIT;
 }
 
 bool fw_record_format(const fw_record_t *rec, char *out, size_t out_len)
