@@ -132,64 +132,6 @@ static void test_url()
     check(!fw_url_ok((longest + "a").c_str()), "one past it");
 }
 
-static void test_url_split()
-{
-    char host[64];
-    uint16_t port = 0;
-    const char *path = nullptr;
-    check(fw_url_split(URL, host, sizeof(host), &port, &path) && std::strcmp(host, "micro-ft8.kalikstein.com") == 0 &&
-              port == 80 && std::strcmp(path, "/download/microft8-sidekick-continuous-ota.bin") == 0, "host, default port, path");
-    check(fw_url_split("http://192.168.1.20:8000/sidekick.bin", host, sizeof(host), &port, &path) &&
-              std::strcmp(host, "192.168.1.20") == 0 && port == 8000 && std::strcmp(path, "/sidekick.bin") == 0, "a named port");
-    check(fw_url_split("http://h/a:b", host, sizeof(host), &port, &path) && port == 80 && std::strcmp(path, "/a:b") == 0,
-          "a colon in the path is not a port");
-    check(!fw_url_split("http://h:/x", host, sizeof(host), &port, &path), "empty port");
-    check(!fw_url_split("http://h:0/x", host, sizeof(host), &port, &path), "port 0");
-    check(!fw_url_split("http://h:65536/x", host, sizeof(host), &port, &path), "port past 65535");
-    check(!fw_url_split("http://h:80a/x", host, sizeof(host), &port, &path), "port with a letter");
-    check(!fw_url_split("http://:80/x", host, sizeof(host), &port, &path), "port and no host");
-    check(!fw_url_split("https://h/x", host, sizeof(host), &port, &path), "not a URL we fetch");
-    char tiny[4];
-    check(!fw_url_split("http://host/x", tiny, sizeof(tiny), &port, &path), "a host that does not fit");
-    check(fw_url_split("http://abc/x", tiny, sizeof(tiny), &port, &path) && std::strcmp(tiny, "abc") == 0, "a host that just fits");
-}
-
-static int head(const std::string &s, int *status, int64_t *clen)
-{
-    *status = 0;
-    *clen = 0;
-    return fw_http_head_parse(s.data(), s.size(), status, clen);
-}
-
-static void test_http_head()
-{
-    int status;
-    int64_t clen;
-    // What the release host answers, cut down.
-    const std::string cf = "HTTP/1.1 200 OK\r\nDate: Tue, 10 Nov 2026 16:31:27 GMT\r\nContent-Type: application/octet-stream\r\n"
-                           "Content-Length: 1115808\r\nConnection: close\r\nServer: cloudflare\r\n\r\n";
-    check(head(cf, &status, &clen) == (int)cf.size() && status == 200 && clen == 1115808, "the release host's head");
-    check(head(cf + "\xE9\x01\r\n\r\n", &status, &clen) == (int)cf.size(), "body bytes after the head are not read");
-    for (size_t n = 0; n < cf.size(); ++n) {
-        if (head(cf.substr(0, n), &status, &clen) != 0) {
-            check(false, "a head still arriving asks for more");
-            break;
-        }
-    }
-    check(head("HTTP/1.0 404 Not Found\r\ncontent-length:9\r\n\r\n", &status, &clen) > 0 && status == 404 && clen == 9,
-          "status, lowercase name, no space");
-    check(head("HTTP/1.0 200 OK\r\nServer: x\r\n\r\n", &status, &clen) > 0 && clen == -1, "no length given");
-    check(head("HTTP/1.0 200 OK\r\n\r\n", &status, &clen) == 19 && status == 200 && clen == -1, "no headers at all");
-    check(head("HTTP/1.1 200 OK\r\nX-Content-Length: 5\r\n\r\n", &status, &clen) > 0 && clen == -1, "a name that only ends the same");
-    check(head("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n", &status, &clen) == -1, "chunked refused");
-    check(head("HTTP/1.1 200 OK\r\nContent-Length: 12x\r\n\r\n", &status, &clen) == -1, "a length with junk");
-    check(head("HTTP/1.1 200 OK\r\nContent-Length: \r\n\r\n", &status, &clen) == -1, "an empty length");
-    check(head("HTTP/1.1 200 OK\r\nContent-Length: 99999999999999999999\r\n\r\n", &status, &clen) == -1, "an absurd length");
-    check(head("HTTP/2 200\r\n\r\nxxxxxxxx", &status, &clen) == -1, "not HTTP/1");
-    check(head("HTTP/1.1 2x0 OK\r\n\r\n", &status, &clen) == -1, "a status that is not a number");
-    check(head("<html>captive portal</html>\r\n\r\n", &status, &clen) == -1, "not a response");
-}
-
 static void test_gate()
 {
     fw_request_t req;
@@ -576,8 +518,6 @@ int main()
     test_parse();
     test_plan();
     test_url();
-    test_url_split();
-    test_http_head();
     test_gate();
     test_main_board_image();
     test_main_board_confirm();

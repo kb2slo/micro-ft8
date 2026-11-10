@@ -2,13 +2,13 @@
 
 #include "fw_update.h"
 
-#include <errno.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "esp_app_desc.h"
+#include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
@@ -17,8 +17,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-#include "lwip/netdb.h"
-#include "lwip/sockets.h"
 #include "mbedtls/sha256.h"
 #include "nvs.h"
 
@@ -207,56 +205,6 @@ static void digest_to_hex(const unsigned char dig[32], char out[FW_SHA256_HEX + 
     out[FW_SHA256_HEX] = '\0';
 }
 
-// Connects to the URL's host and sends the request. Returns the socket, or
-// -1 having called fail().
-static int http_open(const fw_request_t *req)
-{
-    char        host[FW_URL_MAX];
-    uint16_t    port;
-    const char *path;
-    if (!fw_url_split(req->url, host, sizeof(host), &port, &path)) {
-        fail("download", ESP_ERR_INVALID_ARG);
-        return -1;
-    }
-    char port_text[8];
-    snprintf(port_text, sizeof(port_text), "%u", (unsigned)port);
-    const struct addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_STREAM};
-    struct addrinfo      *res = NULL;
-    const int             gai = getaddrinfo(host, port_text, &hints, &res);
-    if (gai != 0 || !res) {
-        // No DNS answer: most often a network with no internet.
-        fail("dns", gai);
-        return -1;
-    }
-    const int fd = socket(res->ai_family, res->ai_socktype, 0);
-    if (fd < 0) {
-        freeaddrinfo(res);
-        fail("download", errno);
-        return -1;
-    }
-    const struct timeval tv = {.tv_sec = DOWNLOAD_TIMEOUT_MS / 1000};
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-    const int rc = connect(fd, res->ai_addr, res->ai_addrlen);
-    freeaddrinfo(res);
-    if (rc != 0) {
-        fail("connect", errno);
-        close(fd);
-        return -1;
-    }
-    // HTTP/1.0: the reply is the bytes and then a close, never chunked.
-    char      head[FW_URL_MAX * 2 + 96];
-    const int n = snprintf(head, sizeof(head),
-                           "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: micro-ft8-sidekick/%s\r\nConnection: close\r\n\r\n",
-                           path, host, esp_app_get_description()->version);
-    if (n <= 0 || (size_t)n >= sizeof(head) || send(fd, head, (size_t)n, 0) != n) {
-        fail("download", errno);
-        close(fd);
-        return -1;
-    }
-    return fd;
-}
-
 // Where a download is written: the spare OTA slot either way. The sidekick's
 // own image goes through the OTA calls, which check it as an image for this
 // chip. A main board's is for another chip, so it is written as plain bytes,
@@ -293,11 +241,19 @@ static esp_err_t sink_write(sink_t *sink, const unsigned char *data, size_t len)
 
 // Downloads req into the sink, hashing as it goes. Returns true with the
 // image written and its hash matching; otherwise it has called fail().
-// `buf` is DOWNLOAD_CHUNK bytes.
+// `buf` is DOWNLOAD_CHUNK bytes. ESP-IDF's HTTP client, configured to refuse
+// HTTPS (sdkconfig.defaults); fw_url_ok() has already refused anything but a
+// plain-HTTP URL.
 static bool download_into(const fw_request_t *req, sink_t *sink, unsigned char *buf)
 {
-    const int fd = http_open(req);
-    if (fd < 0) {
+    const esp_http_client_config_t cfg = {
+        .url = req->url,
+        .timeout_ms = DOWNLOAD_TIMEOUT_MS,
+        .buffer_size = 2048,
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&cfg);
+    if (!client) {
+        fail("download", ESP_ERR_NO_MEM);
         return false;
     }
     bool                   ok = false;
@@ -305,72 +261,62 @@ static bool download_into(const fw_request_t *req, sink_t *sink, unsigned char *
     mbedtls_sha256_init(&sha);
     mbedtls_sha256_starts(&sha, 0);
 
-    // The head, which fits one buffer, and whatever of the body came with it.
-    size_t  have = 0;
-    int     head_len = 0;
-    int     status = 0;
-    int64_t content_len = -1;
-    while (head_len == 0) {
-        const int n = have < DOWNLOAD_CHUNK ? recv(fd, buf + have, DOWNLOAD_CHUNK - have, 0) : 0;
-        if (n <= 0) {
-            fail("download", n < 0 ? errno : 0);
-            goto done;
-        }
-        have += (size_t)n;
-        head_len = fw_http_head_parse((const char *)buf, have, &status, &content_len);
+    // No DNS answer or no route: most often a network with no internet.
+    esp_err_t err = esp_http_client_open(client, 0);
+    if (err != ESP_OK) {
+        fail("connect", err);
+        goto done;
     }
-    if (head_len < 0) {
-        // Not HTTP as we asked for it: a captive portal, or a proxy in the way.
-        fail("download", ESP_ERR_INVALID_RESPONSE);
+    const int64_t content_len = esp_http_client_fetch_headers(client);
+    const int     status = esp_http_client_get_status_code(client);
+    if (content_len < 0) {
+        fail("download", (int)content_len);
         goto done;
     }
     if (status != 200) {
         fail("http", status);
         goto done;
     }
-    if (content_len >= 0 && content_len != (int64_t)req->size) {
+    // A chunked reply reports no length; the byte count below still bounds it.
+    if (content_len > 0 && content_len != (int64_t)req->size) {
         fail("size", (int)content_len);
         goto done;
     }
 
     uint32_t got = 0;
-    size_t   n = have - (size_t)head_len;  // body bytes already in buf
-    memmove(buf, buf + head_len, n);
-    for (;;) {
-        if (n > req->size - got) {
-            fail("size", (int)(got + n));  // more than the manifest said
-            goto done;
-        }
-        if (n > 0) {
-            mbedtls_sha256_update(&sha, buf, n);
-            const esp_err_t err = sink_write(sink, buf, n);
-            if (err != ESP_OK) {
-                // The first write checks the image's magic byte.
-                fail(err == ESP_ERR_OTA_VALIDATE_FAILED ? "image" : "flash", err);
-                goto done;
-            }
-            got += (uint32_t)n;
-            lock();
-            s_st.got = got;
-            unlock();
-        }
-        if (got == req->size) {
-            break;
-        }
+    while (got < req->size) {
         if (s_cancel) {
             fail("cancelled", 0);
             goto done;
         }
-        const int r = recv(fd, buf, DOWNLOAD_CHUNK, 0);
-        if (r < 0) {
-            fail("download", errno);  // EAGAIN: nothing for the whole timeout
+        const uint32_t want = req->size - got < DOWNLOAD_CHUNK ? req->size - got : DOWNLOAD_CHUNK;
+        const int n = esp_http_client_read(client, (char *)buf, (int)want);
+        if (n < 0) {
+            fail("download", n);
             goto done;
         }
-        if (r == 0) {
-            fail("size", (int)got);  // closed early
+        if (n == 0) {
+            // The server finished early, or sent nothing for the whole timeout.
+            fail(esp_http_client_is_complete_data_received(client) ? "size" : "download", (int)got);
             goto done;
         }
-        n = (size_t)r;
+        mbedtls_sha256_update(&sha, buf, (size_t)n);
+        err = sink_write(sink, buf, (size_t)n);
+        if (err != ESP_OK) {
+            // The OTA calls check the image's magic byte on the first write.
+            fail(err == ESP_ERR_OTA_VALIDATE_FAILED ? "image" : "flash", err);
+            goto done;
+        }
+        got += (uint32_t)n;
+        set_got(got);
+    }
+    // More than the manifest said is not the image it described.
+    if (!esp_http_client_is_complete_data_received(client) && content_len <= 0) {
+        char extra;
+        if (esp_http_client_read(client, &extra, 1) > 0) {
+            fail("size", (int)got + 1);
+            goto done;
+        }
     }
 
     set_state(FW_VERIFYING);
@@ -387,7 +333,8 @@ static bool download_into(const fw_request_t *req, sink_t *sink, unsigned char *
 
 done:
     mbedtls_sha256_free(&sha);
-    close(fd);
+    esp_http_client_close(client);
+    esp_http_client_cleanup(client);
     return ok;
 }
 

@@ -44,18 +44,6 @@ typedef struct {
 // refused because the sidekick has no TLS; the hash is what is trusted.
 bool fw_url_ok(const char *url);
 
-// Splits a URL fw_url_ok() accepts into its host, its port (80 unless the URL
-// names one) and its path, which points into `url`. False if the host does
-// not fit or the port is not a number from 1 to 65535.
-bool fw_url_split(const char *url, char *host, size_t host_len, uint16_t *port, const char **path);
-
-// Reads the head of an HTTP response as it arrives. Returns the number of
-// bytes the head takes, so the body starts there, with the status code and
-// the Content-Length (-1 if the reply has none) filled in; 0 when the head is
-// not all in `buf` yet; -1 for anything that is not a response this client
-// can read, a chunked body included (it asks with HTTP/1.0, which has none).
-int fw_http_head_parse(const char *buf, size_t len, int *status, int64_t *content_len);
-
 // True for a version string an app image can carry and JSON can quote as it is.
 bool fw_version_ok(const char *version);
 

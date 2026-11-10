@@ -183,8 +183,8 @@ assert.deepStrictEqual(plain(U.outcome(last('rolled_back', { running: '7e61488' 
 assert.strictEqual(U.outcome(last('ok'), 'sidekick', 'abc1234'), null, 'a result for some other version');
 assert.deepStrictEqual(plain(U.outcome(st({ state: 'failed', why: 'hash' }), 'sidekick', 'd18f9b2')),
   { ok: false, text: 'Verification failed — still on 7e61488' });
-assert.deepStrictEqual(plain(U.outcome(st({ state: 'failed', why: 'dns', detail: 202 }), 'sidekick', 'd18f9b2')),
-  { ok: false, text: 'Download failed: the sidekick’s WiFi has no internet — still on 7e61488' });
+assert.deepStrictEqual(plain(U.outcome(st({ state: 'failed', why: 'connect', detail: 202 }), 'sidekick', 'd18f9b2')),
+  { ok: false, text: 'Download failed: the sidekick could not reach the download server; check its WiFi has internet — still on 7e61488' });
 assert.deepStrictEqual(plain(U.outcome(st({ state: 'failed', why: 'cancelled' }), 'sidekick', 'd18f9b2')),
   { ok: false, text: 'Cancelled — still on 7e61488' });
 

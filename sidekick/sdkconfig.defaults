@@ -20,6 +20,12 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 # on its own rather than needing a cable.
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
+# Firmware images are fetched over plain HTTP and checked against a SHA-256
+# (docs/architecture/sidekick.md, Why the sidekick has no TLS), so ESP-IDF's
+# HTTP client is built to refuse an https:// URL. Its TLS library is still
+# linked; nothing calls it.
+CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=n
+
 # IDF default (10) is a global ceiling shared by every socket in the system --
 # httpd, mDNS, station/AP netif. httpd alone wants a real client budget (see
 # max_open_sockets in wifi_prov.c), so raised with headroom left over for the
