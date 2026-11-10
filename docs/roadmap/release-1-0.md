@@ -17,16 +17,17 @@ The first versioned release meant for someone other than the maintainer, and the
 Rows other epics and the index own; 1.0 is not cut until each has shipped. Each stays where it is: this list names them, it does not own them.
 
 * **OTA, epic [ukk6](ota-updates.md):** [wanw](ota-updates.md#wanw), [v697](ota-updates.md#v697), [hstv](ota-updates.md#hstv), [yme5](ota-updates.md#yme5), [nufg](ota-updates.md#nufg). First in order, so testers make the one USB reflash ([hstv](ota-updates.md#hstv)'s partition table) early and take everything after it over the air.
-* **FT8 and FT4 at once on a QMX, operated, epic [u8mc](several-channels.md):** receiving both shipped on 2026-11-07, FT4 replies beside FT8 on 2026-11-08 and on 40 m on 2026-11-09 ([autoseq.md](../architecture/autoseq.md), **The queue**) ([decode.md](../architecture/decode.md), **FT4**), and a QMX transmits FT4 off FT8's dial ([radio.md](../architecture/radio.md), **TX timing on a QMX**). The feature 1.0 leads with.
+* **FT8 and FT4 at once on a QMX, operated, epic [u8mc](several-channels.md):** receiving both shipped on 2026-11-07, FT4 replies beside FT8 on 2026-11-08 and on 40 m on 2026-11-09 ([autoseq.md](../architecture/autoseq.md), **The queue**) ([decode.md](../architecture/decode.md), **FT4**), and a QMX transmits FT4 off FT8's dial ([radio.md](../architecture/radio.md), **TX timing on a QMX**); and next, calling CQ in FT4 ([bdy4](several-channels.md#bdy4), operator, 2026-11-09), so the lead feature can start a QSO, not only answer one. The feature 1.0 leads with.
 * **Autoseq:** [jqpm](smart-queue.md#jqpm) and [k4ag](smart-queue.md#k4ag) (epic [qxy5](smart-queue.md)), [B88](../ROADMAP.md#B88).
 * **Safety:** [u4dw](../ROADMAP.md#u4dw), [bfkb](../ROADMAP.md#bfkb), [vcng](../ROADMAP.md#vcng).
 * **The settings format:** [mtd6](../ROADMAP.md#mtd6), so the first update after 1.0 is not a migration.
 * **First run:** [hqyj](../ROADMAP.md#hqyj), [k33u](../ROADMAP.md#k33u), [ucbm](../ROADMAP.md#ucbm), [cg7h](../ROADMAP.md#cg7h).
+* **The sidekick serving the app without stalls:** [dlu3](../ROADMAP.md#dlu3) (operator, 2026-11-09): a stranger's first session must not read No contact.
 * **The HL2, receive only and labelled experimental:** [nngr](hl2-support.md#nngr) (epic [knpp](hl2-support.md)).
 * **Field checks:** no [TEST_PLAN.md](../TEST_PLAN.md) Pending row on a path 1.0 claims (row [swsu](../ROADMAP.md#swsu)).
 * **Wanted, not gating:** [qauk](../ROADMAP.md#qauk), [kkap](../ROADMAP.md#kkap).
 
-**Not in 1.0:** HL2 transmit and the park ([abkw](hl2-support.md#abkw), [kgyh](hl2-support.md#kgyh)); epic [I18](activator-mode.md) ([rrsp](activator-mode.md#rrsp) included); epic [qxy5](smart-queue.md) past [k4ag](smart-queue.md#k4ag); [j4xh](../ROADMAP.md#j4xh), [nxyk](ideas.md#nxyk), [syb2](ideas.md#syb2).
+**Not in 1.0:** HL2 transmit and the park ([abkw](hl2-support.md#abkw), [kgyh](hl2-support.md#kgyh)); epic [I18](activator-mode.md) ([rrsp](activator-mode.md#rrsp) included); epic [qxy5](smart-queue.md) past [k4ag](smart-queue.md#k4ag); epic [u8mc](several-channels.md) past [bdy4](several-channels.md#bdy4) (the CQ on any channel, each channel's timing in the slot bar, a CQ on each of two channels); [j4xh](../ROADMAP.md#j4xh), [nxyk](ideas.md#nxyk), [syb2](ideas.md#syb2).
 
 ## Decided
 
