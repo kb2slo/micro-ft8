@@ -195,6 +195,7 @@ extern "C" void app_main(void) {
         porta_tick();
         porta_p4_companion_status_tick();
         porta_p4_tx_hud_tick();
+        radio_control_dial_tick();
         porta_p4_radio_push_tick();
         porta_p4_file_tick();
         // The decode task hands each slot here: this loop alone touches autoseq

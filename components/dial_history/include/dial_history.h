@@ -1,7 +1,8 @@
 #pragma once
 
-// What the radio's dial was set to, and from when: every successful tune is
-// noted (radio_control_sync_frequency_mode()), and a decode asks what the
+// What the radio's dial was on, and from when: what the radio reports is
+// noted (radio_control_dial_tick(); a radio that cannot report, where we set
+// it: radio_control_sync_frequency_mode(), the HL2's dial), and a decode asks what the
 // dial held at the middle of its signal (decode_pipeline), so the Port A
 // DECODE event can say which frequency it was heard on even when the
 // operator retunes partway through a slot. Times are rtc_now_ms() (UTC ms),
