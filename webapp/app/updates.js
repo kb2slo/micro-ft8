@@ -53,16 +53,20 @@ var FwUpdates = (function () {
   }
 
   // What one tap of Update does: every offer, in order, in one request the sidekick carries out by
-  // itself (fw_plan_parse()), so a locked phone stops nothing. `link` is what the boards speak now:
-  // {hostLinked, mainProto, sidekickProto} from /api/config's host_proto and sk_proto (0 unknown).
-  // blocked: '' or why the plan must not run. The one reason today is 'pair': afterwards the two
-  // boards would speak different Port A protocol versions, and a main board the sidekick cannot
-  // talk to can only be recovered over USB.
+  // itself (fw_plan_parse()), so a locked phone stops nothing. `link` is what the boards say now:
+  // {hostLinked, mainProto, sidekickProto} from /api/config's host_proto and sk_proto (0 unknown),
+  // and radioAttached, whether the main board reports a USB device on its Host port.
+  // blocked: '' or why the plan must not run yet:
+  //   'radio'  a firmware update needs the radio off (main_board.md, Firmware updates). With no
+  //            main board answering there is nothing to ask, so it does not apply.
+  //   'pair'   afterwards the two boards would speak different Port A protocol versions, and a
+  //            main board the sidekick cannot talk to can only be recovered over USB.
   function plan(manifest, running, link) {
     var steps = offers(manifest, running);
     var after = { main: link.mainProto | 0, sidekick: link.sidekickProto | 0 };
     steps.forEach(function (o) { after[o.board] = o.proto; });
-    var blocked = link.hostLinked && after.main && after.sidekick && after.main !== after.sidekick ? 'pair' : '';
+    var blocked = link.hostLinked && after.main && after.sidekick && after.main !== after.sidekick ? 'pair'
+      : link.hostLinked && link.radioAttached ? 'radio' : '';
     return {
       steps: steps,
       blocked: blocked,
@@ -73,27 +77,12 @@ var FwUpdates = (function () {
     };
   }
 
-  // What stopping the radio costs right now, as sentences, from the queue the app shows: entries
-  // {dxcall, state, tries_sent}, state being autoseq's (0 calling CQ, 1 replying, 2 and up a QSO
-  // under way). Empty when nothing is in progress.
-  function stopCosts(queue) {
-    var out = [];
-    var queued = 0;
-    (queue || []).forEach(function (q) {
-      if (q.dxcall === 'CQ') out.unshift('Your CQ will end');
-      else if (q.state >= 2 || (q.tries_sent | 0) > 0) out.push('QSO with ' + q.dxcall + ' will be abandoned');
-      else queued++;
-    });
-    if (queued) out.push(queued + (queued === 1 ? ' queued reply' : ' queued replies') + ' will be cleared');
-    return out;
-  }
-
   // The steps of an update as the progress screen lists them, from GET /api/fw/status: its `plan`
   // (the boards, in order), `step` (the one in hand) and `state`. Each {text, at}: at is 'done',
   // 'now' or 'next'; a failure leaves its step 'now'. `reachable` false means the sidekick is not
   // answering, which at the end of its own update is its restart.
   function stepRows(status, reachable) {
-    var rows = [{ key: 'stopping', text: 'Stop the radio' }];
+    var rows = [];
     var boards = (status && status.plan) || [];
     boards.forEach(function (b, i) {
       var name = b.board === 'main' ? 'main board' : 'sidekick';
@@ -105,9 +94,7 @@ var FwUpdates = (function () {
     var state = status ? status.state : 'idle';
     // A failure is shown at the step it happened in (`at`).
     var at = state === 'failed' ? status.at : state;
-    var step = status ? status.step | 0 : 0;
-    // Before a later image the main board is stopped again; that moment belongs to the image's download.
-    var now = at === 'stopping' ? (step ? step + ':downloading' : 'stopping') : step + ':' + at;
+    var now = (status ? status.step | 0 : 0) + ':' + at;
     if (!reachable && boards.length) now = (boards.length - 1) + ':restarting';
     var idx = -1;
     rows.forEach(function (r, i) { if (r.key === now) idx = i; });
@@ -123,7 +110,7 @@ var FwUpdates = (function () {
 
   // Whether an update is in flight, from GET /api/fw/status.
   function busy(status) {
-    return !!status && ['stopping', 'downloading', 'verifying', 'transferring', 'restarting'].indexOf(status.state) >= 0;
+    return !!status && ['downloading', 'verifying', 'transferring', 'restarting'].indexOf(status.state) >= 0;
   }
 
   function sizeText(bytes) {
@@ -138,8 +125,7 @@ var FwUpdates = (function () {
     pair: 'This update would leave the two boards unable to talk to each other',
     plan: 'The sidekick did not understand the request',
     no_host: 'The main board is not answering',
-    host_mode: 'The main board would not stop for the update',
-    tx: 'The main board did not stop transmitting',
+    radio: 'Switch the radio off, or unplug its USB, to update',
     no_slot: 'This main board needs one flash over USB before it can update over the air',
     link: 'The main board stopped answering during the transfer',
     host_restarted: 'The main board restarted during the transfer',
@@ -166,7 +152,6 @@ var FwUpdates = (function () {
     if (!reachable) return 'Restarting the sidekick…';
     if (!status) return 'Starting…';
     var pct = status.size > 0 ? Math.floor(status.got * 100 / status.size) : 0;
-    if (status.state === 'stopping') return 'Stopping the radio…';
     if (status.state === 'downloading') return 'Downloading… ' + pct + '%';
     if (status.state === 'verifying') return 'Verifying…';
     if (status.state === 'transferring') return 'Sending to the main board… ' + pct + '%';
@@ -208,7 +193,6 @@ var FwUpdates = (function () {
     offers: offers,
     startBody: startBody,
     plan: plan,
-    stopCosts: stopCosts,
     stepRows: stepRows,
     busy: busy,
     sizeText: sizeText,

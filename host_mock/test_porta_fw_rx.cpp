@@ -127,15 +127,15 @@ static void test_whole_transfer()
     const auto img = image(1000);  // not a multiple of the chunk size
     const auto b = begin_for(img);
 
-    check(is(porta_fw_rx_begin(&rx, &b, true), PORTA_FW_OK, 0), "begin: send from 0");
+    check(is(porta_fw_rx_begin(&rx, &b, false), PORTA_FW_OK, 0), "begin: send from 0");
     check(send(&rx, img, 0, img.size()), "every chunk acknowledged with the next offset");
     check(!porta_fw_rx_committed(&rx), "not committed before END");
-    check(is(porta_fw_rx_end(&rx, false), PORTA_FW_OK, 1000), "end: OK");
+    check(is(porta_fw_rx_end(&rx, false, false), PORTA_FW_OK, 1000), "end: OK");
     check(porta_fw_rx_committed(&rx) && slot.commits == 1 && slot.finishes == 1 && slot.aborts == 0, "committed once, nothing aborted");
     check(slot.bytes == img, "the slot holds the image");
     // The reply to END was lost: asked again, the answer is the same and nothing is redone.
-    check(is(porta_fw_rx_end(&rx, false), PORTA_FW_OK, 1000) && slot.commits == 1, "end again");
-    check(is(porta_fw_rx_begin(&rx, &b, true), PORTA_FW_OK, 1000) && slot.begins == 1, "begin again after commit: nothing to send");
+    check(is(porta_fw_rx_end(&rx, false, false), PORTA_FW_OK, 1000) && slot.commits == 1, "end again");
+    check(is(porta_fw_rx_begin(&rx, &b, false), PORTA_FW_OK, 1000) && slot.begins == 1, "begin again after commit: nothing to send");
     check(is(porta_fw_rx_chunk(&rx, 0, img.data(), 10), PORTA_FW_NO_TRANSFER, 0), "no chunk after commit");
 }
 
@@ -148,28 +148,28 @@ static void test_refusals_before_a_transfer()
     const auto img = image(500);
     auto b = begin_for(img);
 
-    check(is(porta_fw_rx_begin(&rx, &b, false), PORTA_FW_NOT_UPDATE_MODE, 0) && slot.begins == 0, "not outside update mode");
+    check(is(porta_fw_rx_begin(&rx, &b, true), PORTA_FW_RADIO_ATTACHED, 0) && slot.begins == 0, "not with a radio attached");
     check(is(porta_fw_rx_chunk(&rx, 0, img.data(), 10), PORTA_FW_NO_TRANSFER, 0), "chunk with no begin");
-    check(is(porta_fw_rx_end(&rx, false), PORTA_FW_NO_TRANSFER, 0), "end with no begin");
-    check(is(porta_fw_rx_end(&rx, true), PORTA_FW_OK, 0), "aborting nothing is fine");
+    check(is(porta_fw_rx_end(&rx, false, false), PORTA_FW_NO_TRANSFER, 0), "end with no begin");
+    check(is(porta_fw_rx_end(&rx, true, false), PORTA_FW_OK, 0), "aborting nothing is fine");
 
     b.size = 4097;
-    check(is(porta_fw_rx_begin(&rx, &b, true), PORTA_FW_TOO_BIG, 0), "one byte over the slot");
+    check(is(porta_fw_rx_begin(&rx, &b, false), PORTA_FW_TOO_BIG, 0), "one byte over the slot");
     b.size = 0;
-    check(is(porta_fw_rx_begin(&rx, &b, true), PORTA_FW_TOO_BIG, 0), "an empty image");
+    check(is(porta_fw_rx_begin(&rx, &b, false), PORTA_FW_TOO_BIG, 0), "an empty image");
     b.size = 4096;
-    check(is(porta_fw_rx_begin(&rx, &b, true), PORTA_FW_OK, 0), "exactly the slot");
+    check(is(porta_fw_rx_begin(&rx, &b, false), PORTA_FW_OK, 0), "exactly the slot");
 
     Slot none;
     const porta_fw_ops_t single = ops(0);
     porta_fw_rx_init(&rx, &single, &none);
     b = begin_for(img);
-    check(is(porta_fw_rx_begin(&rx, &b, true), PORTA_FW_NO_SLOT, 0) && none.begins == 0, "a board with one app partition");
+    check(is(porta_fw_rx_begin(&rx, &b, false), PORTA_FW_NO_SLOT, 0) && none.begins == 0, "a board with one app partition");
 
     Slot bad;
     bad.fail_begin = true;
     porta_fw_rx_init(&rx, &o, &bad);
-    check(is(porta_fw_rx_begin(&rx, &b, true), PORTA_FW_FLASH, 0), "the slot would not open");
+    check(is(porta_fw_rx_begin(&rx, &b, false), PORTA_FW_FLASH, 0), "the slot would not open");
     check(is(porta_fw_rx_chunk(&rx, 0, img.data(), 10), PORTA_FW_NO_TRANSFER, 0), "and no transfer is open after that");
 }
 
@@ -181,7 +181,7 @@ static void test_lost_frames_and_resume()
     porta_fw_rx_init(&rx, &o, &slot);
     const auto img = image(1000);
     const auto b = begin_for(img);
-    porta_fw_rx_begin(&rx, &b, true);
+    porta_fw_rx_begin(&rx, &b, false);
     check(send(&rx, img, 0, 480), "the first two chunks");
 
     // The reply to the second chunk was lost, so it comes again: not written twice.
@@ -193,12 +193,12 @@ static void test_lost_frames_and_resume()
     // More than the image holds.
     check(send(&rx, img, 480, 960), "on to 960");
     check(is(porta_fw_rx_chunk(&rx, 960, &img[0], 41), PORTA_FW_TOO_BIG, 960) && slot.writes == writes + 2, "a chunk past the end");
-    check(is(porta_fw_rx_end(&rx, false), PORTA_FW_SHORT, 960), "end before the last bytes: still open");
+    check(is(porta_fw_rx_end(&rx, false, false), PORTA_FW_SHORT, 960), "end before the last bytes: still open");
 
     // The sidekick restarted and begins the same image again: go on from here.
-    check(is(porta_fw_rx_begin(&rx, &b, true), PORTA_FW_OK, 960) && slot.begins == 1 && slot.aborts == 0, "same image resumes");
+    check(is(porta_fw_rx_begin(&rx, &b, false), PORTA_FW_OK, 960) && slot.begins == 1 && slot.aborts == 0, "same image resumes");
     check(send(&rx, img, 960, 1000), "the rest");
-    check(is(porta_fw_rx_end(&rx, false), PORTA_FW_OK, 1000) && slot.bytes == img, "resumed transfer installs");
+    check(is(porta_fw_rx_end(&rx, false, false), PORTA_FW_OK, 1000) && slot.bytes == img, "resumed transfer installs");
 }
 
 static void test_a_different_image_starts_over()
@@ -209,29 +209,23 @@ static void test_a_different_image_starts_over()
     porta_fw_rx_init(&rx, &o, &slot);
     const auto first = image(1000), second = image(1000, 9);
     const auto b1 = begin_for(first);
-    porta_fw_rx_begin(&rx, &b1, true);
+    porta_fw_rx_begin(&rx, &b1, false);
     send(&rx, first, 0, 480);
 
     const auto b2 = begin_for(second);  // same size, another hash
-    check(is(porta_fw_rx_begin(&rx, &b2, true), PORTA_FW_OK, 0) && slot.aborts == 1 && slot.begins == 2, "another hash: from 0");
+    check(is(porta_fw_rx_begin(&rx, &b2, false), PORTA_FW_OK, 0) && slot.aborts == 1 && slot.begins == 2, "another hash: from 0");
     auto b3 = b2;
     std::snprintf(b3.version, sizeof(b3.version), "7e61488");
     send(&rx, second, 0, 240);
-    check(is(porta_fw_rx_begin(&rx, &b3, true), PORTA_FW_OK, 0) && slot.begins == 3, "another version: from 0");
+    check(is(porta_fw_rx_begin(&rx, &b3, false), PORTA_FW_OK, 0) && slot.begins == 3, "another version: from 0");
     auto b4 = begin_for(image(999, 9));
-    check(is(porta_fw_rx_begin(&rx, &b4, true), PORTA_FW_OK, 0) && slot.begins == 4, "another size: from 0");
-
-    // Update mode was left with a transfer open.
-    porta_fw_rx_reset(&rx);
-    check(slot.aborts == 4 && is(porta_fw_rx_chunk(&rx, 0, second.data(), 10), PORTA_FW_NO_TRANSFER, 0), "reset forgets it");
-    porta_fw_rx_reset(&rx);
-    check(slot.aborts == 4, "reset with nothing open aborts nothing");
+    check(is(porta_fw_rx_begin(&rx, &b4, false), PORTA_FW_OK, 0) && slot.begins == 4, "another size: from 0");
 
     // An explicit abort.
-    porta_fw_rx_begin(&rx, &b1, true);
+    porta_fw_rx_begin(&rx, &b1, false);
     send(&rx, first, 0, 240);
-    check(is(porta_fw_rx_end(&rx, true), PORTA_FW_OK, 0) && slot.aborts == 5, "abort");
-    check(is(porta_fw_rx_begin(&rx, &b1, true), PORTA_FW_OK, 0), "after an abort the same image starts at 0");
+    check(is(porta_fw_rx_end(&rx, true, false), PORTA_FW_OK, 0) && slot.aborts == 5, "abort");
+    check(is(porta_fw_rx_begin(&rx, &b1, false), PORTA_FW_OK, 0), "after an abort the same image starts at 0");
 }
 
 // Runs a whole transfer of `img` announced as `b` on a slot set up by the caller; returns END's reply.
@@ -240,9 +234,37 @@ static porta_fw_reply_t run_to_end(Slot *slot, const std::vector<uint8_t> &img, 
     static porta_fw_ops_t o;
     o = ops(4096);
     porta_fw_rx_init(rx, &o, slot);
-    porta_fw_rx_begin(rx, &b, true);
+    porta_fw_rx_begin(rx, &b, false);
     send(rx, img, 0, img.size());
-    return porta_fw_rx_end(rx, false);
+    return porta_fw_rx_end(rx, false, false);
+}
+
+// A firmware update needs the radio off: no transfer starts with one attached, and the END that
+// would restart the board waits for it to go.
+static void test_radio_attached()
+{
+    Slot slot;
+    const porta_fw_ops_t o = ops(4096);
+    porta_fw_rx_t rx;
+    porta_fw_rx_init(&rx, &o, &slot);
+    const auto img = image(1000);
+    const auto b = begin_for(img);
+
+    check(is(porta_fw_rx_begin(&rx, &b, true), PORTA_FW_RADIO_ATTACHED, 0) && slot.begins == 0, "begin refused, nothing opened");
+    check(is(porta_fw_rx_begin(&rx, &b, false), PORTA_FW_OK, 0), "radio off: begins");
+    check(send(&rx, img, 0, img.size()), "chunks are taken whatever is plugged in meanwhile");
+    // The radio was switched on during the transfer.
+    check(is(porta_fw_rx_end(&rx, false, true), PORTA_FW_RADIO_ATTACHED, 1000), "end refused, the transfer kept");
+    check(slot.commits == 0 && slot.finishes == 0 && slot.aborts == 0 && !porta_fw_rx_committed(&rx), "nothing checked, closed or installed");
+    // A begin for the same image while it is still on: refused, and it says what it holds.
+    check(is(porta_fw_rx_begin(&rx, &b, true), PORTA_FW_RADIO_ATTACHED, 1000) && slot.begins == 1, "begin again: refused, offset kept");
+    // Off again: the same END installs, with nothing sent twice.
+    check(is(porta_fw_rx_end(&rx, false, false), PORTA_FW_OK, 1000) && slot.commits == 1 && slot.bytes == img, "radio off: the same END installs");
+    // An abort is taken whatever is attached.
+    Slot other;
+    porta_fw_rx_init(&rx, &o, &other);
+    porta_fw_rx_begin(&rx, &b, false);
+    check(is(porta_fw_rx_end(&rx, true, true), PORTA_FW_OK, 0) && other.aborts == 1, "abort with a radio attached");
 }
 
 static void test_what_end_refuses()
@@ -256,7 +278,7 @@ static void test_what_end_refuses()
         b.sha256[5] ^= 1;
         check(is(run_to_end(&slot, img, b, &rx), PORTA_FW_HASH, 0), "wrong hash");
         check(slot.commits == 0 && slot.finishes == 0 && slot.aborts == 1 && !porta_fw_rx_committed(&rx), "wrong hash: aborted, not committed");
-        check(is(porta_fw_rx_begin(&rx, &b, true), PORTA_FW_OK, 0), "and the same image starts over at 0");
+        check(is(porta_fw_rx_begin(&rx, &b, false), PORTA_FW_OK, 0), "and the same image starts over at 0");
     }
     {   // The slot could not be read back.
         Slot slot;
@@ -286,13 +308,13 @@ static void test_what_end_refuses()
         const porta_fw_ops_t o = ops(4096);
         porta_fw_rx_init(&rx, &o, &slot);
         const auto b = begin_for(img);
-        porta_fw_rx_begin(&rx, &b, true);
+        porta_fw_rx_begin(&rx, &b, false);
         send(&rx, img, 0, 240);
         slot.fail_write = true;
         check(is(porta_fw_rx_chunk(&rx, 240, &img[240], 240), PORTA_FW_FLASH, 0) && slot.aborts == 1, "write failed");
         check(is(porta_fw_rx_chunk(&rx, 240, &img[240], 240), PORTA_FW_NO_TRANSFER, 0), "the transfer is gone");
         slot.fail_write = false;
-        check(is(porta_fw_rx_begin(&rx, &b, true), PORTA_FW_OK, 0) && slot.begins == 2, "begin again from 0");
+        check(is(porta_fw_rx_begin(&rx, &b, false), PORTA_FW_OK, 0) && slot.begins == 2, "begin again from 0");
     }
 }
 
@@ -311,6 +333,7 @@ int main()
     test_refusals_before_a_transfer();
     test_lost_frames_and_resume();
     test_a_different_image_starts_over();
+    test_radio_attached();
     test_what_end_refuses();
     test_confirm();
     if (g_fail) {

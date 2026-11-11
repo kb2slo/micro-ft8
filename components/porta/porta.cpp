@@ -65,10 +65,9 @@ const char* porta_host_factory_reset(uint8_t flags);
 // SWR sweep (docs/architecture/radio.md, The SWR sweep): nullptr = accepted, progress follows as porta_emit_sweep() events; a
 // non-null return is the refusal's reason and nothing was started.
 const char* porta_host_sweep_start(const porta_sweep_range_t* ranges, size_t count);
-// Update mode (docs/architecture/main_board.md, Firmware updates). on: stop transmitting now and
-// clear the queue; the board then reads porta_update_mode() to stay stopped. off: nothing to do
-// but operate again. nullptr on success, else why not.
-const char* porta_host_update_mode(bool on);
+// A radio is attached: a USB device is on the board's Host port. A firmware update needs it off
+// (docs/architecture/main_board.md, Firmware updates).
+bool porta_host_radio_attached(void);
 #include "porta_proto.h"
 #include "porta_out_queue.h"
 
@@ -235,9 +234,6 @@ void drain_out() {
 // What to answer and when to install is porta_fw_rx.c's, host-tested; this is the flash behind
 // it and the restart after. Main loop only.
 
-// The sidekick asked the board to stop operating (PORTA_ACT_UPDATE_MODE). Read from other tasks
-// (the decode task), so atomic.
-std::atomic<bool> s_update_mode{false};
 bool s_sidekick_hello_seen = false;
 porta_fw_rx_t s_fw;
 const esp_partition_t* s_fw_slot = nullptr;
@@ -320,7 +316,7 @@ void handle_fw(const porta_frame_t& f) {
   size_t len = 0;
   bool abort = false;
   if (porta_proto_parse_fw_begin(&f, &begin)) {
-    const porta_fw_reply_t r = porta_fw_rx_begin(&s_fw, &begin, s_update_mode.load());
+    const porta_fw_reply_t r = porta_fw_rx_begin(&s_fw, &begin, porta_host_radio_attached());
     ESP_LOGI(kTag, "FW: begin %" PRIu32 " bytes, version %s: status %u, from %" PRIu32, begin.size, begin.version,
              r.status, r.offset);
     fw_send_reply(PORTA_MSG_FW_BEGIN, r);
@@ -332,7 +328,7 @@ void handle_fw(const porta_frame_t& f) {
     fw_send_reply(PORTA_MSG_FW_CHUNK, r);
   } else if (porta_proto_parse_fw_end(&f, &abort)) {
     const bool idle_abort = abort && !s_fw.active && !porta_fw_rx_committed(&s_fw);
-    porta_fw_reply_t r = porta_fw_rx_end(&s_fw, abort);
+    porta_fw_reply_t r = porta_fw_rx_end(&s_fw, abort, porta_host_radio_attached());
     // An abort with nothing to abort is the sidekick asking whether this image has been kept.
     if (idle_abort && r.status == PORTA_FW_OK && s_fw_trial) r.status = PORTA_FW_TRIAL;
     if (!idle_abort) ESP_LOGI(kTag, "FW: end%s: status %u", abort ? " (abort)" : "", r.status);
@@ -714,25 +710,6 @@ void handle_action(const porta_frame_t& f) {
       break;
     }
   }
-  // In update mode nothing keys the radio or talks to it, from any phone, until the mode is left
-  // or the board restarts. Stopping (TX_CANCEL, QUEUE_CANCEL) stays allowed.
-  if (s_update_mode.load()) {
-    switch (verb) {
-    case PORTA_ACT_CONNECT:
-    case PORTA_ACT_TUNE:
-    case PORTA_ACT_CQ_CALL:
-    case PORTA_ACT_QUEUE_REPLY:
-    case PORTA_ACT_SWEEP_START:
-    case PORTA_ACT_RADIO_READ:
-    case PORTA_ACT_RADIO_SET_PTT:
-    case PORTA_ACT_FACTORY_RESET:
-      enqueue(buf, porta_proto_encode_nak(verb, "updating", buf, sizeof(buf)));
-      return;
-    default:
-      break;
-    }
-  }
-
   switch (verb) {
   case PORTA_ACT_UPDATE_MODE: {
     bool on = false;
@@ -740,15 +717,11 @@ void handle_action(const porta_frame_t& f) {
       enqueue(buf, porta_proto_encode_nak(verb, "malformed", buf, sizeof(buf)));
       return;
     }
-    if (on != s_update_mode.load()) {
-      const char* why = porta_host_update_mode(on);
-      if (why) {
-        enqueue(buf, porta_proto_encode_nak(verb, why, buf, sizeof(buf)));
-        return;
-      }
-      s_update_mode.store(on);
-      if (!on) porta_fw_rx_reset(&s_fw);
-      ESP_LOGW(kTag, "update mode %s", on ? "on: operation stopped" : "off: operating");
+    // May a board be updated now? Only with no radio attached: there is then nothing to stop, and
+    // the main board's restart cannot wedge a QMX. Nothing is held afterwards.
+    if (on && porta_host_radio_attached()) {
+      enqueue(buf, porta_proto_encode_nak(verb, "radio attached", buf, sizeof(buf)));
+      return;
     }
     enqueue(buf, porta_proto_encode_ack(verb, buf, sizeof(buf)));
     return;
@@ -965,9 +938,9 @@ void handle_config_get(const porta_frame_t& f) {
   // The sidekick adds its matching sk_* counters when it relays the reply.
   // If they do not fit, the reply goes without them rather than not at all.
   const int m = snprintf(snap + n, sizeof(snap) - n,
-                         "porta_crc_errors=%lu\nporta_frames_ok=%lu\nporta_dropped=%lu\nupdate_mode=%d\n",
+                         "porta_crc_errors=%lu\nporta_frames_ok=%lu\nporta_dropped=%lu\n",
                          (unsigned long)s_dec.crc_errors, (unsigned long)s_dec.frames_ok,
-                         (unsigned long)out_dropped(), s_update_mode.load() ? 1 : 0);
+                         (unsigned long)out_dropped());
   if (m > 0 && (size_t)m < sizeof(snap) - n) {
     n += (size_t)m;
   } else {
@@ -1405,10 +1378,6 @@ void porta_stop() {
 
 bool porta_link_test_active() {
   return s_link_radio;
-}
-
-bool porta_update_mode() {
-  return s_update_mode.load();
 }
 
 void porta_tick() {

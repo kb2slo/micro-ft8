@@ -9,14 +9,13 @@ sidekick its URL, size, SHA-256 and built-in version behind the pairing token
 sidekick must be on the same network as this machine, joined to WiFi (not on
 its own access point).
 
-Every update stops the radio first (the main board's update mode), and it
-stays stopped afterwards until Resume operating in Settings, or --resume here.
+A firmware update needs the radio off: the main board refuses one while a USB
+device is on its Host port, and this ends `FAILED: radio`.
 
 Usage:
   python3 webapp/tools/install_firmware.py                    # sidekick/build/sidekick.bin
   python3 webapp/tools/install_firmware.py --board main       # poe_p4/build/poe_p4.bin, sent on down Port A
   python3 webapp/tools/install_firmware.py --both             # one request: the main board, then the sidekick
-  python3 webapp/tools/install_firmware.py --resume           # take the main board out of update mode
   python3 webapp/tools/install_firmware.py --image path/to/sidekick.bin
   python3 webapp/tools/install_firmware.py --host http://192.168.50.128
   python3 webapp/tools/install_firmware.py --wrong-hash       # the sidekick must refuse it: FAILED: hash
@@ -93,14 +92,6 @@ def start(base: str, body: bytes, token: str) -> None:
         die(f"POST /api/fw/start: HTTP {code} {reply.decode('utf-8', 'replace')}")
 
 
-def resume(base: str, token: str) -> None:
-    code, reply = http("POST", url(base, "/api/fw/resume"), token=token, body=b"")
-    if code == 401:
-        raise AuthError()
-    if code != 200:
-        die(f"POST /api/fw/resume: HTTP {code} {reply.decode('utf-8', 'replace')}")
-
-
 def follow(base: str, board: str, target: str) -> int:
     began = time.monotonic()
     last_line = ""
@@ -153,7 +144,6 @@ def main() -> int:
     ap.add_argument("--image", type=Path)
     ap.add_argument("--wrong-hash", action="store_true")
     ap.add_argument("--status", action="store_true")
-    ap.add_argument("--resume", action="store_true")
     ap.add_argument("--both", action="store_true")
     args = ap.parse_args()
 
@@ -164,14 +154,6 @@ def main() -> int:
     if args.status:
         print(json.dumps(status(base), indent=2))
         return 0
-    if args.resume:
-        try:
-            with_token_retry(base, WAIT_S, lambda token: resume(base, token))
-        except SidekickError as e:
-            die(str(e))
-        print("the main board is operating again")
-        return 0
-
     before = status(base)
     if before is None:
         die(f"no answer from {base}")
@@ -209,7 +191,6 @@ def main() -> int:
             rc = 1
         else:
             print(f"both boards updated: main {st.get('host')}, sidekick {st.get('running')}")
-    print("the radio is stopped; Resume operating in Settings, or: python3 webapp/tools/install_firmware.py --resume")
     return rc
 
 

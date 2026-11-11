@@ -39,8 +39,6 @@ static const char *TAG = "fw_update";
 
 // The main board's HELLO comes every 5 s; three missed and it is not there.
 #define HOST_LINKED_MS 16000
-// A transmission ends within a slot of being cancelled.
-#define TX_STOP_WAIT_MS 20000
 // The main board answers a chunk from its 10 ms loop, and a sector erase on the way is under 100 ms.
 #define CHUNK_REPLY_MS 3000
 #define CHUNK_TRIES    5
@@ -50,7 +48,6 @@ static const char *TAG = "fw_update";
 
 typedef enum {
     FW_IDLE = 0,
-    FW_STOPPING,      // waiting for the main board's transmitter to stop
     FW_DOWNLOADING,
     FW_VERIFYING,
     FW_TRANSFERRING,  // sending a main board's image down Port A
@@ -59,8 +56,8 @@ typedef enum {
     FW_FAILED,
 } fw_state_t;
 
-static const char *const STATE_NAMES[] = {"idle", "stopping", "downloading", "verifying", "transferring",
-                                          "restarting", "done", "failed"};
+static const char *const STATE_NAMES[] = {"idle", "downloading", "verifying", "transferring", "restarting", "done",
+                                          "failed"};
 
 static bool state_busy(fw_state_t s)
 {
@@ -532,17 +529,6 @@ static bool run_step(const fw_request_t *req, unsigned char *buf)
 static void update_task(void *arg)
 {
     (void)arg;
-    // The main board was put into update mode before this task started
-    // (post_start()); a transmission it was in the middle of takes a moment to end.
-    const uint32_t t0 = now_ms();
-    while (host_link_tx_active() && host_linked()) {
-        if (now_ms() - t0 > TX_STOP_WAIT_MS) {
-            fail("tx", 0);
-            vTaskDelete(NULL);
-        }
-        vTaskDelay(pdMS_TO_TICKS(100));
-    }
-
     unsigned char *buf = malloc(DOWNLOAD_CHUNK);
     if (!buf) {
         fail("flash", ESP_ERR_NO_MEM);
@@ -551,23 +537,9 @@ static void update_task(void *arg)
     for (;;) {
         lock();
         const fw_request_t req = s_st.req;
-        const bool         later = s_st.step > 0;
         s_st.got = 0;
-        s_st.state = later ? FW_STOPPING : FW_DOWNLOADING;
+        s_st.state = FW_DOWNLOADING;
         unlock();
-        // A main board that just restarted into its new image is operating again: stop it once
-        // more before the sidekick's own update takes the phone's controls away.
-        if (later && host_linked()) {
-            char reason[PORTA_EVENT_TEXT_MAX + 1];
-            if (!host_link_update_mode(true, reason, sizeof(reason))) {
-                ESP_LOGW(TAG, "main board would not enter update mode: %s", reason);
-                fail("host_mode", 0);
-                break;
-            }
-            set_state(FW_DOWNLOADING);
-        } else if (later) {
-            set_state(FW_DOWNLOADING);
-        }
         if (!run_step(&req, buf)) {
             break;  // failed, and fail() has said why
         }
@@ -677,7 +649,7 @@ static esp_err_t post_start(httpd_req_t *req)
         why = fw_start_refusal(&parsed[i], &gate);
     }
     if (!why) {
-        s_st.state = FW_STOPPING;
+        s_st.state = FW_DOWNLOADING;
         memcpy(s_st.plan, parsed, sizeof(s_st.plan));
         s_st.n_plan = n;
         s_st.step = 0;
@@ -692,15 +664,17 @@ static esp_err_t post_start(httpd_req_t *req)
     if (why) {
         return refuse(req, "409 Conflict", why);
     }
-    // Every update stops the radio first, the sidekick's own included: its restart takes the
-    // phone's controls away while the main board could go on transmitting. With no main board
-    // answering there is nothing to stop. It stays stopped until POST /api/fw/resume or its restart.
+    // A firmware update needs the radio off, the sidekick's own included: its restart takes the
+    // phone's controls away while the main board could go on transmitting, and the main board's
+    // restart with a QMX attached leaves the QMX's USB wedged. The main board says whether one is
+    // attached. With no main board answering there is nothing to ask.
     if (linked) {
         char reason[PORTA_EVENT_TEXT_MAX + 1];
-        if (!host_link_update_mode(true, reason, sizeof(reason))) {
-            ESP_LOGW(TAG, "main board would not enter update mode: %s", reason);
-            fail("host_mode", 0);
-            return refuse(req, "409 Conflict", "host_mode");
+        if (!host_link_may_update(reason, sizeof(reason))) {
+            const char *code = strcmp(reason, "radio attached") == 0 ? "radio" : "no_host";
+            ESP_LOGW(TAG, "main board will not be updated now: %s", reason);
+            fail(code, 0);
+            return refuse(req, "409 Conflict", code);
         }
     }
     if (xTaskCreate(update_task, "fw_update", 8192, NULL, 4, NULL) != pdPASS) {
@@ -715,31 +689,12 @@ static esp_err_t post_start(httpd_req_t *req)
 static esp_err_t post_cancel(httpd_req_t *req)
 {
     lock();
-    const bool running = s_st.state == FW_STOPPING || s_st.state == FW_DOWNLOADING || s_st.state == FW_VERIFYING ||
-                         s_st.state == FW_TRANSFERRING;
+    const bool running = s_st.state == FW_DOWNLOADING || s_st.state == FW_VERIFYING || s_st.state == FW_TRANSFERRING;
     unlock();
     if (!running) {
         return refuse(req, "409 Conflict", "idle");
     }
     s_cancel = true;
-    return send_json(req, "200 OK", "{\"ok\":true}");
-}
-
-// Takes the main board out of update mode: the operator's Resume operating, after an update
-// succeeded, failed or was cancelled. Never by itself.
-static esp_err_t post_resume(httpd_req_t *req)
-{
-    lock();
-    const bool busy = state_busy(s_st.state);
-    unlock();
-    if (busy) {
-        return refuse(req, "409 Conflict", "busy");
-    }
-    char reason[PORTA_EVENT_TEXT_MAX + 1];
-    if (!host_link_update_mode(false, reason, sizeof(reason))) {
-        ESP_LOGW(TAG, "main board would not leave update mode: %s", reason);
-        return refuse(req, "409 Conflict", "no_host");
-    }
     return send_json(req, "200 OK", "{\"ok\":true}");
 }
 
@@ -757,9 +712,7 @@ esp_err_t fw_update_register(httpd_handle_t server)
     static const httpd_uri_t cancel = {
         .uri = "/api/fw/cancel", .method = HTTP_POST, .handler = post_cancel,
     };
-    static const httpd_uri_t resume = {
-        .uri = "/api/fw/resume", .method = HTTP_POST, .handler = post_resume,
-    };
+
     const struct {
         const httpd_uri_t *uri;
         pairing_policy_t   policy;
@@ -767,7 +720,6 @@ esp_err_t fw_update_register(httpd_handle_t server)
         { &status, PAIRING_OPEN },
         { &start, PAIRING_REQUIRED },
         { &cancel, PAIRING_REQUIRED },
-        { &resume, PAIRING_REQUIRED },
     };
     _Static_assert(sizeof(routes) / sizeof(routes[0]) == PAIRING_ROUTES_FW_UPDATE, "fw_update route count");
     for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i) {

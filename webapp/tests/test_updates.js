@@ -76,7 +76,7 @@ assert.strictEqual(U.sizeText(2621440), '2.5 MB');
 const eq = (actual, expected, msg) => assert.deepStrictEqual(plain(actual), expected, msg);  // values from the vm are another realm's
 // ---- the plan: one request, the main board first ----
 const OTA15 = Object.assign({}, OTA, { proto: 15 });
-const linked = { hostLinked: true, mainProto: 15, sidekickProto: 15 };
+const linked = { hostLinked: true, mainProto: 15, sidekickProto: 15, radioAttached: false };
 let pl = U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked);
 eq(pl.steps.map((o) => o.board), ['main', 'sidekick']);
 assert.strictEqual(pl.blocked, '');
@@ -100,58 +100,54 @@ assert.strictEqual(U.plan(manifest(OTA, Object.assign({}, P4OTA, { proto: 16 }))
 assert.strictEqual(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: '' }, { hostLinked: false, mainProto: 0, sidekickProto: 15 }).blocked, '');
 assert.strictEqual(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: '' }, { hostLinked: true, mainProto: 0, sidekickProto: 15 }).blocked, '');
 
-// ---- what stopping the radio costs ----
-eq(plain(U.stopCosts([])), []);
-eq(plain(U.stopCosts(null)), []);
-eq(plain(U.stopCosts([
-  { dxcall: 'W1AW', state: 1, tries_sent: 0 },
-  { dxcall: 'K1ABC', state: 3, tries_sent: 1 },
-  { dxcall: 'CQ', state: 0, tries_sent: 4 },
-  { dxcall: 'N0CALL', state: 1, tries_sent: 0 },
-  { dxcall: 'JA1XYZ', state: 1, tries_sent: 2 },
-])), ['Your CQ will end', 'QSO with K1ABC will be abandoned', 'QSO with JA1XYZ will be abandoned', '2 queued replies will be cleared']);
-eq(plain(U.stopCosts([{ dxcall: 'W1AW', state: 1, tries_sent: 0 }])), ['1 queued reply will be cleared']);
+// A firmware update needs the radio off: the plan is blocked while the main board reports a USB
+// device, whichever boards are in it.
+const radioOn = Object.assign({}, linked, { radioAttached: true });
+eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, radioOn).blocked, 'radio');
+eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: 'd18f9b2' }, radioOn).blocked, 'radio', 'the sidekick alone, too');
+// With no main board answering there is nothing to ask.
+eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '' }, { hostLinked: false, mainProto: 0, sidekickProto: 15, radioAttached: true }).blocked, '');
+// A pair that must not be made is the reason given first: switching the radio off would not help.
+eq(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: 'd18f9b2' }, radioOn).blocked, 'pair');
+assert.strictEqual(U.whyText('radio'), 'Switch the radio off, or unplug its USB, to update');
 
 // ---- the progress screen's steps ----
 const PLAN = [{ board: 'main', version: 'd18f9b2', size: 871968 }, { board: 'sidekick', version: 'd18f9b2', size: 1005232 }];
 const pst = (o) => Object.assign({ state: 'idle', board: 'main', step: 0, plan: PLAN, got: 0, size: 871968, why: '', at: '' }, o);
 const marks = (status, reachable) => U.stepRows(status, reachable !== false).map((r) => r.at[0]).join('');
-eq(U.stepRows(pst({ state: 'stopping' }), true).map((r) => r.text), [
-  'Stop the radio',
+eq(U.stepRows(pst({ state: 'verifying' }), true).map((r) => r.text), [
   'Download the main board’s image (852 KB)', 'Verify it', 'Send it to the main board', 'Restart the main board into d18f9b2',
   'Download the sidekick’s image (982 KB)', 'Verify it', 'Restart the sidekick into d18f9b2',
 ]);
 // d done, n now, x next (the first letter of 'next' is n too, so spell them out below).
 const ats = (status, reachable) => U.stepRows(status, reachable !== false).map((r) => r.at);
 const count = (a, v) => a.filter((x) => x === v).length;
-let a = ats(pst({ state: 'stopping' }));
-eq([a[0], count(a, 'next')], ['now', 7]);
+let a = ats(pst({ state: 'downloading' }));
+eq([a[0], count(a, 'next')], ['now', 6]);
 a = ats(pst({ state: 'transferring', got: 435984 }));
-eq(a, ['done', 'done', 'done', 'now', 'next', 'next', 'next', 'next']);
-assert.strictEqual(U.stepRows(pst({ state: 'transferring', got: 435984 }), true)[3].text, 'Send it to the main board · 50%');
-assert.strictEqual(U.stepRows(pst({ state: 'downloading', got: 87196 }), true)[1].text, 'Download the main board’s image (852 KB) · 9%');
+eq(a, ['done', 'done', 'now', 'next', 'next', 'next', 'next']);
+assert.strictEqual(U.stepRows(pst({ state: 'transferring', got: 435984 }), true)[2].text, 'Send it to the main board · 50%');
+assert.strictEqual(U.stepRows(pst({ state: 'downloading', got: 87196 }), true)[0].text, 'Download the main board’s image (852 KB) · 9%');
 a = ats(pst({ state: 'downloading', step: 1, board: 'sidekick', size: 1005232 }));
-eq(a, ['done', 'done', 'done', 'done', 'done', 'now', 'next', 'next']);
-// The main board is stopped again before the sidekick's image: shown on that image's first step.
-a = ats(pst({ state: 'stopping', step: 1, board: 'sidekick' }));
-eq(a, ['done', 'done', 'done', 'done', 'done', 'now', 'next', 'next']);
+eq(a, ['done', 'done', 'done', 'done', 'now', 'next', 'next']);
 a = ats(pst({ state: 'restarting', step: 1, board: 'sidekick' }));
-eq(a, ['done', 'done', 'done', 'done', 'done', 'done', 'done', 'now']);
+eq(a, ['done', 'done', 'done', 'done', 'done', 'done', 'now']);
 // The sidekick stopped answering: its own restart, the plan's last step.
 a = ats(pst({ state: 'verifying', step: 1 }), false);
-assert.strictEqual(a[7], 'now');
+assert.strictEqual(a[6], 'now');
 // A failure stays on the step it happened in.
 a = ats(pst({ state: 'failed', at: 'transferring', why: 'link' }));
-eq(a, ['done', 'done', 'done', 'now', 'next', 'next', 'next', 'next']);
-a = ats(pst({ state: 'failed', at: 'stopping', why: 'tx' }));
-assert.strictEqual(a[0], 'now');
+eq(a, ['done', 'done', 'now', 'next', 'next', 'next', 'next']);
+// A radio plugged in during the transfer: the main board will not restart into the image.
+a = ats(pst({ state: 'failed', at: 'transferring', why: 'radio' }));
+assert.strictEqual(a[2], 'now');
 // A main-board-only plan that finished: everything done.
 a = ats(pst({ state: 'done', plan: [PLAN[0]] }));
-eq(a, ['done', 'done', 'done', 'done', 'done']);
-eq(U.stepRows(null, true).map((r) => r.text), ['Stop the radio']);
+eq(a, ['done', 'done', 'done', 'done']);
+eq(U.stepRows(null, true), []);
 
 assert.strictEqual(U.busy(null), false);
-['stopping', 'downloading', 'verifying', 'transferring', 'restarting'].forEach((state) => assert.strictEqual(U.busy({ state }), true, state));
+['downloading', 'verifying', 'transferring', 'restarting'].forEach((state) => assert.strictEqual(U.busy({ state }), true, state));
 ['idle', 'done', 'failed'].forEach((state) => assert.strictEqual(U.busy({ state }), false, state));
 
 // ---- progress ----
@@ -162,7 +158,6 @@ assert.strictEqual(U.progressText(st({ state: 'downloading', got: 432249 }), tru
 assert.strictEqual(U.progressText(st({ state: 'downloading', got: 1005231 }), true), 'Downloading… 99%', 'never 100% before it is all there');
 assert.strictEqual(U.progressText(st({ state: 'verifying', got: 1005232 }), true), 'Verifying…');
 assert.strictEqual(U.progressText(st({ state: 'restarting' }), true), 'Restarting the sidekick…');
-assert.strictEqual(U.progressText(st({ state: 'stopping' }), true), 'Stopping the radio…');
 assert.strictEqual(U.progressText(st({ state: 'transferring', board: 'main', got: 435984, size: 871968 }), true), 'Sending to the main board… 50%');
 assert.strictEqual(U.progressText(st({ state: 'restarting', board: 'main' }), true), 'Restarting the main board…');
 assert.strictEqual(U.progressText(st({ state: 'downloading' }), false), 'Restarting the sidekick…', 'no answer mid-update is the restart');
@@ -191,7 +186,7 @@ assert.deepStrictEqual(plain(U.outcome(st({ state: 'failed', why: 'cancelled' })
 
 // A main board's update: the sidekick stays up, so the state says how it ended.
 const mst = (o) => st(Object.assign({ board: 'main', size: 871968, host: '7e61488', host_linked: true }, o));
-['stopping', 'downloading', 'verifying', 'transferring', 'restarting'].forEach(function (state) {
+['downloading', 'verifying', 'transferring', 'restarting'].forEach(function (state) {
   assert.strictEqual(U.outcome(mst({ state }), 'main', 'd18f9b2'), null, 'main ' + state);
 });
 assert.strictEqual(U.outcome(mst({ state: 'idle' }), 'main', 'd18f9b2'), null);
@@ -222,7 +217,7 @@ for (const fn of ['const char *fw_start_refusal(', 'const char *fw_transfer_faul
 for (const m of fwSrc[0].matchAll(/refuse\(req, "[^"]+", "([a-z_]+)"\)/g)) codes.add(m[1]);
 codes.add('plan');  // fw_plan_parse()'s answer to a plan it will not run, a 400 like a bad field
 ['body', 'idle'].forEach((c) => codes.delete(c));  // a malformed request and a cancel with nothing running: not an update's end
-assert(codes.size >= 22, 'found the sidekick’s codes: ' + [...codes].join(' '));
+assert(codes.size >= 20, 'found the sidekick’s codes: ' + [...codes].join(' '));
 for (const c of codes) {
   assert(!/^Update failed/.test(U.whyText(c)), 'no words for the sidekick’s "' + c + '"');
 }

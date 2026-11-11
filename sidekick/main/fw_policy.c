@@ -273,7 +273,7 @@ const char *fw_transfer_fault(uint8_t status)
         case PORTA_FW_OFFSET:  // go on from the offset it wants
         case PORTA_FW_SHORT:   // likewise
             return NULL;
-        case PORTA_FW_NOT_UPDATE_MODE: return "host_mode";
+        case PORTA_FW_RADIO_ATTACHED:  return "radio";
         case PORTA_FW_NO_SLOT:         return "no_slot";
         case PORTA_FW_TOO_BIG:         return "size";
         case PORTA_FW_NO_TRANSFER:     return "host_restarted";

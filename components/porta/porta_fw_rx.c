@@ -33,19 +33,14 @@ static void drop(porta_fw_rx_t *rx)
     rx->written = 0;
 }
 
-void porta_fw_rx_reset(porta_fw_rx_t *rx)
+porta_fw_reply_t porta_fw_rx_begin(porta_fw_rx_t *rx, const porta_fw_begin_t *begin, bool radio_attached)
 {
-    drop(rx);
-}
-
-porta_fw_reply_t porta_fw_rx_begin(porta_fw_rx_t *rx, const porta_fw_begin_t *begin, bool update_mode)
-{
-    if (!update_mode) {
-        return reply(PORTA_FW_NOT_UPDATE_MODE, 0);
-    }
     if (rx->committed) {
-        // Already installed and about to restart: nothing more to send.
-        return reply(same_image(&rx->begin, begin) ? PORTA_FW_OK : PORTA_FW_NOT_UPDATE_MODE, rx->begin.size);
+        // Already installed and about to restart: nothing more to send, and no other image is taken.
+        return reply(same_image(&rx->begin, begin) ? PORTA_FW_OK : PORTA_FW_NO_TRANSFER, rx->begin.size);
+    }
+    if (radio_attached) {
+        return reply(PORTA_FW_RADIO_ATTACHED, rx->active && same_image(&rx->begin, begin) ? rx->written : 0);
     }
     if (rx->ops->slot_bytes == 0) {
         return reply(PORTA_FW_NO_SLOT, 0);
@@ -89,7 +84,7 @@ porta_fw_reply_t porta_fw_rx_chunk(porta_fw_rx_t *rx, uint32_t offset, const uin
     return reply(PORTA_FW_OK, rx->written);
 }
 
-porta_fw_reply_t porta_fw_rx_end(porta_fw_rx_t *rx, bool abort)
+porta_fw_reply_t porta_fw_rx_end(porta_fw_rx_t *rx, bool abort, bool radio_attached)
 {
     if (rx->committed) {
         return reply(abort ? PORTA_FW_NO_TRANSFER : PORTA_FW_OK, rx->begin.size);
@@ -104,6 +99,11 @@ porta_fw_reply_t porta_fw_rx_end(porta_fw_rx_t *rx, bool abort)
     if (rx->written != rx->begin.size) {
         // Still open: the sender can go on from here.
         return reply(PORTA_FW_SHORT, rx->written);
+    }
+    // A radio was plugged in during the transfer. Installing restarts the board, and a restart
+    // with a QMX attached leaves its USB wedged; nothing is checked or closed, so END can come again.
+    if (radio_attached) {
+        return reply(PORTA_FW_RADIO_ATTACHED, rx->written);
     }
     const uint32_t size = rx->begin.size;
     uint8_t digest[PORTA_FW_SHA256_LEN];
