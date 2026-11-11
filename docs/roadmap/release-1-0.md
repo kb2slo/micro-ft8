@@ -16,7 +16,7 @@ The first versioned release meant for someone other than the maintainer, and the
 
 Rows other epics and the index own; 1.0 is not cut until each has shipped. Each stays where it is: this list names them, it does not own them.
 
-* **OTA, epic [ukk6](ota-updates.md):** [v697](ota-updates.md#v697), [hstv](ota-updates.md#hstv), [yme5](ota-updates.md#yme5), [nufg](ota-updates.md#nufg). First in order, so testers make the one USB reflash ([hstv](ota-updates.md#hstv)'s partition table) early and take everything after it over the air.
+* **OTA, epic [ukk6](ota-updates.md):** [v697](ota-updates.md#v697), [hstv](ota-updates.md#hstv), [yme5](ota-updates.md#yme5), [antu](ota-updates.md#antu), [nufg](ota-updates.md#nufg). First in order, so testers make the one USB reflash ([hstv](ota-updates.md#hstv)'s partition table) early and take everything after it over the air.
 * **FT8 and FT4 at once on a QMX, operated, epic [u8mc](several-channels.md):** receiving both shipped on 2026-11-07, FT4 replies beside FT8 on 2026-11-08 and on 40 m on 2026-11-09 ([autoseq.md](../architecture/autoseq.md), **The queue**) ([decode.md](../architecture/decode.md), **FT4**), and a QMX transmits FT4 off FT8's dial ([radio.md](../architecture/radio.md), **TX timing on a QMX**); and next, calling CQ in FT4 ([bdy4](several-channels.md#bdy4), operator, 2026-11-09), so the lead feature can start a QSO, not only answer one. The feature 1.0 leads with.
 * **Autoseq:** [jqpm](smart-queue.md#jqpm) and [k4ag](smart-queue.md#k4ag) (epic [qxy5](smart-queue.md)), [B88](../ROADMAP.md#B88).
 * **Safety:** [u4dw](../ROADMAP.md#u4dw), [bfkb](../ROADMAP.md#bfkb), [vcng](../ROADMAP.md#vcng).
