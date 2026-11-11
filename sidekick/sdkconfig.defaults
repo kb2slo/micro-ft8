@@ -14,9 +14,17 @@ CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
 # Roll back automatically if a new image never confirms itself. The app marks
-# itself valid only once the PORTA beacon is confirmed working, so an update
-# that boots but cannot talk reverts on its own rather than needing a cable.
+# itself valid only once it has sent its Port A beacons and is back on the
+# network, and restarts if it is not within five minutes (fw_policy.h,
+# fw_confirm_decide()), so an update that boots but cannot be reached reverts
+# on its own rather than needing a cable.
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# Firmware images are fetched over plain HTTP and checked against a SHA-256
+# (docs/architecture/sidekick.md, Why the sidekick has no TLS), so ESP-IDF's
+# HTTP client is built to refuse an https:// URL. Its TLS library is still
+# linked; nothing calls it.
+CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=n
 
 # IDF default (10) is a global ceiling shared by every socket in the system --
 # httpd, mDNS, station/AP netif. httpd alone wants a real client budget (see

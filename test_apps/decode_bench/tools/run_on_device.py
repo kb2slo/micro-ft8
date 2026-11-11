@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Flash a decode_bench build and capture its output over USB-Serial-JTAG.
 
-Default: write the app image to the app slot only (0x10000), leaving the bootloader, partition table, nvs and
-storage untouched. That is safe on a board that also runs the firmware, because the bench uses the firmware's
-partition table (see sdkconfig.defaults.<target>).
+Default: write the app image to the first app slot only (ota_0, 0x20000) and erase otadata so the bootloader
+boots that slot, leaving the bootloader, partition table, nvs and storage untouched. That is safe on a board
+that also runs the firmware, because the bench uses the firmware's partition table (see
+sdkconfig.defaults.<target>).
 
 --full: write the whole build (bootloader, partition table, app) from the build directory's flash_args, like
 `idf.py flash`. nvs and storage are still not written.
@@ -62,7 +63,10 @@ def main():
         build_dir = os.path.dirname(os.path.abspath(args.image))
         subprocess.run(esptool + ["write_flash", "@flash_args"], cwd=build_dir, check=True)
     else:
-        subprocess.run(esptool + ["write_flash", "0x10000", args.image], check=True)
+        # poe_p4/partitions.csv: otadata at 0xf000 (0x2000 long), ota_0 at 0x20000. A board last updated over
+        # Port A may be booting ota_1; with otadata erased the bootloader boots ota_0.
+        subprocess.run(esptool + ["erase_region", "0xf000", "0x2000"], check=True)
+        subprocess.run(esptool + ["write_flash", "0x20000", args.image], check=True)
     time.sleep(1.0)
 
     deadline = time.time() + args.timeout

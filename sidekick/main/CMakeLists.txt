@@ -52,7 +52,8 @@ endif()
 
 set(WEB_SEED_GEN "${CMAKE_CURRENT_BINARY_DIR}/web_seed_table.c")
 set(WEB_SEED_SRCS "main.c" "wifi_prov.c" "host_link.c" "event_state.c" "pairing_token.c" "pairing_http.c"
-                  "web_page.c" "web_fs.c" "web_manifest.c" "web_bundle.c" "bundle_host.c")
+                  "web_page.c" "web_fs.c" "web_manifest.c" "web_bundle.c" "bundle_host.c"
+                  "fw_policy.c" "fw_update.c")
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     file(WRITE "${WEB_SEED_GEN}" "\
 /* Generated from main/web/ — do not edit. */\n\
@@ -71,7 +72,7 @@ endif()
 idf_component_register(
     SRCS ${WEB_SEED_SRCS}
     INCLUDE_DIRS "."
-    REQUIRES nvs_flash esp_wifi esp_netif esp_event esp_http_server esp_app_format app_update porta_proto
+    REQUIRES nvs_flash esp_wifi esp_netif esp_event esp_http_server esp_http_client esp_app_format app_update porta_proto
              esp_driver_gpio esp_driver_uart esp_timer espressif__mdns joltwallet__littlefs mbedtls
 
     # Real files under web/, NUL-terminated by EMBED_TXTFILES. Placeholders are

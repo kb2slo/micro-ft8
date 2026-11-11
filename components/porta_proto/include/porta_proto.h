@@ -97,7 +97,13 @@ extern "C" {
 // host NAKs it as unknown. Both ends are flashed together.
 // v14 (2026-11-09): RADIO_STATE carries the wanted dial. A v13 peer refuses the longer frame. Both ends
 // are flashed together.
-#define PORTA_PROTO_VERSION 14u
+// v15 (2026-11-10): firmware updates for the main board (docs/architecture/sidekick.md, Firmware
+// updates): the host sends HELLO too, the UPDATE_MODE action, and the FW_BEGIN, FW_CHUNK and FW_END
+// messages. An older host sends no HELLO and NAKs the action, so it cannot be updated over Port A.
+// **Those five, with the frame itself and ACK/NAK, are frozen:** their layouts never change, whatever
+// this number becomes, so any two builds from v15 on can carry an update between them. A change to
+// one of them is a new message type or verb.
+#define PORTA_PROTO_VERSION 15u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -134,10 +140,10 @@ typedef enum {
     PORTA_MSG_FILE_DATA    = 0x0D,
     PORTA_MSG_ACK          = 0x0E,
     PORTA_MSG_NAK          = 0x0F,  // payload carries the reason
-    // Firmware push toward the host (web app -> sidekick -> host). Separate
+    // Firmware push toward the host (sidekick -> host), each answered by a
+    // frame of the same type (the Firmware update section below). Separate
     // from the FILE_* messages on purpose: the failure semantics are different,
-    // a 2 MB image takes minutes on this link, and a transfer that dies partway
-    // must resume rather than restart.
+    // and a transfer that dies partway must resume rather than restart.
     PORTA_MSG_FW_BEGIN     = 0x10,
     PORTA_MSG_FW_CHUNK     = 0x11,
     PORTA_MSG_FW_END       = 0x12,
@@ -503,6 +509,7 @@ typedef enum {
     PORTA_ACT_QUEUE_PARITY = 0x0E,  // payload: u16 entry_id, u8 parity (the CQ only)
     PORTA_ACT_RADIO_READ   = 0x0F,  // verb only: ask the radio for its state (IF;); the answer is in the config snapshot
     PORTA_ACT_RADIO_SET_PTT = 0x10, // payload: u8 keying (1 TX PTT grounded, 2 TX PTT +5V); progress in the config snapshot
+    PORTA_ACT_UPDATE_MODE  = 0x11,  // payload: u8 on. Frozen (PORTA_PROTO_VERSION's v15 note)
 } porta_action_verb_t;
 
 // FACTORY_RESET flags. Station settings are always reset; the QSO logs only when asked,
@@ -566,6 +573,12 @@ bool porta_proto_parse_queue_cancel(const porta_frame_t *f, uint16_t *entry_id_o
 size_t porta_proto_encode_queue_reply(uint32_t decode_id, uint8_t *out, size_t out_cap);
 bool porta_proto_parse_queue_reply(const porta_frame_t *f, uint32_t *decode_id_out);
 
+// Update mode: verb + u8 on. On: the host stops transmitting, clears its queue, stops receiving
+// and refuses every transmit action until it is turned off or the host restarts. Off: it operates
+// again. ACKed either way, and again when it already is in the mode asked for.
+size_t porta_proto_encode_update_mode(bool on, uint8_t *out, size_t out_cap);
+bool porta_proto_parse_update_mode(const porta_frame_t *f, bool *on_out);
+
 // Factory reset: verb + u8 flags (PORTA_FACTORY_RESET_*). The host resets its Station settings
 // to their defaults without restarting (a P4 reset can leave the QMX unenumerated, row qdcm), and
 // deletes the daily QSO logs too when the LOGS flag is set. ACK once done, NAK with a reason when
@@ -590,6 +603,76 @@ bool porta_proto_parse_ack(const porta_frame_t *f, uint8_t *verb_out);
 
 // `reason_out` must hold PORTA_EVENT_TEXT_MAX + 1 bytes.
 bool porta_proto_parse_nak(const porta_frame_t *f, uint8_t *verb_out, char *reason_out);
+
+// --- Firmware update -----------------------------------------------------
+// The sidekick sends a main board its new image in three messages, each answered by a frame of the
+// same type carrying a status and an offset. Stop-and-wait: one request, one reply. Frozen
+// (PORTA_PROTO_VERSION's v15 note).
+//
+//   FW_BEGIN  size u32, sha256[32], version[32] NUL-padded as in HELLO.
+//             Reply offset: where to send from. 0 for a new transfer; for a BEGIN that repeats the
+//             one in progress (same size, hash and version), the bytes already written, so a
+//             transfer that was interrupted goes on from there.
+//   FW_CHUNK  offset u32, then 1..PORTA_FW_CHUNK_MAX bytes. Chunks arrive in order with no gaps.
+//             Reply offset: the next byte wanted, on OK and on PORTA_FW_OFFSET alike, so a sender
+//             whose reply was lost learns where to go on from by sending again.
+//   FW_END    u8 abort. 0: all sent; the host checks the image and, on OK, restarts into it a
+//             moment after replying. 1: forget the transfer. With no transfer to forget the answer
+//             is OK, or PORTA_FW_TRIAL while the image the host is running was installed this way
+//             and has not been kept yet: how the sidekick learns an update held.
+//
+// All integers little-endian.
+
+#define PORTA_FW_VERSION_LEN PORTA_HELLO_VERSION_LEN
+#define PORTA_FW_SHA256_LEN 32u
+#define PORTA_FW_CHUNK_MAX 240u
+#define PORTA_FW_BEGIN_PAYLOAD_LEN (4u + PORTA_FW_SHA256_LEN + PORTA_FW_VERSION_LEN)
+#define PORTA_FW_REPLY_PAYLOAD_LEN 5u
+
+// A reply's status. Values are frozen with the messages; new ones are added at the end.
+typedef enum {
+    PORTA_FW_OK              = 0,
+    PORTA_FW_NOT_UPDATE_MODE = 1,   // BEGIN outside update mode
+    PORTA_FW_NO_SLOT         = 2,   // this board has no second app slot: it needs one flash over USB
+    PORTA_FW_TOO_BIG         = 3,   // larger than the slot
+    PORTA_FW_NO_TRANSFER     = 4,   // CHUNK or END with no BEGIN before it (the host restarted)
+    PORTA_FW_OFFSET          = 5,   // not the offset wanted; the reply carries the one that is
+    PORTA_FW_FLASH           = 6,   // a flash erase or write failed
+    PORTA_FW_SHORT           = 7,   // END before every byte arrived
+    PORTA_FW_HASH            = 8,   // what was written does not hash to BEGIN's SHA-256
+    PORTA_FW_IMAGE           = 9,   // not an app image for this board
+    PORTA_FW_VERSION         = 10,  // the image's own version is not BEGIN's
+    PORTA_FW_TRIAL           = 11,  // answer to an abort with nothing to abort: the running image is still on trial
+} porta_fw_status_t;
+
+typedef struct {
+    uint32_t size;
+    uint8_t  sha256[PORTA_FW_SHA256_LEN];
+    char     version[PORTA_FW_VERSION_LEN + 1];  // always NUL-terminated here
+} porta_fw_begin_t;
+
+typedef struct {
+    uint8_t  status;  // porta_fw_status_t
+    uint32_t offset;
+} porta_fw_reply_t;
+
+size_t porta_proto_encode_fw_begin(const porta_fw_begin_t *begin, uint8_t *out, size_t out_cap);
+bool porta_proto_parse_fw_begin(const porta_frame_t *f, porta_fw_begin_t *out);
+
+// 0 for no data or more than PORTA_FW_CHUNK_MAX.
+size_t porta_proto_encode_fw_chunk(uint32_t offset, const uint8_t *data, size_t len,
+                                   uint8_t *out, size_t out_cap);
+// `data_out` points into `f`.
+bool porta_proto_parse_fw_chunk(const porta_frame_t *f, uint32_t *offset_out,
+                                const uint8_t **data_out, size_t *len_out);
+
+size_t porta_proto_encode_fw_end(bool abort, uint8_t *out, size_t out_cap);
+bool porta_proto_parse_fw_end(const porta_frame_t *f, bool *abort_out);
+
+// The host's answer to any of the three; `type` is the request's own.
+size_t porta_proto_encode_fw_reply(uint8_t type, uint8_t status, uint32_t offset,
+                                   uint8_t *out, size_t out_cap);
+bool porta_proto_parse_fw_reply(const porta_frame_t *f, uint8_t *type_out, porta_fw_reply_t *out);
 
 // --- CONFIG payloads -----------------------------------------------------
 // CONFIG_* share one shape: key_len (1) + key[key_len] + value_bytes…

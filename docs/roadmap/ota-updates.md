@@ -1,6 +1,6 @@
 # OTA updates (epic ukk6)
 
-After the first install, every firmware update, for every board, happens over the air from the web app. Rows: [wanw](#wanw), [v697](#v697), [hstv](#hstv), [yme5](#yme5), [nufg](#nufg) ([ROADMAP.md](../ROADMAP.md)).
+After the first install, every firmware update, for every board, happens over the air from the web app. Rows: [v697](#v697), [hstv](#hstv), [yme5](#yme5), [nufg](#nufg) ([ROADMAP.md](../ROADMAP.md)).
 
 ## Goal
 
@@ -24,64 +24,39 @@ After the first install, every firmware update, for every board, happens over th
 
 ## Design
 
-Facts it rests on, checked 2026-11-06: the release host serves `/download/manifest.json` over plain HTTP as well as HTTPS, with no redirect; each build's version string is its git SHA (`PROJECT_VER`, `tools/git_version.cmake`); `porta_proto.h` reserves `PORTA_MSG_FW_BEGIN`/`FW_CHUNK`/`FW_END` (`0x10`–`0x12`), unused; the sidekick already has two 3 MB OTA slots and rollback (`sidekick/partitions.csv`, `esp_ota_mark_app_valid_cancel_rollback()` in `sidekick/main/main.c`); the P4 has one `factory` slot, no rollback, no build version, and sends no HELLO (`poe_p4/partitions.csv`, `poe_p4/CMakeLists.txt`).
+Facts it rests on, checked 2026-11-10: the release host serves `/download/manifest.json` over plain HTTP as well as HTTPS, with no redirect; each build's version string is its git SHA (`PROJECT_VER`, `tools/git_version.cmake`), the P4's included, and the manifest's `ota` entry carries it ([RELEASE_PROCESS.md](../RELEASE_PROCESS.md), **Public Cloudflare mirror**); `porta_proto.h` reserves `PORTA_MSG_FW_BEGIN`/`FW_CHUNK`/`FW_END` (`0x10`–`0x12`), unused; the sidekick already has two 3 MB OTA slots and rollback (`sidekick/partitions.csv`, `esp_ota_mark_app_valid_cancel_rollback()` in `sidekick/main/main.c`); a P4 flashed before the two-slot partition table has one `factory` slot and answers `FW_BEGIN` with `NO_SLOT` until it is flashed over USB once.
 
-### Manifest ([wanw](#wanw))
+### Built, awaiting the bench ([v697](#v697), [hstv](#hstv))
 
-OTA writes an **app image**, not the merged `0x0` image. CI adds, per board, an `ota` entry: file, size, SHA-256, version (the SHA), and the `PORTA_PROTO_VERSION` it speaks. The merged images stay for first install.
+Both boards' updates are built and their field checks are owed ([TEST_PLAN.md](../TEST_PLAN.md), Pending); what is true of the code is in the architecture docs, not here:
 
-### Download ([v697](#v697))
+* **The sidekick's side:** the request, the download, the checks, staging, the transfer down Port A, update mode before every update and the resume after ([sidekick.md](../architecture/sidekick.md), **Firmware updates**).
+* **The main board's side:** HELLO, update mode, the receiver, what `FW_END` checks, and the trial ([main_board.md](../architecture/main_board.md), **Firmware updates**).
+* **The page's side so far** ([webapp.md](../architecture/webapp.md), **Settings › Updates**).
 
-The web app fetches the manifest over HTTPS, so the browser authenticates it. It POSTs to the sidekick, behind the pairing token: which board, the image URL, size and SHA-256. The sidekick downloads the image over plain HTTP into its staging slot and refuses it unless the hash matches. Tampering in transit can only make the download fail.
+Still open for [hstv](#hstv):
 
-* **The phone makes one short request,** then polls for progress, so a screen lock mid-update does not matter.
-* **Updates need the sidekick on a network with internet** (home WiFi or the phone's hotspot). In AP mode they are refused with that reason.
-* **Staging:** the sidekick has no PSRAM, so an image is staged in flash, in its **inactive OTA slot** (3 MB): its own next image or a main board's. The `web` partition is too small for a main-board image, so one image is staged at a time, and a sidekick update and a main-board update run one after the other.
-* **Sidekick self-update:** download into the inactive slot, verify, set the boot partition, restart. The existing rollback covers an image that boots but cannot talk to the main board.
-
-### Main board over Port A ([hstv](#hstv))
-
-* **A build version for the P4** (`tools/git_version.cmake`, as the sidekick's), and **the main board sends HELLO** with its `PORTA_PROTO_VERSION` and build version, on the sidekick's cadence. The sidekick adds both to its config JSON.
-* **Partitions:** `nvs`, `otadata`, `phy_init`, `ota_0` and `ota_1` (4 MB each), `storage` 3 MB, in 16 MB. A new table is written only over USB, so each board gets it once, from the merged image; `storage` is lost (pre-alpha). `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE` on.
-* **Transfer:** after the image is staged, verified, and the board is in update mode, the sidekick sends `FW_BEGIN` (size, SHA-256, version), `FW_CHUNK` (offset, up to ~240 bytes, each acknowledged), `FW_END`. The main board writes the chunks into its inactive slot (`esp_ota_begin/write/end`), checks the SHA-256 itself, and refuses the image unless the version embedded in it (`esp_ota_get_partition_description`) equals `FW_BEGIN`'s; then it sets the boot partition and restarts.
-* **An interrupted transfer resumes** from the last acknowledged offset: a transfer takes minutes.
-* **The receiver lives in `components/porta`,** so any main board shares it, and its chunk, offset and hash state machine is `host_mock`-tested.
-* **Time:** unmeasured. Stop-and-wait, one ACK per chunk, at `PORTA_BAUD`; a window on `FW_CHUNK` is **Later**.
-
-### Update mode ([hstv](#hstv))
-
-A new Port A action puts the main board into update mode:
-
-* it cancels any transmission, and the flow waits for the TX status the board already sends to say TX has stopped;
-* it clears the autoseq queue, the CQ with it, and stops decoding, CAT and USB audio;
-* while in it, the board refuses every transmit action, from any phone;
-* it leaves only by restarting into the new image, or by an explicit resume action if the update fails or is cancelled. After a restart the radio comes up stopped, as after every restart today.
-
-### Version pairing ([yme5](#yme5))
-
-The web app compares each board's running version against the manifest and offers an update per board. Settings shows both boards' versions beside the sidekick's. It refuses a combination whose `PORTA_PROTO_VERSION`s differ: a board that can no longer talk to the sidekick can only be recovered over USB.
+* **Time:** measured, 74.4 s for 872 KB ([sidekick.md](../architecture/sidekick.md), **A main board's image**). A window on `FW_CHUNK` stays **Later**, with no case for it yet.
+* **The QMX after the restart:** a P4 reset with the QMX streaming has wedged the QMX's USB three times out of three ([main_board.md](../architecture/main_board.md), **Two USB-C ports**), and an update ends in one. As built the P4 closes nothing first and the result tells the operator to switch the radio off and on if it does not reconnect. The bench says how often it happens, and whether closing the audio and CAT before the restart is worth building.
+* **USB audio in update mode:** left open, and a 74 s transfer with it open logged no USB error (2026-11-10), so closing it in update mode has no case. Closing it before the restart is the open question above.
 
 ### The web app ([yme5](#yme5))
 
-1. **Available.** When the app opens, and on its 60 s check (`checkAppStale`), it fetches the manifest. For each board with a newer version: a dot on the Settings gear and an **Updates** section in Settings listing each board's current and new version, size and rough time; and, **when no QSO is in progress**, one line where `#opQueueEmpty` reads "No active QSOs": "Update available", linking to Updates. It disappears while a QSO is active. No background notification: Web Push needs a secure origin ([webapp.md](../architecture/webapp.md), **A non-secure origin**).
-2. **Not now.** Nothing stops; the notices stay. No "skip this version": the next build replaces it.
-3. **Review.** **Update** opens a screen that says what will happen before anything does: which boards, in which order, roughly how long, and **what stopping the radio costs**, concretely ("Your CQ will end", "QSO with K1ABC will be abandoned", "2 queued replies will be cleared"), a QSO in progress shown as a warning. With no internet on the sidekick the button is disabled with the reason ("Connect the sidekick to WiFi with internet"). Two buttons: **Stop radio and update** (destructive) and **Cancel**.
-4. **Progress.** A full-screen step list: stop radio → download → verify → transfer (percent and time left) → restart → confirm new version. The state lives on the sidekick, so locking or closing the phone does not matter, reopening the app shows where it is, and a second phone sees the same screen and cannot transmit. **Cancel** until the image is fully written; the old firmware is untouched until then.
-5. **Result.** "Updated to d18f9b2", or a plain reason ("Verification failed — still on 7e61488", "New version did not start — rolled back to 7e61488"), with **Retry**.
-6. **After.** The radio **stays stopped** until **Resume operating**, whether the update succeeded, failed or was cancelled.
+Built: the plan, the pairing rule, Review, Progress, Result and Resume operating are in [webapp.md](../architecture/webapp.md), **Settings › Updates**. Where the app as it now is made the sketch here wrong, the build follows the app:
 
-While an update runs, the app suppresses its lost-contact banner and its device-reset banner; both would fire on a planned restart.
+* **No "Update available" line on Operate.** The line it was to sit in is gone, and Operate has no banners (operator decision 2026-10-25). The Settings tab's dot is the notice.
+* **No banners to suppress.** The lost-contact state is the radio bar's, which reads **Stopped for an update** instead while one runs; there is no device-reset banner.
+* **No time left** on the transfer step, only a percentage.
 
 ## Children
 
-Only the next child is a row in the index ([ROADMAP.md](../ROADMAP.md), Backlog: [wanw](#wanw)); the others wait here, in order, until it ships.
+Only the next child is a row in the index ([ROADMAP.md](../ROADMAP.md), Backlog: [v697](#v697)); the others wait here, in order, until it ships.
 
 In order: each needs the one before it.
 
-* <a id="wanw"></a>**wanw: CI publishes app-only OTA images** (**Manifest**). **Done-when:** `/download/manifest.json` carries a per-board `ota` entry (file, size, SHA-256, version, protocol version) and the files are served. **Lands in:** RELEASE_PROCESS.md (what a release publishes); TEST_PLAN's Automated table if CI gains a check of the manifest.
-* <a id="v697"></a>**v697: the sidekick updates itself** (**Download**). **Done-when:** a sidekick updates from the web app; a forced bad image rolls back (field). **Lands in:** sidekick.md **Firmware updates** (its "not yet built" label goes); system.md (its label); TEST_PLAN Pending.
-* <a id="hstv"></a>**hstv: main boards update over Port A, P4 first** (**Main board over Port A**, **Update mode**). **Done-when:** the receiver `host_mock`-tested; a P4 updates from the web app with transfer time measured, and a forced bad image rolls back (field). **Lands in:** main_board.md (partitions, rollback, update mode); sidekick.md **Port A** (the `FW_*` messages, the transfer time); RELEASE_PROCESS.md (the image carries a version); system.md (its label); TEST_PLAN Pending; README and site audits (the one-time USB reflash for the new partition table).
-* <a id="yme5"></a>**yme5: the web app's update flow** (**Version pairing**, **The web app**). **Done-when:** **The web app**'s steps 1–6 walked with a QSO in progress, the phone locked mid-transfer, and a second phone open (field). **Lands in:** webapp.md **Screens**; TEST_PLAN Pending; site audit (Settings' Updates section, and Getting started if it says how to update).
+* <a id="v697"></a>**v697: the sidekick updates itself** (**Built, awaiting the bench**). **Done-when:** a sidekick updates from the web app; a forced bad image rolls back (field). Built; open for the field check. **Lands in:** sidekick.md **Firmware updates**, webapp.md **Settings › Updates**, system.md and TEST_PLAN Pending, all done; this entry goes when the check passes.
+* <a id="hstv"></a>**hstv: main boards update over Port A, P4 first** (**Built, awaiting the bench**). **Done-when:** the receiver `host_mock`-tested; a P4 updates from the web app with transfer time measured, and a forced bad image rolls back (field). Built; open for the field check and the transfer time. **Lands in:** main_board.md **Firmware updates** and its partitions, sidekick.md **Firmware updates** and **Port A**, RELEASE_PROCESS.md, system.md and TEST_PLAN Pending, all done; the measured transfer time goes into sidekick.md. No README or site note for the one-time USB reflash: only a board flashed before the two-slot table needs it, and pre-alpha carries no upgrade notes.
+* <a id="yme5"></a>**yme5: the web app's update flow** (**The web app**). **Done-when:** **The web app**'s steps 1–6 walked with a QSO in progress, the phone locked mid-transfer, and a second phone open (field). Built; open for the field check. **Lands in:** webapp.md **Settings › Updates** and **The radio bar**, sidekick.md and TEST_PLAN Pending, all done; the site audit (Settings' Updates section, and Getting started's Updates line) is owed when the check passes.
 * <a id="nufg"></a>**nufg: versioned releases, and a version an operator can read.** After [yme5](#yme5); epic [eu2t](release-1-0.md) needs it. A build from a `v*` tag reports that version (`1.0.0`), any other build its SHA as today; a board running a versioned release is offered only the next versioned release, a `continuous` build only `continuous` ([RELEASE_PROCESS.md](../RELEASE_PROCESS.md)). **Done-when:** the manifest carries both channels; a board flashed from a `v*` tag shows its version in Settings and is offered the next tag, not `continuous` (field). **Lands in:** RELEASE_PROCESS.md (an image carries its version; what each channel publishes); webapp.md (**Updates**); TEST_PLAN Pending.
 
 ### Later

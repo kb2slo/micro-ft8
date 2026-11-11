@@ -26,7 +26,25 @@ static const char *TAG = "host";
 // Copy a frame onto the Port A UART without blocking the httpd task forever.
 // If the main board is unplugged or not draining RX, uart_write_bytes() can stall
 // indefinitely once the TX ring fills — that hung GET /api/config with no body.
+static SemaphoreHandle_t s_tx_lock;
+
+static bool porta_send_unlocked(const uint8_t *frame, size_t n);
+
+// One frame at a time: the httpd task and the firmware-update task both send, and a frame that
+// had to be written in pieces must not have another's bytes land between them.
 static bool porta_send(const uint8_t *frame, size_t n)
+{
+    if (s_tx_lock) {
+        xSemaphoreTake(s_tx_lock, portMAX_DELAY);
+    }
+    const bool ok = porta_send_unlocked(frame, n);
+    if (s_tx_lock) {
+        xSemaphoreGive(s_tx_lock);
+    }
+    return ok;
+}
+
+static bool porta_send_unlocked(const uint8_t *frame, size_t n)
 {
     if (!frame || n == 0) {
         return false;
@@ -314,6 +332,27 @@ static uint8_t s_last_reply_verb;
 static bool s_last_reply_ok;
 static char s_last_reply_reason[PORTA_EVENT_TEXT_MAX + 1];
 
+// The main board's HELLO: the protocol it speaks and its build, and when it last arrived (0: never).
+// s_lock covers these.
+static uint8_t  s_host_proto;
+static char     s_host_version[PORTA_HELLO_VERSION_LEN + 1];
+static uint32_t s_host_hello_ms;
+
+// The main board's answer to the firmware message in flight (host_link_fw_*). The update task
+// sends one message at a time and waits here; porta_rx fills the slot and gives the semaphore.
+// s_lock covers the slot.
+static SemaphoreHandle_t s_fw_reply_sem;
+static uint8_t           s_fw_reply_type;  // 0: none waiting to be read
+static porta_fw_reply_t  s_fw_reply;
+static volatile bool     s_fw_active;      // a transfer is running: porta_rx reads without batching
+
+// The main board's answer to UPDATE_MODE, in a slot of its own: the update task asks between a
+// plan's images, while the httpd task may be waiting on the shared slot above for something else.
+// No other reply carries this verb's number. s_lock covers it.
+static bool s_um_ready;
+static bool s_um_ok;
+static char s_um_reason[PORTA_EVENT_TEXT_MAX + 1];
+
 // How many times wait_reply() has had to resend a CONFIG_GET because
 // nothing answered halfway through the wait -- see that function. Relayed to
 // the browser alongside the CRC/frame counters (sidekick_facts_json()) so a
@@ -325,6 +364,23 @@ static volatile uint32_t s_config_get_retries;
 // counters for /api/config. Plain 32-bit reads of diagnostic counters, so no
 // lock: a count one frame stale is still the right answer to "how healthy".
 static porta_decoder_t s_rx_dec;
+
+bool host_link_host_hello(uint8_t *proto_out, char *version_out, uint32_t *age_ms_out)
+{
+    lock_take();
+    const bool seen = s_host_hello_ms != 0;
+    if (proto_out) {
+        *proto_out = s_host_proto;
+    }
+    if (version_out) {
+        memcpy(version_out, s_host_version, sizeof(s_host_version));
+    }
+    if (age_ms_out) {
+        *age_ms_out = seen ? now_ms() - s_host_hello_ms : 0;
+    }
+    lock_give();
+    return seen;
+}
 
 void host_link_health(char *out, size_t cap)
 {
@@ -412,6 +468,14 @@ static void config_json_stop_locked(void)
 //                                 largest free block, in bytes: what the ring and the sockets can afford
 static size_t sidekick_facts_json(char *out, size_t cap)
 {
+    // The main board's build and protocol, from its HELLO: empty and 0 until one arrives (a main
+    // board from before it sent one never does).
+    char    host_version[PORTA_HELLO_VERSION_LEN + 1];
+    char    host_proto[4], sk_proto[4];
+    uint8_t proto = 0;
+    host_link_host_hello(&proto, host_version, NULL);
+    snprintf(host_proto, sizeof(host_proto), "%u", (unsigned)proto);
+    snprintf(sk_proto, sizeof(sk_proto), "%u", (unsigned)PORTA_PROTO_VERSION);
     char num[7][12];
     snprintf(num[0], sizeof(num[0]), "%" PRIu32, s_rx_dec.crc_errors);
     snprintf(num[1], sizeof(num[1]), "%" PRIu32, s_rx_dec.frames_ok);
@@ -436,6 +500,9 @@ static size_t sidekick_facts_json(char *out, size_t cap)
         { "sk_ip", wifi_prov_ip_str() },
         { "sk_uptime", wifi_prov_uptime_str() },
         { "sk_fw_version", wifi_prov_fw_version() },
+        { "sk_proto", sk_proto },
+        { "host_fw_version", host_version },
+        { "host_proto", host_proto },
         { "sk_ap_ssid", wifi_prov_ap_ssid() },
         { "sk_ap_secured", wifi_prov_ap_secured() ? "1" : "0" },
     };
@@ -1295,6 +1362,105 @@ bool host_link_factory_reset(bool logs, char *why, size_t why_len)
     return true;
 }
 
+// Update mode on the main board (porta_proto.h, PORTA_ACT_UPDATE_MODE). Its answer has a slot of
+// its own (s_um_*), so this is safe from the update task as well as the httpd task. One caller at
+// a time: fw_update.c asks from the handler before its task exists, and from the task after.
+// The action is idempotent, so a lost answer is asked again.
+bool host_link_update_mode(bool on, char *why, size_t why_len)
+{
+    uint8_t frame[PORTA_PROTO_MAX_FRAME];
+    const size_t n = porta_proto_encode_update_mode(on, frame, sizeof(frame));
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        lock_take();
+        s_um_ready = false;
+        lock_give();
+        if (n == 0 || !porta_send(frame, n)) {
+            snprintf(why, why_len, "host link busy");
+            return false;
+        }
+        for (int i = 0; i < 40; ++i) {
+            lock_take();
+            const bool ready = s_um_ready;
+            const bool ok = s_um_ok;
+            if (ready && !ok) {
+                snprintf(why, why_len, "%s", s_um_reason[0] ? s_um_reason : "host refused");
+            }
+            lock_give();
+            if (ready) {
+                return ok;
+            }
+            vTaskDelay(pdMS_TO_TICKS(25));
+        }
+    }
+    snprintf(why, why_len, "no reply from host");
+    return false;
+}
+
+bool host_link_tx_active(void)
+{
+    lock_take();
+    const bool active = s_state.tx_hud.seq != 0 && s_state.tx_hud.u.tx_hud.active;
+    lock_give();
+    return active;
+}
+
+void host_link_fw_active(bool active)
+{
+    s_fw_active = active;
+}
+
+// Sends one firmware message and waits for the main board's answer of the same type.
+static bool fw_exchange(const uint8_t *frame, size_t n, uint8_t type, int timeout_ms, porta_fw_reply_t *out)
+{
+    if (n == 0 || !s_fw_reply_sem) {
+        return false;
+    }
+    lock_take();
+    s_fw_reply_type = 0;
+    lock_give();
+    xSemaphoreTake(s_fw_reply_sem, 0);  // a reply that came after its wait gave up
+    if (!porta_send(frame, n)) {
+        return false;
+    }
+    const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
+    for (;;) {
+        const TickType_t now = xTaskGetTickCount();
+        if ((int32_t)(deadline - now) <= 0 || xSemaphoreTake(s_fw_reply_sem, deadline - now) != pdTRUE) {
+            return false;
+        }
+        bool mine = false;
+        lock_take();
+        if (s_fw_reply_type == type) {
+            *out = s_fw_reply;
+            s_fw_reply_type = 0;
+            mine = true;
+        }
+        lock_give();
+        if (mine) {
+            return true;
+        }
+    }
+}
+
+bool host_link_fw_begin(const porta_fw_begin_t *begin, int timeout_ms, porta_fw_reply_t *out)
+{
+    uint8_t frame[PORTA_PROTO_MAX_FRAME];
+    return fw_exchange(frame, porta_proto_encode_fw_begin(begin, frame, sizeof(frame)), PORTA_MSG_FW_BEGIN, timeout_ms, out);
+}
+
+bool host_link_fw_chunk(uint32_t offset, const uint8_t *data, size_t len, int timeout_ms, porta_fw_reply_t *out)
+{
+    uint8_t frame[PORTA_PROTO_MAX_FRAME];
+    return fw_exchange(frame, porta_proto_encode_fw_chunk(offset, data, len, frame, sizeof(frame)), PORTA_MSG_FW_CHUNK,
+                       timeout_ms, out);
+}
+
+bool host_link_fw_end(bool abort, int timeout_ms, porta_fw_reply_t *out)
+{
+    uint8_t frame[PORTA_PROTO_MAX_FRAME];
+    return fw_exchange(frame, porta_proto_encode_fw_end(abort, frame, sizeof(frame)), PORTA_MSG_FW_END, timeout_ms, out);
+}
+
 // GET /api/config — Station.txt surface as JSON, plus the sidekick's own
 // facts on every reply (send_config_reply()). Open read: call/grid are on
 // the air; WiFi secrets are not in this object.
@@ -1551,7 +1717,24 @@ static void porta_rx_task(void *arg)
 
     while (1) {
         const int wait_ms = porta_link_run_active(&s_link) ? 2 : 50;
-        const int n = uart_read_bytes(PORTA_UART, buf, sizeof(buf), pdMS_TO_TICKS(wait_ms));
+        int n;
+        if (s_fw_active) {
+            // uart_read_bytes() waits out its timeout unless the whole buffer fills, which would add
+            // 50 ms to every chunk's 9-byte reply. Wait for one byte, then take what came with it.
+            n = uart_read_bytes(PORTA_UART, buf, 1, pdMS_TO_TICKS(50));
+            size_t more = 0;
+            if (n == 1 && uart_get_buffered_data_len(PORTA_UART, &more) == ESP_OK && more > 0) {
+                if (more > sizeof(buf) - 1) {
+                    more = sizeof(buf) - 1;
+                }
+                const int m = uart_read_bytes(PORTA_UART, buf + 1, more, 0);
+                if (m > 0) {
+                    n += m;
+                }
+            }
+        } else {
+            n = uart_read_bytes(PORTA_UART, buf, sizeof(buf), pdMS_TO_TICKS(wait_ms));
+        }
         for (int i = 0; i < n; ++i) {
             if (!porta_decoder_push(&s_rx_dec, buf[i], &frame)) {
                 continue;
@@ -1559,6 +1742,31 @@ static void porta_rx_task(void *arg)
             if (frame.type == PORTA_MSG_LINK_TEST || frame.type == PORTA_MSG_LINK_DATA) {
                 link_on_frame(&s_rx_dec, &frame);
                 continue;
+            }
+            {
+                uint8_t          hello_proto = 0;
+                char             hello_version[PORTA_HELLO_VERSION_LEN + 1];
+                uint8_t          fw_type = 0;
+                porta_fw_reply_t fw_reply;
+                if (porta_proto_parse_hello(&frame, &hello_proto, hello_version)) {
+                    lock_take();
+                    if (strcmp(hello_version, s_host_version) != 0 || hello_proto != s_host_proto) {
+                        ESP_LOGI(TAG, "main board: version %s, protocol v%u", hello_version, (unsigned)hello_proto);
+                    }
+                    s_host_proto = hello_proto;
+                    memcpy(s_host_version, hello_version, sizeof(s_host_version));
+                    s_host_hello_ms = now_ms() ? now_ms() : 1;
+                    lock_give();
+                    continue;
+                }
+                if (porta_proto_parse_fw_reply(&frame, &fw_type, &fw_reply)) {
+                    lock_take();
+                    s_fw_reply_type = fw_type;
+                    s_fw_reply = fw_reply;
+                    lock_give();
+                    xSemaphoreGive(s_fw_reply_sem);
+                    continue;
+                }
             }
             // Parsed straight into the event, so every field the frame carries
             // reaches the browser: a field-by-field copy here once dropped the TX
@@ -1614,6 +1822,17 @@ static void porta_rx_task(void *arg)
                 reply_reason[0] = '\0';
                 if (porta_proto_parse_config_value(&frame, cfg_key, cfg_val)) {
                     config_json_add(cfg_key, cfg_val);
+                } else if (porta_proto_parse_ack(&frame, &reply_verb) && reply_verb == PORTA_ACT_UPDATE_MODE) {
+                    lock_take();
+                    s_um_ok = true;
+                    s_um_ready = true;
+                    lock_give();
+                } else if (porta_proto_parse_nak(&frame, &reply_verb, reply_reason) && reply_verb == PORTA_ACT_UPDATE_MODE) {
+                    lock_take();
+                    s_um_ok = false;
+                    snprintf(s_um_reason, sizeof(s_um_reason), "%s", reply_reason);
+                    s_um_ready = true;
+                    lock_give();
                 } else if (porta_proto_parse_ack(&frame, &reply_verb)) {
                     lock_take();
                     switch (reply_verb) {
@@ -1788,6 +2007,12 @@ void host_link_start(void)
 {
     if (!s_lock) {
         s_lock = xSemaphoreCreateMutex();
+    }
+    if (!s_tx_lock) {
+        s_tx_lock = xSemaphoreCreateMutex();
+    }
+    if (!s_fw_reply_sem) {
+        s_fw_reply_sem = xSemaphoreCreateBinary();
     }
     event_state_init(&s_state);
     porta_link_run_init(&s_link);

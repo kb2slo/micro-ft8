@@ -1,8 +1,16 @@
-# PoE-P4 (U213) 16 MB flash — I29 LittleFS internal store (`storage` partition). App slot sized generously; storage ~3 MB for Station.txt
-# and future .adi. No SD on this board.
+# PoE-P4 (U213), 16 MB flash.
 #
-# Name,     Type, SubType, Offset,   Size,     Flags
-nvs,        data, nvs,     0x9000,   0x6000,
-phy_init,   data, phy,     0xf000,   0x1000,
-factory,    app,  factory, 0x10000,  0x400000,
-storage,    data, littlefs,0x410000, 0x300000,
+# Two app slots, no factory: after the first flash over USB, the sidekick sends a new image over
+# Port A into the slot that is not running (docs/architecture/main_board.md (Firmware updates)).
+# With otadata erased the bootloader boots ota_0. 4 MB a slot is about four times the image.
+# `storage` is the LittleFS store for Station.txt and the daily .adi files.
+#
+# The table itself is only ever written over USB, and moving `storage` loses what is in it.
+#
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   0x6000,
+otadata,    data, ota,      0xf000,   0x2000,
+phy_init,   data, phy,      0x11000,  0x1000,
+ota_0,      app,  ota_0,    0x20000,  0x400000,
+ota_1,      app,  ota_1,    0x420000, 0x400000,
+storage,    data, littlefs, 0x820000, 0x300000,

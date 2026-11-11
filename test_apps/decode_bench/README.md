@@ -54,8 +54,9 @@ Diff the `MSG` lines for identical decodes; compare `RESULT` `total_ms` (and the
 path. The bench runs the monitor back to back with a warm cache; the firmware's BDRY `mon` times it in place
 (docs/architecture/decode.md).
 
-The P4 build uses `poe_p4/partitions.csv`, so writing only `0x10000` leaves the bootloader, `nvs` and the
-`storage` partition (Station.txt) alone. The firmware's app is overwritten, so reflash it afterwards.
+The P4 build uses `poe_p4/partitions.csv`, so writing only the first app slot (`ota_0`, `0x20000`) leaves the
+bootloader, `nvs` and the `storage` partition (Station.txt) alone; the script also erases `otadata`, so the
+bootloader boots that slot. The firmware's app is overwritten, so reflash it afterwards.
 
 ## Reading the output
 

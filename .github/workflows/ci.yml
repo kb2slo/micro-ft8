@@ -78,7 +78,7 @@ jobs:
       - name: Decode recall
         run: tools/check.sh --only decode_recall
 
-      - name: Recorders and capture converter
+      - name: Recorders, capture converter and download manifest
         run: tools/check.sh --only tools
 
   # Links and repo paths in the docs still resolve, and no row ID newly
@@ -169,12 +169,14 @@ jobs:
           command: idf.py build
 
       # One 0x0 image for desk esptool, merged from the build's four pieces
-      # by the same script a local flash uses.
+      # by the same script a local flash uses; and the app image by itself,
+      # which is what an over-the-air update writes.
       - name: Merge sidekick image
         run: |
           python3 -m pip install --upgrade 'esptool>=4'
           mkdir -p sidekick-out
           ./tools/merge_sidekick_bin.sh sidekick/build sidekick-out/sidekick_merged.bin
+          cp sidekick/build/sidekick.bin sidekick-out/sidekick.bin
 
       - name: Upload sidekick firmware
         uses: actions/upload-artifact@v6
@@ -182,13 +184,19 @@ jobs:
           name: sidekick-firmware
           if-no-files-found: error
           retention-days: 30
-          path: sidekick-out/sidekick_merged.bin
+          path: |
+            sidekick-out/sidekick_merged.bin
+            sidekick-out/sidekick.bin
 
   poe_p4-firmware:
     name: PoE-P4 (ESP32-P4)
     needs: changes
     if: startsWith(github.ref, 'refs/tags/v') || needs.changes.outputs.firmware == 'true'
     runs-on: ubuntu-latest
+    env:
+      # As for the sidekick: a pull request builds a synthesized merge commit,
+      # and the version the image reports must be the head commit's.
+      MICROFT8_GIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -202,6 +210,7 @@ jobs:
           esp_idf_version: v5.5.5
           target: esp32p4
           path: poe_p4
+          extra_docker_args: -e MICROFT8_GIT_SHA=${{ env.MICROFT8_GIT_SHA }}
           command: idf.py build
 
       - name: Upload poe_p4 firmware
@@ -317,6 +326,13 @@ jobs:
           sha256sum "dist/${asset_p4}" | tee "dist/${asset_p4}.sha256"
           echo "ASSET_P4=${asset_p4}" >> "$GITHUB_ENV"
 
+          # The app image by itself: what an over-the-air update writes.
+          asset_p4_ota="${day}-microft8-poe-p4-ota-${short}.bin"
+          test -s dist-poe-p4/poe_p4.bin
+          cp dist-poe-p4/poe_p4.bin "dist/${asset_p4_ota}"
+          sha256sum "dist/${asset_p4_ota}" | tee "dist/${asset_p4_ota}.sha256"
+          echo "ASSET_P4_OTA=${asset_p4_ota}" >> "$GITHUB_ENV"
+
       - name: Name sidekick image + source archive
         run: |
           short="${SHORT_SHA}"
@@ -326,6 +342,12 @@ jobs:
           cp dist-sidekick/sidekick_merged.bin "dist/${asset_sk}"
           sha256sum "dist/${asset_sk}" | tee "dist/${asset_sk}.sha256"
           echo "ASSET_SK=${asset_sk}" >> "$GITHUB_ENV"
+
+          asset_sk_ota="${day}-microft8-sidekick-ota-${short}.bin"
+          test -s dist-sidekick/sidekick.bin
+          cp dist-sidekick/sidekick.bin "dist/${asset_sk_ota}"
+          sha256sum "dist/${asset_sk_ota}" | tee "dist/${asset_sk_ota}.sha256"
+          echo "ASSET_SK_OTA=${asset_sk_ota}" >> "$GITHUB_ENV"
 
           ./tools/make_source_archive.sh dist "${short}"
           asset_src="microft8-source-${short}.tar.gz"
@@ -343,6 +365,17 @@ jobs:
           cp dist-sheet/getting-started.pdf "dist/${asset_gs}"
           sha256sum "dist/${asset_gs}" | tee "dist/${asset_gs}.sha256"
           echo "ASSET_GS=${asset_gs}" >> "$GITHUB_ENV"
+
+      # Before anything is published: it refuses an OTA image a board would
+      # refuse (tools/make_manifest.py), and then nothing below runs.
+      - name: Write the download manifest
+        run: |
+          python3 tools/make_manifest.py --commit "${GITHUB_SHA}" --date "${DAY}" --out dist/manifest.json \
+            --asset "poe_p4=dist/${ASSET_P4}" --ota "poe_p4=dist/${ASSET_P4_OTA}" \
+            --asset "sidekick=dist/${ASSET_SK}" --ota "sidekick=dist/${ASSET_SK_OTA}" \
+            --asset "source=dist/${ASSET_SRC}" \
+            --asset "getting_started=dist/${ASSET_GS}"
+          cat dist/manifest.json
 
       # The asset name changes every merge, so uploads would otherwise pile up
       # on this one rolling release forever. Clear the old ones; the release
@@ -367,8 +400,12 @@ jobs:
           files: |
             dist/${{ env.ASSET_P4 }}
             dist/${{ env.ASSET_P4 }}.sha256
+            dist/${{ env.ASSET_P4_OTA }}
+            dist/${{ env.ASSET_P4_OTA }}.sha256
             dist/${{ env.ASSET_SK }}
             dist/${{ env.ASSET_SK }}.sha256
+            dist/${{ env.ASSET_SK_OTA }}
+            dist/${{ env.ASSET_SK_OTA }}.sha256
             dist/${{ env.ASSET_SRC }}
             dist/${{ env.ASSET_SRC }}.sha256
             dist/${{ env.ASSET_GS }}
@@ -392,6 +429,8 @@ jobs:
             esptool.py --chip esp32s3 write_flash 0x0 ${{ env.ASSET_SK }}
             ```
 
+            **Over-the-air images** — `${{ env.ASSET_P4_OTA }}` and `${{ env.ASSET_SK_OTA }}`: each board's app image alone, which an update from the web app writes. Not for flashing at `0x0`.
+
             **Source** — `${{ env.ASSET_SRC }}`: history-free tree at this commit, including vendored `ft8_lib` (no `.git`).
 
             **Getting-started sheet** — `${{ env.ASSET_GS }}`: the one-page US Letter sheet that goes in the box with a unit, the same text as https://micro-ft8.kalikstein.com/getting-started at this commit.
@@ -404,52 +443,12 @@ jobs:
           set -euo pipefail
           npx --yes wrangler@4 --version
 
-          sha256_of() { awk '{print $1}' "$1"; }
-
-          P4_SHA="$(sha256_of "dist/${ASSET_P4}.sha256")"
-          SK_SHA="$(sha256_of "dist/${ASSET_SK}.sha256")"
-          SRC_SHA="$(sha256_of "dist/${ASSET_SRC}.sha256")"
-          GS_SHA="$(sha256_of "dist/${ASSET_GS}.sha256")"
-
           cp "dist/${ASSET_P4}" dist/microft8-poe-p4-continuous.bin
+          cp "dist/${ASSET_P4_OTA}" dist/microft8-poe-p4-continuous-ota.bin
           cp "dist/${ASSET_SK}" dist/microft8-sidekick-continuous.bin
+          cp "dist/${ASSET_SK_OTA}" dist/microft8-sidekick-continuous-ota.bin
           cp "dist/${ASSET_SRC}" dist/microft8-source-continuous.tar.gz
           cp "dist/${ASSET_GS}" dist/microft8-getting-started-continuous.pdf
-
-          cat > dist/manifest.json <<EOF
-          {
-            "commit": "${GITHUB_SHA}",
-            "short": "${SHORT_SHA}",
-            "date": "${DAY}",
-            "generated_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "assets": {
-              "poe_p4": {
-                "stable": "microft8-poe-p4-continuous.bin",
-                "filename": "${ASSET_P4}",
-                "sha256": "${P4_SHA}",
-                "chip": "esp32p4",
-                "flash_offset": "0x0"
-              },
-              "sidekick": {
-                "stable": "microft8-sidekick-continuous.bin",
-                "filename": "${ASSET_SK}",
-                "sha256": "${SK_SHA}",
-                "chip": "esp32s3",
-                "flash_offset": "0x0"
-              },
-              "source": {
-                "stable": "microft8-source-continuous.tar.gz",
-                "filename": "${ASSET_SRC}",
-                "sha256": "${SRC_SHA}"
-              },
-              "getting_started": {
-                "stable": "microft8-getting-started-continuous.pdf",
-                "filename": "${ASSET_GS}",
-                "sha256": "${GS_SHA}"
-              }
-            }
-          }
-          EOF
 
           put() {
             local key="$1" file="$2" ctype="$3"
@@ -463,4 +462,7 @@ jobs:
           put microft8-sidekick-continuous.bin dist/microft8-sidekick-continuous.bin application/octet-stream
           put microft8-source-continuous.tar.gz dist/microft8-source-continuous.tar.gz application/gzip
           put microft8-getting-started-continuous.pdf dist/microft8-getting-started-continuous.pdf application/pdf
+          put microft8-poe-p4-continuous-ota.bin dist/microft8-poe-p4-continuous-ota.bin application/octet-stream
+          put microft8-sidekick-continuous-ota.bin dist/microft8-sidekick-continuous-ota.bin application/octet-stream
+          # Last: a manifest never names an image that is not there yet.
           put manifest.json dist/manifest.json 'application/json; charset=utf-8'

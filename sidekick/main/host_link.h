@@ -42,3 +42,32 @@ void host_link_health(char *out, size_t cap);
 // Blocks for the answer. true = the host did it; false = it did not, with the reason in `why`
 // ("host link busy", "no reply from host", or the host's own refusal such as "transmitting").
 bool host_link_factory_reset(bool logs, char *why, size_t why_len);
+
+// ---- Firmware updates for the main board (docs/architecture/sidekick.md, Firmware updates) ----
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include "porta_proto.h"
+
+// The main board's last HELLO: the protocol it speaks, its build version (`version_out` holds
+// PORTA_HELLO_VERSION_LEN + 1 bytes) and how long ago it came. False if none has arrived since
+// this sidekick started. Any argument may be NULL.
+bool host_link_host_hello(uint8_t *proto_out, char *version_out, uint32_t *age_ms_out);
+
+// Puts the main board into update mode, or takes it out. Blocks for the answer, up to 3 s, asking
+// again if none comes; from the httpd task or the update task, one caller at a time. false with
+// the reason in `why`.
+bool host_link_update_mode(bool on, char *why, size_t why_len);
+
+// The main board's last TX status said it is transmitting.
+bool host_link_tx_active(void);
+
+// One firmware message to the main board and its answer. Each blocks up to `timeout_ms`; false
+// for no answer. From the update task only, one at a time. host_link_fw_active() brackets a
+// transfer so replies are read as they arrive.
+void host_link_fw_active(bool active);
+bool host_link_fw_begin(const porta_fw_begin_t *begin, int timeout_ms, porta_fw_reply_t *out);
+bool host_link_fw_chunk(uint32_t offset, const uint8_t *data, size_t len, int timeout_ms, porta_fw_reply_t *out);
+bool host_link_fw_end(bool abort, int timeout_ms, porta_fw_reply_t *out);

@@ -159,6 +159,23 @@ button:disabled{opacity:.45}
 #resetWaitOk,#resetWaitCancel{margin-top:1rem;width:100%}
 #resetWaitCancel{margin-top:.5rem}
 @keyframes resetspin{to{transform:rotate(360deg)}}
+/* The firmware update's sheet (openFwSheet()): review, progress and result, one after the other.
+   It covers the app while an update runs, on every phone, since nothing behind it can transmit. */
+#fwSheet{position:fixed;inset:0;z-index:41;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:color-mix(in srgb, Canvas 88%, transparent);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+#fwSheet[hidden]{display:none}
+#fwCard{max-width:24rem;width:100%;max-height:100%;overflow:auto;background:Canvas;color:CanvasText;border:1px solid color-mix(in srgb, GrayText 40%, transparent);border-radius:.8rem;padding:1.25rem;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+#fwCard h2{font-size:1.05rem;margin:0 0 .6rem}
+#fwCard p{font-size:.9rem;margin:.5rem 0;line-height:1.45}
+#fwCard ul{list-style:none;margin:.5rem 0;padding:0;font-size:.9rem;line-height:1.6}
+#fwSteps li::before{content:'\25CB';display:inline-block;width:1.4em;color:GrayText}
+#fwSteps li.done::before{content:'\2713';color:var(--accent)}
+#fwSteps li.now::before{content:'\25CF';color:var(--accent)}
+#fwSteps li.next{color:GrayText}
+#fwSheet.failed #fwSteps li.now::before{content:'\2715';color:var(--danger)}
+#fwCosts li::before{content:'\2022';display:inline-block;width:1.4em;color:var(--danger)}
+#fwWhy{color:var(--danger)}
+#fwCard button{margin-top:.5rem;width:100%}
+#fwGo{color:var(--danger)}
 
 /* ---- tab bar ---- */
 #tabbar{position:fixed;left:0;right:0;bottom:0;display:flex;border-top:1px solid GrayText;background:Canvas}
@@ -611,6 +628,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <div class=setrow><div class=diagrow><span>Network</span><span id=netName>—</span></div></div>
     <div class=setrow><div class=diagrow><span>Address</span><span id=netIp>—</span></div></div>
     <div class=setrow><div class=diagrow><span>Firmware</span><span id=netVersion>—</span></div></div>
+    <div class=setrow><div class=diagrow><span>Main board firmware</span><span id=netHostVersion>—</span></div></div>
     <div class=setrow><div class=diagrow><span>Uptime</span><span id=netUptime>—</span></div></div>
     <div class=setrow style="display:flex;flex-direction:column;gap:.5rem">
       <button id=netForget type=button disabled>Forget WiFi</button>
@@ -618,6 +636,14 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       <button id=netFactory type=button disabled>Factory reset</button>
     </div>
     <p id=netMsg class=setnote></p>
+
+    <div class="hd sep">Updates</div>
+    <div id=updList></div>
+    <p id=updMsg class=setnote>Not checked yet.</p>
+    <div class=setrow style="display:flex;flex-direction:column;gap:.5rem">
+      <button id=updOpen type=button hidden>Update</button>
+      <button id=updResume type=button hidden>Resume operating</button>
+    </div>
 
     <div class="hd sep">Sidekick's own network</div>
     <p class=setnote>The network the sidekick raises when it has no WiFi to join. A password keeps phones that are only looking for internet from joining it. Saving restarts it, and a phone on it must rejoin. Whatever you name it, the app is at micro-ft8.local or 192.168.4.1.</p>
@@ -1016,9 +1042,25 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
   </button>
   <button type=button data-view=settings>
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 01-4 0v-.09A1.7 1.7 0 009 19.4a1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.7 1.7 0 004.6 15a1.7 1.7 0 00-1.55-1H3a2 2 0 010-4h.09A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06A1.7 1.7 0 009 4.6a1.7 1.7 0 001-1.55V3a2 2 0 014 0v.09A1.7 1.7 0 0015 4.6a1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06A1.7 1.7 0 0019.4 9a1.7 1.7 0 001.55 1H21a2 2 0 010 4h-.09a1.7 1.7 0 00-1.55 1z"/></svg>
-    Settings<span id=tabUnpaired class=tabdot aria-label="Not paired" hidden></span>
+    Settings<span id=tabUnpaired class=tabdot aria-label="Not paired" hidden></span><span id=tabUpdate class=tabdot aria-label="Update available" hidden></span>
   </button>
 </nav>
+
+<div id=fwSheet role=dialog aria-modal=true aria-labelledby=fwTitle hidden>
+  <div id=fwCard>
+    <h2 id=fwTitle>Update firmware</h2>
+    <ul id=fwBoards></ul>
+    <p id=fwLead></p>
+    <ul id=fwCosts></ul>
+    <ul id=fwSteps></ul>
+    <p id=fwNote></p>
+    <p id=fwWhy role=status></p>
+    <button id=fwGo type=button>Stop radio and update</button>
+    <button id=fwRetry type=button hidden>Retry</button>
+    <button id=fwResume type=button hidden>Resume operating</button>
+    <button id=fwCancel type=button>Cancel</button>
+  </div>
+</div>
 
 <div id=resetWait role=alertdialog aria-modal=true aria-labelledby=resetWaitTitle hidden>
   <div id=resetWaitCard>
@@ -1059,6 +1101,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 <script src=pskr_core.js></script>
 <script src=pskr_live.js></script>
 <script src=geo_handoff.js></script>
+<script src=updates.js></script>
 <script>
 var settingsMsg = document.getElementById('settingsMsg');
 var stationSheetMsg = document.getElementById('stationSheetMsg');
@@ -1217,6 +1260,264 @@ document.getElementById('appReload').onclick = function () { location.reload(); 
 // already carries a fix for (see setInterval(pollLiveStatus) below); this
 // is a much bigger request far less often, not the same shape of load.
 setInterval(checkAppStale, 60000);
+
+// ===================== Settings: Updates =====================
+// Firmware updates (docs/architecture/webapp.md, Settings › Updates). This page reads the release
+// manifest over HTTPS and hands the sidekick the plan: each image's URL, size and hash, the main
+// board's first. The sidekick does the rest and reports at /api/fw/status, so the update goes on
+// with this page closed, and every phone shows the same progress. The plan, the costs, the steps
+// and every sentence are FwUpdates' (updates.js); this is the drawing and the requests.
+var fwManifest = null;      // the last manifest read, or null
+var fwManifestErr = false;  // the last read failed: no internet from here
+var fwRunning = {};         // board -> the version it reports
+var fwLink = { hostLinked: false, mainProto: 0, sidekickProto: 0 };
+var fwStopped = false;      // the main board is in update mode (config's update_mode)
+var fwStatus = null;        // the last GET /api/fw/status with a plan in it
+var fwMine = null;          // the plan this page started: {steps} (so it can name the result)
+var fwPolling = false;
+var fwSheetMode = '';       // '', 'review', 'progress' or 'result'
+
+function fwUpdating() { return fwStopped || fwPolling; }
+
+async function checkFwUpdates() {
+  if (document.visibilityState !== 'visible' || fwPolling) return;
+  try {
+    var r = await fetch(FwUpdates.MANIFEST_URL, { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    fwManifest = await r.json();
+    fwManifestErr = false;
+  } catch (e) {
+    fwManifestErr = true;
+  }
+  renderFwUpdates();
+}
+
+function fwPlan() { return FwUpdates.plan(fwManifest, fwRunning, fwLink); }
+
+function fwBoardLine(o) {
+  return o.label + ' ' + o.from + ' → ' + o.to + ' · ' + FwUpdates.sizeText(o.size);
+}
+
+function renderFwUpdates() {
+  var list = document.getElementById('updList');
+  var msg = document.getElementById('updMsg');
+  var plan = fwPlan();
+  list.textContent = '';
+  plan.steps.forEach(function (o) {
+    var row = document.createElement('div');
+    row.className = 'setrow';
+    var line = document.createElement('div');
+    line.className = 'diagrow';
+    var name = document.createElement('span');
+    name.textContent = o.label;
+    var what = document.createElement('span');
+    what.textContent = o.from + ' → ' + o.to + ' · ' + FwUpdates.sizeText(o.size);
+    line.appendChild(name);
+    line.appendChild(what);
+    row.appendChild(line);
+    list.appendChild(row);
+  });
+  document.getElementById('updOpen').hidden = !plan.steps.length || fwPolling;
+  document.getElementById('updResume').hidden = !fwStopped || fwPolling;
+  document.getElementById('tabUpdate').hidden = !plan.steps.length || !paired();
+  if (fwStopped && !fwPolling) msg.textContent = 'The radio is stopped for an update. It stays stopped until you resume.';
+  else if (plan.steps.length) msg.textContent = 'Takes ' + plan.time + '. The radio stops while it runs.';
+  else if (!fwManifest) msg.textContent = fwManifestErr ? 'Updates cannot be checked from here: this phone has no internet on this network.' : 'Not checked yet.';
+  else msg.textContent = 'No updates: this is the published build.';
+}
+
+function fwFill(id, items, cls) {
+  var ul = document.getElementById(id);
+  ul.textContent = '';
+  items.forEach(function (it) {
+    var li = document.createElement('li');
+    li.textContent = typeof it === 'string' ? it : it.text;
+    if (typeof it !== 'string') li.className = it.at;
+    ul.appendChild(li);
+  });
+  ul.hidden = !items.length;
+}
+
+function fwShow(mode, o) {
+  fwSheetMode = mode;
+  var sheet = document.getElementById('fwSheet');
+  sheet.hidden = !mode;
+  sheet.classList.toggle('failed', !!o.failed);
+  document.getElementById('fwTitle').textContent = o.title || '';
+  fwFill('fwBoards', o.boards || []);
+  document.getElementById('fwLead').textContent = o.lead || '';
+  fwFill('fwCosts', o.costs || []);
+  fwFill('fwSteps', o.steps || []);
+  document.getElementById('fwNote').textContent = o.note || '';
+  document.getElementById('fwWhy').textContent = o.why || '';
+  var go = document.getElementById('fwGo');
+  go.hidden = mode !== 'review';
+  go.disabled = !!o.blocked;
+  document.getElementById('fwRetry').hidden = !o.retry;
+  document.getElementById('fwResume').hidden = !o.resume;
+  var cancel = document.getElementById('fwCancel');
+  cancel.hidden = !o.cancel;
+  cancel.textContent = o.cancel || '';
+}
+
+// Review: what will happen, before anything does.
+async function openFwReview() {
+  var plan = fwPlan();
+  if (!plan.steps.length) return;
+  var online = true;
+  try {
+    var r = await fetch('/api/fw/status', { cache: 'no-store' });
+    if (r.ok) online = (await r.json()).online !== false;
+  } catch (e) { /* the start below will say so */ }
+  var costs = FwUpdates.stopCosts(queueOrder.map(function (id) { return queue[id]; }).filter(Boolean));
+  var why = !MicroFT8Pairing.getToken() ? 'Press the sidekick button to pair first.'
+    : !online ? FwUpdates.whyText('offline') + '.'
+    : plan.blocked ? FwUpdates.whyText(plan.blocked) + '.' : '';
+  fwShow('review', {
+    title: 'Update firmware',
+    boards: plan.steps.map(fwBoardLine),
+    lead: 'Takes ' + plan.time + (plan.steps.length > 1 ? ', the main board first' : '') + '. The radio stops first' +
+      (costs.length ? ':' : '; nothing is in progress.'),
+    costs: costs,
+    note: 'It stays stopped until you tap Resume operating. The update goes on if this phone locks.',
+    why: why, blocked: !!why, cancel: 'Cancel',
+  });
+}
+
+async function startFwPlan() {
+  var plan = fwPlan();
+  var why = '';
+  try {
+    var r = await MicroFT8Pairing.authFetch('/api/fw/start', {
+      method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: plan.body,
+    });
+    if (r.status == 401) {
+      MicroFT8Pairing.needsReauth();
+      why = 'Press the sidekick button to pair';
+    } else {
+      var j = null;
+      try { j = await r.json(); } catch (e) { /* an older sidekick answers 404 with no JSON */ }
+      if (!r.ok || !j || j.ok !== true) {
+        why = j && j.why ? FwUpdates.whyText(j.why) : 'This sidekick’s firmware cannot update over the air yet; flash it over USB once';
+      }
+    }
+  } catch (e) {
+    why = 'The sidekick did not answer';
+  }
+  if (why) {
+    document.getElementById('fwWhy').textContent = why + '.';
+    return;
+  }
+  fwMine = plan;
+  fwStatus = null;
+  followFw();
+}
+
+// How the plan this page started ended, or null while it has not: a failure at any step, the main
+// board's `done` when it was the last, or the sidekick's own result after its restart.
+function fwOutcome(status) {
+  if (!status) return null;
+  if (status.state === 'failed') return FwUpdates.outcome(status, status.board, status.version);
+  if (!fwMine) return null;
+  var lastStep = fwMine.steps[fwMine.steps.length - 1];
+  return FwUpdates.outcome(status, lastStep.board, lastStep.to);
+}
+
+// Polls the sidekick once a second while an update runs, on whichever phone notices one, and
+// draws the progress sheet. A poll that fails is taken as the sidekick's own restart. It ends at
+// a result, or when nothing is in flight any more on a phone that did not start it.
+var FW_FOLLOW_MS = 12 * 60 * 1000;
+async function followFw() {
+  if (fwPolling) return;
+  fwPolling = true;
+  renderFwUpdates();
+  var began = Date.now();
+  var end = null;
+  var seenBusy = false;
+  var forgotten = 0;
+  while (Date.now() - began < FW_FOLLOW_MS) {
+    var status = null, reachable = true;
+    try {
+      var r = await fetch('/api/fw/status', { cache: 'no-store' });
+      if (r.ok) status = await r.json(); else reachable = false;
+    } catch (e) { reachable = false; }
+    if (status && status.plan && status.plan.length) fwStatus = status;
+    if (FwUpdates.busy(status)) seenBusy = true;
+    end = fwOutcome(status);
+    if (end) break;
+    // The sidekick is answering, idle, with no word of this page's update: it lost power or
+    // restarted partway and forgot it (bench, 2026-11-10). Ten seconds of that is an answer.
+    forgotten = fwMine && reachable && status && status.state === 'idle' && seenBusy &&
+      !(status.last && status.last.version === fwMine.steps[fwMine.steps.length - 1].to) ? forgotten + 1 : 0;
+    if (forgotten >= 10) { end = { ok: false, text: 'The sidekick restarted during the update' }; break; }
+    // Not this page's update, and it is over (or the sidekick restarted and forgot it).
+    if (!fwMine && reachable && !FwUpdates.busy(status) && (seenBusy || Date.now() - began > 5000)) break;
+    var canCancel = reachable && status && ['stopping', 'downloading', 'verifying', 'transferring'].indexOf(status.state) >= 0;
+    fwShow('progress', {
+      title: 'Updating firmware',
+      steps: FwUpdates.stepRows(fwStatus, reachable && FwUpdates.busy(status)),
+      note: 'Keep both boards powered. The radio is stopped.',
+      cancel: canCancel ? 'Cancel update' : '',
+    });
+    await new Promise(function (resolve) { setTimeout(resolve, 1000); });
+  }
+  fwPolling = false;
+  var mine = fwMine;
+  fwMine = null;
+  if (!end && !mine) {  // someone else's update ended; the radio bar and Settings say the rest
+    fwShow('', {});
+    renderFwUpdates();
+    return;
+  }
+  var failed = !end || !end.ok;
+  fwShow('result', {
+    title: end ? end.text : 'No answer from the sidekick',
+    steps: end && !end.ok && fwStatus && fwStatus.state === 'failed' ? FwUpdates.stepRows(fwStatus, true) : [],
+    // A main board's restart can leave a QMX's USB wedged until the QMX restarts (main_board.md, Two USB-C ports).
+    note: !end ? 'Check that this phone is on the sidekick’s network, then reload.'
+      : 'The radio is stopped until you resume.' +
+        (mine && mine.steps.some(function (o) { return o.board === 'main'; })
+          ? ' The main board restarted: if the radio does not reconnect, switch the radio off and on.' : ''),
+    // Retry only where the plan is: a phone that did not start the update has none to run again.
+    failed: failed, retry: failed && !!end && !!mine, resume: !!end, cancel: 'Close',
+  });
+  checkFwUpdates();
+}
+
+async function resumeFw(msgEl) {
+  try {
+    var r = await MicroFT8Pairing.authFetch('/api/fw/resume', { method: 'POST' });
+    if (r.status == 401) {
+      MicroFT8Pairing.needsReauth();
+      msgEl.textContent = 'Press the sidekick button to pair';
+      return false;
+    }
+    var j = await r.json();
+    if (j.ok !== true) {
+      msgEl.textContent = FwUpdates.whyText(j.why) + '.';
+      return false;
+    }
+    return true;
+  } catch (e) {
+    msgEl.textContent = 'The sidekick did not answer.';
+    return false;
+  }
+}
+
+document.getElementById('updOpen').onclick = openFwReview;
+document.getElementById('fwGo').onclick = startFwPlan;
+document.getElementById('fwRetry').onclick = openFwReview;
+document.getElementById('updResume').onclick = function () { resumeFw(document.getElementById('updMsg')); };
+document.getElementById('fwResume').onclick = async function () {
+  if (await resumeFw(document.getElementById('fwWhy'))) fwShow('', {});
+};
+document.getElementById('fwCancel').onclick = async function () {
+  if (fwSheetMode !== 'progress') { fwShow('', {}); return; }
+  try { await MicroFT8Pairing.authFetch('/api/fw/cancel', { method: 'POST' }); } catch (e) { /* the next poll shows where it is */ }
+};
+checkFwUpdates();
+document.addEventListener('visibilitychange', checkFwUpdates);
+setInterval(checkFwUpdates, 60000);
 
 // ===================== Operate: lost contact =====================
 // The drawer's dots are deliberately quiet (a glance, not an alarm) and
@@ -1817,6 +2118,17 @@ function updateNetInfo(cfg) {
   document.getElementById('netIp').textContent = cfg.sk_ip || '—';
   document.getElementById('netVersion').textContent = cfg.sk_fw_version || '—';
   document.getElementById('netUptime').textContent = cfg.sk_uptime || '—';
+  var fwNow = [cfg.sk_fw_version || '', cfg.host_fw_version || '', cfg.sk_proto | 0, cfg.host_proto | 0, cfg.update_mode === '1'];
+  if (fwNow.join('|') !== [fwRunning.sidekick || '', fwRunning.main || '', fwLink.sidekickProto, fwLink.mainProto, fwStopped].join('|')) {
+    fwRunning.sidekick = fwNow[0];
+    fwRunning.main = fwNow[1];
+    fwLink = { hostLinked: !!fwNow[1], sidekickProto: fwNow[2], mainProto: fwNow[3] };
+    fwStopped = fwNow[4];
+    renderFwUpdates();
+    // The main board is stopped for an update this page may not have started: show its progress.
+    if (fwStopped && !fwPolling && !fwSheetMode) followFw();
+  }
+  document.getElementById('netHostVersion').textContent = cfg.host_fw_version || '—';
   var isStation = mode === 'station';
   document.getElementById('netForget').hidden = !isStation;
   document.getElementById('netModeSwitch').hidden = !isStation;
@@ -1941,14 +2253,15 @@ function fmtHzMHz(hz) { return (hz / 1e6).toFixed(4).replace(/0+$/, '').replace(
 //   1. on the air: Transmitting (or Tuning), red, with power and SWR, and Stop as its own target;
 //   2. a transmission that did not go: SWR protection tripped (once, or twice in a row), TX
 //      aborted for another reason, or Not keyed;
-//   3. no contact with the station (linkLost()), not paired, then a radio problem from radioChipState();
+//   3. stopped for a firmware update, no contact with the station (linkLost()), not paired, then a
+//      radio problem from radioChipState();
 //   4. ready.
 // CAT lost while a transmission is on the air keeps Transmitting, so Stop stays where the
 // operator's thumb is, and the sub-line says CAT is lost (decided 2026-10-25).
 // chip: radioChipState()'s answer. hud: the last TX HUD event, or null. ctx: {tune (Tune is on),
 // ourCq (txIsOurCq()), band, freq ("14.074"), radio ("QMX"), swrTrips (tripped transmissions in a
 // row, noteTxHud()), act (" · 3 refs · 0000Z 3h12m" or ''), wantMHz (the drift's reading),
-// linkLost (linkLost()), unpaired (!paired())}.
+// linkLost (linkLost()), unpaired (!paired()), updating (fwUpdating())}.
 // Returns {state, tone: 'red'|'amber'|'grey'|'quiet', main, sub, glyph, label, stop}; stop is the
 // Stop button's text, '' when there is nothing on the air to stop.
 function radioBarState(chip, hud, ctx) {
@@ -1982,6 +2295,12 @@ function radioBarState(chip, hud, ctx) {
     return { state: 'notkeyed', tone: 'amber', main: 'Not keyed',
              sub: 'Not counted: ' + (hud.reason || 'could not key') + (hud.x ? ' · ' + hud.x : ''),
              glyph: '!', label: 'Radio ›', stop: '' };
+  }
+  // Stopped for a firmware update (update mode, or one this page is following): planned, so it
+  // outranks the lost contact a board's restart causes on the way.
+  if (ctx.updating) {
+    return { state: 'updating', tone: 'amber', main: 'Stopped for an update',
+             sub: 'Resume in Settings \u203a Updates', glyph: '\u2026', label: 'Radio \u203a', stop: '' };
   }
   // No answer from the sidekick or the main board for LINK_LOST_MS: nothing below can be trusted.
   if (ctx.linkLost) {
@@ -2101,7 +2420,7 @@ function renderRadioBar() {
     band: operatingBandName(cfg),
     freq: khz != null ? khzToMhzLabel(khz) : '', radio: radioNameOf(), swrTrips: swrTrack.count,
     act: refs.length ? ' · ' + refs.length + (refs.length === 1 ? ' ref' : ' refs') + ' · 0000Z ' + utcDayLeft(Date.now()) : '',
-    wantMHz: rs ? fmtHzMHz(rs.hz) : '', linkLost: linkLost(), unpaired: !paired()
+    wantMHz: rs ? fmtHzMHz(rs.hz) : '', linkLost: linkLost(), unpaired: !paired(), updating: fwUpdating()
   });
   document.getElementById('tabUnpaired').hidden = paired();
   var bar = document.getElementById('opRadioBar');
