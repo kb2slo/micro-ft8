@@ -49,8 +49,8 @@ You need the main board and sidekick on their Grove cable, your QMX (validated o
 
 A new or reset station is set to `YOURCALL` in grid `CM97`. Set yours before you transmit.
 
-- Tap **Settings**. Enter your **Call** and tick the **Bands** your QMX covers; they save as you go.
-- On **Operate**, tap the bottom bar, then **Station ›**, and enter your **Grid**; it saves when you leave the field. **Set from GPS →** uses the phone's location, and needs internet.
+- Tap **Settings**, then **Station**. Enter your **Call** and your **Grid**; each saves when you leave the field. **Set from GPS →** uses the phone's location, and needs internet.
+- Back in **Settings**, tap **Radio & bands** and turn on the **Bands** your QMX covers.
 
 ## 5. Check that it hears
 
@@ -60,7 +60,7 @@ A new or reset station is set to `YOURCALL` in grid `CM97`. Set yours before you
 ## Work some stations
 
 - *Answer a CQ:* tap a decode that ends in a blue ›, for about 30 seconds after its slot (**Undo** takes it back). The station works the exchange and logs it.
-- *Call CQ:* tap **Call CQ** on the last row of the queue. It sends as many CQs as **Tries** in the Station sheet (6 to start), every other slot, then stops. Stations that answer are worked first. On the row, tap the count to change it, or the slot to move the CQ to the other one.
+- *Call CQ:* tap **Call CQ** on the last row of the queue. It sends as many CQs as **Tries** in **Settings**, **Station** (6 to start), every other slot, then stops. Stations that answer are worked first. On the row, tap the count to change it, or the slot to move the CQ to the other one.
 - *Stop:* **Stop TX** ends the transmission on the air (**Stop CQ** also ends the CQ), and × on a queue row ends that QSO or the CQ. **Tune** sends a carrier until you tap it again.
 - Close the app or lock the phone, and the station keeps working. Open it again to see what it did.
 
@@ -76,10 +76,10 @@ One ADIF file per UTC day, kept on the main board. On **QSOs**, **Download ADI**
 - *Internet* is never needed to operate. When the phone has it, a tapped callsign shows QRZ details, and **Tools** adds space weather and, on its map, POTA and SOTA spots.
 - *Two devices at most* can join the sidekick's network at once.
 - *SWR sweep,* on **Tools**: set the QMX's *Tune* power to 25% or more first.
-- *Home WiFi instead* (2.4 GHz only): in **Settings**, tap **Join a network →**, pick it and tap **Save and join**; then use [`http://micro-ft8.local`](http://micro-ft8.local/). Away from that network, the sidekick's own comes back within a minute of power-up.
-- *Updates:* **Install / update**, at the bottom of **Settings**, loads the newest app (needs internet).
+- *Home WiFi instead* (2.4 GHz only): in **Settings**, tap **Network**, then **Join a network →**, pick it and tap **Save and join**; then use [`http://micro-ft8.local`](http://micro-ft8.local/). Away from that network, the sidekick's own comes back within a minute of power-up.
+- *Updates:* in **Settings**, **Software update**, then **Install / update** loads the newest app (needs internet).
 - *For now:* FT8 with a QMX only; leave **Protocol** at FT8. A CQ stops after its tries and each QSO message after its own, but you are still the control operator.
 
 ## Questions and feedback
 
-KB2SLO · [micro-ft8.kalikstein.com/#contact](https://micro-ft8.kalikstein.com/#contact). If something goes wrong, note the time, what you tapped, and the **Firmware** and **App** lines in **Settings**.
+KB2SLO · [micro-ft8.kalikstein.com/#contact](https://micro-ft8.kalikstein.com/#contact). If something goes wrong, note the time, what you tapped, and the **Firmware** and **App** lines in **Settings**, under **Software update**.

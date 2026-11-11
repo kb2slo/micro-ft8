@@ -782,7 +782,7 @@ const char *porta_host_config_set(const char *key, const char *value) {
         return "too long";
     }
     if (strcmp(key, "tries") == 0) {
-        // Refused here rather than clamped by autoseq, so the Station sheet never
+        // Refused here rather than clamped by autoseq, so Settings > Station never
         // shows a count the engine is not using (docs/architecture/autoseq.md, Tries).
         const int tries = atoi(value);
         if (tries < 1 || tries > AUTOSEQ_TRIES_MAX_QSO) {
@@ -842,7 +842,7 @@ const char *porta_host_config_set(const char *key, const char *value) {
     // activation defaults to SOTA), else POTA (architecture/logging.md, "CQ
     // type follows the activation"). Only this one transition derives it: a
     // later add/remove must never clobber a manual switch made through the
-    // Station sheet's own Type control.
+    // Settings > Station's own Type control.
     if (strcmp(key, "act_refs") == 0 && act_refs_was_empty && !s_station.act_refs.empty()) {
         s_station.cq_type = (int)(act_refs_prefer_sota(s_station.act_refs) ? AutoseqCqType::SOTA
                                                                             : AutoseqCqType::POTA);

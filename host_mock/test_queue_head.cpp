@@ -171,7 +171,7 @@ static void test_transmitting_id_names_the_on_air_entry() {
 }
 
 // Row j4xh: a board arms our own CQ, then the operator
-// switches cq_type (the Station sheet's Type control, O1c) before that slot
+// switches cq_type (Settings > Station's Type control, O1c) before that slot
 // fires. The armed entry's identity never changes -- it's still the same
 // CALLING entry -- but its rendered text does, which a bare entry_id
 // comparison alone would miss (main/main.cpp's and poe_p4's

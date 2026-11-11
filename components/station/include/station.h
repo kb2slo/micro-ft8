@@ -53,7 +53,7 @@ struct StationSettings {
     bool protocol_ft4;
     bool serialize_ft4_band_keys;
     // "POTA:US-1234,SOTA:W7O/CC-001" -- the active activation's references,
-    // entered in the Station sheet (architecture/webapp.md, "Activation").
+    // entered in Settings > Station (architecture/webapp.md, "Activation").
     // Empty means no activation. Normalized (program upper-cased, malformed
     // tokens dropped) by station_parse(); see normalize_act_refs() in
     // station.cpp.
