@@ -29,8 +29,30 @@ static esp_err_t fake_tone(float) { ++g_calls; return ESP_OK; }
 static esp_err_t fake_ok(void) { ++g_calls; return ESP_OK; }
 static esp_err_t fake_tune(bool, int, int) { ++g_calls; return ESP_OK; }
 
+// What the fake radio reports (IF;): its frequency, whether it transmits, and how many times that changed.
+static int g_radio_hz = 0;
+static bool g_radio_tx = false;
+static uint32_t g_radio_changes = 0;
+static bool fake_get_state(radio_state_t* out)
+{
+    if (g_radio_hz <= 0) return false;
+    out->freq_hz = g_radio_hz;
+    out->transmitting = g_radio_tx;
+    out->mode = 6;
+    out->split = false;
+    return true;
+}
+static uint32_t fake_state_changes(void) { return g_radio_changes; }
+static void radio_reports(int hz, bool tx = false)
+{
+    g_radio_hz = hz;
+    g_radio_tx = tx;
+    ++g_radio_changes;
+}
+
 static const radio_control_capabilities_t k_fake_caps = {true, true, true, true, true, true};
-static const radio_control_ops_t k_fake_qmx = [] {
+// Not const: dial() takes its state reports away to stand for a radio that cannot report.
+static radio_control_ops_t g_fake_qmx = [] {
     radio_control_ops_t ops = {};
     ops.name = "qmx";
     ops.capabilities = &k_fake_caps;
@@ -40,15 +62,65 @@ static const radio_control_ops_t k_fake_qmx = [] {
     ops.set_tone_hz = fake_tone;
     ops.end_tx = fake_ok;
     ops.set_tune = fake_tune;
+    ops.get_state = fake_get_state;
+    ops.state_changes = fake_state_changes;
     return ops;
 }();
 
-const radio_control_ops_t* radio_control_qmx_get_ops(void) { return &k_fake_qmx; }
+const radio_control_ops_t* radio_control_qmx_get_ops(void) { return &g_fake_qmx; }
 
-// A sync notes the dial; the clock is not under test here, and the history only by how often it is noted.
+// The clock is not under test here, and the history only by what is noted and how often.
 static int g_history_notes = 0;
+static uint32_t g_history_hz = 0;
 int64_t rtc_now_ms() { return 0; }
-void dial_history_note(int64_t, uint32_t) { ++g_history_notes; }
+void dial_history_note(int64_t, uint32_t hz) { ++g_history_notes; g_history_hz = hz; }
+
+// The dial's history holds what the radio reports, not what was asked for (radio.md, The dial a decode was heard on).
+static void dial()
+{
+    radio_control_set_backend(RADIO_CONTROL_QMX);
+    g_history_notes = 0;
+    radio_reports(5357000);
+    radio_control_dial_tick();
+    expect(g_history_notes == 1 && g_history_hz == 5357000, "the radio's report is noted");
+    radio_control_dial_tick();
+    expect(g_history_notes == 1, "and once: nothing changed since");
+
+    expect(radio_control_sync_frequency_mode(3573000) == ESP_OK, "a tune the radio has no band for still sends");
+    expect(g_history_notes == 1, "a radio that reports is not noted where we asked");
+    radio_reports(5357000);  // the IF; after the sync: the radio refused FA and stayed
+    radio_control_dial_tick();
+    expect(g_history_hz == 5357000, "a refused tune leaves the history on the radio's frequency");
+
+    radio_reports(5354000);  // a knob turn, pushed with AI2;
+    radio_control_dial_tick();
+    expect(g_history_hz == 5354000, "a knob turn is noted");
+
+    g_history_notes = 0;
+    expect(radio_control_begin_tx(7047500, 1500, 7074000) == ESP_OK, "a transmission retunes");
+    radio_reports(7047500, true);
+    radio_control_dial_tick();
+    expect(g_history_notes == 0, "the dial a transmission retuned to is not noted");
+    radio_control_end_tx();
+    radio_reports(7074000);
+    radio_control_dial_tick();
+    expect(g_history_notes == 1 && g_history_hz == 7074000, "the report back on the receive dial is");
+
+    g_history_notes = 0;
+    radio_reports(7074000, true);  // TX on the receive dial: not retuned, still not the operator's
+    radio_control_dial_tick();
+    expect(g_history_notes == 0, "a report while transmitting is not noted");
+    radio_reports(7074000);
+    radio_control_dial_tick();
+    expect(g_history_notes == 1, "the one after it is");
+
+    g_fake_qmx.get_state = nullptr;
+    g_fake_qmx.state_changes = nullptr;
+    expect(radio_control_sync_frequency_mode(14074000) == ESP_OK && g_history_hz == 14074000,
+           "a radio that cannot report is noted where we set it");
+    g_fake_qmx.get_state = fake_get_state;
+    g_fake_qmx.state_changes = fake_state_changes;
+}
 
 // A transmission that retunes (tx_timing.h tx_plan(); radio.md, TX timing on a QMX): the backend gets both dials, the dispatcher
 // says the radio is retuned until end_tx(), and the dial's history, which labels decodes, keeps the receive dial.
@@ -72,6 +144,7 @@ int main()
     expect(radio_control_ready() && radio_control_begin_tx(14074000, 1500, 14074000) == ESP_OK, "the QMX keys");
     radio_control_end_tx();
     retune();
+    dial();
 
     radio_control_set_backend(RADIO_CONTROL_NONE);
     g_calls = 0;

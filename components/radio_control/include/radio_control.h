@@ -138,7 +138,13 @@ uint32_t radio_control_state_changes(void);
 radio_rx_path_event_t radio_control_rx_path_tick(bool busy);
 
 esp_err_t radio_control_on_audio_start(void);
+// Tunes the radio. For a radio that cannot report its frequency, the dial's history (dial_history.h) notes freq_hz.
 esp_err_t radio_control_sync_frequency_mode(int freq_hz);
+// Call every main-loop pass: notes in the dial's history (dial_history.h), which labels decodes and the band a
+// QSO is logged on, the frequency the radio last reported (QMX IF;, pushed with AI2; and asked after a sync). The
+// radio's word, not what we asked for: it may have refused a tune, or the operator turned the knob. Not while it
+// transmits or is retuned for a transmission.
+void radio_control_dial_tick(void);
 // tx_dial_hz other than rx_dial_hz retunes the radio for this transmission and back in radio_control_end_tx()
 // (tx_timing.h, tx_plan()). Not a sync: the dial's history (dial_history.h) keeps rx_dial_hz.
 esp_err_t radio_control_begin_tx(int tx_dial_hz, int tx_base_hz, int rx_dial_hz);

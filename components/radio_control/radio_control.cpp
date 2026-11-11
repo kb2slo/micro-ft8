@@ -73,11 +73,23 @@ esp_err_t radio_control_sync_frequency_mode(int freq_hz) {
     const radio_control_ops_t* ops = current_ops();
     if (!ops || !ops->sync_frequency_mode) return ESP_ERR_INVALID_STATE;
     const esp_err_t err = ops->sync_frequency_mode(freq_hz);
-    // Every board tunes through here, so this is where the dial's history is
-    // kept: a decode is labelled with the frequency it was heard on from it
-    // (dial_history.h, Port A DECODE's dial_hz).
-    if (err == ESP_OK && freq_hz > 0) dial_history_note(rtc_now_ms(), (uint32_t)freq_hz);
+    // A radio that reports its frequency is believed instead (radio_control_dial_tick()): it can refuse a
+    // frequency it has no band for and stay where it was. One that cannot report is where we set it.
+    if (err == ESP_OK && freq_hz > 0 && !ops->get_state) dial_history_note(rtc_now_ms(), (uint32_t)freq_hz);
     return err;
+}
+
+void radio_control_dial_tick(void) {
+    static uint32_t s_seen = 0;
+    const uint32_t changes = radio_control_state_changes();
+    if (changes == s_seen) return;
+    // Not consumed while the radio transmits or is retuned for a transmission: that dial is ours, and the
+    // report after it, back on the receive dial, is the one to note.
+    if (radio_control_tx_retuned_hz() != 0) return;
+    radio_state_t rs;
+    if (!radio_control_get_state(&rs) || rs.transmitting) return;
+    s_seen = changes;
+    if (rs.freq_hz > 0) dial_history_note(rtc_now_ms(), (uint32_t)rs.freq_hz);
 }
 
 esp_err_t radio_control_begin_tx(int tx_dial_hz, int tx_base_hz, int rx_dial_hz) {
