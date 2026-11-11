@@ -188,7 +188,7 @@ static void amp_band_prime_event(const amp_band_prime_event_t *event, void * /*u
 static std::atomic<int> s_primed_band{AMP_BAND_PRIME_NONE};
 
 static void request_amp_band_prime() {
-    if (!s_station.amp_prime_on_band_change) {
+    if (!station_amp_prime_on_band_change(s_station)) {
         return;
     }
     if (s_tune || swr_sweep_busy() || amp_band_prime_busy()) {
@@ -211,7 +211,7 @@ static void request_amp_band_prime() {
 }
 
 bool porta_p4_amp_prime_before_tx(void) {
-    if (!amp_band_prime_needed(s_station.amp_prime_on_band_change, s_primed_band.load(), s_station.band_sel)) {
+    if (!amp_band_prime_needed(station_amp_prime_on_band_change(s_station), s_primed_band.load(), s_station.band_sel)) {
         return false;
     }
     const int idx = s_station.band_sel;
@@ -383,12 +383,12 @@ int32_t porta_p4_station_ft4_dial_offset_hz(void) {
 
 bool porta_p4_station_amp_swr_guard(void) {
     ensure_seeded();
-    return s_station.amp_swr_guard;
+    return station_amp_swr_guard(s_station);
 }
 
 int porta_p4_station_tx_min_delay_ms(void) {
     ensure_seeded();
-    return s_station.tx_min_delay_ms;
+    return station_tx_min_delay_ms(s_station);
 }
 
 int porta_p4_station_offset_src(void) {

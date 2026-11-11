@@ -79,6 +79,27 @@ int main()
     {
         StationSettings s;
         station_settings_init(&s);
+        // The amplifier switch: off by default, and off, nothing an amplifier adds is in force
+        // whatever is saved; on, the saved values are.
+        expect_true(!s.amp, "no amplifier by default");
+        expect_true(station_key_known("amp"), "amp known to CONFIG");
+        station_parse("amp_swr_guard=1\namp_prime_on_band_change=1\ntx_min_delay_ms=200\n", &s);
+        expect_true(!station_amp_swr_guard(s), "amp off: no SWR trip recovery though saved on");
+        expect_true(!station_amp_prime_on_band_change(s), "amp off: no band-change prime though saved on");
+        expect_int(station_tx_min_delay_ms(s), kStationTxMinDelayDefaultMs, "amp off: the default TX delay");
+        station_parse("amp=1\n", &s);
+        expect_true(s.amp && station_amp_swr_guard(s) && station_amp_prime_on_band_change(s), "amp on: the saved options are in force");
+        expect_int(station_tx_min_delay_ms(s), 200, "amp on: the saved TX delay");
+        {
+            StationSettings a;
+            station_settings_init(&a);
+            station_parse(station_serialize(s), &a);
+            expect_true(a.amp, "amp round-trips");
+            expect_int(a.tx_min_delay_ms, 200, "and the saved delay with it");
+        }
+        station_parse("amp=0\n", &s);
+        expect_true(!station_amp_swr_guard(s) && s.amp_swr_guard, "amp off again: kept, not in force");
+        station_settings_init(&s);
         expect_true(!s.amp_swr_guard, "SWR protection recovery is off by default");
         expect_true(!s.amp_prime_on_band_change, "amp band-change prime is off by default");
         station_parse("amp_swr_guard=1\n", &s);

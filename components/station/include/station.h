@@ -41,6 +41,9 @@ struct StationSettings {
     int gps_baud;
     std::string comment1;
     std::string active_bands;
+    // An amplifier is in use. Off, the four settings below are kept but not in force: read them
+    // through station_tx_min_delay_ms(), station_amp_swr_guard() and station_amp_prime_on_band_change().
+    bool amp = false;
     int tx_min_delay_ms = kStationTxMinDelayDefaultMs;  // 0..kStationTxMinDelayMaxMs
     bool amp_swr_guard = false;  // recover from the QMX's SWR-protection trips (architecture/radio.md)
     int amp_ptt = kStationAmpPttNone;  // kStationAmpPtt*: how the amp is keyed from the QMX's PTT jack
@@ -58,6 +61,13 @@ struct StationSettings {
 };
 
 void station_settings_init(StationSettings* out);
+
+// The amplifier settings in force (architecture/radio.md, The amplifier switch). With amp off: the
+// default TX delay, no recovery from SWR-protection trips and no prime on a band change, whatever
+// is saved, so one switch stops everything an amplifier adds, the prime's carrier included.
+int station_tx_min_delay_ms(const StationSettings& s);
+bool station_amp_swr_guard(const StationSettings& s);
+bool station_amp_prime_on_band_change(const StationSettings& s);
 
 // Overlay key=value lines onto *io. Unknown keys ignored. date=, time=,
 // rtc_comp=, and rtc_sleep_epoch= are ignored (clock is not persisted).
