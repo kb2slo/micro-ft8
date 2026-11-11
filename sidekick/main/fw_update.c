@@ -664,19 +664,6 @@ static esp_err_t post_start(httpd_req_t *req)
     if (why) {
         return refuse(req, "409 Conflict", why);
     }
-    // A firmware update needs the radio off, the sidekick's own included: its restart takes the
-    // phone's controls away while the main board could go on transmitting, and the main board's
-    // restart with a QMX attached leaves the QMX's USB wedged. The main board says whether one is
-    // attached. With no main board answering there is nothing to ask.
-    if (linked) {
-        char reason[PORTA_EVENT_TEXT_MAX + 1];
-        if (!host_link_may_update(reason, sizeof(reason))) {
-            const char *code = strcmp(reason, "radio attached") == 0 ? "radio" : "no_host";
-            ESP_LOGW(TAG, "main board will not be updated now: %s", reason);
-            fail(code, 0);
-            return refuse(req, "409 Conflict", code);
-        }
-    }
     if (xTaskCreate(update_task, "fw_update", 8192, NULL, 4, NULL) != pdPASS) {
         fail("flash", ESP_ERR_NO_MEM);
         return refuse(req, "500 Internal Server Error", "flash");

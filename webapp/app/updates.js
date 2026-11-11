@@ -53,20 +53,16 @@ var FwUpdates = (function () {
   }
 
   // What one tap of Update does: every offer, in order, in one request the sidekick carries out by
-  // itself (fw_plan_parse()), so a locked phone stops nothing. `link` is what the boards say now:
-  // {hostLinked, mainProto, sidekickProto} from /api/config's host_proto and sk_proto (0 unknown),
-  // and radioAttached, whether the main board reports a USB device on its Host port.
-  // blocked: '' or why the plan must not run yet:
-  //   'radio'  a firmware update needs the radio off (main_board.md, Firmware updates). With no
-  //            main board answering there is nothing to ask, so it does not apply.
-  //   'pair'   afterwards the two boards would speak different Port A protocol versions, and a
-  //            main board the sidekick cannot talk to can only be recovered over USB.
+  // itself (fw_plan_parse()), so a locked phone stops nothing. `link` is what the boards speak now:
+  // {hostLinked, mainProto, sidekickProto} from /api/config's host_proto and sk_proto (0 unknown).
+  // blocked: '' or why the plan must not run. The one reason is 'pair': afterwards the two boards
+  // would speak different Port A protocol versions, and a main board the sidekick cannot talk to
+  // can only be recovered over USB. Nothing checks for a radio: the review asks for it to be off.
   function plan(manifest, running, link) {
     var steps = offers(manifest, running);
     var after = { main: link.mainProto | 0, sidekick: link.sidekickProto | 0 };
     steps.forEach(function (o) { after[o.board] = o.proto; });
-    var blocked = link.hostLinked && after.main && after.sidekick && after.main !== after.sidekick ? 'pair'
-      : link.hostLinked && link.radioAttached ? 'radio' : '';
+    var blocked = link.hostLinked && after.main && after.sidekick && after.main !== after.sidekick ? 'pair' : '';
     return {
       steps: steps,
       blocked: blocked,
@@ -125,7 +121,7 @@ var FwUpdates = (function () {
     pair: 'This update would leave the two boards unable to talk to each other',
     plan: 'The sidekick did not understand the request',
     no_host: 'The main board is not answering',
-    radio: 'Switch the radio off, or unplug its USB, to update',
+    radio: 'The main board refused because a radio is attached; switch it off and try again',
     no_slot: 'This main board needs one flash over USB before it can update over the air',
     link: 'The main board stopped answering during the transfer',
     host_restarted: 'The main board restarted during the transfer',

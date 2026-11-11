@@ -9,8 +9,8 @@ sidekick its URL, size, SHA-256 and built-in version behind the pairing token
 sidekick must be on the same network as this machine, joined to WiFi (not on
 its own access point).
 
-A firmware update needs the radio off: the main board refuses one while a USB
-device is on its Host port, and this ends `FAILED: radio`.
+Switch the radio off first, or unplug its USB: nothing checks, and a QMX left
+connected through a main board's update may need switching off and on after.
 
 Usage:
   python3 webapp/tools/install_firmware.py                    # sidekick/build/sidekick.bin

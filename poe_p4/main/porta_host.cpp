@@ -1018,12 +1018,6 @@ void porta_host_link_test(bool active, bool tune) {
     }
 }
 
-// A firmware update needs the radio off (docs/architecture/main_board.md, Firmware updates): a
-// device on the Host port, whatever it is, is a radio as far as an update is concerned.
-bool porta_host_radio_attached(void) {
-    return qmx_usb_device_listed();
-}
-
 static const char *apply_reply_touch(const UiRxLine &msg) {
     const AutoseqTouchResult touch =
         autoseq_on_touch(msg, decode_tx_state_get_tx_active());

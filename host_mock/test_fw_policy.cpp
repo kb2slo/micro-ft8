@@ -239,7 +239,6 @@ struct Wire {
     std::vector<uint8_t> slot;
     porta_fw_rx_t rx;
     porta_fw_ops_t ops;
-    bool radio_attached = false;
     bool image_ok = true;
     const char *image_version = "d18f9b2";
     int commits = 0, aborts = 0;
@@ -305,9 +304,9 @@ static bool wire_exchange(Wire *w, const uint8_t *request, size_t n, porta_fw_re
     size_t len = 0;
     bool abort = false;
     porta_fw_reply_t r = {0, 0};
-    if (porta_proto_parse_fw_begin(&f, &b)) r = porta_fw_rx_begin(&w->rx, &b, w->radio_attached);
+    if (porta_proto_parse_fw_begin(&f, &b)) r = porta_fw_rx_begin(&w->rx, &b);
     else if (porta_proto_parse_fw_chunk(&f, &offset, &data, &len)) r = porta_fw_rx_chunk(&w->rx, offset, data, len);
-    else if (porta_proto_parse_fw_end(&f, &abort)) r = porta_fw_rx_end(&w->rx, abort, w->radio_attached);
+    else if (porta_proto_parse_fw_end(&f, &abort)) r = porta_fw_rx_end(&w->rx, abort);
     else return false;
     if (lossy) return false;  // it arrived and was acted on; the answer was lost
 
@@ -426,33 +425,7 @@ static void test_transfer()
         int detail = 0;
         check(run_transfer(&w, &detail) == "host_restarted" && detail == PORTA_FW_NO_TRANSFER && w.commits == 0, "main board restarted");
     }
-    {   // The radio is switched on during the transfer: every byte goes, the install is refused, and
-        // with the radio off again the next run has nothing left to send but END.
-        Wire w;
-        wire_init(&w, 5000);
-        struct Plug { static bool chunk(void *c, uint32_t off, const uint8_t *d, size_t n, porta_fw_reply_t *out) {
-            if (off >= 2400) ((Wire *)c)->radio_attached = true;
-            return io_chunk(c, off, d, n, out);
-        } };
-        const fw_transfer_io_t io = {io_read, io_begin, Plug::chunk, io_end, io_cancelled, io_progress};
-        porta_fw_begin_t b = {};
-        b.size = 5000;
-        wire_hash(w.staged.data(), 5000, b.sha256);
-        std::snprintf(b.version, sizeof(b.version), "d18f9b2");
-        uint8_t buf[PORTA_FW_CHUNK_MAX];
-        int detail = 0;
-        const char *why = fw_transfer_run(&io, &w, &b, buf, &detail, &w.resumed_from);
-        check(why && std::string(why) == "radio" && w.commits == 0, "radio plugged in mid-transfer: not installed");
-        w.radio_attached = false;
-        w.exchanges = 0;
-        check(run_transfer(&w) == "" && w.commits == 1 && w.slot == w.staged && w.exchanges == 2 && w.resumed_from == 5000,
-              "radio off again: BEGIN and END only, and it installs");
-    }
     {   // Refusals at BEGIN.
-        Wire w;
-        wire_init(&w, 5000);
-        w.radio_attached = true;
-        check(run_transfer(&w) == "radio" && w.exchanges == 1 && w.commits == 0, "a radio is attached");
         Wire single;
         wire_init(&single, 5000, 0);
         check(run_transfer(&single) == "no_slot", "a main board with one app partition");

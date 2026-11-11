@@ -89,7 +89,7 @@ bool fw_image_version(const uint8_t *head, size_t len, char version_out[FW_VERSI
 
 // What the main board's answer to a firmware message means for the transfer
 // (porta_fw_status_t): NULL to go on from the offset it gave, else the code
-// the update fails with: "radio" (one is attached), "no_slot", "size", "host_restarted",
+// the update fails with: "radio" (a v16 main board, with one attached), "no_slot", "size", "host_restarted",
 // "host_flash", "hash", "image", "version" or "host".
 const char *fw_transfer_fault(uint8_t status);
 

@@ -1291,14 +1291,7 @@ async function checkFwUpdates() {
   renderFwUpdates();
 }
 
-// A firmware update needs the radio off: the main board says whether a USB device is on its Host
-// port (the USB status event), and the plan is blocked while one is.
-function fwPlan() {
-  return FwUpdates.plan(fwManifest, fwRunning, {
-    hostLinked: fwLink.hostLinked, mainProto: fwLink.mainProto, sidekickProto: fwLink.sidekickProto,
-    radioAttached: !!(usbState && usbState.present),
-  });
-}
+function fwPlan() { return FwUpdates.plan(fwManifest, fwRunning, fwLink); }
 
 function fwBoardLine(o) {
   return o.label + ' ' + o.from + ' → ' + o.to + ' · ' + FwUpdates.sizeText(o.size);
@@ -1325,7 +1318,7 @@ function renderFwUpdates() {
   });
   document.getElementById('updOpen').hidden = !plan.steps.length || fwPolling;
   document.getElementById('tabUpdate').hidden = !plan.steps.length || !paired();
-  if (plan.steps.length) msg.textContent = 'Takes ' + plan.time + ', with the radio switched off.';
+  if (plan.steps.length) msg.textContent = 'Takes ' + plan.time + '. Switch the radio off first.';
   else if (!fwManifest) msg.textContent = fwManifestErr ? 'Updates cannot be checked from here: this phone has no internet on this network.' : 'Not checked yet.';
   else msg.textContent = 'No updates: this is the published build.';
 }
@@ -1362,27 +1355,26 @@ function fwShow(mode, o) {
   cancel.textContent = o.cancel || '';
 }
 
-// Review: what will happen, before anything does. Redrawn once a second while it is open, so the
-// button comes alive within a moment of the radio being switched off.
+// Review: what will happen, before anything does. Nothing checks that the radio is off; the sheet
+// asks, and says what it costs if it is left on.
 var fwReviewOnline = true;
 var fwStartErr = '';
-var fwReviewTimer = null;
 function renderFwReview() {
   var plan = fwPlan();
-  if (fwSheetMode !== 'review' || !plan.steps.length) return;
+  if (!plan.steps.length) return;
   // What stands in the way now; failing that, what the sidekick said to the last try.
   var why = !MicroFT8Pairing.getToken() ? 'Press the sidekick button to pair first.'
     : !fwReviewOnline ? FwUpdates.whyText('offline') + '.'
     : plan.blocked ? FwUpdates.whyText(plan.blocked) + '.' : '';
   var blocked = !!why;
-  why = why || fwStartErr;
   fwShow('review', {
     title: 'Update firmware',
     boards: plan.steps.map(fwBoardLine),
     lead: 'Takes ' + plan.time + (plan.steps.length > 1 ? ', the main board first' : '') +
-      '. The radio must be off while it runs: switch it off, or unplug its USB.',
-    note: 'The update goes on if this phone locks. Switch the radio back on when it is done.',
-    why: why, blocked: blocked, cancel: 'Cancel',
+      '. Switch the radio off, or unplug its USB, before you update. If it stays connected it may ' +
+      'need switching off and on afterwards.',
+    note: 'The update goes on if this phone locks.',
+    why: why || fwStartErr, blocked: blocked, cancel: 'Cancel',
   });
 }
 async function openFwReview() {
@@ -1393,13 +1385,7 @@ async function openFwReview() {
     var r = await fetch('/api/fw/status', { cache: 'no-store' });
     if (r.ok) fwReviewOnline = (await r.json()).online !== false;
   } catch (e) { /* the start below will say so */ }
-  fwSheetMode = 'review';
   renderFwReview();
-  clearInterval(fwReviewTimer);
-  fwReviewTimer = setInterval(function () {
-    if (fwSheetMode !== 'review') { clearInterval(fwReviewTimer); return; }
-    renderFwReview();
-  }, 1000);
 }
 
 async function startFwPlan() {
@@ -1475,7 +1461,7 @@ async function followFw() {
     fwShow('progress', {
       title: 'Updating firmware',
       steps: FwUpdates.stepRows(fwStatus, reachable && FwUpdates.busy(status)),
-      note: 'Keep both boards powered, and the radio off.',
+      note: 'Keep both boards powered.',
       cancel: canCancel ? 'Cancel update' : '',
     });
     await new Promise(function (resolve) { setTimeout(resolve, 1000); });
@@ -1493,7 +1479,7 @@ async function followFw() {
     title: end ? end.text : 'No answer from the sidekick',
     steps: end && !end.ok && fwStatus && fwStatus.state === 'failed' ? FwUpdates.stepRows(fwStatus, true) : [],
     note: !end ? 'Check that this phone is on the sidekick’s network, then reload.'
-      : end.ok ? 'Switch the radio back on.' : '',
+      : end.ok ? 'Switch the radio back on. If it was connected during the update and does not reconnect, switch it off and on.' : '',
     // Retry only where the plan is: a phone that did not start the update has none to run again.
     failed: failed, retry: failed && !!end && !!mine, cancel: 'Close',
   });

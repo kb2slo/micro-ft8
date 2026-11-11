@@ -65,9 +65,6 @@ const char* porta_host_factory_reset(uint8_t flags);
 // SWR sweep (docs/architecture/radio.md, The SWR sweep): nullptr = accepted, progress follows as porta_emit_sweep() events; a
 // non-null return is the refusal's reason and nothing was started.
 const char* porta_host_sweep_start(const porta_sweep_range_t* ranges, size_t count);
-// A radio is attached: a USB device is on the board's Host port. A firmware update needs it off
-// (docs/architecture/main_board.md, Firmware updates).
-bool porta_host_radio_attached(void);
 #include "porta_proto.h"
 #include "porta_out_queue.h"
 
@@ -316,7 +313,7 @@ void handle_fw(const porta_frame_t& f) {
   size_t len = 0;
   bool abort = false;
   if (porta_proto_parse_fw_begin(&f, &begin)) {
-    const porta_fw_reply_t r = porta_fw_rx_begin(&s_fw, &begin, porta_host_radio_attached());
+    const porta_fw_reply_t r = porta_fw_rx_begin(&s_fw, &begin);
     ESP_LOGI(kTag, "FW: begin %" PRIu32 " bytes, version %s: status %u, from %" PRIu32, begin.size, begin.version,
              r.status, r.offset);
     fw_send_reply(PORTA_MSG_FW_BEGIN, r);
@@ -328,13 +325,16 @@ void handle_fw(const porta_frame_t& f) {
     fw_send_reply(PORTA_MSG_FW_CHUNK, r);
   } else if (porta_proto_parse_fw_end(&f, &abort)) {
     const bool idle_abort = abort && !s_fw.active && !porta_fw_rx_committed(&s_fw);
-    porta_fw_reply_t r = porta_fw_rx_end(&s_fw, abort, porta_host_radio_attached());
+    porta_fw_reply_t r = porta_fw_rx_end(&s_fw, abort);
     // An abort with nothing to abort is the sidekick asking whether this image has been kept.
     if (idle_abort && r.status == PORTA_FW_OK && s_fw_trial) r.status = PORTA_FW_TRIAL;
     if (!idle_abort) ESP_LOGI(kTag, "FW: end%s: status %u", abort ? " (abort)" : "", r.status);
     fw_send_reply(PORTA_MSG_FW_END, r);
     if (porta_fw_rx_committed(&s_fw) && s_fw_restart_at_ms == 0) {
       ESP_LOGW(kTag, "FW: image installed; restarting into it");
+      // The operator is told to switch the radio off for an update, and nothing checks. If it is
+      // on and keyed, unkey it now: after the restart nothing would.
+      porta_host_tx_cancel();
       s_fw_restart_at_ms = now_ms() + 1500;
       if (s_fw_restart_at_ms == 0) s_fw_restart_at_ms = 1;
     }
@@ -366,6 +366,7 @@ void fw_confirm_tick() {
   case PORTA_FW_CONFIRM_ROLL_BACK:
     ESP_LOGE(kTag, "FW: no sidekick heard in %u s; restarting into the image before this one",
              (unsigned)PORTA_FW_CONFIRM_TIMEOUT_S);
+    porta_host_tx_cancel();  // as before any restart of our own: not with the radio keyed
     vTaskDelay(pdMS_TO_TICKS(200));
     esp_restart();
     break;
@@ -717,12 +718,8 @@ void handle_action(const porta_frame_t& f) {
       enqueue(buf, porta_proto_encode_nak(verb, "malformed", buf, sizeof(buf)));
       return;
     }
-    // May a board be updated now? Only with no radio attached: there is then nothing to stop, and
-    // the main board's restart cannot wedge a QMX. Nothing is held afterwards.
-    if (on && porta_host_radio_attached()) {
-      enqueue(buf, porta_proto_encode_nak(verb, "radio attached", buf, sizeof(buf)));
-      return;
-    }
+    // Nothing to do. A v15 or v16 sidekick asks this before its own update and waits for the
+    // ACK, so an update from one of those builds needs it answered (porta_proto.h, v17).
     enqueue(buf, porta_proto_encode_ack(verb, buf, sizeof(buf)));
     return;
   }

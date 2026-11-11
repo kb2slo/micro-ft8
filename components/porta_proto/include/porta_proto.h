@@ -107,7 +107,11 @@ extern "C" {
 // (docs/architecture/main_board.md, Firmware updates). UPDATE_MODE keeps its bytes and becomes a
 // question: may a board be updated now? The host ACKs when no USB device is on its Host port and
 // NAKs with the reason otherwise, and holds nothing afterwards. FW status 1 is the same refusal.
-#define PORTA_PROTO_VERSION 16u
+// v17 (2026-11-10): nothing checks for a radio before an update. The operator is told to switch it
+// off; one left on may need switching off and on afterwards, which is all the check prevented.
+// UPDATE_MODE is ACKed whatever is attached, and only because a v15 or v16 sidekick still asks
+// before its own update. FW status 1 is no longer sent.
+#define PORTA_PROTO_VERSION 17u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -513,7 +517,7 @@ typedef enum {
     PORTA_ACT_QUEUE_PARITY = 0x0E,  // payload: u16 entry_id, u8 parity (the CQ only)
     PORTA_ACT_RADIO_READ   = 0x0F,  // verb only: ask the radio for its state (IF;); the answer is in the config snapshot
     PORTA_ACT_RADIO_SET_PTT = 0x10, // payload: u8 keying (1 TX PTT grounded, 2 TX PTT +5V); progress in the config snapshot
-    PORTA_ACT_UPDATE_MODE  = 0x11,  // payload: u8 on. May a board update now? Frozen (PORTA_PROTO_VERSION's v15 note)
+    PORTA_ACT_UPDATE_MODE  = 0x11,  // payload: u8 on. Always ACKed; asked only by v15 and v16 sidekicks. Frozen (the v15 note)
 } porta_action_verb_t;
 
 // FACTORY_RESET flags. Station settings are always reset; the QSO logs only when asked,
@@ -577,9 +581,9 @@ bool porta_proto_parse_queue_cancel(const porta_frame_t *f, uint16_t *entry_id_o
 size_t porta_proto_encode_queue_reply(uint32_t decode_id, uint8_t *out, size_t out_cap);
 bool porta_proto_parse_queue_reply(const porta_frame_t *f, uint32_t *decode_id_out);
 
-// Update mode: verb + u8 on. On asks whether a board may be updated now: the host ACKs when no
-// radio is attached (no USB device on its Host port) and NAKs with the reason otherwise. It stops
-// nothing and holds nothing: with no radio there is nothing to stop. Off is ACKed and does nothing.
+// Update mode: verb + u8 on. A v15 sidekick used it to stop the station for an update and a v16
+// one to ask whether a radio was attached; both wait for an ACK before the sidekick's own update,
+// so the host still ACKs it, on or off, and does nothing. A v17 sidekick does not send it.
 size_t porta_proto_encode_update_mode(bool on, uint8_t *out, size_t out_cap);
 bool porta_proto_parse_update_mode(const porta_frame_t *f, bool *on_out);
 
@@ -613,18 +617,15 @@ bool porta_proto_parse_nak(const porta_frame_t *f, uint8_t *verb_out, char *reas
 // same type carrying a status and an offset. Stop-and-wait: one request, one reply. Frozen
 // (PORTA_PROTO_VERSION's v15 note).
 //
-//   FW_BEGIN  size u32, sha256[32], version[32] NUL-padded as in HELLO. Refused while a radio is
-//             attached (PORTA_FW_RADIO_ATTACHED).
+//   FW_BEGIN  size u32, sha256[32], version[32] NUL-padded as in HELLO.
 //             Reply offset: where to send from. 0 for a new transfer; for a BEGIN that repeats the
 //             one in progress (same size, hash and version), the bytes already written, so a
 //             transfer that was interrupted goes on from there.
 //   FW_CHUNK  offset u32, then 1..PORTA_FW_CHUNK_MAX bytes. Chunks arrive in order with no gaps.
 //             Reply offset: the next byte wanted, on OK and on PORTA_FW_OFFSET alike, so a sender
 //             whose reply was lost learns where to go on from by sending again.
-//   FW_END    u8 abort. 0: all sent; the host checks the image and, on OK, restarts into it a
-//             moment after replying. With a radio attached by then it answers
-//             PORTA_FW_RADIO_ATTACHED and keeps the transfer, so the same END can be sent again
-//             once the radio is off. 1: forget the transfer. With no transfer to forget the answer
+//   FW_END    u8 abort. 0: all sent; the host checks the image and, on OK, stops transmitting
+//             and restarts into it a moment after replying. 1: forget the transfer. With no transfer to forget the answer
 //             is OK, or PORTA_FW_TRIAL while the image the host is running was installed this way
 //             and has not been kept yet: how the sidekick learns an update held.
 //
@@ -639,7 +640,7 @@ bool porta_proto_parse_nak(const porta_frame_t *f, uint8_t *verb_out, char *reas
 // A reply's status. Values are frozen with the messages; new ones are added at the end.
 typedef enum {
     PORTA_FW_OK              = 0,
-    PORTA_FW_RADIO_ATTACHED  = 1,   // BEGIN, or the END that would restart the host, with a radio attached
+    PORTA_FW_RADIO_ATTACHED  = 1,   // sent by a v16 host only: a radio is attached. Not sent since v17; the number stays taken
     PORTA_FW_NO_SLOT         = 2,   // this board has no second app slot: it needs one flash over USB
     PORTA_FW_TOO_BIG         = 3,   // larger than the slot
     PORTA_FW_NO_TRANSFER     = 4,   // CHUNK or END with no BEGIN before it (the host restarted)

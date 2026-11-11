@@ -346,13 +346,6 @@ static uint8_t           s_fw_reply_type;  // 0: none waiting to be read
 static porta_fw_reply_t  s_fw_reply;
 static volatile bool     s_fw_active;      // a transfer is running: porta_rx reads without batching
 
-// The main board's answer to UPDATE_MODE, in a slot of its own, so it cannot take an answer one
-// of the httpd task's requests is waiting for on the shared slot above.
-// No other reply carries this verb's number. s_lock covers it.
-static bool s_um_ready;
-static bool s_um_ok;
-static char s_um_reason[PORTA_EVENT_TEXT_MAX + 1];
-
 // How many times wait_reply() has had to resend a CONFIG_GET because
 // nothing answered halfway through the wait -- see that function. Relayed to
 // the browser alongside the CRC/frame counters (sidekick_facts_json()) so a
@@ -1362,39 +1355,6 @@ bool host_link_factory_reset(bool logs, char *why, size_t why_len)
     return true;
 }
 
-// Asks the main board whether a board may be updated now (porta_proto.h, PORTA_ACT_UPDATE_MODE): it
-// says no while a radio is attached. Its answer has a slot of its own (s_um_*), apart from the one
-// the httpd task's requests share. The question changes nothing, so a lost answer is asked again.
-bool host_link_may_update(char *why, size_t why_len)
-{
-    uint8_t frame[PORTA_PROTO_MAX_FRAME];
-    const size_t n = porta_proto_encode_update_mode(true, frame, sizeof(frame));
-    for (int attempt = 0; attempt < 3; ++attempt) {
-        lock_take();
-        s_um_ready = false;
-        lock_give();
-        if (n == 0 || !porta_send(frame, n)) {
-            snprintf(why, why_len, "host link busy");
-            return false;
-        }
-        for (int i = 0; i < 40; ++i) {
-            lock_take();
-            const bool ready = s_um_ready;
-            const bool ok = s_um_ok;
-            if (ready && !ok) {
-                snprintf(why, why_len, "%s", s_um_reason[0] ? s_um_reason : "host refused");
-            }
-            lock_give();
-            if (ready) {
-                return ok;
-            }
-            vTaskDelay(pdMS_TO_TICKS(25));
-        }
-    }
-    snprintf(why, why_len, "no reply from host");
-    return false;
-}
-
 void host_link_fw_active(bool active)
 {
     s_fw_active = active;
@@ -1813,17 +1773,6 @@ static void porta_rx_task(void *arg)
                 reply_reason[0] = '\0';
                 if (porta_proto_parse_config_value(&frame, cfg_key, cfg_val)) {
                     config_json_add(cfg_key, cfg_val);
-                } else if (porta_proto_parse_ack(&frame, &reply_verb) && reply_verb == PORTA_ACT_UPDATE_MODE) {
-                    lock_take();
-                    s_um_ok = true;
-                    s_um_ready = true;
-                    lock_give();
-                } else if (porta_proto_parse_nak(&frame, &reply_verb, reply_reason) && reply_verb == PORTA_ACT_UPDATE_MODE) {
-                    lock_take();
-                    s_um_ok = false;
-                    snprintf(s_um_reason, sizeof(s_um_reason), "%s", reply_reason);
-                    s_um_ready = true;
-                    lock_give();
                 } else if (porta_proto_parse_ack(&frame, &reply_verb)) {
                     lock_take();
                     switch (reply_verb) {

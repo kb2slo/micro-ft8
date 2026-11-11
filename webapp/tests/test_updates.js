@@ -76,7 +76,7 @@ assert.strictEqual(U.sizeText(2621440), '2.5 MB');
 const eq = (actual, expected, msg) => assert.deepStrictEqual(plain(actual), expected, msg);  // values from the vm are another realm's
 // ---- the plan: one request, the main board first ----
 const OTA15 = Object.assign({}, OTA, { proto: 15 });
-const linked = { hostLinked: true, mainProto: 15, sidekickProto: 15, radioAttached: false };
+const linked = { hostLinked: true, mainProto: 15, sidekickProto: 15 };
 let pl = U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked);
 eq(pl.steps.map((o) => o.board), ['main', 'sidekick']);
 assert.strictEqual(pl.blocked, '');
@@ -100,16 +100,8 @@ assert.strictEqual(U.plan(manifest(OTA, Object.assign({}, P4OTA, { proto: 16 }))
 assert.strictEqual(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: '' }, { hostLinked: false, mainProto: 0, sidekickProto: 15 }).blocked, '');
 assert.strictEqual(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: '' }, { hostLinked: true, mainProto: 0, sidekickProto: 15 }).blocked, '');
 
-// A firmware update needs the radio off: the plan is blocked while the main board reports a USB
-// device, whichever boards are in it.
-const radioOn = Object.assign({}, linked, { radioAttached: true });
-eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, radioOn).blocked, 'radio');
-eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: 'd18f9b2' }, radioOn).blocked, 'radio', 'the sidekick alone, too');
-// With no main board answering there is nothing to ask.
-eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '' }, { hostLinked: false, mainProto: 0, sidekickProto: 15, radioAttached: true }).blocked, '');
-// A pair that must not be made is the reason given first: switching the radio off would not help.
-eq(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: 'd18f9b2' }, radioOn).blocked, 'pair');
-assert.strictEqual(U.whyText('radio'), 'Switch the radio off, or unplug its USB, to update');
+// Nothing about a radio blocks a plan: the review asks for it off, and nothing checks.
+eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, Object.assign({ radioAttached: true }, linked)).blocked, '');
 
 // ---- the progress screen's steps ----
 const PLAN = [{ board: 'main', version: 'd18f9b2', size: 871968 }, { board: 'sidekick', version: 'd18f9b2', size: 1005232 }];
@@ -138,9 +130,6 @@ assert.strictEqual(a[6], 'now');
 // A failure stays on the step it happened in.
 a = ats(pst({ state: 'failed', at: 'transferring', why: 'link' }));
 eq(a, ['done', 'done', 'now', 'next', 'next', 'next', 'next']);
-// A radio plugged in during the transfer: the main board will not restart into the image.
-a = ats(pst({ state: 'failed', at: 'transferring', why: 'radio' }));
-assert.strictEqual(a[2], 'now');
 // A main-board-only plan that finished: everything done.
 a = ats(pst({ state: 'done', plan: [PLAN[0]] }));
 eq(a, ['done', 'done', 'done', 'done']);
