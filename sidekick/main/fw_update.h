@@ -18,8 +18,8 @@
 // before any route is registered.
 void fw_update_init(void);
 
-// GET /api/fw/status (open); POST /api/fw/start, /api/fw/cancel and
-// /api/fw/resume (pairing required).
+// GET /api/fw/status (open); POST /api/fw/start and /api/fw/cancel (pairing
+// required).
 esp_err_t fw_update_register(httpd_handle_t server);
 
 // Once a second from the main loop. An image installed over the air runs on

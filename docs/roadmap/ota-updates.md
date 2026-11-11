@@ -10,14 +10,14 @@ After the first install, every firmware update, for every board, happens over th
 ## Constraints
 
 * **No TLS and no signing on the device.** Trust comes from the browser's HTTPS fetch of the manifest, as for the app bundle ([system.md](../architecture/system.md), **The inversion** and **Why not signing**).
-* **An update never starts by itself, and the radio never restarts by itself afterwards.** The operator starts it, and taps **Resume operating** when it is done.
+* **An update never starts by itself.** The operator starts it, with the radio off, and switches the radio back on when it is done.
 * **The main board has no network.** Its image reaches it over Port A.
 * **The `continuous` channel only,** until [nufg](#nufg) adds versioned releases.
 
 ## Decided
 
 * **The sidekick downloads images itself** (§ **Download**), not the phone: one path, not two (**Why not**).
-* **Every update stops radio operation first,** a sidekick-only update included: its restart takes the phone UI away while the main board could keep transmitting unattended (§ **Update mode**).
+* **A firmware update needs the radio off:** no USB device on the main board's Host port, for either board's image. With no radio there is nothing to stop or resume, and the main board's restart cannot wedge the QMX. An app-only update needs nothing of the radio.
 * **The `FW_*` messages are frozen across `PORTA_PROTO_VERSION` bumps,** so any two builds can always carry an update between them.
 * **When both boards need updating, the main board goes first,** while the sidekick still speaks its protocol; the frozen messages make that safe.
 * **A main-board image counts as good** once the Port A handshake with the sidekick completes after its restart; otherwise the bootloader rolls back. The update is reported done only when the version the board then reports equals the manifest's.
@@ -30,22 +30,21 @@ Facts it rests on, checked 2026-11-10: the release host serves `/download/manife
 
 Both boards' updates are built and their field checks are owed ([TEST_PLAN.md](../TEST_PLAN.md), Pending); what is true of the code is in the architecture docs, not here:
 
-* **The sidekick's side:** the request, the download, the checks, staging, the transfer down Port A, update mode before every update and the resume after ([sidekick.md](../architecture/sidekick.md), **Firmware updates**).
-* **The main board's side:** HELLO, update mode, the receiver, what `FW_END` checks, and the trial ([main_board.md](../architecture/main_board.md), **Firmware updates**).
+* **The sidekick's side:** the request, the download, the checks, staging, the transfer down Port A, and the radio-off check before every update ([sidekick.md](../architecture/sidekick.md), **Firmware updates**).
+* **The main board's side:** HELLO, the radio-off rule, the receiver, what `FW_END` checks, and the trial ([main_board.md](../architecture/main_board.md), **Firmware updates**).
 * **The page's side so far** ([webapp.md](../architecture/webapp.md), **Settings › Updates**).
 
 Still open for [hstv](#hstv):
 
 * **Time:** measured, 74.4 s for 872 KB ([sidekick.md](../architecture/sidekick.md), **A main board's image**). A window on `FW_CHUNK` stays **Later**, with no case for it yet.
-* **The QMX after the restart:** a P4 reset with the QMX streaming has wedged the QMX's USB three times out of three ([main_board.md](../architecture/main_board.md), **Two USB-C ports**), and an update ends in one. As built the P4 closes nothing first and the result tells the operator to switch the radio off and on if it does not reconnect. The bench says how often it happens, and whether closing the audio and CAT before the restart is worth building.
-* **USB audio in update mode:** left open, and a 74 s transfer with it open logged no USB error (2026-11-10), so closing it in update mode has no case. Closing it before the restart is the open question above.
+* **The QMX after the update:** with the radio off for the update, the restart that wedged the QMX twice on 2026-11-10 no longer happens with it attached ([main_board.md](../architecture/main_board.md), **Firmware updates**). Owed: that a QMX switched on afterwards connects with no power-cycle, three times of three.
 
 ### The web app ([yme5](#yme5))
 
-Built: the plan, the pairing rule, Review, Progress, Result and Resume operating are in [webapp.md](../architecture/webapp.md), **Settings › Updates**. Where the app as it now is made the sketch here wrong, the build follows the app:
+Built: the plan, the pairing rule, Review, Progress and Result are in [webapp.md](../architecture/webapp.md), **Settings › Updates**. Where the app as it now is made the sketch here wrong, the build follows the app:
 
 * **No "Update available" line on Operate.** The line it was to sit in is gone, and Operate has no banners (operator decision 2026-10-25). The Settings tab's dot is the notice.
-* **No banners to suppress.** The lost-contact state is the radio bar's, which reads **Stopped for an update** instead while one runs; there is no device-reset banner.
+* **No banners to suppress.** The lost-contact state is the radio bar's, which reads **Updating firmware** instead on a phone following one; there is no device-reset banner.
 * **No time left** on the transfer step, only a percentage.
 
 ## Children
@@ -57,7 +56,7 @@ In order: each needs the one before it.
 * <a id="v697"></a>**v697: the sidekick updates itself** (**Built, awaiting the bench**). **Done-when:** a sidekick updates from the web app; a forced bad image rolls back (field). Built; open for the field check. **Lands in:** sidekick.md **Firmware updates**, webapp.md **Settings › Updates**, system.md and TEST_PLAN Pending, all done; this entry goes when the check passes.
 * <a id="hstv"></a>**hstv: main boards update over Port A, P4 first** (**Built, awaiting the bench**). **Done-when:** the receiver `host_mock`-tested; a P4 updates from the web app with transfer time measured, and a forced bad image rolls back (field). Built; open for the field check and the transfer time. **Lands in:** main_board.md **Firmware updates** and its partitions, sidekick.md **Firmware updates** and **Port A**, RELEASE_PROCESS.md, system.md and TEST_PLAN Pending, all done; the measured transfer time goes into sidekick.md. No README or site note for the one-time USB reflash: only a board flashed before the two-slot table needs it, and pre-alpha carries no upgrade notes.
 * <a id="yme5"></a>**yme5: the web app's update flow** (**The web app**). **Done-when:** **The web app**'s steps 1–6 walked with a QSO in progress, the phone locked mid-transfer, and a second phone open (field). Built; open for the field check. **Lands in:** webapp.md **Settings › Updates** and **The radio bar**, sidekick.md and TEST_PLAN Pending, all done; the site audit (Settings' Updates section, and Getting started's Updates line) is owed when the check passes.
-* <a id="antu"></a>**antu: one Update for the whole station.** After [yme5](#yme5); epic [eu2t](release-1-0.md) needs it. The web app is a separate bundle only for a developer's convenience; an operator sees one station and one **Update**. The bundle's manifest carries its build ID; Settings › Updates lists **App** beside the boards when the published bundle differs from the running one; **Update** installs the app first, by the phone relay, then runs the firmware plan. The radio is stopped only when it has to be: an app-only update leaves it running. On the sidekick's own network, where firmware cannot be fetched, the app alone is offered. **Install / update** leaves Settings; the page stays for first install and recovery. **Done-when:** the plan with an app step is host-tested; with all three behind, one **Update** brings app and both boards to the published build and Settings shows no other update control; with only the app behind, it updates with the radio running (field). **Lands in:** webapp.md **Settings › Updates** and **Build**; sidekick.md **Installing the app bundle**; TEST_PLAN Pending; site audit (Getting started's Updates line names the control).
+* <a id="antu"></a>**antu: one Update for the whole station.** After [yme5](#yme5); epic [eu2t](release-1-0.md) needs it. The web app is a separate bundle only for a developer's convenience; an operator sees one station and one **Update**. The bundle's manifest carries its build ID; Settings › Updates lists **App** beside the boards when the published bundle differs from the running one; **Update** installs the app first, by the phone relay, then runs the firmware plan. An app-only update needs nothing of the radio; a firmware update needs it off (**Decided**). On the sidekick's own network, where firmware cannot be fetched, the app alone is offered. **Install / update** leaves Settings; the page stays for first install and recovery. **Done-when:** the plan with an app step is host-tested; with all three behind, one **Update** brings app and both boards to the published build and Settings shows no other update control; with only the app behind, it updates with the radio running (field). **Lands in:** webapp.md **Settings › Updates** and **Build**; sidekick.md **Installing the app bundle**; TEST_PLAN Pending; site audit (Getting started's Updates line names the control).
 * <a id="nufg"></a>**nufg: versioned releases, and a version an operator can read.** After [antu](#antu); epic [eu2t](release-1-0.md) needs it. A build from a `v*` tag reports that version (`1.0.0`), any other build its SHA as today; a board running a versioned release is offered only the next versioned release, a `continuous` build only `continuous` ([RELEASE_PROCESS.md](../RELEASE_PROCESS.md)). **Done-when:** the manifest carries both channels; a board flashed from a `v*` tag shows its version in Settings and is offered the next tag, not `continuous` (field). **Lands in:** RELEASE_PROCESS.md (an image carries its version; what each channel publishes); webapp.md (**Updates**); TEST_PLAN Pending.
 
 ### Later

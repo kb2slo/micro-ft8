@@ -18,7 +18,7 @@ enum {
     PAIRING_ROUTES_HOST_LINK = 21,  // 17th/18th: POST /api/queue/tries and /api/queue/parity; 19th: POST /api/radio/read; 20th: GET /api/state; 21st: POST /api/radio/ptt
     PAIRING_ROUTES_WEB_BUNDLE = 3,
     PAIRING_ROUTES_BUNDLE_HOST = 2,
-    PAIRING_ROUTES_FW_UPDATE = 4,  // GET /api/fw/status, POST /api/fw/start, /api/fw/cancel and /api/fw/resume
+    PAIRING_ROUTES_FW_UPDATE = 3,  // GET /api/fw/status, POST /api/fw/start and /api/fw/cancel
     // B55 (docs/architecture/system.md (Constraints)): AP mode now serves the full application, the same as
     // station mode, so it registers the same host_link/web_bundle/bundle_host/
     // web_fs_rehydrate routes rather than a "static files only" subset. There

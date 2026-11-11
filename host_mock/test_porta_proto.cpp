@@ -927,7 +927,7 @@ static void test_fw_messages()
     uint8_t buf[PORTA_PROTO_MAX_FRAME];
     porta_decoder_t d;
     check(PORTA_MSG_FW_BEGIN == 0x10 && PORTA_MSG_FW_CHUNK == 0x11 && PORTA_MSG_FW_END == 0x12, "fw message types");
-    check(PORTA_FW_OK == 0 && PORTA_FW_NOT_UPDATE_MODE == 1 && PORTA_FW_NO_SLOT == 2 && PORTA_FW_TOO_BIG == 3 &&
+    check(PORTA_FW_OK == 0 && PORTA_FW_RADIO_ATTACHED == 1 && PORTA_FW_NO_SLOT == 2 && PORTA_FW_TOO_BIG == 3 &&
               PORTA_FW_NO_TRANSFER == 4 && PORTA_FW_OFFSET == 5 && PORTA_FW_FLASH == 6 && PORTA_FW_SHORT == 7 &&
               PORTA_FW_HASH == 8 && PORTA_FW_IMAGE == 9 && PORTA_FW_VERSION == 10 && PORTA_FW_TRIAL == 11, "fw status values");
 

@@ -346,8 +346,8 @@ static uint8_t           s_fw_reply_type;  // 0: none waiting to be read
 static porta_fw_reply_t  s_fw_reply;
 static volatile bool     s_fw_active;      // a transfer is running: porta_rx reads without batching
 
-// The main board's answer to UPDATE_MODE, in a slot of its own: the update task asks between a
-// plan's images, while the httpd task may be waiting on the shared slot above for something else.
+// The main board's answer to UPDATE_MODE, in a slot of its own, so it cannot take an answer one
+// of the httpd task's requests is waiting for on the shared slot above.
 // No other reply carries this verb's number. s_lock covers it.
 static bool s_um_ready;
 static bool s_um_ok;
@@ -1362,14 +1362,13 @@ bool host_link_factory_reset(bool logs, char *why, size_t why_len)
     return true;
 }
 
-// Update mode on the main board (porta_proto.h, PORTA_ACT_UPDATE_MODE). Its answer has a slot of
-// its own (s_um_*), so this is safe from the update task as well as the httpd task. One caller at
-// a time: fw_update.c asks from the handler before its task exists, and from the task after.
-// The action is idempotent, so a lost answer is asked again.
-bool host_link_update_mode(bool on, char *why, size_t why_len)
+// Asks the main board whether a board may be updated now (porta_proto.h, PORTA_ACT_UPDATE_MODE): it
+// says no while a radio is attached. Its answer has a slot of its own (s_um_*), apart from the one
+// the httpd task's requests share. The question changes nothing, so a lost answer is asked again.
+bool host_link_may_update(char *why, size_t why_len)
 {
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
-    const size_t n = porta_proto_encode_update_mode(on, frame, sizeof(frame));
+    const size_t n = porta_proto_encode_update_mode(true, frame, sizeof(frame));
     for (int attempt = 0; attempt < 3; ++attempt) {
         lock_take();
         s_um_ready = false;
@@ -1394,14 +1393,6 @@ bool host_link_update_mode(bool on, char *why, size_t why_len)
     }
     snprintf(why, why_len, "no reply from host");
     return false;
-}
-
-bool host_link_tx_active(void)
-{
-    lock_take();
-    const bool active = s_state.tx_hud.seq != 0 && s_state.tx_hud.u.tx_hud.active;
-    lock_give();
-    return active;
 }
 
 void host_link_fw_active(bool active)

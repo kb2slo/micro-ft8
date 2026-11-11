@@ -56,13 +56,10 @@ bool host_link_factory_reset(bool logs, char *why, size_t why_len);
 // this sidekick started. Any argument may be NULL.
 bool host_link_host_hello(uint8_t *proto_out, char *version_out, uint32_t *age_ms_out);
 
-// Puts the main board into update mode, or takes it out. Blocks for the answer, up to 3 s, asking
-// again if none comes; from the httpd task or the update task, one caller at a time. false with
-// the reason in `why`.
-bool host_link_update_mode(bool on, char *why, size_t why_len);
-
-// The main board's last TX status said it is transmitting.
-bool host_link_tx_active(void);
+// Asks the main board whether a board may be updated now. It says no while a radio is attached.
+// Blocks for the answer, up to 3 s, asking again if none comes. false with the reason in `why`
+// ("radio attached", or "no reply from host").
+bool host_link_may_update(char *why, size_t why_len);
 
 // One firmware message to the main board and its answer. Each blocks up to `timeout_ms`; false
 // for no answer. From the update task only, one at a time. host_link_fw_active() brackets a

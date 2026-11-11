@@ -1018,17 +1018,10 @@ void porta_host_link_test(bool active, bool tune) {
     }
 }
 
-// The sidekick is about to update a board (docs/architecture/main_board.md, Firmware updates). On:
-// stop whatever is keying the radio and drop the queue, the CQ with it; porta.cpp then refuses
-// every transmit action, and main.cpp stops receiving and leaves the radio alone, while
-// porta_update_mode() holds. Off: nothing to undo, the station comes back as after a restart,
-// receiving with an empty queue.
-const char *porta_host_update_mode(bool on) {
-    if (on) {
-        porta_host_tx_cancel();
-        autoseq_clear();
-    }
-    return nullptr;
+// A firmware update needs the radio off (docs/architecture/main_board.md, Firmware updates): a
+// device on the Host port, whatever it is, is a radio as far as an update is concerned.
+bool porta_host_radio_attached(void) {
+    return qmx_usb_device_listed();
 }
 
 static const char *apply_reply_touch(const UiRxLine &msg) {

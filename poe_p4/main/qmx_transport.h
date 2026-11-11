@@ -16,6 +16,11 @@ extern "C" {
 // (radio_transport.h) and this file's qmx_audio_* below start working.
 void qmx_transport_start(void);
 
+// True while the USB host lists a device on the Host port, whatever it is and whether or not it
+// has been opened. False for a QMX that is off or unplugged, and for one whose USB is wedged and
+// never enumerated. Any task.
+bool qmx_usb_device_listed(void);
+
 // True once the QMX's UAC RX (microphone) interface is open and streaming.
 bool qmx_audio_ready(void);
 

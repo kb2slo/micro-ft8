@@ -781,6 +781,10 @@ bool cat_cdc_get_parsed_sr(int* lock) {
 
 // qmx_audio_* -- RX decode audio, ft8_audio_pipeline_config_t's callbacks.
 
+bool qmx_usb_device_listed(void) {
+    return s_usb_dev_listed;
+}
+
 bool qmx_audio_ready(void) {
     return s_uac_handle != nullptr;
 }

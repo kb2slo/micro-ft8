@@ -81,14 +81,12 @@ static void rx_plan_tick(void) {
 // A radio's samples feed decode only while it is the active radio (radio_select.h); choosing another radio ends
 // the pipeline run, as a QMX unplugged does, and the task starts one on the radio now chosen. So does a change
 // of channels: FT4 turned on or off, or a band where its channel sits elsewhere.
-// Update mode (porta.h) ends a run too, and none starts while it holds.
 static bool qmx_decode_should_stop(void *ctx) {
-    return qmx_audio_should_stop(ctx) || !radio_select_qmx_feeds_decode() || s_rx_plan.load() != s_run_plan ||
-           porta_update_mode();
+    return qmx_audio_should_stop(ctx) || !radio_select_qmx_feeds_decode() || s_rx_plan.load() != s_run_plan;
 }
 
 static bool hl2_decode_should_stop(void *ctx) {
-    return hl2_audio_should_stop(ctx) || !radio_select_hl2_feeds_decode() || porta_update_mode();
+    return hl2_audio_should_stop(ctx) || !radio_select_hl2_feeds_decode();
 }
 
 // The one channel the P4 receives today (docs/roadmap/several-channels.md): the station's mode, at t2/f2.
@@ -133,9 +131,7 @@ static void decode_audio_task(void * /*arg*/) {
     while (true) {
         const ft8_audio_pipeline_config_t *cfg = nullptr;
         while (!cfg) {
-            if (porta_update_mode()) {
-                vTaskDelay(pdMS_TO_TICKS(200));
-            } else if (radio_select_qmx_feeds_decode() && qmx_audio_ready()) {
+            if (radio_select_qmx_feeds_decode() && qmx_audio_ready()) {
                 // FT8, and FT4 beside it if the plan has it (rx_plan_tick()).
                 s_run_plan = s_rx_plan.load();
                 pipe_cfg.n_channels = 1;
@@ -199,11 +195,7 @@ extern "C" void app_main(void) {
         porta_tick();
         porta_p4_companion_status_tick();
         porta_p4_tx_hud_tick();
-        // In update mode the radio is left alone: no state reads, no mode check, no VFO sync. The
-        // scheduler, the amplifier prime and the sweep still tick, since each has to finish de-keying
-        // what update mode cancelled.
-        const bool updating = porta_update_mode();
-        if (!updating) porta_p4_radio_push_tick();
+        porta_p4_radio_push_tick();
         porta_p4_file_tick();
         // The decode task hands each slot here: this loop alone touches autoseq
         // and the armed TX (docs/architecture/main_board.md, P4).
@@ -220,25 +212,23 @@ extern "C" void app_main(void) {
         // IQ mode at each CAT link-up, read back (architecture/radio.md, The QMX's receive output).
         const bool rx_busy = decode_tx_state_get_tx_active() || porta_p4_tune_active() ||
                              amp_band_prime_busy() || swr_sweep_busy();
-        if (!updating) {
-            switch (radio_control_rx_path_tick(rx_busy)) {
-                case RADIO_RX_PATH_MISMATCH:
-                    debug_log_line("Q9 reads audio, not IQ: nothing will decode");
-                    break;
-                case RADIO_RX_PATH_NO_REPLY:
-                    debug_log_line("Q9 unanswered: the QMX firmware may lack IQ mode; nothing will decode");
-                    break;
-                case RADIO_RX_PATH_NONE:
-                case RADIO_RX_PATH_MATCHED:
-                    break;
-            }
-            // Set by qmx_transport on every CAT open; retried until it lands.
-            if (decode_tx_state_get_cdc_initial_sync_pending() && radio_control_ready() &&
-                !decode_tx_state_get_tx_active() && !porta_p4_tune_active() && !amp_band_prime_busy() &&
-                !swr_sweep_busy() &&
-                porta_p4_sync_vfo("QMX connect") == nullptr) {
-                decode_tx_state_set_cdc_initial_sync_pending(false);
-            }
+        switch (radio_control_rx_path_tick(rx_busy)) {
+            case RADIO_RX_PATH_MISMATCH:
+                debug_log_line("Q9 reads audio, not IQ: nothing will decode");
+                break;
+            case RADIO_RX_PATH_NO_REPLY:
+                debug_log_line("Q9 unanswered: the QMX firmware may lack IQ mode; nothing will decode");
+                break;
+            case RADIO_RX_PATH_NONE:
+            case RADIO_RX_PATH_MATCHED:
+                break;
+        }
+        // Set by qmx_transport on every CAT open; retried until it lands.
+        if (decode_tx_state_get_cdc_initial_sync_pending() && radio_control_ready() &&
+            !decode_tx_state_get_tx_active() && !porta_p4_tune_active() && !amp_band_prime_busy() &&
+            !swr_sweep_busy() &&
+            porta_p4_sync_vfo("QMX connect") == nullptr) {
+            decode_tx_state_set_cdc_initial_sync_pending(false);
         }
         if (++ticks >= 500) {  // ~5 s at 10 ms
             ticks = 0;

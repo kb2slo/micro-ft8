@@ -47,14 +47,13 @@ typedef struct {
 
 void porta_fw_rx_init(porta_fw_rx_t *rx, const porta_fw_ops_t *ops, void *ctx);
 
-// Each returns the reply to send. `update_mode`: the board has stopped
-// operating (PORTA_ACT_UPDATE_MODE); a transfer starts nowhere else.
-porta_fw_reply_t porta_fw_rx_begin(porta_fw_rx_t *rx, const porta_fw_begin_t *begin, bool update_mode);
+// Each returns the reply to send. `radio_attached`: a radio is on the board's
+// Host port. An update needs it off: a transfer does not start with one
+// attached, and the END that would restart the board is refused, the transfer
+// kept, so it can be sent again once the radio is off.
+porta_fw_reply_t porta_fw_rx_begin(porta_fw_rx_t *rx, const porta_fw_begin_t *begin, bool radio_attached);
 porta_fw_reply_t porta_fw_rx_chunk(porta_fw_rx_t *rx, uint32_t offset, const uint8_t *data, size_t len);
-porta_fw_reply_t porta_fw_rx_end(porta_fw_rx_t *rx, bool abort);
-
-// Forgets an open transfer (update mode was left).
-void porta_fw_rx_reset(porta_fw_rx_t *rx);
+porta_fw_reply_t porta_fw_rx_end(porta_fw_rx_t *rx, bool abort, bool radio_attached);
 
 // FW_END was answered OK: restart, after the reply has gone out.
 bool porta_fw_rx_committed(const porta_fw_rx_t *rx);
