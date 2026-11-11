@@ -45,6 +45,12 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
+# Port A. A flash write otherwise stalls the UART interrupt longer than its 128-byte FIFO, and
+# during a firmware update the P4 writes flash for the whole transfer: frames that arrived then
+# lost bytes (6 of about 19 of the sidekick's HELLOs in one transfer, 2026-11-10), and one such
+# loss put the decoder out of step for long enough to fail an update. As on the sidekick.
+CONFIG_UART_ISR_IN_IRAM=y
+
 # An image installed over Port A boots on trial: the bootloader goes back to the one before it
 # at the next restart unless the app marks itself valid, which it does once the sidekick's HELLO
 # arrives (components/porta, porta_fw_confirm_decide()). An image flashed over USB is not on trial.

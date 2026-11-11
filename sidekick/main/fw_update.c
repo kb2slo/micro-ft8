@@ -385,6 +385,12 @@ static bool xfer_read(void *ctx, uint32_t offset, uint8_t *out, size_t len)
     return esp_partition_read((const esp_partition_t *)ctx, offset, out, len) == ESP_OK;
 }
 
+static void xfer_resync(void *ctx)
+{
+    (void)ctx;
+    host_link_resync();
+}
+
 static bool xfer_begin(void *ctx, const porta_fw_begin_t *begin, porta_fw_reply_t *out)
 {
     (void)ctx;
@@ -419,7 +425,8 @@ static void xfer_progress(void *ctx, uint32_t offset)
 // accepted it and is restarting into it; otherwise it has called fail().
 static bool transfer_to_host(const fw_request_t *req, const esp_partition_t *slot, unsigned char *buf)
 {
-    static const fw_transfer_io_t io = {xfer_read, xfer_begin, xfer_chunk, xfer_end, xfer_cancelled, xfer_progress};
+    static const fw_transfer_io_t io = {xfer_read,  xfer_resync,    xfer_begin,   xfer_chunk,
+                                        xfer_end,   xfer_cancelled, xfer_progress};
     porta_fw_begin_t begin = {.size = req->size};
     fw_sha256_bytes(req->sha256_hex, begin.sha256);
     snprintf(begin.version, sizeof(begin.version), "%s", req->version);

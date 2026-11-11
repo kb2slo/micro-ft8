@@ -98,7 +98,8 @@ const char *fw_transfer_fault(uint8_t status);
 // in every answer, so a lost frame costs one resend, and a transfer it
 // already holds part of goes on from there. Each `io` call that exchanges a
 // message returns false for no answer, and is tried FW_BEGIN_TRIES,
-// FW_CHUNK_TRIES or FW_END_TRIES times. Returns NULL once the main board has
+// FW_CHUNK_TRIES or FW_END_TRIES times, with `resync` before each try after
+// the first. Returns NULL once the main board has
 // accepted the whole image (it then restarts into it), else the code the
 // update fails with: fw_transfer_fault()'s, "link" (no answer), "flash" (the
 // staged image could not be read) or "cancelled" (and the main board was told
@@ -111,6 +112,9 @@ const char *fw_transfer_fault(uint8_t status);
 
 typedef struct {
     bool (*read)(void *ctx, uint32_t offset, uint8_t *out, size_t len);
+    // Called before a message is sent again: puts the main board's decoder back to a clean
+    // start (PORTA_PROTO_RESYNC_LEN), in case the silence was a decoder out of step.
+    void (*resync)(void *ctx);
     bool (*begin)(void *ctx, const porta_fw_begin_t *begin, porta_fw_reply_t *out);
     bool (*chunk)(void *ctx, uint32_t offset, const uint8_t *data, size_t len, porta_fw_reply_t *out);
     bool (*end)(void *ctx, bool abort, porta_fw_reply_t *out);

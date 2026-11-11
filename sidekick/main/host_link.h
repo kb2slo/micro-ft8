@@ -60,6 +60,9 @@ bool host_link_host_hello(uint8_t *proto_out, char *version_out, uint32_t *age_m
 // for no answer. From the update task only, one at a time. host_link_fw_active() brackets a
 // transfer so replies are read as they arrive.
 void host_link_fw_active(bool active);
+// Before sending a firmware message again: filler that puts the main board's decoder back to a
+// clean start, in case it lost bytes and is partway through a frame that is not there.
+void host_link_resync(void);
 bool host_link_fw_begin(const porta_fw_begin_t *begin, int timeout_ms, porta_fw_reply_t *out);
 bool host_link_fw_chunk(uint32_t offset, const uint8_t *data, size_t len, int timeout_ms, porta_fw_reply_t *out);
 bool host_link_fw_end(bool abort, int timeout_ms, porta_fw_reply_t *out);

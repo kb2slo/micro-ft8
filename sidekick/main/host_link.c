@@ -1355,6 +1355,14 @@ bool host_link_factory_reset(bool logs, char *why, size_t why_len)
     return true;
 }
 
+// Puts the main board's decoder back to hunting for sync (porta_proto.h, PORTA_PROTO_RESYNC_LEN).
+void host_link_resync(void)
+{
+    static const uint8_t filler[PORTA_PROTO_RESYNC_LEN];  // zeros: PORTA_PROTO_RESYNC_BYTE
+    _Static_assert(PORTA_PROTO_RESYNC_BYTE == 0, "the filler is zero-initialised");
+    porta_send(filler, sizeof(filler));
+}
+
 void host_link_fw_active(bool active)
 {
     s_fw_active = active;

@@ -292,6 +292,9 @@ const char *fw_transfer_run(const fw_transfer_io_t *io, void *ctx, const porta_f
     porta_fw_reply_t r = {0, 0};
     bool             answered = false;
     for (int i = 0; i < FW_BEGIN_TRIES && !answered; ++i) {
+        if (i > 0) {
+            io->resync(ctx);
+        }
         answered = io->begin(ctx, begin, &r);
     }
     *detail = 0;
@@ -318,6 +321,9 @@ const char *fw_transfer_run(const fw_transfer_io_t *io, void *ctx, const porta_f
             }
             answered = false;
             for (int i = 0; i < FW_CHUNK_TRIES && !answered; ++i) {
+                if (i > 0) {
+                    io->resync(ctx);
+                }
                 answered = io->chunk(ctx, offset, buf, n, &r);
             }
             if (!answered) {
@@ -335,6 +341,9 @@ const char *fw_transfer_run(const fw_transfer_io_t *io, void *ctx, const porta_f
         // The main board installs on this. A second END after a lost answer is answered the same.
         answered = false;
         for (int i = 0; i < FW_END_TRIES && !answered; ++i) {
+            if (i > 0) {
+                io->resync(ctx);
+            }
             answered = io->end(ctx, false, &r);
         }
         *detail = (int)offset;

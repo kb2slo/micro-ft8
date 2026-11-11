@@ -253,6 +253,12 @@ struct Wire {
     uint32_t progress = 0;
     int progress_calls = 0;
     uint32_t resumed_from = 77;  // set by each run
+    // The main board's decoder, kept across exchanges as the real one is, so a frame that lost
+    // bytes leaves it out of step for the frames behind it.
+    porta_decoder_t hdec;
+    int desync_at = -1;        // before this exchange, a HELLO arrives with its last bytes missing
+    bool no_resync = false;    // the sender sends no filler before a retry (what 1e55290 did)
+    int resyncs = 0;
 };
 
 static void wire_hash(const uint8_t *p, size_t n, uint8_t out[32])
@@ -279,6 +285,7 @@ static void wire_init(Wire *w, size_t image_bytes, uint32_t slot_bytes = 1 << 20
     for (size_t i = 0; i < image_bytes; ++i) w->staged[i] = (uint8_t)(i * 13 + 5);
     w->ops = {slot_bytes, w_begin, w_write, w_hash, w_finish, w_commit, w_abort};
     porta_fw_rx_init(&w->rx, &w->ops, w);
+    porta_decoder_init(&w->hdec);
 }
 
 // One request and its answer across the link, through the real codec both ways. `request` is the
@@ -293,10 +300,20 @@ static bool wire_exchange(Wire *w, const uint8_t *request, size_t n, porta_fw_re
     if (lossy && (w->lost & 1)) return false;  // the request never arrived
 
     porta_decoder_t dec;
-    porta_decoder_init(&dec);
-    porta_frame_t f;
+    porta_frame_t f, in;
+    if (k == w->desync_at) {
+        // The sidekick's HELLO, with its tail lost to a stalled UART interrupt (bench, 2026-11-10).
+        uint8_t hello[PORTA_PROTO_MAX_FRAME];
+        const size_t hn = porta_proto_encode_hello(PORTA_PROTO_VERSION, "1e55290", hello, sizeof(hello));
+        for (size_t i = 0; i + 6 < hn; ++i) porta_decoder_push(&w->hdec, hello[i], &in);
+    }
     bool got = false;
-    for (size_t i = 0; i < n; ++i) got = porta_decoder_push(&dec, request[i], &f) || got;
+    for (size_t i = 0; i < n; ++i) {
+        if (porta_decoder_push(&w->hdec, request[i], &in)) {
+            f = in;
+            got = true;
+        }
+    }
     if (!got) return false;
     porta_fw_begin_t b;
     uint32_t offset = 0;
@@ -325,6 +342,14 @@ static bool io_read(void *c, uint32_t off, uint8_t *out, size_t n)
     std::memcpy(out, &w->staged[off], n);
     return true;
 }
+static void io_resync(void *c)
+{
+    Wire *w = (Wire *)c;
+    w->resyncs++;
+    if (w->no_resync) return;
+    porta_frame_t f;
+    for (size_t i = 0; i < PORTA_PROTO_RESYNC_LEN; ++i) porta_decoder_push(&w->hdec, PORTA_PROTO_RESYNC_BYTE, &f);
+}
 static bool io_begin(void *c, const porta_fw_begin_t *b, porta_fw_reply_t *out)
 {
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
@@ -343,7 +368,7 @@ static bool io_end(void *c, bool abort, porta_fw_reply_t *out)
 static bool io_cancelled(void *c) { return ((Wire *)c)->cancel_at >= 0 && (int)((Wire *)c)->progress >= ((Wire *)c)->cancel_at; }
 static void io_progress(void *c, uint32_t off) { ((Wire *)c)->progress = off; ((Wire *)c)->progress_calls++; }
 
-static const fw_transfer_io_t WIRE_IO = {io_read, io_begin, io_chunk, io_end, io_cancelled, io_progress};
+static const fw_transfer_io_t WIRE_IO = {io_read, io_resync, io_begin, io_chunk, io_end, io_cancelled, io_progress};
 
 // Runs a transfer of the staged image; returns the failure code, "" for success.
 static std::string run_transfer(Wire *w, int *detail = nullptr, const char *version = "d18f9b2")
@@ -402,7 +427,7 @@ static void test_transfer()
             if (off >= 960) w->dead = true;
             return io_chunk(c, off, d, n, out);
         } };
-        const fw_transfer_io_t io = {io_read, io_begin, Kill::chunk, io_end, io_cancelled, io_progress};
+        const fw_transfer_io_t io = {io_read, io_resync, io_begin, Kill::chunk, io_end, io_cancelled, io_progress};
         porta_fw_begin_t b = {};
         b.size = 5000;
         wire_hash(w.staged.data(), 5000, b.sha256);
@@ -450,7 +475,7 @@ static void test_transfer()
             if (off == 480) copy[3] ^= 0x10;  // a bit flipped before the frame's CRC was made
             return io_chunk(c, off, copy, n, out);
         } };
-        const fw_transfer_io_t io = {io_read, io_begin, Flip::chunk, io_end, io_cancelled, io_progress};
+        const fw_transfer_io_t io = {io_read, io_resync, io_begin, Flip::chunk, io_end, io_cancelled, io_progress};
         porta_fw_begin_t b = {};
         b.size = 5000;
         wire_hash(h.staged.data(), 5000, b.sha256);
@@ -468,6 +493,45 @@ static void test_transfer()
         w.cancel_at = -1;
         w.exchanges = 0;
         check(run_transfer(&w) == "" && w.exchanges == 1 + 21 + 1, "and the next try starts from 0");
+    }
+    {   // A frame that lost bytes leaves the main board's decoder partway through a frame that is
+        // not there. It takes the next chunk as the rest of it, and then, hunting for sync inside
+        // what is left, finds one in the image itself: firmware is arbitrary bytes. Here the image
+        // is the worst case, every third byte a sync byte followed by a long length. This is the
+        // update that failed on the bench on 2026-11-10 ("stopped answering during the transfer").
+        auto worst = [](Wire *w) {
+            wire_init(w, 20000);
+            for (size_t i = 0; i < w->staged.size(); ++i) {
+                w->staged[i] = i % 3 == 0 ? PORTA_PROTO_SYNC : i % 3 == 1 ? (uint8_t)PORTA_MSG_FW_CHUNK : 0xFF;
+            }
+            w->desync_at = 10;
+        };
+        Wire before;  // no filler before a retry: every retry is swallowed the same way
+        worst(&before);
+        before.no_resync = true;
+        int detail = 0;
+        check(run_transfer(&before, &detail) == "link" && before.commits == 0 && before.resyncs == FW_CHUNK_TRIES - 1,
+              "without the filler, one lost tail fails the update");
+        Wire after;   // the filler puts the decoder back to hunting, and the retry is read whole
+        worst(&after);
+        check(run_transfer(&after) == "" && after.commits == 1 && after.slot == after.staged && after.resyncs == 1,
+              "with the filler, the first retry gets through and the image installs");
+        // The filler is long enough for the longest frame a decoder can be in the middle of, and
+        // is nothing a decoder could take for a frame's start.
+        check(PORTA_PROTO_RESYNC_LEN >= PORTA_PROTO_MAX_FRAME && PORTA_PROTO_RESYNC_BYTE != PORTA_PROTO_SYNC, "filler length and byte");
+        porta_decoder_t d;
+        porta_decoder_init(&d);
+        porta_frame_t f;
+        porta_decoder_push(&d, PORTA_PROTO_SYNC, &f);
+        porta_decoder_push(&d, 0x11, &f);
+        porta_decoder_push(&d, 0xFF, &f);  // the longest: 255 bytes of payload still to come
+        int frames = 0;
+        for (size_t i = 0; i < PORTA_PROTO_RESYNC_LEN; ++i) frames += porta_decoder_push(&d, PORTA_PROTO_RESYNC_BYTE, &f) ? 1 : 0;
+        uint8_t end[PORTA_PROTO_MAX_FRAME];
+        const size_t en = porta_proto_encode_fw_end(false, end, sizeof(end));
+        bool whole = false;
+        for (size_t i = 0; i < en; ++i) whole = porta_decoder_push(&d, end[i], &f) || whole;
+        check(whole && f.type == PORTA_MSG_FW_END, "after the filler the next frame is read whole, from the longest half-frame");
     }
     {   // The staged image cannot be read.
         Wire w;

@@ -167,6 +167,13 @@ typedef struct {
     uint8_t payload[PORTA_PROTO_MAX_PAYLOAD];
 } porta_frame_t;
 
+// Bytes that put a decoder back to hunting for sync, whatever it was in the middle of: more of
+// them than the longest frame, and none of them the sync byte. A sender whose frame went
+// unanswered sends these before trying again, because a decoder that lost bytes may be partway
+// through a frame that is not there, and would take the start of the retry as the rest of it.
+#define PORTA_PROTO_RESYNC_LEN PORTA_PROTO_MAX_FRAME
+#define PORTA_PROTO_RESYNC_BYTE 0x00u
+
 // CRC-8, polynomial 0x07 (x^8 + x^2 + x + 1), init 0x00, no reflection.
 // Bitwise rather than table-driven: 259 bytes at 1 Hz does not justify 256
 // bytes of table on either part.
