@@ -617,7 +617,9 @@ bool porta_proto_parse_nak(const porta_frame_t *f, uint8_t *verb_out, char *reas
 //             Reply offset: the next byte wanted, on OK and on PORTA_FW_OFFSET alike, so a sender
 //             whose reply was lost learns where to go on from by sending again.
 //   FW_END    u8 abort. 0: all sent; the host checks the image and, on OK, restarts into it a
-//             moment after replying. 1: forget the transfer.
+//             moment after replying. 1: forget the transfer. With no transfer to forget the answer
+//             is OK, or PORTA_FW_TRIAL while the image the host is running was installed this way
+//             and has not been kept yet: how the sidekick learns an update held.
 //
 // All integers little-endian.
 
@@ -640,6 +642,7 @@ typedef enum {
     PORTA_FW_HASH            = 8,   // what was written does not hash to BEGIN's SHA-256
     PORTA_FW_IMAGE           = 9,   // not an app image for this board
     PORTA_FW_VERSION         = 10,  // the image's own version is not BEGIN's
+    PORTA_FW_TRIAL           = 11,  // answer to an abort with nothing to abort: the running image is still on trial
 } porta_fw_status_t;
 
 typedef struct {

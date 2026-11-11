@@ -67,8 +67,9 @@ var FwUpdates = (function () {
       steps: steps,
       blocked: blocked,
       body: steps.map(startBody).join('next\n'),
-      // Unmeasured for the main board: a guess until a bench run times the transfer.
-      time: steps.some(function (o) { return o.board === 'main'; }) ? 'a few minutes' : 'about a minute',
+      // Measured 2026-11-10: a main board's update 98 s (74 s of it the transfer), the sidekick's 28 to 42 s.
+      time: !steps.some(function (o) { return o.board === 'main'; }) ? 'about a minute'
+        : steps.length > 1 ? 'about three minutes' : 'about two minutes',
     };
   }
 

@@ -286,8 +286,9 @@ const char *fw_transfer_fault(uint8_t status)
 }
 
 const char *fw_transfer_run(const fw_transfer_io_t *io, void *ctx, const porta_fw_begin_t *begin, uint8_t *buf,
-                            int *detail)
+                            int *detail, uint32_t *resumed_from)
 {
+    *resumed_from = 0;
     porta_fw_reply_t r = {0, 0};
     bool             answered = false;
     for (int i = 0; i < FW_BEGIN_TRIES && !answered; ++i) {
@@ -303,6 +304,7 @@ const char *fw_transfer_run(const fw_transfer_io_t *io, void *ctx, const porta_f
         return fault ? fault : "host";
     }
     uint32_t offset = r.offset;
+    *resumed_from = offset;
     for (;;) {
         while (offset < begin->size) {
             if (io->cancelled(ctx)) {
@@ -353,13 +355,16 @@ const char *fw_transfer_run(const fw_transfer_io_t *io, void *ctx, const porta_f
 }
 
 fw_host_result_t fw_host_result(uint32_t since_end_ms, bool hello_seen, uint32_t hello_age_ms,
-                                const char *hello_version, const char *target)
+                                const char *hello_version, const char *target, bool on_trial)
 {
     // Only a HELLO sent after the old image had time to restart counts.
     const bool fresh = hello_seen && since_end_ms >= FW_HOST_SETTLE_MS &&
                        hello_age_ms < since_end_ms - FW_HOST_SETTLE_MS;
-    if (fresh) {
-        return strcmp(hello_version, target) == 0 ? FW_HOST_UPDATED : FW_HOST_ROLLED_BACK;
+    if (fresh && strcmp(hello_version, target) != 0) {
+        return FW_HOST_ROLLED_BACK;
+    }
+    if (fresh && !on_trial) {
+        return FW_HOST_UPDATED;
     }
     return since_end_ms >= FW_HOST_CONFIRM_MS ? FW_HOST_SILENT : FW_HOST_WAIT;
 }

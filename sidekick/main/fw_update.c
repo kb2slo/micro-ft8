@@ -429,16 +429,18 @@ static bool transfer_to_host(const fw_request_t *req, const esp_partition_t *slo
 
     const uint32_t t0 = now_ms();
     int            detail = 0;
-    const char    *why = fw_transfer_run(&io, (void *)slot, &begin, buf, &detail);
+    uint32_t       from = 0;
+    const char    *why = fw_transfer_run(&io, (void *)slot, &begin, buf, &detail, &from);
     if (why) {
         fail(why, detail);
         return false;
     }
-    // The measured time, on the console and in the app's log.
+    // The measured time, on the console and in the app's log: the bytes sent in this run, which
+    // is less than the image when the main board already held part of it.
     const uint32_t ms = now_ms() - t0;
     char           line[PORTA_EVENT_TEXT_MAX + 1];
-    snprintf(line, sizeof(line), "SK firmware transfer: %" PRIu32 " bytes in %" PRIu32 ".%" PRIu32 " s", req->size, ms / 1000,
-             ms % 1000 / 100);
+    snprintf(line, sizeof(line), "SK firmware transfer: %" PRIu32 " of %" PRIu32 " bytes in %" PRIu32 ".%" PRIu32 " s",
+             req->size - from, req->size, ms / 1000, ms % 1000 / 100);
     ESP_LOGI(TAG, "%s", line);
     host_link_log(line);
     return true;
@@ -473,7 +475,14 @@ static bool install_on_host(const fw_request_t *req, const esp_partition_t *slot
         char     hello[PORTA_HELLO_VERSION_LEN + 1] = "";
         uint32_t age = 0;
         const bool seen = host_link_host_hello(NULL, hello, &age);
-        switch (fw_host_result(now_ms() - t_end, seen, age, hello, req->version)) {
+        // Once the new version is talking, ask whether it has been kept: an abort with nothing
+        // to abort is answered OK, or TRIAL until then. No answer counts as not yet.
+        bool on_trial = true;
+        if (seen && strcmp(hello, req->version) == 0) {
+            porta_fw_reply_t r = {0};
+            on_trial = !host_link_fw_end(true, CHUNK_REPLY_MS, &r) || r.status != PORTA_FW_OK;
+        }
+        switch (fw_host_result(now_ms() - t_end, seen, age, hello, req->version, on_trial)) {
             case FW_HOST_UPDATED:
                 ESP_LOGI(TAG, "main board is running %s", hello);
                 return true;

@@ -1434,6 +1434,7 @@ async function followFw() {
   var began = Date.now();
   var end = null;
   var seenBusy = false;
+  var forgotten = 0;
   while (Date.now() - began < FW_FOLLOW_MS) {
     var status = null, reachable = true;
     try {
@@ -1444,6 +1445,11 @@ async function followFw() {
     if (FwUpdates.busy(status)) seenBusy = true;
     end = fwOutcome(status);
     if (end) break;
+    // The sidekick is answering, idle, with no word of this page's update: it lost power or
+    // restarted partway and forgot it (bench, 2026-11-10). Ten seconds of that is an answer.
+    forgotten = fwMine && reachable && status && status.state === 'idle' && seenBusy &&
+      !(status.last && status.last.version === fwMine.steps[fwMine.steps.length - 1].to) ? forgotten + 1 : 0;
+    if (forgotten >= 10) { end = { ok: false, text: 'The sidekick restarted during the update' }; break; }
     // Not this page's update, and it is over (or the sidekick restarted and forgot it).
     if (!fwMine && reachable && !FwUpdates.busy(status) && (seenBusy || Date.now() - began > 5000)) break;
     var canCancel = reachable && status && ['stopping', 'downloading', 'verifying', 'transferring'].indexOf(status.state) >= 0;
@@ -1472,7 +1478,8 @@ async function followFw() {
       : 'The radio is stopped until you resume.' +
         (mine && mine.steps.some(function (o) { return o.board === 'main'; })
           ? ' The main board restarted: if the radio does not reconnect, switch the radio off and on.' : ''),
-    failed: failed, retry: failed && !!end, resume: !!end, cancel: 'Close',
+    // Retry only where the plan is: a phone that did not start the update has none to run again.
+    failed: failed, retry: failed && !!end && !!mine, resume: !!end, cancel: 'Close',
   });
   checkFwUpdates();
 }

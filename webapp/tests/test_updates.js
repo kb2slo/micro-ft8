@@ -80,7 +80,8 @@ const linked = { hostLinked: true, mainProto: 15, sidekickProto: 15 };
 let pl = U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked);
 eq(pl.steps.map((o) => o.board), ['main', 'sidekick']);
 assert.strictEqual(pl.blocked, '');
-assert.strictEqual(pl.time, 'a few minutes');
+assert.strictEqual(pl.time, 'about three minutes');
+assert.strictEqual(U.plan(manifest(OTA15, P4OTA), { sidekick: 'd18f9b2', main: '7e61488' }, linked).time, 'about two minutes');
 // What fw_plan_parse() reads (host_mock/test_fw_policy.cpp): the two requests with a `next` line between.
 assert.strictEqual(pl.body, U.startBody(pl.steps[0]) + 'next\n' + U.startBody(pl.steps[1]));
 assert.strictEqual(pl.body.split('\n').filter((l) => l === 'next').length, 1);

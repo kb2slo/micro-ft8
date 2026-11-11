@@ -209,21 +209,26 @@ static void test_main_board_confirm()
 {
     const char *T = "d18f9b2";
     // Just accepted: its old image may still be sending HELLO.
-    check(fw_host_result(1000, true, 200, "7e61488", T) == FW_HOST_WAIT, "old image's last HELLO is not a roll back");
-    check(fw_host_result(1000, true, 200, T, T) == FW_HOST_WAIT, "nor is anything else that soon");
+    check(fw_host_result(1000, true, 200, "7e61488", T, true) == FW_HOST_WAIT, "old image's last HELLO is not a roll back");
+    check(fw_host_result(1000, true, 200, T, T, false) == FW_HOST_WAIT, "nor is anything else that soon");
     // Restarting: the last HELLO is from before.
-    check(fw_host_result(20000, true, 19500, "7e61488", T) == FW_HOST_WAIT, "a HELLO from before the restart");
-    check(fw_host_result(20000, true, 16001, "7e61488", T) == FW_HOST_WAIT, "one from inside the settle time");
-    check(fw_host_result(20000, false, 0, "", T) == FW_HOST_WAIT, "none ever");
-    // Back up.
-    check(fw_host_result(20000, true, 1000, T, T) == FW_HOST_UPDATED, "the new version reports in");
-    check(fw_host_result(20000, true, 15999, T, T) == FW_HOST_UPDATED, "just after the settle time");
-    check(fw_host_result(140000, true, 1000, "7e61488", T) == FW_HOST_ROLLED_BACK, "the old version is back");
-    check(fw_host_result(20000, true, 1000, "d18f9b2-dirty", T) == FW_HOST_ROLLED_BACK, "anything but the target");
-    // Never came back.
-    check(fw_host_result(FW_HOST_CONFIRM_MS - 1, true, FW_HOST_CONFIRM_MS, "7e61488", T) == FW_HOST_WAIT, "a second before the deadline");
-    check(fw_host_result(FW_HOST_CONFIRM_MS, true, FW_HOST_CONFIRM_MS + 5000, "7e61488", T) == FW_HOST_SILENT, "silent past it");
-    check(fw_host_result(FW_HOST_CONFIRM_MS + 1, true, 100, T, T) == FW_HOST_UPDATED, "a late HELLO still counts");
+    check(fw_host_result(20000, true, 19500, "7e61488", T, true) == FW_HOST_WAIT, "a HELLO from before the restart");
+    check(fw_host_result(20000, true, 16001, "7e61488", T, true) == FW_HOST_WAIT, "one from inside the settle time");
+    check(fw_host_result(20000, false, 0, "", T, true) == FW_HOST_WAIT, "none ever");
+    // Back up on the new version, and it says it kept it.
+    check(fw_host_result(20000, true, 1000, T, T, false) == FW_HOST_UPDATED, "the new version reports in, kept");
+    check(fw_host_result(20000, true, 15999, T, T, false) == FW_HOST_UPDATED, "just after the settle time");
+    // Back up on the new version but still on trial: not done. Seen on the bench 2026-11-10, where an
+    // image that never counted the sidekick as heard said HELLO for 120 s and then went back.
+    check(fw_host_result(20000, true, 1000, T, T, true) == FW_HOST_WAIT, "talking but on trial: wait");
+    check(fw_host_result(119000, true, 1000, T, T, true) == FW_HOST_WAIT, "still on trial at 119 s: wait");
+    check(fw_host_result(140000, true, 1000, "7e61488", T, true) == FW_HOST_ROLLED_BACK, "the old version is back");
+    check(fw_host_result(20000, true, 1000, "d18f9b2-dirty", T, false) == FW_HOST_ROLLED_BACK, "anything but the target");
+    // Never came back, or never left its trial.
+    check(fw_host_result(FW_HOST_CONFIRM_MS - 1, true, FW_HOST_CONFIRM_MS, "7e61488", T, true) == FW_HOST_WAIT, "a second before the deadline");
+    check(fw_host_result(FW_HOST_CONFIRM_MS, true, FW_HOST_CONFIRM_MS + 5000, "7e61488", T, true) == FW_HOST_SILENT, "silent past it");
+    check(fw_host_result(FW_HOST_CONFIRM_MS, true, 1000, T, T, true) == FW_HOST_SILENT, "on trial past the deadline");
+    check(fw_host_result(FW_HOST_CONFIRM_MS + 1, true, 100, T, T, false) == FW_HOST_UPDATED, "kept late still counts");
 }
 
 // ---- The transfer, end to end: fw_transfer_run() here, the main board's own receiver
@@ -248,6 +253,7 @@ struct Wire {
     int cancel_at = -1;        // the operator cancels once this many bytes are acknowledged
     uint32_t progress = 0;
     int progress_calls = 0;
+    uint32_t resumed_from = 77;  // set by each run
 };
 
 static void wire_hash(const uint8_t *p, size_t n, uint8_t out[32])
@@ -349,7 +355,7 @@ static std::string run_transfer(Wire *w, int *detail = nullptr, const char *vers
     std::snprintf(b.version, sizeof(b.version), "%s", version);
     uint8_t buf[PORTA_FW_CHUNK_MAX];
     int d = 0;
-    const char *why = fw_transfer_run(&WIRE_IO, w, &b, buf, &d);
+    const char *why = fw_transfer_run(&WIRE_IO, w, &b, buf, &d, &w->resumed_from);
     if (detail) *detail = d;
     return why ? why : "";
 }
@@ -360,6 +366,7 @@ static void test_transfer()
         Wire w;
         wire_init(&w, 100000);
         check(run_transfer(&w) == "" && w.slot == w.staged && w.commits == 1, "clean transfer installs");
+        check(w.resumed_from == 0, "a new transfer starts at 0");
         check(w.exchanges == 1 + 417 + 1 && w.progress == 100000 && w.progress_calls == 417, "one exchange a chunk: 417 of 240 bytes");
     }
     // A link that loses a request or an answer every few exchanges: still exact, still one install.
@@ -403,12 +410,13 @@ static void test_transfer()
         std::snprintf(b.version, sizeof(b.version), "d18f9b2");
         uint8_t buf[PORTA_FW_CHUNK_MAX];
         int detail = 0;
-        const char *why = fw_transfer_run(&io, wp, &b, buf, &detail);
+        const char *why = fw_transfer_run(&io, wp, &b, buf, &detail, &w.resumed_from);
         check(why && std::string(why) == "link" && detail == 960 && w.exchanges == 1 + 4 + FW_CHUNK_TRIES, "link lost at 960");
         // The sidekick starts again with the same image: the main board still has the first 960 bytes.
         w.dead = false;
         w.exchanges = 0;
         check(run_transfer(&w) == "" && w.slot == w.staged && w.commits == 1, "the retry installs");
+        check(w.resumed_from == 960, "and reports where it resumed, for the transfer-time line");
         check(w.exchanges == 1 + (5000 - 960 + 239) / 240 + 1, "and went on from 960 instead of 0");
     }
     {   // The main board restarts mid-transfer: it has forgotten the transfer and says so.
@@ -454,7 +462,7 @@ static void test_transfer()
         std::snprintf(b.version, sizeof(b.version), "d18f9b2");
         uint8_t buf[PORTA_FW_CHUNK_MAX];
         int detail = 0;
-        const char *why = fw_transfer_run(&io, &h, &b, buf, &detail);
+        const char *why = fw_transfer_run(&io, &h, &b, buf, &detail, &h.resumed_from);
         check(why && std::string(why) == "hash" && h.commits == 0, "bytes that are not the hashed ones");
     }
     {   // Cancelled partway: the main board is told to forget it.

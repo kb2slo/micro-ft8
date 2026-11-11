@@ -243,6 +243,7 @@ porta_fw_rx_t s_fw;
 const esp_partition_t* s_fw_slot = nullptr;
 esp_ota_handle_t s_fw_ota = 0;
 uint32_t s_fw_restart_at_ms = 0;  // 0: no restart due
+bool s_fw_trial = false;          // this image was installed over Port A and is not kept yet
 
 bool fw_op_begin(void* /*ctx*/, uint32_t /*size*/) {
   // Erased as it is written, a sector at a time: erasing the whole slot first would hold the main
@@ -330,8 +331,11 @@ void handle_fw(const porta_frame_t& f) {
     }
     fw_send_reply(PORTA_MSG_FW_CHUNK, r);
   } else if (porta_proto_parse_fw_end(&f, &abort)) {
-    const porta_fw_reply_t r = porta_fw_rx_end(&s_fw, abort);
-    ESP_LOGI(kTag, "FW: end%s: status %u", abort ? " (abort)" : "", r.status);
+    const bool idle_abort = abort && !s_fw.active && !porta_fw_rx_committed(&s_fw);
+    porta_fw_reply_t r = porta_fw_rx_end(&s_fw, abort);
+    // An abort with nothing to abort is the sidekick asking whether this image has been kept.
+    if (idle_abort && r.status == PORTA_FW_OK && s_fw_trial) r.status = PORTA_FW_TRIAL;
+    if (!idle_abort) ESP_LOGI(kTag, "FW: end%s: status %u", abort ? " (abort)" : "", r.status);
     fw_send_reply(PORTA_MSG_FW_END, r);
     if (porta_fw_rx_committed(&s_fw) && s_fw_restart_at_ms == 0) {
       ESP_LOGW(kTag, "FW: image installed; restarting into it");
@@ -344,7 +348,7 @@ void handle_fw(const porta_frame_t& f) {
 // An image installed over Port A runs on trial until the sidekick's HELLO arrives
 // (porta_fw_confirm_decide()). Once a second is plenty.
 void fw_confirm_tick() {
-  static bool s_pending = false;
+  bool& s_pending = s_fw_trial;
   static bool s_checked = false;
   if (!s_checked) {
     s_checked = true;

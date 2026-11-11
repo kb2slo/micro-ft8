@@ -102,7 +102,8 @@ const char *fw_transfer_fault(uint8_t status);
 // accepted the whole image (it then restarts into it), else the code the
 // update fails with: fw_transfer_fault()'s, "link" (no answer), "flash" (the
 // staged image could not be read) or "cancelled" (and the main board was told
-// to forget the transfer). `*detail` gets the status or offset beside it.
+// to forget the transfer). `*detail` gets the status or offset beside it, and
+// `*resumed_from` the offset the main board asked to start at (0 for a new transfer).
 // `buf` holds PORTA_FW_CHUNK_MAX bytes.
 #define FW_BEGIN_TRIES 3
 #define FW_CHUNK_TRIES 5
@@ -118,7 +119,7 @@ typedef struct {
 } fw_transfer_io_t;
 
 const char *fw_transfer_run(const fw_transfer_io_t *io, void *ctx, const porta_fw_begin_t *begin, uint8_t *buf,
-                            int *detail);
+                            int *detail, uint32_t *resumed_from);
 
 // After a main board was told to install an image and restart, what its
 // HELLO says. Its old image is still running for a moment after it answers,
@@ -128,15 +129,19 @@ const char *fw_transfer_run(const fw_transfer_io_t *io, void *ctx, const porta_f
 
 typedef enum {
     FW_HOST_WAIT = 0,
-    FW_HOST_UPDATED,      // it reports the target version
+    FW_HOST_UPDATED,      // it reports the target version and has kept it
     FW_HOST_ROLLED_BACK,  // it restarted and reports another
     FW_HOST_SILENT,       // nothing by the deadline
 } fw_host_result_t;
 
 // `since_end_ms`: time since the main board accepted the image. `hello_age_ms`:
 // how long ago its last HELLO came; `hello_seen` false if none ever has.
+// `on_trial`: the main board has not said it kept the image it is running
+// (it answers PORTA_FW_TRIAL, or does not answer). The new version reporting
+// in is not enough: an image that cannot hear the sidekick says HELLO for two
+// minutes and then goes back.
 fw_host_result_t fw_host_result(uint32_t since_end_ms, bool hello_seen, uint32_t hello_age_ms,
-                                const char *hello_version, const char *target);
+                                const char *hello_version, const char *target, bool on_trial);
 
 // The record kept across the restart that ends an update, so the next boot
 // can say what came of it: "board\ttarget\tfrom".
