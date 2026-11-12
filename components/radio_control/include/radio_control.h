@@ -159,6 +159,11 @@ esp_err_t radio_control_key_up(void);
 int radio_control_tone_lead_ms(void);
 esp_err_t radio_control_set_tune(bool enable, int freq_hz, int tone_hz);
 esp_err_t radio_control_set_time(int hour, int minute, int second);
+// Before a restart the board starts itself: from here on nothing keys the radio. radio_control_begin_tx(),
+// radio_control_begin_cpfsk_tx(), radio_control_set_tune(true) and the key of radio_control_swr_io() (the SWR
+// sweep's and the amplifier prime's) are refused; what un-keys still reaches the radio. Nothing clears it but the
+// restart: a cancel alone holds transmission off only to the end of its slot (main_board.md, Firmware updates).
+void radio_control_lock_tx(void);
 esp_err_t radio_control_begin_cpfsk_tx(float base_hz,
                                        const uint8_t* symbols,
                                        size_t symbol_count,
@@ -166,7 +171,8 @@ esp_err_t radio_control_begin_cpfsk_tx(float base_hz,
                                        uint32_t samples_per_symbol);
 
 // The sweep's radio operations, or NULL when the selected radio cannot sweep
-// (no can_md8_tune). The pointer stays valid for the life of the program.
+// (no can_md8_tune). The pointer stays valid for the life of the program. Its key
+// is refused once radio_control_lock_tx() is called, a run already holding the pointer included.
 const radio_swr_io_t* radio_control_swr_io(void);
 
 // The SWR-protection lock's operations, or NULL when the selected radio has none (no can_sr).

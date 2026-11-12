@@ -612,6 +612,15 @@ void porta_host_tx_cancel(void) {
     swr_sweep_request_cancel();
 }
 
+// Before a restart the board starts itself (components/porta: into a new image, or back from one that never heard
+// the sidekick). The lock first: the cancel holds transmission off only to the end of its slot and autoseq re-arms
+// at once, so a slot of ours starting before the restart keyed the radio and the board reset keyed (console log,
+// 2026-11-11: "Fetch TX" and "TX ready" right after the cancel).
+void porta_host_stop_for_restart(void) {
+    radio_control_lock_tx();
+    porta_host_tx_cancel();
+}
+
 // Sweep events go to the phone as they happen. Runs on the main loop's task (swr_sweep_tick).
 static void sweep_event_to_porta(const swr_sweep_event_t *event, void * /*user*/) {
     uint8_t kind = PORTA_SWEEP_DONE;

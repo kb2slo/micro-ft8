@@ -28,6 +28,19 @@ static esp_err_t fake_begin_tx(int tx_dial, int, int rx_dial) { ++g_calls; g_tx_
 static esp_err_t fake_tone(float) { ++g_calls; return ESP_OK; }
 static esp_err_t fake_ok(void) { ++g_calls; return ESP_OK; }
 static esp_err_t fake_tune(bool, int, int) { ++g_calls; return ESP_OK; }
+// What keys the radio and what un-keys it, counted apart for the lock (locked(), run last).
+static int g_keyed = 0, g_unkeyed = 0;
+static esp_err_t fake_cpfsk(float, const uint8_t*, size_t, float, uint32_t) { ++g_keyed; return ESP_OK; }
+static esp_err_t fake_swr_key(void) { ++g_keyed; return ESP_OK; }
+static esp_err_t fake_swr_unkey(void) { ++g_unkeyed; return ESP_OK; }
+static esp_err_t fake_swr_mode(void) { return ESP_OK; }
+static const radio_swr_io_t k_fake_swr_io = [] {
+    radio_swr_io_t io = {};
+    io.unkey = fake_swr_unkey;
+    io.mode_digital = fake_swr_mode;
+    io.key = fake_swr_key;
+    return io;
+}();
 
 // What the fake radio reports (IF;): its frequency, whether it transmits, and how many times that changed.
 static int g_radio_hz = 0;
@@ -62,6 +75,8 @@ static radio_control_ops_t g_fake_qmx = [] {
     ops.set_tone_hz = fake_tone;
     ops.end_tx = fake_ok;
     ops.set_tune = fake_tune;
+    ops.begin_cpfsk_tx = fake_cpfsk;
+    ops.swr_io = &k_fake_swr_io;
     ops.get_state = fake_get_state;
     ops.state_changes = fake_state_changes;
     return ops;
@@ -138,6 +153,50 @@ static void retune()
     expect(g_history_notes == 0, "a retune is not noted in the dial's history");
 }
 
+// Before a restart the board starts itself (main_board.md, Firmware updates): once locked, nothing that keys reaches
+// the radio and everything that un-keys still does. Run last: nothing unlocks.
+static void locked()
+{
+    radio_control_set_backend(RADIO_CONTROL_QMX);
+    const uint8_t symbols[4] = {0, 1, 2, 3};
+    const radio_swr_io_t* io = radio_control_swr_io();  // taken before the lock, as a running sweep holds it
+    expect(io && io != &k_fake_swr_io && io->mode_digital == fake_swr_mode && io->unkey == fake_swr_unkey,
+           "the sweep is handed the radio's own operations");
+    g_keyed = 0;
+    expect(io && io->key() == ESP_OK && g_keyed == 1, "and its key reaches the radio");
+    expect(radio_control_begin_cpfsk_tx(1500.0f, symbols, 4, 6.25f, 1920) == ESP_OK && g_keyed == 2,
+           "a symbol transmission keys");
+    expect(radio_control_set_tune(true, 14074000, 1500) == ESP_OK, "Tune keys");
+    expect(radio_control_begin_tx(7047500, 1500, 7074000) == ESP_OK && radio_control_tx_retuned_hz() == 7047500,
+           "a transmission is on the air, retuned, when the lock comes");
+
+    radio_control_lock_tx();
+    g_calls = 0;
+    g_keyed = 0;
+    g_unkeyed = 0;
+    expect(radio_control_end_tx() == ESP_OK && g_calls == 1 && radio_control_tx_retuned_hz() == 0,
+           "locked: the transmission on the air is still ended");
+    expect(radio_control_set_tune(false, 0, 0) == ESP_OK && g_calls == 2, "Tune is still switched off");
+    expect(io && io->unkey() == ESP_OK && g_unkeyed == 1, "a sweep still un-keys");
+    g_calls = 0;
+    g_tx_dial = 0;
+    expect(radio_control_begin_tx(14074000, 1500, 14074000) != ESP_OK, "locked: a transmission is refused");
+    expect(radio_control_begin_tx(7047500, 1500, 7074000) != ESP_OK && radio_control_tx_retuned_hz() == 0 &&
+               g_tx_dial == 0,
+           "and one that would retune leaves the radio where it is");
+    expect(radio_control_set_tune(true, 14074000, 1500) != ESP_OK, "Tune is refused");
+    expect(radio_control_begin_cpfsk_tx(1500.0f, symbols, 4, 6.25f, 1920) != ESP_OK, "a symbol transmission is refused");
+    expect(io && io->key() != ESP_OK, "a sweep already running cannot key its next point");
+    const radio_swr_io_t* later = radio_control_swr_io();
+    expect(later && later->key() != ESP_OK, "nor can a sweep or an amplifier prime started after the lock");
+    expect(g_calls == 0 && g_keyed == 0, "nothing that keys reached the radio");
+    radio_control_lock_tx();
+    radio_control_set_backend(RADIO_CONTROL_NONE);
+    radio_control_set_backend(RADIO_CONTROL_QMX);
+    expect(radio_control_begin_tx(14074000, 1500, 14074000) != ESP_OK && g_calls == 0,
+           "and choosing the radio again does not unlock it");
+}
+
 int main()
 {
     radio_control_set_backend(RADIO_CONTROL_QMX);
@@ -181,6 +240,8 @@ int main()
 
     radio_control_set_backend(RADIO_CONTROL_QMX);
     expect(radio_control_ready() && g_calls > 0, "switching back reaches the QMX again");
+
+    locked();
 
     if (g_fails) {
         fprintf(stderr, "test_radio_control: %d failure(s)\n", g_fails);

@@ -16,6 +16,8 @@ static const char* TAG = "RADIO_CTRL";
 static radio_control_backend_t s_backend = RADIO_CONTROL_QMX;
 // The TX scheduler keys and ends a transmission from one task; the Port A tick reads this from another.
 static std::atomic<int> s_tx_retuned_hz{0};
+// radio_control_lock_tx(): set from the Port A task just before a restart, read by whichever task would key.
+static std::atomic<bool> s_tx_locked{false};
 
 static const radio_control_capabilities_t k_capabilities_none = {};
 
@@ -92,7 +94,14 @@ void radio_control_dial_tick(void) {
     if (rs.freq_hz > 0) dial_history_note(rtc_now_ms(), (uint32_t)rs.freq_hz);
 }
 
+void radio_control_lock_tx(void) {
+    if (!s_tx_locked.exchange(true)) {
+        ESP_LOGW(TAG, "Transmit locked until the restart");
+    }
+}
+
 esp_err_t radio_control_begin_tx(int tx_dial_hz, int tx_base_hz, int rx_dial_hz) {
+    if (s_tx_locked.load()) return ESP_ERR_INVALID_STATE;
     radio_control_reset_tx_power_swr();
     const radio_control_ops_t* ops = current_ops();
     if (!ops || !ops->begin_tx) return ESP_ERR_INVALID_STATE;
@@ -133,6 +142,7 @@ int radio_control_tone_lead_ms(void) {
 esp_err_t radio_control_set_tune(bool enable, int freq_hz, int tone_hz) {
     const radio_control_ops_t* ops = current_ops();
     if (!ops || !ops->set_tune) return ESP_ERR_INVALID_STATE;
+    if (enable && s_tx_locked.load()) return ESP_ERR_INVALID_STATE;
     return ops->set_tune(enable, freq_hz, tone_hz);
 }
 
@@ -149,8 +159,17 @@ esp_err_t radio_control_begin_cpfsk_tx(float base_hz,
                                        uint32_t samples_per_symbol) {
     const radio_control_ops_t* ops = current_ops();
     if (!ops || !ops->begin_cpfsk_tx) return ESP_ERR_NOT_SUPPORTED;
+    if (s_tx_locked.load()) return ESP_ERR_INVALID_STATE;
     return ops->begin_cpfsk_tx(base_hz, symbols, symbol_count, tone_spacing_hz,
                                samples_per_symbol);
+}
+
+// The sweep and the amplifier prime key through the backend's table directly, and keep its pointer for a whole
+// run, so the lock is held in the key they are handed, not where the table is asked for.
+static esp_err_t swr_key_unless_locked(void) {
+    if (s_tx_locked.load()) return ESP_ERR_INVALID_STATE;
+    const radio_control_ops_t* ops = current_ops();
+    return ops && ops->swr_io && ops->swr_io->key ? ops->swr_io->key() : ESP_ERR_INVALID_STATE;
 }
 
 const radio_swr_io_t* radio_control_swr_io(void) {
@@ -158,7 +177,16 @@ const radio_swr_io_t* radio_control_swr_io(void) {
         return nullptr;
     }
     const radio_control_ops_t* ops = current_ops();
-    return ops ? ops->swr_io : nullptr;
+    if (!ops || !ops->swr_io) return nullptr;
+    // The backend's table with our key in place of its own. One backend has a table, so one copy serves.
+    static radio_swr_io_t s_io;
+    static std::atomic<const radio_swr_io_t*> s_io_of{nullptr};
+    if (s_io_of.load() != ops->swr_io) {
+        s_io = *ops->swr_io;
+        if (s_io.key) s_io.key = swr_key_unless_locked;
+        s_io_of.store(ops->swr_io);
+    }
+    return &s_io;
 }
 
 const radio_swr_lock_t* radio_control_swr_lock(void) {

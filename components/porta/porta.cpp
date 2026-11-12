@@ -29,6 +29,8 @@ int64_t rtc_now_ms();
 uint32_t rtc_epoch_secs_or_zero();
 const char* porta_host_set_clock(uint32_t epoch_secs, uint16_t millis);
 void porta_host_tx_cancel(void);
+// Before any restart this component starts: stop transmitting, and let nothing key the radio from here on.
+void porta_host_stop_for_restart(void);
 // Snapshot Station.txt-shaped lines into out (NUL-terminated). Returns bytes
 // written excluding NUL, or 0 on failure. Used for CONFIG_GET all / one.
 size_t porta_host_config_snapshot(char* out, size_t out_cap);
@@ -333,8 +335,8 @@ void handle_fw(const porta_frame_t& f) {
     if (porta_fw_rx_committed(&s_fw) && s_fw_restart_at_ms == 0) {
       ESP_LOGW(kTag, "FW: image installed; restarting into it");
       // The operator is told to switch the radio off for an update, and nothing checks. If it is
-      // on and keyed, unkey it now: after the restart nothing would.
-      porta_host_tx_cancel();
+      // on and keyed, unkey it now, and keep it unkeyed: after the restart nothing would.
+      porta_host_stop_for_restart();
       s_fw_restart_at_ms = now_ms() + 1500;
       if (s_fw_restart_at_ms == 0) s_fw_restart_at_ms = 1;
     }
@@ -366,7 +368,7 @@ void fw_confirm_tick() {
   case PORTA_FW_CONFIRM_ROLL_BACK:
     ESP_LOGE(kTag, "FW: no sidekick heard in %u s; restarting into the image before this one",
              (unsigned)PORTA_FW_CONFIRM_TIMEOUT_S);
-    porta_host_tx_cancel();  // as before any restart of our own: not with the radio keyed
+    porta_host_stop_for_restart();  // as before any restart of our own: not with the radio keyed
     vTaskDelay(pdMS_TO_TICKS(200));
     esp_restart();
     break;
