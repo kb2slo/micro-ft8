@@ -188,7 +188,7 @@ static void amp_band_prime_event(const amp_band_prime_event_t *event, void * /*u
 static std::atomic<int> s_primed_band{AMP_BAND_PRIME_NONE};
 
 static void request_amp_band_prime() {
-    if (!s_station.amp_prime_on_band_change) {
+    if (!station_amp_prime_on_band_change(s_station)) {
         return;
     }
     if (s_tune || swr_sweep_busy() || amp_band_prime_busy()) {
@@ -211,7 +211,7 @@ static void request_amp_band_prime() {
 }
 
 bool porta_p4_amp_prime_before_tx(void) {
-    if (!amp_band_prime_needed(s_station.amp_prime_on_band_change, s_primed_band.load(), s_station.band_sel)) {
+    if (!amp_band_prime_needed(station_amp_prime_on_band_change(s_station), s_primed_band.load(), s_station.band_sel)) {
         return false;
     }
     const int idx = s_station.band_sel;
@@ -383,12 +383,12 @@ int32_t porta_p4_station_ft4_dial_offset_hz(void) {
 
 bool porta_p4_station_amp_swr_guard(void) {
     ensure_seeded();
-    return s_station.amp_swr_guard;
+    return station_amp_swr_guard(s_station);
 }
 
 int porta_p4_station_tx_min_delay_ms(void) {
     ensure_seeded();
-    return s_station.tx_min_delay_ms;
+    return station_tx_min_delay_ms(s_station);
 }
 
 int porta_p4_station_offset_src(void) {
@@ -782,7 +782,7 @@ const char *porta_host_config_set(const char *key, const char *value) {
         return "too long";
     }
     if (strcmp(key, "tries") == 0) {
-        // Refused here rather than clamped by autoseq, so the Station sheet never
+        // Refused here rather than clamped by autoseq, so Settings > Station never
         // shows a count the engine is not using (docs/architecture/autoseq.md, Tries).
         const int tries = atoi(value);
         if (tries < 1 || tries > AUTOSEQ_TRIES_MAX_QSO) {
@@ -842,7 +842,7 @@ const char *porta_host_config_set(const char *key, const char *value) {
     // activation defaults to SOTA), else POTA (architecture/logging.md, "CQ
     // type follows the activation"). Only this one transition derives it: a
     // later add/remove must never clobber a manual switch made through the
-    // Station sheet's own Type control.
+    // Settings > Station's own Type control.
     if (strcmp(key, "act_refs") == 0 && act_refs_was_empty && !s_station.act_refs.empty()) {
         s_station.cq_type = (int)(act_refs_prefer_sota(s_station.act_refs) ? AutoseqCqType::SOTA
                                                                             : AutoseqCqType::POTA);

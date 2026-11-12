@@ -49,7 +49,12 @@ const qmxPlus = {
   radio_ptt_serial: '0',
   active_bands: '40 20 15',
 };
-const check = (cfg) => ctx.ampPttCheck(cfg);
+// The amplifier switch is On unless a case says otherwise.
+const check = (cfg) => ctx.ampPttCheck(Object.assign({ amp: '1' }, cfg));
+
+// The switch Off: nothing to check, though a keying is chosen and the radio has it wrong.
+assert.strictEqual(check(Object.assign({ amp_ptt: '1' }, qmxPlus, { amp: '0' })).state, 'off', 'amp 0 is off');
+assert.strictEqual(ctx.ampPttCheck(Object.assign({ amp_ptt: '1' }, qmxPlus)).state, 'off', 'no amp line is off');
 
 // Not set: nothing to check, whatever the radio says.
 assert.strictEqual(check(Object.assign({}, qmxPlus, { amp_ptt: '0' })).state, 'off', 'amp_ptt 0 is off');

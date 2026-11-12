@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Install a locally built firmware image on a board over the air, the way the
-web app's Settings > Updates does (docs/architecture/sidekick.md (Firmware
+web app's Settings > Software update does (docs/architecture/sidekick.md (Firmware
 updates)), but from a file on this machine instead of the release host.
 
 It serves the image over plain HTTP on this machine's LAN address, hands the

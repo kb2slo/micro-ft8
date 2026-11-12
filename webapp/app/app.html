@@ -130,23 +130,15 @@ button:disabled{opacity:.45}
 .row button{margin-top:.5rem}
 [hidden]{display:none!important}
 
-/* ---- the Station sheet and Who hears me's list (same motion language) ---- */
+/* ---- Who hears me's list ---- */
 /* Bottom-sheet motion language, same as #callInfoModal, but full-screen: a
-   destination you navigate to and back from, not a transient popover. Both
-   are built the same way -- grouped into these same rules rather than
-   duplicated, since they never need to look different. */
-#stationSheet,#pskrList{position:fixed;inset:0;z-index:12;background:Canvas;color:CanvasText;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .25s ease}
-#stationSheet.open,#pskrList.open{transform:translateY(0)}
-#stationSheetHead,#pskrListHead{flex:none;display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
-#stationSheetHead h2,#pskrListHead h2{flex:1;font-size:1.05rem;margin:0}
-#stationSheetBack,#pskrListBack{border:0;background:transparent;color:var(--accent);font-size:.95rem;padding:.3rem .2rem .3rem 0}
-#stationSheetBody,#pskrListBody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
-/* Settings' and the Station sheet's own status line (setMsg()): progress, results and failures
-   while open; Settings' sticks to the top of its tab. Operate has no status line; its failures
-   are toasts. */
-#settingsMsg{position:sticky;top:0;z-index:1}
-#settingsMsg,#stationSheetMsg{flex:none;margin:0;padding:.45rem 1rem;font-size:.85rem;background:color-mix(in srgb, var(--accent) 12%, transparent)}
-#settingsMsg:empty,#stationSheetMsg:empty{display:none}
+   destination you navigate to and back from, not a transient popover. */
+#pskrList{position:fixed;inset:0;z-index:12;background:Canvas;color:CanvasText;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .25s ease}
+#pskrList.open{transform:translateY(0)}
+#pskrListHead{flex:none;display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+#pskrListHead h2{flex:1;font-size:1.05rem;margin:0}
+#pskrListBack{border:0;background:transparent;color:var(--accent);font-size:.95rem;padding:.3rem .2rem .3rem 0}
+#pskrListBody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
 
 /* Full-screen blocker while a factory-reset restart is awaited (waitForSetupPage()): the sidekick
    is going away, so nothing behind it can work. No close control; it ends in a redirect. */
@@ -188,7 +180,10 @@ button:disabled{opacity:.45}
 /* Inside #viewport but outside #viewTrack, so the track's transform does not
    carry it away; every panel starts below it (--optop-h, layoutDock()). */
 #opTop{position:absolute;left:0;right:0;top:0;z-index:2;background:Canvas;padding:.45rem 1rem .4rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
-.slotrow{display:flex;align-items:center;gap:.6rem}
+.slotrow{display:flex;align-items:center;gap:.6rem;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.slotrow:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:5px}
+/* Read by a screen reader, not drawn. */
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 /* E or O: the parity of the slot now. The bar's colour no longer carries it. */
 #opParity{flex:none;width:1.5rem;height:1.5rem;border-radius:.35rem;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;background:var(--accent);color:Canvas}
 #opParity.tx{background:var(--danger)}
@@ -278,8 +273,8 @@ button:disabled{opacity:.45}
 #opRadioTuneMeter{font-family:ui-monospace,monospace;font-size:1.4rem;font-weight:700;margin:.3rem 0;color:CanvasText}
 
 /* The toast (showToast()): a failure's reason, or the Undo after a tap-to-reply. Above the tab
-   bar, and on Operate above its pinned bottom. */
-#opToast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabbar-h,3.375rem) + .6rem);z-index:6;width:calc(100% - 2rem);max-width:24rem;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:.6rem;padding:.6rem .6rem .6rem 1rem;border-radius:.6rem;background:#141414;color:#fafafa;font-size:.9rem;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+   bar, on Operate above its pinned bottom, and over Who hears me's list. */
+#opToast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--tabbar-h,3.375rem) + .6rem);z-index:13;width:calc(100% - 2rem);max-width:24rem;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:.6rem;padding:.6rem .6rem .6rem 1rem;border-radius:.6rem;background:#141414;color:#fafafa;font-size:.9rem;box-shadow:0 6px 20px rgba(0,0,0,.25)}
 #opToast button{border:0;background:transparent;color:#93c5fd;font-weight:700;font-size:.9rem;min-height:44px;padding:0 .6rem}
 body.on-operate #opToast{bottom:calc(var(--tabbar-h,3.375rem) + var(--dock-h,0px) + .6rem)}
 #opToast.err{border-left:4px solid #f87171}
@@ -489,7 +484,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 
 /* ---- settings ---- */
 /* Same flat, hairline-divided list language as Operate's #opQueue/#opDecodes
-   and Log's .frow rows, replacing the boxed <section>/<h2> form look. */
+   and Log's .frow rows. */
 .hd{padding:.6rem 1rem .2rem;font-size:.7rem;color:GrayText;text-transform:uppercase;letter-spacing:.04em}
 .hd.sep{border-top:1px solid color-mix(in srgb, GrayText 30%, transparent);margin-top:.5rem}
 .setrow{padding:.5rem 1rem .55rem;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent)}
@@ -497,16 +492,99 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 .diagrow{display:flex;justify-content:space-between;gap:.5rem;font-size:.8rem}
 .diagrow span:first-child{color:GrayText}
 .diagrow span:last-child{font-family:ui-monospace,monospace}
-#netModeSwitch{margin-left:.5rem;padding:.1rem .5rem;font-size:.7rem;font-family:inherit}
-#netModeLink{margin-left:.5rem;font-family:inherit}
-#view-settings input,#view-settings select,#stationSheetBody input,#stationSheetBody select{
-  border:0;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent);
-  border-radius:0;padding:.3rem 0;font-size:.9rem;background:transparent;color:CanvasText}
 .setnote{padding:0 1rem;font-size:.8rem;color:GrayText;margin-top:0}
-.setnote.warn{color:#fbbf24}
+/* A warning is the radio bar's amber: a tint and an edge, legible in both themes (the text was
+   a fixed light amber, about 1.7:1 on white). */
+.setnote.warn{color:var(--warn-fg);background:color-mix(in srgb, var(--warn) 12%, Canvas);box-shadow:inset 3px 0 0 var(--warn);padding:.5rem 1rem;margin:.2rem 0 .5rem}
 #ampPttCheck{white-space:pre-line}
-.bandcheck{display:flex;align-items:center;gap:.4rem;font-size:.85rem;text-transform:none;letter-spacing:normal;color:CanvasText;margin:0}
-.bandcheck input{width:auto;margin:0}
+
+/* The menu and its pages (webapp.md, Settings). The tab does not scroll: each page
+   scrolls its own body, so a page's header (Back, its title) never leaves
+   and the menu keeps its place while a page is open. */
+#viewTrack>#view-settings{display:flex;flex-direction:column;overflow:hidden}
+.setpage{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+.setbody{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-bottom:1.25rem}
+/* A page comes in from the right and the menu from the left, a quarter of the width, at the
+   drawer's .25 s and easing out: far enough to read as a direction (24 px in .2 s did not). */
+.setpage.sub:not([hidden]){animation:setin .25s cubic-bezier(.2,.8,.2,1)}
+.setpage.back:not([hidden]){animation:setback .25s cubic-bezier(.2,.8,.2,1)}
+@keyframes setin{from{transform:translateX(25%);opacity:0}}
+@keyframes setback{from{transform:translateX(-25%);opacity:0}}
+@media (prefers-reduced-motion: reduce){.setpage.sub:not([hidden]),.setpage.back:not([hidden]){animation:none}}
+/* Back at the left, the title in the middle whatever Back's width. */
+.sethead{flex:none;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:.5rem;padding:.15rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+.sethead h2{font-size:1.05rem;margin:0;outline:0;white-space:nowrap}
+.setback{justify-self:start;border:0;background:transparent;color:var(--accent);font-size:.9rem;font-weight:700;padding:0 .6rem 0 0;min-height:44px}
+
+/* A menu row is the radio bar's shape (#rbToggle): a ring, a bold line over a quiet one, and
+   the accent chevron a replyable decode ends in. Amber or red when its page wants attention,
+   by tint, edge and glyph, as the bar's states are. */
+.navrow{display:flex;align-items:center;gap:.7rem;width:100%;box-sizing:border-box;border:0;border-top:1px solid color-mix(in srgb, GrayText 15%, transparent);border-radius:0;background:transparent;color:CanvasText;padding:.5rem 1rem;min-height:3.5rem;text-align:left;font:inherit;-webkit-tap-highlight-color:transparent}
+.navrow:active{background:color-mix(in srgb, var(--accent) 8%, transparent)}
+.navico{flex:none;width:2.4rem;height:2.4rem;box-sizing:border-box;border-radius:50%;border:2px solid var(--accent);color:var(--accent);display:flex;align-items:center;justify-content:center}
+.navico svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.navlines{flex:1;min-width:0;display:block}
+.navmain{display:block;font-weight:700;font-size:1rem}
+.navsub{display:block;font-size:.75rem;color:GrayText;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.navsub .glyph{font-weight:700;margin-right:.25rem}
+.navsub .glyph:empty{display:none}
+.navchev{flex:none;color:var(--accent);font-size:1.3rem;font-weight:700;line-height:1}
+.navrow.t-amber{background:color-mix(in srgb, var(--warn) 12%, Canvas);box-shadow:inset 3px 0 0 var(--warn)}
+.navrow.t-amber .navico,.navrow.t-amber .navsub,.navrow.t-amber .navchev{color:var(--warn);border-color:var(--warn)}
+.navrow.t-red{background:color-mix(in srgb, var(--danger) 9%, Canvas);box-shadow:inset 3px 0 0 var(--danger)}
+.navrow.t-red .navico,.navrow.t-red .navsub,.navrow.t-red .navchev{color:var(--danger);border-color:var(--danger)}
+
+/* A field is one line: what it is on the left, its value on the right, as Tools' rows and the
+   readouts (.diagrow) are. */
+#view-settings .diagrow{font-size:.9rem;align-items:center;min-height:1.7rem}
+#view-settings .diagrow span:last-child{font-weight:700;font-size:.85rem;text-align:right}
+#view-settings .diagrow #netMode{font-family:ui-monospace,monospace;font-weight:700}
+#view-settings .diagrow .dlink{font-family:system-ui;font-weight:700;margin-left:.5rem;white-space:nowrap}
+#view-settings .fld{display:flex;align-items:center;justify-content:space-between;gap:1rem;min-height:2.5rem;font-size:.9rem;color:CanvasText;text-transform:none;letter-spacing:normal}
+#view-settings .fld>span{flex:1 1 auto;min-width:0}
+/* The stepper sits at the right of its row, as a value does. */
+#view-settings .fld .stepper{flex:none;margin-top:0}
+#view-settings #actRefRows .setrow span{font-family:ui-monospace,monospace;font-weight:700;font-size:.9rem}
+#view-settings .fld.stack{flex-direction:column;align-items:stretch;gap:.3rem}
+/* Typed values are the drawer's frequency field: boxed, monospaced, bold. 1rem, since iOS zooms
+   the page into a field with smaller type; the token alone is smaller, to show all 32 characters. */
+#view-settings .fld input:not([type=checkbox]){flex:0 1 12rem;min-width:0;width:auto;margin:0;min-height:40px;padding:.3rem .6rem;text-align:right;font-family:ui-monospace,monospace;font-weight:700;font-size:1rem;border:1px solid color-mix(in srgb, GrayText 55%, transparent);border-radius:.4rem;background:Field;color:FieldText}
+#view-settings .fld.stack input:not([type=checkbox]){flex:none;width:100%;text-align:left;font-size:.9rem}
+#view-settings .fld input.num{flex:0 0 5.5rem;width:5.5rem}
+#view-settings .fld input::placeholder{font-weight:400}
+/* A menu is the Decodes bar's pill (#dvSort), with a mark that it opens. An On/Off menu fills
+   when On, as a pressed filter does; where :has() is missing it still reads On. */
+#view-settings .fld select{flex:0 1 auto;width:auto;max-width:72%;margin:0;min-height:36px;padding:.3rem 1.7rem .3rem .8rem;font-size:.85rem;border:1px solid GrayText;border-radius:999px;appearance:none;-webkit-appearance:none;color:ButtonText;text-overflow:ellipsis;
+  background:linear-gradient(45deg,transparent 50%,currentColor 50%) calc(100% - .95rem) 55%/.32rem .32rem no-repeat,linear-gradient(135deg,currentColor 50%,transparent 50%) calc(100% - .63rem) 55%/.32rem .32rem no-repeat,ButtonFace}
+#view-settings .fld select.onoff:has(option[value="1"]:checked){background-color:var(--accent);border-color:var(--accent);color:Canvas;font-weight:700}
+/* A tick box is a switch: it changes at the touch, where a menu opens first. */
+#view-settings input.sw{flex:none;appearance:none;-webkit-appearance:none;position:relative;width:2.9rem;height:1.7rem;margin:0;padding:0;border:0;border-radius:999px;background:color-mix(in srgb, GrayText 55%, Canvas);transition:background-color .15s ease}
+#view-settings input.sw::before{content:"";position:absolute;top:.15rem;left:.15rem;width:1.4rem;height:1.4rem;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .15s ease}
+#view-settings input.sw:checked{background:var(--accent)}
+#view-settings input.sw:checked::before{transform:translateX(1.2rem)}
+@media (prefers-reduced-motion: reduce){#view-settings input.sw,#view-settings input.sw::before{transition:none}}
+#view-settings :is(input,select,button,a,h2):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* Notes sit under the row they explain; a page's opening note stands clear of the header. */
+#view-settings .setnote{margin:.1rem 0 .7rem;line-height:1.4}
+#view-settings .setnote.lead{margin-top:.7rem}
+#view-settings .setnote:empty{display:none}
+#view-settings .setnote.warn{margin:.2rem 0 .6rem}
+/* Actions: the drawer's 44 px buttons. One filled for the page's main action, and the radio
+   bar's Stop outline for what cannot be undone. */
+.setbtns{display:flex;flex-wrap:wrap;gap:.5rem;padding:.5rem 1rem .6rem}
+.setbtns button{flex:1 1 8rem;min-height:44px}
+.setbtns:not(:has(button:not([hidden]))){display:none}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:Canvas;font-weight:700}
+.btn-danger{border:1.5px solid var(--danger);color:var(--danger);background:Canvas;font-weight:700}
+#view-settings .setlink{display:block;padding:.6rem 1rem;font-size:.9rem;font-weight:700}
+/* Bands: the drawer's grid and buttons, four across, any number on. The tick box covers its
+   button, unseen, so the button is the control and a keyboard still reaches it. */
+#bandList{grid-template-columns:repeat(4,1fr);padding:.3rem 1rem .7rem}
+.bandchip{position:relative;display:block;margin:0;text-transform:none;letter-spacing:normal}
+.bandchip input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.bandchip span{display:flex;align-items:center;justify-content:center;min-height:44px;box-sizing:border-box;font-size:.8rem;font-family:ui-monospace,monospace;background:ButtonFace;color:ButtonText;border:1px solid GrayText;border-radius:.4rem}
+.bandchip input:checked+span{color:Canvas;background:var(--accent);border-color:var(--accent);font-weight:700}
+.bandchip input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
 .callink{text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
 .gridlink{text-decoration:underline;text-decoration-style:dotted;cursor:pointer;color:inherit}
 .qrow .call,.frow .call{cursor:pointer;text-decoration:underline;text-decoration-style:dotted}
@@ -521,7 +599,11 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
      parity of the slot now, and at an activation each reference against its target. Outside
      #viewTrack for the reason #opDock is: the track slides with a transform. -->
 <div id=opTop>
-  <div class=slotrow>
+  <!-- A tap on the row goes to Operate from any tab, and on Operate returns the decodes to the
+       newest slot (slotRowTap()). A button to a keyboard and a screen reader, which read the
+       parity and the bar's text and then what the tap does. -->
+  <div class=slotrow id=opSlotRow role=button tabindex=0>
+    <span class=vh>Go to Operate.</span>
     <span id=opParity aria-label="Slot parity"></span>
     <div id=opSlotBar>
       <div id=opSlotBarFill></div>
@@ -595,320 +677,437 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
   </section>
 
   <!-- ================= SETTINGS ================= -->
-  <!-- The fourth tab (operator decision 2026-10-25). Same flat hairline-row
-       list language throughout (.hd + .setrow). -->
+  <!-- The fourth tab (operator decision 2026-10-25): a menu and one page per group
+       (webapp.md, Settings), one shown at a time by showSetPage(). The pages keep the flat
+       hairline rows of Operate and QSOs (.hd + .setrow). -->
   <section id=view-settings>
-    <p id=settingsMsg role=status></p>
+    <!-- The menu (webapp.md, Settings): one row per page, each with a line saying what that page
+         holds now (settingsMenuModel()), in the radio bar's shape: a ring, two lines, a chevron.
+         A row turns amber when its page wants attention, as the radio bar does. -->
+    <div id=setRoot class=setpage data-page=root>
+      <div class=setbody>
+        <div class=hd>Operating</div>
+        <button type=button class=navrow data-page=station>
+          <span class=navico aria-hidden=true><svg viewBox="0 0 24 24"><path d="M12 21V10M8 21h8"/><circle cx="12" cy="7.5" r="2"/><path d="M7.5 4a6 6 0 000 7M16.5 4a6 6 0 010 7"/></svg></span>
+          <span class=navlines><span class=navmain>Station</span><span class=navsub><span class=glyph aria-hidden=true></span><span class=navtext>Call, grid and how you call CQ</span></span></span>
+          <span class=navchev aria-hidden=true>&rsaquo;</span>
+        </button>
+        <button type=button class=navrow data-page=radio>
+          <span class=navico aria-hidden=true><svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="11" rx="2"/><circle cx="8.5" cy="13.5" r="2.5"/><path d="M14.5 12h3.5M14.5 15.5h3.5M7 8l9-4"/></svg></span>
+          <span class=navlines><span class=navmain>Radio &amp; bands</span><span class=navsub><span class=glyph aria-hidden=true></span><span class=navtext>Radio, bands and modes</span></span></span>
+          <span class=navchev aria-hidden=true>&rsaquo;</span>
+        </button>
+        <button type=button class=navrow data-page=amp>
+          <span class=navico aria-hidden=true><svg viewBox="0 0 24 24"><path d="M13 2L4.5 14H11l-1 8 8.5-12H12z"/></svg></span>
+          <span class=navlines><span class=navmain>Amplifier</span><span class=navsub><span class=glyph aria-hidden=true></span><span class=navtext>Keying, delay and SWR recovery</span></span></span>
+          <span class=navchev aria-hidden=true>&rsaquo;</span>
+        </button>
+
+        <div class="hd sep">System</div>
+        <button type=button class=navrow data-page=network>
+          <span class=navico aria-hidden=true><svg viewBox="0 0 24 24"><path d="M2.5 9a14 14 0 0119 0M5.5 12.5a9.5 9.5 0 0113 0M8.5 16a5 5 0 017 0"/><circle cx="12" cy="19.5" r=".6"/></svg></span>
+          <span class=navlines><span class=navmain>Network</span><span class=navsub><span class=glyph aria-hidden=true></span><span class=navtext>WiFi and the sidekick's own network</span></span></span>
+          <span class=navchev aria-hidden=true>&rsaquo;</span>
+        </button>
+        <button type=button class=navrow data-page=pairing>
+          <span class=navico aria-hidden=true><svg viewBox="0 0 24 24"><circle cx="8" cy="15.5" r="4"/><path d="M11 12.5L20 3.5M16.5 7l3 3M13.5 10l2.5 2.5"/></svg></span>
+          <span class=navlines><span class=navmain>Pairing</span><span class=navsub><span class=glyph aria-hidden=true></span><span class=navtext>Whether this browser may change the station</span></span></span>
+          <span class=navchev aria-hidden=true>&rsaquo;</span>
+        </button>
+        <button type=button class=navrow data-page=update>
+          <span class=navico aria-hidden=true><svg viewBox="0 0 24 24"><path d="M12 3.5v11.5M7 10.5l5 5 5-5M4.5 20h15"/></svg></span>
+          <span class=navlines><span class=navmain>Software update</span><span class=navsub><span class=glyph aria-hidden=true></span><span class=navtext>Firmware and the app</span></span></span>
+          <span class=navchev aria-hidden=true>&rsaquo;</span>
+        </button>
+
+        <div class="hd sep">More</div>
+        <button type=button class=navrow data-page=device>
+          <span class=navico aria-hidden=true><svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></svg></span>
+          <span class=navlines><span class=navmain>This device</span><span class=navsub><span class=glyph aria-hidden=true></span><span class=navtext>Units, decode rows and theme</span></span></span>
+          <span class=navchev aria-hidden=true>&rsaquo;</span>
+        </button>
+        <button type=button class=navrow data-page=diag>
+          <span class=navico aria-hidden=true><svg viewBox="0 0 24 24"><path d="M4 18a8 8 0 1116 0"/><path d="M12 18l4-6.5"/><circle cx="12" cy="18" r=".6"/></svg></span>
+          <span class=navlines><span class=navmain>Diagnostics &amp; reset</span><span class=navsub><span class=glyph aria-hidden=true></span><span class=navtext>Link counters, storage, factory reset</span></span></span>
+          <span class=navchev aria-hidden=true>&rsaquo;</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ---- Station (webapp.md, Settings › Station) ---- -->
+    <!-- Everything about the station and how it calls: there is no Station sheet on Operate any
+         more. The CQ row's gear and text and the drawer's Station > open this page
+         (openStationPage()), and its Back then returns to Operate. Each control writes its own
+         key the moment it changes. -->
+    <div id=setp-station class="setpage sub" data-page=station hidden>
+      <div class=sethead><button type=button class=setback>&lsaquo; Settings</button><h2 tabindex=-1>Station</h2><span></span></div>
+      <div class=setbody>
+        <p id=stationCached class=setnote hidden></p>
+        <div class=hd>Identity</div>
+        <div class=setrow><label class=fld><span>Call</span><input id=call autocomplete=off spellcheck=false></label></div>
+        <div class=setrow><label class=fld><span>Grid</span><input id=grid autocomplete=off spellcheck=false maxlength=8></label></div>
+        <p id=gridHint class=setnote>The CQ carries the first four characters.</p>
+        <button id=gridLocateBtn type=button class="dlink setlink">Set from GPS &rarr;</button>
+        <div class=setrow><label class=fld><span>Comment</span><input id=comment1 autocomplete=off></label></div>
+
+        <div class="hd sep">Calling CQ</div>
+        <div class=setrow><div class=diagrow><span>Sends</span><span id=sheetSendsText>&mdash;</span></div></div>
+        <div class=setrow>
+          <label class=fld><span>Type</span>
+            <select id=cq_type>
+              <option value=0>CQ</option>
+              <option value=1>SOTA</option>
+              <option value=2>POTA</option>
+              <option value=3>QRP</option>
+              <option value=4>FD</option>
+              <option value=5>FreeText</option>
+            </select>
+          </label>
+        </div>
+        <!-- Shown only for FD and Free text (onchange of #cq_type toggles this,
+             setStationForm()); both write the one free_text key (webapp.md,
+             Settings › Station), so switching types leaves the other type's text
+             sitting in the field until a new CQ actually goes out under the new
+             type. -->
+        <div class=setrow id=freeTextRow hidden>
+          <label class=fld><span id=freeTextLabel>CQ message</span><input id=free_text autocomplete=off></label>
+        </div>
+
+        <div class="hd sep">QSOs</div>
+        <div class=setrow>
+          <div class=fld><span>Tries</span>
+            <div class=stepper>
+              <button id=sheetTriesDown type=button aria-label="Fewer tries">&minus;</button>
+              <span id=tries class=stepval></span>
+              <button id=sheetTriesUp type=button aria-label="More tries">+</button>
+            </div>
+          </div>
+        </div>
+        <p class=setnote>How many times each QSO message goes out, and how many CQs Call CQ sends. A queue row's own count is changed on the row.</p>
+        <div class=setrow>
+          <label class=fld><span>Offset src</span>
+            <select id=offset_src>
+              <option value=0>Random</option>
+              <option value=1>RX</option>
+              <option value=2>Fixed</option>
+            </select>
+          </label>
+        </div>
+        <div class=setrow><label class=fld><span>Offset Hz</span><input id=offset class=num type=number inputmode=numeric></label></div>
+        <div class=setrow>
+          <label class=fld><span>Skip TX1</span>
+            <select id=skiptx1 class=onoff>
+              <option value=0>Off</option>
+              <option value=1>On</option>
+            </select>
+          </label>
+        </div>
+
+        <!-- Typed references, offline (docs/roadmap/activator-mode.md): format-only (a slash means
+             SOTA, otherwise POTA) -- no store, no nearby list, no map and no
+             verified/unverified badge, since nothing to check against exists
+             until A3's reference store ships. renderActRefs() fills
+             #actRefRows; the Add row always stays last. -->
+        <div class="hd sep">Activation</div>
+        <div id=actRefRows></div>
+        <div class=setrow><label class="fld stack"><span>Reference</span><input id=actRefAdd autocomplete=off spellcheck=false placeholder="US-1234 or W7O/CC-001"></label></div>
+        <div class=setbtns><button id=actRefAddBtn type=button>Add</button></div>
+      </div>
+    </div>
+
+    <!-- ---- Radio & bands ---- -->
+    <div id=setp-radio class="setpage sub" data-page=radio hidden>
+      <div class=sethead><button type=button class=setback>&lsaquo; Settings</button><h2 tabindex=-1>Radio &amp; bands</h2><span></span></div>
+      <div class=setbody>
+        <div class=hd>Radio</div>
+        <div class=setrow>
+          <label class=fld><span>Radio</span>
+            <select id=radio>
+              <option value=2>QMX</option>
+              <option value=6>Hermes-Lite 2 (receive only)</option>
+            </select>
+          </label>
+        </div>
+        <p class=setnote>Connect, tune and clock sync now live on Operate. A new radio takes over at once; the change is refused while transmitting or tuning.</p>
+
+        <!-- The drawer's band grid again (.bandgrid), here with any number on: the bands that
+             appear there (buildBandRows()). -->
+        <div class="hd sep">Bands</div>
+        <p class=setnote>Which bands appear. Band and frequency are set from Operate's radio bar.</p>
+        <div id=bandList class=bandgrid></div>
+
+        <div class="hd sep">Modes</div>
+        <div class=setrow>
+          <label class=fld><span>Protocol</span>
+            <select id=protocol_mode>
+              <option value=FT8>FT8</option>
+              <option value=FT4 disabled>FT4</option>
+            </select>
+          </label>
+        </div>
+        <p class=setnote>FT4 is not built yet: the main board runs FT8 whatever is chosen here.</p>
+        <div class=setrow>
+          <label class=fld><span>Also decode FT4</span>
+            <select id=rx_ft4 class=onoff>
+              <option value=0>Off</option>
+              <option value=1>On</option>
+            </select>
+          </label>
+        </div>
+        <p class=setnote>QMX only. On: FT4 decodes at the same time as FT8, from the same radio, as its own batch in Operate, and a tap on an FT4 decode replies on FT4. Calling CQ is FT8 only. Not on 15 m or 10 m, where FT4 is outside the QMX's receive window.</p>
+      </div>
+    </div>
+
+    <!-- ---- Amplifier (webapp.md, Settings › Amplifier: the PTT check) ---- -->
+    <div id=setp-amp class="setpage sub" data-page=amp hidden>
+      <div class=sethead><button type=button class=setback>&lsaquo; Settings</button><h2 tabindex=-1>Amplifier</h2><span></span></div>
+      <div class=setbody>
+        <!-- The amplifier switch (radio.md, The amplifier switch): Off, the main board keeps the
+             settings below but none is in force, and they are not shown (syncAmpDetail()). -->
+        <div class=setrow>
+          <label class=fld><span>Amplifier</span>
+            <select id=amp class=onoff>
+              <option value=0>Off</option>
+              <option value=1>On</option>
+            </select>
+          </label>
+        </div>
+        <p class=setnote>On for an external amplifier keyed from the QMX's PTT output. Off, the station does nothing for an amplifier: its settings are kept, and none is in force.</p>
+
+        <div id=ampDetail hidden>
+        <div class="hd sep">Keying</div>
+        <div class=setrow>
+          <label class=fld><span>Amp keyed by</span>
+            <select id=amp_ptt>
+              <option value=0>Not checked</option>
+              <option value=1>TX PTT grounded</option>
+              <option value=2>TX PTT +5V</option>
+            </select>
+          </label>
+        </div>
+        <p class=setnote>Which of the QMX's PTT outputs keys your amplifier. A Micro PA100+ keys from TX PTT grounded. The radio's own menu sets this for each band (Band config.); when it connects, the main board reads those settings and they are checked here against your active bands.</p>
+        <p class="setnote warn" id=ampPttCheck hidden></p>
+        <div class=setbtns id=ampPttSetRow hidden><button id=ampPttSet type=button>Set the radio's PTT outputs</button></div>
+
+        <div class="hd sep">Timing</div>
+        <div class=setrow>
+          <label class=fld><span>Min TX delay (ms)</span>
+            <input id=tx_min_delay_ms class=num type=number min=0 max=500 step=10 inputmode=numeric autocomplete=off>
+          </label>
+        </div>
+        <p class=setnote>The radio keys, then waits this long before sending RF, so the amp's relay can switch first and the QMX's SWR protection doesn't trip on the switching. 0 to 500 ms; the default is 50, which is also what is used with Amplifier Off. A reply started late waits the full delay and loses the tones that pass in the meantime.</p>
+
+        <div class="hd sep">RF-sensing amplifiers</div>
+        <div class=setrow>
+          <label class=fld><span>Recover from SWR protection trips</span>
+            <select id=amp_swr_guard class=onoff>
+              <option value=0>Off</option>
+              <option value=1>On</option>
+            </select>
+          </label>
+        </div>
+        <p class=setnote>An amplifier that picks its filter from the RF it senses can trip the QMX's SWR protection on the first transmission on a new band, and the QMX then sends nothing until it is cleared. On: the main board clears the lock and sends that message again in its next slot. A second trip in a row ends your CQ and cancels your QSOs until you call CQ, reply or press Tune. Needs QMX firmware 1_04_004 or later.</p>
+        <div class=setrow>
+          <label class=fld><span>Prime RF-sensing amp on band change</span>
+            <select id=amp_prime_on_band_change class=onoff>
+              <option value=0>Off</option>
+              <option value=1>On</option>
+            </select>
+          </label>
+        </div>
+        <p class=setnote>On: after you select a different band, the QMX sends a 0.5-second carrier at its SWR Tune power so the amplifier can select its filter before the next FT8 transmission. This transmits on every band change; leave it Off unless your amplifier senses its band from RF.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---- Network ---- -->
     <!-- Retired from status.html (docs/architecture/system.md (Who may key the transmitter)): the one place this app
          previously split into a second, unstyled page. sk_* keys are
          sidekick-local (host_link.c's config_json_add(), PORTA_MSG_CONFIG_GET
          case) -- the main board has no way to know its own companion's WiFi state,
-         same reasoning as the Link diagnostics counters below. -->
-    <div class=hd id=netSection>Network</div>
-    <!-- Mode carries its own switch action inline rather than a separate
-         button further down -- operator-requested, "where we show the mode,
-         let me change it there". The two directions aren't symmetric: station
-         -> AP is a one-shot POST (netModeSwitch, same /ap-mode this used to
-         be a standalone button for); AP -> station needs an SSID and a
-         password, which only the scan-and-join form at / (provision.html)
-         has -- duplicating that form's scan list into app.html is real scope,
-         so AP mode instead gets a plain link there (netModeLink). -->
-    <div class=setrow>
-      <div class=diagrow>
-        <span>Mode</span>
-        <span>
-          <span id=netMode>—</span>
-          <a id=netModeLink class=dlink href=/ hidden>Join a network &rarr;</a>
-          <button id=netModeSwitch type=button disabled hidden>Switch to AP &rarr;</button>
-        </span>
+         same reasoning as the Link diagnostics counters. -->
+    <div id=setp-network class="setpage sub" data-page=network hidden>
+      <div class=sethead><button type=button class=setback>&lsaquo; Settings</button><h2 tabindex=-1>Network</h2><span></span></div>
+      <div class=setbody>
+        <div class=hd id=netSection>Connection</div>
+        <!-- Mode carries its own switch action inline rather than a separate
+             button further down -- operator-requested, "where we show the mode,
+             let me change it there". The two directions aren't symmetric: station
+             -> AP is a one-shot POST (netModeSwitch, same /ap-mode this used to
+             be a standalone button for); AP -> station needs an SSID and a
+             password, which only the scan-and-join form at / (provision.html)
+             has -- duplicating that form's scan list into app.html is real scope,
+             so AP mode instead gets a plain link there (netModeLink). -->
+        <div class=setrow>
+          <div class=diagrow>
+            <span>Mode</span>
+            <span>
+              <span id=netMode>—</span>
+              <a id=netModeLink class=dlink href=/ hidden>Join a network &rarr;</a>
+              <button id=netModeSwitch type=button class=dlink disabled hidden>Switch to AP &rarr;</button>
+            </span>
+          </div>
+        </div>
+        <div class=setrow><div class=diagrow><span>Network</span><span id=netName>—</span></div></div>
+        <div class=setrow><div class=diagrow><span>Address</span><span id=netIp>—</span></div></div>
+        <div class=setbtns>
+          <button id=netForget type=button class=btn-danger disabled>Forget WiFi</button>
+        </div>
+        <p id=netMsg class=setnote></p>
+
+        <div class="hd sep">Sidekick's own network</div>
+        <p class=setnote>The network the sidekick raises when it has no WiFi to join. A password keeps phones that are only looking for internet from joining it. Saving restarts it, and a phone on it must rejoin. Whatever you name it, the app is at micro-ft8.local or 192.168.4.1.</p>
+        <div class=setrow><label class=fld><span>Name</span><input id=apSsid enterkeyhint=done maxlength=32 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false placeholder=micro-ft8.local></label></div>
+        <div class=setrow><label class=fld><span>Password</span><input id=apPass enterkeyhint=done maxlength=63 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false></label></div>
+        <div class=setbtns>
+          <button id=apSave type=button class=btn-primary disabled>Save</button>
+          <button id=apReset type=button disabled>Reset to default</button>
+        </div>
+        <p id=apMsg class=setnote></p>
       </div>
     </div>
-    <div class=setrow><div class=diagrow><span>Network</span><span id=netName>—</span></div></div>
-    <div class=setrow><div class=diagrow><span>Address</span><span id=netIp>—</span></div></div>
-    <div class=setrow><div class=diagrow><span>Firmware</span><span id=netVersion>—</span></div></div>
-    <div class=setrow><div class=diagrow><span>Main board firmware</span><span id=netHostVersion>—</span></div></div>
-    <div class=setrow><div class=diagrow><span>Uptime</span><span id=netUptime>—</span></div></div>
-    <div class=setrow style="display:flex;flex-direction:column;gap:.5rem">
-      <button id=netForget type=button disabled>Forget WiFi</button>
-      <button id=netRehydrate type=button disabled>Restore seed pages</button>
-      <button id=netFactory type=button disabled>Factory reset</button>
-    </div>
-    <p id=netMsg class=setnote></p>
 
-    <div class="hd sep">Updates</div>
-    <div id=updList></div>
-    <p id=updMsg class=setnote>Not checked yet.</p>
-    <div class=setrow style="display:flex;flex-direction:column;gap:.5rem">
-      <button id=updOpen type=button hidden>Update</button>
-    </div>
+    <!-- ---- Pairing ---- -->
+    <div id=setp-pairing class="setpage sub" data-page=pairing hidden>
+      <div class=sethead><button type=button class=setback>&lsaquo; Settings</button><h2 tabindex=-1>Pairing</h2><span></span></div>
+      <div class=setbody>
+        <div class=hd>This browser</div>
+        <div class=setrow><div class=diagrow><span>Status</span><span id=pairState>—</span></div></div>
 
-    <div class="hd sep">Sidekick's own network</div>
-    <p class=setnote>The network the sidekick raises when it has no WiFi to join. A password keeps phones that are only looking for internet from joining it. Saving restarts it, and a phone on it must rejoin. Whatever you name it, the app is at micro-ft8.local or 192.168.4.1.</p>
-    <div class=setrow><label>Name <input id=apSsid enterkeyhint=done maxlength=32 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false placeholder=micro-ft8.local></label></div>
-    <div class=setrow><label>Password <input id=apPass enterkeyhint=done maxlength=63 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false></label></div>
-    <div class=setrow style="display:flex;gap:.5rem">
-      <button id=apSave type=button disabled>Save</button>
-      <button id=apReset type=button disabled>Reset to default</button>
-    </div>
-    <p id=apMsg class=setnote></p>
-
-    <div class="hd sep">Pairing token</div>
-    <p class=setnote>The key this browser sends to change the sidekick. Each address (micro-ft8.local, 192.168.x.x) keeps its own copy, so to pair another address without the button, copy the token from one and paste it into the other. 32 characters, 0-9 and a-f.</p>
-    <div class=setrow><label>Token <input id=tokInput maxlength=32 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false></label></div>
-    <div class=setrow style="display:flex;gap:.5rem">
-      <button id=tokSave type=button>Save</button>
-    </div>
-    <p id=tokMsg class=setnote></p>
-
-    <div class="hd sep">Station</div>
-    <p id=stationCached class=setnote hidden></p>
-    <p class=setnote>CQ type, grid, tries and TX offset are in Operate's Station sheet.</p>
-    <div class=setrow><label>Call <input id=call autocomplete=off spellcheck=false></label></div>
-    <div class=setrow><label>Comment <input id=comment1 autocomplete=off></label></div>
-
-    <div class="hd sep">Radio</div>
-    <p class=setnote>Connect, tune and clock sync now live on Operate. A new radio takes over at once; the change is refused while transmitting or tuning.</p>
-    <div class=setrow>
-      <label>Radio
-        <select id=radio>
-          <option value=2>QMX</option>
-          <option value=6>HL2 (receive only)</option>
-        </select>
-      </label>
+        <div class="hd sep">Pairing token</div>
+        <p class=setnote>The key this browser sends to change the sidekick. Each address (micro-ft8.local, 192.168.x.x) keeps its own copy, so to pair another address without the button, copy the token from one and paste it into the other. 32 characters, 0-9 and a-f.</p>
+        <div class=setrow><label class="fld stack"><span>Token</span><input id=tokInput maxlength=32 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false></label></div>
+        <div class=setbtns>
+          <button id=tokSave type=button class=btn-primary>Save</button>
+        </div>
+        <p id=tokMsg class=setnote></p>
+      </div>
     </div>
 
-    <div class="hd sep">Amplifier</div>
-    <p class=setnote>For an external amplifier keyed from the QMX's PTT output. With no amplifier, leave these as they are.</p>
-    <div class=setrow>
-      <label>Amp keyed by
-        <select id=amp_ptt>
-          <option value=0>Not checked</option>
-          <option value=1>TX PTT grounded</option>
-          <option value=2>TX PTT +5V</option>
-        </select>
-      </label>
-    </div>
-    <p class=setnote>Which of the QMX's PTT outputs keys your amplifier. A Micro PA100+ keys from TX PTT grounded. The radio's own menu sets this for each band (Band config.); when it connects, the main board reads those settings and they are checked here against your active bands.</p>
-    <p class="setnote warn" id=ampPttCheck hidden></p>
-    <div class=setrow id=ampPttSetRow hidden><button id=ampPttSet type=button>Set the radio's PTT outputs</button></div>
-    <div class=setrow>
-      <label>Min TX delay (ms)
-        <input id=tx_min_delay_ms type=number min=0 max=500 step=10 inputmode=numeric autocomplete=off>
-      </label>
-    </div>
-    <p class=setnote>The radio keys, then waits this long before sending RF, so the amp's relay can switch first and the QMX's SWR protection doesn't trip on the switching. No amp: 0 works, and the default 50 does no harm. 0 to 500 ms. A reply started late waits the full delay and loses the tones that pass in the meantime.</p>
-    <div class=setrow>
-      <label>Recover from SWR protection trips
-        <select id=amp_swr_guard>
-          <option value=0>Off</option>
-          <option value=1>On</option>
-        </select>
-      </label>
-    </div>
-    <p class=setnote>An amplifier that picks its filter from the RF it senses can trip the QMX's SWR protection on the first transmission on a new band, and the QMX then sends nothing until it is cleared. On: the main board clears the lock and sends that message again in its next slot. A second trip in a row ends your CQ and cancels your QSOs until you call CQ, reply or press Tune. Needs QMX firmware 1_04_004 or later.</p>
-    <div class=setrow>
-      <label>Prime RF-sensing amp on band change
-        <select id=amp_prime_on_band_change>
-          <option value=0>Off</option>
-          <option value=1>On</option>
-        </select>
-      </label>
-    </div>
-    <p class=setnote>On: after you select a different band, the QMX sends a 0.5-second carrier at its SWR Tune power so the amplifier can select its filter before the next FT8 transmission. This transmits on every band change; leave it Off unless your amplifier senses its band from RF.</p>
-    <div class=hd>Bands</div>
-    <p class=setnote>Which bands appear. Band and frequency are set from Operate's radio bar.</p>
-    <div id=bandList></div>
-    <div class=setrow>
-      <label>Protocol
-        <select id=protocol_mode>
-          <option value=FT8>FT8</option>
-          <option value=FT4 disabled>FT4</option>
-        </select>
-      </label>
-    </div>
-    <p class=setnote>FT4 is not built yet: the main board runs FT8 whatever is chosen here.</p>
-    <div class=setrow>
-      <label>Also decode FT4
-        <select id=rx_ft4>
-          <option value=0>Off</option>
-          <option value=1>On</option>
-        </select>
-      </label>
-    </div>
-    <p class=setnote>QMX only. On: FT4 decodes at the same time as FT8, from the same radio, as its own batch in Operate, and a tap on an FT4 decode replies on FT4. Calling CQ is FT8 only. Not on 15 m or 10 m, where FT4 is outside the QMX's receive window.</p>
-    <div class=setrow>
-      <label>Skip TX1
-        <select id=skiptx1>
-          <option value=0>Off</option>
-          <option value=1>On</option>
-        </select>
-      </label>
+    <!-- ---- Software update (webapp.md, Settings › Software update) ---- -->
+    <!-- Firmware and the app are still two updates, side by side on one page. The row that makes
+         them one Update is antu (docs/roadmap/ota-updates.md): App joins the boards in #updList,
+         and Install / update leaves. Until then nothing here merges them. -->
+    <div id=setp-update class="setpage sub" data-page=update hidden>
+      <div class=sethead><button type=button class=setback>&lsaquo; Settings</button><h2 tabindex=-1>Software update</h2><span></span></div>
+      <div class=setbody>
+        <div class=hd>Installed</div>
+        <div class=setrow><div class=diagrow><span>Firmware</span><span id=netVersion>—</span></div></div>
+        <div class=setrow><div class=diagrow><span>Main board firmware</span><span id=netHostVersion>—</span></div></div>
+        <div class=setrow><div class=diagrow><span>App</span><span id=appVersion>—</span></div></div>
+
+        <div class="hd sep">Updates</div>
+        <div id=updList></div>
+        <p id=updMsg class=setnote>Not checked yet.</p>
+        <div class=setbtns>
+          <button id=updOpen type=button class=btn-primary hidden>Update</button>
+        </div>
+
+        <div class="hd sep">App</div>
+        <p id=appStale class="setnote warn" hidden>A newer version is available. <button id=appReload type=button class=dlink>Reload</button></p>
+        <a class="dlink setlink" href=/update>Install / update &rarr;</a>
+      </div>
     </div>
 
-    <div class="hd sep">This device</div>
-    <p class=setnote>Local to this browser -- not saved to the main board.</p>
-    <div class=setrow>
-      <label>Distance units
-        <select id=dist_unit>
-          <option value=km>Kilometers</option>
-          <option value=mi>Miles</option>
-        </select>
-      </label>
-    </div>
-    <div class=setrow>
-      <label class=bandcheck><input type=checkbox id=show_bearing> Show the bearing on decode rows</label>
-    </div>
-    <div class=setrow>
-      <label class=bandcheck><input type=checkbox id=show_queue_marks> Mark decodes about stations in the queue</label>
-    </div>
-    <div class=setrow>
-      <label>Theme
-        <select id=theme_pref>
-          <option value=system>Match phone</option>
-          <option value=light>Light</option>
-          <option value=dark>Dark</option>
-        </select>
-      </label>
+    <!-- ---- This device ---- -->
+    <div id=setp-device class="setpage sub" data-page=device hidden>
+      <div class=sethead><button type=button class=setback>&lsaquo; Settings</button><h2 tabindex=-1>This device</h2><span></span></div>
+      <div class=setbody>
+        <p class="setnote lead">Local to this browser -- not saved to the main board.</p>
+        <div class=hd>Decodes</div>
+        <div class=setrow>
+          <label class=fld><span>Distance units</span>
+            <select id=dist_unit>
+              <option value=km>Kilometers</option>
+              <option value=mi>Miles</option>
+            </select>
+          </label>
+        </div>
+        <div class=setrow>
+          <label class=fld><span>Show the bearing on decode rows</span><input type=checkbox class=sw id=show_bearing></label>
+        </div>
+        <div class=setrow>
+          <label class=fld><span>Mark decodes about stations in the queue</span><input type=checkbox class=sw id=show_queue_marks></label>
+        </div>
+
+        <div class="hd sep">Appearance</div>
+        <div class=setrow>
+          <label class=fld><span>Theme</span>
+            <select id=theme_pref>
+              <option value=system>Match phone</option>
+              <option value=light>Light</option>
+              <option value=dark>Dark</option>
+            </select>
+          </label>
+        </div>
+      </div>
     </div>
 
-    <!-- Cumulative link-health counters (reset only on reboot), not a status
-         readout -- the Link dot on Operate already answers "is it fine right
-         now". This answers "how flaky has this session actually been",
-         which needs the raw numbers, not a glyph. See setDiagCounters(). -->
-    <div class=hd>Link diagnostics</div>
-    <div class=setrow><div class=diagrow><span>Main board: CRC errors / frames OK</span><span id=diagPorta>—</span></div></div>
-    <div class=setrow><div class=diagrow><span>Main board: outbound frames dropped</span><span id=diagPortaDropped>—</span></div></div>
-    <div class=setrow><div class=diagrow><span>Sidekick: CRC errors / frames OK</span><span id=diagSk>—</span></div></div>
-    <div class=setrow><div class=diagrow><span>Sidekick: browser-missed events</span><span id=diagSkRingGaps>—</span></div></div>
-    <div class=setrow><div class=diagrow><span>Sidekick: config re-requests</span><span id=diagSkRetries>—</span></div></div>
-    <!-- Stress test, hidden after the 2026-10-01 rate choice (sidekick.md, Port A).
-         The markup and the /api/link-test handlers stay. Remove hidden to show it. -->
-    <div id=linkTest hidden>
-    <p class=setnote>Full frames both ways on the Grove link, at the one rate selected below. No radio. The queue is cleared, the CQ with it. The link rests at 2500000. Another rate is one switch, and Stop or the end of the run returns it to 2500000. The final pass is 14 MB at 2500000.</p>
-    <div class=setrow>
-      <label>Bytes
-        <select id=linkTestBytes>
-          <option value=10200>10 KB</option>
-          <option value=102000 selected>100 KB</option>
-          <option value=1020000>1 MB</option>
-          <option value=14000000>14 MB, final pass</option>
-        </select>
-      </label>
-    </div>
-    <div class=setrow>
-      <label>Baud
-        <select id=linkTestBaud>
-          <option value=115200>115200</option>
-          <option value=230400>230400</option>
-          <option value=460800>460800</option>
-          <option value=921600>921600</option>
-          <option value=1500000>1500000</option>
-          <option value=2000000>2000000</option>
-          <option value=2500000 selected>2500000</option>
-          <option value=4000000>4000000</option>
-        </select>
-      </label>
-    </div>
-    <div class=setrow>
-      <button id=linkTestRun type=button>Run</button>
-      <button id=linkTestStop type=button>Stop</button>
-    </div>
-    <p id=linkTestMsg class=setnote></p>
-    </div>
+    <!-- ---- Diagnostics & reset ---- -->
+    <div id=setp-diag class="setpage sub" data-page=diag hidden>
+      <div class=sethead><button type=button class=setback>&lsaquo; Settings</button><h2 tabindex=-1>Diagnostics &amp; reset</h2><span></span></div>
+      <div class=setbody>
+        <!-- Cumulative link-health counters (reset only on reboot), not a status
+             readout -- the Link dot on Operate already answers "is it fine right
+             now". This answers "how flaky has this session actually been",
+             which needs the raw numbers, not a glyph. See setDiagCounters(). -->
+        <div class=hd>Link diagnostics</div>
+        <div class=setrow><div class=diagrow><span>Main board: CRC errors / frames OK</span><span id=diagPorta>—</span></div></div>
+        <div class=setrow><div class=diagrow><span>Main board: outbound frames dropped</span><span id=diagPortaDropped>—</span></div></div>
+        <div class=setrow><div class=diagrow><span>Sidekick: CRC errors / frames OK</span><span id=diagSk>—</span></div></div>
+        <div class=setrow><div class=diagrow><span>Sidekick: browser-missed events</span><span id=diagSkRingGaps>—</span></div></div>
+        <div class=setrow><div class=diagrow><span>Sidekick: config re-requests</span><span id=diagSkRetries>—</span></div></div>
+        <!-- Stress test, hidden after the 2026-10-01 rate choice (sidekick.md, Port A).
+             The markup and the /api/link-test handlers stay. Remove hidden to show it. -->
+        <div id=linkTest hidden>
+        <p class=setnote>Full frames both ways on the Grove link, at the one rate selected below. No radio. The queue is cleared, the CQ with it. The link rests at 2500000. Another rate is one switch, and Stop or the end of the run returns it to 2500000. The final pass is 14 MB at 2500000.</p>
+        <div class=setrow>
+          <label class=fld><span>Bytes</span>
+            <select id=linkTestBytes>
+              <option value=10200>10 KB</option>
+              <option value=102000 selected>100 KB</option>
+              <option value=1020000>1 MB</option>
+              <option value=14000000>14 MB, final pass</option>
+            </select>
+          </label>
+        </div>
+        <div class=setrow>
+          <label class=fld><span>Baud</span>
+            <select id=linkTestBaud>
+              <option value=115200>115200</option>
+              <option value=230400>230400</option>
+              <option value=460800>460800</option>
+              <option value=921600>921600</option>
+              <option value=1500000>1500000</option>
+              <option value=2000000>2000000</option>
+              <option value=2500000 selected>2500000</option>
+              <option value=4000000>4000000</option>
+            </select>
+          </label>
+        </div>
+        <div class=setbtns>
+          <button id=linkTestRun type=button>Run</button>
+          <button id=linkTestStop type=button>Stop</button>
+        </div>
+        <p id=linkTestMsg class=setnote></p>
+        </div>
 
-    <nav style="font-size:.85rem;padding:0 1rem 1rem">
-      <a href=/update>Install / update</a> ·
-      <a href=/storage.html>Storage (debug)</a>
-    </nav>
-    <div style="padding:0 1rem 1rem;font-size:.75rem;color:GrayText">App: <span id=appVersion>—</span><span id=appStale hidden> · A newer version is available. <button id=appReload type=button class=dlink>Reload</button></span></div>
+        <div class="hd sep">Sidekick</div>
+        <div class=setrow><div class=diagrow><span>Uptime</span><span id=netUptime>—</span></div></div>
+        <a class="dlink setlink" href=/storage.html>Storage (debug) &rarr;</a>
+
+        <div class="hd sep">Reset</div>
+        <div class=setbtns>
+          <button id=netRehydrate type=button disabled>Restore seed pages</button>
+          <button id=netFactory type=button class=btn-danger disabled>Factory reset</button>
+        </div>
+        <p id=resetMsg class=setnote></p>
+      </div>
+    </div>
   </section>
 
 </div>
 </div>
-</div>
-
-<!-- ================= STATION SHEET ================= -->
-<!-- docs/architecture/webapp.md ("The Station sheet"): opened
-     from the CQ row's gear and the radio drawer's Station >. Each control here
-     writes its own key with putConfigLine() the moment it changes -- there is
-     no Save button -- which is exactly why Settings' own FIELDS (below) drops
-     these keys: an all-keys Settings save must never overwrite a value one of
-     these controls just wrote. Same overlay mechanics as
-     #pskrList (see that CSS rule), never open at the same time as it. -->
-<div id=stationSheet>
-  <div id=stationSheetHead>
-    <button id=stationSheetBack type=button aria-label=Back>&larr;</button>
-    <h2>Station</h2>
-  </div>
-  <p id=stationSheetMsg role=status></p>
-  <div id=stationSheetBody>
-    <div class=hd>Calling CQ</div>
-    <div class=setrow>
-      <p class=setnote style="padding:0;margin:0 0 .2rem">Sends</p>
-      <div id=sheetSendsText class=cqsends>&mdash;</div>
-    </div>
-    <div class=setrow>
-      <label>Type
-        <select id=cq_type>
-          <option value=0>CQ</option>
-          <option value=1>SOTA</option>
-          <option value=2>POTA</option>
-          <option value=3>QRP</option>
-          <option value=4>FD</option>
-          <option value=5>FreeText</option>
-        </select>
-      </label>
-    </div>
-    <!-- Shown only for FD and Free text (onchange of #cq_type toggles this,
-         setStationSheetForm()); both write the one free_text key (webapp.md,
-         The Station sheet), so switching types leaves the other type's text
-         sitting in the field until a new CQ actually goes out under the new
-         type. -->
-    <div class=setrow id=freeTextRow hidden>
-      <label><span id=freeTextLabel>CQ message</span> <input id=free_text autocomplete=off></label>
-    </div>
-    <div class=setrow>
-      <label>Grid <input id=grid autocomplete=off spellcheck=false maxlength=8></label>
-      <button id=gridLocateBtn type=button class=dlink>Set from GPS &rarr;</button>
-    </div>
-    <p id=gridHint class=setnote>The CQ carries the first four characters.</p>
-
-    <div class="hd sep">QSOs</div>
-    <div class=setrow>
-      <span>Tries</span>
-      <div class=stepper>
-        <button id=sheetTriesDown type=button aria-label="Fewer tries">&minus;</button>
-        <span id=tries class=stepval></span>
-        <button id=sheetTriesUp type=button aria-label="More tries">+</button>
-      </div>
-    </div>
-    <p class=setnote>How many times each QSO message goes out, and how many CQs Call CQ sends. A queue row's own count is changed on the row.</p>
-    <div class="setrow row">
-      <label>Offset Hz <input id=offset type=number></label>
-      <label>Offset src
-        <select id=offset_src>
-          <option value=0>Random</option>
-          <option value=1>RX</option>
-          <option value=2>Fixed</option>
-        </select>
-      </label>
-    </div>
-
-    <!-- Typed references, offline (docs/roadmap/activator-mode.md): format-only (a slash means
-         SOTA, otherwise POTA) -- no store, no nearby list, no map and no
-         verified/unverified badge, since nothing to check against exists
-         until A3's reference store ships. renderActRefs() below fills
-         #actRefRows; the Add row always stays last. -->
-    <div class="hd sep">Activation</div>
-    <div id=actRefRows></div>
-    <div class=setrow>
-      <label>Reference <input id=actRefAdd autocomplete=off spellcheck=false placeholder="US-1234 or W7O/CC-001"></label>
-      <button id=actRefAddBtn type=button class=dlink>Add</button>
-    </div>
-
-    <div class=setrow><div class=diagrow><span>Call</span><span id=sheetCall>&mdash;</span></div></div>
-    <p class=setnote>Changed in Settings.</p>
-  </div>
 </div>
 
 <!-- Operate's pinned bottom (webapp.md, Operate's pinned regions): the queue, the CQ row, the radio bar and its drawer, above the
@@ -1068,7 +1267,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 </div>
 
 <!-- Who hears me's list (docs/architecture/webapp.md, Who hears me), opened from its Tools card. Same overlay
-     mechanics as #stationSheet; its rows are built only while it is open, and each open closes the other. -->
+     mechanics as the callsign card's; its rows are built only while it is open. -->
 <div id=pskrList>
   <div id=pskrListHead>
     <button id=pskrListBack type=button aria-label=Back>&larr;</button>
@@ -1098,30 +1297,23 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 <script src=geo_handoff.js></script>
 <script src=updates.js></script>
 <script>
-var settingsMsg = document.getElementById('settingsMsg');
-var stationSheetMsg = document.getElementById('stationSheetMsg');
 // BANDS and BAND_EDGES_KHZ live in bands.js (shared with swr.html).
-// cq_type, free_text, grid, offset, offset_src and tries left
-// Settings for the Station sheet (docs/architecture/webapp.md, "The Station
-// sheet"): each now writes its own key the moment it changes
-// (setStationSheetForm()'s onchange handlers), so Settings' own Save must
-// never resend them. Settings' own fields (below) autosave one key each.
+// The fields that autosave one key each on change, by the loop below. cq_type, free_text, grid,
+// offset, offset_src, tries and act_refs have handlers of their own (webapp.md, Settings ›
+// Station): a format check, a stepper, a list.
 var FIELDS = [
   'call','comment1',
-  'radio','protocol_mode','skiptx1','tx_min_delay_ms','amp_ptt','amp_swr_guard',
+  'radio','protocol_mode','skiptx1','amp','tx_min_delay_ms','amp_ptt','amp_swr_guard',
   'amp_prime_on_band_change','rx_ft4'
 ];
 var CQ_TYPE_NAMES = ['CQ', 'SOTA', 'POTA', 'QRP', 'FD', 'FreeText'];
 // AutoseqState wire values (main/autoseq.h). 6 = IDLE = remove from display.
 var QUEUE_STATE_NAMES = ['CALLING', 'REPLYING', 'REPORT', 'ROGER REPORT', 'ROGERS', 'SIGNOFF'];
 
-// All three: #m is hidden behind whichever overlay (Settings, the Station
-// sheet) is open, and each repeats the same text under its own header.
-// An action's progress and result, on the open overlay's own line. Operate has no status line:
-// what changed shows where it changed (the radio bar, a row), and a failure is failMsg()'s.
-function setMsg(t) { settingsMsg.textContent = t; stationSheetMsg.textContent = t; }
-// A failure: the overlay's line too, and a toast wherever the operator is.
-function failMsg(t) { setMsg(t); showToast(t, '', null, FAIL_TOAST_MS, true); }
+// No screen has a status line (webapp.md, Every action reports where the operator is looking):
+// progress and "ok" are not reported, since what changed shows where it changed (a field, a row,
+// the radio bar), and a failure's reason is a toast wherever the operator is.
+function failMsg(t) { showToast(t, '', null, FAIL_TOAST_MS, true); }
 
 // One toast at a time (#opToast): text, an optional action, gone after ms.
 var FAIL_TOAST_MS = 6000;
@@ -1257,7 +1449,7 @@ document.getElementById('appReload').onclick = function () { location.reload(); 
 setInterval(checkAppStale, 60000);
 
 // ===================== Settings: Updates =====================
-// Firmware updates (docs/architecture/webapp.md, Settings › Updates). This page reads the release
+// Firmware updates (docs/architecture/webapp.md, Settings › Software update). This page reads the release
 // manifest over HTTPS and hands the sidekick the plan: each image's URL, size and hash, the main
 // board's first. The sidekick does the rest and reports at /api/fw/status, so the update goes on
 // with this page closed, and every phone shows the same progress. The plan, the costs, the steps
@@ -1567,25 +1759,152 @@ function showView(name) {
     setInterval(fetchSpaceWx, SPACE_WX_REFRESH_MS);
   }
   if (name === 'tools') PskrLive.tick();
+  if (name === 'settings') renderSettingsMenu();
 }
 document.querySelectorAll('#tabbar button').forEach(function (b) {
-  b.onclick = function () { showView(b.getAttribute('data-view')); };
+  b.onclick = function () {
+    var name = b.getAttribute('data-view');
+    // The Settings tab, tapped while on Settings, goes back to its menu.
+    if (name === 'settings' && currentView === 'settings') showSetPage('root');
+    showView(name);
+  };
+});
+
+// The slot bar's row, on every tab: a tap goes to Operate, where Stop is, and on Operate brings
+// the decode list back to its newest slot (webapp.md, Operate's pinned regions).
+function slotRowTap() {
+  if (currentView !== 'operate') { showView('operate'); return; }
+  document.getElementById('view-operate').scrollTo({ top: 0, behavior: 'smooth' });
+}
+document.getElementById('opSlotRow').addEventListener('click', slotRowTap);
+document.getElementById('opSlotRow').addEventListener('keydown', function (ev) {
+  if (ev.key !== 'Enter' && ev.key !== ' ') return;
+  ev.preventDefault();
+  slotRowTap();
 });
 
 // ===================== settings (the fourth tab) ====
-// Its status line starts empty each time it is opened, so it never shows an old result.
-function openSettings() { closeStationSheet(); closePskrList(); settingsMsg.textContent = ''; showView('settings'); }
+function openSettings() { closePskrList(); showView('settings'); }
 
-// ===================== the Station sheet (webapp.md, The Station sheet) ====
-// Opened from the CQ row's gear and the radio drawer's Station >. Same overlay
-// mechanics as Who hears me's list -- see that CSS rule -- and its own fields are
-// populated by setStationSheetForm() below, called from setForm() alongside
-// the rest so a reload after any write (this sheet's own, or a plain
-// Settings save) refreshes what it shows.
-var stationSheet = document.getElementById('stationSheet');
-function openStationSheet() { closePskrList(); stationSheetMsg.textContent = ''; stationSheet.classList.add('open'); }
-function closeStationSheet() { stationSheet.classList.remove('open'); }
-document.getElementById('stationSheetBack').onclick = closeStationSheet;
+// Settings is a menu and one page per group (webapp.md, Settings): one of them shows at a time.
+// A page opened from the menu comes in from the right; the menu comes back from the left. Focus
+// goes to the page's title, and on the way back to the row that opened it, so a keyboard or
+// VoiceOver is not left on a control that is gone.
+var setPage = 'root';
+var setBackTo = ''; // 'operate' while the Station page was opened from Operate
+function showSetPage(name, backTo) {
+  var from = setPage;
+  setBackTo = name === 'station' && backTo === 'operate' ? 'operate' : '';
+  document.querySelector('#setp-station .setback').textContent = setBackTo ? '\u2039 Operate' : '\u2039 Settings';
+  if (!document.querySelector('#view-settings .setpage[data-page="' + name + '"]')) name = 'root';
+  setPage = name;
+  document.querySelectorAll('#view-settings .setpage').forEach(function (p) {
+    p.hidden = p.getAttribute('data-page') !== name;
+  });
+  var root = document.getElementById('setRoot');
+  root.classList.toggle('back', name === 'root' && from !== 'root');
+  renderSettingsMenu();
+  if (name === from) return;
+  if (name === 'root') {
+    var row = root.querySelector('.navrow[data-page="' + from + '"]');
+    if (row) row.focus({ preventScroll: true });
+    return;
+  }
+  var page = document.getElementById('setp-' + name);
+  page.querySelector('.setbody').scrollTop = 0;
+  page.querySelector('h2').focus({ preventScroll: true });
+}
+document.getElementById('setRoot').addEventListener('click', function (ev) {
+  var row = ev.target.closest('.navrow');
+  if (row) showSetPage(row.getAttribute('data-page'));
+});
+document.querySelectorAll('#view-settings .setback').forEach(function (b) {
+  b.onclick = function () {
+    var toOperate = setBackTo === 'operate';
+    showSetPage('root');
+    if (toOperate) showView('operate');
+  };
+});
+
+// What each menu row says under its name, and its tone: what the page holds now, or what it
+// wants. Pure, so webapp/tests/test_settings_menu.js runs it. s: call, grid, cq (the CQ's prefix, or 'Free text'), radio (its name), bands
+// (names), rxFt4, amp (the amplifier switch), ampPtt (0 not checked, 1 grounded, 2 +5V), ampBad (the PTT check found a band
+// wrong), txDelay, netMode ('station' | 'ap' | other), netName, netIp, paired, fwBoards (labels
+// of the boards with an update), fwChecked (a manifest was read), fwNoNet (it could not be),
+// fwBusy (an update is running), appStale, units ('km' | 'mi'), theme.
+function settingsMenuModel(s) {
+  var m = {};
+  var row = function (text, tone, glyph) { return { text: text, tone: tone || '', glyph: glyph || '' }; };
+  m.station = s.call ? row([s.call, (s.grid || '').slice(0, 4).toUpperCase(), s.cq].filter(function (x) { return x; }).join(' · '))
+                     : row('No call set', 'amber', '!');
+  var bands = s.bands && s.bands.length ? s.bands.join(' ') : 'no bands';
+  m.radio = row((s.radio ? s.radio + ' · ' : '') + bands + (s.rxFt4 ? ' · FT4 too' : ''));
+  var keyed = s.ampPtt === 1 ? 'TX PTT grounded' : s.ampPtt === 2 ? 'TX PTT +5V' : '';
+  if (!s.amp) m.amp = row('Off');
+  else if (keyed && s.ampBad) m.amp = row('The radio will not key the amp as set', 'amber', '!');
+  else m.amp = row((keyed ? 'Keyed by ' + keyed : 'Keying not checked') + (s.txDelay !== '' && s.txDelay != null ? ' · ' + s.txDelay + ' ms delay' : ''));
+  var where = s.netMode === 'station' ? 'WiFi' : s.netMode === 'ap' ? 'Own network' : '';
+  var net = [where, s.netName, s.netIp].filter(function (x) { return x; }).join(' · ');
+  m.network = row(net || 'WiFi and the sidekick\'s own network');
+  m.pairing = s.paired ? row('This browser is paired', '', '\u2713')
+                       : row('Not paired · press the sidekick\'s button', 'amber', '!');
+  if (s.fwBusy) m.update = row('Updating firmware', 'amber', '\u2026');
+  else if (s.fwBoards && s.fwBoards.length) m.update = row('Update available · ' + s.fwBoards.join(', '), 'amber', '!');
+  else if (s.appStale) m.update = row('A newer app is available · reload', 'amber', '!');
+  else if (s.fwChecked) m.update = row('No updates', '', '\u2713');
+  else m.update = row(s.fwNoNet ? 'Cannot be checked from here' : 'Not checked yet');
+  var theme = s.theme === 'light' ? 'Light' : s.theme === 'dark' ? 'Dark' : 'Theme matches phone';
+  m.device = row((s.units === 'mi' ? 'Miles' : 'Kilometers') + ' · ' + theme);
+  return m;
+}
+
+// Draws the menu's lines from what the pages already hold, and Pairing's status row. Called when
+// Settings or its menu shows, and once a second while the tab is up, since what it reads (the
+// config poll, pairing, the update check) changes without telling it.
+function renderSettingsMenu() {
+  var cfg = lastCfg || {};
+  var active = parseActiveBands(cfg.active_bands);
+  var amp = document.getElementById('ampPttCheck');
+  var plan = fwPlan();
+  var m = settingsMenuModel({
+    call: document.getElementById('call').value.trim(),
+    grid: cfg.grid || '',
+    cq: ['CQ', 'CQ SOTA', 'CQ POTA', 'CQ QRP', 'CQ FD', 'Free text'][parseInt(cfg.cq_type, 10) || 0],
+    radio: (function (sel) { var o = sel.options[sel.selectedIndex]; return o ? o.textContent.replace(/\s*\(.*$/, '') : ''; })(document.getElementById('radio')),
+    bands: BANDS.filter(function (b) { return active.any ? !!active.want[b.n] : true; }).map(function (b) { return b.name; }),
+    rxFt4: document.getElementById('rx_ft4').value === '1',
+    amp: document.getElementById('amp').value === '1',
+    ampPtt: parseInt(document.getElementById('amp_ptt').value, 10) || 0,
+    ampBad: !amp.hidden && amp.classList.contains('warn'),
+    txDelay: document.getElementById('tx_min_delay_ms').value,
+    netMode: cfg.sk_wifi_mode,
+    netName: cfg.sk_network_name || '',
+    netIp: cfg.sk_ip || '',
+    paired: paired(),
+    fwBoards: plan.steps.map(function (o) { return o.label; }),
+    fwChecked: !!fwManifest, fwNoNet: fwManifestErr, fwBusy: fwUpdating(),
+    appStale: appIsStale,
+    units: distUnit, theme: themePref
+  });
+  Object.keys(m).forEach(function (page) {
+    var rowEl = document.querySelector('#setRoot .navrow[data-page="' + page + '"]');
+    if (!rowEl) return;
+    var cls = 'navrow' + (m[page].tone ? ' t-' + m[page].tone : '');
+    if (rowEl.className !== cls) rowEl.className = cls;
+    var text = rowEl.querySelector('.navtext'), glyph = rowEl.querySelector('.glyph');
+    if (text.textContent !== m[page].text) text.textContent = m[page].text;
+    if (glyph.textContent !== m[page].glyph) glyph.textContent = m[page].glyph;
+  });
+  var ps = document.getElementById('pairState');
+  var pt = paired() ? 'Paired' : 'Not paired · press the sidekick\'s button';
+  if (ps.textContent !== pt) ps.textContent = pt;
+}
+setInterval(function () { if (currentView === 'settings') renderSettingsMenu(); }, 1000);
+
+// ===================== Settings › Station, from Operate ====
+// The CQ row's gear and text and the radio drawer's Station > open Settings on its Station page
+// (webapp.md, Settings › Station). Its Back then reads Operate and returns there.
+function openStationPage() { closePskrList(); showView('settings'); showSetPage('station', 'operate'); }
 
 
 // ===================== config (shared: Operate live header + Settings form) =====================
@@ -1603,7 +1922,7 @@ function bandFreq(cfg, idx) {
 
 // parseActiveBands() lives in bands.js (shared with swr.html).
 
-// One row per band: a checkbox for active_bands membership only. Band and
+// One button per band, in the drawer's grid: a checkbox for active_bands membership only. Band and
 // frequency (band_sel, band<N>/ft4_band<N>) left Settings for the radio
 // drawer's band grid and frequency row (webapp.md, Band and frequency).
 function buildBandRows(cfg) {
@@ -1612,12 +1931,12 @@ function buildBandRows(cfg) {
   container.innerHTML = '';
   BANDS.forEach(function (b) {
     var checked = parsed.any ? !!parsed.want[b.n] : true;
-    var row = document.createElement('div');
-    row.className = 'setrow';
-    row.innerHTML =
-      '<label class=bandcheck><input type=checkbox class=bandactive data-n="' + b.n + '"' +
-        (checked ? ' checked' : '') + '> ' + esc(b.name) + '</label>';
-    container.appendChild(row);
+    var chip = document.createElement('label');
+    chip.className = 'bandchip';
+    chip.innerHTML =
+      '<input type=checkbox class=bandactive data-n="' + b.n + '"' +
+        (checked ? ' checked' : '') + '><span>' + esc(b.name) + '</span>';
+    container.appendChild(chip);
   });
 }
 
@@ -1751,7 +2070,7 @@ function setForm(cfg) {
   buildBandRows(cfg);
   buildDockBandGrid(cfg);
   syncFreqInput(cfg);
-  setStationSheetForm(cfg);
+  setStationForm(cfg);
   FIELDS.forEach(function (k) {
     var el = document.getElementById(k);
     if (!el) return;
@@ -1762,6 +2081,12 @@ function setForm(cfg) {
     if (cfg[k] === undefined || cfg[k] === null) return;
     el.value = String(cfg[k]);
   });
+  syncAmpDetail();
+}
+
+// Settings › Amplifier shows its detail only while the switch is On.
+function syncAmpDetail() {
+  document.getElementById('ampDetail').hidden = document.getElementById('amp').value !== '1';
 }
 
 // A Maidenhead locator exactly as components/station/station.cpp's
@@ -1770,7 +2095,7 @@ function setForm(cfg) {
 // A-R, square 0-9, and (6 or 8 characters) subsquare A-X, extension 0-9.
 // station_parse() silently keeps the *old* grid on a bad write rather than
 // refusing it, so this check runs before the PUT: without it, a typo here
-// would look accepted (setMsg() still says "ok") while the grid never
+// would look accepted (nothing says otherwise) while the grid never
 // actually changed.
 function gridFormatOk(g) {
   return /^[A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2}([0-9]{2})?)?$/.test(g);
@@ -1797,15 +2122,15 @@ function updateGridHint() {
 }
 document.getElementById('grid').addEventListener('input', updateGridHint);
 
-// The Station sheet's own fields (webapp.md, The Station sheet): cq_type,
-// free_text, grid, tries, offset and offset_src left Settings'
-// FIELDS loop above for this sheet, so they need their own population here,
+// The Station page's fields with handlers of their own (webapp.md, Settings › Station): cq_type,
+// free_text, grid, tries, offset and offset_src are not in the
+// FIELDS loop above, so they need their own population here,
 // called from setForm() alongside it -- same call sites (boot from cache,
 // loadConfig()), same reasoning against rebuilding mid-edit. The two
 // free-typing fields (grid, free_text) skip their own reload while focused,
-// so a write triggered by some *other* sheet control (which reloads the
+// so a write triggered by some *other* control (which reloads the
 // whole config) can't clobber an edit still in progress here.
-function setStationSheetForm(cfg) {
+function setStationForm(cfg) {
   var type = parseInt(cfg.cq_type, 10) || 0;
   document.getElementById('cq_type').value = String(type);
   var showFree = type === 4 || type === 5;
@@ -1828,7 +2153,6 @@ function setStationSheetForm(cfg) {
   document.getElementById('offset_src').value =
     (cfg.offset_src !== undefined && cfg.offset_src !== null) ? String(cfg.offset_src) : '0';
   document.getElementById('sheetSendsText').textContent = cqSendsText();
-  document.getElementById('sheetCall').textContent = cfg.call || '—';
   renderActRefs(cfg);
 }
 
@@ -1874,7 +2198,7 @@ document.getElementById('actRefAddBtn').onclick = function () {
   var ref = input.value.trim().toUpperCase();
   if (!ref) return;
   if (ref.indexOf(',') >= 0 || ref.indexOf(':') >= 0) {
-    alert('A reference can\'t contain "," or ":".');
+    failMsg('A reference can\'t contain "," or ":".');
     return;
   }
   var program = ref.indexOf('/') >= 0 ? 'SOTA' : 'POTA';
@@ -1886,7 +2210,7 @@ document.getElementById('actRefAddBtn').onclick = function () {
 };
 
 // Each control below writes its own key the moment it changes (webapp.md,
-// The Station sheet) -- no Save button for this sheet. putConfigLine()
+// Settings › Station) -- no Save button. putConfigLine()
 // reloads the whole station on success or failure either way, which is what
 // brings every field here (and the CQ row's Sends text, and the radio bar)
 // back in sync with what the station actually holds.
@@ -1916,7 +2240,7 @@ function holdRepeat(btn, fn) {
 }
 
 function sheetPutLine(line, busyMsg) {
-  putConfigLine(line, busyMsg, true).catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
+  putConfigLine(line, busyMsg, false).catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
 }
 document.getElementById('cq_type').onchange = function () {
   sheetPutLine('cq_type=' + this.value, 'Setting CQ type…');
@@ -1924,19 +2248,18 @@ document.getElementById('cq_type').onchange = function () {
 document.getElementById('free_text').onchange = function () {
   sheetPutLine('free_text=' + this.value, 'Setting CQ text…');
 };
-// Malformed input is refused client-side, in a dialog, same as the drawer's
-// frequency row (webapp.md, Band and frequency) -- station_parse() would otherwise
+// Malformed input is refused client-side, in a toast -- station_parse() would otherwise
 // just silently keep the old grid (StationKey::Grid in
 // components/station/station.cpp) and report the write as ok anyway.
 document.getElementById('grid').onchange = function () {
   var v = this.value.trim();
   if (v && !gridFormatOk(v)) {
-    alert('Not a valid grid: "' + v + '". A grid is 4, 6 or 8 characters, e.g. FN20 or FN20aa.');
+    failMsg('Not a valid grid: "' + v + '". A grid is 4, 6 or 8 characters, e.g. FN20 or FN20aa.');
     return;
   }
   sheetPutLine('grid=' + v, 'Setting grid…');
 };
-// The Station sheet's Tries: the same control as a queue row's count
+// Settings › Station's Tries: the same control as a queue row's count
 // (holdRepeat()). A step changes the number at once; the write goes out once
 // the steps settle, and a refusal reloads the number.
 var SHEET_TRIES_MAX = 20; // autoseq.h AUTOSEQ_TRIES_MAX_QSO
@@ -1965,8 +2288,8 @@ document.getElementById('offset_src').onchange = function () {
 
 // Settings has no Save button: each field writes its own key the moment it
 // changes (blur or Enter for text, a pick for a menu, a tick for a band), one
-// putConfigLine() PUT like the Station sheet's. A refusal shows its reason on
-// the status line and reloads the field to what the station still holds.
+// putConfigLine() PUT. A refusal shows its reason in
+// a toast and reloads the field to what the station still holds.
 // The sidekick's own network keeps its Save (its write restarts the AP).
 FIELDS.forEach(function (k) {
   document.getElementById(k).onchange = function () {
@@ -1977,6 +2300,7 @@ FIELDS.forEach(function (k) {
       .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
   };
 });
+document.getElementById('amp').addEventListener('change', syncAmpDetail);
 document.getElementById('bandList').addEventListener('change', function (e) {
   if (!e.target.classList.contains('bandactive')) return;
   var active = [];
@@ -2275,7 +2599,7 @@ function radioBarState(chip, hud, ctx) {
   // restart causes on the way.
   if (ctx.updating) {
     return { state: 'updating', tone: 'amber', main: 'Updating firmware',
-             sub: 'Progress in Settings \u203a Updates', glyph: '\u2026', label: 'Radio \u203a', stop: '' };
+             sub: 'Progress in Settings \u203a Software update', glyph: '\u2026', label: 'Radio \u203a', stop: '' };
   }
   // No answer from the sidekick or the main board for LINK_LOST_MS: nothing below can be trusted.
   if (ctx.linkLost) {
@@ -2493,7 +2817,7 @@ async function readRadioBack() {
   if (!MicroFT8Pairing.getToken()) return;
   try {
     var r = await MicroFT8Pairing.authFetch('/api/radio/read', { method: 'POST' });
-    if (r.ok) setTimeout(function () { loadConfig(true); }, 400);
+    if (r.ok) setTimeout(function () { loadConfig(); }, 400);
   } catch (e) { /* the drawer keeps its last reading */ }
 }
 
@@ -2501,11 +2825,11 @@ async function readRadioBack() {
 // TX PTT +5V, TX PTT grounded, RX PTT +5V, RX PTT grounded) against how the amp is keyed (amp_ptt:
 // 1 grounded, 2 +5V), on each active band the radio has. The keying output alone on: either TX
 // output on with it would key the amp from both, and an RX one keys it on receive. Returns
-// {state: 'off' | 'unread' | 'ok' | 'bad', lines}: off when amp_ptt is not set, unread before the
-// main board has read this radio's settings.
+// {state: 'off' | 'unread' | 'ok' | 'bad', lines}: off with the amplifier switch Off (amp) or
+// amp_ptt not set, unread before the main board has read this radio's settings.
 function ampPttCheck(cfg) {
   var mode = parseInt(cfg.amp_ptt, 10);
-  if (mode !== 1 && mode !== 2) return { state: 'off', lines: [] };
+  if (String(cfg.amp) !== '1' || (mode !== 1 && mode !== 2)) return { state: 'off', lines: [] };
   if (cfg.radio_bands === undefined || cfg.radio_ptt === undefined) return { state: 'unread', lines: [] };
   var NAMES = ['TX PTT +5V', 'TX PTT grounded', 'RX PTT +5V', 'RX PTT grounded'];
   var want = mode === 1 ? '0100' : '1000';
@@ -2883,7 +3207,7 @@ document.getElementById('tokInput').value = MicroFT8Pairing.getToken();
 // and no POST, which reads as a dead button.
 var netRehydrateArmed = false;
 document.getElementById('netRehydrate').onclick = async function () {
-  var msg = document.getElementById('netMsg');
+  var msg = document.getElementById('resetMsg');
   if (!MicroFT8Pairing.getToken()) {
     netRehydrateArmed = false;
     msg.textContent = 'Press the sidekick button to pair first.';
@@ -2921,7 +3245,7 @@ document.getElementById('netRehydrate').onclick = async function () {
 // leaving both units as they were. On success it answers and then restarts, so a failed fetch
 // right after the 200 is the reset happening, not an error.
 document.getElementById('netFactory').onclick = async function () {
-  var msg = document.getElementById('netMsg');
+  var msg = document.getElementById('resetMsg');
   if (!MicroFT8Pairing.getToken()) {
     msg.textContent = 'Press the sidekick button to pair first.';
     MicroFT8Pairing.needsReauth();
@@ -2995,6 +3319,7 @@ function waitForSetupPage(opts) {
   var startedAt = Date.now();
   var GIVE_UP_MS = 90000;
   document.getElementById('netMsg').textContent = '';
+  document.getElementById('resetMsg').textContent = '';
   document.getElementById('resetWaitOk').hidden = true;
   box.classList.remove('done');
   title.textContent = opts.title || 'Resetting the sidekick';
@@ -3032,15 +3357,14 @@ function waitForSetupPage(opts) {
 // picking a band applies immediately and never touches any other field.
 // Resolves true when the station took every line. A refusal can still mean
 // "saved, but" (a band or frequency the radio could not reach), so the form
-// is re-read either way. alertOnFail: the drawer's actions also show a refusal
-// in a dialog, since the operator is looking at the drawer, not the status line.
+// is re-read either way. alertOnFail: the drawer's actions show a refusal in a
+// dialog; Settings' show it in a toast.
 async function putConfigLine(line, busyMsg, alertOnFail) {
   if (!MicroFT8Pairing.getToken()) {
     failMsg('Press the sidekick button to pair first.');
     MicroFT8Pairing.needsReauth();
     return false;
   }
-  setMsg(busyMsg);
   var r = await MicroFT8Pairing.authFetch('/api/config', {
     method: 'PUT',
     headers: { 'Content-Type': 'text/plain' },
@@ -3054,20 +3378,18 @@ async function putConfigLine(line, busyMsg, alertOnFail) {
   var j = await r.json().catch(function () { return {}; });
   if (!r.ok || j.ok === false) {
     var why = actionName(busyMsg) + ' failed: ' + (j.why || r.status);
-    await loadConfig(true).catch(function () { /* loadConfig reports it */ });
-    setMsg(why);
+    await loadConfig().catch(function () { /* loadConfig reports it */ });
     if (alertOnFail) alert(why);
+    else failMsg(why);
     return false;
   }
-  await loadConfig(true);
-  setMsg(actionName(busyMsg) + ' ok.');
+  await loadConfig();
   return true;
 }
 
-// Auth'd POST without radioPost()'s status-message/loadConfig() ceremony --
-// changeBand() below fires several of these together and wants one combined
-// status line and one final config reload at the end, not one of each per
-// call.
+// Auth'd POST without radioPost()'s failure toast and loadConfig() --
+// changeBand() below fires several of these together and wants one final
+// config reload at the end, not one per call.
 async function authPostQuiet(path, body) {
   if (!MicroFT8Pairing.getToken()) return false;
   var opts = { method: 'POST' };
@@ -3146,7 +3468,6 @@ function changeBand(idx) {
   if (!confirmRetune('Change band')) return false;
   freqDirty = false;
   var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + band.i;
-  setMsg('Changing band…');
   cancelQsosAndTx().then(function () {
     return putConfigLine(key + '=' + std + '\nband_sel=' + band.i, 'Changing band…', true);
   }).catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
@@ -3171,7 +3492,6 @@ function setOperatingBandFreq(khz) {
   var stopping = retuneEnds().length > 0;
   if (!confirmRetune('Change frequency')) return false;
   var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + idx;
-  setMsg('Setting frequency…');
   (stopping ? cancelQsosAndTx() : Promise.resolve()).then(function () {
     return putConfigLine(key + '=' + khz, 'Setting frequency…', true);
   }).then(refreshFreqInput)
@@ -3199,23 +3519,21 @@ function switchToBandWithFreq(band, khz) {
     return false;
   }
   var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + band.i;
-  setMsg('Changing band…');
   cancelQsosAndTx().then(function () {
     return putConfigLine(key + '=' + khz + '\nband_sel=' + band.i, 'Changing band…', true);
   }).catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
   return true;
 }
 
-// The drawer's status line ends in Station ›, the Station sheet (webapp.md,
-// The Station sheet).
-document.getElementById('opStationBtn').onclick = openStationSheet;
+// The drawer's status line ends in Station ›, Settings' Station page (webapp.md,
+// Settings › Station).
+document.getElementById('opStationBtn').onclick = openStationPage;
 
 // A typed value under 1000 is MHz, otherwise kHz, kept to 0.1 kHz (the
 // station file already stores tenths).
 // A refusal shows in a dialog, where the operator is looking, and the drawer
 // stays open with the typed value to fix (operator feedback 2026-09-28).
 function refuseDockFreq(why) {
-  setMsg(why);
   alert(why);
 }
 function applyDockFreqInput() {
@@ -3235,7 +3553,7 @@ function applyDockFreqInput() {
   var parsed = parseActiveBands(lastCfg.active_bands);
   if (parsed.any && !parsed.want[band.n]) {
     refuseDockFreq(khzToMhzLabel(khz) + ' MHz is on ' + band.name +
-                   ', which is not an active band. Add it in Settings > Bands.');
+                   ', which is not an active band. Add it in Settings > Radio & bands.');
     return;
   }
   var curIdx = parseInt(lastCfg.band_sel, 10);
@@ -3283,11 +3601,8 @@ function nudgeDockFreq(deltaKhz) {
 document.getElementById('opFreqDown').onclick = function () { nudgeDockFreq(-1); };
 document.getElementById('opFreqUp').onclick = function () { nudgeDockFreq(1); };
 
-// quiet: a reload after an action, whose own result message must stay on
-// screen; only a failure is reported. Otherwise (boot, pairing) progress and
-// the field count are shown.
-async function loadConfig(quiet) {
-  if (!quiet) setMsg('Loading config from the main board…');
+// Only a failure is reported, as a toast.
+async function loadConfig() {
   var ac = new AbortController();
   var timer = setTimeout(function () { ac.abort(); }, 8000);
   try {
@@ -3318,10 +3633,6 @@ async function loadConfig(quiet) {
       failMsg('The main board returned an empty config — is Port A linked?');
       return;
     }
-    if (quiet) return;
-    setMsg(MicroFT8Pairing.getToken()
-      ? ('Loaded ' + n + ' fields from the main board')
-      : 'Loaded from the main board — press the sidekick button to pair before saving');
   } catch (e) {
     clearTimeout(timer);
     setMainBoardLive(false);
@@ -3363,15 +3674,17 @@ async function pollLiveStatus() {
 
 // ---- geolocation handoff (operator-requested 2026-09-23) ----
 // geo_handoff.js leaves for geo.html only once the host answers, and returns
-// to #stationsheet with ?lat=&lon=, which handleGeoReturn() below reads.
+// to #station with ?lat=&lon=, which handleGeoReturn() below reads.
 document.getElementById('gridLocateBtn').onclick = function () {
-  MicroFT8Geo.handoff(location.origin + location.pathname + '#stationsheet', setMsg,
+  // Its progress and its refusal go under the Grid field, beside the button that was tapped.
+  MicroFT8Geo.handoff(location.origin + location.pathname + '#station',
+    function (t) { document.getElementById('gridHint').textContent = t; },
     'No internet right now, so GPS cannot be read. Type the grid instead.');
 };
 
 // Called after loadConfig() resolves, near the bottom of this script --
 // needs a real lastCfg.grid to compare against, which applyHashRoute()'s
-// own #stationsheet branch (run at boot, before loadConfig()) doesn't have
+// own #station branch (run at boot, before loadConfig()) doesn't have
 // yet. A no-op on every ordinary page load, which never carries these params.
 function handleGeoReturn() {
   var params = new URLSearchParams(location.search);
@@ -3447,7 +3760,6 @@ async function radioPost(path, body, busyMsg) {
     MicroFT8Pairing.needsReauth();
     return false;
   }
-  setMsg(busyMsg);
   var opts = { method: 'POST' };
   if (body !== undefined) opts.body = body;
   var r = await MicroFT8Pairing.authFetch(path, opts);
@@ -3461,8 +3773,7 @@ async function radioPost(path, body, busyMsg) {
     failMsg(actionName(busyMsg) + ' failed: ' + (j.why || r.status));
     return false;
   }
-  await loadConfig(true);
-  setMsg(actionName(busyMsg) + ' ok.');
+  await loadConfig();
   return true;
 }
 
@@ -3958,7 +4269,7 @@ holdRepeat(document.getElementById('triesUp'), function () { stepTries(1); });
 document.getElementById('triesEnd').onclick = function () {
   if (triesEdit) sendTries(triesEdit.useDefault ? 0 : triesEdit.draft);
 };
-// Back on the Station sheet's Tries. A default at or below the tries already
+// Back on Settings › Station's Tries. A default at or below the tries already
 // sent would end the entry, so that waits for End it like a step down does.
 document.getElementById('triesDefault').onclick = function () {
   if (!triesEdit || !queue[triesEdit.id]) return;
@@ -3972,10 +4283,10 @@ document.getElementById('triesDefault').onclick = function () {
 };
 document.getElementById('triesEditDone').onclick = closeTriesEdit;
 
-// The CQ text and Settings > both open the Station sheet (webapp.md, The
-// Station sheet), where Calling CQ (Sends preview, type, grid) now lives.
-document.getElementById('cqSendsText').onclick = openStationSheet;
-document.getElementById('cqSettingsBtn').onclick = openStationSheet;
+// The CQ text and the gear both open Settings' Station page (webapp.md,
+// Settings › Station), where Calling CQ (Sends preview, type) lives.
+document.getElementById('cqSendsText').onclick = openStationPage;
+document.getElementById('cqSettingsBtn').onclick = openStationPage;
 
 // ===================== Operate: TX HUD =====================
 // The TX HUD (porta_p4_tx_hud_tick() in poe_p4/main/porta_host.cpp):
@@ -4753,7 +5064,6 @@ function fmtSlotTime(slot) {
 function tryReply(id) {
   var why = replyTooOld(id) || replyFrequencyMismatch(id);
   if (why) {
-    setMsg(why);
     alert(why);
     return;
   }
@@ -5680,7 +5990,6 @@ var PSKR_NOTE = { connecting: 'connecting…', listening: 'listening', offline: 
                   unreachable: 'can’t reach PSKReporter', refused: 'PSKReporter refused the connection' };
 function pskrListOpen() { return document.getElementById('pskrList').classList.contains('open'); }
 function openPskrList() {
-  closeStationSheet();
   document.getElementById('pskrList').classList.add('open');
   PskrLive.tick(); // draws the rows now that the list is open
 }
@@ -6210,7 +6519,7 @@ async function downloadDayAdif(file, linkEl) {
       await downloadDayNfer(rows, dateStr);
     }
   } catch (e) {
-    setMsg(String(e && e.message ? e.message : e));
+    failMsg(String(e && e.message ? e.message : e));
   } finally {
     linkEl.textContent = origText;
   }
@@ -6264,7 +6573,7 @@ async function downloadAllAdif(linkEl) {
     }
     triggerAdifDownload('micro-ft8-log', 'ADIF EXPORT\n<eoh>\n' + parts.join(''));
   } catch (e) {
-    setMsg(String(e && e.message ? e.message : e));
+    failMsg(String(e && e.message ? e.message : e));
   } finally {
     linkEl.textContent = origText;
   }
@@ -6280,7 +6589,6 @@ async function clearAllAdif() {
     return;
   }
   if (!window.confirm('Delete all ADI log files on the radio?')) return;
-  setMsg('Clearing ADI files…');
   try {
     var r = await MicroFT8Pairing.authFetch('/api/log/files', { method: 'DELETE' });
     if (r.status === 401) {
@@ -6309,10 +6617,9 @@ async function clearAllAdif() {
     document.getElementById('logList').innerHTML =
       '<p style="padding:0 1rem;color:GrayText">Loading…</p>';
     document.getElementById('logMore').hidden = false;
-    setMsg('ADI files cleared.');
     await loadMoreLog();
   } catch (e) {
-    setMsg(String(e && e.message ? e.message : e));
+    failMsg(String(e && e.message ? e.message : e));
   }
 }
 
@@ -6466,7 +6773,6 @@ function paired() { return !!MicroFT8Pairing.getToken(); }
 MicroFT8Pairing.boot({
   onPaired: function () {
     enableWrites(true);
-    setMsg('Paired');
     renderRadioBar();
     autoSyncClock();
   }
@@ -6475,21 +6781,21 @@ if (paired()) autoSyncClock();
 
 // Deep links: #network (from status.html's old / -> now a 303 to here, and
 // any other "take me to network settings" link) opens Settings straight to
-// the Network section; #tools (docs/architecture/webapp.md (Tools)) switches straight to the Tools
-// tab; #stationsheet (operator-requested 2026-09-23, the geolocation
-// handoff's own return route -- see handleGeoReturn() below) opens the
-// Station sheet, where Grid now lives (webapp.md, The Station sheet). All
+// its Network page; #tools (docs/architecture/webapp.md (Tools)) switches straight to the Tools
+// tab; #station (operator-requested 2026-09-23, the geolocation
+// handoff's own return route -- see handleGeoReturn() below) opens
+// Settings' Station page, where Grid lives (webapp.md, Settings › Station). All
 // three run once at boot and again on hashchange, so a link clicked while
 // the app is already open (not just a fresh load) still routes.
 function applyHashRoute() {
   if (location.hash === '#network') {
     openSettings();
-    var netSection = document.getElementById('netSection');
-    if (netSection) netSection.scrollIntoView();
+    showSetPage('network');
   } else if (location.hash === '#tools') {
     showView('tools');
-  } else if (location.hash === '#stationsheet') {
-    openStationSheet();
+  } else if (location.hash === '#station') {
+    openSettings();
+    showSetPage('station');
     // Not handleGeoReturn() here -- this runs at boot, before loadConfig()
     // (below) has populated lastCfg.grid, and that comparison needs the
     // real value, not the empty {} lastCfg starts as. Chained onto
@@ -6580,9 +6886,9 @@ if (Object.keys(lastCfg).length) {
 
 // .catch() before .then(), not after -- handleGeoReturn() must run whether
 // loadConfig() resolved or rejected (a stale/unlinked main board shouldn't silently
-// drop a pending GPS handoff), and loadConfig() already called setMsg() with
+// drop a pending GPS handoff), and loadConfig() already called failMsg() with
 // the failure reason before rejecting, so nothing here needs to repeat it.
-loadConfig().catch(function () { /* setMsg already */ }).then(handleGeoReturn);
+loadConfig().catch(function () { /* failMsg already */ }).then(handleGeoReturn);
 computeAppVersion();
 renderCountdown();
 renderCqRow();

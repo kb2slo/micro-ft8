@@ -77,6 +77,7 @@ static void seed_config(const TestData& td)
     g_cfg["tries"] = std::to_string(td.config.tries);
     g_cfg["offset"] = "1500";
     g_cfg["offset_src"] = "0";
+    g_cfg["amp"] = "0";
     g_cfg["tx_min_delay_ms"] = "50";
     g_cfg["amp_swr_guard"] = "0";
     g_cfg["amp_ptt"] = "0";

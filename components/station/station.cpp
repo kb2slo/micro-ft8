@@ -190,6 +190,7 @@ enum class StationKey {
     Call,
     Grid,
     Comment1,
+    Amp,
     AmpSwrGuard,
     AmpPtt,
     RxFt4,
@@ -216,6 +217,7 @@ StationKey key_from_name(const std::string& name)
     if (name == "call") return StationKey::Call;
     if (name == "grid") return StationKey::Grid;
     if (name == "comment1") return StationKey::Comment1;
+    if (name == "amp") return StationKey::Amp;
     if (name == "amp_swr_guard") return StationKey::AmpSwrGuard;
     if (name == "amp_ptt") return StationKey::AmpPtt;
     if (name == "rx_ft4") return StationKey::RxFt4;
@@ -283,6 +285,11 @@ void apply_key(StationSettings* io, StationKey key, const std::string& value)
         }
         case StationKey::Comment1:
             io->comment1 = trim_copy(value);
+            break;
+        case StationKey::Amp:
+            if (sscanf(value.c_str(), "%d", &val) == 1) {
+                io->amp = (val != 0);
+            }
             break;
         case StationKey::AmpSwrGuard:
             if (sscanf(value.c_str(), "%d", &val) == 1) {
@@ -450,6 +457,7 @@ std::string station_serialize(const StationSettings& in)
     put_str(out, "comment1", in.comment1);
     put_str(out, "active_bands", in.active_bands);
     put_int(out, "tries", in.tries);
+    put_int(out, "amp", in.amp ? 1 : 0);
     put_int(out, "tx_min_delay_ms", in.tx_min_delay_ms);
     put_int(out, "amp_swr_guard", in.amp_swr_guard ? 1 : 0);
     put_int(out, "amp_ptt", in.amp_ptt);
@@ -460,6 +468,21 @@ std::string station_serialize(const StationSettings& in)
     }
     put_str(out, "act_refs", in.act_refs);
     return out;
+}
+
+int station_tx_min_delay_ms(const StationSettings& s)
+{
+    return s.amp ? s.tx_min_delay_ms : kStationTxMinDelayDefaultMs;
+}
+
+bool station_amp_swr_guard(const StationSettings& s)
+{
+    return s.amp && s.amp_swr_guard;
+}
+
+bool station_amp_prime_on_band_change(const StationSettings& s)
+{
+    return s.amp && s.amp_prime_on_band_change;
 }
 
 bool act_refs_prefer_sota(const std::string& act_refs)
