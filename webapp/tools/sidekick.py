@@ -14,6 +14,7 @@ build output.
 
 from __future__ import annotations
 
+from http.client import HTTPException
 import json
 import socket
 import stat
@@ -127,6 +128,10 @@ def http(
         return e.code, e.read()
     except urllib.error.URLError as e:
         raise SidekickError(f"{method} {full}: {e.reason}") from e
+    except (OSError, HTTPException) as e:
+        # urllib wraps only a failure to connect. A timeout while the reply is read, or a reply cut off
+        # by the sidekick restarting, arrives bare (TimeoutError, ConnectionResetError, IncompleteRead).
+        raise SidekickError(f"{method} {full}: {e or type(e).__name__}") from e
 
 
 def load_token() -> Optional[str]:
