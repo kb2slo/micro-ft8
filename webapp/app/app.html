@@ -1463,8 +1463,6 @@ var fwMine = null;          // the plan this page started: {steps} (so it can na
 var fwPolling = false;
 var fwSheetMode = '';       // '', 'review', 'progress' or 'result'
 
-function fwUpdating() { return fwPolling; }
-
 async function checkFwUpdates() {
   if (document.visibilityState !== 'visible' || fwPolling) return;
   // An update started from another phone: show its progress here too.
@@ -1831,7 +1829,7 @@ document.querySelectorAll('#view-settings .setback').forEach(function (b) {
 // (names), rxFt4, amp (the amplifier switch), ampPtt (0 not checked, 1 grounded, 2 +5V), ampBad (the PTT check found a band
 // wrong), txDelay, netMode ('station' | 'ap' | other), netName, netIp, paired, fwBoards (labels
 // of the boards with an update), fwChecked (a manifest was read), fwNoNet (it could not be),
-// fwBusy (an update is running), appStale, units ('km' | 'mi'), theme.
+// appStale, units ('km' | 'mi'), theme.
 function settingsMenuModel(s) {
   var m = {};
   var row = function (text, tone, glyph) { return { text: text, tone: tone || '', glyph: glyph || '' }; };
@@ -1848,8 +1846,7 @@ function settingsMenuModel(s) {
   m.network = row(net || 'WiFi and the sidekick\'s own network');
   m.pairing = s.paired ? row('This browser is paired', '', '\u2713')
                        : row('Not paired · press the sidekick\'s button', 'amber', '!');
-  if (s.fwBusy) m.update = row('Updating firmware', 'amber', '\u2026');
-  else if (s.fwBoards && s.fwBoards.length) m.update = row('Update available · ' + s.fwBoards.join(', '), 'amber', '!');
+  if (s.fwBoards && s.fwBoards.length) m.update = row('Update available · ' + s.fwBoards.join(', '), 'amber', '!');
   else if (s.appStale) m.update = row('A newer app is available · reload', 'amber', '!');
   else if (s.fwChecked) m.update = row('No updates', '', '\u2713');
   else m.update = row(s.fwNoNet ? 'Cannot be checked from here' : 'Not checked yet');
@@ -1882,7 +1879,7 @@ function renderSettingsMenu() {
     netIp: cfg.sk_ip || '',
     paired: paired(),
     fwBoards: plan.steps.map(function (o) { return o.label; }),
-    fwChecked: !!fwManifest, fwNoNet: fwManifestErr, fwBusy: fwUpdating(),
+    fwChecked: !!fwManifest, fwNoNet: fwManifestErr,
     appStale: appIsStale,
     units: distUnit, theme: themePref
   });
@@ -2560,7 +2557,8 @@ function fmtHzMHz(hz) { return (hz / 1e6).toFixed(4).replace(/0+$/, '').replace(
 // chip: radioChipState()'s answer. hud: the last TX HUD event, or null. ctx: {tune (Tune is on),
 // ourCq (txIsOurCq()), band, freq ("14.074"), radio ("QMX"), swrTrips (tripped transmissions in a
 // row, noteTxHud()), act (" · 3 refs · 0000Z 3h12m" or ''), wantMHz (the drift's reading),
-// linkLost (linkLost()), unpaired (!paired()), updating (fwUpdating())}.
+// linkLost (linkLost()), unpaired (!paired())}. A firmware update has no state here: the page following one
+// shows its progress sheet over every tab, the bar included (webapp.md, Settings › Software update).
 // Returns {state, tone: 'red'|'amber'|'grey'|'quiet', main, sub, glyph, label, stop}; stop is the
 // Stop button's text, '' when there is nothing on the air to stop.
 function radioBarState(chip, hud, ctx) {
@@ -2594,12 +2592,6 @@ function radioBarState(chip, hud, ctx) {
     return { state: 'notkeyed', tone: 'amber', main: 'Not keyed',
              sub: 'Not counted: ' + (hud.reason || 'could not key') + (hud.x ? ' · ' + hud.x : ''),
              glyph: '!', label: 'Radio ›', stop: '' };
-  }
-  // This page is following a firmware update: planned, so it outranks the lost contact a board's
-  // restart causes on the way.
-  if (ctx.updating) {
-    return { state: 'updating', tone: 'amber', main: 'Updating firmware',
-             sub: 'Progress in Settings \u203a Software update', glyph: '\u2026', label: 'Radio \u203a', stop: '' };
   }
   // No answer from the sidekick or the main board for LINK_LOST_MS: nothing below can be trusted.
   if (ctx.linkLost) {
@@ -2719,7 +2711,7 @@ function renderRadioBar() {
     band: operatingBandName(cfg),
     freq: khz != null ? khzToMhzLabel(khz) : '', radio: radioNameOf(), swrTrips: swrTrack.count,
     act: refs.length ? ' · ' + refs.length + (refs.length === 1 ? ' ref' : ' refs') + ' · 0000Z ' + utcDayLeft(Date.now()) : '',
-    wantMHz: rs ? fmtHzMHz(rs.hz) : '', linkLost: linkLost(), unpaired: !paired(), updating: fwUpdating()
+    wantMHz: rs ? fmtHzMHz(rs.hz) : '', linkLost: linkLost(), unpaired: !paired()
   });
   document.getElementById('tabUnpaired').hidden = paired();
   var bar = document.getElementById('opRadioBar');

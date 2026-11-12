@@ -110,13 +110,6 @@ assert.strictEqual(s.tone, 'amber');
 assert.strictEqual(s.sub, 'Not paired · press the sidekick’s button');
 assert.strictEqual(bar('ready', null, { unpaired: true, linkLost: true }).state, 'nolink');
 
-// A firmware update this page is following: planned, so it outranks the lost contact a board's
-// restart causes and any radio problem (the radio is off for it).
-s = bar('none', null, { updating: true });
-assert.deepStrictEqual([s.state, s.tone, s.main, s.sub, s.stop], ['updating', 'amber', 'Updating firmware', 'Progress in Settings › Software update', '']);
-assert.strictEqual(bar('ready', null, { updating: true, linkLost: true }).state, 'updating');
-assert.strictEqual(bar('none', null, { updating: true, unpaired: true }).state, 'updating');
-assert.strictEqual(bar('ready', tx(), { updating: true }).state, 'tx');
 assert.strictEqual(bar('ready', tx(), { unpaired: true }).state, 'tx');
 
 // 2. A transmission that did not go outranks a radio problem, and offers no Stop.

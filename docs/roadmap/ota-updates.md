@@ -44,7 +44,7 @@ Still open for [hstv](#hstv):
 Built: the plan, the pairing rule, Review, Progress and Result are in [webapp.md](../architecture/webapp.md), **Settings › Updates**. Where the app as it now is made the sketch here wrong, the build follows the app:
 
 * **No "Update available" line on Operate.** The line it was to sit in is gone, and Operate has no banners (operator decision 2026-10-25). The Settings tab's dot is the notice.
-* **No banners to suppress.** The lost-contact state is the radio bar's, which reads **Updating firmware** instead on a phone following one; there is no device-reset banner.
+* **No banners to suppress.** The lost-contact state is the radio bar's, and the progress sheet covers it on a phone following an update; there is no device-reset banner.
 * **No time left** on the transfer step, only a percentage.
 
 ## Children
