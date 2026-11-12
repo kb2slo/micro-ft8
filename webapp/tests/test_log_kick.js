@@ -52,11 +52,14 @@ async function overlap() {
     checkForNewDayFiles: async () => {},
     appendLogRows: (file, rows) => { box.rows.push(...rows); },
     fetch: () => { fetches++; return new Promise((res) => { release = res; }); },
-    setTimeout: (fn) => { timers.push(fn); },
+    // The read's own timeout (logFetchJson(), test_log_timeout.js) is not this test's: only the re-run is kept.
+    setTimeout: (fn, ms) => { if (!ms) timers.push(fn); },
+    clearTimeout: () => {},
+    AbortController, LOG_FETCH_TIMEOUT_MS: 10000,
     encodeURIComponent,
   };
   vm.createContext(box);
-  vm.runInContext(extractFunction(src, 'refreshLogHead'), box);
+  vm.runInContext(extractFunction(src, 'logFetchJson') + '\n' + extractFunction(src, 'refreshLogHead'), box);
   const first = box.refreshLogHead();
   await new Promise((r) => setImmediate(r));
   assert.strictEqual(fetches, 1, 'the first refresh reads today\'s file');
