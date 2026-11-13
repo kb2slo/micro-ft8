@@ -113,6 +113,23 @@ static void set_got(uint32_t got)
     unlock();
 }
 
+// The main board holds transmit off while an update runs (host_link_update_mode()). When it
+// was last told so; said again by hold_refresh() as the update goes on.
+static volatile uint32_t s_hold_said_ms;
+
+static void hold(bool on)
+{
+    s_hold_said_ms = now_ms();
+    host_link_update_mode(on);
+}
+
+static void hold_refresh(void)
+{
+    if (fw_hold_refresh_due(now_ms(), s_hold_said_ms)) {
+        hold(true);
+    }
+}
+
 static void fail(const char *why, int detail)
 {
     ESP_LOGW(TAG, "update failed: %s (%d)", why, detail);
@@ -124,6 +141,7 @@ static void fail(const char *why, int detail)
     s_st.why = why;
     s_st.detail = detail;
     unlock();
+    hold(false);  // the update is over: the station may transmit again
 }
 
 static bool running_pending_verify(void)
@@ -286,6 +304,7 @@ static bool download_into(const fw_request_t *req, sink_t *sink, unsigned char *
             fail("cancelled", 0);
             goto done;
         }
+        hold_refresh();
         const uint32_t want = req->size - got < DOWNLOAD_CHUNK ? req->size - got : DOWNLOAD_CHUNK;
         const int n = esp_http_client_read(client, (char *)buf, (int)want);
         if (n < 0) {
@@ -671,6 +690,7 @@ static esp_err_t post_start(httpd_req_t *req)
     if (why) {
         return refuse(req, "409 Conflict", why);
     }
+    hold(true);  // before the first byte is fetched: nothing transmits during any step
     if (xTaskCreate(update_task, "fw_update", 8192, NULL, 4, NULL) != pdPASS) {
         fail("flash", ESP_ERR_NO_MEM);
         return refuse(req, "500 Internal Server Error", "flash");
@@ -692,6 +712,30 @@ static esp_err_t post_cancel(httpd_req_t *req)
     return send_json(req, "200 OK", "{\"ok\":true}");
 }
 
+// POST /api/fw/hold, body "on" or "off": the page holds transmit off before its own step of an
+// update (the app's install, which this sidekick takes no part in starting) and gives it back
+// when there is no firmware to follow. The main board ends a hold nobody refreshes, so a page
+// that goes away mid-step strands nothing.
+static esp_err_t post_hold(httpd_req_t *req)
+{
+    char body[8] = "";
+    if (req->content_len == 0 || req->content_len >= sizeof(body) ||
+        httpd_req_recv(req, body, req->content_len) != (int)req->content_len) {
+        return refuse(req, "400 Bad Request", "body");
+    }
+    const bool on = strcmp(body, "on") == 0;
+    if (!on && strcmp(body, "off") != 0) {
+        return refuse(req, "400 Bad Request", "body");
+    }
+    lock();
+    const bool busy = state_busy(s_st.state);
+    unlock();
+    if (fw_page_hold_applies(on, busy)) {
+        hold(on);
+    }
+    return send_json(req, "200 OK", "{\"ok\":true}");
+}
+
 esp_err_t fw_update_register(httpd_handle_t server)
 {
     if (!server) {
@@ -706,6 +750,9 @@ esp_err_t fw_update_register(httpd_handle_t server)
     static const httpd_uri_t cancel = {
         .uri = "/api/fw/cancel", .method = HTTP_POST, .handler = post_cancel,
     };
+    static const httpd_uri_t hold_uri = {
+        .uri = "/api/fw/hold", .method = HTTP_POST, .handler = post_hold,
+    };
 
     const struct {
         const httpd_uri_t *uri;
@@ -714,6 +761,7 @@ esp_err_t fw_update_register(httpd_handle_t server)
         { &status, PAIRING_OPEN },
         { &start, PAIRING_REQUIRED },
         { &cancel, PAIRING_REQUIRED },
+        { &hold_uri, PAIRING_REQUIRED },
     };
     _Static_assert(sizeof(routes) / sizeof(routes[0]) == PAIRING_ROUTES_FW_UPDATE, "fw_update route count");
     for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i) {

@@ -434,3 +434,13 @@ fw_confirm_t fw_confirm_decide(uint32_t uptime_s, uint32_t beacons_sent, bool re
     }
     return uptime_s >= FW_CONFIRM_TIMEOUT_S ? FW_CONFIRM_ROLL_BACK : FW_CONFIRM_WAIT;
 }
+
+bool fw_hold_refresh_due(uint32_t now_ms, uint32_t said_ms)
+{
+    return (uint32_t)(now_ms - said_ms) >= FW_HOLD_REFRESH_MS;
+}
+
+bool fw_page_hold_applies(bool on, bool update_busy)
+{
+    return on || !update_busy;
+}

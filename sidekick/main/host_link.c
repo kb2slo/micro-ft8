@@ -1401,6 +1401,15 @@ static bool fw_exchange(const uint8_t *frame, size_t n, uint8_t type, int timeou
     }
 }
 
+void host_link_update_mode(bool on)
+{
+    uint8_t      frame[PORTA_PROTO_MAX_FRAME];
+    const size_t n = porta_proto_encode_update_mode(on, frame, sizeof(frame));
+    if (n == 0 || !porta_send(frame, n)) {
+        ESP_LOGW(TAG, "update mode %s: not sent", on ? "on" : "off");
+    }
+}
+
 bool host_link_fw_begin(const porta_fw_begin_t *begin, int timeout_ms, porta_fw_reply_t *out)
 {
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
@@ -1714,8 +1723,14 @@ static void porta_rx_task(void *arg)
                     }
                     s_host_proto = hello_proto;
                     memcpy(s_host_version, hello_version, sizeof(s_host_version));
+                    const bool first = s_host_hello_ms == 0;
                     s_host_hello_ms = now_ms() ? now_ms() : 1;
                     lock_give();
+                    // This sidekick has just started, so no update is running: one it was carrying
+                    // out when it restarted (its own, or one it lost power in) is over.
+                    if (first) {
+                        host_link_update_mode(false);
+                    }
                     continue;
                 }
                 if (porta_proto_parse_fw_reply(&frame, &fw_type, &fw_reply)) {

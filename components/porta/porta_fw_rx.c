@@ -137,3 +137,38 @@ porta_fw_confirm_t porta_fw_confirm_decide(uint32_t uptime_s, bool sidekick_hell
     }
     return uptime_s >= PORTA_FW_CONFIRM_TIMEOUT_S ? PORTA_FW_CONFIRM_ROLL_BACK : PORTA_FW_CONFIRM_WAIT;
 }
+
+porta_fw_hold_edge_t porta_fw_hold_note(porta_fw_hold_t *h, uint32_t now_ms, bool on)
+{
+    if (on) {
+        h->heard_ms = now_ms;
+        if (h->held) {
+            return PORTA_FW_HOLD_SAME;
+        }
+        h->held = true;
+        return PORTA_FW_HOLD_BEGAN;
+    }
+    if (!h->held || h->for_good) {
+        return PORTA_FW_HOLD_SAME;
+    }
+    h->held = false;
+    return PORTA_FW_HOLD_ENDED;
+}
+
+porta_fw_hold_edge_t porta_fw_hold_for_good(porta_fw_hold_t *h)
+{
+    const bool was = h->held;
+    h->held = true;
+    h->for_good = true;
+    return was ? PORTA_FW_HOLD_SAME : PORTA_FW_HOLD_BEGAN;
+}
+
+porta_fw_hold_edge_t porta_fw_hold_tick(porta_fw_hold_t *h, uint32_t now_ms)
+{
+    // Unsigned, so a tick counter that wraps still measures the gap.
+    if (!h->held || h->for_good || (uint32_t)(now_ms - h->heard_ms) < PORTA_FW_HOLD_TIMEOUT_MS) {
+        return PORTA_FW_HOLD_SAME;
+    }
+    h->held = false;
+    return PORTA_FW_HOLD_ENDED;
+}

@@ -289,6 +289,41 @@ static void test_what_end_refuses()
     }
 }
 
+// Transmit held for the length of an update (main_board.md, Firmware updates).
+static void test_hold()
+{
+    porta_fw_hold_t h = {};
+    check(porta_fw_hold_tick(&h, 5000) == PORTA_FW_HOLD_SAME && !h.held, "nothing held at boot");
+    check(porta_fw_hold_note(&h, 5000, false) == PORTA_FW_HOLD_SAME, "the sidekick's boot-time 'off' changes nothing");
+    check(porta_fw_hold_note(&h, 10000, true) == PORTA_FW_HOLD_BEGAN && h.held, "an update starts: hold");
+    check(porta_fw_hold_note(&h, 30000, true) == PORTA_FW_HOLD_SAME && h.held, "said again while it runs: still held, once");
+    check(porta_fw_hold_tick(&h, 30000 + PORTA_FW_HOLD_TIMEOUT_MS - 1) == PORTA_FW_HOLD_SAME, "just inside the timeout");
+    check(porta_fw_hold_note(&h, 100000, false) == PORTA_FW_HOLD_ENDED && !h.held, "the update failed or was cancelled: released");
+    check(porta_fw_hold_note(&h, 100001, false) == PORTA_FW_HOLD_SAME, "released once");
+
+    // The sidekick lost power mid-update: nobody says "off".
+    check(porta_fw_hold_note(&h, 200000, true) == PORTA_FW_HOLD_BEGAN, "held again");
+    check(porta_fw_hold_tick(&h, 200000 + PORTA_FW_HOLD_TIMEOUT_MS - 1) == PORTA_FW_HOLD_SAME && h.held, "waited on");
+    check(porta_fw_hold_tick(&h, 200000 + PORTA_FW_HOLD_TIMEOUT_MS) == PORTA_FW_HOLD_ENDED && !h.held, "but not for ever");
+    check(porta_fw_hold_tick(&h, 200000 + 2 * PORTA_FW_HOLD_TIMEOUT_MS) == PORTA_FW_HOLD_SAME, "ended once");
+
+    // The tick counter wraps (49 days up): the gap is still measured.
+    porta_fw_hold_t w = {};
+    check(porta_fw_hold_note(&w, 0xFFFFFF00u, true) == PORTA_FW_HOLD_BEGAN, "held just before the wrap");
+    check(porta_fw_hold_tick(&w, 0x00000100u) == PORTA_FW_HOLD_SAME && w.held, "512 ms later, across the wrap: held");
+    check(porta_fw_hold_tick(&w, 0xFFFFFF00u + PORTA_FW_HOLD_TIMEOUT_MS) == PORTA_FW_HOLD_ENDED, "the timeout across the wrap");
+
+    // The image is installed: the restart is coming, and nothing ends the hold.
+    porta_fw_hold_t g = {};
+    check(porta_fw_hold_note(&g, 1000, true) == PORTA_FW_HOLD_BEGAN, "held for a transfer");
+    check(porta_fw_hold_for_good(&g) == PORTA_FW_HOLD_SAME && g.held, "installed: already held");
+    check(porta_fw_hold_note(&g, 2000, false) == PORTA_FW_HOLD_SAME && g.held, "an 'off' does not release it");
+    check(porta_fw_hold_tick(&g, 2000 + 10 * PORTA_FW_HOLD_TIMEOUT_MS) == PORTA_FW_HOLD_SAME && g.held, "nor does time");
+    // A restart with no update heard of first (back from an image that never heard the sidekick).
+    porta_fw_hold_t r = {};
+    check(porta_fw_hold_for_good(&r) == PORTA_FW_HOLD_BEGAN && r.held, "a restart of our own holds from nothing");
+}
+
 static void test_confirm()
 {
     check(porta_fw_confirm_decide(1, false) == PORTA_FW_CONFIRM_WAIT, "just booted");
@@ -305,6 +340,7 @@ int main()
     test_lost_frames_and_resume();
     test_a_different_image_starts_over();
     test_what_end_refuses();
+    test_hold();
     test_confirm();
     if (g_fail) {
         std::printf("%d failure(s)\n", g_fail);

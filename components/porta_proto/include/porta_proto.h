@@ -111,7 +111,13 @@ extern "C" {
 // off; one left on may need switching off and on afterwards, which is all the check prevented.
 // UPDATE_MODE is ACKed whatever is attached, and only because a v15 or v16 sidekick still asks
 // before its own update. FW status 1 is no longer sent.
-#define PORTA_PROTO_VERSION 17u
+// v18 (2026-11-12): an update holds transmit off from the operator's tap to its end
+// (docs/architecture/main_board.md, Firmware updates). UPDATE_MODE keeps its bytes and means it
+// again: on, an update is running (the host stops transmitting, ends its queue and keys nothing);
+// off, it is over. The sidekick says "on" again while one runs, and the host ends a hold it has
+// not heard of for PORTA_FW_HOLD_TIMEOUT_MS. A v17 host ACKs and holds nothing; a v17 sidekick
+// never asks, and the host then holds from FW_BEGIN.
+#define PORTA_PROTO_VERSION 18u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -524,7 +530,7 @@ typedef enum {
     PORTA_ACT_QUEUE_PARITY = 0x0E,  // payload: u16 entry_id, u8 parity (the CQ only)
     PORTA_ACT_RADIO_READ   = 0x0F,  // verb only: ask the radio for its state (IF;); the answer is in the config snapshot
     PORTA_ACT_RADIO_SET_PTT = 0x10, // payload: u8 keying (1 TX PTT grounded, 2 TX PTT +5V); progress in the config snapshot
-    PORTA_ACT_UPDATE_MODE  = 0x11,  // payload: u8 on. Always ACKed; asked only by v15 and v16 sidekicks. Frozen (the v15 note)
+    PORTA_ACT_UPDATE_MODE  = 0x11,  // payload: u8 on: an update is running, or is over (the v18 note). Always ACKed. Frozen (the v15 note)
 } porta_action_verb_t;
 
 // FACTORY_RESET flags. Station settings are always reset; the QSO logs only when asked,
