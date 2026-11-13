@@ -1585,11 +1585,12 @@ async function openFwReview() {
     MicroFT8Pairing.needsReauth();
     return;
   }
-  var yes = await askConfirm({
-    title: 'Update the station?',
-    text: FwUpdates.reviewText(plan, endsSentence(retuneEnds(true))),
-    ok: 'Update',
-  });
+  // First, with anything in progress, the band change's own dialog and its ending, the same code
+  // (maintainer, 2026-11-13); then the update's own, which stops nothing.
+  var stopping = retuneEnds().length > 0;
+  if (!(await confirmRetune('Update'))) return;
+  if (stopping) await endQueueAndTx();
+  var yes = await askConfirm({ title: 'Update the station?', text: FwUpdates.reviewText(plan), ok: 'Update' });
   if (yes) runUpdate(plan);
 }
 
@@ -3555,16 +3556,15 @@ async function authPostQuiet(path, body) {
   }
 }
 
-// What moving the radio would end: queued QSOs (their partners are listening
-// on the old frequency) and a transmission on the air. Shared by a band change
-// and a frequency change, which both confirm first and then end these
-// (webapp.md, Band and frequency).
-// withCq: an update also ends a running CQ, which a retune leaves calling on the new frequency.
-function retuneEnds(withCq) {
+// What moving the radio, or updating the station, would end: a running CQ, queued QSOs (their
+// partners are listening on the old frequency) and a transmission on the air. Shared by a band
+// change, a frequency change and the update, which all confirm first and then end these with
+// endQueueAndTx() (webapp.md, Band and frequency).
+function retuneEnds() {
   var ids = Object.keys(queue);
   var calls = ids.filter(function (id) { return queue[id].dxcall !== 'CQ'; })
     .map(function (id) { return queue[id].dxcall; });
-  var cq = !!withCq && ids.some(function (id) { return queue[id].dxcall === 'CQ'; });
+  var cq = ids.some(function (id) { return queue[id].dxcall === 'CQ'; });
   return endsClauses(calls, !!(txHud && txHud.active && !txHud.aborted), cq);
 }
 // What a change ends, as clauses of one sentence ("This ends your CQ, ends your QSO with K9ABC
@@ -3633,19 +3633,14 @@ function confirmRetune(verb) {
   return askConfirm({ title: verb + '?', text: [endsSentence(ends)], ok: verb });
 }
 
-// Both /api/tx/cancel and /api/queue/cancel already exist for the TX-HUD
-// cancel button and the Queue section's own per-row cancel -- reused here
-// rather than adding a new bulk-cancel ACTION, since looping the client's
-// own already-current `queue` (kept live by the same QUEUE_ENTRY stream the
-// Queue section renders from) covers it without any wire/firmware change.
-// The CQ (dxcall "CQ") is deliberately left alone: it carries no per-band
-// state of its own (frequency is resolved from g_band_sel at the moment of
-// TX, not baked into the queue entry), so calling continues seamlessly on
-// the new band, with the tries it has left, once it's synced.
-function cancelQsosAndTx() {
+// Ends everything retuneEnds() names: the transmission on the air, and every queue entry, the CQ
+// included (maintainer, 2026-11-13: a band change ends a CQ too, so a retune and an update end the
+// same things the same way). The TX-HUD's cancel and the queue row's × already exist; looping the
+// client's own `queue` (kept live by the QUEUE_ENTRY stream) needs no wire or firmware change.
+function endQueueAndTx() {
   var stops = [authPostQuiet('/api/tx/cancel')];
   Object.keys(queue).forEach(function (id) {
-    if (queue[id].dxcall !== 'CQ') stops.push(authPostQuiet('/api/queue/cancel', id));
+    stops.push(authPostQuiet('/api/queue/cancel', id));
   });
   return Promise.all(stops);
 }
@@ -3677,7 +3672,7 @@ async function changeBand(idx) {
   if (!(await confirmRetune('Change band'))) return false;
   freqDirty = false;
   var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + band.i;
-  cancelQsosAndTx().then(function () {
+  endQueueAndTx().then(function () {
     return putConfigLine(key + '=' + std + '\nband_sel=' + band.i, 'Changing band…', true);
   }).catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
   return true;
@@ -3701,7 +3696,7 @@ async function setOperatingBandFreq(khz) {
   var stopping = retuneEnds().length > 0;
   if (!(await confirmRetune('Change frequency'))) return false;
   var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + idx;
-  (stopping ? cancelQsosAndTx() : Promise.resolve()).then(function () {
+  (stopping ? endQueueAndTx() : Promise.resolve()).then(function () {
     return putConfigLine(key + '=' + khz, 'Setting frequency…', true);
   }).then(refreshFreqInput)
     .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
@@ -3730,7 +3725,7 @@ async function switchToBandWithFreq(band, khz) {
   });
   if (!yes) return false;
   var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + band.i;
-  cancelQsosAndTx().then(function () {
+  endQueueAndTx().then(function () {
     return putConfigLine(key + '=' + khz + '\nband_sel=' + band.i, 'Changing band…', true);
   }).catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
   return true;
@@ -4613,8 +4608,7 @@ function rebuildQueueOrderFromEvents(events) {
 
 function renderQueue() {
   // The CQ is not a station -- it gets its own static row (#opCqRow,
-  // webapp.md, The CQ row) instead of one of these, the same reasoning
-  // changeBand() already uses to leave it out of the per-band queue clear.
+  // webapp.md, The CQ row) instead of one of these.
   var ids = queueOrder.filter(function (id) { return !!queue[id] && queue[id].dxcall !== 'CQ'; });
   Object.keys(queue).forEach(function (id) {
     if (queue[id].dxcall !== 'CQ' && ids.indexOf(id) < 0) ids.push(id);

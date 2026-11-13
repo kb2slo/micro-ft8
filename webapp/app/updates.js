@@ -114,12 +114,12 @@ var FwUpdates = (function () {
     ap: 'Software update needs the sidekick on WiFi with internet; it is on its own network.',
   };
 
-  // The review, before anything happens, as paragraphs. `ends` is the sentence of what stops now
-  // (app.html's endsSentence(), the band change's, with a running CQ), '' for nothing. Said once:
-  // transmitting stops until the update is done. Not said: that the station keeps receiving, since
-  // the main board decodes nothing while its image is sent (main_board.md, Firmware updates).
-  function reviewText(p, ends) {
-    var out = ['Takes ' + p.time + '. Transmitting stops until the update is done.' + (ends ? ' ' + ends : '')];
+  // The review, before anything happens, as paragraphs. What is in progress was ended already, by
+  // the band change's dialog before this one, so this stops nothing and says only that nothing
+  // transmits until the update is done. Not said: that the station keeps receiving, since the main
+  // board decodes nothing while its image is sent (main_board.md, Firmware updates).
+  function reviewText(p) {
+    var out = ['Takes ' + p.time + '. Nothing transmits until the update is done.'];
     if (p.steps.length) {
       out.push('Switch the radio off, or unplug its USB, before you update. If it stays connected it may ' +
         'need switching off and on afterwards.');

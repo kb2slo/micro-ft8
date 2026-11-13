@@ -132,16 +132,17 @@ eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, Obje
 assert(/main board/.test(U.unavailableText('no_host')) && /own network/.test(U.unavailableText('ap')));
 assert.strictEqual(U.unavailableText(''), '');
 
-// The review: says once that transmitting stops, names what ends now, asks for the radio off only
-// when firmware is in it, and never promises receiving goes on.
+// The review: says once that nothing transmits, names nothing it ends (the band change's dialog
+// before it did), asks for the radio off only when firmware is in it, and never promises receiving
+// goes on.
 pl = U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked, APP);
-let rv = U.reviewText(pl, 'This ends your CQ.');
-eq(rv[0], 'Takes about three minutes. Transmitting stops until the update is done. This ends your CQ.');
+let rv = U.reviewText(pl);
+eq(rv[0], 'Takes about three minutes. Nothing transmits until the update is done.');
 assert(/Switch the radio off/.test(rv[1]));
 eq(rv[2], 'Keep this page open until the app is installed; the rest goes on if this phone locks.');
-rv = U.reviewText(U.plan(manifest(OTA15, P4OTA), { sidekick: 'd18f9b2', main: 'd18f9b2' }, linked, APP), '');
-eq(rv, ['Takes under a minute. Transmitting stops until the update is done.', 'Keep this page open until the app is installed.']);
-rv = U.reviewText(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: 'd18f9b2' }, linked, null), '');
+rv = U.reviewText(U.plan(manifest(OTA15, P4OTA), { sidekick: 'd18f9b2', main: 'd18f9b2' }, linked, APP));
+eq(rv, ['Takes under a minute. Nothing transmits until the update is done.', 'Keep this page open until the app is installed.']);
+rv = U.reviewText(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: 'd18f9b2' }, linked, null));
 eq(rv[2], 'The update goes on if this phone locks.');
 rv.forEach((t) => assert(!/receiv|decod/i.test(t), 'no promise about receiving: ' + t));
 
