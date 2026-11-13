@@ -141,9 +141,10 @@ class Handler(SimpleHTTPRequestHandler):
         super().do_HEAD()
 
     def _proxy_download(self, path: str, head_only: bool = False) -> None:
-        # Same path rules as worker.js: single path segment after /download/
+        # Same path rules as worker.js: one name after /download/, or one under ota/
         key = unquote(path[len("/download/") :])
-        if not key or "/" in key or "\\" in key or ".." in key:
+        name = key[4:] if key.startswith("ota/") else key
+        if not name or "/" in name or "\\" in name or ".." in name:
             self.send_error(404, "Not found")
             return
         conn = http.client.HTTPSConnection(UPSTREAM_HOST, context=ssl.create_default_context())

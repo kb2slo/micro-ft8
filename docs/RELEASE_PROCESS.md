@@ -77,6 +77,7 @@ each successful `release-main`, CI also mirrors the rolling payloads to Cloudfla
 | `https://micro-ft8.kalikstein.com/download/microft8-source-continuous.tar.gz` | Source tarball |
 | `https://micro-ft8.kalikstein.com/download/microft8-getting-started-continuous.pdf` | Getting-started sheet |
 | `https://micro-ft8.kalikstein.com/download/manifest.json` | Commit, dated filenames, SHA-256; each board's `ota` entry |
+| `https://micro-ft8.kalikstein.com/download/ota/<dated OTA filename>` | Each OTA image again by its dated name, never overwritten or deleted |
 
 Human entry: [`https://micro-ft8.kalikstein.com/downloads.html`](https://micro-ft8.kalikstein.com/downloads.html).
 
@@ -97,6 +98,15 @@ OTA slot, where every image is staged. Host-tested (`tools/test_make_manifest.py
 **The stable files are replaced one at a time, the manifest last.** For the seconds between, the old manifest
 names a hash the new image does not have, so a download checked against it fails and is retried; it cannot
 install the wrong image.
+
+**An update downloads by the dated name, under `ota/`,** which no later run overwrites (`updates.js` builds the
+URL from the `ota` entry's `filename`). An update the operator accepted therefore installs that build to the
+end, its second board included, however many builds are published while it runs; the station then offers the
+newer one. The stable `-ota` names stay for people and scripts. Uploaded before the manifest, like the rest.
+**Nothing expires them:** firmware is published only when a push touches it, so the build the manifest names can
+be months old, and an age rule would delete the image every update needs. They cost about 2 MB a firmware
+push against R2's 10 GB free tier; prune by hand, never the build the manifest names. The Worker serves one
+name, or one under `ota/`, and nothing else nested.
 
 ### One-time setup
 

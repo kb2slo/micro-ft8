@@ -24,24 +24,25 @@ function manifest(ota, p4ota) {
     },
   };
 }
-const OTA = { stable: 'microft8-sidekick-continuous-ota.bin', filename: 'x.bin', size: 1005232, sha256: SHA, version: 'd18f9b2', proto: 14 };
+const OTA = { stable: 'microft8-sidekick-continuous-ota.bin', filename: '20261110-microft8-sidekick-ota-d18f9b2.bin', size: 1005232, sha256: SHA, version: 'd18f9b2', proto: 14 };
 
 // ---- offers ----
 assert.strictEqual(U.MANIFEST_URL, 'https://micro-ft8.kalikstein.com/download/manifest.json');
 const offered = plain(U.offers(manifest(OTA), { sidekick: '7e61488' }));
 assert.deepStrictEqual(offered, [{
   board: 'sidekick', label: 'Sidekick', from: '7e61488', to: 'd18f9b2', size: 1005232, sha256: SHA,
-  // Plain HTTP: the sidekick has no TLS, and the hash is what it checks.
-  url: 'http://micro-ft8.kalikstein.com/download/microft8-sidekick-continuous-ota.bin', proto: 14,
+  // Plain HTTP: the sidekick has no TLS, and the hash is what it checks. The dated name, which a
+  // later publish never overwrites, not the stable one, so a publish mid-update changes nothing.
+  url: 'http://micro-ft8.kalikstein.com/download/ota/20261110-microft8-sidekick-ota-d18f9b2.bin', proto: 14,
 }]);
 assert.deepStrictEqual(plain(U.offers(manifest(OTA), { sidekick: 'd18f9b2' })), [], 'already on the published build');
 // Both boards behind: the main board is offered first, since it is updated first.
-const P4OTA = { stable: 'microft8-poe-p4-continuous-ota.bin', filename: 'y.bin', size: 871968, sha256: SHA, version: 'd18f9b2', proto: 15 };
+const P4OTA = { stable: 'microft8-poe-p4-continuous-ota.bin', filename: '20261110-microft8-poe-p4-ota-d18f9b2.bin', size: 871968, sha256: SHA, version: 'd18f9b2', proto: 15 };
 const both = plain(U.offers(manifest(OTA, P4OTA), { sidekick: '7e61488', main: '7e61488' }));
 assert.deepStrictEqual(both.map((o) => o.board), ['main', 'sidekick']);
 assert.deepStrictEqual(both[0], {
   board: 'main', label: 'Main board', from: '7e61488', to: 'd18f9b2', size: 871968, sha256: SHA,
-  url: 'http://micro-ft8.kalikstein.com/download/microft8-poe-p4-continuous-ota.bin', proto: 15,
+  url: 'http://micro-ft8.kalikstein.com/download/ota/20261110-microft8-poe-p4-ota-d18f9b2.bin', proto: 15,
 });
 assert.deepStrictEqual(plain(U.offers(manifest(OTA, P4OTA), { sidekick: 'd18f9b2', main: '' })), [],
   'a main board that reports no version (older firmware, or not linked) is offered nothing');
@@ -54,7 +55,7 @@ assert.deepStrictEqual(plain(U.offers(null, { sidekick: '7e61488' })), []);
 assert.deepStrictEqual(plain(U.offers({}, { sidekick: '7e61488' })), []);
 // An entry the sidekick would refuse is not offered.
 [
-  { stable: '../evil.bin' }, { stable: 'a/b.bin' }, { stable: '' },
+  { filename: '../evil.bin' }, { filename: 'a/b.bin' }, { filename: '' }, { filename: '.hidden' }, { filename: undefined },
   { size: 0 }, { size: 1.5 }, { size: '1005232' },
   { sha256: SHA.toUpperCase() }, { sha256: 'abc' },
   { version: '' }, { version: 'a b' }, { version: 'a"b' }, { version: 'x'.repeat(32) },
@@ -65,7 +66,7 @@ assert.strictEqual(U.offers(manifest(Object.assign({}, OTA, { version: 'x'.repea
 
 // ---- the request: the lines fw_request_parse() reads (host_mock/test_fw_policy.cpp) ----
 assert.strictEqual(U.startBody(offered[0]),
-  'board=sidekick\nurl=http://micro-ft8.kalikstein.com/download/microft8-sidekick-continuous-ota.bin\n' +
+  'board=sidekick\nurl=http://micro-ft8.kalikstein.com/download/ota/20261110-microft8-sidekick-ota-d18f9b2.bin\n' +
   'size=1005232\nsha256=' + SHA + '\nversion=d18f9b2\n');
 
 assert.strictEqual(U.sizeText(1005232), '982 KB');

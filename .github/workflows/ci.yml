@@ -464,5 +464,10 @@ jobs:
           put microft8-getting-started-continuous.pdf dist/microft8-getting-started-continuous.pdf application/pdf
           put microft8-poe-p4-continuous-ota.bin dist/microft8-poe-p4-continuous-ota.bin application/octet-stream
           put microft8-sidekick-continuous-ota.bin dist/microft8-sidekick-continuous-ota.bin application/octet-stream
+          # Each OTA image again under its dated name, which is never overwritten: an update in the
+          # web app downloads the build the operator accepted even if another is published meanwhile.
+          # Kept, never expired: the published build can be months old (docs/RELEASE_PROCESS.md).
+          put "ota/${ASSET_P4_OTA}" "dist/${ASSET_P4_OTA}" application/octet-stream
+          put "ota/${ASSET_SK_OTA}" "dist/${ASSET_SK_OTA}" application/octet-stream
           # Last: a manifest never names an image that is not there yet.
           put manifest.json dist/manifest.json 'application/json; charset=utf-8'

@@ -8,9 +8,11 @@ var FwUpdates = (function () {
 
   // The manifest is read over HTTPS, which is what makes its hashes worth trusting. The images are
   // fetched by the sidekick, which has no TLS, so their URLs are plain HTTP on the same host
-  // (docs/architecture/system.md, The inversion).
+  // (docs/architecture/system.md, The inversion). Each is fetched by its dated name under ota/,
+  // which a later publish never overwrites, so an update installs the build the operator accepted
+  // however many are published while it runs (docs/RELEASE_PROCESS.md, Public Cloudflare mirror).
   var MANIFEST_URL = 'https://micro-ft8.kalikstein.com/download/manifest.json';
-  var IMAGE_BASE = 'http://micro-ft8.kalikstein.com/download/';
+  var IMAGE_BASE = 'http://micro-ft8.kalikstein.com/download/ota/';
 
   // board: the name the sidekick's API uses. asset: its key under the manifest's `assets`. The main
   // board is first: when both need updating it goes first, while the sidekick still speaks its
@@ -21,7 +23,7 @@ var FwUpdates = (function () {
   ];
 
   function otaOk(o) {
-    return !!o && typeof o.stable === 'string' && /^[A-Za-z0-9._-]+$/.test(o.stable) &&
+    return !!o && typeof o.filename === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(o.filename) &&
       typeof o.size === 'number' && o.size > 0 && o.size % 1 === 0 &&
       typeof o.sha256 === 'string' && /^[0-9a-f]{64}$/.test(o.sha256) &&
       typeof o.version === 'string' && /^[!#-\[\]-~]{1,31}$/.test(o.version);
@@ -40,7 +42,7 @@ var FwUpdates = (function () {
       if (!from || !otaOk(o) || o.version === from) return;
       out.push({
         board: b.board, label: b.label, from: from, to: o.version,
-        size: o.size, sha256: o.sha256, url: IMAGE_BASE + o.stable, proto: o.proto | 0,
+        size: o.size, sha256: o.sha256, url: IMAGE_BASE + o.filename, proto: o.proto | 0,
       });
     });
     return out;
