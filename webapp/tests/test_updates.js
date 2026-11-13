@@ -104,6 +104,102 @@ assert.strictEqual(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: '' }, {
 // Nothing about a radio blocks a plan: the review asks for it off, and nothing checks.
 eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, Object.assign({ radioAttached: true }, linked)).blocked, '');
 
+// ---- the app: build.json against the page's own build ----
+eq(U.buildCommit('d18f9b2 2026-11-13'), { sha: 'd18f9b2', dirty: false });
+eq(U.buildCommit('d18f9b2-dirty 2026-11-13'), { sha: 'd18f9b2', dirty: true });
+[undefined, '', 'source', '__APP_BUILD__', 'unknown', 'd18f9b2', 'D18F9B2 2026-11-13', 'd18f 2026-11-13'].forEach((b) =>
+  assert.strictEqual(U.buildCommit(b), null, String(b)));
+const PUB = { build: 'd18f9b2 2026-11-13', size: 185745 };
+assert.strictEqual(U.appOffer(PUB, 'd18f9b2 2026-11-12'), null, 'the same commit built another day is the published app');
+assert.strictEqual(U.appOffer(PUB, 'd18f9b2c 2026-11-13'), null, 'a longer short sha of the same commit');
+eq(U.appOffer(PUB, '7e61488 2026-11-10'), { board: 'app', label: 'App', from: '7e61488', to: 'd18f9b2', size: 185745 });
+eq(U.appOffer(PUB, 'd18f9b2-dirty 2026-11-13').from, 'd18f9b2-dirty', 'a dirty page is always offered the published app');
+eq(U.appOffer(PUB, '__APP_BUILD__').from, 'source', 'so is an unbuilt one');
+[null, {}, { build: 'd18f9b2 2026-11-13' }, { build: 'd18f9b2 2026-11-13', size: 0 }, { build: 'd18f9b2 2026-11-13', size: '9' },
+ { build: 'd18f9b2-dirty 2026-11-13', size: 9 }, { build: 'nope', size: 9 }].forEach((pub) =>
+  assert.strictEqual(U.appOffer(pub, '7e61488 2026-11-10'), null, JSON.stringify(pub)));
+
+// The plan with an app step: the app alone, or ahead of the firmware.
+const APP = U.appOffer(PUB, '7e61488 2026-11-10');
+pl = U.plan(manifest(OTA15, P4OTA), { sidekick: 'd18f9b2', main: 'd18f9b2' }, linked, APP);
+eq([pl.any, pl.app.to, pl.steps.length, pl.body, pl.time, pl.unavailable], [true, 'd18f9b2', 0, '', 'under a minute', '']);
+pl = U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked, APP);
+eq([pl.any, pl.steps.map((o) => o.board), pl.time], [true, ['main', 'sidekick'], 'about three minutes']);
+eq(U.plan(manifest(OTA15, P4OTA), { sidekick: 'd18f9b2', main: 'd18f9b2' }, linked, null).any, false);
+// Unavailable: no main board (the boards update together), or the sidekick on its own network.
+eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '' }, { hostLinked: false, sidekickProto: 15 }, APP).unavailable, 'no_host');
+eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, Object.assign({ ap: true }, linked), APP).unavailable, 'ap');
+assert(/main board/.test(U.unavailableText('no_host')) && /own network/.test(U.unavailableText('ap')));
+assert.strictEqual(U.unavailableText(''), '');
+
+// The review: says once that transmitting stops, names what ends now, asks for the radio off only
+// when firmware is in it, and never promises receiving goes on.
+pl = U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked, APP);
+let rv = U.reviewText(pl, 'This ends your CQ.');
+eq(rv[0], 'Takes about three minutes. Transmitting stops until the update is done. This ends your CQ.');
+assert(/Switch the radio off/.test(rv[1]));
+eq(rv[2], 'Keep this page open until the app is installed; the rest goes on if this phone locks.');
+rv = U.reviewText(U.plan(manifest(OTA15, P4OTA), { sidekick: 'd18f9b2', main: 'd18f9b2' }, linked, APP), '');
+eq(rv, ['Takes under a minute. Transmitting stops until the update is done.', 'Keep this page open until the app is installed.']);
+rv = U.reviewText(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: 'd18f9b2' }, linked, null), '');
+eq(rv[2], 'The update goes on if this phone locks.');
+rv.forEach((t) => assert(!/receiv|decod/i.test(t), 'no promise about receiving: ' + t));
+
+// ---- the app's relay, against a fake host and sidekick ----
+function relayWorld(o) {
+  o = o || {};
+  const files = { 'app.html': 'A'.repeat(10), 'updates.js': 'B'.repeat(5) };
+  const man = { api_min: 3, assets: Object.keys(files).map((p) => ({ path: p, sha256: '0'.repeat(64), size: files[p].length })) };
+  const calls = [];
+  const res = (status, body) => ({ ok: status >= 200 && status < 300, status,
+    text: async () => body || '', arrayBuffer: async () => new TextEncoder().encode(body || '').buffer });
+  const io = {
+    get: async (url) => {
+      calls.push('get ' + url);
+      if (o.offline) throw new TypeError('Load failed');
+      if (url.endsWith('/manifest.json')) return res(200, JSON.stringify(man));
+      const name = url.split('/').pop();
+      return res(200, o.grown === name ? files[name] + 'x' : files[name]);
+    },
+    begin: async (text) => { calls.push('begin'); assert.deepStrictEqual(JSON.parse(text), man, 'the manifest posted as fetched'); return o.begin || res(200); },
+    put: async (path, bytes) => { calls.push('put ' + path + ' ' + bytes.byteLength); return o.put || res(200); },
+    commit: async () => { calls.push('commit'); return o.commit || res(200); },
+    progress: (done, total) => calls.push('progress ' + done + '/' + total),
+  };
+  return { io, calls, res };
+}
+(async function () {
+  let w = relayWorld();
+  eq(await U.relayApp('https://h.example/app/', w.io), { ok: true });
+  eq(w.calls, ['get https://h.example/app/manifest.json', 'begin', 'progress 0/15',
+    'get https://h.example/app/app.html', 'put app.html 10', 'progress 10/15',
+    'get https://h.example/app/updates.js', 'put updates.js 5', 'progress 15/15', 'commit']);
+  // Firmware too old for this app: refused at begin, nothing staged; the plan runs the firmware first.
+  w = relayWorld(); w.io.begin = async () => w.res(400, 'api_min 3 requires firmware API 3 (have 2)');
+  eq((await U.relayApp('https://h.example/app', w.io)).why, 'firmware');
+  // Published again mid-relay: a size the manifest does not name, or a hash the sidekick refuses.
+  w = relayWorld({ grown: 'updates.js' });
+  eq((await U.relayApp('https://h.example/app', w.io)).why, 'changed');
+  assert(!w.calls.includes('commit') && !w.calls.some((c) => c.startsWith('put updates.js')), 'nothing promoted');
+  w = relayWorld(); w.io.put = async () => w.res(400, 'sha256 mismatch');
+  eq((await U.relayApp('https://h.example/app', w.io)).why, 'changed');
+  // Not paired, the host out of reach, anything else refused.
+  w = relayWorld(); w.io.begin = async () => w.res(401);
+  eq((await U.relayApp('https://h.example/app', w.io)).why, 'pairing');
+  w = relayWorld({ offline: true });
+  eq((await U.relayApp('https://h.example/app', w.io)).why, 'network');
+  w = relayWorld(); w.io.commit = async () => w.res(500, 'rename failed');
+  eq(await U.relayApp('https://h.example/app', w.io), { ok: false, why: 'refused', detail: 'commit: rename failed' });
+  ['network', 'pairing', 'firmware', 'changed', 'refused'].forEach((why) => assert(!/failed$/.test(U.appWhyText(why)), why));
+
+  // The app's row on the progress sheet.
+  eq(U.appRow({ at: 'now', done: 92873, total: 185745 }), { text: 'Install the app (181 KB) · 50%', at: 'now' });
+  eq(U.appRow({ at: 'done', done: 0, total: 185745 }), { text: 'Install the app (181 KB)', at: 'done' });
+  eq(U.appRow({ at: 'after', done: 0, total: 185745 }), { text: 'Install the app (181 KB), after the firmware', at: 'next' });
+  eq(U.appRow({ at: 'failed', done: 0, total: 185745 }).at, 'now');
+  console.log('ok (relay)');
+})().catch((e) => { console.error(e); process.exit(1); });
+
 // ---- the progress screen's steps ----
 const PLAN = [{ board: 'main', version: 'd18f9b2', size: 871968 }, { board: 'sidekick', version: 'd18f9b2', size: 1005232 }];
 const pst = (o) => Object.assign({ state: 'idle', board: 'main', step: 0, plan: PLAN, got: 0, size: 871968, why: '', at: '' }, o);

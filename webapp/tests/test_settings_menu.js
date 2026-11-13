@@ -36,7 +36,7 @@ vm.runInContext(extractFunction(src, 'settingsMenuModel'), ctx);
 const model = (over) => ctx.settingsMenuModel(Object.assign({
   call: 'KB2SLO', grid: 'EM10cg', cq: 'CQ POTA', radio: 'QMX', bands: ['40m', '20m'], rxFt4: false, amp: true, ampPtt: 0, ampBad: false,
   txDelay: '50', netMode: 'station', netName: 'home', netIp: '192.168.1.20', paired: true,
-  fwBoards: [], fwChecked: true, fwNoNet: false, appStale: false, units: 'km', theme: 'system',
+  updateAvailable: false, fwChecked: true, fwNoNet: false, appStale: false, units: 'km', theme: 'system',
 }, over || {}));
 const row = (r) => [r.text, r.tone, r.glyph];
 
@@ -84,8 +84,8 @@ assert.strictEqual(model({ netMode: undefined, netName: '', netIp: '' }).network
 assert.deepStrictEqual(row(model({ paired: false }).pairing), ['Not paired · press the sidekick\'s button', 'amber', '!']);
 
 // Software update, highest first.
-assert.deepStrictEqual(row(model({ fwBoards: ['Main board', 'Sidekick'], appStale: true }).update),
-  ['Update available · Main board, Sidekick', 'amber', '!']);
+// One Update for the station: the parts are not named here (docs/roadmap/ota-updates.md, antu).
+assert.deepStrictEqual(row(model({ updateAvailable: true, appStale: true }).update), ['Update available', 'amber', '!']);
 assert.deepStrictEqual(row(model({ appStale: true }).update), ['A newer app is available · reload', 'amber', '!']);
 assert.deepStrictEqual(row(model({ fwChecked: false, fwNoNet: true }).update), ['Cannot be checked from here', '', '']);
 assert.deepStrictEqual(row(model({ fwChecked: false }).update), ['Not checked yet', '', '']);

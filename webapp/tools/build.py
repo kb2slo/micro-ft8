@@ -8,7 +8,8 @@ docs/architecture/webapp.md (Build). Steps, in order:
   4. compact the JSON data files;
   5. gzip each asset where that shrinks it, keeping its name;
   6. write manifest.json from the output, so it lists the bytes as shipped;
-  7. fail if a file or the whole bundle breaks the size budget (compressed bytes).
+  7. fail if a file or the whole bundle breaks the size budget (compressed bytes);
+  8. write build.json beside it: the build id and the bundle's size, for the page's update check.
 
 Pages, CI and install_app.py all run this, so what is tested is what ships.
 
@@ -84,7 +85,7 @@ def compress_assets(root: Path) -> None:
     bytes. A plain asset that already starts with gzip's magic would be served
     as compressed, so the build refuses one."""
     for path in sorted(root.iterdir()):
-        if not path.is_file() or path.name == gen_manifest.MANIFEST_NAME:
+        if not path.is_file() or path.name in gen_manifest.NOT_ASSETS:
             continue
         data = path.read_bytes()
         if data[:2] == GZIP_MAGIC:
@@ -102,7 +103,7 @@ def build() -> dict:
         shutil.rmtree(OUT)
     OUT.mkdir(parents=True)
     for src in sorted(SRC.iterdir()):
-        if src.is_file() and src.name != gen_manifest.MANIFEST_NAME and not src.name.startswith("."):
+        if src.is_file() and src.name not in gen_manifest.NOT_ASSETS and not src.name.startswith("."):
             shutil.copy2(src, OUT / src.name)
 
     app = OUT / "app.html"
@@ -133,7 +134,16 @@ def build() -> dict:
         die("a file is over the sidekick's per-file limit")
     if out_total > BUNDLE_MAX:
         die(f"bundle is {out_total} bytes, over the {BUNDLE_MAX}-byte budget (see BUNDLE_MAX)")
+    write_build_json(OUT, bid, doc)
     return doc
+
+
+def write_build_json(root: Path, bid: str, doc: dict) -> dict:
+    """build.json: what the page reads from the release host to tell whether its app is the
+    published one (webapp/app/updates.js, appOffer()), and the bundle's size for its progress."""
+    info = {"build": bid, "size": sum(a["size"] for a in doc["assets"])}
+    (root / gen_manifest.BUILD_NAME).write_text(json.dumps(info) + "\n", encoding="utf-8")
+    return info
 
 
 if __name__ == "__main__":
