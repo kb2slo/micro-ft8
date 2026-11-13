@@ -37,8 +37,6 @@ Both boards' updates are built and their field checks are owed ([TEST_PLAN.md](.
 * **The main board's side:** HELLO, the receiver, what `FW_END` checks, and the trial ([main_board.md](../architecture/main_board.md), **Firmware updates**).
 * **The page's side so far** ([webapp.md](../architecture/webapp.md), **Settings › Updates**).
 
-**Agreed, not yet done (maintainer, 2026-11-12): trim the four OTA rows in [TEST_PLAN.md](../TEST_PLAN.md) Pending.** Each keeps its owed steps under their numbers and one dated line of what passed; passed steps' instructions and the history of removed designs (update mode, the USB check) go. The main board's step for a board on the one-slot table is dropped, no such board being left, with a line under **Unverified, no check planned**. The sidekick row's steps 2 and 3 count as passed: step 2 on the API's result, step 3 on the refused hash, its power cycle accepted by the maintainer and not run.
-
 Still open for [hstv](#hstv):
 
 * **Time:** measured, 74.4 s for 872 KB ([sidekick.md](../architecture/sidekick.md), **A main board's image**). A window on `FW_CHUNK` stays **Later**, with no case for it yet.
