@@ -26,9 +26,11 @@ async function serveDownload(request, env, url) {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  // Key is everything after "/download/"; reject empty, traversal, and nested paths.
+  // Key is everything after "/download/": one file name, or one under ota/ (each OTA image by
+  // its dated name: docs/RELEASE_PROCESS.md). Reject empty, traversal, and any other nesting.
   const key = decodeURIComponent(url.pathname.slice("/download/".length));
-  if (!key || key.includes("/") || key.includes("\\") || key.includes("..")) {
+  const name = key.startsWith("ota/") ? key.slice(4) : key;
+  if (!name || name.includes("/") || name.includes("\\") || name.includes("..")) {
     return new Response("Not found", { status: 404 });
   }
 
@@ -49,7 +51,7 @@ async function serveDownload(request, env, url) {
   if (!key.endsWith(".json") && !key.endsWith(".sha256")) {
     headers.set(
       "content-disposition",
-      `attachment; filename="${key.replace(/"/g, "")}"`,
+      `attachment; filename="${name.replace(/"/g, "")}"`,
     );
   }
 

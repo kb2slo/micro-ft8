@@ -20,12 +20,17 @@ from pathlib import Path
 # serves with Content-Encoding (sidekick/main/web_manifest.h).
 API_MIN = 3
 MANIFEST_NAME = "manifest.json"
+# Beside the manifest, never one of its assets: the published app's build id and the bundle's size,
+# which the page compares with its own to offer an update (webapp.md, Build). Not in the manifest
+# itself, whose parser on the sidekick refuses a field it does not know (web_manifest.c).
+BUILD_NAME = "build.json"
+NOT_ASSETS = (MANIFEST_NAME, BUILD_NAME)
 
 
 def assets(root: Path) -> list[dict]:
     out = []
     for path in sorted(root.iterdir()):
-        if not path.is_file() or path.name == MANIFEST_NAME or path.name.startswith("."):
+        if not path.is_file() or path.name in NOT_ASSETS or path.name.startswith("."):
             continue
         data = path.read_bytes()
         out.append(

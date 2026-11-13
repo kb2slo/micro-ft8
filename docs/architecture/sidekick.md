@@ -28,7 +28,7 @@ Building, flashing, and backing up a unit's stock firmware: [`sidekick/README.md
 
 ## Installing the app bundle
 
-The phone relays the bundle: `/update` fetches it from the release host over HTTPS (that fetch is what authenticates it), then writes it to the sidekick in three token-guarded steps, so a truncated upload cannot promote and an incompatible bundle is refused before any bytes land (`web_bundle.c`):
+The phone relays the bundle, from one of two pages: the app's one **Update** (`FwUpdates.relayApp()`, [webapp.md](webapp.md), **Settings › Software update**), or `/update` for a first install and recovery, which carries its own copy since a seed page cannot load the bundle's code. Either fetches it from the release host over HTTPS (that fetch is what authenticates it), then writes it to the sidekick in three token-guarded steps, so a truncated upload cannot promote and an incompatible bundle is refused before any bytes land (`web_bundle.c`):
 
 1. `POST /api/bundle/begin` — body is the manifest. Refused if its `api_min` exceeds the device's `WEB_API_VERSION`. Wipes the staging area.
 2. `PUT /api/bundle/file?path=<relpath>` — one per asset, its bytes as the build shipped them, gzipped or not. `Content-Length` must equal the manifest's size, and the body's SHA-256 must equal its digest.

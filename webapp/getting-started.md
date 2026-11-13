@@ -76,7 +76,7 @@ One ADIF file per UTC day, kept on the main board. On **QSOs**, **Download ADI**
 - *Internet* is never needed to operate. When the phone has it, a tapped callsign shows QRZ details, and **Tools** adds space weather and, on its map, POTA and SOTA spots.
 - *SWR sweep,* on **Tools**: set the QMX's *Tune* power to 25% or more first.
 - *Home WiFi instead* (2.4 GHz only): in **Settings**, tap **Network**, then **Join a network →**, pick it and tap **Save and join**; then use [`http://micro-ft8.local`](http://micro-ft8.local/), typing `http://` (Safari otherwise tries `https://` and fails). Away from that network, the sidekick's own comes back within a minute of power-up.
-- *Updates:* in **Settings**, **Software update**, then **Install / update** loads the newest app (needs internet).
+- *Updates:* in **Settings**, **Software update**, then **Update** updates everything (needs internet; switch the radio off first).
 - *For now:* FT8 with one radio, a QMX (or a Hermes-Lite 2, receive only and experimental; never both); leave **Protocol** at FT8. A CQ stops after its tries and each QSO message after its own, but you are still the control operator.
 
 ## Questions and feedback

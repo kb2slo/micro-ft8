@@ -61,7 +61,7 @@ def build_image(size: int) -> bytes:
         cache_size=CACHE_SIZE,
         lookahead_size=LOOKAHEAD_SIZE,
     )
-    files = sorted(p for p in APP.rglob("*") if p.is_file() and p.name != "manifest.json")
+    files = sorted(p for p in APP.rglob("*") if p.is_file() and p.name not in ("manifest.json", "build.json"))
     if not files:
         raise SystemExit(f"{APP} has no files; run without --no-build")
     for p in files:

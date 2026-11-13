@@ -64,6 +64,22 @@ class CompressedBuild(unittest.TestCase):
         self.assertNotIn(gen_manifest.MANIFEST_NAME, [a["path"] for a in self.on_disk["assets"]])
         self.assertEqual((self.root / gen_manifest.MANIFEST_NAME).read_bytes()[:1], b"{")
 
+    def test_build_json_sits_beside_the_manifest_and_is_not_an_asset(self):
+        info = build.write_build_json(self.root, "d18f9b2 2026-11-13", self.doc)
+        on_disk = json.loads((self.root / gen_manifest.BUILD_NAME).read_text())
+        self.assertEqual(on_disk, info)
+        self.assertEqual(on_disk["build"], "d18f9b2 2026-11-13")
+        self.assertEqual(on_disk["size"], sum(a["size"] for a in self.on_disk["assets"]))
+        # Written after the manifest, and a rebuild of the manifest still leaves it out.
+        again = gen_manifest.write(self.root)
+        self.assertNotIn(gen_manifest.BUILD_NAME, [a["path"] for a in again["assets"]])
+        # Never gzipped: Pages serves it as plain JSON, with no Content-Encoding.
+        fresh = Path(self.tmp.name) / "fresh"
+        fresh.mkdir()
+        (fresh / gen_manifest.BUILD_NAME).write_text(json.dumps({"build": "x " * 400, "size": 1}))
+        build.compress_assets(fresh)
+        self.assertEqual((fresh / gen_manifest.BUILD_NAME).read_bytes()[:1], b"{")
+
     def test_same_input_builds_the_same_bytes(self):
         again = Path(self.tmp.name) / "again"
         again.mkdir()
