@@ -54,7 +54,7 @@ Built: the plan, the pairing rule, Review, Progress and Result are in [webapp.md
 
 ## Children
 
-Only the next child is a row in the index ([ROADMAP.md](../ROADMAP.md), Backlog: [qst9](#qst9)); the others wait here, in order, until it ships. The first three are built and wait only on their field checks ([TEST_PLAN.md](../TEST_PLAN.md), Pending).
+Only the next child is a row in the index ([ROADMAP.md](../ROADMAP.md), Now: [qst9](#qst9)); the others wait here, in order, until it ships. The first three are built and wait only on their field checks ([TEST_PLAN.md](../TEST_PLAN.md), Pending).
 
 In order: each needs the one before it.
 
