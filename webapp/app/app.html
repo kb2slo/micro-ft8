@@ -153,11 +153,12 @@ button:disabled{opacity:.45}
 @keyframes resetspin{to{transform:rotate(360deg)}}
 /* The firmware update's sheet (openFwSheet()): review, progress and result, one after the other.
    It covers the app while an update runs, on every phone, since nothing behind it can transmit. */
-#fwSheet{position:fixed;inset:0;z-index:41;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:color-mix(in srgb, Canvas 88%, transparent);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
-#fwSheet[hidden]{display:none}
-#fwCard{max-width:24rem;width:100%;max-height:100%;overflow:auto;background:Canvas;color:CanvasText;border:1px solid color-mix(in srgb, GrayText 40%, transparent);border-radius:.8rem;padding:1.25rem;box-shadow:0 8px 30px rgba(0,0,0,.25)}
-#fwCard h2{font-size:1.05rem;margin:0 0 .6rem}
-#fwCard p{font-size:.9rem;margin:.5rem 0;line-height:1.45}
+#fwSheet,#askSheet{position:fixed;inset:0;z-index:41;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:color-mix(in srgb, Canvas 88%, transparent);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+#fwSheet[hidden],#askSheet[hidden]{display:none}
+#askSheet{z-index:42}
+#fwCard,#askCard{max-width:24rem;width:100%;max-height:100%;overflow:auto;background:Canvas;color:CanvasText;border:1px solid color-mix(in srgb, GrayText 40%, transparent);border-radius:.8rem;padding:1.25rem;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+#fwCard h2,#askCard h2{font-size:1.05rem;margin:0 0 .6rem}
+#fwCard p,#askCard p{font-size:.9rem;margin:.5rem 0;line-height:1.45}
 #fwCard ul{list-style:none;margin:.5rem 0;padding:0;font-size:.9rem;line-height:1.6}
 #fwSteps li::before{content:'\25CB';display:inline-block;width:1.4em;color:GrayText}
 #fwSteps li.done::before{content:'\2713';color:var(--accent)}
@@ -165,7 +166,7 @@ button:disabled{opacity:.45}
 #fwSteps li.next{color:GrayText}
 #fwSheet.failed #fwSteps li.now::before{content:'\2715';color:var(--danger)}
 #fwWhy{color:var(--danger)}
-#fwCard button{margin-top:.5rem;width:100%}
+#fwCard button,#askCard button{margin-top:.5rem;width:100%}
 
 /* ---- tab bar ---- */
 #tabbar{position:fixed;left:0;right:0;bottom:0;display:flex;border-top:1px solid GrayText;background:Canvas}
@@ -1256,6 +1257,17 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
   </div>
 </div>
 
+<!-- The in-page confirmation (askConfirm()): a band or frequency change that ends something, and the
+     update's review. Native confirm() often cancels silently on phones. -->
+<div id=askSheet role=alertdialog aria-modal=true aria-labelledby=askTitle hidden>
+  <div id=askCard>
+    <h2 id=askTitle></h2>
+    <div id=askText></div>
+    <button id=askOk type=button class=btn-primary></button>
+    <button id=askNo type=button>Cancel</button>
+  </div>
+</div>
+
 <div id=resetWait role=alertdialog aria-modal=true aria-labelledby=resetWaitTitle hidden>
   <div id=resetWaitCard>
     <div id=resetWaitSpin></div>
@@ -2073,7 +2085,7 @@ layoutDock();
 document.getElementById('opBandGrid').onclick = function (ev) {
   var btn = ev.target.closest('.bandbtn');
   if (!btn || btn.disabled) return;
-  if (changeBand(btn.dataset.i)) setDrawerOpen(false);
+  changeBand(btn.dataset.i).then(function (went) { if (went) setDrawerOpen(false); });
 };
 
 // The drawer's frequency field shows the operating frequency, except while the
@@ -3439,22 +3451,78 @@ async function authPostQuiet(path, body) {
 // on the old frequency) and a transmission on the air. Shared by a band change
 // and a frequency change, which both confirm first and then end these
 // (webapp.md, Band and frequency).
-function retuneEnds() {
-  var calls = Object.keys(queue)
-    .filter(function (id) { return queue[id].dxcall !== 'CQ'; })
+// withCq: an update also ends a running CQ, which a retune leaves calling on the new frequency.
+function retuneEnds(withCq) {
+  var ids = Object.keys(queue);
+  var calls = ids.filter(function (id) { return queue[id].dxcall !== 'CQ'; })
     .map(function (id) { return queue[id].dxcall; });
+  var cq = !!withCq && ids.some(function (id) { return queue[id].dxcall === 'CQ'; });
+  return endsClauses(calls, !!(txHud && txHud.active && !txHud.aborted), cq);
+}
+// What a change ends, as clauses of one sentence ("This ends your CQ, ends your QSO with K9ABC
+// and stops the transmission on the air."). Pure: webapp/tests/test_ask_confirm.js runs it.
+function endsClauses(calls, txOn, cq) {
   var ends = [];
+  if (cq) ends.push('ends your CQ');
   if (calls.length) {
     ends.push('ends ' + (calls.length === 1 ? 'your QSO' : 'your ' + calls.length + ' QSOs') +
               ' with ' + calls.join(', '));
   }
-  if (txHud && txHud.active && !txHud.aborted) ends.push('stops the transmission on the air');
+  if (txOn) ends.push('stops the transmission on the air');
   return ends;
 }
-// True when it is safe to proceed: nothing to end, or the operator said yes.
+function endsSentence(ends) {
+  if (!ends.length) return '';
+  var last = ends[ends.length - 1];
+  return 'This ' + (ends.length > 1 ? ends.slice(0, -1).join(', ') + ' and ' + last : last) + '.';
+}
+
+// The in-page confirmation (#askSheet), for a retune that ends something and the update's review.
+// Resolves true on OK, false on Cancel, Escape or a tap outside the card. One at a time: a second
+// ask while one is open is declined, which covers the frequency field's change event firing as
+// the dialog takes the focus.
+var askOpen = null;
+function askConfirm(o) {
+  if (askOpen) return Promise.resolve(false);
+  var sheet = document.getElementById('askSheet');
+  var back = document.activeElement;
+  document.getElementById('askTitle').textContent = o.title;
+  var text = document.getElementById('askText');
+  text.textContent = '';
+  (o.text || []).forEach(function (t) {
+    if (!t) return;
+    var para = document.createElement('p');
+    para.textContent = t;
+    text.appendChild(para);
+  });
+  var ok = document.getElementById('askOk');
+  ok.textContent = o.ok || 'OK';
+  sheet.hidden = false;
+  ok.focus();
+  return new Promise(function (resolve) {
+    askOpen = function (yes) {
+      askOpen = null;
+      sheet.hidden = true;
+      // Back to what opened it, but not into a text field, which on a phone brings the keyboard back.
+      if (back && back.focus && back.tagName !== 'INPUT' && document.contains(back)) back.focus({ preventScroll: true });
+      resolve(yes);
+    };
+  });
+}
+document.getElementById('askOk').onclick = function () { if (askOpen) askOpen(true); };
+document.getElementById('askNo').onclick = function () { if (askOpen) askOpen(false); };
+document.getElementById('askSheet').addEventListener('click', function (ev) {
+  if (ev.target === this && askOpen) askOpen(false);
+});
+document.addEventListener('keydown', function (ev) {
+  if (ev.key === 'Escape' && askOpen) { ev.preventDefault(); askOpen(false); }
+});
+
+// Resolves true when it is safe to go ahead: nothing to end, or the operator said yes.
 function confirmRetune(verb) {
   var ends = retuneEnds();
-  return !ends.length || confirm(verb + '? This ' + ends.join(' and ') + '.');
+  if (!ends.length) return Promise.resolve(true);
+  return askConfirm({ title: verb + '?', text: [endsSentence(ends)], ok: verb });
 }
 
 // Both /api/tx/cancel and /api/queue/cancel already exist for the TX-HUD
@@ -3493,12 +3561,12 @@ function standardKhz(band) {
 // menu programmed for the band; keeping chosen frequencies is row y9js.
 // Tapping the band already selected, at its standard, changes nothing. A tap
 // that goes ahead closes the frequency editor (operator feedback 2026-09-28).
-function changeBand(idx) {
+async function changeBand(idx) {
   var band = BANDS[parseInt(idx, 10)];
   if (!band) return false;
   var std = standardKhz(band);
   if (String(band.i) === String(lastCfg.band_sel) && currentDockFreqKhz(lastCfg) === std) return true;
-  if (!confirmRetune('Change band')) return false;
+  if (!(await confirmRetune('Change band'))) return false;
   freqDirty = false;
   var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + band.i;
   cancelQsosAndTx().then(function () {
@@ -3517,13 +3585,13 @@ function changeBand(idx) {
 // (TX active)") but nothing retunes the radio when the TX ends, so the bar
 // would show a frequency the radio is not on. With nothing to end, no cancel
 // is sent: a cancel also blocks a TX armed for this slot.
-// Returns false when the operator declined the confirmation, so a typed value
+// Resolves false when the operator declined the confirmation, so a typed value
 // stays in the open editor.
-function setOperatingBandFreq(khz) {
+async function setOperatingBandFreq(khz) {
   var idx = parseInt(lastCfg.band_sel, 10);
   if (isNaN(idx)) return false;
   var stopping = retuneEnds().length > 0;
-  if (!confirmRetune('Change frequency')) return false;
+  if (!(await confirmRetune('Change frequency'))) return false;
   var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + idx;
   (stopping ? cancelQsosAndTx() : Promise.resolve()).then(function () {
     return putConfigLine(key + '=' + khz, 'Setting frequency…', true);
@@ -3543,14 +3611,16 @@ function refreshFreqInput() {
 // with nothing to end (operator decision 2026-09-28), then cancels like
 // changeBand(). One PUT carries both lines, the band's frequency first so
 // band_sel lands on it: the sidekick applies them in order, and a single
-// round trip leaves no gap for a stale read between two writes. Returns false
+// round trip leaves no gap for a stale read between two writes. Resolves false
 // when declined, so the typed value stays in the open editor.
-function switchToBandWithFreq(band, khz) {
+async function switchToBandWithFreq(band, khz) {
   var ends = retuneEnds();
-  if (!confirm('Change band to ' + band.name + '? ' + khzToMhzLabel(khz) + ' MHz is on ' +
-               band.name + '.' + (ends.length ? ' This ' + ends.join(' and ') + '.' : ''))) {
-    return false;
-  }
+  var yes = await askConfirm({
+    title: 'Change band to ' + band.name + '?',
+    text: [khzToMhzLabel(khz) + ' MHz is on ' + band.name + '.', endsSentence(ends)],
+    ok: 'Change band',
+  });
+  if (!yes) return false;
   var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + band.i;
   cancelQsosAndTx().then(function () {
     return putConfigLine(key + '=' + khz + '\nband_sel=' + band.i, 'Changing band…', true);
@@ -3590,12 +3660,12 @@ function applyDockFreqInput() {
     return;
   }
   var curIdx = parseInt(lastCfg.band_sel, 10);
-  var went = (band.i === curIdx) ? setOperatingBandFreq(khz) : switchToBandWithFreq(band, khz);
-  if (went) {
+  ((band.i === curIdx) ? setOperatingBandFreq(khz) : switchToBandWithFreq(band, khz)).then(function (went) {
+    if (!went) return;
     freqDirty = false;
     document.getElementById('opFreqInput').blur();
     setDrawerOpen(false);
-  }
+  });
 }
 document.getElementById('opFreqSet').onclick = applyDockFreqInput;
 document.getElementById('opFreqInput').onkeydown = function (ev) {
