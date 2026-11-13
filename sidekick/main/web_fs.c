@@ -398,6 +398,20 @@ static esp_err_t get_static(httpd_req_t *req)
     // half of that: a bfcache restore skips a network request altogether,
     // so no Cache-Control header sees it at all).
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    // The bundle's build ships an asset gzipped where that shrinks it, under
+    // its own name (docs/architecture/webapp.md, Build). Nothing here keeps
+    // the manifest, so the file says it itself: gzip's magic, 1f 8b. No page,
+    // script or JSON the app ships starts with those bytes, and the seed
+    // pages stay plain. Every browser accepts gzip, so Accept-Encoding is not
+    // consulted.
+    unsigned char magic[2];
+    if (fread(magic, 1, sizeof(magic), f) == sizeof(magic) && magic[0] == 0x1f && magic[1] == 0x8b) {
+        httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
+    }
+    if (fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "seek failed");
+    }
     const esp_err_t err = stream_file(req, f);
     fclose(f);
     if (err == ESP_ERR_NO_MEM) {

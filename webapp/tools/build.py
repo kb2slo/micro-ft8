@@ -6,8 +6,9 @@ docs/architecture/webapp.md (Build). Steps, in order:
   2. stamp the build id into app.html (its __APP_BUILD__ placeholder);
   3. minify HTML and JS and compile-check every script (minify.mjs);
   4. compact the JSON data files;
-  5. write manifest.json from the output;
-  6. fail if a file or the whole bundle breaks the size budget.
+  5. gzip each asset where that shrinks it, keeping its name;
+  6. write manifest.json from the output, so it lists the bytes as shipped;
+  7. fail if a file or the whole bundle breaks the size budget (compressed bytes).
 
 Pages, CI and install_app.py all run this, so what is tested is what ships.
 
@@ -19,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 import datetime
+import gzip
 import json
 import shutil
 import subprocess
@@ -43,6 +45,9 @@ FILE_MAX = 512 * 1024
 # store plus the bootstrap pages and LittleFS overhead must fit:
 # 2 x 800 + 256 = 1,856 KB leaves 64 KB. Raising this means shrinking the store cap.
 BUNDLE_MAX = 800 * 1024
+# gzip's magic. The sidekick keeps no manifest, so web_fs.c tells a compressed
+# asset by these first two bytes and serves it with Content-Encoding: gzip.
+GZIP_MAGIC = b"\x1f\x8b"
 
 
 def die(msg: str) -> None:
@@ -72,6 +77,23 @@ def compact_json(path: Path) -> None:
         path.write_text(compact, encoding="utf-8")
 
 
+def compress_assets(root: Path) -> None:
+    """gzip every asset in place, keeping its name; one compressing would not shrink ships as it is.
+
+    mtime=0 and no file name in the header, so the same input builds the same
+    bytes. A plain asset that already starts with gzip's magic would be served
+    as compressed, so the build refuses one."""
+    for path in sorted(root.iterdir()):
+        if not path.is_file() or path.name == gen_manifest.MANIFEST_NAME:
+            continue
+        data = path.read_bytes()
+        if data[:2] == GZIP_MAGIC:
+            die(f"{path.name} starts with gzip's magic bytes; the sidekick would serve it as compressed")
+        packed = gzip.compress(data, compresslevel=9, mtime=0)
+        if len(packed) < len(data):
+            path.write_bytes(packed)
+
+
 def build() -> dict:
     if not (TOOLS / "node_modules" / "html-minifier-terser").is_dir():
         die("minifier not installed; run: npm ci --prefix webapp/tools")
@@ -97,6 +119,7 @@ def build() -> dict:
     for path in sorted(OUT.glob("*.json")):
         compact_json(path)
 
+    compress_assets(OUT)
     doc = gen_manifest.write(OUT)
 
     src_total = sum(p.stat().st_size for p in SRC.iterdir() if p.is_file() and p.name != gen_manifest.MANIFEST_NAME)
@@ -104,7 +127,7 @@ def build() -> dict:
     too_big = [a for a in doc["assets"] if a["size"] > FILE_MAX]
     for a in too_big:
         print(f"build: {a['path']} is {a['size']} bytes; the sidekick refuses files over {FILE_MAX}", file=sys.stderr)
-    print(f"build {bid}: {len(doc['assets'])} assets, {src_total} -> {out_total} bytes "
+    print(f"build {bid}: {len(doc['assets'])} assets, {src_total} -> {out_total} bytes as shipped, gzipped "
           f"({out_total * 100 // max(1, src_total)}% of source; budget {BUNDLE_MAX})")
     if too_big:
         die("a file is over the sidekick's per-file limit")

@@ -2,8 +2,8 @@
 """Write manifest.json for a built web bundle (docs/architecture/sidekick.md (Installing the app bundle)).
 
 The manifest is part of the build's output, never committed: webapp/tools/build.py
-calls write() on webapp/dist/app as its last step, so the digests always match
-the exact bytes that ship.
+calls write() on webapp/dist/app after compressing it, so the digests and sizes
+are of the exact bytes that ship, gzipped ones included.
 
 Usage (normally via build.py):
   python3 webapp/tools/gen_manifest.py webapp/dist/app
@@ -16,7 +16,9 @@ import hashlib
 import json
 from pathlib import Path
 
-API_MIN = 2
+# 3: the build gzips assets, which only firmware with WEB_API_VERSION 3
+# serves with Content-Encoding (sidekick/main/web_manifest.h).
+API_MIN = 3
 MANIFEST_NAME = "manifest.json"
 
 

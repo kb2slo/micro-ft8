@@ -23,6 +23,7 @@ Usage:
 
 from __future__ import annotations
 
+import gzip
 import json
 import sys
 import urllib.parse
@@ -58,7 +59,10 @@ def fnv1a(data: bytes) -> str:
     bytes, so its printed hash for app.html can be eyeballed directly against
     the "App: ..." line Settings shows after an install, without needing
     crypto.subtle (unavailable on the sidekick's plain-HTTP origin) or a
-    server-side version endpoint."""
+    server-side version endpoint. The page hashes app.html as the browser
+    decoded it, so a gzipped file is hashed decompressed here too."""
+    if data[:2] == b"\x1f\x8b":
+        data = gzip.decompress(data)
     h = 0x811C9DC5
     for b in data:
         h ^= b
