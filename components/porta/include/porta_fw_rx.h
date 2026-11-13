@@ -69,6 +69,33 @@ typedef enum {
 
 porta_fw_confirm_t porta_fw_confirm_decide(uint32_t uptime_s, bool sidekick_hello_seen);
 
+// Transmit is held off for the whole of an update, from the operator's tap to its end
+// (docs/architecture/main_board.md, Firmware updates). The sidekick says when one starts and ends
+// (UPDATE_MODE on and off) and says "on" again while it runs; a transfer's own messages count as
+// that too, so a sidekick too old to say still holds the board for the transfer. A sidekick that
+// goes silent (it lost power) is not waited on for ever: the hold ends by itself. Once an image
+// is installed the hold is for good, since the restart is on its way.
+#define PORTA_FW_HOLD_TIMEOUT_MS 90000u
+
+typedef struct {
+    bool     held;
+    bool     for_good;
+    uint32_t heard_ms;  // when the update was last heard of
+} porta_fw_hold_t;
+
+typedef enum {
+    PORTA_FW_HOLD_SAME = 0,
+    PORTA_FW_HOLD_BEGAN,  // stop transmitting, end the queue, hold
+    PORTA_FW_HOLD_ENDED,  // transmit is allowed again
+} porta_fw_hold_edge_t;
+
+// The sidekick's word: an update is running (on), or is over (off).
+porta_fw_hold_edge_t porta_fw_hold_note(porta_fw_hold_t *h, uint32_t now_ms, bool on);
+// The image is installed and the board will restart: nothing ends the hold now.
+porta_fw_hold_edge_t porta_fw_hold_for_good(porta_fw_hold_t *h);
+// Called often: ends a hold nothing has refreshed for PORTA_FW_HOLD_TIMEOUT_MS.
+porta_fw_hold_edge_t porta_fw_hold_tick(porta_fw_hold_t *h, uint32_t now_ms);
+
 #ifdef __cplusplus
 }
 #endif

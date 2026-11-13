@@ -190,6 +190,16 @@ typedef enum {
 
 fw_confirm_t fw_confirm_decide(uint32_t uptime_s, uint32_t beacons_sent, bool reachable);
 
+// While an update runs the main board holds transmit off (docs/architecture/main_board.md,
+// Firmware updates). It ends a hold it has not heard of for PORTA_FW_HOLD_TIMEOUT_MS, so the
+// sidekick says "an update is running" again this often: three chances inside that timeout.
+#define FW_HOLD_REFRESH_MS 20000u
+bool fw_hold_refresh_due(uint32_t now_ms, uint32_t said_ms);
+// POST /api/fw/hold, the page asking for the hold before its own step (the app's install) and
+// giving it back after. "On" is always honoured. "Off" is not while an update is running: that
+// hold is the update's, and ends with it.
+bool fw_page_hold_applies(bool on, bool update_busy);
+
 #ifdef __cplusplus
 }
 #endif

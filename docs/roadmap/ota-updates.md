@@ -10,14 +10,16 @@ After the first install, every firmware update, for every board, happens over th
 ## Constraints
 
 * **No TLS and no signing on the device.** Trust comes from the browser's HTTPS fetch of the manifest, as for the app bundle ([system.md](../architecture/system.md), **The inversion** and **Why not signing**).
-* **An update never starts by itself.** The operator starts it, and is asked to switch the radio off first and back on when it is done.
+* **An update starts only by an operator's action in the app,** never remotely and never by itself (maintainer, 2026-11-12). The operator is asked to switch the radio off first and back on when it is done.
+* **One update, as the operator sees it** (maintainer, 2026-11-12). The app, the main board and the sidekick are parts of it, named in its progress and in a failure, and nowhere else offered or described apart.
 * **The main board has no network.** Its image reaches it over Port A.
 * **The `continuous` channel only,** until [nufg](#nufg) adds versioned releases.
 
 ## Decided
 
 * **The sidekick downloads images itself** (§ **Download**), not the phone: one path, not two (**Why not**).
-* **The operator is asked to switch the radio off for a firmware update, and nothing checks.** One left connected may need switching off and on afterwards; that is all a check would prevent, and two attempts at one cost more than it is worth ([main_board.md](../architecture/main_board.md), **Firmware updates**). The main board cancels transmission before it restarts. An app-only update asks nothing.
+* **The operator is asked to switch the radio off for a firmware update, and nothing checks.** One left connected may need switching off and on afterwards; that is all a check would prevent, and two attempts at one cost more than it is worth ([main_board.md](../architecture/main_board.md), **Firmware updates**).
+* **Nothing transmits during any step of an update** (maintainer, 2026-11-12, at the bench: a CQ went out through a 79 s transfer). From the tap to the end the main board holds transmit off and ends its queue; it goes on receiving, and the operator starts again afterwards. This replaces "nothing is stopped" (2026-11-10).
 * **The `FW_*` messages are frozen across `PORTA_PROTO_VERSION` bumps,** so any two builds can always carry an update between them.
 * **When both boards need updating, the main board goes first,** while the sidekick still speaks its protocol; the frozen messages make that safe.
 * **A main-board image counts as good** once the Port A handshake with the sidekick completes after its restart; otherwise the bootloader rolls back. The update is reported done only when the version the board then reports equals the manifest's.

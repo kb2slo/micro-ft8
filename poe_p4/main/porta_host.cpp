@@ -612,6 +612,31 @@ void porta_host_tx_cancel(void) {
     swr_sweep_request_cancel();
 }
 
+// An update holds transmit off from the operator's tap to its end (docs/architecture/main_board.md, Firmware
+// updates): the transmission on the air stops, the CQ and the queued QSOs end, as on a band change, and
+// radio_control refuses to key until the hold is released. The hold first: a cancel alone holds transmission off
+// only to the end of its slot. Released, the queue is ended again, so nothing autoseq took up meanwhile (a station
+// calling us) keys by itself: the operator starts again.
+void porta_host_update_hold(bool on) {
+    if (on) {
+        radio_control_hold_tx(true);
+    }
+    porta_host_tx_cancel();
+    autoseq_clear();
+    if (!on) {
+        radio_control_hold_tx(false);
+    }
+}
+
+// Before a restart the board starts itself (components/porta: into a new image, or back from one that never heard
+// the sidekick), whatever was or was not held before: autoseq re-arms at once after a cancel, so a slot of ours
+// starting before the restart keyed the radio and the board reset keyed (console log, 2026-11-11: "Fetch TX" and
+// "TX ready" right after the cancel).
+void porta_host_stop_for_restart(void) {
+    radio_control_hold_tx(true);
+    porta_host_tx_cancel();
+}
+
 // Sweep events go to the phone as they happen. Runs on the main loop's task (swr_sweep_tick).
 static void sweep_event_to_porta(const swr_sweep_event_t *event, void * /*user*/) {
     uint8_t kind = PORTA_SWEEP_DONE;

@@ -568,6 +568,23 @@ static void test_record_and_result()
               std::strcmp(fw_last_name(FW_LAST_CONFIRMING), "confirming") == 0, "result names");
 }
 
+// Transmit held off while an update runs (main_board.md, Firmware updates): the sidekick's half.
+static void test_hold()
+{
+    check(!fw_hold_refresh_due(1000, 1000), "just said: not again yet");
+    check(!fw_hold_refresh_due(1000 + FW_HOLD_REFRESH_MS - 1, 1000), "a millisecond early");
+    check(fw_hold_refresh_due(1000 + FW_HOLD_REFRESH_MS, 1000), "due");
+    check(fw_hold_refresh_due(0x00000100u, 0xFFFFFF00u - FW_HOLD_REFRESH_MS), "due across the tick counter's wrap");
+    check(!fw_hold_refresh_due(0x00000100u, 0xFFFFFF00u), "and not, 512 ms after, across it");
+    // The main board gives up on a hold it stops hearing of: it must hear several times inside that.
+    check(3 * FW_HOLD_REFRESH_MS <= PORTA_FW_HOLD_TIMEOUT_MS, "three refreshes fit in the main board's timeout");
+    // The page's hold, around the app's install.
+    check(fw_page_hold_applies(true, false), "the page holds before its step");
+    check(fw_page_hold_applies(true, true), "and may say so again during an update");
+    check(fw_page_hold_applies(false, false), "it gives the hold back when no firmware follows");
+    check(!fw_page_hold_applies(false, true), "but cannot end the hold of an update that is running");
+}
+
 static void test_confirm()
 {
     check(fw_confirm_decide(1, 0, false) == FW_CONFIRM_WAIT, "just booted");
@@ -590,6 +607,7 @@ int main()
     test_main_board_confirm();
     test_transfer();
     test_record_and_result();
+    test_hold();
     test_confirm();
     if (g_fail) {
         std::printf("%d failure(s)\n", g_fail);

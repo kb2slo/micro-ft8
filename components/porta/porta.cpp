@@ -29,6 +29,11 @@ int64_t rtc_now_ms();
 uint32_t rtc_epoch_secs_or_zero();
 const char* porta_host_set_clock(uint32_t epoch_secs, uint16_t millis);
 void porta_host_tx_cancel(void);
+// An update is running (true) or is over (false). True: stop transmitting, end the CQ and the queued QSOs, and let
+// nothing key the radio until false. False leaves the queue empty: the operator starts again.
+void porta_host_update_hold(bool on);
+// Before any restart this component starts: stop transmitting, and let nothing key the radio from here on.
+void porta_host_stop_for_restart(void);
 // Snapshot Station.txt-shaped lines into out (NUL-terminated). Returns bytes
 // written excluding NUL, or 0 on failure. Used for CONFIG_GET all / one.
 size_t porta_host_config_snapshot(char* out, size_t out_cap);
@@ -237,6 +242,18 @@ const esp_partition_t* s_fw_slot = nullptr;
 esp_ota_handle_t s_fw_ota = 0;
 uint32_t s_fw_restart_at_ms = 0;  // 0: no restart due
 bool s_fw_trial = false;          // this image was installed over Port A and is not kept yet
+porta_fw_hold_t s_fw_hold = {};   // transmit held off while an update runs (porta_fw_rx.h)
+
+// What a change in the hold asks of the board.
+void fw_hold_apply(porta_fw_hold_edge_t edge) {
+  if (edge == PORTA_FW_HOLD_BEGAN) {
+    ESP_LOGW(kTag, "FW: an update is running: transmit held off, the queue ended");
+    porta_host_update_hold(true);
+  } else if (edge == PORTA_FW_HOLD_ENDED) {
+    ESP_LOGW(kTag, "FW: the update is over or went silent: transmit allowed again");
+    porta_host_update_hold(false);
+  }
+}
 
 bool fw_op_begin(void* /*ctx*/, uint32_t /*size*/) {
   // Erased as it is written, a sector at a time: erasing the whole slot first would hold the main
@@ -313,11 +330,14 @@ void handle_fw(const porta_frame_t& f) {
   size_t len = 0;
   bool abort = false;
   if (porta_proto_parse_fw_begin(&f, &begin)) {
+    // A transfer is an update, whether or not the sidekick said so first (one from before v18 does not).
+    fw_hold_apply(porta_fw_hold_note(&s_fw_hold, now_ms(), true));
     const porta_fw_reply_t r = porta_fw_rx_begin(&s_fw, &begin);
     ESP_LOGI(kTag, "FW: begin %" PRIu32 " bytes, version %s: status %u, from %" PRIu32, begin.size, begin.version,
              r.status, r.offset);
     fw_send_reply(PORTA_MSG_FW_BEGIN, r);
   } else if (porta_proto_parse_fw_chunk(&f, &offset, &data, &len)) {
+    fw_hold_apply(porta_fw_hold_note(&s_fw_hold, now_ms(), true));
     const porta_fw_reply_t r = porta_fw_rx_chunk(&s_fw, offset, data, len);
     if (r.status != PORTA_FW_OK) {
       ESP_LOGW(kTag, "FW: chunk at %" PRIu32 ": status %u, want %" PRIu32, offset, r.status, r.offset);
@@ -332,9 +352,11 @@ void handle_fw(const porta_frame_t& f) {
     fw_send_reply(PORTA_MSG_FW_END, r);
     if (porta_fw_rx_committed(&s_fw) && s_fw_restart_at_ms == 0) {
       ESP_LOGW(kTag, "FW: image installed; restarting into it");
-      // The operator is told to switch the radio off for an update, and nothing checks. If it is
-      // on and keyed, unkey it now: after the restart nothing would.
-      porta_host_tx_cancel();
+      // Transmit has been held off since the update began; from here nothing ends the hold. The
+      // operator is told to switch the radio off and nothing checks, so if it is on, it is not
+      // left keyed: after the restart nothing would unkey it.
+      fw_hold_apply(porta_fw_hold_for_good(&s_fw_hold));
+      porta_host_stop_for_restart();
       s_fw_restart_at_ms = now_ms() + 1500;
       if (s_fw_restart_at_ms == 0) s_fw_restart_at_ms = 1;
     }
@@ -366,7 +388,8 @@ void fw_confirm_tick() {
   case PORTA_FW_CONFIRM_ROLL_BACK:
     ESP_LOGE(kTag, "FW: no sidekick heard in %u s; restarting into the image before this one",
              (unsigned)PORTA_FW_CONFIRM_TIMEOUT_S);
-    porta_host_tx_cancel();  // as before any restart of our own: not with the radio keyed
+    fw_hold_apply(porta_fw_hold_for_good(&s_fw_hold));
+    porta_host_stop_for_restart();  // as before any restart of our own: not with the radio keyed
     vTaskDelay(pdMS_TO_TICKS(200));
     esp_restart();
     break;
@@ -711,6 +734,22 @@ void handle_action(const porta_frame_t& f) {
       break;
     }
   }
+  // Held for an update: nothing new is queued to transmit, since it would key the moment the hold
+  // ended. Tune off, a cancel and everything that only reads still go through.
+  if (s_fw_hold.held) {
+    switch (verb) {
+    case PORTA_ACT_TUNE:
+      if (f.len < 2 || f.payload[1] == 0) break;
+      [[fallthrough]];
+    case PORTA_ACT_CQ_CALL:
+    case PORTA_ACT_QUEUE_REPLY:
+    case PORTA_ACT_SWEEP_START:
+      enqueue(buf, porta_proto_encode_nak(verb, "an update is running", buf, sizeof(buf)));
+      return;
+    default:
+      break;
+    }
+  }
   switch (verb) {
   case PORTA_ACT_UPDATE_MODE: {
     bool on = false;
@@ -718,8 +757,10 @@ void handle_action(const porta_frame_t& f) {
       enqueue(buf, porta_proto_encode_nak(verb, "malformed", buf, sizeof(buf)));
       return;
     }
-    // Nothing to do. A v15 or v16 sidekick asks this before its own update and waits for the
-    // ACK, so an update from one of those builds needs it answered (porta_proto.h, v17).
+    // An update is running, or is over (porta_proto.h, v18): transmit is held off between the two.
+    // Always ACKed: a v15 or v16 sidekick asks "on" before its own update and waits for the ACK.
+    // One of those never says "off", and the hold then ends by its timeout.
+    fw_hold_apply(porta_fw_hold_note(&s_fw_hold, now_ms(), on));
     enqueue(buf, porta_proto_encode_ack(verb, buf, sizeof(buf)));
     return;
   }
@@ -1405,6 +1446,7 @@ void porta_tick() {
   if (tick_ms - s_second_ms >= 1000) {
     s_second_ms = tick_ms;
     fw_confirm_tick();
+    fw_hold_apply(porta_fw_hold_tick(&s_fw_hold, now_ms()));
   }
 
   drain_out();

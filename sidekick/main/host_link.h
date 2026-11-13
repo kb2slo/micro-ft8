@@ -56,6 +56,11 @@ bool host_link_factory_reset(bool logs, char *why, size_t why_len);
 // this sidekick started. Any argument may be NULL.
 bool host_link_host_hello(uint8_t *proto_out, char *version_out, uint32_t *age_ms_out);
 
+// Tells the main board an update is running (true: it stops transmitting, ends its queue and keys
+// nothing) or is over (false). Sent and not waited on: "on" is said again while an update runs,
+// and the main board ends a hold it stops hearing of (porta_fw_rx.h). Any task.
+void host_link_update_mode(bool on);
+
 // One firmware message to the main board and its answer. Each blocks up to `timeout_ms`; false
 // for no answer. From the update task only, one at a time. host_link_fw_active() brackets a
 // transfer so replies are read as they arrive.
