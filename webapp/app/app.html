@@ -4798,6 +4798,23 @@ var opLog = { file: '', rows: [], busy: false };
 // still undefined, the interval was 0 and Operate re-read the log back to back.
 var LOG_REFRESH_MS = 8000;
 
+// Every read of the log goes through here. A read in flight when the sidekick restarts may never
+// settle (44 s in Chromium, 2026-11-11), and each caller holds a busy flag while it waits, so one
+// such read stopped the QSOs list until a reload. The timer covers the body as well as the headers:
+// a reply cut off after its headers hangs the same way. A live sidekick answers a log read, a
+// failure included, within the 5 s it waits on the main board.
+var LOG_FETCH_TIMEOUT_MS = 10000;
+async function logFetchJson(url) {
+  var ac = new AbortController();
+  var timer = setTimeout(function () { ac.abort(); }, LOG_FETCH_TIMEOUT_MS);
+  try {
+    var r = await fetch(url, { cache: 'no-store', signal: ac.signal });
+    return await r.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function utcDayFile() {
   var t = new Date();
   return t.getUTCFullYear() + String(t.getUTCMonth() + 1).padStart(2, '0') +
@@ -4815,9 +4832,8 @@ async function refreshOpLog() {
     if (file !== opLog.file) { opLog.file = file; opLog.rows = []; }
     var before = opLog.rows.length;
     while (true) {
-      var r = await fetch('/api/log/entries?file=' + encodeURIComponent(file) +
-                          '&skip=' + opLog.rows.length + '&take=50', { cache: 'no-store' });
-      var j = await r.json();
+      var j = await logFetchJson('/api/log/entries?file=' + encodeURIComponent(file) +
+                                 '&skip=' + opLog.rows.length + '&take=50');
       if (!j.ok) break;
       var page = j.entries || [];
       opLog.rows = opLog.rows.concat(page);
@@ -6474,9 +6490,8 @@ async function fetchAllEntries(file) {
   var rows = [];
   var skip = 0;
   while (true) {
-    var r = await fetch('/api/log/entries?file=' + encodeURIComponent(file) +
-                        '&skip=' + skip + '&take=50', { cache: 'no-store' });
-    var j = await r.json();
+    var j = await logFetchJson('/api/log/entries?file=' + encodeURIComponent(file) +
+                               '&skip=' + skip + '&take=50');
     if (!j.ok) throw new Error(j.why || 'entries failed');
     var page = j.entries || [];
     rows = rows.concat(page);
@@ -6491,7 +6506,10 @@ async function fetchAllEntries(file) {
 // must see the same data rather than racing two separate fetches.
 function dayFullRows(file) {
   if (!dayFullRowsCache[file]) {
-    dayFullRowsCache[file] = fetchAllEntries(file);
+    var p = fetchAllEntries(file);
+    dayFullRowsCache[file] = p;
+    // A read that failed is not kept: the next ask reads again.
+    p.catch(function () { if (dayFullRowsCache[file] === p) delete dayFullRowsCache[file]; });
   }
   return dayFullRowsCache[file];
 }
@@ -6547,8 +6565,7 @@ async function downloadAllAdif(linkEl) {
     var files = [];
     var skip = 0;
     while (true) {
-      var r = await fetch('/api/log/files?skip=' + skip + '&take=30', { cache: 'no-store' });
-      var j = await r.json();
+      var j = await logFetchJson('/api/log/files?skip=' + skip + '&take=30');
       if (!j.ok) throw new Error(j.why || 'file list failed');
       var page = j.files || [];
       files = files.concat(page);
@@ -6620,8 +6637,7 @@ async function clearAllAdif() {
 // once every file the main board has is known.
 async function ensureLogFiles() {
   if (logFileIdx < logFiles.length || logFilesExhausted) return;
-  var r = await fetch('/api/log/files?skip=' + logFilesSkip + '&take=30', { cache: 'no-store' });
-  var j = await r.json();
+  var j = await logFetchJson('/api/log/files?skip=' + logFilesSkip + '&take=30');
   if (!j.ok) throw new Error(j.why || 'file list failed');
   var files = j.files || [];
   logFiles = logFiles.concat(files);
@@ -6640,9 +6656,8 @@ async function loadMoreLog() {
       if (logFileIdx >= logFiles.length) { logDone = true; break; }
       var file = logFiles[logFileIdx];
       var skip = logFileLoadedCount[file] || 0;
-      var r = await fetch('/api/log/entries?file=' + encodeURIComponent(file) +
-                          '&skip=' + skip + '&take=' + LOG_ENTRY_FETCH, { cache: 'no-store' });
-      var j = await r.json();
+      var j = await logFetchJson('/api/log/entries?file=' + encodeURIComponent(file) +
+                                 '&skip=' + skip + '&take=' + LOG_ENTRY_FETCH);
       if (!j.ok) throw new Error(j.why || 'entries failed');
       var rows = j.entries || [];
       if (rows.length) {
@@ -6688,8 +6703,7 @@ document.getElementById('logClearAll').onclick = function (ev) {
 // polls the right one.
 async function checkForNewDayFiles() {
   if (!logFiles.length) return;
-  var r = await fetch('/api/log/files?skip=0&take=5', { cache: 'no-store' });
-  var j = await r.json();
+  var j = await logFetchJson('/api/log/files?skip=0&take=5');
   if (!j.ok) return;
   var files = j.files || [];
   var known = logFiles[0];
@@ -6724,9 +6738,8 @@ async function refreshLogHead() {
     await checkForNewDayFiles();
     var file = logFiles[0];
     var skip = logFileLoadedCount[file] || 0;
-    var r = await fetch('/api/log/entries?file=' + encodeURIComponent(file) +
-                        '&skip=' + skip + '&take=' + LOG_ENTRY_FETCH, { cache: 'no-store' });
-    var j = await r.json();
+    var j = await logFetchJson('/api/log/entries?file=' + encodeURIComponent(file) +
+                               '&skip=' + skip + '&take=' + LOG_ENTRY_FETCH);
     if (!j.ok) return;
     var rows = j.entries || [];
     if (rows.length) {
