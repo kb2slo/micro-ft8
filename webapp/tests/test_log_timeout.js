@@ -158,6 +158,8 @@ async function loadOlder() {
     logLoading: false, logDone: false, logRenderedAny: false, LOG_ENTRY_GOAL: 40, LOG_ENTRY_FETCH: 10,
     logFiles: [], logFileIdx: 0, logFilesSkip: 0, logFilesExhausted: false, logFileLoadedCount: {}, rows: [],
     document: { getElementById: (id) => el[id] },
+    // What the list says when the sidekick has no main board is another change's, and its test's.
+    mainBoardAway: () => false, noMainText: () => '',
   });
   p.appendLogRows = (file, rows) => { p.rows.push(...rows); p.logRenderedAny = true; };
   p.loadMoreLog();
