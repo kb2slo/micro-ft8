@@ -230,10 +230,12 @@ need_idf() {
 }
 
 # The bundle pages.yml deploys (docs/architecture/webapp.md, Build): minify,
-# compile-check every script, write the manifest, hold the size budget.
+# compile-check every script, gzip, write the manifest, hold the size budget;
+# then the compress step and its manifest on synthetic assets.
 check_web() {
   need_npm
   python3 webapp/tools/build.py
+  python3 webapp/tools/test_build.py
 }
 
 # Every webapp/tests/test_*.js but the station simulator's (check sim). Globbed,

@@ -14,8 +14,10 @@ extern "C" {
 
 // Sidekick HTTP/bundle API version. Bump when a breaking change lands in the
 // control surface the downloaded app expects. Bundles declare api_min; we
-// refuse any bundle with api_min > WEB_API_VERSION.
-#define WEB_API_VERSION 2u
+// refuse any bundle with api_min > WEB_API_VERSION. 3: web_fs.c serves a
+// gzipped asset with Content-Encoding: gzip; firmware before it would send
+// the compressed bytes as the page.
+#define WEB_API_VERSION 3u
 
 #define WEB_MANIFEST_MAX_ASSETS 32
 #define WEB_MANIFEST_PATH_MAX   64

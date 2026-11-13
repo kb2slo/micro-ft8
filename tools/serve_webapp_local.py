@@ -48,7 +48,13 @@ class Handler(SimpleHTTPRequestHandler):
     # preview checked the old code (2026-09-28).
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")
+        if self._gzipped:
+            self.send_header("Content-Encoding", "gzip")
         super().end_headers()
+
+    # --dist: the build gzips an asset where that shrinks it, and the sidekick
+    # tells one by its first two bytes (sidekick/main/web_fs.c); do the same.
+    _gzipped = False
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
@@ -60,7 +66,13 @@ class Handler(SimpleHTTPRequestHandler):
         if SERVE_DIST:
             rel = urlparse(path).path
             if rel.startswith("/app/"):
-                return str(DIST_APP / unquote(rel[len("/app/"):]))
+                target = DIST_APP / unquote(rel[len("/app/"):])
+                try:
+                    with open(target, "rb") as f:
+                        self._gzipped = f.read(2) == b"\x1f\x8b"
+                except OSError:
+                    self._gzipped = False
+                return str(target)
         return super().translate_path(path)
 
     def log_message(self, fmt: str, *args) -> None:
