@@ -466,7 +466,8 @@ static size_t sidekick_facts_json(char *out, size_t cap)
     char    host_version[PORTA_HELLO_VERSION_LEN + 1];
     char    host_proto[4], sk_proto[4];
     uint8_t proto = 0;
-    host_link_host_hello(&proto, host_version, NULL);
+    uint32_t   hello_age = 0;
+    const bool linked = host_link_host_hello(&proto, host_version, &hello_age) && hello_age < HOST_LINK_HELLO_FRESH_MS;
     snprintf(host_proto, sizeof(host_proto), "%u", (unsigned)proto);
     snprintf(sk_proto, sizeof(sk_proto), "%u", (unsigned)PORTA_PROTO_VERSION);
     char num[7][12];
@@ -496,6 +497,9 @@ static size_t sidekick_facts_json(char *out, size_t cap)
         { "sk_proto", sk_proto },
         { "host_fw_version", host_version },
         { "host_proto", host_proto },
+        // Whether a main board is there at all, on every reply, one that it did not answer included:
+        // the app says "Main board not connected" from this, not from a timeout (webapp.md, The radio bar).
+        { "host_linked", linked ? "1" : "0" },
         { "sk_ap_ssid", wifi_prov_ap_ssid() },
         { "sk_ap_secured", wifi_prov_ap_secured() ? "1" : "0" },
     };
