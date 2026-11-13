@@ -38,7 +38,6 @@ static const char *TAG = "fw_update";
 #define RESTART_DELAY_MS 2500
 
 // The main board's HELLO comes every 5 s; three missed and it is not there.
-#define HOST_LINKED_MS 16000
 // The main board answers a chunk from its 10 ms loop, and a sector erase on the way is under 100 ms.
 #define CHUNK_REPLY_MS 3000
 #define CHUNK_TRIES    5
@@ -103,7 +102,7 @@ static uint32_t now_ms(void)
 static bool host_linked(void)
 {
     uint32_t age = 0;
-    return host_link_host_hello(NULL, NULL, &age) && age < HOST_LINKED_MS;
+    return host_link_host_hello(NULL, NULL, &age) && age < HOST_LINK_HELLO_FRESH_MS;
 }
 
 static void set_got(uint32_t got)

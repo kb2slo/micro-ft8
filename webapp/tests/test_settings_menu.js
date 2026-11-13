@@ -72,6 +72,14 @@ assert.strictEqual(model({ netMode: 'ap', netName: 'micro-ft8.local', netIp: '19
   'Own network · micro-ft8.local · 192.168.4.1');
 assert.strictEqual(model({ netMode: undefined, netName: '', netIp: '' }).network.text, 'WiFi and the sidekick\'s own network');
 
+// No main board: the three pages that are all the main board's say so, in the radio bar's words, over what they held.
+{
+  const m = model({ noMain: true, call: 'KB2SLO', amp: true, ampPtt: 1 });
+  for (const k of ['station', 'radio', 'amp']) assert.deepStrictEqual(row(m[k]), ['Main board not connected', 'amber', '!'], k);
+  assert.notStrictEqual(m.network.text, 'Main board not connected', 'the sidekick\'s own pages are as they were');
+  assert.strictEqual(row(m.pairing)[0], row(model({}).pairing)[0]);
+}
+
 // Pairing: the radio bar's words.
 assert.deepStrictEqual(row(model({ paired: false }).pairing), ['Not paired · press the sidekick\'s button', 'amber', '!']);
 

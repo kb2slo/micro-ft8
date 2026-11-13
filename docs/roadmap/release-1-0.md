@@ -21,7 +21,7 @@ Rows other epics and the index own; 1.0 is not cut until each has shipped. Each 
 * **Autoseq:** [jqpm](smart-queue.md#jqpm) and [k4ag](smart-queue.md#k4ag) (epic [qxy5](smart-queue.md)), [B88](../ROADMAP.md#B88).
 * **Safety:** [u4dw](../ROADMAP.md#u4dw), [bfkb](../ROADMAP.md#bfkb), [vcng](../ROADMAP.md#vcng).
 * **The settings format:** [mtd6](../ROADMAP.md#mtd6), so the first update after 1.0 is not a migration.
-* **First run:** [hqyj](../ROADMAP.md#hqyj), [k33u](../ROADMAP.md#k33u), [ucbm](../ROADMAP.md#ucbm), [cg7h](../ROADMAP.md#cg7h).
+* **First run:** [k33u](../ROADMAP.md#k33u), [ucbm](../ROADMAP.md#ucbm), [cg7h](../ROADMAP.md#cg7h).
 * **The sidekick serving the app without stalls:** [dlu3](../ROADMAP.md#dlu3) (operator, 2026-11-09): a stranger's first session must not read No contact.
 * **The HL2, receive only and labelled experimental:** [nngr](hl2-support.md#nngr) (epic [knpp](hl2-support.md)).
 * **Field checks:** no [TEST_PLAN.md](../TEST_PLAN.md) Pending row on a path 1.0 claims (row [swsu](../ROADMAP.md#swsu)).

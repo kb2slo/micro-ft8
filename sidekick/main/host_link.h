@@ -55,6 +55,8 @@ bool host_link_factory_reset(bool logs, char *why, size_t why_len);
 // PORTA_HELLO_VERSION_LEN + 1 bytes) and how long ago it came. False if none has arrived since
 // this sidekick started. Any argument may be NULL.
 bool host_link_host_hello(uint8_t *proto_out, char *version_out, uint32_t *age_ms_out);
+// A main board is linked while its HELLO, sent every 5 s, is no older than this: three missed.
+#define HOST_LINK_HELLO_FRESH_MS 16000u
 
 // Tells the main board an update is running (true: it stops transmitting, ends its queue and keys
 // nothing) or is over (false). Sent and not waited on: "on" is said again while an update runs,

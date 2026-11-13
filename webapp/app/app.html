@@ -1691,14 +1691,40 @@ setInterval(checkFwUpdates, 60000);
 // The drawer's dots are deliberately quiet (a glance, not an alarm) and
 // self-heal from a brief blip on their own -- see lastConfigOkMs's comment.
 // A loss that lasts is the radio bar's No contact state (radioBarState()):
-// "the sidekick can't reach the main board" and "the browser can't reach the
-// sidekick" look the same from here (lastConfigOkMs stops advancing either
-// way), so it does not guess which. It clears the moment a poll succeeds.
+// nothing has answered, or the main board has stopped answering a sidekick that still
+// says it is linked. It clears the moment a poll succeeds.
+//
+// A sidekick with no main board at all is its own state, Main board not connected: the
+// sidekick says whether one is linked (host_linked, from the main board's HELLO) on every
+// config reply, the ones the main board did not answer included, so the page knows within a
+// poll and from its first one, not after a timeout.
 var LINK_LOST_MS = 30000; // well past the dots' own 12s STALE_AFTER_MS --
                           // this is "sustained", not "a blip", on purpose
-function linkLost() {
-  return lastConfigOkMs > 0 && (Date.now() - lastConfigOkMs) > LINK_LOST_MS;
+var pageLoadedMs = Date.now();
+var sidekickAnswerMs = 0;     // the last config reply of any kind from the sidekick
+var mainBoardLinked = null;   // its host_linked: true, false, or null before it has said
+var NO_MAIN_TITLE = 'Main board not connected';
+var NO_MAIN_HINT = 'Check the cable between the boards and the main board\u2019s power';
+function noteSidekickAnswer(cfg) {
+  sidekickAnswerMs = Date.now();
+  if (cfg && cfg.host_linked !== undefined) mainBoardLinked = String(cfg.host_linked) === '1';
 }
+// The sidekick is answering and says it has no main board. A reply the main board did not answer
+// takes the sidekick 5 s, so its answers come as much as 10 s apart: the last one stands until
+// No contact would take over.
+function mainBoardAway() {
+  return mainBoardLinked === false && (Date.now() - sidekickAnswerMs) <= LINK_LOST_MS;
+}
+// Nothing useful has answered for LINK_LOST_MS: the main board, since its last good answer; or
+// the sidekick, since its last answer of any kind or since this page loaded, so a page that has
+// never had an answer says so too.
+function linkLost() {
+  var now = Date.now();
+  if (lastConfigOkMs > 0 && (now - lastConfigOkMs) > LINK_LOST_MS) return true;
+  return (now - (sidekickAnswerMs || pageLoadedMs)) > LINK_LOST_MS;
+}
+// One sentence wherever something needs the main board and it is not there.
+function noMainText() { return NO_MAIN_TITLE + '. ' + NO_MAIN_HINT + '.'; }
 
 // ===================== tabs (the track behind the tab bar) =====================
 // Three panels laid out side by side in #viewTrack (300% wide, each panel
@@ -1827,18 +1853,21 @@ document.querySelectorAll('#view-settings .setback').forEach(function (b) {
 // What each menu row says under its name, and its tone: what the page holds now, or what it
 // wants. Pure, so webapp/tests/test_settings_menu.js runs it. s: call, grid, cq (the CQ's prefix, or 'Free text'), radio (its name), bands
 // (names), rxFt4, amp (the amplifier switch), ampPtt (0 not checked, 1 grounded, 2 +5V), ampBad (the PTT check found a band
-// wrong), txDelay, netMode ('station' | 'ap' | other), netName, netIp, paired, fwBoards (labels
+// wrong), txDelay, netMode ('station' | 'ap' | other), netName, netIp, paired, noMain (mainBoardAway()), fwBoards (labels
 // of the boards with an update), fwChecked (a manifest was read), fwNoNet (it could not be),
 // appStale, units ('km' | 'mi'), theme.
 function settingsMenuModel(s) {
   var m = {};
   var row = function (text, tone, glyph) { return { text: text, tone: tone || '', glyph: glyph || '' }; };
-  m.station = s.call ? row([s.call, (s.grid || '').slice(0, 4).toUpperCase(), s.cq].filter(function (x) { return x; }).join(' · '))
+  // Pages whose every control is the main board's say so first, as the radio bar does.
+  var noMain = s.noMain ? row('Main board not connected', 'amber', '!') : null;
+  m.station = noMain ? noMain : s.call ? row([s.call, (s.grid || '').slice(0, 4).toUpperCase(), s.cq].filter(function (x) { return x; }).join(' · '))
                      : row('No call set', 'amber', '!');
   var bands = s.bands && s.bands.length ? s.bands.join(' ') : 'no bands';
-  m.radio = row((s.radio ? s.radio + ' · ' : '') + bands + (s.rxFt4 ? ' · FT4 too' : ''));
+  m.radio = noMain || row((s.radio ? s.radio + ' · ' : '') + bands + (s.rxFt4 ? ' · FT4 too' : ''));
   var keyed = s.ampPtt === 1 ? 'TX PTT grounded' : s.ampPtt === 2 ? 'TX PTT +5V' : '';
-  if (!s.amp) m.amp = row('Off');
+  if (noMain) m.amp = noMain;
+  else if (!s.amp) m.amp = row('Off');
   else if (keyed && s.ampBad) m.amp = row('The radio will not key the amp as set', 'amber', '!');
   else m.amp = row((keyed ? 'Keyed by ' + keyed : 'Keying not checked') + (s.txDelay !== '' && s.txDelay != null ? ' · ' + s.txDelay + ' ms delay' : ''));
   var where = s.netMode === 'station' ? 'WiFi' : s.netMode === 'ap' ? 'Own network' : '';
@@ -1877,7 +1906,7 @@ function renderSettingsMenu() {
     netMode: cfg.sk_wifi_mode,
     netName: cfg.sk_network_name || '',
     netIp: cfg.sk_ip || '',
-    paired: paired(),
+    paired: paired(), noMain: mainBoardAway(),
     fwBoards: plan.steps.map(function (o) { return o.label; }),
     fwChecked: !!fwManifest, fwNoNet: fwManifestErr,
     appStale: appIsStale,
@@ -2396,7 +2425,7 @@ function setMainBoardLive(live) {
     note.hidden = true;
     return;
   }
-  note.textContent = 'The main board is not answering. Station values below are the ones this browser saved' +
+  note.textContent = (mainBoardAway() ? NO_MAIN_TITLE : 'The main board is not answering') + '. Station values below are the ones this browser saved' +
     (lastCfgAt ? ' ' + fmtAgo(lastCfgAt) : '') + '.';
   note.hidden = false;
   document.getElementById('diagPorta').textContent = '—';
@@ -2557,7 +2586,7 @@ function fmtHzMHz(hz) { return (hz / 1e6).toFixed(4).replace(/0+$/, '').replace(
 // chip: radioChipState()'s answer. hud: the last TX HUD event, or null. ctx: {tune (Tune is on),
 // ourCq (txIsOurCq()), band, freq ("14.074"), radio ("QMX"), swrTrips (tripped transmissions in a
 // row, noteTxHud()), act (" · 3 refs · 0000Z 3h12m" or ''), wantMHz (the drift's reading),
-// linkLost (linkLost()), unpaired (!paired())}. A firmware update has no state here: the page following one
+// linkLost (linkLost()), unpaired (!paired()), noMain (mainBoardAway())}. A firmware update has no state here: the page following one
 // shows its progress sheet over every tab, the bar included (webapp.md, Settings › Software update).
 // Returns {state, tone: 'red'|'amber'|'grey'|'quiet', main, sub, glyph, label, stop}; stop is the
 // Stop button's text, '' when there is nothing on the air to stop.
@@ -2592,6 +2621,11 @@ function radioBarState(chip, hud, ctx) {
     return { state: 'notkeyed', tone: 'amber', main: 'Not keyed',
              sub: 'Not counted: ' + (hud.reason || 'could not key') + (hud.x ? ' · ' + hud.x : ''),
              glyph: '!', label: 'Radio ›', stop: '' };
+  }
+  // The sidekick answers and has no main board: what to check, which No contact cannot say.
+  if (ctx.noMain) {
+    return { state: 'nomain', tone: 'red', main: NO_MAIN_TITLE, sub: NO_MAIN_HINT,
+             glyph: '\u2715', label: 'Radio \u203a', stop: '' };
   }
   // No answer from the sidekick or the main board for LINK_LOST_MS: nothing below can be trusted.
   if (ctx.linkLost) {
@@ -2711,7 +2745,7 @@ function renderRadioBar() {
     band: operatingBandName(cfg),
     freq: khz != null ? khzToMhzLabel(khz) : '', radio: radioNameOf(), swrTrips: swrTrack.count,
     act: refs.length ? ' · ' + refs.length + (refs.length === 1 ? ' ref' : ' refs') + ' · 0000Z ' + utcDayLeft(Date.now()) : '',
-    wantMHz: rs ? fmtHzMHz(rs.hz) : '', linkLost: linkLost(), unpaired: !paired()
+    wantMHz: rs ? fmtHzMHz(rs.hz) : '', linkLost: linkLost(), unpaired: !paired(), noMain: mainBoardAway()
   });
   document.getElementById('tabUnpaired').hidden = paired();
   var bar = document.getElementById('opRadioBar');
@@ -2725,7 +2759,7 @@ function renderRadioBar() {
   var stop = document.getElementById('rbStop');
   stop.hidden = !st.stop;
   stop.textContent = st.stop || 'Stop TX';
-  renderRadioDrawer(cfg, st.state === 'nolink' || st.state === 'unpaired' ? st.state : chip);
+  renderRadioDrawer(cfg, st.state === 'nomain' || st.state === 'nolink' || st.state === 'unpaired' ? st.state : chip);
 }
 
 // The drawer's radio half: a problem state's note and actions first, the read-back rows, Tune.
@@ -2735,6 +2769,9 @@ function renderRadioDrawer(cfg, st) {
   var cat = yn(cfg.cat_ready) === 'yes', audio = yn(cfg.audio_rx) === 'yes';
   if (st === 'unpaired') {
     note = 'This phone is not paired, so it can watch but not transmit or change anything. Press the button on top of the sidekick; this clears within a few seconds.';
+  } else if (st === 'nomain') {
+    note = 'The sidekick is running and has no main board to talk to, so nothing can be received, sent or changed. ' +
+      NO_MAIN_HINT + ': the cable goes from the sidekick to the main board\u2019s Port A. This clears by itself within a few seconds.';
   } else if (st === 'nolink') {
     note = 'Nothing has answered for 30 seconds. Check that the phone is still on the station’s WiFi, that the sidekick is powered, and the Port A cable between the sidekick and the main board. This clears by itself once it answers.';
   } else if (st === 'none') {
@@ -3352,6 +3389,10 @@ function waitForSetupPage(opts) {
 // is re-read either way. alertOnFail: the drawer's actions show a refusal in a
 // dialog; Settings' show it in a toast.
 async function putConfigLine(line, busyMsg, alertOnFail) {
+  if (mainBoardAway()) {
+    failMsg(noMainText());
+    return false;
+  }
   if (!MicroFT8Pairing.getToken()) {
     failMsg('Press the sidekick button to pair first.');
     MicroFT8Pairing.needsReauth();
@@ -3602,9 +3643,11 @@ async function loadConfig() {
     clearTimeout(timer);
     if (!r.ok) throw new Error('config HTTP ' + r.status);
     var cfg = await r.json();
+    noteSidekickAnswer(cfg);
     if (cfg.ok === false) {
       applySidekickFacts(cfg);
-      throw new Error(cfg.why === 'no reply from host'
+      throw new Error(mainBoardAway() ? noMainText()
+        : cfg.why === 'no reply from host'
         ? 'The main board is not answering — check it and its Port A cable'
         : (cfg.why || 'config failed'));
     }
@@ -3645,6 +3688,7 @@ async function pollLiveStatus() {
     var r = await fetch('/api/config', { cache: 'no-store' });
     if (!r.ok) return;
     var cfg = await r.json();
+    noteSidekickAnswer(cfg);
     if (cfg.ok === false) {
       applySidekickFacts(cfg);
       setMainBoardLive(false);
@@ -3747,6 +3791,10 @@ async function autoSyncClock() {
 // just .catch()es the promise and ignores what it resolves to, so this is
 // safe to add without touching them.
 async function radioPost(path, body, busyMsg) {
+  if (mainBoardAway()) {
+    failMsg(noMainText());
+    return false;
+  }
   if (!MicroFT8Pairing.getToken()) {
     failMsg('Press the sidekick button to pair first.');
     MicroFT8Pairing.needsReauth();
@@ -5163,6 +5211,10 @@ function queueHasCall(call) {
 }
 
 async function sendReply(id) {
+  if (mainBoardAway()) {
+    failMsg(noMainText());
+    return;
+  }
   if (!MicroFT8Pairing.getToken()) {
     failMsg('Press the sidekick button to pair first.');
     MicroFT8Pairing.needsReauth();
@@ -6673,7 +6725,7 @@ async function loadMoreLog() {
   } catch (e) {
     if (!logRenderedAny) {
       document.getElementById('logList').innerHTML =
-        '<p style="padding:0 1rem;color:GrayText">no reply from sidekick</p>';
+        '<p style="padding:0 1rem;color:GrayText">' + (mainBoardAway() ? noMainText() : 'no reply from sidekick') + '</p>';
     }
   } finally {
     logLoading = false;

@@ -31,7 +31,7 @@ function extractFunction(text, name) {
 
 const sb = {};
 vm.createContext(sb);
-vm.runInContext([/var TX_NO_RF_AFTER_MS = \d+;/.exec(src)[0]].concat(['radioBarState', 'noteTxHud', 'utcDayLeft', 'txReadout']
+vm.runInContext([/var TX_NO_RF_AFTER_MS = \d+;/.exec(src)[0], /var NO_MAIN_TITLE = .*;/.exec(src)[0], /var NO_MAIN_HINT = .*;/.exec(src)[0]].concat(['radioBarState', 'noteTxHud', 'utcDayLeft', 'txReadout']
   .map((n) => extractFunction(src, n))).join('\n'), sb);
 
 const ctx = (o) => Object.assign({ tune: false, ourCq: false, band: '20m', freq: '14.074', radio: 'QMX',
@@ -111,6 +111,45 @@ assert.strictEqual(s.sub, 'Not paired · press the sidekick’s button');
 assert.strictEqual(bar('ready', null, { unpaired: true, linkLost: true }).state, 'nolink');
 
 assert.strictEqual(bar('ready', tx(), { unpaired: true }).state, 'tx');
+
+// A sidekick with no main board (webapp.md, The radio bar): its own state, saying what to check. It outranks No
+// contact, which cannot say which end is missing, and Not paired, since pairing would change nothing yet.
+s = bar('none', null, { noMain: true });
+assert.deepStrictEqual([s.state, s.tone, s.main, s.sub, s.stop],
+  ['nomain', 'red', 'Main board not connected', 'Check the cable between the boards and the main board\u2019s power', '']);
+assert.strictEqual(bar('ready', null, { noMain: true, linkLost: true }).state, 'nomain');
+assert.strictEqual(bar('none', null, { noMain: true, unpaired: true }).state, 'nomain');
+assert.strictEqual(bar('ready', null, { linkLost: true }).state, 'nolink', 'no word of a main board either way: No contact, as before');
+
+// When it is said (mainBoardAway(), linkLost()), on the page's own functions with a clock.
+{
+  const w = { lastConfigOkMs: 0, sidekickAnswerMs: 0, mainBoardLinked: null, pageLoadedMs: 1000, LINK_LOST_MS: 30000, now: 1000 };
+  vm.createContext(w);
+  vm.runInContext('Date.now = function () { return now; };' +
+    ['noteSidekickAnswer', 'mainBoardAway', 'linkLost'].map((n) => extractFunction(src, n)).join('\n'), w);
+  const at = (ms) => { w.now = ms; return [w.mainBoardAway(), w.linkLost()]; };
+  assert.deepStrictEqual(at(5000), [false, false], 'a page just loaded says nothing yet');
+  assert.deepStrictEqual(at(31001), [false, true], 'a page that never had an answer says No contact after 30 s (it said nothing, before)');
+  // The sidekick answers that it has no main board: known from the first reply, with no good answer ever seen.
+  w.now = 6000; w.noteSidekickAnswer({ ok: false, host_linked: '0' });
+  assert.deepStrictEqual(at(6001), [true, false], 'Main board not connected, at once');
+  assert.deepStrictEqual(at(16000), [true, false], 'and still, between replies that take the sidekick 5 s each');
+  assert.deepStrictEqual(at(36001), [false, true], 'the sidekick went quiet too: No contact');
+  // Plugged in: the next reply clears it.
+  w.now = 40000; w.noteSidekickAnswer({ host_linked: '1' }); w.lastConfigOkMs = 40000;
+  assert.deepStrictEqual(at(40001), [false, false], 'cleared by the reply that says a main board is linked');
+  // A main board that is linked and stops answering config is not this state.
+  w.now = 60000; w.noteSidekickAnswer({ ok: false, host_linked: '1' });
+  assert.deepStrictEqual(at(71000), [false, true], 'linked but not answering for 30 s: No contact');
+  // A sidekick from before it said (no host_linked) changes nothing.
+  const o = { lastConfigOkMs: 0, sidekickAnswerMs: 0, mainBoardLinked: null, pageLoadedMs: 0, LINK_LOST_MS: 30000, now: 0 };
+  vm.createContext(o);
+  vm.runInContext('Date.now = function () { return now; };' +
+    ['noteSidekickAnswer', 'mainBoardAway', 'linkLost'].map((n) => extractFunction(src, n)).join('\n'), o);
+  o.now = 1000; o.noteSidekickAnswer({ ok: false });
+  assert.strictEqual(o.mainBoardAway(), false);
+}
+
 
 // 2. A transmission that did not go outranks a radio problem, and offers no Stop.
 s = bar('lost', tx({ aborted: true, reason: 'SWR protection' }), { swrTrips: 1 });
