@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // What a band or frequency change, and the update, say they end (webapp.md, Band and frequency;
 // Settings › Software update): runs app.html's own endsClauses() and endsSentence(). One sentence,
-// shared by the retune and the update's review; only the update names a running CQ, since a retune
-// leaves it calling on the new frequency.
+// shared by the band change, the frequency change and the update, each of which ends a running CQ
+// too (maintainer, 2026-11-13).
 'use strict';
 const vm = require('vm');
 const fs = require('fs');
@@ -44,25 +44,43 @@ assert.strictEqual(say(['K9ABC'], true, false), 'This ends your QSO with K9ABC a
 assert.strictEqual(say(['K9ABC', 'W1AW'], false, false), 'This ends your 2 QSOs with K9ABC, W1AW.');
 assert.strictEqual(say([], true, false), 'This stops the transmission on the air.');
 
-// The update's, with a running CQ named first.
+// With a running CQ, named first.
 assert.strictEqual(say([], false, true), 'This ends your CQ.');
 assert.strictEqual(say(['K9ABC'], true, true),
   'This ends your CQ, ends your QSO with K9ABC and stops the transmission on the air.');
 
-// retuneEnds() reads the queue and the TX display: the CQ only when asked for, an aborted
-// transmission not at all.
+// retuneEnds() reads the queue and the TX display: a running CQ always, an aborted transmission
+// not at all. One answer, whoever asks: no caller spares the CQ.
 sb.queue = { 1: { dxcall: 'CQ' }, 2: { dxcall: 'K9ABC' } };
 sb.txHud = { active: true, aborted: false };
-assert.deepStrictEqual(Array.from(sb.retuneEnds()), ['ends your QSO with K9ABC', 'stops the transmission on the air']);
-assert.deepStrictEqual(Array.from(sb.retuneEnds(true)),
+assert.deepStrictEqual(Array.from(sb.retuneEnds()),
   ['ends your CQ', 'ends your QSO with K9ABC', 'stops the transmission on the air']);
 sb.queue = { 1: { dxcall: 'CQ' } };
 sb.txHud = { active: true, aborted: true };
-assert.deepStrictEqual(Array.from(sb.retuneEnds()), [], 'a retune leaves a lone CQ calling');
-assert.deepStrictEqual(Array.from(sb.retuneEnds(true)), ['ends your CQ']);
+assert.deepStrictEqual(Array.from(sb.retuneEnds()), ['ends your CQ'], 'a lone CQ is asked about, and ended');
 sb.txHud = null;
 sb.queue = {};
-assert.deepStrictEqual(Array.from(sb.retuneEnds(true)), []);
+assert.deepStrictEqual(Array.from(sb.retuneEnds()), []);
+
+// endQueueAndTx() cancels the transmission and every entry, the CQ included.
+{
+  const posted = [];
+  const ctx2 = { queue: { 1: { dxcall: 'CQ' }, 2: { dxcall: 'K9ABC' } }, Promise,
+    authPostQuiet: (p, b) => { posted.push(p + (b === undefined ? '' : ' ' + b)); return Promise.resolve(true); } };
+  vm.createContext(ctx2);
+  vm.runInContext(extractFunction(src, 'endQueueAndTx') + ';endQueueAndTx();', ctx2);
+  assert.deepStrictEqual(posted, ['/api/tx/cancel', '/api/queue/cancel 1', '/api/queue/cancel 2']);
+}
+
+// The update asks the band change's question first, by the same function, then ends things the
+// same way, and only then shows its own review.
+{
+  const review = extractFunction(src, 'openFwReview');
+  assert(/confirmRetune\('Update'\)/.test(review), 'the band change dialog, with the verb Update');
+  assert(/endQueueAndTx\(\)/.test(review), 'ended by the band change code path');
+  assert(review.indexOf("confirmRetune('Update')") < review.indexOf('Update the station?'), 'that dialog first');
+  assert(!/retuneEnds\(true\)|endsSentence/.test(review), 'the review itself names nothing it ends');
+}
 
 // No native confirm() is left on the retune path: it often cancels silently on phones.
 ['changeBand', 'setOperatingBandFreq', 'switchToBandWithFreq', 'confirmRetune'].forEach(function (n) {
