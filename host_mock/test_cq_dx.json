@@ -1,24 +1,23 @@
 {
-  "comment": "A free-text CQ is the free-text setting itself, not 'CQ' plus the call and grid.",
+  "comment": "The CQ's modifier: CQ DX.",
   "config": {
     "MY_CALLSIGN": "AG6AQ",
     "MY_GRID": "CM97",
     "DX_CALLSIGN": "N6HAN",
     "DX_GRID": "CM87",
     "TX_ON_EVEN": true,
-    "CQ_TYPE": "FREETEXT",
-    "FREE_TEXT": "POTA US-1234"
+    "CQ_MOD": "DX"
   },
   "periods": [
     {
-      "comment": "Period 0 (even): Call CQ: the free-text CQ",
+      "comment": "Period 0 (even): Call CQ: CQ DX",
       "messages": [],
       "cq_call": {
         "time_offset": 1.0,
         "tries": 99
       },
       "expect": {
-        "tx": "POTA US-1234"
+        "tx": "CQ DX AG6AQ CM97"
       }
     },
     {
@@ -29,10 +28,10 @@
       }
     },
     {
-      "comment": "Period 2 (even): the CQ sends the free text again",
+      "comment": "Period 2 (even): the CQ goes again, CQ DX",
       "messages": [],
       "expect": {
-        "tx": "POTA US-1234"
+        "tx": "CQ DX AG6AQ CM97"
       }
     }
   ]

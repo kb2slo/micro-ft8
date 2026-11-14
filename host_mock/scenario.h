@@ -81,7 +81,7 @@ bool scenario_call_cq(Scenario& s);
 bool scenario_set_entry_tries(Scenario& s, uint16_t entry_id, int tries);
 bool scenario_set_cq_parity(Scenario& s, uint16_t entry_id, int parity);
 void scenario_set_station(Scenario& s, const std::string& call, const std::string& grid);
-void scenario_set_cq_type(Scenario& s, int type, const std::string& free_text);
+void scenario_set_cq_modifier(Scenario& s, const std::string& modifier);
 void scenario_set_tries(Scenario& s, int tries);
 bool scenario_reply(Scenario& s, uint32_t decode_id);
 bool scenario_cancel_entry(Scenario& s, uint16_t entry_id);

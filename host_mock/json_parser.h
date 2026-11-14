@@ -14,8 +14,7 @@ struct TestConfig {
     std::string dx_callsign;
     std::string dx_grid;
     bool        tx_on_even = false;
-    std::string cq_type;       // "CQ", "SOTA", "FREETEXT", etc.
-    std::string free_text;     // the Free text CQ's message
+    std::string cq_mod;        // the CQ's modifier: "", "SOTA", "DX", etc.
     int         tries = 6;     // autoseq_set_tries (default AUTOSEQ_TRIES)
     bool        skip_tx1 = false; // autoseq_set_skip_tx1: a touch starts at the report
 };
@@ -36,11 +35,6 @@ struct TouchEvent {
     int   message_index  = 0;
 };
 
-struct FreeTextEvent {
-    float       time_offset = 0.0f;
-    std::string text;
-};
-
 struct TestPeriod {
     std::vector<UiRxLine> messages;     // RX messages for this period
     bool         has_cq_call = false;
@@ -49,8 +43,6 @@ struct TestPeriod {
     CqDrop       cq_drop;
     bool         has_touch_event = false;
     TouchEvent   touch_event;
-    bool          has_freetext_event = false;
-    FreeTextEvent freetext_event;
     // expect.tx is required. Empty means this period transmits nothing.
     // log is optional; absent means that line must not appear.
     bool        has_expect_tx = false;

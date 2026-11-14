@@ -6,7 +6,7 @@
     "DX_CALLSIGN": "N6HAN",
     "DX_GRID": "CM87",
     "TX_ON_EVEN": true,
-    "CQ_TYPE": "POTA"
+    "CQ_MOD": "POTA"
   },
   "periods": [
     {

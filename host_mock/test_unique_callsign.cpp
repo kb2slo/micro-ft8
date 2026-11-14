@@ -37,7 +37,6 @@ static int count_dx(const char* dx) {
     for (int i = 0; i < active; ++i) {
         QsoContext ctx;
         if (!autoseq_get_active_context(i, &ctx)) continue;
-        if (ctx.is_freetext) continue;
         if (strcasecmp(ctx.dxcall.c_str(), dx) == 0) ++n;
     }
     return n;

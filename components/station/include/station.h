@@ -31,9 +31,8 @@ struct StationSettings {
 
     int offset_hz;
     int band_sel;
-    int cq_type;
+    std::string cq_mod;  // the CQ's modifier, "" for a plain CQ (station_cq_mod_ok())
     bool skip_tx1;
-    std::string free_text;
     std::string call;
     std::string grid;
     int offset_src;
@@ -80,10 +79,16 @@ std::string station_serialize(const StationSettings& in);
 // lines are not included — the clock is not persisted here.
 bool station_key_known(const char* name);
 
-// On activation start (act_refs empty -> non-empty), the CQ type is derived
+// A CQ modifier a standard message can carry: "" (a plain CQ), one to four
+// letters A-Z ("DX", "POTA", "HI"), or three digits ("123"). `mod` is already
+// trimmed and upper-cased. The web app's cqModOk() is held to this by the
+// same vectors (webapp/tests/test_cq_mod.js, host_mock/test_station.cpp).
+bool station_cq_mod_ok(const std::string& mod);
+
+// On activation start (act_refs empty -> non-empty), the CQ's modifier is derived
 // from the references themselves -- SOTA if any SOTA reference is present
 // (a mixed activation defaults to SOTA), else POTA (architecture/logging.md,
-// "CQ type follows the activation"). act_refs is already
+// "The CQ's modifier follows the activation"). act_refs is already
 // normalize_act_refs()'d ("POTA:"/"SOTA:" upper-case prefixes) by the time
 // a caller has it, on either board.
 bool act_refs_prefer_sota(const std::string& act_refs);

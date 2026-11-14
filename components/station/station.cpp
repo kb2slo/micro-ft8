@@ -182,11 +182,10 @@ void format_freq(float f, char* fbuf, size_t n)
 enum class StationKey {
     Offset,
     BandSel,
-    CqType,
+    CqMod,
     OffsetSrc,
     Radio,
     GpsBaud,
-    FreeText,
     Call,
     Grid,
     Comment1,
@@ -209,11 +208,10 @@ StationKey key_from_name(const std::string& name)
 {
     if (name == "offset") return StationKey::Offset;
     if (name == "band_sel") return StationKey::BandSel;
-    if (name == "cq_type") return StationKey::CqType;
+    if (name == "cq_mod") return StationKey::CqMod;
     if (name == "offset_src") return StationKey::OffsetSrc;
     if (name == "radio") return StationKey::Radio;
     if (name == "gps_baud") return StationKey::GpsBaud;
-    if (name == "free_text") return StationKey::FreeText;
     if (name == "call") return StationKey::Call;
     if (name == "grid") return StationKey::Grid;
     if (name == "comment1") return StationKey::Comment1;
@@ -248,13 +246,15 @@ void apply_key(StationSettings* io, StationKey key, const std::string& value)
                 }
             }
             break;
-        case StationKey::CqType:
-            if (sscanf(value.c_str(), "%d", &val) == 1) {
-                if (val >= 0 && val <= 4) {
-                    io->cq_type = val;
-                }
+        case StationKey::CqMod: {
+            // A bad one keeps the old, as a bad grid does; the main board
+            // refuses it before it gets here (porta_host_config_set()).
+            const std::string mod = trim_upper_copy(value);
+            if (station_cq_mod_ok(mod)) {
+                io->cq_mod = mod;
             }
             break;
+        }
         case StationKey::OffsetSrc:
             if (sscanf(value.c_str(), "%d", &val) == 1) {
                 if (val >= 0 && val <= 2) {
@@ -269,9 +269,6 @@ void apply_key(StationSettings* io, StationKey key, const std::string& value)
             if (sscanf(value.c_str(), "%d", &val) == 1) {
                 io->gps_baud = normalize_gps_baud(val);
             }
-            break;
-        case StationKey::FreeText:
-            io->free_text = trim_upper_copy(value);
             break;
         case StationKey::Call:
             io->call = trim_upper_copy(value);
@@ -446,9 +443,8 @@ std::string station_serialize(const StationSettings& in)
     }
     put_int(out, "offset", in.offset_hz);
     put_int(out, "band_sel", in.band_sel);
-    put_int(out, "cq_type", in.cq_type);
+    put_str(out, "cq_mod", in.cq_mod);
     put_int(out, "skiptx1", in.skip_tx1 ? 1 : 0);
-    put_str(out, "free_text", in.free_text);
     put_str(out, "call", in.call);
     put_str(out, "grid", in.grid);
     put_int(out, "offset_src", in.offset_src);
@@ -483,6 +479,19 @@ bool station_amp_swr_guard(const StationSettings& s)
 bool station_amp_prime_on_band_change(const StationSettings& s)
 {
     return s.amp && s.amp_prime_on_band_change;
+}
+
+bool station_cq_mod_ok(const std::string& mod)
+{
+    if (mod.empty()) return true;
+    if (mod.size() > 4) return false;
+    bool letters = true;
+    bool digits = true;
+    for (char c : mod) {
+        if (c < 'A' || c > 'Z') letters = false;
+        if (c < '0' || c > '9') digits = false;
+    }
+    return letters || (digits && mod.size() == 3);
 }
 
 bool act_refs_prefer_sota(const std::string& act_refs)

@@ -156,20 +156,12 @@ void scenario_begin(Scenario& s, const TestData& data)
     autoseq_set_tries(data.config.tries);
     autoseq_set_skip_tx1(data.config.skip_tx1);
 
-    if (!data.config.cq_type.empty()) {
-        AutoseqCqType cq = AutoseqCqType::CQ;
-        if (data.config.cq_type == "SOTA") cq = AutoseqCqType::SOTA;
-        else if (data.config.cq_type == "POTA") cq = AutoseqCqType::POTA;
-        else if (data.config.cq_type == "QRP") cq = AutoseqCqType::QRP;
-        else if (data.config.cq_type == "FREETEXT") cq = AutoseqCqType::FREETEXT;
-        autoseq_set_cq_type(cq, data.config.free_text);
-    }
+    autoseq_set_cq_modifier(data.config.cq_mod);
 
     printf("Station: %s / %s\n", s.station_call.c_str(), s.station_grid.c_str());
     printf("TX_ON_EVEN: %s\n", data.config.tx_on_even ? "true" : "false");
-    if (!data.config.cq_type.empty()) {
-        printf("CQ_TYPE: %s  FREE_TEXT: %s\n",
-               data.config.cq_type.c_str(), data.config.free_text.c_str());
+    if (!data.config.cq_mod.empty()) {
+        printf("CQ_MOD: %s\n", data.config.cq_mod.c_str());
     }
     printf("Periods: %d\n\n", (int)data.periods.size());
 }
@@ -310,18 +302,10 @@ void scenario_set_station(Scenario& s, const std::string& call, const std::strin
     autoseq_set_station(call, grid);
 }
 
-void scenario_set_cq_type(Scenario& s, int type, const std::string& free_text)
+void scenario_set_cq_modifier(Scenario& s, const std::string& modifier)
 {
     s_current = &s;
-    AutoseqCqType cq = AutoseqCqType::CQ;
-    switch (type) {
-        case 1: cq = AutoseqCqType::SOTA; break;
-        case 2: cq = AutoseqCqType::POTA; break;
-        case 3: cq = AutoseqCqType::QRP; break;
-        case 4: cq = AutoseqCqType::FREETEXT; break;
-        default: cq = AutoseqCqType::CQ; break;
-    }
-    autoseq_set_cq_type(cq, free_text);
+    autoseq_set_cq_modifier(modifier);
 }
 
 void scenario_set_tries(Scenario& s, int tries)
@@ -492,14 +476,6 @@ bool scenario_step(Scenario& s)
                    p, tp.touch_event.time_offset, idx, rx.text.c_str());
             autoseq_on_touch(rx);
         }
-    }
-
-    if (tp.has_freetext_event) {
-        const int fallback_parity = (int)(((int64_t)p + 1) & 1);
-        const bool ok = autoseq_schedule_freetext(tp.freetext_event.text, fallback_parity);
-        printf("[Period %d @ %.1fs] FreeText: %s (scheduled=%d)\n",
-               p, tp.freetext_event.time_offset,
-               tp.freetext_event.text.c_str(), ok ? 1 : 0);
     }
 
     const std::string actual_tx = period_tx(s, p, slot_parity, period_base_ms);
