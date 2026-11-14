@@ -8,18 +8,23 @@ under the tag's name.
 This script edits no source file, so there is no number to bump and no bump
 commit for the tag to land on the wrong side of.
 
-Everything here is a precondition check -- see docs/RELEASE_PROCESS.md.
+Everything here is a precondition check -- see docs/RELEASE_PROCESS.md. The
+ones that need no git or network are host-tested: tools/test_cut_release.py.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
 
-SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import dev_build  # noqa: E402
+
+SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 REMOTE = "origin"
 BRANCH = "main"
 
@@ -73,6 +78,37 @@ def require_tag_free(tag: str) -> None:
             f"tag '{tag}' already exists on {REMOTE}. Version tags are "
             "immovable by convention -- cut the next version instead."
         )
+
+
+def release_number(tag: str) -> tuple[int, int, int] | None:
+    """(major, minor, patch) of a release tag, `v1.2.3`; None for any other tag."""
+    m = SEMVER.match(tag[1:]) if tag.startswith("v") else None
+    return tuple(int(g) for g in m.groups()) if m else None
+
+
+def require_newer(version: str, tags: list[str]) -> None:
+    """Refuse a version that is not greater than every release already tagged.
+
+    Stable versions only rise: a station on a release is offered the next one, and a number
+    below one already out would never be offered to anyone.
+    """
+    want = release_number(f"v{version}")
+    out = [(n, t) for t in tags if (n := release_number(t)) is not None]
+    if out and want <= max(out)[0]:
+        raise Abort(f"{version} is not greater than {max(out)[1]}, the newest release tagged.")
+
+
+def remote_tags() -> list[str]:
+    lines = run("git", "ls-remote", "--tags", REMOTE, "refs/tags/v*").splitlines()
+    return [line.split("refs/tags/", 1)[1] for line in lines if "refs/tags/" in line and not line.endswith("^{}")]
+
+
+def require_dev_build(sha: str) -> None:
+    """Refuse a commit whose dev build was not published (tools/dev_build.py)."""
+    try:
+        dev_build.require_published(sha)
+    except dev_build.DevBuildError as exc:
+        raise Abort(str(exc))
 
 
 def require_ci_green(sha: str) -> None:
@@ -131,6 +167,8 @@ def main() -> int:
         branch = require_on_branch()
         sha = require_up_to_date()
         require_tag_free(tag)
+        require_newer(version, remote_tags())
+        require_dev_build(sha)
         if args.skip_ci_check:
             print("! skipping the CI check")
         else:

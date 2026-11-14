@@ -146,7 +146,7 @@ jobs:
   sidekick-firmware:
     name: Sidekick (ESP32-S3)
     needs: changes
-    if: startsWith(github.ref, 'refs/tags/v') || needs.changes.outputs.firmware == 'true'
+    if: startsWith(github.ref, 'refs/tags/v') || needs.changes.outputs.firmware == 'true' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     env:
       # CI checks out a synthesized merge commit for a PR, not
@@ -202,7 +202,7 @@ jobs:
   poe_p4-firmware:
     name: PoE-P4 (ESP32-P4)
     needs: changes
-    if: startsWith(github.ref, 'refs/tags/v') || needs.changes.outputs.firmware == 'true'
+    if: startsWith(github.ref, 'refs/tags/v') || needs.changes.outputs.firmware == 'true' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     env:
       # As for the sidekick: a pull request builds a synthesized merge commit,
@@ -254,6 +254,14 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v5
+
+      # Before anything is published: a stable tag goes only on a commit whose
+      # dev build was published, and this is what stops a tag pushed by hand
+      # (tools/cut_release.py asks the same before it tags).
+      - name: Refuse a commit with no dev build
+        run: python3 tools/dev_build.py --sha "${GITHUB_SHA}"
+
       - uses: actions/download-artifact@v7
         with:
           name: poe_p4-firmware
@@ -295,7 +303,9 @@ jobs:
   release-main:
     name: Publish dev (main)
     needs: [host-tests, poe_p4-firmware, sidekick-firmware, getting-started-sheet]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # A run started by hand on main publishes too: it is how a commit that changed no firmware
+    # gets the dev build a stable tag needs (tools/dev_build.py; docs/RELEASE_PROCESS.md).
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
