@@ -80,6 +80,6 @@ direct_dependencies:
 - espressif/usb_host_uac
 - idf
 - joltwallet/littlefs
-manifest_hash: 1468198ab7809c36de82abadb60ec756dec990ed982b3541c637d0cab14ea7c1
+manifest_hash: 9ca1ee4dc7403a20dae01d058117d240e245afaf4cc02538d8f98c26151517d6
 target: esp32p4
 version: 2.0.0
