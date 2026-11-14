@@ -63,8 +63,7 @@ static int cq_type_number(const std::string& name)
     if (name == "SOTA") return 1;
     if (name == "POTA") return 2;
     if (name == "QRP") return 3;
-    if (name == "FD") return 4;
-    if (name == "FREETEXT") return 5;
+    if (name == "FREETEXT") return 4;
     return 0;
 }
 

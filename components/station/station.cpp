@@ -250,7 +250,7 @@ void apply_key(StationSettings* io, StationKey key, const std::string& value)
             break;
         case StationKey::CqType:
             if (sscanf(value.c_str(), "%d", &val) == 1) {
-                if (val >= 0 && val <= 5) {
+                if (val >= 0 && val <= 4) {
                     io->cq_type = val;
                 }
             }

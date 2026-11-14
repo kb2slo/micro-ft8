@@ -74,11 +74,10 @@ static void sync_autoseq_station(void) {
     autoseq_set_skip_tx1(s_station.skip_tx1);
     autoseq_set_tries(s_station.tries);
     AutoseqCqType cq = AutoseqCqType::CQ;
-    if (s_station.cq_type >= 0 && s_station.cq_type <= 5) {
+    if (s_station.cq_type >= 0 && s_station.cq_type <= 4) {
         cq = (AutoseqCqType)s_station.cq_type;
     }
-    // free_text is the Free text CQ's message and, with type FD, our Field Day
-    // exchange (docs/architecture/autoseq.md, Field Day follows the CQ type).
+    // free_text is the Free text CQ's message.
     autoseq_set_cq_type(cq, s_station.free_text);
 }
 

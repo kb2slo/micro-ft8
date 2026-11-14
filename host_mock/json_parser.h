@@ -14,8 +14,8 @@ struct TestConfig {
     std::string dx_callsign;
     std::string dx_grid;
     bool        tx_on_even = false;
-    std::string cq_type;       // "CQ", "FD", "SOTA", etc.
-    std::string free_text;     // FD exchange or freetext (e.g. "1A SCV")
+    std::string cq_type;       // "CQ", "SOTA", "FREETEXT", etc.
+    std::string free_text;     // the Free text CQ's message
     int         tries = 6;     // autoseq_set_tries (default AUTOSEQ_TRIES)
     bool        skip_tx1 = false; // autoseq_set_skip_tx1: a touch starts at the report
 };
