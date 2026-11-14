@@ -42,11 +42,9 @@ enum class AutoseqState {
 //
 //     next_tx ∈ {TX_NONE, TX1, TX2, TX3, TX4, TX5}
 //
-// TX6 is the FT8 CQ message but is NEVER assigned to next_tx. CQ ctxs
-// (and the Free Text variant that piggy-backs on the CQ infrastructure)
-// use next_tx = TX_NONE — text comes from the singleton s_tx_msg_buffer,
-// populated at refresh time by either generate_cq_text_into() (for CQ)
-// or from the s_pending_ft_text sidecar (for FT).
+// TX6 is the FT8 CQ message but is NEVER assigned to next_tx. The CQ ctx
+// uses next_tx = TX_NONE — text comes from the singleton s_tx_msg_buffer,
+// populated at refresh time by generate_cq_text_into().
 //
 // Semantics of TX_NONE on next_tx:
 //   - On a CALLING ctx: "text from s_tx_msg_buffer". The CQ entry stays
@@ -103,16 +101,6 @@ struct QsoContext {
     // The mode it runs in: a decode continues the entry for its call in its own mode only, so an FT8 QSO and
     // an FT4 QSO with one station are two entries. The CQ is FT8's.
     RxMode mode = RxMode::FT8;
-
-    // CQ and Free Text entries share the CALLING state but differ in sort
-    // priority: FT must TX first (preempts QSOs), CQ stays at bottom (QSOs
-    // take priority over a CQ). is_freetext is the priority flag consulted in
-    // compare_ctx.
-    //
-    // Text storage: CQ text is regenerated from template at refresh; FT text
-    // is held in the s_pending_ft_text singleton (only one FT pending at a
-    // time, so one sidecar suffices). No per-ctx text field is needed.
-    bool is_freetext = false;
 };
 
 // TX entry for scheduling
@@ -170,14 +158,6 @@ int autoseq_cq_parity(int current_slot_parity, bool current_slot_keyable);
 // The queued CQ's entry_id, 0 if none.
 uint16_t autoseq_cq_entry_id();
 
-// Schedule a Free Text one-shot transmission.
-// - Inherits slot parity from queue[0] if queue is non-empty, so FT joins the
-//   current activation period instead of colliding with other QSOs' slots.
-// - If queue is empty, uses fallback_slot_parity (caller should pass the next
-//   TX slot's parity based on wall-clock).
-// Returns false if no room or text is empty.
-bool autoseq_schedule_freetext(const std::string& text, int fallback_slot_parity);
-
 // Manual response: user taps on a decoded message.
 // Prevents duplicate active QSOs for the same DX callsign: promotes a fresh
 // entry to the front, or ignores the tap when that call is already the live
@@ -229,7 +209,7 @@ AutoseqParityResult autoseq_set_cq_parity(uint16_t entry_id, int slot_parity);
 
 // Combines the entry_id check above with the text refresh a board's armed
 // snapshot also needs: the *same* queue[0] entry's rendered text can change
-// without its entry_id changing (a live cq_type switch re-derives the CQ
+// without its entry_id changing (a live change of modifier re-derives the CQ
 // template for the entry already at CALLING) — a bare
 // entry_id comparison alone misses that, so a switch made after a board
 // armed a slot but before it fired would silently transmit the old text.
@@ -306,6 +286,7 @@ void autoseq_set_skip_tx1(bool skip);  // Skip TX1 and start with TX2
 // entry that has no count of its own, the queued CQ included.
 void autoseq_set_tries(int tries);
 
-// CQ type configuration
-enum class AutoseqCqType { CQ = 0, SOTA, POTA, QRP, FREETEXT };
-void autoseq_set_cq_type(AutoseqCqType type, const std::string& freetext = "");
+// The word between CQ and our call, "" for a plain CQ: "DX" gives
+// "CQ DX K1ABC FN42". The caller passes one station_cq_mod_ok() accepts
+// (components/station), since anything else is not a standard message.
+void autoseq_set_cq_modifier(const std::string& modifier);

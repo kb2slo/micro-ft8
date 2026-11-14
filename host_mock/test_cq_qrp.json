@@ -1,12 +1,12 @@
 {
-  "comment": "CQ QRP uses the QRP template.",
+  "comment": "The CQ's modifier: CQ QRP.",
   "config": {
     "MY_CALLSIGN": "AG6AQ",
     "MY_GRID": "CM97",
     "DX_CALLSIGN": "N6HAN",
     "DX_GRID": "CM87",
     "TX_ON_EVEN": true,
-    "CQ_TYPE": "QRP"
+    "CQ_MOD": "QRP"
   },
   "periods": [
     {

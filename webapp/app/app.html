@@ -754,19 +754,20 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         <div class=setrow><div class=diagrow><span>Sends</span><span id=sheetSendsText>&mdash;</span></div></div>
         <div class=setrow>
           <label class=fld><span>Type</span>
-            <select id=cq_type>
-              <option value=0>CQ</option>
-              <option value=1>SOTA</option>
-              <option value=2>POTA</option>
-              <option value=3>QRP</option>
-              <option value=4>FreeText</option>
+            <select id=cq_mod_sel>
+              <option value="">CQ</option>
+              <option value=DX>CQ DX</option>
+              <option value=POTA>CQ POTA</option>
+              <option value=SOTA>CQ SOTA</option>
+              <option value=QRP>CQ QRP</option>
+              <option value="*">Other&hellip;</option>
             </select>
           </label>
         </div>
-        <!-- Shown only for Free text (onchange of #cq_type toggles this,
-             setStationForm()). -->
-        <div class=setrow id=freeTextRow hidden>
-          <label class=fld><span>CQ message</span><input id=free_text autocomplete=off maxlength=13></label>
+        <!-- Shown only for Other (cqModChoice(), setStationForm()): any other
+             word a CQ can carry before the call, such as HI or AK. -->
+        <div class=setrow id=cqModRow hidden>
+          <label class=fld><span>CQ &hellip;</span><input id=cq_mod autocomplete=off autocapitalize=characters maxlength=4 placeholder="HI"></label>
         </div>
 
         <div class="hd sep">QSOs</div>
@@ -1296,7 +1297,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 <script src=updates.js></script>
 <script>
 // BANDS and BAND_EDGES_KHZ live in bands.js (shared with swr.html).
-// The fields that autosave one key each on change, by the loop below. cq_type, free_text, grid,
+// The fields that autosave one key each on change, by the loop below. cq_mod, grid,
 // offset, offset_src, tries and act_refs have handlers of their own (webapp.md, Settings ›
 // Station): a format check, a stepper, a list.
 var FIELDS = [
@@ -1304,7 +1305,21 @@ var FIELDS = [
   'radio','protocol_mode','skiptx1','amp','tx_min_delay_ms','amp_ptt','amp_swr_guard',
   'amp_prime_on_band_change','rx_ft4'
 ];
-var CQ_TYPE_NAMES = ['CQ', 'SOTA', 'POTA', 'QRP', 'FreeText'];
+// The CQ's modifier (autoseq.md, The CQ's modifier): the word between CQ and the call, '' for a
+// plain CQ. These are the ones Type offers by name; Other takes any that cqModOk() accepts.
+var CQ_MOD_PRESETS = ['DX', 'POTA', 'SOTA', 'QRP'];
+// What a standard message can carry there: one to four letters, or three digits. Held to
+// station_cq_mod_ok() (components/station/station.cpp) by the same vectors (tests/test_cq_mod.js).
+function cqModOk(mod) {
+  return /^([A-Z]{1,4}|[0-9]{3})?$/.test(mod);
+}
+// Which Type option shows for a modifier: its own when it is offered by name, else Other ('*').
+// `other` is the operator having picked Other and not yet typed one, which keeps it showing.
+function cqModChoice(mod, other) {
+  if (!other && (mod === '' || CQ_MOD_PRESETS.indexOf(mod) !== -1)) return mod;
+  return '*';
+}
+var sheetCqOther = false;
 // AutoseqState wire values (main/autoseq.h). 6 = IDLE = remove from display.
 var QUEUE_STATE_NAMES = ['CALLING', 'REPLYING', 'REPORT', 'ROGER REPORT', 'ROGERS', 'SIGNOFF'];
 
@@ -2012,7 +2027,7 @@ function renderSettingsMenu() {
   var m = settingsMenuModel({
     call: document.getElementById('call').value.trim(),
     grid: cfg.grid || '',
-    cq: ['CQ', 'CQ SOTA', 'CQ POTA', 'CQ QRP', 'Free text'][parseInt(cfg.cq_type, 10) || 0],
+    cq: cfg.cq_mod ? 'CQ ' + cfg.cq_mod : 'CQ',
     radio: (function (sel) { var o = sel.options[sel.selectedIndex]; return o ? o.textContent.replace(/\s*\(.*$/, '') : ''; })(document.getElementById('radio')),
     bands: BANDS.filter(function (b) { return active.any ? !!active.want[b.n] : true; }).map(function (b) { return b.name; }),
     rxFt4: document.getElementById('rx_ft4').value === '1',
@@ -2265,20 +2280,21 @@ function updateGridHint() {
 }
 document.getElementById('grid').addEventListener('input', updateGridHint);
 
-// The Station page's fields with handlers of their own (webapp.md, Settings › Station): cq_type,
-// free_text, grid, tries, offset and offset_src are not in the
+// The Station page's fields with handlers of their own (webapp.md, Settings › Station): cq_mod,
+// grid, tries, offset and offset_src are not in the
 // FIELDS loop above, so they need their own population here,
 // called from setForm() alongside it -- same call sites (boot from cache,
 // loadConfig()), same reasoning against rebuilding mid-edit. The two
-// free-typing fields (grid, free_text) skip their own reload while focused,
+// free-typing fields (grid, cq_mod) skip their own reload while focused,
 // so a write triggered by some *other* control (which reloads the
 // whole config) can't clobber an edit still in progress here.
 function setStationForm(cfg) {
-  var type = parseInt(cfg.cq_type, 10) || 0;
-  document.getElementById('cq_type').value = String(type);
-  document.getElementById('freeTextRow').hidden = type !== 4;
-  var ftEl = document.getElementById('free_text');
-  if (document.activeElement !== ftEl) ftEl.value = cfg.free_text || '';
+  var mod = String(cfg.cq_mod || '').toUpperCase();
+  var choice = cqModChoice(mod, sheetCqOther);
+  document.getElementById('cq_mod_sel').value = choice;
+  document.getElementById('cqModRow').hidden = choice !== '*';
+  var modEl = document.getElementById('cq_mod');
+  if (document.activeElement !== modEl) modEl.value = choice === '*' && cqModChoice(mod, false) === '*' ? mod : '';
   var gridEl = document.getElementById('grid');
   if (document.activeElement !== gridEl) gridEl.value = cfg.grid || '';
   updateGridHint();
@@ -2378,11 +2394,26 @@ function holdRepeat(btn, fn) {
 function sheetPutLine(line, busyMsg) {
   putConfigLine(line, busyMsg, false).catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
 }
-document.getElementById('cq_type').onchange = function () {
-  sheetPutLine('cq_type=' + this.value, 'Setting CQ type…');
+// Other writes nothing by itself: it shows the field, and the CQ changes when a modifier is entered.
+document.getElementById('cq_mod_sel').onchange = function () {
+  sheetCqOther = this.value === '*';
+  if (sheetCqOther) {
+    document.getElementById('cqModRow').hidden = false;
+    document.getElementById('cq_mod').focus();
+    return;
+  }
+  sheetPutLine('cq_mod=' + this.value, 'Setting CQ…');
 };
-document.getElementById('free_text').onchange = function () {
-  sheetPutLine('free_text=' + this.value, 'Setting CQ text…');
+// Refused here, in a toast, and by the main board (porta_host_config_set()): anything else is
+// not a message a CQ can carry.
+document.getElementById('cq_mod').onchange = function () {
+  var v = this.value.trim().toUpperCase();
+  if (!cqModOk(v)) {
+    failMsg('Not a CQ modifier: "' + v + '". Use 1 to 4 letters, or 3 digits, e.g. HI or 123.');
+    return;
+  }
+  sheetCqOther = false;
+  sheetPutLine('cq_mod=' + v, 'Setting CQ…');
 };
 // Malformed input is refused client-side, in a toast -- station_parse() would otherwise
 // just silently keep the old grid (StationKey::Grid in
@@ -4325,13 +4356,12 @@ setInterval(renderCountdown, 250);
 var slotState = null; // last SLOT_STATE event: {sp, hz}
 
 // Mirrors autoseq's generate_cq_text_into() (components/autoseq/autoseq.cpp)
-// so the Sends preview matches what a CQ transmission actually carries: the
-// type's prefix, the call, and the grid's first four characters -- or the
-// free-text field verbatim for a Free-text CQ.
+// so the Sends preview matches what a CQ transmission actually carries: CQ,
+// the modifier if there is one, the call, and the grid's first four characters.
 function cqSendsText() {
-  var type = parseInt(lastCfg.cq_type, 10) || 0;
-  if (type === 4) return lastCfg.free_text || ''; // FreeText: no prefix, sent as-is
-  var parts = [type === 0 ? 'CQ' : 'CQ ' + CQ_TYPE_NAMES[type], lastCfg.call || ''];
+  var parts = ['CQ'];
+  if (lastCfg.cq_mod) parts.push(lastCfg.cq_mod);
+  parts.push(lastCfg.call || '');
   var grid4 = (lastCfg.grid || '').toUpperCase().slice(0, 4);
   if (grid4) parts.push(grid4);
   return parts.join(' ');
@@ -4522,16 +4552,13 @@ function expireStaleTxHud() {
 }
 
 // Whether the transmission on the air is our CQ, from its text: autoseq's CQ
-// text starts with "CQ " (generate_cq_text_into()), and a Free text CQ sends
-// free_text as it stands. Not from the queue: the CQ stays queued when a
+// text starts with "CQ " (generate_cq_text_into()). Not from the queue: the CQ stays queued when a
 // station answers it (an answer gives none of its tries back), so it sits
 // behind the QSO that outranks it while our report is the one on the air.
 function txIsOurCq() {
   if (!txHud || !txHud.active) return false;
   var x = String(txHud.x || '').trim().toUpperCase();
-  if (x.indexOf('CQ ') === 0) return true;
-  var freeText = String(lastCfg.free_text || '').trim().toUpperCase();
-  return parseInt(lastCfg.cq_type, 10) === 4 && x !== '' && x === freeText;
+  return x.indexOf('CQ ') === 0;
 }
 
 // ===================== Operate: queue =====================

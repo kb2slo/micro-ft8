@@ -4,9 +4,7 @@
     "MY_GRID": "CM97",
     "DX_CALLSIGN": "W6ABC",
     "DX_GRID": "CM88",
-    "TX_ON_EVEN": true,
-    "CQ_TYPE": "CQ",
-    "FREE_TEXT": ""
+    "TX_ON_EVEN": true
   },
   "periods": [
     {

@@ -58,21 +58,11 @@ static std::string json_escape(const std::string& in)
     return out;
 }
 
-static int cq_type_number(const std::string& name)
-{
-    if (name == "SOTA") return 1;
-    if (name == "POTA") return 2;
-    if (name == "QRP") return 3;
-    if (name == "FREETEXT") return 4;
-    return 0;
-}
-
 static void seed_config(const TestData& td)
 {
     g_cfg["call"] = td.config.my_callsign;
     g_cfg["grid"] = td.config.my_grid;
-    g_cfg["cq_type"] = std::to_string(cq_type_number(td.config.cq_type));
-    g_cfg["free_text"] = td.config.free_text;
+    g_cfg["cq_mod"] = td.config.cq_mod;
     g_cfg["tries"] = std::to_string(td.config.tries);
     g_cfg["offset"] = "1500";
     g_cfg["offset_src"] = "0";
@@ -224,7 +214,7 @@ static void apply_config_body(const std::string& body)
         g_cfg[key] = value;
     }
     scenario_set_station(g_scenario, g_cfg["call"], g_cfg["grid"]);
-    scenario_set_cq_type(g_scenario, std::atoi(g_cfg["cq_type"].c_str()), g_cfg["free_text"]);
+    scenario_set_cq_modifier(g_scenario, g_cfg["cq_mod"]);
     if (!g_cfg["tries"].empty()) {
         scenario_set_tries(g_scenario, std::atoi(g_cfg["tries"].c_str()));
     }

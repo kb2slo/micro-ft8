@@ -46,6 +46,16 @@ static const TestCase CASES[] = {
     {"CQ W1XYZ FN42",       FTX_PROTOCOL_FT4,  300.0f},
     {"CQ W1XYZ FN42",       FTX_PROTOCOL_FT4, 2700.0f},
 
+    // A CQ with a modifier (docs/architecture/autoseq.md, The CQ's modifier):
+    // one to four letters, or three digits. Each is over free text's 13
+    // characters, so a round trip means it went out as a standard message.
+    {"CQ DX W1XYZ FN42",    FTX_PROTOCOL_FT8, 1500.0f},
+    {"CQ HI W1XYZ FN42",    FTX_PROTOCOL_FT8, 1500.0f},
+    {"CQ POTA W1XYZ FN42",  FTX_PROTOCOL_FT8, 1500.0f},
+    {"CQ A W1XYZ FN42",     FTX_PROTOCOL_FT8, 1500.0f},
+    {"CQ 123 W1XYZ FN42",   FTX_PROTOCOL_FT8, 1500.0f},
+    {"CQ DX W1XYZ FN42",    FTX_PROTOCOL_FT4, 1500.0f},
+
     // Short free text (fits within FT8 13-char free-text field)
     {"W1ABC K9XYZ 73",      FTX_PROTOCOL_FT8, 1500.0f},
     {"73 GL",               FTX_PROTOCOL_FT4, 1500.0f},

@@ -41,9 +41,9 @@ Skipping any one of these means the field reaches the device's own log correctly
 
 **Not yet built:** a QSO's record carrying the *other* station's reference, and a line per partner park in the n-fer split (row [w5nj](../ROADMAP.md#w5nj)).
 
-## CQ type follows the activation
+## The CQ's modifier follows the activation
 
-Adding the first reference (`act_refs` empty → non-empty) switches `cq_type` on its own — SOTA if any SOTA reference is present (a mixed activation defaults to SOTA), else POTA. `porta_host_config_set()` detects exactly that one transition and set `cq_type` before applying the rest of the write, so the existing `sync_autoseq_station()` path picks it up with no extra plumbing. `act_refs_prefer_sota()` (`components/station/station.cpp`) is the one-line predicate. A later add or remove never re-derives, so it cannot clobber a manual switch made through Settings › Station's own Type control ([webapp.md](webapp.md), **Settings › Station**).
+Adding the first reference (`act_refs` empty → non-empty) sets the CQ's modifier (`cq_mod`; [autoseq.md](autoseq.md), **The queue**) on its own — SOTA if any SOTA reference is present (a mixed activation defaults to SOTA), else POTA. `porta_host_config_set()` detects exactly that one transition and sets `cq_mod` before applying the rest of the write, so the existing `sync_autoseq_station()` path picks it up with no extra plumbing. `act_refs_prefer_sota()` (`components/station/station.cpp`) is the one-line predicate. A later add or remove never re-derives, so it cannot clobber a manual switch made through Settings › Station's own Type control ([webapp.md](webapp.md), **Settings › Station**).
 
 A TX already armed for the current slot picks up a switch: [autoseq.md](autoseq.md)'s head check before the trigger refreshes an armed TX's text in place when the queue head's identity has not changed.
 

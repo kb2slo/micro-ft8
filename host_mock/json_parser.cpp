@@ -45,8 +45,7 @@ bool load_test_data(const std::string& filename, TestData& out) {
         out.config.dx_callsign = c.value("DX_CALLSIGN", "");
         out.config.dx_grid     = c.value("DX_GRID", "");
         out.config.tx_on_even  = c.value("TX_ON_EVEN", false);
-        out.config.cq_type    = c.value("CQ_TYPE", "");
-        out.config.free_text  = c.value("FREE_TEXT", "");
+        out.config.cq_mod     = c.value("CQ_MOD", "");
         out.config.tries      = c.value("TRIES", 6);
         out.config.skip_tx1   = c.value("SKIP_TX1", false);
     }
@@ -112,14 +111,6 @@ bool load_test_data(const std::string& filename, TestData& out) {
             period.has_touch_event = true;
             period.touch_event.time_offset   = te.value("time_offset", 0.0f);
             period.touch_event.message_index = te.value("message_index", 0);
-        }
-
-        // freetext_event (inject Free Text via autoseq_schedule_freetext)
-        if (pj.contains("freetext_event")) {
-            auto& fe = pj["freetext_event"];
-            period.has_freetext_event = true;
-            period.freetext_event.time_offset = fe.value("time_offset", 0.0f);
-            period.freetext_event.text        = fe.value("text", std::string(""));
         }
 
         if (pj.contains("expect")) {

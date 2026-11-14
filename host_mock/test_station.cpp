@@ -165,7 +165,7 @@ int main()
             "rtc_sleep_epoch=1735689600\n"
             "band5=14074\n"
             "radio=QDX\n"
-            "cq_type=4\n"
+            "cq_mod= dx\n"
             "beacon=1\n"
             "unknown_key=nope\n",
             &s);
@@ -174,7 +174,7 @@ int main()
         expect_true(s.band_freq_set[5], "band5 set");
         expect_float(s.band_freq[5], 14074.0f, "band5 freq");
         expect_int(s.radio, 2, "radio=QDX reads as the QMX: no QDX backend");
-        expect_int(s.cq_type, 4, "cq Free text");
+        expect_str(s.cq_mod, "DX", "cq_mod trimmed and upper");
         expect_true(!s.protocol_ft4, "beacon must not imply ft4");
         {
             const std::string text = station_serialize(s);
@@ -184,6 +184,30 @@ int main()
             expect_true(text.find("rtc_sleep_epoch=") == std::string::npos,
                         "old rtc_sleep_epoch not rewritten");
         }
+    }
+
+    {
+        // The CQ's modifier: what a standard message can carry between CQ and
+        // the call. The same vectors hold the web app's cqModOk() to this rule
+        // (webapp/tests/test_cq_mod.js).
+        const char* ok[] = {"", "DX", "POTA", "SOTA", "QRP", "HI", "AK", "A", "TEST", "123", "000"};
+        const char* bad[] = {"POTAS", "D X", "DX1", "12", "1234", "1A", "dx", "CQ DX", "-", "US-1"};
+        for (const char* m : ok) expect_true(station_cq_mod_ok(m), m);
+        for (const char* m : bad) expect_true(!station_cq_mod_ok(m), m);
+
+        StationSettings s;
+        station_settings_init(&s);
+        station_parse("cq_mod=pota\n", &s);
+        expect_str(s.cq_mod, "POTA", "a modifier is stored");
+        station_parse("cq_mod=CQ DX\n", &s);
+        expect_str(s.cq_mod, "POTA", "a bad modifier keeps the old");
+        station_parse("cq_mod=\n", &s);
+        expect_str(s.cq_mod, "", "empty is a plain CQ");
+        s.cq_mod = "DX";
+        StationSettings t;
+        station_settings_init(&t);
+        station_parse(station_serialize(s), &t);
+        expect_str(t.cq_mod, "DX", "and it round-trips");
     }
 
     {

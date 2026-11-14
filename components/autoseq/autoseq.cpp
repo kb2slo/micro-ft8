@@ -41,13 +41,6 @@ static uint16_t s_next_entry_id = 1;
 // are pure reads of this buffer — they do not consult next_tx.
 static std::string s_tx_msg_buffer;
 
-// Singleton sidecar for Free Text content. Holds the user-provided text
-// while an FT one-shot is in the queue. Overwritten on each injection
-// (only one FT pending at a time by construction). Unused/stale when no
-// FT ctx is in the queue — safe because refresh consults it only when
-// queue[0].is_freetext is true.
-static std::string s_pending_ft_text;
-
 // Station configuration
 static std::string s_my_call;
 static std::string s_my_grid;
@@ -57,8 +50,7 @@ static int s_tries = AUTOSEQ_TRIES;  // the station default (Tries)
 // Forward declarations (must appear before format_tx_text uses them)
 
 // CQ configuration
-static AutoseqCqType s_cq_type = AutoseqCqType::CQ;
-static std::string s_cq_freetext;
+static std::string s_cq_modifier;  // "" for a plain CQ (autoseq_set_cq_modifier())
 
 // ADIF callback
 static AdifLogCallback s_adif_callback;
@@ -175,9 +167,9 @@ static int entry_try_limit(const QsoContext* ctx) {
     return s_tries;
 }
 
-// The queued CQ, as Call CQ makes it (a Free Text one-shot shares CALLING).
+// The queued CQ, as Call CQ makes it: the only entry in CALLING.
 static bool is_cq_entry(const QsoContext& ctx) {
-    return ctx.state == AutoseqState::CALLING && !ctx.is_freetext;
+    return ctx.state == AutoseqState::CALLING;
 }
 
 // ============== Public API ==============
@@ -191,7 +183,6 @@ void autoseq_init() {
     s_last_tx_parity = -1;
     s_tx_entry_id = 0;
     s_tx_msg_buffer.clear();
-    s_pending_ft_text.clear();
 }
 
 void autoseq_clear() {
@@ -258,30 +249,20 @@ bool autoseq_rotate_same_parity() {
     return true;
 }
 
-// Inject a CALLING entry (the CQ, or a Free Text one-shot). The caller is
-// responsible for:
-//   - Choosing the dxcall marker ("CQ" for the CQ, "(FT)" for Free Text)
-//   - Setting is_freetext (sort priority — FT above QSOs, CQ below)
-//   - Picking the slot parity
-// Text is NOT stored on the ctx; it's derived at refresh time from either
-// the CQ template (for CQ) or the s_pending_ft_text sidecar (for FT).
-// Returns the appended ctx, or nullptr if no room.
-static QsoContext* enqueue_one_shot(const std::string& dxcall,
-                                    bool is_freetext,
-                                    int slot_parity) {
+// Append the CQ entry on `slot_parity`. Its text is not stored: it is rendered
+// from the template at refresh time. Returns nullptr if there is no room.
+static QsoContext* enqueue_cq(int slot_parity) {
     if (s_inactive_start <= s_active_count) {
         evict_oldest_inactive();
         if (s_inactive_start <= s_active_count) return nullptr;
     }
     QsoContext* ctx = append_ctx();
-    ctx->dxcall = dxcall;
+    ctx->dxcall = "CQ";
     ctx->dxgrid.clear();
     ctx->snr_tx = -99;
     ctx->snr_rx = -99;
     ctx->slot_id = slot_parity;
-    ctx->is_freetext = is_freetext;  // compare_ctx priority (FT above CQ)
-    // next_tx = TX_NONE: the text source is picked by is_freetext at refresh
-    // time. The tick evicts a Free Text after one TX and a CQ after its tries.
+    // next_tx = TX_NONE: the tick ends the CQ after its tries.
     set_state(ctx, AutoseqState::CALLING, TxMsgType::TX_NONE);
     return ctx;
 }
@@ -290,7 +271,7 @@ bool autoseq_call_cq(int slot_parity) {
     if (autoseq_cq_entry_id() != 0) {
         return false;  // one CQ at a time; the queued one keeps its count
     }
-    if (!enqueue_one_shot("CQ", false, slot_parity & 1)) {
+    if (!enqueue_cq(slot_parity & 1)) {
         return false;
     }
     ESP_LOGI(TAG, "Call CQ on slot %d, %d tries", slot_parity & 1, s_tries);
@@ -301,8 +282,7 @@ bool autoseq_call_cq(int slot_parity) {
 int autoseq_cq_parity(int current_slot_parity, bool current_slot_keyable) {
     for (int i = 0; i < s_active_count; ++i) {
         // The CQ is FT8's: an FT4 QSO's parity counts FT4's periods.
-        if (is_live_qso_state(s_queue[i].state) && !s_queue[i].is_freetext &&
-            s_queue[i].mode == RxMode::FT8) {
+        if (is_live_qso_state(s_queue[i].state) && s_queue[i].mode == RxMode::FT8) {
             return s_queue[i].slot_id & 1;
         }
     }
@@ -345,32 +325,6 @@ AutoseqParityResult autoseq_set_cq_parity(uint16_t entry_id, int slot_parity) {
         return AutoseqParityResult::Ok;
     }
     return AutoseqParityResult::UnknownEntry;
-}
-
-bool autoseq_schedule_freetext(const std::string& text, int fallback_slot_parity) {
-    if (text.empty()) return false;
-    // Don't duplicate an already-pending Free Text.
-    for (int i = 0; i < s_active_count; ++i) {
-        if (s_queue[i].is_freetext) return false;
-    }
-    // Inherit parity from queue head if non-empty (preserves queue parity
-    // invariant — FT joins the current activation period). Otherwise use
-    // caller-provided fallback.
-    int slot_parity = (s_active_count > 0)
-                        ? (s_queue[0].slot_id & 1)
-                        : (fallback_slot_parity & 1);
-    // Write the user text to the sidecar BEFORE enqueuing, so refresh can
-    // find it as soon as the ctx appears at queue[0].
-    s_pending_ft_text = text;
-    QsoContext* ctx = enqueue_one_shot("(FT)", true, slot_parity);
-    if (ctx) {
-        ESP_LOGI(TAG, "Scheduled Free Text on slot %d: %s", slot_parity, text.c_str());
-        // Sort so FT lands at the correct position (top, above QSOs).
-        sort_and_clean();
-        refresh_tx_msg_buffer();
-        return true;
-    }
-    return false;
 }
 
 static void remove_active_at(int idx) {
@@ -428,7 +382,7 @@ static bool is_live_qso_state(AutoseqState state) {
 }
 
 static bool is_dx_queue_marker(const std::string& dxcall) {
-    return dxcall.empty() || dxcall == "CQ" || dxcall == "(FT)";
+    return dxcall.empty() || dxcall == "CQ";
 }
 
 // Drop every active + inactive entry for dxcall in this mode. Returns true if queue[0] was
@@ -440,14 +394,12 @@ static bool purge_dxcall_for_touch(const std::string& dxcall, RxMode mode, bool*
 
     if (s_active_count > 0 &&
         same_dxcall(s_queue[0].dxcall, dxcall) && s_queue[0].mode == mode &&
-        is_live_qso_state(s_queue[0].state) &&
-        !s_queue[0].is_freetext) {
+        is_live_qso_state(s_queue[0].state)) {
         *blocked_live = true;
         return true;
     }
 
     for (int i = s_active_count - 1; i >= 0; --i) {
-        if (s_queue[i].is_freetext) continue;
         if (same_dxcall(s_queue[i].dxcall, dxcall) && s_queue[i].mode == mode) {
             remove_active_at(i);
         }
@@ -511,7 +463,7 @@ AutoseqTouchResult autoseq_on_touch(const UiRxLine& msg, bool hold_queue_head) {
         // Keep the operator's pick as next TX even if another QSO is "ahead"
         // by state. Find the new ctx (may have moved during sort).
         for (int i = 0; i < s_active_count; ++i) {
-            if (same_dxcall(s_queue[i].dxcall, dxcall) && s_queue[i].mode == msg.mode && !s_queue[i].is_freetext) {
+            if (same_dxcall(s_queue[i].dxcall, dxcall) && s_queue[i].mode == msg.mode) {
                 promote_touched(i, hold_queue_head);
                 break;
             }
@@ -536,7 +488,7 @@ AutoseqTouchResult autoseq_on_touch(const UiRxLine& msg, bool hold_queue_head) {
               open_with_tx2 ? TxMsgType::TX2 : TxMsgType::TX1);
     sort_and_clean();
     for (int i = 0; i < s_active_count; ++i) {
-        if (same_dxcall(s_queue[i].dxcall, dxcall) && s_queue[i].mode == msg.mode && !s_queue[i].is_freetext) {
+        if (same_dxcall(s_queue[i].dxcall, dxcall) && s_queue[i].mode == msg.mode) {
             promote_touched(i, hold_queue_head);
             break;
         }
@@ -621,9 +573,9 @@ void autoseq_tick(int64_t slot_idx, int slot_parity, int ms_to_boundary) {
             break;
         }
         case AutoseqState::CALLING:
-            // A Free Text goes once. A CQ uses one try per CQ sent and ends
-            // when they are used; an answer gives none back.
-            if (ctx->is_freetext || ++ctx->tries_sent >= ctx->try_limit) {
+            // A CQ uses one try per CQ sent and ends when they are used; an
+            // answer gives none back.
+            if (++ctx->tries_sent >= ctx->try_limit) {
                 finished = true;
             }
             break;
@@ -689,7 +641,7 @@ bool autoseq_head_changed_or_refresh(AutoseqTxEntry* pending) {
         return true;
     }
     // Same entry: s_tx_msg_buffer may have been re-derived since arm time
-    // (autoseq_set_cq_type() calls refresh_tx_msg_buffer() without touching
+    // (autoseq_set_cq_modifier() calls refresh_tx_msg_buffer() without touching
     // entry_id), so pull the current text rather than trusting the snapshot.
     pending->text = s_tx_msg_buffer;
     return false;
@@ -819,9 +771,8 @@ void autoseq_set_tries(int tries) {
     refresh_tx_msg_buffer();
 }
 
-void autoseq_set_cq_type(AutoseqCqType type, const std::string& freetext) {
-    s_cq_type = type;
-    s_cq_freetext = freetext;
+void autoseq_set_cq_modifier(const std::string& modifier) {
+    s_cq_modifier = modifier;
     refresh_tx_msg_buffer();  // re-derive CQ template if CQ is at queue[0]
 }
 
@@ -844,7 +795,7 @@ static void set_state(QsoContext* ctx, AutoseqState s, TxMsgType first_tx) {
 static void retire_used_up() {
     for (int i = s_active_count - 1; i >= 0; --i) {
         const QsoContext& ctx = s_queue[i];
-        if (ctx.state == AutoseqState::IDLE || ctx.is_freetext) continue;
+        if (ctx.state == AutoseqState::IDLE) continue;
         if (ctx.tries_sent < ctx.try_limit) continue;
         if (s_tx_entry_id != 0 && ctx.entry_id == s_tx_entry_id) continue;
         ESP_LOGI(TAG, "Entry %u (%s): tries used, ending", (unsigned)ctx.entry_id,
@@ -865,51 +816,29 @@ static void retire_used_up() {
 //   queue empty            → buffer cleared
 //   queue[0] state IDLE    → buffer cleared (defensive; sort_and_clean should
 //                            have popped IDLE entries first)
-//   queue[0] state CALLING → text comes from one of two sources, picked by
-//                            is_freetext:
-//                              - is_freetext=true:  s_pending_ft_text (sidecar)
-//                              - is_freetext=false: regenerated CQ template
+//   queue[0] state CALLING → the CQ template, regenerated, so it picks up a
+//                            change of modifier, call or grid
 //   queue[0] other state   → derive via format_tx_text from ctx->next_tx
 //                            (the QSO state machine path)
-//
-// Text storage rationale: QSO text is derivable from state every time. CQ
-// template is cheap to regenerate (and picks up any cq_type/station changes
-// automatically). FT text is user-supplied and not derivable, so it lives
-// in the s_pending_ft_text sidecar (only one FT pending at a time, so a
-// single sidecar suffices).
 static void refresh_tx_msg_buffer() {
     s_tx_msg_buffer.clear();
     if (s_active_count == 0) return;
     QsoContext* ctx = &s_queue[0];
     if (ctx->state == AutoseqState::IDLE) return;
     if (ctx->state == AutoseqState::CALLING) {
-        if (ctx->is_freetext) {
-            s_tx_msg_buffer = s_pending_ft_text;
-        } else {
-            generate_cq_text_into(s_tx_msg_buffer);
-        }
+        generate_cq_text_into(s_tx_msg_buffer);
         return;
     }
     // QSO ctx: derive from state machine.
     format_tx_text(ctx, ctx->next_tx, s_tx_msg_buffer);
 }
 
-// Generate CQ template text into `out`. Called explicitly by the caller
-// when it knows it's handling CQ — no type inference from ctx flags.
+// The CQ: "CQ [modifier] call grid", a standard message whatever the modifier
+// (docs/architecture/autoseq.md, The CQ's modifier).
 static void generate_cq_text_into(std::string& out) {
     char buf[64];
-    const char* cq_prefix = "CQ";
-    switch (s_cq_type) {
-        case AutoseqCqType::SOTA: cq_prefix = "CQ SOTA"; break;
-        case AutoseqCqType::POTA: cq_prefix = "CQ POTA"; break;
-        case AutoseqCqType::QRP:  cq_prefix = "CQ QRP";  break;
-        case AutoseqCqType::FREETEXT:
-            out = s_cq_freetext;
-            return;
-        default: break;
-    }
-    snprintf(buf, sizeof(buf), "%s %s %s",
-             cq_prefix, s_my_call.c_str(), s_my_grid.c_str());
+    snprintf(buf, sizeof(buf), "CQ %s%s%s %s", s_cq_modifier.c_str(),
+             s_cq_modifier.empty() ? "" : " ", s_my_call.c_str(), s_my_grid.c_str());
     out = buf;
 }
 
@@ -1327,14 +1256,6 @@ static bool compare_ctx(const QsoContext& left, const QsoContext& right) {
     // IDLE always sorts first (will be popped by sort_and_clean).
     if (left.state == AutoseqState::IDLE && right.state != AutoseqState::IDLE) return true;
     if (right.state == AutoseqState::IDLE && left.state != AutoseqState::IDLE) return false;
-
-    // Free Text is "highest priority non-IDLE" — when the user presses
-    // Send Free Text, the next TX must be the FT, preempting any active
-    // QSO. The QSO's ctx is preserved (FT is one-shot, popped after TX),
-    // so the QSO resumes on the slot after FT fires.
-    if (left.is_freetext != right.is_freetext) {
-        return left.is_freetext;  // FT comes first
-    }
 
     // Same state? Fewer tries sent gets priority — round-robin among
     // contacts so we probe for viable propagation paths rather than

@@ -73,12 +73,7 @@ static void sync_autoseq_station(void) {
     autoseq_set_station(s_station.call, grid_ft8_4(s_station.grid));
     autoseq_set_skip_tx1(s_station.skip_tx1);
     autoseq_set_tries(s_station.tries);
-    AutoseqCqType cq = AutoseqCqType::CQ;
-    if (s_station.cq_type >= 0 && s_station.cq_type <= 4) {
-        cq = (AutoseqCqType)s_station.cq_type;
-    }
-    // free_text is the Free text CQ's message.
-    autoseq_set_cq_type(cq, s_station.free_text);
+    autoseq_set_cq_modifier(s_station.cq_mod);
 }
 
 // The station call: g_call for this loop, and a copy for the decode task,
@@ -96,9 +91,8 @@ static void station_seed_adv_defaults(void) {
     }
     s_station.offset_hz = 1500;
     s_station.band_sel = 1;  // 80m
-    s_station.cq_type = 0;
+    s_station.cq_mod.clear();
     s_station.skip_tx1 = false;
-    s_station.free_text = "CQ DX";
     s_station.call = "YOURCALL";
     s_station.grid = "CM97";
     s_station.offset_src = 0;  // RANDOM
@@ -814,6 +808,20 @@ const char *porta_host_config_set(const char *key, const char *value) {
         }
     }
 
+    if (strcmp(key, "cq_mod") == 0) {
+        // Refused, not dropped as station_parse() would: anything else is not a
+        // standard message, and Settings > Station must not show a modifier the
+        // CQ is not sending (docs/architecture/autoseq.md, The CQ's modifier).
+        std::string mod = value;
+        const size_t a = mod.find_first_not_of(" \t");
+        const size_t b = mod.find_last_not_of(" \t");
+        mod = a == std::string::npos ? "" : mod.substr(a, b - a + 1);
+        for (auto &c : mod) c = (char)toupper((unsigned char)c);
+        if (!station_cq_mod_ok(mod)) {
+            return "CQ modifier is 1 to 4 letters, or 3 digits";
+        }
+    }
+
     if (strcmp(key, "tx_min_delay_ms") == 0) {
         // Refused, not clamped, like tries: the field must not show a delay the
         // scheduler is not using.
@@ -861,20 +869,18 @@ const char *porta_host_config_set(const char *key, const char *value) {
     s_station.serialize_ft4_band_keys = s_station.protocol_ft4;
     set_station_call();
 
-    // Activation start (act_refs empty -> non-empty) picks the CQ type for
-    // the operator -- SOTA if any SOTA reference is present (a mixed
-    // activation defaults to SOTA), else POTA (architecture/logging.md, "CQ
-    // type follows the activation"). Only this one transition derives it: a
+    // Activation start (act_refs empty -> non-empty) picks the CQ's modifier
+    // for the operator -- SOTA if any SOTA reference is present (a mixed
+    // activation defaults to SOTA), else POTA (architecture/logging.md, "The
+    // CQ's modifier follows the activation"). Only this one transition derives it: a
     // later add/remove must never clobber a manual switch made through the
     // Settings > Station's own Type control.
     if (strcmp(key, "act_refs") == 0 && act_refs_was_empty && !s_station.act_refs.empty()) {
-        s_station.cq_type = (int)(act_refs_prefer_sota(s_station.act_refs) ? AutoseqCqType::SOTA
-                                                                            : AutoseqCqType::POTA);
+        s_station.cq_mod = act_refs_prefer_sota(s_station.act_refs) ? "SOTA" : "POTA";
     }
 
     if (strcmp(key, "call") == 0 || strcmp(key, "grid") == 0 || strcmp(key, "skiptx1") == 0 ||
-        strcmp(key, "tries") == 0 || strcmp(key, "cq_type") == 0 ||
-        strcmp(key, "free_text") == 0 ||
+        strcmp(key, "tries") == 0 || strcmp(key, "cq_mod") == 0 ||
         strcmp(key, "act_refs") == 0) {
         sync_autoseq_station();
     }
