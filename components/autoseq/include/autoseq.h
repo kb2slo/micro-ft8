@@ -96,7 +96,11 @@ struct QsoContext {
     // 0 means currently active / not yet parked.
     int64_t inactive_since_ms = 0;
 
-    int offset_hz = 1500;   // TX audio offset
+    int offset_hz = 1500;   // where DX was heard
+    // The offset this QSO transmits on, held from its first transmission to
+    // its end, parked and reactivated included; 0 until one is rolled
+    // (tx_offset.h, autoseq_hold_tx_offset()).
+    int tx_offset_hz = 0;
     int slot_id = 0;        // TX slot (0=even, 1=odd), in its own mode's slots
     // The mode it runs in: a decode continues the entry for its call in its own mode only, so an FT8 QSO and
     // an FT4 QSO with one station are two entries. The CQ is FT8's.
@@ -108,6 +112,7 @@ struct AutoseqTxEntry {
     std::string text;       // Full FT8 message text
     std::string dxcall;     // Target callsign
     int offset_hz = 1500;
+    int held_offset_hz = 0;  // QsoContext::tx_offset_hz: the QSO's held TX offset, 0 if none
     int slot_id = 0;
     int repeat_counter = AUTOSEQ_TRIES;  // tries left, this one included
     bool is_signoff = false; // True for TX4/TX5 (priority scheduling)
@@ -157,6 +162,11 @@ int autoseq_cq_parity(int current_slot_parity, bool current_slot_keyable);
 
 // The queued CQ's entry_id, 0 if none.
 uint16_t autoseq_cq_entry_id();
+
+// Keep `offset_hz` as the TX offset of the active entry `entry_id`, for the
+// rest of its QSO (tx_offset.h). False for an unknown entry or the CQ, which
+// rolls every time.
+bool autoseq_hold_tx_offset(uint16_t entry_id, int offset_hz);
 
 // Manual response: user taps on a decoded message.
 // Prevents duplicate active QSOs for the same DX callsign: promotes a fresh

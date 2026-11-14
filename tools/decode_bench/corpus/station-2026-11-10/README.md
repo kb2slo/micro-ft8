@@ -3,8 +3,8 @@
 An hour and a quarter of operating FT4 on 20 m, with a few FT8 replies in the same queue: the station's own
 `/api/events` stream, as Operate saw it, recorded while the operator worked the band. It is the evidence for the
 roadmap's key-up item ([several-channels.md](../../../../docs/roadmap/several-channels.md), **Open**), the queue
-items ([smart-queue.md](../../../../docs/roadmap/smart-queue.md), **Later** and **Open**), row
-[B88](../../../../docs/ROADMAP.md#B88) and idea [yn23](../../../../docs/roadmap/ideas.md#yn23), and for
+items ([smart-queue.md](../../../../docs/roadmap/smart-queue.md), **Later** and **Open**), the offset a QSO holds
+([autoseq.md](../../../../docs/architecture/autoseq.md), **TX offset**) and idea [yn23](../../../../docs/roadmap/ideas.md#yn23), and for
 [decode.md](../../../../docs/architecture/decode.md)'s **On the air, 20 m while operating**.
 
 ## The station and the recording

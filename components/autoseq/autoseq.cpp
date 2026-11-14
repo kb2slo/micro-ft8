@@ -296,6 +296,18 @@ uint16_t autoseq_cq_entry_id() {
     return 0;
 }
 
+bool autoseq_hold_tx_offset(uint16_t entry_id, int offset_hz) {
+    if (entry_id == 0 || offset_hz <= 0) return false;
+    for (int i = 0; i < s_active_count; ++i) {
+        QsoContext& ctx = s_queue[i];
+        if (ctx.entry_id != entry_id || ctx.state == AutoseqState::IDLE) continue;
+        if (is_cq_entry(ctx)) return false;
+        ctx.tx_offset_hz = offset_hz;
+        return true;
+    }
+    return false;
+}
+
 AutoseqTriesResult autoseq_set_entry_tries(uint16_t entry_id, int tries) {
     if (entry_id == 0) return AutoseqTriesResult::UnknownEntry;
     for (int i = 0; i < s_active_count; ++i) {
@@ -621,6 +633,7 @@ bool autoseq_fetch_pending_tx(AutoseqTxEntry& out) {
     out.entry_id = ctx->entry_id;
     out.dxcall = ctx->dxcall;
     out.offset_hz = ctx->offset_hz;
+    out.held_offset_hz = ctx->tx_offset_hz;
     out.slot_id = ctx->slot_id;
     out.mode = ctx->mode;
     out.repeat_counter = ctx->try_limit - ctx->tries_sent;
