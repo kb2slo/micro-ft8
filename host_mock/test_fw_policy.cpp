@@ -22,7 +22,7 @@ static void check(bool ok, const char *what)
 }
 
 static const char *SHA = "ba9e8126190833eb2c570b5d08c563ae4e04b1ad3977946633935ed7f8f09539";
-static const char *URL = "http://micro-ft8.kalikstein.com/download/microft8-sidekick-continuous-ota.bin";
+static const char *URL = "http://micro-ft8.kalikstein.com/download/microft8-sidekick-dev-ota.bin";
 
 static std::string body(const char *board, const char *url, const char *size, const char *sha, const char *version)
 {
@@ -84,7 +84,7 @@ static void test_parse()
 
 static void test_plan()
 {
-    static const char *P4URL = "http://micro-ft8.kalikstein.com/download/microft8-poe-p4-continuous-ota.bin";
+    static const char *P4URL = "http://micro-ft8.kalikstein.com/download/microft8-poe-p4-dev-ota.bin";
     const std::string main_req = body("main", P4URL, "871968", SHA, "d18f9b2");
     const std::string sk_req = body("sidekick", URL, "1005232", SHA, "d18f9b2");
     fw_request_t plan[FW_PLAN_MAX];

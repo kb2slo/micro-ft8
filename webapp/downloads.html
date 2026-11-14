@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Downloads — Micro-FT8</title>
-<meta name="description" content="Continuous prerelease firmware for Micro-FT8 (PoE-P4, AtomS3 Lite).">
+<meta name="description" content="Dev builds of the firmware for Micro-FT8 (PoE-P4, AtomS3 Lite).">
 <style>
   :root {
     --ink: #1a1f1c;
@@ -237,9 +237,9 @@
     <h2>Flash (CLI)</h2>
     <p class="note">Merged images at <code>0x0</code>. Use a data-capable USB-C cable.</p>
     <p><strong>PoE-P4 (U213)</strong> — flash/power on the USB-C next to RJ45</p>
-    <pre id="cmd-p4">esptool.py --chip esp32p4 write_flash 0x0 microft8-poe-p4-continuous.bin</pre>
+    <pre id="cmd-p4">esptool.py --chip esp32p4 write_flash 0x0 microft8-poe-p4-dev.bin</pre>
     <p><strong>AtomS3 Lite</strong></p>
-    <pre id="cmd-sk">esptool.py --chip esp32s3 write_flash 0x0 microft8-sidekick-continuous.bin</pre>
+    <pre id="cmd-sk">esptool.py --chip esp32s3 write_flash 0x0 microft8-sidekick-dev.bin</pre>
   </section>
 
   <section>
@@ -517,8 +517,8 @@ function fallback() {
   // overwritten. Set it after render(), not before.
   render({
     assets: {
-      poe_p4: { stable: "microft8-poe-p4-continuous.bin" },
-      sidekick: { stable: "microft8-sidekick-continuous.bin" },
+      poe_p4: { stable: "microft8-poe-p4-dev.bin" },
+      sidekick: { stable: "microft8-sidekick-dev.bin" },
     },
   });
   statusEl.className = "warn status-err";

@@ -3,7 +3,7 @@
 // _headers (docs/architecture/webapp.md, Serving the site): wrangler.jsonc's
 // run_worker_first names exactly this path.
 //
-// /download/* is served from the DOWNLOADS R2 bucket (public continuous
+// /download/* is served from the DOWNLOADS R2 bucket (public dev
 // firmware, source and getting-started sheet mirror). See docs/RELEASE_PROCESS.md.
 //
 // A path with no file never lands here: Static Assets answers it with 404.html

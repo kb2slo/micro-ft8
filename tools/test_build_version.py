@@ -24,7 +24,7 @@ class BuildVersionTest(unittest.TestCase):
     def test_any_other_build_is_on_no_channel(self):
         # A pull request, another branch, and the tags that are not releases.
         for ref in ("refs/pull/7/merge", "refs/heads/version-in-every-image", "refs/heads/main2",
-                    "refs/tags/continuous", "refs/tags/corpus-2026-11-08", "refs/tags/V1.0.0"):
+                    "refs/tags/dev", "refs/tags/corpus-2026-11-08", "refs/tags/V1.0.0"):
             self.assertEqual(bv.version_for(ref, SHA, 1322), "", ref)
 
     def test_refuses_a_v_tag_that_is_not_a_release(self):

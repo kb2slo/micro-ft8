@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write /download/manifest.json for the rolling release (docs/RELEASE_PROCESS.md).
+"""Write /download/manifest.json for the dev channel (docs/RELEASE_PROCESS.md).
 
   python3 tools/make_manifest.py --commit <40-hex> --version b1322+<7-hex> --date YYYYMMDD \\
       --out dist/manifest.json \\
@@ -40,10 +40,10 @@ PROTO_HEADER = os.path.join(ROOT, "components", "porta_proto", "include", "porta
 # kind -> (stable name's stem, extension, extra fields). The stable names are
 # the R2 keys the site and the printed sheet link to; they never change.
 ASSETS = {
-    "poe_p4": ("microft8-poe-p4-continuous", ".bin", {"chip": "esp32p4", "flash_offset": "0x0"}),
-    "sidekick": ("microft8-sidekick-continuous", ".bin", {"chip": "esp32s3", "flash_offset": "0x0"}),
-    "source": ("microft8-source-continuous", ".tar.gz", {}),
-    "getting_started": ("microft8-getting-started-continuous", ".pdf", {}),
+    "poe_p4": ("microft8-poe-p4-dev", ".bin", {"chip": "esp32p4", "flash_offset": "0x0"}),
+    "sidekick": ("microft8-sidekick-dev", ".bin", {"chip": "esp32s3", "flash_offset": "0x0"}),
+    "source": ("microft8-source-dev", ".tar.gz", {}),
+    "getting_started": ("microft8-getting-started-dev", ".pdf", {}),
 }
 # board -> the project name its app image carries (project() in its CMakeLists.txt).
 OTA_PROJECT = {"poe_p4": "poe_p4", "sidekick": "sidekick"}

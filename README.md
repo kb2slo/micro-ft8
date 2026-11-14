@@ -76,8 +76,8 @@ and the docs. `tools/check.sh --changed` runs only the checks your change can af
 ESP-IDF v5.5.5; without `idf.py` on the PATH the two firmware builds report **SKIP**. Building and
 flashing each board: [poe_p4/README.md](poe_p4/README.md) and [sidekick/README.md](sidekick/README.md).
 
-Prebuilt images of the tip of `main` are on the
-[`continuous`](https://github.com/kb2slo/micro-ft8/releases/tag/continuous) release, and are flashed at
+Prebuilt images of the newest build of `main` are on the site's
+[downloads page](https://micro-ft8.kalikstein.com/downloads.html), and are flashed at
 `0x0`. How releases are made: [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md).
 
 ## Contributing

@@ -161,7 +161,7 @@ the only place every agent and every person can see them — see "Memory lives i
   firmware CI job, and during bench debugging that latency dominates. The merged image is
   `poe_p4/build/poe_p4_merged.bin`. CI is for pre-merge verification, where its value is real: it builds the
   PR *merge commit*, which is what actually lands, and it runs the sidekick and host-test jobs too. A **field
-  check** may run on either a local build or a CI image (`continuous` asset) — the call of whoever runs it.
+  check** may run on either a local build or a CI image (a dev build) — the call of whoever runs it.
   The pass records which: the SHA (and whether `-dirty`), or the asset name.
 
 - **Before patching a vendored library, diff a working reference.** When a bug traces into vendored or managed

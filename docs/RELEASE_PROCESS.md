@@ -5,16 +5,22 @@ file is the working agreement, this one is what CI publishes and what a human mu
 
 Two paths, both defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). Nothing else publishes.
 
-| Path | Trigger | Job | Tag | PoE-P4 asset | Sidekick | OTA images | Source | Getting-started sheet |
+| Path | Trigger | Job | Published to | PoE-P4 image | Sidekick | OTA images | Source | Getting-started sheet |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Rolling | push to `main` that can change the binary | `release-main` | `continuous`, force-moved every run | `YYYYMMDD-microft8-poe-p4-<commit>.bin` | `YYYYMMDD-microft8-sidekick-<commit>.bin` | `YYYYMMDD-microft8-poe-p4-ota-<commit>.bin`, `YYYYMMDD-microft8-sidekick-ota-<commit>.bin` | `YYYYMMDD-microft8-source-<commit>.tar.gz` | `YYYYMMDD-microft8-getting-started-<commit>.pdf` |
-| Versioned | push of a tag matching `v*` | `release` | the tag you pushed, immovable | `MicroFT8-PoE-P4-<tag>-Merged.bin` | — | — | — | `MicroFT8-Getting-Started-<tag>.pdf` |
+| Dev | push to `main` that can change the binary | `release-main` | the mirror (**Public Cloudflare mirror**); no git tag and no GitHub release | `microft8-poe-p4-dev.bin` | `microft8-sidekick-dev.bin` | `microft8-poe-p4-dev-ota.bin`, `microft8-sidekick-dev-ota.bin`, and each under `ota/` by its dated name | `microft8-source-dev.tar.gz` | `microft8-getting-started-dev.pdf` |
+| Versioned | push of a tag matching `v*` | `release` | a GitHub release on the tag you pushed, immovable | `MicroFT8-PoE-P4-<tag>-Merged.bin` | — | — | — | `MicroFT8-Getting-Started-<tag>.pdf` |
 
-Both rolling and versioned publish the M5Stack Unit PoE-P4 merged image (esp32p4, 0x0, custom LittleFS
-`storage` partition in `poe_p4/partitions.csv`). Rolling also publishes a **standalone merged sidekick** image
+Both publish the M5Stack Unit PoE-P4 merged image (esp32p4, 0x0, custom LittleFS
+`storage` partition in `poe_p4/partitions.csv`). Dev also publishes a **standalone merged sidekick** image
 (merged by `tools/merge_sidekick_bin.sh` in the sidekick job) and a **history-free source tarball**
 (vendored `ft8_lib`, no `.git`), and each board's **OTA image** (below). The firmware artifacts are skipped entirely for docs-only commits (the
-`changes` path filter), so a roadmap-only merge neither rebuilds nor re-tags any binary.
+`changes` path filter), so a roadmap-only merge neither rebuilds nor republishes any binary, and the dev
+channel's build is the last commit that could change one, not always the tip of `main`.
+
+**The dev channel has no git tag and no GitHub release.** A GitHub release needs a tag, and a tag that moved
+on every publish named nothing the manifest does not: its `commit` is the published build's, every dev
+version ends in its commit, and each OTA image is kept on the mirror under its dated name. GitHub releases
+are for versioned tags and the decode corpora.
 
 Both paths also publish the **getting-started sheet**, the one-page PDF that goes in the box with a unit.
 The `getting-started-sheet` job prints it from `webapp/getting-started.md` on every push, which is also
@@ -49,60 +55,32 @@ update writes into an OTA slot ([sidekick.md](architecture/sidekick.md), **Firmw
 `0x0` images stay for first install and recovery over USB. The manifest describes each in an `ota` entry under
 its board (**Public Cloudflare mirror**).
 
-## The rolling `continuous` release
-
-**The invariant: the `continuous` tag is the tip of `main`.** Not a description of it — the actual ref, so
-`git checkout continuous` and the published binary are the same commit.
-
-That invariant needs the explicit `git push --force origin <sha>:refs/tags/continuous` step in `release-main`.
-Keep that step, and keep knowing why: GitHub's release API **ignores `target_commitish` once a tag of that
-name exists** — it is honoured only when the tag is created. A workflow that merely passes `target_commitish`
-therefore places the tag on its first run and never moves it again, while still replacing the release body
-and assets correctly every time. The failure is silent and reads backwards — the download is current, the
-release page quotes the right commit, and only the ref is stale — so nothing surfaces it. Delete the push
-step as redundant and the tag quietly freezes again.
-
-Corollaries an agent should not re-derive:
-
-- The release is **updated in place**, not recreated, so GitHub keeps its original `publishedAt`. The date on
-  the release page is when the release object was first made and will not advance. Judge freshness by the
-  commit in the body or by the tag, never by that date.
-- `prerelease: true` and `make_latest: false` are deliberate: they keep the rolling build from taking the
-  "Latest release" badge away from the newest real version. This is also why the tag is not called `latest`.
-- **The asset name changes every merge, on purpose.** `YYYYMMDD-microft8-<kind>-<commit>.bin` still identifies
-  itself after download, where several same-named files in one Downloads folder do not. The date is the *commit* date in UTC, so rebuilding a commit reproduces the
-  name. The cost is that there is no stable download URL; a script should resolve the asset from the release
-  rather than hardcode a filename.
-- Because the name changes, `release-main` **deletes the release's existing assets** before uploading. Without
-  that they accumulate on one release forever. The release object itself is never deleted.
-
 ## Public Cloudflare mirror (anonymous downloads)
 
-GitHub's `continuous` assets carry dated names that change every run, so nothing can link to them for long. After
-each successful `release-main`, CI also mirrors the rolling payloads to Cloudflare **R2** bucket
+`release-main` publishes the dev channel to Cloudflare **R2** bucket
 `micro-ft8-downloads`, served under the site origin by [`webapp/worker.js`](../webapp/worker.js), whose `/download/*` route is one of the two that run the Worker ([webapp.md](architecture/webapp.md), **Serving the site**):
 
 | Stable URL | Contents |
 | --- | --- |
-| `https://micro-ft8.kalikstein.com/download/microft8-poe-p4-continuous.bin` | PoE-P4 merged image |
-| `https://micro-ft8.kalikstein.com/download/microft8-sidekick-continuous.bin` | Sidekick merged image |
-| `https://micro-ft8.kalikstein.com/download/microft8-poe-p4-continuous-ota.bin` | PoE-P4 OTA image |
-| `https://micro-ft8.kalikstein.com/download/microft8-sidekick-continuous-ota.bin` | Sidekick OTA image |
-| `https://micro-ft8.kalikstein.com/download/microft8-source-continuous.tar.gz` | Source tarball |
-| `https://micro-ft8.kalikstein.com/download/microft8-getting-started-continuous.pdf` | Getting-started sheet |
+| `https://micro-ft8.kalikstein.com/download/microft8-poe-p4-dev.bin` | PoE-P4 merged image |
+| `https://micro-ft8.kalikstein.com/download/microft8-sidekick-dev.bin` | Sidekick merged image |
+| `https://micro-ft8.kalikstein.com/download/microft8-poe-p4-dev-ota.bin` | PoE-P4 OTA image |
+| `https://micro-ft8.kalikstein.com/download/microft8-sidekick-dev-ota.bin` | Sidekick OTA image |
+| `https://micro-ft8.kalikstein.com/download/microft8-source-dev.tar.gz` | Source tarball |
+| `https://micro-ft8.kalikstein.com/download/microft8-getting-started-dev.pdf` | Getting-started sheet |
 | `https://micro-ft8.kalikstein.com/download/manifest.json` | Commit, dated filenames, SHA-256; each board's `ota` entry |
 | `https://micro-ft8.kalikstein.com/download/ota/<dated OTA filename>` | Each OTA image again by its dated name, never overwritten or deleted |
 
 Human entry: [`https://micro-ft8.kalikstein.com/downloads.html`](https://micro-ft8.kalikstein.com/downloads.html).
 
-**This is a public copy of what `release-main` just published, not a second source of truth.** GitHub
-remains the operator/dev record; R2 exists so the site and the printed sheet can link to names that never change.
-Stable keys are overwritten every run. Firmware merges do **not** redeploy the Worker (`pages.yml` stays
+**The mirror is the dev channel's only home.** The site, the web flasher and the printed sheet link to names
+that never change, and those keys are overwritten every run; only an OTA image is also kept by its dated name
+(below). Firmware merges do **not** redeploy the Worker (`pages.yml` stays
 path-filtered to `webapp/**`).
 
 **The manifest is written by `tools/make_manifest.py`,** before `release-main` publishes anything. Under
 `assets`, each of `poe_p4`, `sidekick`, `source` and `getting_started` has `stable` (its name here),
-`filename` (its dated name on GitHub) and `sha256`. The two boards also have an `ota` entry: `stable`,
+`filename` (its dated name, `YYYYMMDD-microft8-<kind>-<commit>`, the date the commit's in UTC; only an OTA image is stored under it) and `sha256`. The two boards also have an `ota` entry: `stable`,
 `filename`, `size` in bytes, `sha256`, `version` (the string built into the image) and `proto` (the
 `PORTA_PROTO_VERSION` that build speaks). Beside `commit` and `short`, the manifest's own `version` is the
 build's and `build` its number. The script reads the version out of the image and refuses to write a
