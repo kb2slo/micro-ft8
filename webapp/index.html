@@ -481,9 +481,9 @@
         station takes the phone’s time: no GPS, no signal and no internet needed.
       </li>
       <li>
-        <strong>Light and low power.</strong> 35&nbsp;grams in two small boards. They run
-        over USB‑C from the same power bank as the radio, or straight from your phone’s
-        USB‑C port.
+        <strong>Light and low power.</strong> 35&nbsp;grams in two small boards, drawing
+        about 0.9&nbsp;W (<a href="experiments/power/">measured</a>). They run over USB‑C
+        from the same power bank as the radio, or straight from your phone’s USB‑C port.
       </li>
       <li>
         <strong>Works with an amplifier.</strong> It checks and sets the QMX’s keying
@@ -615,7 +615,7 @@
           <th>What you add</th>
           <td data-label="Phone app">A USB cable</td>
           <td data-label="Built-in">A new radio</td>
-          <td data-label="Micro-FT8" class="us">35&nbsp;g, about $29</td>
+          <td data-label="Micro-FT8" class="us">35&nbsp;g, about $29, about 0.9&nbsp;W</td>
         </tr>
       </tbody>
     </table>
@@ -883,7 +883,7 @@
         <strong>Decode depth is about two thirds of WSJT-X’s.</strong> Scored against
         WSJT-X’s own decoder (<code>jt9 -d 3</code>) on two recorded corpora, the station’s
         decoder found 67% of its decodes (66.6% and 67.1%, measured 2026-09-23 and held by a
-        check on every change). That is the trade: size, portability, low power and low cost,
+        check on every change). That is the trade: size, portability, <a href="experiments/power/">low power</a> and low cost,
         for decode depth. It decodes with Karlis Goba’s
         <a href="https://github.com/kgoba/ft8_lib">ft8_lib</a>; how it is measured, and what is
         planned to close the gap:

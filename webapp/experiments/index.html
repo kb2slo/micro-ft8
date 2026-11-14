@@ -18,6 +18,11 @@
   <!-- One <li> per experiment, newest first. Its folder holds its page and runs/index.json,
        whose first run's date fills the "Latest run" line. docs/architecture/webapp.md, Experiments. -->
   <ul class="experiments">
+    <li class="card" data-runs="power/runs/index.json">
+      <h3><a href="power/">Power draw</a></h3>
+      <p>What the station's two boards draw over USB‑C: at rest, decoding, and through half an hour of operating.</p>
+      <p class="meta">Latest run: <span data-latest>see the experiment</span></p>
+    </li>
     <li class="card" data-runs="four-band/runs/index.json">
       <h3><a href="four-band/">Four bands at once</a></h3>
       <p>Which of 10, 15, 20 and 40&nbsp;m were open through a day, heard on one Hermes-Lite&nbsp;2 with four receivers.</p>
