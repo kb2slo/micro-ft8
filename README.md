@@ -111,7 +111,7 @@ Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md). C and C+
   is the on-air standard Micro-FT8 follows. Its source was the reference for message sequencing and the
   signal-report scale.
 - **[esp-usb](https://github.com/espressif/esp-usb)**, by Espressif Systems, is the P4's USB host stack. Its
-  `usb` component is vendored in `components/usb` (Apache-2.0) with one patch.
+  `usb` component is vendored in `components/usb` (Apache-2.0), unmodified.
 - **[qmx-panadapter](https://github.com/SteffenLav/qmx-panadapter)**, by SteffenLav, showed that an
   ESP32-P4 can run FT8 with a live QMX, and was the working reference for driving the QMX over USB audio
   and CAT.
