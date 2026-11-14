@@ -40,7 +40,7 @@ Both boards' updates are built and their field checks are owed ([TEST_PLAN.md](.
 Still open for [hstv](#hstv):
 
 * **Time:** measured, 74.4 s for 872 KB ([sidekick.md](../architecture/sidekick.md), **A main board's image**). A window on `FW_CHUNK` stays **Later**, with no case for it yet.
-* **The QMX after the update:** left connected, it wedged on every update restart (2026-11-10: three logged, and a fourth where it did not come back), and the operator is told so. Owed: that a QMX switched off for the update and on afterwards connects with no further power-cycle.
+* **The QMX after the update:** left connected, it wedged on every update restart (2026-11-10: three logged, and a fourth where it did not come back), and the operator is told so. Switched off for the update and on afterwards, it connected with nothing else touched (2026-11-10, [main_board.md](../architecture/main_board.md), **Firmware updates**); a second run was dropped as not worth it (maintainer, 2026-11-14).
 
 ### The web app ([yme5](#yme5))
 
