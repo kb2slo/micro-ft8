@@ -1,11 +1,11 @@
 # Smart queue ordering (epic qxy5)
 
-Spend each transmission where it can be answered: order the queue, and hold entries back, so transmissions go where an answer is likely, without adding a station to the queue that a person did not choose. Rows: [jqpm](#jqpm), [k4ag](#k4ag) ([ROADMAP.md](../ROADMAP.md)). How the queue works now: [autoseq.md](../architecture/autoseq.md), **The queue**.
+Spend each transmission where it can be answered: order the queue, and hold entries back, so transmissions go where an answer is likely, without adding a station to the queue that a person did not choose. Rows: [k4ag](#k4ag) ([ROADMAP.md](../ROADMAP.md)). How the queue works now: [autoseq.md](../architecture/autoseq.md), **The queue**.
 
 ## Goal
 
 1. **Do not call a station that is working someone else.** Hold the entry and call the moment that station is free.
-2. **Stop an opening call sooner.** Answers to repeated opening calls fall off fast (**Evidence**).
+2. **Stop an opening call sooner.** Answers to repeated opening calls fall off fast (**Evidence**). Built: [autoseq.md](../architecture/autoseq.md), **Tries**.
 3. **Let the operator reorder the queue** by hand: pin, up and down, Next.
 4. **Choose among callers to our CQ, and among our own calls, by one rule the operator sets:** farthest, strongest, POTA or SOTA, and so on.
 
@@ -20,7 +20,6 @@ Spend each transmission where it can be answered: order the queue, and hold entr
 
 * **Hold a station that is working someone else,** with its tries frozen. Opening calls only (REPLYING); later stages are not held, since the evidence says little about mid-QSO repeats.
 * **No hold for a station that has gone unheard:** the opening limit covers it.
-* **An opening call gets at most 4 tries.**
 * **A pin outranks only our other unanswered calls,** never a station calling us or a QSO in progress. Manual moves are pin, up and down, and Next.
 * **One ladder,** easy to reorder, set on the Station sheet and stored on the main board.
 * **POTA and SOTA are rungs,** used at home too, in a later phase. Park to park ranks the same whoever initiated.
@@ -65,10 +64,6 @@ The active zone sorts by these keys, in order; the first is today's rule.
 
 `sort_and_clean()` still runs where it runs today, plus after an operator move. Every key is a field on `QsoContext`, so one comparison function stays the whole rule and `host_mock` can drive every case.
 
-### Opening tries ([jqpm](#jqpm))
-
-An opening call gets `min(tries, AUTOSEQ_OPENING_TRIES)`, the constant 4; every later stage keeps the Station key `tries`. An entry's own count overrides it, as today. No new setting: one Tries on the Station sheet, and the limit is a constant named once and pinned by a host test.
-
 ### The busy hold
 
 * **Busy:** within the last 4 slots, the station was decoded sending a message that continues a QSO with another call (a grid, a report, an R-report, a Field Day exchange, to a call that is not ours and not CQ).
@@ -100,8 +95,7 @@ An opening call gets `min(tries, AUTOSEQ_OPENING_TRIES)`, the constant 4; every 
 
 In order.
 
-* <a id="jqpm"></a>**jqpm: opening calls get at most 4 tries** (**Opening tries**). **Done-when:** a host test shows REPLYING ends after 4 with `tries` at 6, after 2 with `tries` at 2, and after the entry's own count when one is set. **Lands in:** autoseq.md (**Tries**), with why 4; webapp.md if the row's count shows the cap.
-* <a id="k4ag"></a>**k4ag: hold a station that is working someone else** (**The busy hold**). After [jqpm](#jqpm); epic [eu2t](release-1-0.md) needs it. **Done-when:** `host_mock` scenarios hold an entry while its station works another call, release it on RR73 and transmit in the next slot, end a hold at 5 minutes, never charge a try while held, and settle mixed parity; a held entry is seen waiting on Operate and goes out after its station's RR73 (field). **Lands in:** autoseq.md (**The queue**: the hold, its release and its limit); webapp.md (the held row's text); TEST_PLAN Pending.
+* <a id="k4ag"></a>**k4ag: hold a station that is working someone else** (**The busy hold**). Epic [eu2t](release-1-0.md) needs it. **Done-when:** `host_mock` scenarios hold an entry while its station works another call, release it on RR73 and transmit in the next slot, end a hold at 5 minutes, never charge a try while held, and settle mixed parity; a held entry is seen waiting on Operate and goes out after its station's RR73 (field). **Lands in:** autoseq.md (**The queue**: the hold, its release and its limit); webapp.md (the held row's text); TEST_PLAN Pending.
 
 ### Later
 

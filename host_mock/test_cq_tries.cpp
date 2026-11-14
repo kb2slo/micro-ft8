@@ -8,6 +8,8 @@
  *   default; 0 returns it to the default.
  * - Lowering a count to the tries already sent ends the entry now, or after
  *   the try on the air.
+ * - An opening call (REPLYING) gets at most AUTOSEQ_OPENING_TRIES of the
+ *   default; later steps get all of it, and an entry's own count overrides.
  * - Call CQ picks the period an active QSO uses, otherwise the slot under way
  *   when it can still be keyed.
  */
@@ -245,6 +247,68 @@ static void test_lowering_on_the_air_ends_after_the_try()
     check(autoseq_cq_entry_id() == 0, "so lowering it ends it at once");
 }
 
+static UiRxLine cq_from(const char* dx)
+{
+    UiRxLine m;
+    m.field1 = "CQ";
+    m.field2 = dx;
+    m.field3 = "FN42";
+    m.snr = -8;
+    m.offset_hz = 1200;
+    m.slot_id = 1;
+    return m;
+}
+
+// Transmits until the queue is empty; returns how many went out.
+static int sends_until_ended()
+{
+    int n = 0;
+    while (n < 100 && !transmit().empty()) ++n;
+    return n;
+}
+
+// An opening call takes at most 4 of the default; a later step takes all of it.
+static void test_opening_call_stops_at_4()
+{
+    reset(6);
+    check(autoseq_on_touch(cq_from("K1ABC")) == AutoseqTouchResult::Queued, "a tapped CQ queues");
+    QsoContext k;
+    check(find("K1ABC", &k) && k.state == AutoseqState::REPLYING && k.try_limit == 4,
+          "tries 6: the opening call's limit is 4");
+    check(sends_until_ended() == AUTOSEQ_OPENING_TRIES && autoseq_active_count() == 0,
+          "it ends after 4 calls");
+
+    reset(2);
+    autoseq_on_touch(cq_from("K1ABC"));
+    check(find("K1ABC", &k) && k.try_limit == 2, "tries 2: the limit is 2");
+    check(sends_until_ended() == 2, "it ends after 2 calls");
+
+    // The entry's own count overrides the cap, and 0 returns to it.
+    reset(6);
+    autoseq_on_touch(cq_from("K1ABC"));
+    find("K1ABC", &k);
+    check(autoseq_set_entry_tries(k.entry_id, 7) == AutoseqTriesResult::Ok, "own count of 7");
+    check(find("K1ABC", &k) && k.try_limit == 7, "the entry's own count is its limit");
+    autoseq_set_entry_tries(k.entry_id, 0);
+    check(find("K1ABC", &k) && k.try_limit == 4, "Use default returns it to 4");
+    autoseq_set_entry_tries(k.entry_id, 7);
+    check(sends_until_ended() == 7, "it ends after its own 7 calls");
+
+    // A change of the default reaches a queued opening call through the cap.
+    reset(6);
+    autoseq_on_touch(cq_from("K1ABC"));
+    autoseq_set_tries(3);
+    check(find("K1ABC", &k) && k.try_limit == 3, "default lowered to 3: the limit is 3");
+    autoseq_set_tries(10);
+    check(find("K1ABC", &k) && k.try_limit == 4, "default raised to 10: the limit is 4");
+
+    // Once the station answers, the step after the opening call has all 6.
+    transmit();
+    decode(to_me("K1ABC", "-10"));
+    check(find("K1ABC", &k) && k.state != AutoseqState::REPLYING && k.try_limit == 10,
+          "answered: the next step has the default's tries");
+}
+
 static void test_call_cq_parity()
 {
     reset(6);
@@ -282,6 +346,7 @@ int main()
     test_ranges_and_unknown_entries();
     test_lowering_ends_now_off_the_air();
     test_lowering_on_the_air_ends_after_the_try();
+    test_opening_call_stops_at_4();
     test_call_cq_parity();
     test_flip_cq_parity();
     if (s_failed) return 1;
