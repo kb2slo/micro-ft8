@@ -557,7 +557,8 @@ static inline hcd_pipe_event_t pipe_decode_error_event(usb_dwc_hal_chan_error_t 
  *
  * @note This function can block
  * @param pipe Pipe object
- * @return esp_err_t
+ * @return
+ *    - ESP_OK: Pipe halted (or was already halted)
  */
 static esp_err_t _pipe_cmd_halt(pipe_t *pipe);
 
@@ -569,7 +570,9 @@ static esp_err_t _pipe_cmd_halt(pipe_t *pipe);
  * - The pipe callback will be run if one or more URBs become done
  *
  * @param pipe Pipe object
- * @return esp_err_t
+ * @return
+ *    - ESP_OK: Pipe flushed, pending URBs became done
+ *    - ESP_ERR_INVALID_STATE: Pipe is not halted
  */
 static esp_err_t _pipe_cmd_flush(pipe_t *pipe);
 
@@ -581,9 +584,27 @@ static esp_err_t _pipe_cmd_flush(pipe_t *pipe);
  * - If there are any enqueued URBs, they will executed
  *
  * @param pipe Pipe object
- * @return esp_err_t
+ * @return
+ *    - ESP_OK: Pipe cleared and active again
+ *    - ESP_ERR_INVALID_STATE: Pipe is not halted, or no enabled device on its port
  */
 static esp_err_t _pipe_cmd_clear(pipe_t *pipe);
+
+/**
+ * @brief Resync a pipe's data toggle to DATA0
+ *
+ * - Pipe must be halted, so the underlying channel is disabled and HCTSIZ.Pid can be reprogrammed
+ * - Only bulk and interrupt pipes rely on the core-maintained data toggle; control pipes set their
+ *   stage PIDs explicitly and isochronous pipes have no data toggle, so both are unaffected
+ * - Must only be used when the device endpoint's data toggle was reinitialized to DATA0, i.e. as part
+ *   of endpoint halt recovery via CLEAR_FEATURE(ENDPOINT_HALT) (USB 2.0 section 9.4.5)
+ *
+ * @param pipe Pipe object
+ * @return
+ *    - ESP_OK: Pipe's data toggle resynced to DATA0
+ *    - ESP_ERR_INVALID_STATE: Pipe is not halted
+ */
+static esp_err_t _pipe_cmd_reset_data_toggle(pipe_t *pipe);
 
 // ------------------------ Port ---------------------------
 
@@ -1013,7 +1034,7 @@ static hcd_pipe_event_t _intr_hdlr_chan(pipe_t *pipe, usb_dwc_hal_chan_t *chan_o
             // retired every buffer, so there is no transfer to fail. Marking a buffer done here would
             // underflow buffer_num_to_exec and parse an empty slot (the urb != NULL assertion in
             // _buffer_parse()), so drop the event instead.
-            ESP_DRAM_LOGW(HCD_DWC_TAG, "Channel error with no buffer executing, ignored");
+            ESP_DRAM_LOGD(HCD_DWC_TAG, "Channel error with no buffer executing, ignored");
             break;
         }
         // Get and store the pipe error event
@@ -1133,7 +1154,17 @@ static void  _calculate_fifo_from_bias(port_t *port, const usb_dwc_hal_context_t
 
 #elif CONFIG_USB_HOST_HW_BUFFER_BIAS_PERIODIC_OUT
     // Prioritize periodic TX FIFO (useful for high throughput periodic endpoints)
-    port->fifo_config.rx_fifo_lines = otg_dfifo_depth / 8 + 2; // 2 extra lines are allocated for status information. See USB-OTG Programming Guide, chapter 2.1.2.1
+
+    // RX FIFO must fit (MPS/4) + 3 status quadlets (packet status + transfer complete + channel halted, GRXSTSP).
+    // Even though the DWC2 Programming Guide ch. 2.1.2.1 specifies only +2, testing showed that 2 lines are not enough.
+    // With D/8 + 2 (130 lines), a device with a 512-byte interrupt-IN EP was accepted but its IN transfers never completed.
+    // No per-channel lines needed in Scatter-Gather DMA mode.
+#ifndef USB_DWC_HAL_RX_FIFO_STATUS_LINES
+    const int rx_fifo_status_lines = 3;
+#else
+    const int rx_fifo_status_lines = USB_DWC_HAL_RX_FIFO_STATUS_LINES;
+#endif
+    port->fifo_config.rx_fifo_lines = otg_dfifo_depth / 8 + rx_fifo_status_lines;
     port->fifo_config.nptx_fifo_lines = otg_dfifo_depth / 16;
     port->fifo_config.ptx_fifo_lines = fifo_size_lines - port->fifo_config.nptx_fifo_lines - port->fifo_config.rx_fifo_lines;
 
@@ -2117,6 +2148,25 @@ exit:
     return ret;
 }
 
+static esp_err_t _pipe_cmd_reset_data_toggle(pipe_t *pipe)
+{
+    esp_err_t ret;
+    // Pipe must be in the halted state, so the underlying channel is disabled and HCTSIZ.Pid can be reprogrammed
+    if (pipe->state != HCD_PIPE_STATE_HALTED) {
+        ret = ESP_ERR_INVALID_STATE;
+        goto exit;
+    }
+    // Bulk/interrupt pipes rely on the core-maintained HCTSIZ.Pid. Resync it to DATA0 only when the device
+    // endpoint's data toggle was reinitialized to DATA0 as well, i.e. via CLEAR_FEATURE(ENDPOINT_HALT) (USB 2.0 section 9.4.5).
+    // Control pipes set their stage PIDs explicitly and isochronous pipes have no data toggle
+    if (pipe->ep_char.type == USB_DWC_XFER_TYPE_BULK || pipe->ep_char.type == USB_DWC_XFER_TYPE_INTR) {
+        usb_dwc_hal_chan_set_pid(pipe->chan_obj, 0);    // 0 = DATA0
+    }
+    ret = ESP_OK;
+exit:
+    return ret;
+}
+
 // ----------------------- Public --------------------------
 
 esp_err_t hcd_pipe_alloc(hcd_port_handle_t port_hdl, const hcd_pipe_config_t *pipe_config, hcd_pipe_handle_t *pipe_hdl)
@@ -2346,6 +2396,10 @@ esp_err_t hcd_pipe_command(hcd_pipe_handle_t pipe_hdl, hcd_pipe_cmd_t command)
     }
     case HCD_PIPE_CMD_CLEAR: {
         ret = _pipe_cmd_clear(pipe);
+        break;
+    }
+    case HCD_PIPE_CMD_RESET_DATA_TOGGLE: {
+        ret = _pipe_cmd_reset_data_toggle(pipe);
         break;
     }
     }
@@ -2694,7 +2748,7 @@ static inline void _buffer_parse_intr(dma_buffer_block_t *buffer, bool is_in, in
             usb_dwc_hal_xfer_desc_parse(buffer->xfer_desc_list, intr_stop_idx - 1, &rem_len, &desc_status);
             assert(rem_len > 0 && desc_status == USB_DWC_HAL_XFER_DESC_STS_SUCCESS);
             // Update actual bytes
-            transfer->actual_num_bytes = (mps * intr_stop_idx - 2) + (mps - rem_len);
+            transfer->actual_num_bytes = (mps * (intr_stop_idx - 1)) + (mps - rem_len);
         } else {
             // Check that all but the last packet transmitted MPS
             for (int i = 0; i < buffer->flags.intr.num_qtds - 1; i++) {
