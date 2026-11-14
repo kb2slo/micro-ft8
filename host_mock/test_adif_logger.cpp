@@ -39,7 +39,7 @@ int main() {
     // adif_log_entry() is what replaces both boards' separate log_adif_entry()
     // (main/main.cpp, poe_p4/main/porta_host.cpp): it must expand the
     // "/Radio"/"/Grid" comment macros on *both* boards now -- previously the
-    // P4 skipped this entirely (a confirmed drift, row j4xh).
+    // P4 skipped this entirely (a confirmed drift).
     {
         g_appended.clear();
         AdifStationSnapshot station;
