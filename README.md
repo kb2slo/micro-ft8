@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/kb2slo/micro-ft8/actions/workflows/ci.yml/badge.svg)](https://github.com/kb2slo/micro-ft8/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-orange.svg)
+![Status: beta](https://img.shields.io/badge/status-beta-yellow.svg)
 
 **A headless FT8 station for the QRP Labs QMX that keeps working when you put your phone away.**
 
@@ -19,9 +19,10 @@ want to build, change or contribute to it.
 
 ## Status
 
-**Pre-alpha.** It has completed real FT8 QSOs on the air, and it changes fast. Anything can change or
-break between commits, and nothing is carried forward from an older state. What has and has not been
-checked on hardware is in [docs/TEST_PLAN.md](docs/TEST_PLAN.md).
+**Beta.** It has completed FT8 and FT4 QSOs on the air with a QMX, and tagged releases are published for
+testers. What it does is on [the site](https://micro-ft8.kalikstein.com). It still changes fast: until 1.0,
+an update may not keep a station's settings or log, and nothing in the code is carried forward from an older
+state. What has and has not been checked on hardware is in [docs/TEST_PLAN.md](docs/TEST_PLAN.md).
 
 ## Hardware
 

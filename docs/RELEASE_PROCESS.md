@@ -151,9 +151,9 @@ commit that changed no firmware has no dev build, since CI built none: `gh workf
 the firmware jobs and `release-main` on the tip of `main` whatever changed, and the tag can then be cut. Run
 it only for that: on a commit already published it uploads the two dated OTA images again.
 
-Cutting a release is also the event that ends pre-alpha — **Pre-alpha: do not carry the past** in
-[AGENTS.md](../AGENTS.md) — because a version aimed at anyone but the maintainer is the first time back-compat
-becomes an obligation rather than a choice. None have been cut under this process yet.
+**The first release, `v0.1.0`, makes the project a beta.** A `0.x` release is for testers and promises nothing
+across an update, a station's settings and log included: [AGENTS.md](../AGENTS.md), **Before 1.0: do not
+carry the past**. Back-compat becomes an obligation at 1.0 ([roadmap/release-1-0.md](roadmap/release-1-0.md)).
 
 Version tags are immovable by convention: re-pointing one breaks the single guarantee a version number
 carries. To fix a bad release, cut the next one.

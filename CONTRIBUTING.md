@@ -6,8 +6,8 @@ and an AtomS3 Lite sidekick serves the web app you operate it from. How the piec
 
 Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
 
-It is **pre-alpha**: anything can change or break between commits, and nothing carries an old state
-forward ([AGENTS.md](AGENTS.md), **Pre-alpha**). The maintainer is Jeff, KB2SLO.
+It is in **beta**: releases are published for testers, anything can still change between them, and
+until 1.0 nothing carries an old state forward ([AGENTS.md](AGENTS.md), **Before 1.0**). The maintainer is Jeff, KB2SLO.
 
 ## Before you start
 

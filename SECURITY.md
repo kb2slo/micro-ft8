@@ -13,5 +13,5 @@ physical access) and how to reproduce it. You will get an answer, and credit in 
 
 The main board and sidekick firmware, the web app, and the site's Worker. How pairing and the trust model
 work: [docs/architecture/sidekick.md](docs/architecture/sidekick.md) and
-[docs/architecture/system.md](docs/architecture/system.md). Only the tip of `main` is supported; the project
-is pre-alpha and has no maintained releases.
+[docs/architecture/system.md](docs/architecture/system.md). Only the tip of `main` and the newest release
+are supported; the project is a beta, and earlier releases are not maintained.

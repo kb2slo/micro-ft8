@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Downloads — Micro-FT8</title>
-<meta name="description" content="Dev builds of the firmware for Micro-FT8 (PoE-P4, AtomS3 Lite).">
+<meta name="description" content="Beta firmware for Micro-FT8 (PoE-P4, AtomS3 Lite): the stable release and the dev build.">
 <style>
   :root {
     --ink: #1a1f1c;
@@ -155,6 +155,27 @@
     cursor: pointer;
   }
   button.flash:hover { filter: brightness(1.08); }
+  .channels {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.6rem;
+  }
+  .channels button {
+    font: inherit;
+    font-size: 0.9rem;
+    color: var(--band);
+    background: transparent;
+    border: 1px solid var(--band);
+    border-radius: 2px;
+    padding: 0.35rem 0.9rem;
+    cursor: pointer;
+  }
+  .channels button[aria-pressed="true"] {
+    color: #fff;
+    background: var(--band);
+  }
   button.flash:disabled {
     opacity: 0.45;
     cursor: not-allowed;
@@ -189,8 +210,16 @@
   <p class="eyebrow"><a href="/">Micro-FT8</a> · Downloads</p>
   <h1>Downloads</h1>
   <p class="lead">
-    Early pre-release firmware — looking for feedback. Flash at your own risk while
-    things settle.
+    Beta firmware, looking for testers. <strong>Stable</strong> is the latest release.
+    <strong>Dev</strong> is the newest build from development: more recent, less tested.
+  </p>
+  <p class="channels" id="channels" hidden>
+    <button type="button" data-channel="stable" aria-pressed="false">Stable</button>
+    <button type="button" data-channel="dev" aria-pressed="false">Dev</button>
+  </p>
+  <p class="meta" id="channel-note" hidden>
+    You can switch a station between the two later, in the app’s Settings, under
+    Software update.
   </p>
   <p class="warn" id="status">Loading…</p>
 
@@ -431,13 +460,19 @@ async function flashTarget(key, asset, label) {
   }
 }
 
+// "Release 0.1.0, built 2026-11-14." or "Dev build b1340, built 2026-11-14.", from a channel's
+// manifest (docs/RELEASE_PROCESS.md): its version is a label, "+", and the commit.
+function statusText(m) {
+  const label = typeof m.version === "string" ? m.version.split("+")[0] : "";
+  const d = /^(\d{4})(\d{2})(\d{2})$/.exec(m.date || "");
+  const built = d ? ", built " + d[1] + "-" + d[2] + "-" + d[3] : "";
+  if (!label) return "Current beta builds.";
+  return (m.channel === "stable" ? "Release " : "Dev build ") + label + built + ".";
+}
+
 function render(m) {
   statusEl.className = "meta";
-  if (m.date) {
-    statusEl.textContent = "Build date " + m.date + ".";
-  } else {
-    statusEl.textContent = "Current early pre-release builds.";
-  }
+  statusEl.textContent = statusText(m);
 
   listEl.innerHTML = "";
   flashButtons.length = 0;
@@ -526,11 +561,39 @@ function fallback() {
     "Downloads are not available right now. Try again later, or check back after the next update.";
 }
 
-fetch("/download/manifest.json", { cache: "no-store" })
-  .then((r) => {
+// One manifest a channel. The stable one is not there until a release is cut: then the page is
+// the dev build's alone, with no choice to make. With both, Stable is shown first.
+const manifests = { dev: null, stable: null };
+const channelsEl = document.getElementById("channels");
+
+function show(channel) {
+  channelsEl.querySelectorAll("button").forEach((b) => {
+    b.setAttribute("aria-pressed", b.dataset.channel === channel ? "true" : "false");
+  });
+  render(manifests[channel]);
+}
+
+channelsEl.querySelectorAll("button").forEach((b) => {
+  b.addEventListener("click", () => {
+    if (!busy && manifests[b.dataset.channel]) show(b.dataset.channel);
+  });
+});
+
+function manifest(name) {
+  return fetch("/download/" + name, { cache: "no-store" }).then((r) => {
     if (!r.ok) throw new Error("HTTP " + r.status);
     return r.json();
+  });
+}
+
+Promise.all([manifest("manifest.json"), manifest("manifest-stable.json").catch(() => null)])
+  .then(([dev, stable]) => {
+    manifests.dev = dev;
+    manifests.stable = stable;
+    const both = !!stable;
+    channelsEl.hidden = !both;
+    document.getElementById("channel-note").hidden = !both;
+    show(both ? "stable" : "dev");
   })
-  .then(render)
   .catch(fallback);
 </script>

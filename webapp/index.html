@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Micro-FT8 — KB2SLO</title>
-<meta name="description" content="Micro-FT8: a 35-gram FT8 station for the QMX that keeps calling CQ and working callers while your phone is in your pocket. Early pre-release.">
+<meta name="description" content="Micro-FT8: a 35-gram FT8 and FT4 station for the QMX, with its queue and auto-sequencer on the station, operated from any browser. Beta.">
 <style>
   :root {
     --ink: #1a1f1c;
@@ -407,13 +407,13 @@
   }
 </style>
 <main>
-  <p class="eyebrow">Micro-FT8 · FT8 for the QMX · Early pre-release</p>
-  <h1>An FT8 station that keeps working when you put your phone away.</h1>
+  <p class="eyebrow">Micro-FT8 · FT8 and FT4 for the QMX · Beta</p>
+  <h1>A 35‑gram FT8 and FT4 station for the QMX, run from your phone’s browser.</h1>
   <p class="lead">
-    Micro-FT8 is a 35&nbsp;gram station that sits next to your QMX and runs FT8
-    on its own: it decodes, calls CQ, works callers, and logs. Your phone is only
-    a <strong>wireless remote</strong>. Use it to set up and check in, then pocket
-    it. The station keeps going.
+    Micro-FT8 is a 35&nbsp;gram station that sits next to your QMX and does the
+    decoding, sequencing and logging. You operate it from a browser: pick who to
+    call, queue them, call CQ. Because the work is on the station, a locked screen
+    or a closed page does not drop a QSO in progress.
   </p>
   <p class="note">
     <strong>One radio at a time.</strong> A station runs a QMX <em>or</em> a
@@ -444,6 +444,70 @@
     </figure>
   </div>
 
+  <section id="beta">
+    <h2>This is a beta</h2>
+    <p>
+      Micro-FT8 has completed FT8 and FT4 QSOs on the air with a QMX, and tagged
+      releases are out for testers. What it does today:
+    </p>
+    <ul>
+      <li>
+        <strong>A queue and an auto-sequencer, on the station.</strong> Tap a decode to
+        reply, queue several, or call CQ a set number of times. You choose who to work
+        and when to call; the sequencer carries each exchange through to the log, the
+        way WSJT-X does.
+      </li>
+      <li>
+        <strong>FT8 and FT4 together.</strong> On most bands a QMX decodes both at once,
+        and you can reply to a call in either. The exceptions are 15&nbsp;m and
+        10&nbsp;m, where the two sit too far apart for the radio to hear both. Checked on
+        the air on 20&nbsp;m and 40&nbsp;m. Calling CQ is FT8 only for now.
+      </li>
+      <li>
+        <strong>POTA and SOTA activations.</strong> The log downloads as
+        <code>.adi</code> files you can upload straight to pota.app for activation
+        credit: one file per park, with a two-fer split into the files POTA asks for. Set
+        your park or summit in Settings and Operate counts the day’s QSOs toward the
+        activation and flags stations you have already worked. SOTA logs carry the summit
+        reference.
+      </li>
+      <li>
+        <strong>Easy to set up and use.</strong> Nothing to install: join the station’s
+        Wi‑Fi and open a page, on any phone, tablet or laptop. Setup fits on
+        <a href="getting-started.html">one printed sheet</a>.
+      </li>
+      <li>
+        <strong>The clock sets itself from your phone.</strong> Open the page and the
+        station takes the phone’s time: no GPS, no signal and no internet needed.
+      </li>
+      <li>
+        <strong>Light and low power.</strong> 35&nbsp;grams in two small boards. They run
+        over USB‑C from the same power bank as the radio, or straight from your phone’s
+        USB‑C port.
+      </li>
+      <li>
+        <strong>Works with an amplifier.</strong> It checks and sets the QMX’s keying
+        outputs for each band and waits for the amplifier before sending RF. Tested with
+        a Micro&nbsp;PA‑100+.
+      </li>
+      <li>
+        <strong>See who hears you.</strong> Your spots from PSKReporter, as a list or on
+        the map, when the phone has internet.
+      </li>
+      <li>
+        <strong>Field tools.</strong> An SWR sweep for tuning an antenna, an offline map,
+        and logs in ADIF straight to your phone.
+      </li>
+      <li>
+        <strong>Updates over the air</strong> from Settings, on a Stable or a Dev channel.
+      </li>
+    </ul>
+    <p class="note">
+      Until 1.0, an update may reset your settings or your log, so download your log
+      first. Tell us what breaks: <a href="#contact">contact</a>.
+    </p>
+  </section>
+
   <section id="walkthrough">
     <h2>Watch it work</h2>
     <p>
@@ -467,11 +531,11 @@
     <h2>Why Micro-FT8</h2>
     <div class="cards">
       <div class="card">
-        <h3>The station runs itself</h3>
+        <h3>The sequencer is on the station</h3>
         <p>
-          Decoding, calling CQ, and the auto-sequencer all run on the station, not
-          on the phone. Close the page, lock the screen, or switch apps, and it keeps
-          calling CQ and working the stations that answer.
+          Decoding, the queue and the auto-sequencer run on the station, not in the
+          page. A QSO you started finishes and logs even if the phone locks or the
+          browser closes.
         </p>
       </div>
       <div class="card">
@@ -493,14 +557,14 @@
         <p>
           The station is two stock M5Stack parts with no screen and no keyboard.
         </p>
-        <p class="proof">34.9&nbsp;g on the scale. Real FT8 QSOs completed.</p>
+        <p class="proof">34.9&nbsp;g on the scale. Real FT8 and FT4 QSOs completed.</p>
       </div>
       <div class="card">
         <h3>Your phone stays yours</h3>
         <p>
           The phone isn’t the station, so its battery, screen, and apps stay free for
-          navigation, spotting, or a call home. If the phone dies, the station keeps
-          operating.
+          navigation, spotting, or a call home. If the phone dies, the QSO in progress
+          still completes and logs, and any browser can pick the station back up.
         </p>
         <p class="proof">Any browser works: phone, tablet, or laptop.</p>
       </div>
@@ -533,13 +597,13 @@
           <th>When the phone sleeps</th>
           <td data-label="Phone app">Depends on the phone letting the app run in the background</td>
           <td data-label="Built-in">No phone involved</td>
-          <td data-label="Micro-FT8" class="us">Keeps operating; the phone is only a remote</td>
+          <td data-label="Micro-FT8" class="us">A QSO in progress completes and logs; the phone is a remote</td>
         </tr>
         <tr>
           <th>Screen you operate on</th>
           <td data-label="Phone app">The phone</td>
           <td data-label="Built-in">The radio’s own screen</td>
-          <td data-label="Micro-FT8" class="us">Any browser, or none once it’s running</td>
+          <td data-label="Micro-FT8" class="us">Any browser: phone, tablet, or laptop</td>
         </tr>
         <tr>
           <th>Radios</th>
@@ -557,8 +621,8 @@
     </table>
     <p class="note">
       If you want the most radio choices, use a phone app. If you want nothing extra
-      to carry, use a radio with built-in FT8. Micro-FT8 is for when you want your QMX
-      to keep working while you do something else.
+      to carry, use a radio with built-in FT8. Micro-FT8 is for when you want a full FT8
+      station for your QMX that weighs 35&nbsp;grams and needs no laptop.
     </p>
   </section>
 
@@ -568,8 +632,8 @@
       <strong>M5Stack Unit PoE-P4</strong> as the radio host, an
       <strong>AtomS3&nbsp;Lite</strong> as the Wi‑Fi companion,
       <strong>no keyboard and no screen</strong>. All of the compute fits in
-      <strong>35&nbsp;grams</strong>. Set up and check in from a phone, tablet, or laptop;
-      no need to keep the page open. It has completed real FT8 QSOs on the air.
+      <strong>35&nbsp;grams</strong>. Operate it from a phone, tablet, or laptop; a QSO in
+      progress does not need the page open. It has completed real FT8 and FT4 QSOs on the air.
     </p>
     <p class="note">
       <strong>GPS is optional.</strong> Clock comes from the browser over the Atom link —
@@ -638,8 +702,8 @@
       the station, the radio and the network.
     </p>
     <p class="note">
-      <strong>The phone is optional once you’re set up.</strong> Open the page again
-      at any time to see what the station worked while you were away.
+      <strong>The page can close.</strong> Open it again at any time; the queue, the
+      decodes and the log are where you left them.
     </p>
     <div class="gallery screens" id="screen-gallery">
       <figure>
@@ -806,6 +870,12 @@
         Who is hearing you, from PSKReporter: the Tools list and its sorting, the map
         layer, and the “heard you” line on a station’s card, checked on an iPhone.
       </li>
+      <li>
+        POTA activation logs: the <code>.adi</code> files uploaded to pota.app and
+        accepted for activation credit.
+      </li>
+      <li>Keying an amplifier: tested with a Micro&nbsp;PA‑100+.</li>
+      <li>The boards powered from a phone’s USB‑C port.</li>
     </ul>
     <h3 class="sub">Not yet, or not claimed</h3>
     <ul class="checks no">
@@ -829,12 +899,16 @@
         on, a QMX answers FT4 calls beside FT8; calling CQ is FT8 only.
       </li>
       <li>
+        <strong>A park-to-park contact logs without the other station’s park.</strong>
+        Your own park or summit is on every QSO; the other activator’s is not recorded yet.
+      </li>
+      <li>
         <strong>Nothing has been checked on an Android phone yet,</strong> including
         <code>.local</code> names.
       </li>
       <li>
-        This is an <strong>early pre-release</strong>. We’re looking for feedback;
-        it isn’t a finished release yet.
+        <strong>Until 1.0, an update may not keep your settings or your log.</strong>
+        Download your log first.
       </li>
     </ul>
   </section>
