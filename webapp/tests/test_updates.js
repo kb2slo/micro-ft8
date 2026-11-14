@@ -146,6 +146,11 @@ rv = U.reviewText(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: 'd
 eq(rv[2], 'The update goes on if this phone locks.');
 rv.forEach((t) => assert(!/receiv|decod/i.test(t), 'no promise about receiving: ' + t));
 
+// The note under the offer: the radio off only when firmware is in the update, as the review asks.
+eq(U.offerNote(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked, APP)), 'Switch the radio off first.');
+eq(U.offerNote(U.plan(manifest(OTA15, P4OTA), { sidekick: 'd18f9b2', main: 'd18f9b2' }, linked, APP)), '', 'the app alone asks nothing of the radio');
+eq(U.offerNote(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: 'd18f9b2' }, linked, null)), U.whyText('pair') + '.');
+
 // ---- the app's relay, against a fake host and sidekick ----
 function relayWorld(o) {
   o = o || {};
