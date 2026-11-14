@@ -15,8 +15,11 @@ Both publish the same set: the M5Stack Unit PoE-P4 merged image (esp32p4, 0x0, c
 (merged by `tools/merge_sidekick_bin.sh` in the sidekick job), a **history-free source tarball**
 (vendored `ft8_lib`, no `.git`), each board's **OTA image** (below), and the channel's manifest. The names
 above are a dev file's on the mirror and a stable file's on GitHub, `<number>` the tag's without its `v`; on
-the mirror a stable file has the dev name with `stable` for `dev`. The web app is not yet published with a
-release (row [nufg](roadmap/ota-updates.md#nufg)). The firmware artifacts are skipped entirely for docs-only commits (the
+the mirror a stable file has the dev name with `stable` for `dev`. **A release also publishes the web app,**
+built at the tag and stamped with the release's version: `microft8-app-<number>.tar.gz` on GitHub, and its
+bundle under `app/<number>/` on the mirror, which the stable manifest names. The dev app is published apart
+from the firmware, by `pages.yml` on every push that touches it ([webapp.md](architecture/webapp.md),
+**Serving the site**). The firmware artifacts are skipped entirely for docs-only commits (the
 `changes` path filter), so a roadmap-only merge neither rebuilds nor republishes any binary, and the dev
 channel's build is the last commit that could change one, not always the tip of `main`.
 
@@ -49,9 +52,8 @@ from a clone, and it only rises on `main`. A `v*` tag that is not three numbers 
 builds are on a channel: a local build reports its SHA at a tagged commit too, a changed tree never takes a
 version it is handed, and one naming another commit stops the build, so nothing built at a bench is taken for
 a release. The boards compare versions as whole strings, never by order
-([sidekick.md](architecture/sidekick.md), **Firmware updates**). The web app's own build id is still its
-commit and date ([webapp.md](architecture/webapp.md), **Build**), until row
-[nufg](roadmap/ota-updates.md#nufg) is done.
+([sidekick.md](architecture/sidekick.md), **Firmware updates**). The web app's build id is its commit and date, and a
+release's app's its version and date ([webapp.md](architecture/webapp.md), **Build**).
 
 **An OTA image is a board's app image alone** (`poe_p4.bin`, `sidekick.bin`), which is what an over-the-air
 update writes into an OTA slot ([sidekick.md](architecture/sidekick.md), **Firmware updates**); the merged
@@ -76,6 +78,7 @@ its board (**Public Cloudflare mirror**).
 | the six file names above with `stable` for `dev` | The newest stable release's files, replaced at each release |
 | `https://micro-ft8.kalikstein.com/download/manifest-stable.json` | The stable channel's manifest, in the same form |
 | `https://micro-ft8.kalikstein.com/download/ota/microft8-<board>-ota-<number>.bin` | Each stable OTA image by its release's number, never overwritten or deleted |
+| `https://micro-ft8.kalikstein.com/download/app/<number>/<file>` | Each release's web app bundle, as built: its `manifest.json`, `build.json` and assets, never overwritten or deleted |
 
 Human entry: [`https://micro-ft8.kalikstein.com/downloads.html`](https://micro-ft8.kalikstein.com/downloads.html).
 
@@ -89,7 +92,9 @@ one file a job, so neither rewrites part of the other's. `channel` is `dev` or `
 `assets`, each of `poe_p4`, `sidekick`, `source` and `getting_started` has `stable` (its fixed name here),
 `filename` (its own name: a dev file's dated one, `YYYYMMDD-microft8-<kind>-<commit>`, the date the commit's in UTC, and a stable file's by its release's number; on the mirror only an OTA image is stored under it) and `sha256`. The two boards also have an `ota` entry: `stable`,
 `filename`, `size` in bytes, `sha256`, `version` (the string built into the image) and `proto` (the
-`PORTA_PROTO_VERSION` that build speaks). Beside `commit` and `short`, the manifest's own `version` is the
+`PORTA_PROTO_VERSION` that build speaks). A stable manifest's `app` names the release's web app: `path` (`app/<number>/`, under the mirror's
+`/download/`), and `build` and `size` from the bundle's `build.json`; the script refuses an app that was not
+built as that release. Beside `commit` and `short`, the manifest's own `version` is the
 build's and `build` its number: a dev version's own, and for a stable release the number of commits up to
 its commit, counted the same way, so the one number orders the builds of both channels. The script reads the
 version out of the image and refuses to write a
@@ -108,7 +113,7 @@ newer one. The stable `-ota` names stay for people and scripts. Uploaded before 
 **Nothing expires them:** firmware is published only when a push touches it, so the build the manifest names can
 be months old, and an age rule would delete the image every update needs. They cost about 2 MB a firmware
 push against R2's 10 GB free tier; prune by hand, never the build the manifest names. The Worker serves one
-name, or one under `ota/`, and nothing else nested.
+name, one under `ota/`, or one under `app/<number>/`, and nothing else nested (`webapp/tests/test_worker.js`).
 
 ### One-time setup
 

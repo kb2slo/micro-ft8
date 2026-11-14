@@ -23,6 +23,7 @@ from __future__ import annotations
 import datetime
 import gzip
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -35,6 +36,9 @@ OUT = ROOT / "webapp" / "dist" / "app"
 
 sys.path.insert(0, str(TOOLS))
 import gen_manifest  # noqa: E402
+
+sys.path.insert(0, str(TOOLS.parents[1] / "tools"))
+import build_version  # noqa: E402
 
 BUILD_PLACEHOLDER = "__APP_BUILD__"
 
@@ -56,8 +60,24 @@ def die(msg: str) -> None:
     raise SystemExit(1)
 
 
+def stamp(sha: str, dirty: bool, date: str, version: str = "") -> str:
+    """The build id: '<short sha>[-dirty] <UTC date>', or for a release '<version> <UTC date>'.
+
+    `version` is what CI hands a release's build as MICROFT8_VERSION, '0.1.0+<sha>'
+    (tools/build_version.py). As for the firmware (tools/git_version.cmake), a changed tree never
+    takes it, and one that is not a release of this commit stops the build."""
+    if dirty:
+        return f"{sha}-dirty {date}"
+    if version:
+        info = build_version.parse(version)
+        if not info or info["channel"] != "stable" or not sha.startswith(info["sha"]):
+            die(f"MICROFT8_VERSION '{version}' is not a release of this commit, {sha}")
+        return f"{version} {date}"
+    return f"{sha} {date}"
+
+
 def build_id() -> str:
-    """'<short sha>[-dirty] <UTC date>'; 'unknown' outside a git checkout."""
+    """stamp() for this checkout; 'unknown' outside a git checkout."""
     try:
         sha = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True
@@ -68,7 +88,7 @@ def build_id() -> str:
     except (OSError, subprocess.CalledProcessError):
         return "unknown"
     date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
-    return f"{sha}{'-dirty' if dirty else ''} {date}"
+    return stamp(sha, bool(dirty), date, os.environ.get("MICROFT8_VERSION", ""))
 
 
 def compact_json(path: Path) -> None:

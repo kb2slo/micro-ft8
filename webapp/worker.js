@@ -3,8 +3,9 @@
 // _headers (docs/architecture/webapp.md, Serving the site): wrangler.jsonc's
 // run_worker_first names exactly this path.
 //
-// /download/* is served from the DOWNLOADS R2 bucket (public dev
-// firmware, source and getting-started sheet mirror). See docs/RELEASE_PROCESS.md.
+// /download/* is served from the DOWNLOADS R2 bucket (both channels'
+// firmware, source and getting-started sheet, and each release's app). See
+// docs/RELEASE_PROCESS.md.
 //
 // A path with no file never lands here: Static Assets answers it with 404.html
 // (wrangler.jsonc, not_found_handling). The last return is a backstop only.
@@ -26,11 +27,17 @@ async function serveDownload(request, env, url) {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  // Key is everything after "/download/": one file name, or one under ota/ (each OTA image by
-  // its dated name: docs/RELEASE_PROCESS.md). Reject empty, traversal, and any other nesting.
-  const key = decodeURIComponent(url.pathname.slice("/download/".length));
-  const name = key.startsWith("ota/") ? key.slice(4) : key;
-  if (!name || name.includes("/") || name.includes("\\") || name.includes("..")) {
+  // Key is everything after "/download/": one file name, one under ota/ (each OTA image by its
+  // own name), or one under app/<release>/ (a release's app bundle): docs/RELEASE_PROCESS.md.
+  // Reject empty, traversal, and any other nesting.
+  let key;
+  try {
+    key = decodeURIComponent(url.pathname.slice("/download/".length));
+  } catch (e) {
+    return new Response("Not found", { status: 404 });
+  }
+  const name = fileName(key);
+  if (!name) {
     return new Response("Not found", { status: 404 });
   }
 
@@ -59,6 +66,14 @@ async function serveDownload(request, env, url) {
     return new Response(null, { status: 200, headers });
   }
   return new Response(obj.body, { status: 200, headers });
+}
+
+// The file's own name when `key` is one this route serves, else "".
+function fileName(key) {
+  const app = /^app\/\d+\.\d+\.\d+\//.exec(key);
+  const name = app ? key.slice(app[0].length) : key.startsWith("ota/") ? key.slice(4) : key;
+  if (!name || name.includes("/") || name.includes("\\") || name.includes("..")) return "";
+  return name;
 }
 
 function guessContentType(key) {

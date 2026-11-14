@@ -1527,8 +1527,8 @@ async function checkFwUpdates() {
   renderFwUpdates();
 }
 
-// The plan to `target`, a channel: the station's own (an update), or the other (a switch). The app
-// is published apart from the firmware on dev alone, so it is in a plan to dev alone.
+// The plan to `target`, a channel: the station's own (an update), or the other (a switch). The dev
+// app is the one on the sidekick's bundle host, a release's the one its manifest names.
 function fwPlan(target) {
   var cfg = lastCfg || {};
   var link = {
@@ -1537,7 +1537,7 @@ function fwPlan(target) {
   };
   var channel = FwUpdates.channelOf(fwRunning);
   target = target || channel;
-  var app = target === 'dev' ? FwUpdates.appOffer(appPublished, APP_BUILD) : null;
+  var app = FwUpdates.appOffer(target === 'dev' ? appPublished : FwUpdates.stableApp(fwManifests.stable), APP_BUILD);
   return FwUpdates.plan(fwManifests[target], fwRunning, link, app, target !== channel);
 }
 
@@ -1675,7 +1675,7 @@ async function appStep(firmwareRows) {
       drawRun(firmwareRows, 'Keep this page open until the app is installed.');
     },
   };
-  var base = appHost || APP_HOST_DEFAULT;
+  var base = (fwMine && fwMine.app && fwMine.app.base) || appHost || APP_HOST_DEFAULT;
   var r = await FwUpdates.relayApp(base, io);
   if (!r.ok && r.why === 'changed') r = await FwUpdates.relayApp(base, io);
   if (r.why === 'pairing') MicroFT8Pairing.needsReauth();

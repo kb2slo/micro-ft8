@@ -19,6 +19,7 @@ var FwUpdates = (function () {
     stable: 'https://micro-ft8.kalikstein.com/download/manifest-stable.json',
   };
   var IMAGE_BASE = 'http://micro-ft8.kalikstein.com/download/ota/';
+  var DOWNLOAD_BASE = 'https://micro-ft8.kalikstein.com/download/';
 
   // board: the name the sidekick's API uses. asset: its key under the manifest's `assets`. The main
   // board is first: when both need updating it goes first, while the sidekick still speaks its
@@ -114,24 +115,43 @@ var FwUpdates = (function () {
   }
 
   // The app's build id, as build.py stamps it into app.html and writes it to build.json:
-  // '<short sha>[-dirty] <UTC date>'. null for anything else, the unbuilt page's 'source' included.
+  // '<short sha>[-dirty] <UTC date>', or a release's '<version> <UTC date>' ('0.1.0+0c5ccec
+  // 2026-11-14'), whose `version` is then set. null for anything else, the unbuilt page's 'source'
+  // included.
   function buildCommit(id) {
-    var m = /^([0-9a-f]{7,40})(-dirty)? \d{4}-\d{2}-\d{2}$/.exec(typeof id === 'string' ? id : '');
-    return m ? { sha: m[1], dirty: !!m[2] } : null;
+    var m = /^(\S+) \d{4}-\d{2}-\d{2}$/.exec(typeof id === 'string' ? id : '');
+    if (!m) return null;
+    var rel = parseVersion(m[1]);
+    if (rel) return rel.channel === 'stable' ? { sha: rel.sha, dirty: false, version: m[1] } : null;
+    var c = /^([0-9a-f]{7,40})(-dirty)?$/.exec(m[1]);
+    return c ? { sha: c[1], dirty: !!c[2], version: '' } : null;
   }
 
-  // Whether the published app (build.json beside the bundle's manifest: {build, size}) differs from
-  // the one this page runs (`installed`, its stamped build id). Commits have no order, so different
-  // is the test; a short sha matches a longer one it begins. A page that is unbuilt or -dirty is
-  // always offered the published app. null: nothing to offer, or build.json not read or not sane.
+  // A release's app, from the stable manifest's `app` entry (tools/make_manifest.py): the bundle
+  // under its release's number on the mirror, with the build id and size build.json would give.
+  // null when the manifest has none, or one this page should not fetch from.
+  function stableApp(manifest) {
+    var a = manifest && manifest.channel === 'stable' && manifest.app;
+    if (!a || typeof a.path !== 'string' || !/^app\/\d+\.\d+\.\d+\/$/.test(a.path)) return null;
+    return { build: a.build, size: a.size, base: DOWNLOAD_BASE + a.path };
+  }
+
+  // Whether the published app differs from the one this page runs (`installed`, its stamped build
+  // id). `published` is {build, size} and, for a release's, base: build.json beside the dev
+  // bundle's manifest, or stableApp()'s. The same app is the same commit built for the same
+  // channel: a release's is its version, a dev one's its commit, a short sha matching a longer one
+  // it begins; so a page from a release is offered the dev app of the same commit, and the other
+  // way, and Settings then names what the station is on. A page that is unbuilt or -dirty is always
+  // offered the published app. null: nothing to offer, or `published` not read or not sane.
   function appOffer(published, installed) {
     var to = published && buildCommit(published.build);
     if (!to || to.dirty || typeof published.size !== 'number' || !(published.size > 0)) return null;
     var from = buildCommit(installed);
-    if (from && !from.dirty &&
+    if (from && !from.dirty && from.version === to.version &&
         (from.sha.indexOf(to.sha) === 0 || to.sha.indexOf(from.sha) === 0)) return null;
-    return { board: 'app', label: 'App', from: from ? from.sha + (from.dirty ? '-dirty' : '') : 'source',
-      to: to.sha, size: published.size };
+    return { board: 'app', label: 'App',
+      from: from ? (from.version ? versionLabel(from.version) : from.sha + (from.dirty ? '-dirty' : '')) : 'source',
+      to: to.version ? versionLabel(to.version) : to.sha, size: published.size, base: published.base || '' };
   }
 
   // What one tap of Update does (docs/roadmap/ota-updates.md, antu): the app first, by this
@@ -421,6 +441,7 @@ var FwUpdates = (function () {
     startBody: startBody,
     buildCommit: buildCommit,
     appOffer: appOffer,
+    stableApp: stableApp,
     plan: plan,
     unavailableText: function (why) { return UNAVAILABLE_TEXT[why] || ''; },
     reviewText: reviewText,
