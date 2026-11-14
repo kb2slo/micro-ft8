@@ -19,12 +19,12 @@ function manifest(ota, p4ota) {
   return {
     commit: 'd18f9b2' + '0'.repeat(33), short: 'd18f9b2', date: '20261110',
     assets: {
-      poe_p4: Object.assign({ stable: 'microft8-poe-p4-continuous.bin', sha256: SHA }, p4ota ? { ota: p4ota } : {}),
-      sidekick: Object.assign({ stable: 'microft8-sidekick-continuous.bin', sha256: SHA }, ota === undefined ? {} : { ota }),
+      poe_p4: Object.assign({ stable: 'microft8-poe-p4-dev.bin', sha256: SHA }, p4ota ? { ota: p4ota } : {}),
+      sidekick: Object.assign({ stable: 'microft8-sidekick-dev.bin', sha256: SHA }, ota === undefined ? {} : { ota }),
     },
   };
 }
-const OTA = { stable: 'microft8-sidekick-continuous-ota.bin', filename: '20261110-microft8-sidekick-ota-d18f9b2.bin', size: 1005232, sha256: SHA, version: 'd18f9b2', proto: 14 };
+const OTA = { stable: 'microft8-sidekick-dev-ota.bin', filename: '20261110-microft8-sidekick-ota-d18f9b2.bin', size: 1005232, sha256: SHA, version: 'd18f9b2', proto: 14 };
 
 // ---- offers ----
 assert.strictEqual(U.MANIFEST_URL, 'https://micro-ft8.kalikstein.com/download/manifest.json');
@@ -37,7 +37,7 @@ assert.deepStrictEqual(offered, [{
 }]);
 assert.deepStrictEqual(plain(U.offers(manifest(OTA), { sidekick: 'd18f9b2' })), [], 'already on the published build');
 // Both boards behind: the main board is offered first, since it is updated first.
-const P4OTA = { stable: 'microft8-poe-p4-continuous-ota.bin', filename: '20261110-microft8-poe-p4-ota-d18f9b2.bin', size: 871968, sha256: SHA, version: 'd18f9b2', proto: 15 };
+const P4OTA = { stable: 'microft8-poe-p4-dev-ota.bin', filename: '20261110-microft8-poe-p4-ota-d18f9b2.bin', size: 871968, sha256: SHA, version: 'd18f9b2', proto: 15 };
 const both = plain(U.offers(manifest(OTA, P4OTA), { sidekick: '7e61488', main: '7e61488' }));
 assert.deepStrictEqual(both.map((o) => o.board), ['main', 'sidekick']);
 assert.deepStrictEqual(both[0], {

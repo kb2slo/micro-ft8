@@ -62,26 +62,26 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual((m["version"], m["build"]), (VERSION, 1322))
         a = m["assets"]
         # What downloads.html reads today is unchanged.
-        self.assertEqual(a["poe_p4"]["stable"], "microft8-poe-p4-continuous.bin")
+        self.assertEqual(a["poe_p4"]["stable"], "microft8-poe-p4-dev.bin")
         self.assertEqual(a["poe_p4"]["filename"], "20261110-microft8-poe-p4-c6374c9.bin")
         self.assertEqual(a["poe_p4"]["sha256"], hashlib.sha256(b"merged p4").hexdigest())
         self.assertEqual((a["poe_p4"]["chip"], a["poe_p4"]["flash_offset"]), ("esp32p4", "0x0"))
         self.assertEqual((a["sidekick"]["chip"], a["sidekick"]["flash_offset"]), ("esp32s3", "0x0"))
         self.assertEqual(a["source"], {
-            "stable": "microft8-source-continuous.tar.gz",
+            "stable": "microft8-source-dev.tar.gz",
             "filename": "20261110-microft8-source-c6374c9.tar.gz",
             "sha256": hashlib.sha256(b"src").hexdigest(),
         })
-        self.assertEqual(a["getting_started"]["stable"], "microft8-getting-started-continuous.pdf")
+        self.assertEqual(a["getting_started"]["stable"], "microft8-getting-started-dev.pdf")
         self.assertEqual(a["poe_p4"]["ota"], {
-            "stable": "microft8-poe-p4-continuous-ota.bin",
+            "stable": "microft8-poe-p4-dev-ota.bin",
             "filename": "20261110-microft8-poe-p4-ota-c6374c9.bin",
             "size": 5000,
             "sha256": hashlib.sha256(p4_ota).hexdigest(),
             "version": VERSION,
             "proto": 14,
         })
-        self.assertEqual(a["sidekick"]["ota"]["stable"], "microft8-sidekick-continuous-ota.bin")
+        self.assertEqual(a["sidekick"]["ota"]["stable"], "microft8-sidekick-dev-ota.bin")
         self.assertEqual(a["sidekick"]["ota"]["size"], 6000)
         self.assertNotIn("ota", a["source"])
 

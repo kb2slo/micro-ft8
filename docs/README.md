@@ -13,7 +13,7 @@ Human- and tool-readable project memory. Prefer this tree over editor-specific r
 | [../README.md](../README.md) | Contributor landing: what it is, status, hardware, layout, build and test, contributing, acknowledgements. Operators go to the site. What it holds and when to audit it: [AGENTS.md](../AGENTS.md), **README and site stay current**. |
 | [STYLE.md](STYLE.md) | Coding standard for our C/C++ (not vendored `M5*` / `ft8_lib`). |
 | [TEST_PLAN.md](TEST_PLAN.md) | Ledger: what automation checks, what it cannot see, and the field checks still owed (**Pending**), with how one is asked for and closed. |
-| [RELEASE_PROCESS.md](RELEASE_PROCESS.md) | How a build becomes a download: the rolling `continuous` tag, versioned `v*` releases, what a version tag does **not** set, and what a rename/de-fork would break. |
+| [RELEASE_PROCESS.md](RELEASE_PROCESS.md) | How a build becomes a download: the dev channel on the mirror, versioned `v*` releases, what a version tag does **not** set, and what a rename/de-fork would break. |
 | `architecture/` | How it works now, and why, one doc per area. Start at [system.md](architecture/system.md); it links the rest. Doc type: **Doc types** below. |
 | `maintainer/` | What only the maintainer does: how the roadmap is kept and groomed, the upstream watches, how agents are run here. Start at [maintainer/README.md](maintainer/README.md). |
 
