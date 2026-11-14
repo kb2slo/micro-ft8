@@ -108,6 +108,13 @@ var FwUpdates = (function () {
     };
   }
 
+  // The note under an offered update: why it cannot run, or the radio off when firmware is in it.
+  // The app alone restarts no board, so it asks nothing of the radio, as the review does not.
+  function offerNote(p) {
+    if (p.blocked) return whyText(p.blocked) + '.';
+    return p.steps.length ? 'Switch the radio off first.' : '';
+  }
+
   // Why Software update is unavailable, from plan().unavailable.
   var UNAVAILABLE_TEXT = {
     no_host: 'Software update needs the main board connected to the sidekick.',
@@ -332,6 +339,7 @@ var FwUpdates = (function () {
     plan: plan,
     unavailableText: function (why) { return UNAVAILABLE_TEXT[why] || ''; },
     reviewText: reviewText,
+    offerNote: offerNote,
     relayApp: relayApp,
     appWhyText: appWhyText,
     appRow: appRow,

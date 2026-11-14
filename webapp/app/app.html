@@ -1540,7 +1540,7 @@ function renderFwUpdates() {
   document.getElementById('updOpen').hidden = !offered || !!plan.blocked || fwPolling || !!fwMine;
   document.getElementById('tabUpdate').hidden = !offered || !paired();
   if (plan.unavailable) msg.textContent = FwUpdates.unavailableText(plan.unavailable);
-  else if (offered) msg.textContent = plan.blocked ? FwUpdates.whyText(plan.blocked) + '.' : 'Switch the radio off first.';
+  else if (offered) msg.textContent = FwUpdates.offerNote(plan);
   else if (!fwManifest) msg.textContent = fwManifestErr ? 'Updates cannot be checked from here: this phone has no internet on this network.' : 'Not checked yet.';
   else msg.textContent = 'No updates: this is the published build.';
 }
