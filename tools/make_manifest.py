@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Write /download/manifest.json for the rolling release (docs/RELEASE_PROCESS.md).
 
-  python3 tools/make_manifest.py --commit <40-hex> --date YYYYMMDD --out dist/manifest.json \\
+  python3 tools/make_manifest.py --commit <40-hex> --version b1322+<7-hex> --date YYYYMMDD \\
+      --out dist/manifest.json \\
       --asset poe_p4=dist/<dated>.bin --ota poe_p4=dist/<dated-ota>.bin \\
       --asset sidekick=dist/<dated>.bin --ota sidekick=dist/<dated-ota>.bin \\
       --asset source=dist/<dated>.tar.gz --asset getting_started=dist/<dated>.pdf
@@ -11,9 +12,11 @@ Each asset's SHA-256 is computed here, from the file that is uploaded. An
 writes (docs/roadmap/ota-updates.md, Manifest): its size, hash, the version
 string built into it, and the Port A protocol version this tree speaks.
 
-It refuses to write a manifest for an OTA image a board would refuse or could
-not hold: not an app image, built for another board, a version other than the
-commit's (a board checks the image's own version against the one it was told
+`--version` is the version this build was told to report
+(tools/build_version.py). It refuses to write a manifest for a version that
+is not a dev build of the commit, or for an OTA image a board would refuse or
+could not hold: not an app image, built for another board, reporting another
+version (a board checks the image's own version against the one it was told
 to expect), or larger than the sidekick's staging slot. CI runs it before
 anything is published, so a bad image publishes nothing.
 
@@ -27,6 +30,9 @@ import os
 import re
 import struct
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import build_version  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROTO_HEADER = os.path.join(ROOT, "components", "porta_proto", "include", "porta_proto.h")
@@ -96,12 +102,12 @@ def app_image_info(path):
     return _cstr(head, APP_DESC_VERSION), _cstr(head, APP_DESC_PROJECT)
 
 
-def ota_entry(board, path, short, proto):
+def ota_entry(board, path, expected, proto):
     version, project = app_image_info(path)
     if project != OTA_PROJECT[board]:
         raise ManifestError(f"{path}: built as '{project}', not {board}'s '{OTA_PROJECT[board]}'")
-    if version != short:
-        raise ManifestError(f"{path}: reports version '{version}', but this release is '{short}'")
+    if version != expected:
+        raise ManifestError(f"{path}: reports version '{version}', but this release is '{expected}'")
     size = os.path.getsize(path)
     if size > OTA_MAX_BYTES:
         raise ManifestError(f"{path}: {size} bytes will not fit the sidekick's {OTA_MAX_BYTES}-byte staging slot")
@@ -115,11 +121,16 @@ def ota_entry(board, path, short, proto):
     }
 
 
-def build(commit, date, assets, otas, proto, generated_at):
+def build(commit, version, date, assets, otas, proto, generated_at):
     """The manifest as a dict. `assets` and `otas` map a kind to a file path."""
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ManifestError(f"--commit wants a full 40-hex SHA, not '{commit}'")
     short = commit[:7]
+    info = build_version.parse(version)
+    if not info or info["channel"] != "dev":
+        raise ManifestError(f"--version wants a dev build's version, b<number>+<sha>, not '{version}'")
+    if info["sha"] != short:
+        raise ManifestError(f"--version '{version}' is not a build of commit {short}")
     for kind in list(assets) + list(otas):
         if kind not in ASSETS:
             raise ManifestError(f"unknown asset kind '{kind}'")
@@ -133,9 +144,12 @@ def build(commit, date, assets, otas, proto, generated_at):
         entry = {"stable": stable_name(kind), "filename": os.path.basename(path), "sha256": sha256_of(path)}
         entry.update(ASSETS[kind][2])
         if kind in otas:
-            entry["ota"] = ota_entry(kind, otas[kind], short, proto)
+            entry["ota"] = ota_entry(kind, otas[kind], version, proto)
         out[kind] = entry
-    return {"commit": commit, "short": short, "date": date, "generated_at": generated_at, "assets": out}
+    return {
+        "commit": commit, "short": short, "version": version, "build": info["build"],
+        "date": date, "generated_at": generated_at, "assets": out,
+    }
 
 
 def _pairs(values, flag):
@@ -153,6 +167,7 @@ def _pairs(values, flag):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--commit", required=True)
+    ap.add_argument("--version", required=True, help="what the build reports, from tools/build_version.py")
     ap.add_argument("--date", required=True, help="the commit's date, YYYYMMDD, UTC")
     ap.add_argument("--asset", action="append", metavar="KIND=PATH")
     ap.add_argument("--ota", action="append", metavar="BOARD=PATH")
@@ -160,7 +175,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
     try:
         manifest = build(
-            args.commit, args.date, _pairs(args.asset, "--asset"), _pairs(args.ota, "--ota"), proto_version(),
+            args.commit, args.version, args.date, _pairs(args.asset, "--asset"), _pairs(args.ota, "--ota"), proto_version(),
             datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         )
     except (ManifestError, OSError) as e:

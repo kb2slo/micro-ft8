@@ -50,6 +50,11 @@ static void test_parse()
     check(req.board == FW_BOARD_SIDEKICK && req.size == 984736u, "board and size");
     check(std::strcmp(req.url, URL) == 0 && std::strcmp(req.sha256_hex, SHA) == 0, "url and hash");
     check(std::strcmp(req.version, "e6e4d88") == 0, "version");
+    // A channel's version carries its commit after a '+' (tools/build_version.py).
+    check(fw_request_parse(body("main", URL, "1", SHA, "b1322+0c5ccec").c_str(), &req) == nullptr &&
+              std::strcmp(req.version, "b1322+0c5ccec") == 0, "a dev build's version");
+    check(fw_request_parse(body("main", URL, "1", SHA, "0.1.0+0c5ccec").c_str(), &req) == nullptr &&
+              std::strcmp(req.version, "0.1.0+0c5ccec") == 0, "a stable release's version");
 
     // Any order, CRLF, blank lines, no final newline.
     const std::string crlf = std::string("version=e6e4d88\r\n\r\nsha256=") + SHA + "\r\nsize=1\r\nurl=" + URL + "\r\nboard=main";
@@ -549,6 +554,10 @@ static void test_record_and_result()
     fw_record_t back;
     check(fw_record_parse(text, &back) && back.board == FW_BOARD_SIDEKICK &&
               std::strcmp(back.target, "d18f9b2") == 0 && std::strcmp(back.from, "7e61488") == 0, "record round trip");
+    fw_record_t channels = {FW_BOARD_MAIN, "0.1.0+0c5ccec", "b1322+0c5ccec"};
+    check(fw_record_format(&channels, text, sizeof(text)) && fw_record_parse(text, &back) &&
+              std::strcmp(back.target, "0.1.0+0c5ccec") == 0 && std::strcmp(back.from, "b1322+0c5ccec") == 0,
+          "a record of channel versions");
     char small[10];
     check(!fw_record_format(&rec, small, sizeof(small)), "a record that does not fit");
     // The longest record fits FW_RECORD_MAX.

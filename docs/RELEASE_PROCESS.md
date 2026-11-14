@@ -23,12 +23,26 @@ nothing, so the posted PDF can trail the site's Getting started page, which depl
 is set in fonts the build embeds (`webapp/tools/getting_started.mjs`), so CI's copy breaks the same way
 as one printed on a Mac.
 
-**An image's version is its commit.** Both projects set `PROJECT_VER` to the short SHA
-(`tools/git_version.cmake`), with `-dirty` added for a build from a changed tree, so it is in the image's app
-description and in each board's boot log (`App version`). No image carries a release number: a build from a
-`v*` tag reports its SHA like any other, until versioned releases do (row [nufg](roadmap/ota-updates.md#nufg)).
-The web app shows both boards' versions in Settings; the P4 reports its own in its HELLO over Port A
-([main_board.md](architecture/main_board.md), **Firmware updates**).
+**An image carries its version,** and every version names its commit. Both projects set `PROJECT_VER`
+(`tools/git_version.cmake`), so it is in the image's app description and in each board's boot log
+(`App version`); the web app shows both boards' versions in Settings, and the P4 reports its own in its HELLO
+over Port A ([main_board.md](architecture/main_board.md), **Firmware updates**). Three shapes:
+
+| Build | Version | Example |
+| --- | --- | --- |
+| CI's build of a `v<major>.<minor>.<patch>` tag (stable) | the tag's number, `+`, the short SHA | `0.1.0+0c5ccec` |
+| CI's build of `main` (dev) | `b`, the number of commits on `main` up to and including it, `+`, the short SHA | `b1322+0c5ccec` |
+| Any other: a local build, a pull request's | the short SHA, with `-dirty` from a changed tree | `0c5ccec`, `0c5ccec-dirty` |
+
+`tools/build_version.py` writes the first two and CI hands its line to the build as `MICROFT8_VERSION`; its
+`parse()` reads them back. A dev build's number is `git rev-list --count <commit>`, so anyone can count it again
+from a clone, and it only rises on `main`. A `v*` tag that is not three numbers fails its build. Only CI's
+builds are on a channel: a local build reports its SHA at a tagged commit too, a changed tree never takes a
+version it is handed, and one naming another commit stops the build, so nothing built at a bench is taken for
+a release. The boards compare versions as whole strings, never by order
+([sidekick.md](architecture/sidekick.md), **Firmware updates**). The web app's own build id is still its
+commit and date ([webapp.md](architecture/webapp.md), **Build**), and only the PoE-P4 image is published
+from a tag (the table above), until row [nufg](roadmap/ota-updates.md#nufg) is done.
 
 **An OTA image is a board's app image alone** (`poe_p4.bin`, `sidekick.bin`), which is what an over-the-air
 update writes into an OTA slot ([sidekick.md](architecture/sidekick.md), **Firmware updates**); the merged
@@ -90,10 +104,11 @@ path-filtered to `webapp/**`).
 `assets`, each of `poe_p4`, `sidekick`, `source` and `getting_started` has `stable` (its name here),
 `filename` (its dated name on GitHub) and `sha256`. The two boards also have an `ota` entry: `stable`,
 `filename`, `size` in bytes, `sha256`, `version` (the string built into the image) and `proto` (the
-`PORTA_PROTO_VERSION` that build speaks). The script reads the version out of the image and refuses to write a
-manifest, which fails the job with nothing published, when an OTA image is not an app image, was built as
-the other board's project, reports a version other than the commit's, or is larger than the sidekick's 3 MB
-OTA slot, where every image is staged. Host-tested (`tools/test_make_manifest.py`).
+`PORTA_PROTO_VERSION` that build speaks). Beside `commit` and `short`, the manifest's own `version` is the
+build's and `build` its number. The script reads the version out of the image and refuses to write a
+manifest, which fails the job with nothing published, when the version it is given is not a dev build of the
+commit, or an OTA image is not an app image, was built as the other board's project, reports another
+version, or is larger than the sidekick's 3 MB OTA slot, where every image is staged. Host-tested (`tools/test_make_manifest.py`).
 
 **The stable files are replaced one at a time, the manifest last.** For the seconds between, the old manifest
 names a hash the new image does not have, so a download checked against it fails and is retried; it cannot
@@ -127,7 +142,7 @@ python3 tools/cut_release.py 3.0.0
 That is the whole procedure. The script creates and pushes the annotated `v3.0.0` tag; CI does the rest.
 It **edits no source file**, so there is no number to bump and therefore no bump commit for the tag to land
 on the wrong side of, which is the classic way a hand-run release ends up tagging the wrong thing. The tag
-names the published file; the image itself carries no version (above).
+names the published file, and the image reports the tag's number (above).
 
 It refuses, rather than warns, on: a dirty tree, not being on `main`, `HEAD` disagreeing with
 `origin/main`, a tag that already exists locally or on the remote, and a commit CI has not run green.
@@ -142,9 +157,9 @@ becomes an obligation rather than a choice. None have been cut under this proces
 Version tags are immovable by convention: re-pointing one breaks the single guarantee a version number
 carries. To fix a bad release, cut the next one.
 
-Use lowercase `v`. This fork's tags are `v0.1` … `v1.1.2`; Wei's upstream tags are uppercase (`V1.1` …
-`V2.1b`) and are in this repo's history too. Git refs are case-sensitive and the trigger glob is `v*`, so
-upstream's tags do not fire CI and ours do — a `V3.0.0` would silently build nothing.
+Use lowercase `v`. No `v*` tag has been cut here yet; Wei's upstream tags are uppercase (`V1.1` …
+`V2.1b`). Git refs are case-sensitive and the trigger glob is `v*`, so a `V3.0.0` would silently build
+nothing.
 
 ## If the project is renamed or de-forked
 
