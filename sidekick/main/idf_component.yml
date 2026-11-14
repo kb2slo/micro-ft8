@@ -3,6 +3,6 @@ dependencies:
   # has to read off a serial console. Pinned exact, matching how the main board pins
   # its managed components: a floating version means a fresh resolve on another
   # machine can silently change what ships.
-  espressif/mdns: "1.14.1"
+  espressif/mdns: "1.15.1"
   # Web root FS (I28c / docs/architecture/sidekick.md (Web root)). Pinned exact for the same reason as mdns.
   joltwallet/littlefs: "1.23.1"
