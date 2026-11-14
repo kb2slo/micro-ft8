@@ -90,7 +90,6 @@ struct QsoContext {
     int try_limit = AUTOSEQ_TRIES;
     int tries_custom = 0;   // the entry's own limit; 0 follows the station default
     bool logged = false;    // Prevents duplicate ADIF logging
-    bool is_fd = false;
     // SIGNOFF handling:
     // true  -> after sending TX5, park context in inactive for possible late RR73
     // false -> after sending TX5, finish immediately (IDLE/pop)
@@ -308,5 +307,5 @@ void autoseq_set_skip_tx1(bool skip);  // Skip TX1 and start with TX2
 void autoseq_set_tries(int tries);
 
 // CQ type configuration
-enum class AutoseqCqType { CQ = 0, SOTA, POTA, QRP, FD, FREETEXT };
+enum class AutoseqCqType { CQ = 0, SOTA, POTA, QRP, FREETEXT };
 void autoseq_set_cq_type(AutoseqCqType type, const std::string& freetext = "");

@@ -174,7 +174,7 @@ int main()
         expect_true(s.band_freq_set[5], "band5 set");
         expect_float(s.band_freq[5], 14074.0f, "band5 freq");
         expect_int(s.radio, 2, "radio=QDX reads as the QMX: no QDX backend");
-        expect_int(s.cq_type, 4, "cq FD");
+        expect_int(s.cq_type, 4, "cq Free text");
         expect_true(!s.protocol_ft4, "beacon must not imply ft4");
         {
             const std::string text = station_serialize(s);

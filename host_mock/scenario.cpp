@@ -158,8 +158,7 @@ void scenario_begin(Scenario& s, const TestData& data)
 
     if (!data.config.cq_type.empty()) {
         AutoseqCqType cq = AutoseqCqType::CQ;
-        if (data.config.cq_type == "FD") cq = AutoseqCqType::FD;
-        else if (data.config.cq_type == "SOTA") cq = AutoseqCqType::SOTA;
+        if (data.config.cq_type == "SOTA") cq = AutoseqCqType::SOTA;
         else if (data.config.cq_type == "POTA") cq = AutoseqCqType::POTA;
         else if (data.config.cq_type == "QRP") cq = AutoseqCqType::QRP;
         else if (data.config.cq_type == "FREETEXT") cq = AutoseqCqType::FREETEXT;
@@ -319,8 +318,7 @@ void scenario_set_cq_type(Scenario& s, int type, const std::string& free_text)
         case 1: cq = AutoseqCqType::SOTA; break;
         case 2: cq = AutoseqCqType::POTA; break;
         case 3: cq = AutoseqCqType::QRP; break;
-        case 4: cq = AutoseqCqType::FD; break;
-        case 5: cq = AutoseqCqType::FREETEXT; break;
+        case 4: cq = AutoseqCqType::FREETEXT; break;
         default: cq = AutoseqCqType::CQ; break;
     }
     autoseq_set_cq_type(cq, free_text);

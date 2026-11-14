@@ -1,5 +1,5 @@
 {
-  "comment": "CQ SOTA uses the SOTA template. Plain CQ and CQ FD are covered elsewhere; this pins the prefix.",
+  "comment": "CQ SOTA uses the SOTA template. Plain CQ is covered elsewhere; this pins the prefix.",
   "config": {
     "MY_CALLSIGN": "AG6AQ",
     "MY_GRID": "CM97",

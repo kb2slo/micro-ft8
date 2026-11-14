@@ -55,8 +55,6 @@ static bool s_skip_tx1 = false;
 static int s_tries = AUTOSEQ_TRIES;  // the station default (Tries)
 
 // Forward declarations (must appear before format_tx_text uses them)
-static std::string trim_copy(const std::string& s);
-static bool parse_fd_exchange(const std::string& in, std::string& out);
 
 // CQ configuration
 static AutoseqCqType s_cq_type = AutoseqCqType::CQ;
@@ -532,11 +530,7 @@ AutoseqTouchResult autoseq_on_touch(const UiRxLine& msg, bool hold_queue_head) {
     ctx->offset_hz = msg.offset_hz;
     ctx->slot_id = msg.slot_id ^ 1;
 
-    // Field Day is the station's mode, as WSJT-X's "Special operating activity" is:
-    // with our CQ type FD every contact carries the exchange and opens with it,
-    // never with a grid; otherwise a tapped CQ FD gets an ordinary reply.
-    ctx->is_fd = (s_cq_type == AutoseqCqType::FD);
-    const bool open_with_tx2 = s_skip_tx1 || ctx->is_fd;
+    const bool open_with_tx2 = s_skip_tx1;
 
     set_state(ctx, open_with_tx2 ? AutoseqState::REPORT : AutoseqState::REPLYING,
               open_with_tx2 ? TxMsgType::TX2 : TxMsgType::TX1);
@@ -909,7 +903,6 @@ static void generate_cq_text_into(std::string& out) {
         case AutoseqCqType::SOTA: cq_prefix = "CQ SOTA"; break;
         case AutoseqCqType::POTA: cq_prefix = "CQ POTA"; break;
         case AutoseqCqType::QRP:  cq_prefix = "CQ QRP";  break;
-        case AutoseqCqType::FD:   cq_prefix = "CQ FD";   break;
         case AutoseqCqType::FREETEXT:
             out = s_cq_freetext;
             return;
@@ -938,37 +931,15 @@ static void format_tx_text(QsoContext* ctx, TxMsgType id, std::string& out) {
             break;
 
         case TxMsgType::TX2:
-            if (ctx->is_fd) {
-                // Field Day: send our exchange (from CQ freetext) instead of SNR report
-                std::string myex;
-                if (!parse_fd_exchange(s_cq_freetext, myex)) {
-                    myex = trim_copy(s_cq_freetext);
-                }
-                snprintf(buf, sizeof(buf), "%s %s %s",
-                         ctx->dxcall.c_str(), s_my_call.c_str(), myex.c_str());
-                out = buf;
-            } else {
-                snprintf(buf, sizeof(buf), "%s %s %+d",
-                         ctx->dxcall.c_str(), s_my_call.c_str(), ctx->snr_tx);
-                out = buf;
-            }
+            snprintf(buf, sizeof(buf), "%s %s %+d",
+                     ctx->dxcall.c_str(), s_my_call.c_str(), ctx->snr_tx);
+            out = buf;
             break;
 
         case TxMsgType::TX3:
-            if (ctx->is_fd) {
-                // Field Day: acknowledge with 'R' + our exchange
-                std::string myex;
-                if (!parse_fd_exchange(s_cq_freetext, myex)) {
-                    myex = trim_copy(s_cq_freetext);
-                }
-                snprintf(buf, sizeof(buf), "%s %s R %s",
-                         ctx->dxcall.c_str(), s_my_call.c_str(), myex.c_str());
-                out = buf;
-            } else {
-                snprintf(buf, sizeof(buf), "%s %s R%+d",
-                         ctx->dxcall.c_str(), s_my_call.c_str(), ctx->snr_tx);
-                out = buf;
-            }
+            snprintf(buf, sizeof(buf), "%s %s R%+d",
+                     ctx->dxcall.c_str(), s_my_call.c_str(), ctx->snr_tx);
+            out = buf;
             break;
 
         case TxMsgType::TX4:
@@ -995,50 +966,6 @@ static void format_tx_text(QsoContext* ctx, TxMsgType id, std::string& out) {
     }
 }
 
-static inline std::string trim_copy(const std::string& s) {
-    size_t a = 0, b = s.size();
-    while (a < b && (s[a] == ' ' || s[a] == '\t' || s[a] == '\r' || s[a] == '\n')) ++a;
-    while (b > a && (s[b-1] == ' ' || s[b-1] == '\t' || s[b-1] == '\r' || s[b-1] == '\n')) --b;
-    return s.substr(a, b - a);
-}
-
-// Parse "1B SCV" or "R 1B SCV". Returns normalized exchange without leading "R " (e.g. "1B SCV").
-static bool parse_fd_exchange(const std::string& in, std::string& out_norm) {
-    std::string s = trim_copy(in);
-    if (s.empty()) return false;
-    if (s.size() >= 2 && (s[0] == 'R') && (s[1] == ' ')) {
-        s = trim_copy(s.substr(2));
-    }
-    // Expect: "<num><class> <section>"
-    size_t sp = s.find(' ');
-    if (sp == std::string::npos) return false;
-    std::string tok1 = s.substr(0, sp);
-    std::string tok2 = trim_copy(s.substr(sp + 1));
-    if (tok1.size() < 2 || tok2.empty()) return false;
-
-    char cls = tok1.back();
-    if (cls < 'A' || cls > 'F') return false;
-
-    int num = 0;
-    for (size_t i = 0; i + 1 < tok1.size(); ++i) {
-        char c = tok1[i];
-        if (c < '0' || c > '9') return false;
-        num = num * 10 + (c - '0');
-        if (num > 99) return false;
-    }
-    if (num < 1 || num > 32) return false;
-
-    // Section: typically 2-3 chars (or "DX"), accept 2-4 alnum.
-    if (tok2.size() < 2 || tok2.size() > 4) return false;
-    for (char c : tok2) {
-        if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))) return false;
-    }
-
-    out_norm = tok1 + " " + tok2;
-    return true;
-}
-
-
 static TxMsgType parse_rcvd_msg(QsoContext* ctx, const UiRxLine& msg) {
 
 
@@ -1054,17 +981,6 @@ static TxMsgType parse_rcvd_msg(QsoContext* ctx, const UiRxLine& msg) {
     } else if (f3 == "73") {
         rcvd = TxMsgType::TX5;
     } else {
-        // FD exchange shortcut
-        std::string norm;
-        if (ctx && parse_fd_exchange(msg.field3, norm) && !ctx->dxcall.empty()) {
-            std::string t = trim_copy(msg.field3);
-            if (!t.empty() && (t[0] == 'R' || t[0] == 'r')) rcvd = TxMsgType::TX3;
-            else rcvd = TxMsgType::TX2;
-
-            ctx->rcvd_msg_type = rcvd;
-            return rcvd;
-        }
-
         // Normal FT8
         if (looks_like_grid(f3)) {
             rcvd = TxMsgType::TX1;
@@ -1115,11 +1031,6 @@ static bool generate_response(QsoContext* ctx, const UiRxLine& msg, bool overrid
     std::string dxcall = normalize_call_token(msg.field2);
     if (dxcall.empty()) dxcall = normalize_call_token(msg.field1);
 
-    // Set dxcall BEFORE parse_rcvd_msg so FD exchange check sees a non-empty dxcall
-    if (override && ctx->dxcall.empty()) {
-        ctx->dxcall = dxcall;
-    }
-
     TxMsgType rcvd = parse_rcvd_msg(ctx, msg);
 
     ESP_LOGI(TAG, "generate_response: override=%d rcvd=%s state=%s",
@@ -1139,9 +1050,6 @@ static bool generate_response(QsoContext* ctx, const UiRxLine& msg, bool overrid
         ctx->dxcall = dxcall;
         ctx->offset_hz = msg.offset_hz;
         ctx->slot_id = msg.slot_id ^ 1;  // TX on opposite slot
-
-        // Field Day follows our CQ type, not what DX sent (see the touch path above).
-        ctx->is_fd = (s_cq_type == AutoseqCqType::FD);
 
         // Reset state based on received message type
         switch (rcvd) {
@@ -1368,7 +1276,7 @@ static void on_decode(const UiRxLine& msg) {
     // Reject messages that would produce wrong metadata if a fresh context
     // were created. TX3 (R+report) skips the snr_tx latch — that's the
     // reincarnation bug. Signoff messages (RR73/73) are also rejected.
-    // TX1 (grid), TX2 (report), and FD exchanges are allowed — they set
+    // TX1 (grid) and TX2 (report) are allowed — they set
     // snr_tx correctly via msg.snr in generate_response().
     std::string f3 = msg.field3;
     for (auto& ch : f3) ch = toupper((unsigned char)ch);

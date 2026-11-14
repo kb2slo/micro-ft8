@@ -44,6 +44,5 @@ In order. Only the next is a row in the index.
 
 ## Open
 
-* **Field Day** (before [pn83](#pn83)): keep it, with [u9nb](../ROADMAP.md#u9nb) and the received exchange logged (today it is logged nowhere: [autoseq.md](../architecture/autoseq.md), **Field Day follows the CQ type**), or remove it. How operators other than the maintainer use it decides; settled in its own session, from evidence.
 * **The space-weather card** (before [pn83](#pn83)): replaced by per-band conditions ([B80](../ROADMAP.md#B80)), or removed (maintainer, 2026-11-13: its raw numbers are not what an operator uses).
 * **Bug reports from operators** (before [dfd7](#dfd7)): an issue template asking for both boards' versions and an offloaded log, or a report sent from the web app through the Worker to a GitHub issue. The Worker path needs a token on the Worker and spam protection, and an issue is public, so the app shows the operator exactly what it will send. Settled in its own session; becomes a child when designed.

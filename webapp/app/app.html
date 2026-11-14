@@ -759,18 +759,14 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
               <option value=1>SOTA</option>
               <option value=2>POTA</option>
               <option value=3>QRP</option>
-              <option value=4>FD</option>
-              <option value=5>FreeText</option>
+              <option value=4>FreeText</option>
             </select>
           </label>
         </div>
-        <!-- Shown only for FD and Free text (onchange of #cq_type toggles this,
-             setStationForm()); both write the one free_text key (webapp.md,
-             Settings › Station), so switching types leaves the other type's text
-             sitting in the field until a new CQ actually goes out under the new
-             type. -->
+        <!-- Shown only for Free text (onchange of #cq_type toggles this,
+             setStationForm()). -->
         <div class=setrow id=freeTextRow hidden>
-          <label class=fld><span id=freeTextLabel>CQ message</span><input id=free_text autocomplete=off></label>
+          <label class=fld><span>CQ message</span><input id=free_text autocomplete=off maxlength=13></label>
         </div>
 
         <div class="hd sep">QSOs</div>
@@ -1308,7 +1304,7 @@ var FIELDS = [
   'radio','protocol_mode','skiptx1','amp','tx_min_delay_ms','amp_ptt','amp_swr_guard',
   'amp_prime_on_band_change','rx_ft4'
 ];
-var CQ_TYPE_NAMES = ['CQ', 'SOTA', 'POTA', 'QRP', 'FD', 'FreeText'];
+var CQ_TYPE_NAMES = ['CQ', 'SOTA', 'POTA', 'QRP', 'FreeText'];
 // AutoseqState wire values (main/autoseq.h). 6 = IDLE = remove from display.
 var QUEUE_STATE_NAMES = ['CALLING', 'REPLYING', 'REPORT', 'ROGER REPORT', 'ROGERS', 'SIGNOFF'];
 
@@ -2016,7 +2012,7 @@ function renderSettingsMenu() {
   var m = settingsMenuModel({
     call: document.getElementById('call').value.trim(),
     grid: cfg.grid || '',
-    cq: ['CQ', 'CQ SOTA', 'CQ POTA', 'CQ QRP', 'CQ FD', 'Free text'][parseInt(cfg.cq_type, 10) || 0],
+    cq: ['CQ', 'CQ SOTA', 'CQ POTA', 'CQ QRP', 'Free text'][parseInt(cfg.cq_type, 10) || 0],
     radio: (function (sel) { var o = sel.options[sel.selectedIndex]; return o ? o.textContent.replace(/\s*\(.*$/, '') : ''; })(document.getElementById('radio')),
     bands: BANDS.filter(function (b) { return active.any ? !!active.want[b.n] : true; }).map(function (b) { return b.name; }),
     rxFt4: document.getElementById('rx_ft4').value === '1',
@@ -2280,15 +2276,8 @@ document.getElementById('grid').addEventListener('input', updateGridHint);
 function setStationForm(cfg) {
   var type = parseInt(cfg.cq_type, 10) || 0;
   document.getElementById('cq_type').value = String(type);
-  var showFree = type === 4 || type === 5;
-  document.getElementById('freeTextRow').hidden = !showFree;
-  document.getElementById('freeTextLabel').textContent = type === 5 ? 'CQ message' : 'FD exchange';
+  document.getElementById('freeTextRow').hidden = type !== 4;
   var ftEl = document.getElementById('free_text');
-  // "up to 13 characters" is Free text's own limit (webapp.md, The Station
-  // sheet), not FD's -- removeAttribute, not maxLength = -1: the setter
-  // throws IndexSizeError for anything below 0, so "no limit" has to be the
-  // attribute's absence.
-  if (type === 5) ftEl.maxLength = 13; else ftEl.removeAttribute('maxlength');
   if (document.activeElement !== ftEl) ftEl.value = cfg.free_text || '';
   var gridEl = document.getElementById('grid');
   if (document.activeElement !== gridEl) gridEl.value = cfg.grid || '';
@@ -4341,7 +4330,7 @@ var slotState = null; // last SLOT_STATE event: {sp, hz}
 // free-text field verbatim for a Free-text CQ.
 function cqSendsText() {
   var type = parseInt(lastCfg.cq_type, 10) || 0;
-  if (type === 5) return lastCfg.free_text || ''; // FreeText: no prefix, sent as-is
+  if (type === 4) return lastCfg.free_text || ''; // FreeText: no prefix, sent as-is
   var parts = [type === 0 ? 'CQ' : 'CQ ' + CQ_TYPE_NAMES[type], lastCfg.call || ''];
   var grid4 = (lastCfg.grid || '').toUpperCase().slice(0, 4);
   if (grid4) parts.push(grid4);
@@ -4542,7 +4531,7 @@ function txIsOurCq() {
   var x = String(txHud.x || '').trim().toUpperCase();
   if (x.indexOf('CQ ') === 0) return true;
   var freeText = String(lastCfg.free_text || '').trim().toUpperCase();
-  return parseInt(lastCfg.cq_type, 10) === 5 && x !== '' && x === freeText;
+  return parseInt(lastCfg.cq_type, 10) === 4 && x !== '' && x === freeText;
 }
 
 // ===================== Operate: queue =====================

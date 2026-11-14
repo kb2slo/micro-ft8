@@ -6,18 +6,18 @@
     "DX_GRID": "CM88",
     "TX_ON_EVEN": true,
     "CQ_TYPE": "CQ",
-    "FREE_TEXT": "1A SCV"
+    "FREE_TEXT": ""
   },
   "periods": [
     {
-      "comment": "Period 0 (even): idle; our CQ type is plain CQ, with an FD exchange left in free_text",
+      "comment": "Period 0 (even): idle. There is no Field Day operation: a tapped CQ FD gets an ordinary reply, and an exchange sent to us is ignored",
       "messages": [],
       "expect": {
         "tx": ""
       }
     },
     {
-      "comment": "Period 1 (odd): DX sends CQ FD — we touch it; not in FD mode, so an ordinary reply with our grid, as WSJT-X sends outside Field Day mode",
+      "comment": "Period 1 (odd): DX sends CQ FD — we touch it: an ordinary reply with our grid, as WSJT-X sends outside Field Day mode",
       "messages": [
         {
           "call_to": "CQ FD",
@@ -44,7 +44,7 @@
       }
     },
     {
-      "comment": "Period 3 (odd): DX, in Field Day mode, answers with its exchange; we answer with R and a report, never our exchange",
+      "comment": "Period 3 (odd): DX, in Field Day mode, answers with its exchange, which is not a message we sequence: ignored, and our grid goes again",
       "messages": [
         {
           "call_to": "${MY_CALLSIGN}",
@@ -55,14 +55,14 @@
         }
       ],
       "expect": {
-        "tx": "W6ABC AG6AQ R-8"
+        "tx": "W6ABC AG6AQ CM97"
       }
     },
     {
-      "comment": "Period 4 (even): we send R-8 (TX3)",
+      "comment": "Period 4 (even): our grid again, under the entry's tries",
       "messages": [],
       "expect": {
-        "tx": "W6ABC AG6AQ R-8"
+        "tx": "W6ABC AG6AQ CM97"
       }
     }
   ]
