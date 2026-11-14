@@ -21,6 +21,7 @@
 #include "radio_control.h"
 #include "radio_ta_format.h"
 #include "rtc_core.h"
+#include "tx_offset.h"
 #include "tx_timing.h"
 #include "swr_sweep.h"
 #include "swr_trip.h"
@@ -84,16 +85,20 @@ static bool s_swr_operator_clear_anyway = false;
 static int64_t s_swr_abort_until_ms = 0;
 static constexpr const char *kSwrReason = "SWR protection";
 
+// The policy is tx_offset_resolve() (tx_offset.h); a QSO's first roll is kept on its entry.
 static int resolve_tx_offset(const AutoseqTxEntry &e) {
-    const int src = porta_p4_station_offset_src();
-    const int cursor = porta_p4_station_offset_hz();
-    if (src == 1) {  // CURSOR
-        return cursor > 0 ? cursor : 1500;
+    TxOffsetIn in;
+    in.src = porta_p4_station_offset_src();
+    in.cursor_hz = porta_p4_station_offset_hz();
+    in.rx_offset_hz = e.offset_hz;
+    in.is_cq = e.text.rfind("CQ ", 0) == 0;
+    in.held_hz = e.held_offset_hz;
+    in.random = esp_random();
+    const TxOffsetOut out = tx_offset_resolve(in);
+    if (out.hold) {
+        autoseq_hold_tx_offset(e.entry_id, out.offset_hz);
     }
-    if (src == 2 && e.offset_hz > 0 && e.text.rfind("CQ ", 0) != 0) {  // RX
-        return e.offset_hz;
-    }
-    return 500 + (int)(esp_random() % 2001);
+    return out.offset_hz;
 }
 
 void arm_pending_tx(const AutoseqTxEntry &pending) {

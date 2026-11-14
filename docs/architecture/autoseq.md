@@ -129,13 +129,12 @@ Each board runs `check_slot_boundary()` on every pass of its main loop. Its slot
 
 **A queue cancel** (the web app's row ×, Port A `QUEUE_CANCEL`) removes a CQ, or parks a QSO. If that entry is armed but not yet on the air, the head check before the trigger drops the armed TX and re-arms. If it is on the air (`autoseq_transmitting_entry_id()` names it and a TX is active), the cancel also stops the transmission, as a TX cancel does, so no try is spent and the rest of that slot stays quiet. The CQ row's × does this for the CQ. A band change sends a TX cancel as well as a queue cancel for every QSO. Cancelling a QSO that has already exchanged a report (any state past `REPLYING`) does not evict it — `autoseq_drop_index()` parks it in the inactive zone the same way using its tries does, so a decode from the same call within the 10-minute inactive window reactivates it (`on_decode()`, `reactivate()`) with fresh tries rather than starting cold. This is deliberate: cancel means "pause," not "give up on this station."
 
-**TX offset** is resolved when the TX is armed (`resolve_tx_offset()`):
+**TX offset** is resolved when the TX is armed (`resolve_tx_offset()`, `tx_scheduler.cpp`), by one policy, `tx_offset_resolve()` (`components/autoseq/include/tx_offset.h`, host-tested in `host_mock/test_tx_offset.cpp`):
 
 * CURSOR: the operator's cursor.
 * RX: DX's own offset, except for a CQ.
-* RANDOM (the default), and RX for a CQ: a fresh 500–2500 Hz roll every arm.
-
-Row [B88](../ROADMAP.md#B88) holds the offset for the length of a QSO.
+* RANDOM (the default), and RX for a CQ or when no offset was heard: 500–2500 Hz. **A QSO rolls once and holds it** from its first transmission to its end, on its entry (`QsoContext::tx_offset_hz`, `autoseq_hold_tx_offset()`), through every step and a park and reactivation; a fresh entry for the same station rolls its own. **An unanswered CQ rolls at every arm,** to step off a frequency that may be occupied where we cannot hear it.
+* **Why held.** WSJT-X decodes a QSO partner's messages with the expected bits filled in only within about 50 Hz of the partner's frequency (`napwid` in `lib/ft8/ft8b.f90`; Franke, Somerville and Taylor, QEX 2020), so a station that moves between its report and its R-report gives up several dB on the weak contacts that need them. Reasoned from WSJT-X's source, not measured here. A QSO that answers our CQ rolls its own offset, not the CQ's.
 
 ## Logging
 

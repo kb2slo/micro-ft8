@@ -119,4 +119,4 @@ In order.
 * **Strongest first by default,** and **a separate opening-tries setting** (one Tries setting, 2026-10-14; a constant does the job).
 * **The ladder on the queue:** Operate shows two rows; the ladder is a station preference.
 * **Several QSOs at once** (Fox, MSHV multi-answer): needs multi-tone TX and another on-air protocol.
-* **Moving our TX offset after a CQ over us:** an idea only; the log held its offset, so nothing here can test it, and it has to fit row [B88](../ROADMAP.md#B88).
+* **Moving our TX offset after a CQ over us:** an idea only; the log held its offset, so nothing here can test it, and it has to fit the offset a QSO holds ([autoseq.md](../architecture/autoseq.md), **TX offset**).
