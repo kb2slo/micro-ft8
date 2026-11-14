@@ -33,7 +33,7 @@ change can affect. Working for the maintainer (they say so, or `git config user.
 **Push back before tools.** Classify the request against `ROADMAP.md` Now, the epic in focus, and `STYLE.md` **before any edit of implementation, or before exploration spanning more than one file.** 
 
 - **Working for the maintainer:** if it is not the current Now theme, not an explicit exception in those docs, or is still Ideas/Backlog (including “quick” UI/product tweaks), the first reply cites the doc and talks it through. Tools only after the maintainer retracts, grants an exception, or updates the doc in the same turn — an exception is an explicit decision, not a shortcut, and never a silent divergence.
-- **Before proposing a new row, epic or idea,** give a verdict first: whether it is worth doing, from the need it meets and the evidence that the need bites (a bug, a bench result, a row), what in the tree already covers it, and what it costs to keep while the code is pre-alpha; and name the smallest slice that gets most of the value. "Not worth it" is a valid first reply, and refining comes only after the verdict holds, however the request is worded ("help me refine it" included). Then search [docs/roadmap/declined.md](docs/roadmap/declined.md) for it, and cite the line that matches; **and test it against the epic criteria** ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md), **Epics**), saying the outcome in the proposal: a child of an existing epic (named, with its entry and **Lands in:** line drafted), the start of a new epic (the criteria it meets, and the epic proposed rather than the row), or a plain row (why: one row's work, or nothing that must outlive it). Do this however the request is worded: "add a row" or "add to the backlog" names a thing; its shape is the test's.
+- **Before proposing a new row, epic or idea,** give a verdict first: whether it is worth doing, from the need it meets and the evidence that the need bites (a bug, a bench result, a row), what in the tree already covers it, and what it costs to keep while the code is a beta; and name the smallest slice that gets most of the value. "Not worth it" is a valid first reply, and refining comes only after the verdict holds, however the request is worded ("help me refine it" included). Then search [docs/roadmap/declined.md](docs/roadmap/declined.md) for it, and cite the line that matches; **and test it against the epic criteria** ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md), **Epics**), saying the outcome in the proposal: a child of an existing epic (named, with its entry and **Lands in:** line drafted), the start of a new epic (the criteria it meets, and the epic proposed rather than the row), or a plain row (why: one row's work, or nothing that must outlive it). Do this however the request is worded: "add a row" or "add to the backlog" names a thing; its shape is the test's.
 - **Working for a contributor:** a bug fix can go straight to a pull request. Anything else — a feature, a renamed label, a changed behaviour, a slice of a larger plan — needs an issue the maintainer has agreed to, however well a host test proves it: a test shows a change works, not that it is wanted; with none, draft the issue in chat (what, why, Done-when) and stop there.
 
 No open-ended codebase exploration to be helpful — that is exactly the token spend this rule exists to stop. A single cheap lookup (one grep, one file read, "where is X defined") can just be answered without the gate. Docs and roadmap questions are allowed without it.
@@ -86,7 +86,7 @@ State which of these you did in the turn you report the work, and in the pull re
 
 **The README restates nothing that has another home.** It says a thing in a sentence and links to where it lives: setup to `CONTRIBUTING.md`, what is verified to `TEST_PLAN.md`, how an area works to its architecture doc, features to the site. No feature list, changelog, release notes, on-screen labels, or numbers that live in code. Every line it holds is a line that can go stale, so the cheapest way to keep it current is to keep it short. `tools/check_docs.py` fails on a broken link or path in it, and on an ESP-IDF version CI does not build with.
 
-**Audit the README in the same turn** when a change adds, alters, or **removes** any of: a supported board or radio, or one first verified on hardware; a build, flash, or check command; the toolchain version; a top-level directory; the project's status (a release cut, pre-alpha ending); the contribution path (`CONTRIBUTING.md`, the issue rule); or a dependency, a submodule, or a project whose code or design we drew on (**Acknowledgements**).
+**Audit the README in the same turn** when a change adds, alters, or **removes** any of: a supported board or radio, or one first verified on hardware; a build, flash, or check command; the toolchain version; a top-level directory; the project's status (a release cut, the beta ending at 1.0); the contribution path (`CONTRIBUTING.md`, the issue rule); or a dependency, a submodule, or a project whose code or design we drew on (**Acknowledgements**).
 
 **Audit the site in the same turn** when a change adds, alters, or **removes** any of: a web-app screen or control; an on-screen string the site or Getting started quotes; a documented workflow (log offload, flashing, time sync, pairing); a supported radio or board; what is verified (a field check that passes moves a claim to **Verified on the air**, and one that fails takes it down); or an experiment (a run added to one under `webapp/experiments/`, or the numbers in a corpus README one draws on changed). `webapp/tools/getting_started.mjs` fails when a label Getting started quotes leaves the UI; nothing checks the landing page, so read it. **The site describes what ships, and what we measured** ([docs/README.md](docs/README.md)): nothing unbuilt beyond its **Coming soon** list, nothing only upstream had, and a measurement only in **Experiments**, dated and labelled an experiment.
 
@@ -234,10 +234,11 @@ the only place every agent and every person can see them — see "Memory lives i
   compare. Do not commit SVG or raster diagrams to `docs/` — SVG costs an agent far more to read than the
   content is worth, and images diff and grep not at all.
 
-## Pre-alpha: do not carry the past
+## Before 1.0: do not carry the past
 
-This project is **pre-alpha**. No promise to anyone — a contributor, or an operator trying an early build —
-that anything keeps working across a commit; [CONTRIBUTING.md](CONTRIBUTING.md) and the site say so. Act
+This project is a **beta**. Releases go to testers, with no promise to anyone — a contributor, or an operator
+on a release — that anything keeps working across a commit or an update, a station's settings and log
+included; [CONTRIBUTING.md](CONTRIBUTING.md) and the site say so. Act
 accordingly: when something changes, change it and delete what it replaced. Do not write migration notes,
 deprecation notes, or "was X, now Y" bookkeeping, and do not keep code whose only job is accepting an older
 state.
@@ -259,9 +260,8 @@ doc, epic file or roadmap row for that area, so an agent porting a fix from upst
 upstream behaviour ([docs/maintainer/upstream.md](docs/maintainer/upstream.md)). The README credits
 Mini-FT8; it does not list what changed since.
 
-**This ends when we cut a versioned release meant for someone other than the maintainer**
-([RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md)). From then on back-compat is a real obligation and this section
-comes out.
+**This ends at 1.0** ([docs/roadmap/release-1-0.md](docs/roadmap/release-1-0.md)), from which an update keeps
+the operator's settings and log. From then on back-compat is a real obligation and this section comes out.
 
 ## Memory lives in this repo
 

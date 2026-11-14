@@ -24,7 +24,7 @@ pages: 1
 
 ![Join the WiFi](qr:WIFI:T:nopass;S:micro-ft8.local;;) ![Open the app](qr:http://192.168.4.1/app.html)
 
-Micro-FT8 is a headless FT8 station for your QMX. The *main board* (M5Stack Unit PoE-P4) decodes, transmits, works the QSOs and keeps the log. The *sidekick* (AtomS3 Lite, the small cube on the short cable) runs its own WiFi network and serves the app to your phone's browser, so there is nothing to install. Set it up, start it calling and put the phone away: the station keeps working. Building your own? Flash both boards first: [Downloads](https://micro-ft8.kalikstein.com/downloads).
+Micro-FT8 is a headless FT8 station for your QMX. The *main board* (M5Stack Unit PoE-P4) decodes, transmits, sequences each QSO and keeps the log. The *sidekick* (AtomS3 Lite, the small cube on the short cable) runs its own WiFi network and serves the app to your phone's browser, so there is nothing to install. The queue and the sequencer are on the station, so a locked phone does not drop a QSO. Building your own? Flash both boards first: [Downloads](https://micro-ft8.kalikstein.com/downloads).
 
 ## 1. Connect it
 
@@ -62,7 +62,7 @@ A new or reset station is set to `YOURCALL` in grid `CM97`. Set yours before you
 - *Answer a CQ:* tap a decode that ends in a blue ›, for about 30 seconds after its slot (**Undo** takes it back). The station works the exchange and logs it.
 - *Call CQ:* tap **Call CQ** on the last row of the queue. It sends as many CQs as **Tries** in **Settings**, **Station** (6 to start), every other slot, then stops. Stations that answer are worked first. On the row, tap the count to change it, or the slot to move the CQ to the other one.
 - *Stop:* **Stop TX** ends the transmission on the air (**Stop CQ** also ends the CQ), and × on a queue row ends that QSO or the CQ. **Tune** sends a carrier until you tap it again.
-- Close the app or lock the phone, and the station keeps working. Open it again to see what it did.
+- Close the app or lock the phone, and a QSO in progress still finishes and logs. Open it again and carry on.
 
 ## Your log
 
