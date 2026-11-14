@@ -12,7 +12,12 @@ var FwUpdates = (function () {
   // (docs/architecture/system.md, The inversion). Each is fetched by its dated name under ota/,
   // which a later publish never overwrites, so an update installs the build the operator accepted
   // however many are published while it runs (docs/RELEASE_PROCESS.md, Public Cloudflare mirror).
-  var MANIFEST_URL = 'https://micro-ft8.kalikstein.com/download/manifest.json';
+  // One manifest a channel (docs/RELEASE_PROCESS.md, Public Cloudflare mirror). The stable one is
+  // not there until a release is cut.
+  var MANIFEST_URLS = {
+    dev: 'https://micro-ft8.kalikstein.com/download/manifest.json',
+    stable: 'https://micro-ft8.kalikstein.com/download/manifest-stable.json',
+  };
   var IMAGE_BASE = 'http://micro-ft8.kalikstein.com/download/ota/';
 
   // board: the name the sidekick's API uses. asset: its key under the manifest's `assets`. The main
@@ -23,6 +28,51 @@ var FwUpdates = (function () {
     { board: 'sidekick', asset: 'sidekick', label: 'Sidekick' },
   ];
 
+  // A channel's version, as tools/build_version.py writes it: '0.1.0+0c5ccec' (stable, a release)
+  // or 'b1322+0c5ccec' (dev, CI's build of main, numbered by main's commit count), each ending in
+  // its commit. null for anything else: a bench build reports its bare SHA, '-dirty' from a changed
+  // tree, and is on no channel.
+  function parseVersion(v) {
+    var m = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\+([0-9a-f]{7})$/.exec(typeof v === 'string' ? v : '');
+    if (m) return { channel: 'stable', label: m[1] + '.' + m[2] + '.' + m[3], sha: m[4], num: [+m[1], +m[2], +m[3]], build: 0 };
+    m = /^b([1-9]\d*)\+([0-9a-f]{7})$/.exec(typeof v === 'string' ? v : '');
+    if (m) return { channel: 'dev', label: 'b' + m[1], sha: m[2], num: null, build: +m[1] };
+    return null;
+  }
+
+  // What an operator reads for a version: '0.1.0', 'b1322', or a bench build's string as it is.
+  function versionLabel(v) {
+    var p = parseVersion(v);
+    return p ? p.label : (v || '');
+  }
+
+  // The same with its commit, for Settings, where a report is copied from: 'b1322 (0c5ccec)'.
+  function versionText(v) {
+    var p = parseVersion(v);
+    return p ? p.label + ' (' + p.sha + ')' : (v || '');
+  }
+
+  // Whether `to` is a later build than `from` on the one channel both are on. Dev builds are
+  // ordered by their number, releases by theirs.
+  function laterBuild(to, from) {
+    if (to.channel === 'dev') return to.build > from.build;
+    for (var i = 0; i < 3; i++) {
+      if (to.num[i] !== from.num[i]) return to.num[i] > from.num[i];
+    }
+    return false;
+  }
+
+  // The station's channel, read from the version its main board reports, with no stored setting:
+  // a release is stable, anything else dev (docs/roadmap/ota-updates.md, Decided). The main board
+  // updates first, so a switch that fails halfway already reads as the channel it was going to,
+  // and the next Update finishes it.
+  function channelOf(running) {
+    var p = parseVersion(running && running.main);
+    return p && p.channel === 'stable' ? 'stable' : 'dev';
+  }
+
+  var CHANNEL_NAMES = { stable: 'Stable', dev: 'Dev' };
+
   function otaOk(o) {
     return !!o && typeof o.filename === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(o.filename) &&
       typeof o.size === 'number' && o.size > 0 && o.size % 1 === 0 &&
@@ -30,17 +80,25 @@ var FwUpdates = (function () {
       typeof o.version === 'string' && /^[!#-\[\]-~]{1,31}$/.test(o.version);
   }
 
-  // The boards the manifest has a different build for. `running` maps a board to the version it
-  // reports ({sidekick: 'e6e4d88'}); a board that reports none is not offered anything. Versions
-  // are commits, with no order to compare, so "different from the published build" is the test.
-  function offers(manifest, running) {
+  // The boards `manifest`, one channel's, has a build for. `running` maps a board to the version
+  // it reports ({sidekick: 'b1321+e6e4d88'}); a board that reports none is offered nothing. A
+  // board on the manifest's channel is offered only a later build, never an older one; a board
+  // running anything from outside it (the other channel's build, a bench build) is offered the
+  // channel's build. `switching` is the operator moving the station to this channel: then every
+  // board that differs is offered, an older build included. An image that is not its manifest's
+  // channel's is never offered.
+  function offers(manifest, running, switching) {
     var out = [];
     var assets = manifest && manifest.assets;
-    if (!assets || !running) return out;
+    if (!assets || !running || !CHANNEL_NAMES[manifest.channel]) return out;
     BOARDS.forEach(function (b) {
       var from = running[b.board];
       var o = assets[b.asset] && assets[b.asset].ota;
       if (!from || !otaOk(o) || o.version === from) return;
+      var to = parseVersion(o.version);
+      if (!to || to.channel !== manifest.channel) return;
+      var was = parseVersion(from);
+      if (!switching && was && was.channel === to.channel && !laterBuild(to, was)) return;
       out.push({
         board: b.board, label: b.label, from: from, to: o.version,
         size: o.size, sha256: o.sha256, url: IMAGE_BASE + o.filename, proto: o.proto | 0,
@@ -78,7 +136,10 @@ var FwUpdates = (function () {
 
   // What one tap of Update does (docs/roadmap/ota-updates.md, antu): the app first, by this
   // page's relay, then every firmware offer, in order, in one request the sidekick carries out by
-  // itself (fw_plan_parse()), so a locked phone stops nothing once the app is in. `link` is the
+  // itself (fw_plan_parse()), so a locked phone stops nothing once the app is in. `manifest` is
+  // the manifest of the channel the plan goes to: the station's own, or with `switching` the
+  // other one, which makes the same plan a switch of channel (target, switching, and older: the
+  // station runs a dev build numbered above the one it would get). `link` is the
   // station now: {hostLinked, ap, mainProto, sidekickProto}; hostLinked is a main board linked
   // and reporting its version, ap the sidekick on its own access point, the protos /api/config's
   // host_proto and sk_proto (0 unknown). `app` is appOffer()'s.
@@ -88,13 +149,21 @@ var FwUpdates = (function () {
   // from). blocked: '' or why this plan must not run: 'pair', afterwards the two boards would speak
   // different Port A protocol versions, and a main board the sidekick cannot talk to can only be
   // recovered over USB. Nothing checks for a radio: the review asks for it to be off.
-  function plan(manifest, running, link, app) {
-    var steps = offers(manifest, running);
+  function plan(manifest, running, link, app, switching) {
+    var steps = offers(manifest, running, !!switching);
+    var channel = channelOf(running);
+    var was = parseVersion(running && running.main);
+    var number = manifest && manifest.build;
     var after = { main: link.mainProto | 0, sidekick: link.sidekickProto | 0 };
     steps.forEach(function (o) { after[o.board] = o.proto; });
     var blocked = link.hostLinked && after.main && after.sidekick && after.main !== after.sidekick ? 'pair' : '';
     var main = steps.some(function (o) { return o.board === 'main'; });
     return {
+      channel: channel,
+      target: manifest && CHANNEL_NAMES[manifest.channel] ? manifest.channel : channel,
+      switching: !!switching,
+      older: !!switching && !!was && was.channel === 'dev' && typeof number === 'number' && number < was.build,
+      to: versionLabel(manifest && manifest.version),
       app: app || null,
       steps: steps,
       any: !!app || steps.length > 0,
@@ -126,7 +195,12 @@ var FwUpdates = (function () {
   // transmits until the update is done. Not said: that the station keeps receiving, since the main
   // board decodes nothing while its image is sent (main_board.md, Firmware updates).
   function reviewText(p) {
-    var out = ['Takes ' + p.time + '. Nothing transmits until the update is done.'];
+    var out = [];
+    if (p.switching) {
+      out.push('This station moves to the ' + CHANNEL_NAMES[p.target] + ' channel, ' + p.to + '.' +
+        (p.older ? ' That is an older build than the one it runs.' : ''));
+    }
+    out.push('Takes ' + p.time + '. Nothing transmits until the update is done.');
     if (p.steps.length) {
       out.push('Switch the radio off, or unplug its USB, before you update. If it stays connected it may ' +
         'need switching off and on afterwards.');
@@ -134,6 +208,11 @@ var FwUpdates = (function () {
     out.push(p.app ? 'Keep this page open until the app is installed' +
       (p.steps.length ? '; the rest goes on if this phone locks.' : '.') : 'The update goes on if this phone locks.');
     return out;
+  }
+
+  // The other channel's action, under Update: 'Switch to Stable (0.1.0)'. `p` is the plan to it.
+  function switchLabel(p) {
+    return 'Switch to ' + CHANNEL_NAMES[p.target] + (p.to ? ' (' + p.to + ')' : '');
   }
 
   // The app's relay (docs/architecture/sidekick.md, Installing the app bundle): fetch the bundle's
@@ -231,7 +310,7 @@ var FwUpdates = (function () {
       rows.push({ key: i + ':downloading', text: 'Download the ' + name + '\u2019s image (' + sizeText(b.size) + ')' });
       rows.push({ key: i + ':verifying', text: 'Verify it' });
       if (b.board === 'main') rows.push({ key: i + ':transferring', text: 'Send it to the main board' });
-      rows.push({ key: i + ':restarting', text: 'Restart the ' + name + ' into ' + b.version });
+      rows.push({ key: i + ':restarting', text: 'Restart the ' + name + ' into ' + versionLabel(b.version) });
     });
     var state = status ? status.state : 'idle';
     // A failure is shown at the step it happened in (`at`).
@@ -311,27 +390,33 @@ var FwUpdates = (function () {
     if (status.state === 'failed') {
       if (status.board === 'main') {
         var on = !status.host ? '' :
-          (status.why === 'rolled_back' ? ' — rolled back to ' : ' — still on ') + status.host;
+          (status.why === 'rolled_back' ? ' — rolled back to ' : ' — still on ') + versionLabel(status.host);
         return { ok: false, text: whyText(status.why) + on };
       }
-      return { ok: false, text: whyText(status.why) + ' — still on ' + status.running };
+      return { ok: false, text: whyText(status.why) + ' — still on ' + versionLabel(status.running) };
     }
     if (board === 'main') {
       return status.state === 'done' && status.board === 'main' && status.version === target
-        ? { ok: true, text: 'Updated to ' + target } : null;
+        ? { ok: true, text: 'Updated to ' + versionLabel(target) } : null;
     }
     if (status.state !== 'idle') return null;
     var last = status.last;
     if (!last || last.version !== target) return null;
-    if (last.result === 'ok') return { ok: true, text: 'Updated to ' + target };
+    if (last.result === 'ok') return { ok: true, text: 'Updated to ' + versionLabel(target) };
     if (last.result === 'rolled_back') {
-      return { ok: false, text: 'New version did not start — rolled back to ' + status.running };
+      return { ok: false, text: 'New version did not start — rolled back to ' + versionLabel(status.running) };
     }
     return null;
   }
 
   return {
-    MANIFEST_URL: MANIFEST_URL,
+    MANIFEST_URLS: MANIFEST_URLS,
+    parseVersion: parseVersion,
+    versionLabel: versionLabel,
+    versionText: versionText,
+    channelOf: channelOf,
+    channelName: function (channel) { return CHANNEL_NAMES[channel] || ''; },
+    switchLabel: switchLabel,
     offers: offers,
     startBody: startBody,
     buildCommit: buildCommit,

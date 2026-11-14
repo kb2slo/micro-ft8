@@ -989,6 +989,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         <div class=setrow><div class=diagrow><span>Firmware</span><span id=netVersion>—</span></div></div>
         <div class=setrow><div class=diagrow><span>Main board firmware</span><span id=netHostVersion>—</span></div></div>
         <div class=setrow><div class=diagrow><span>App</span><span id=appVersion>—</span></div></div>
+        <div class=setrow><div class=diagrow><span>Channel</span><span id=fwChannel>—</span></div></div>
         <p id=appStale class="setnote warn" hidden>A newer version is available. <button id=appReload type=button class=dlink>Reload</button></p>
 
         <div class="hd sep">Updates</div>
@@ -996,6 +997,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         <p id=updMsg class=setnote>Not checked yet.</p>
         <div class=setbtns>
           <button id=updOpen type=button class=btn-primary hidden>Update</button>
+          <button id=updSwitch type=button hidden></button>
         </div>
 
       </div>
@@ -1469,8 +1471,9 @@ setInterval(checkAppStale, 60000);
 // /api/fw/status, so it goes on with this page closed, and every phone shows the same progress. The
 // plan, the relay, the steps and every sentence are FwUpdates' (updates.js); this is the drawing and
 // the requests.
-var fwManifest = null;      // the last manifest read, or null
+var fwManifests = { dev: null, stable: null };  // each channel's manifest as last read, or null
 var fwManifestErr = false;  // the last read failed: no internet from here
+var fwTarget = '';          // the channel the last review was for: '' the station's own, else a switch
 var fwRunning = {};         // board -> the version it reports
 var fwLink = { hostLinked: false, mainProto: 0, sidekickProto: 0 };
 var appPublished = null;    // the published app's build.json, or null
@@ -1485,12 +1488,19 @@ var fwReloadOnClose = false;
 var APP_HOST_DEFAULT = 'https://micro-ft8.kalikstein.com/app';
 async function readPublished() {
   try {
-    var r = await fetch(FwUpdates.MANIFEST_URL, { cache: 'no-store' });
+    var r = await fetch(FwUpdates.MANIFEST_URLS.dev, { cache: 'no-store' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    fwManifest = await r.json();
+    fwManifests.dev = await r.json();
     fwManifestErr = false;
   } catch (e) {
     fwManifestErr = true;
+  }
+  // The stable channel's: not there until a release is cut, which is no error.
+  try {
+    var sr = await fetch(FwUpdates.MANIFEST_URLS.stable, { cache: 'no-store' });
+    fwManifests.stable = sr.ok ? await sr.json() : null;
+  } catch (e) {
+    fwManifests.stable = null;
   }
   if (!appHost) {
     try {
@@ -1517,13 +1527,18 @@ async function checkFwUpdates() {
   renderFwUpdates();
 }
 
-function fwPlan() {
+// The plan to `target`, a channel: the station's own (an update), or the other (a switch). The app
+// is published apart from the firmware on dev alone, so it is in a plan to dev alone.
+function fwPlan(target) {
   var cfg = lastCfg || {};
   var link = {
     hostLinked: fwLink.hostLinked && mainBoardLinked !== false, ap: cfg.sk_wifi_mode === 'ap',
     mainProto: fwLink.mainProto, sidekickProto: fwLink.sidekickProto,
   };
-  return FwUpdates.plan(fwManifest, fwRunning, link, FwUpdates.appOffer(appPublished, APP_BUILD));
+  var channel = FwUpdates.channelOf(fwRunning);
+  target = target || channel;
+  var app = target === 'dev' ? FwUpdates.appOffer(appPublished, APP_BUILD) : null;
+  return FwUpdates.plan(fwManifests[target], fwRunning, link, app, target !== channel);
 }
 
 // One line, the station's: whether a newer build is published and about how long it takes. The
@@ -1550,9 +1565,16 @@ function renderFwUpdates() {
   }
   document.getElementById('updOpen').hidden = !offered || !!plan.blocked || fwPolling || !!fwMine;
   document.getElementById('tabUpdate').hidden = !offered || !paired();
+  // The other channel, under Update: offered when it has published a build this station's boards
+  // do not run, on the terms an update is.
+  document.getElementById('fwChannel').textContent = fwLink.hostLinked ? FwUpdates.channelName(plan.channel) : '—';
+  var other = fwPlan(plan.channel === 'stable' ? 'dev' : 'stable');
+  var sw = document.getElementById('updSwitch');
+  sw.hidden = !other.steps.length || !!other.unavailable || !!other.blocked || fwPolling || !!fwMine;
+  sw.textContent = FwUpdates.switchLabel(other);
   if (plan.unavailable) msg.textContent = FwUpdates.unavailableText(plan.unavailable);
   else if (offered) msg.textContent = FwUpdates.offerNote(plan);
-  else if (!fwManifest) msg.textContent = fwManifestErr ? 'Updates cannot be checked from here: this phone has no internet on this network.' : 'Not checked yet.';
+  else if (!fwManifests[plan.channel]) msg.textContent = fwManifestErr ? 'Updates cannot be checked from here: this phone has no internet on this network.' : 'Not checked yet.';
   else msg.textContent = 'No updates: this is the published build.';
 }
 
@@ -1585,11 +1607,14 @@ function fwShow(mode, o) {
 // Review, before anything happens, in the dialog a band change asks in: what stops (a running CQ
 // included), about how long, and the radio off. What is published is read again first, so the
 // plan is the build on offer now, a Retry's included.
-async function openFwReview() {
+async function openFwReview(target) {
   var msg = document.getElementById('updMsg');
+  fwTarget = target || '';
   await readPublished();
   renderFwUpdates();
-  var plan = fwPlan();
+  var plan = fwPlan(fwTarget);
+  // A switch that failed after the main board changed channel is an update now, and reads as one.
+  if (!plan.switching) fwTarget = '';
   if (!plan.any || plan.unavailable || plan.blocked) return;
   if (!paired()) {
     msg.textContent = 'Press the sidekick button to pair first.';
@@ -1601,7 +1626,9 @@ async function openFwReview() {
   var stopping = retuneEnds().length > 0;
   if (!(await confirmRetune('Update'))) return;
   if (stopping) await endQueueAndTx();
-  var yes = await askConfirm({ title: 'Update the station?', text: FwUpdates.reviewText(plan), ok: 'Update' });
+  var yes = await askConfirm(plan.switching
+    ? { title: FwUpdates.switchLabel(plan) + '?', text: FwUpdates.reviewText(plan), ok: 'Switch' }
+    : { title: 'Update the station?', text: FwUpdates.reviewText(plan), ok: 'Update' });
   if (yes) runUpdate(plan);
 }
 
@@ -1803,8 +1830,12 @@ function fwResult(end, detail) {
   renderFwUpdates();
 }
 
-document.getElementById('updOpen').onclick = openFwReview;
-document.getElementById('fwRetry').onclick = function () { fwShow('', {}); openFwReview(); };
+document.getElementById('updOpen').onclick = function () { openFwReview(''); };
+document.getElementById('updSwitch').onclick = function () {
+  openFwReview(FwUpdates.channelOf(fwRunning) === 'stable' ? 'dev' : 'stable');
+};
+// Retry is for what was tried: the update, or the switch to the channel it was for.
+document.getElementById('fwRetry').onclick = function () { fwShow('', {}); openFwReview(fwTarget); };
 document.getElementById('fwCancel').onclick = async function () {
   if (fwSheetMode === 'progress') {
     try { await MicroFT8Pairing.authFetch('/api/fw/cancel', { method: 'POST' }); } catch (e) { /* the next poll shows where it is */ }
@@ -2040,7 +2071,7 @@ function renderSettingsMenu() {
     netIp: cfg.sk_ip || '',
     paired: paired(), noMain: mainBoardAway(),
     updateAvailable: plan.any && !plan.unavailable,
-    fwChecked: !!fwManifest, fwNoNet: fwManifestErr,
+    fwChecked: !!fwManifests[plan.channel], fwNoNet: fwManifestErr,
     appStale: appIsStale,
     units: distUnit, theme: themePref
   });
@@ -2585,7 +2616,7 @@ function updateNetInfo(cfg) {
     mode === 'ap' ? 'AP (offline)' : (mode === 'station' ? 'Station (joined)' : '—');
   document.getElementById('netName').textContent = cfg.sk_network_name || '—';
   document.getElementById('netIp').textContent = cfg.sk_ip || '—';
-  document.getElementById('netVersion').textContent = cfg.sk_fw_version || '—';
+  document.getElementById('netVersion').textContent = FwUpdates.versionText(cfg.sk_fw_version) || '—';
   document.getElementById('netUptime').textContent = cfg.sk_uptime || '—';
   var fwNow = [cfg.sk_fw_version || '', cfg.host_fw_version || '', cfg.sk_proto | 0, cfg.host_proto | 0];
   if (fwNow.join('|') !== [fwRunning.sidekick || '', fwRunning.main || '', fwLink.sidekickProto, fwLink.mainProto].join('|')) {
@@ -2594,7 +2625,7 @@ function updateNetInfo(cfg) {
     fwLink = { hostLinked: !!fwNow[1], sidekickProto: fwNow[2], mainProto: fwNow[3] };
     renderFwUpdates();
   }
-  document.getElementById('netHostVersion').textContent = cfg.host_fw_version || '—';
+  document.getElementById('netHostVersion').textContent = FwUpdates.versionText(cfg.host_fw_version) || '—';
   var isStation = mode === 'station';
   document.getElementById('netForget').hidden = !isStation;
   document.getElementById('netModeSwitch').hidden = !isStation;

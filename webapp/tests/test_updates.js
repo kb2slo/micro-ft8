@@ -13,38 +13,43 @@ vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'app', 'updates.js'), 'utf8'), ctx);
 const U = vm.runInContext('FwUpdates', ctx);
 const plain = (v) => JSON.parse(JSON.stringify(v));
+const eq0 = (actual, expected, msg) => assert.deepStrictEqual(plain(actual), expected, msg);
 
 const SHA = 'ba9e8126190833eb2c570b5d08c563ae4e04b1ad3977946633935ed7f8f09539';
+// The published dev build, as tools/build_version.py names it, and the release cut at its commit.
+const V = 'b1322+d18f9b2';
+const REL = '0.1.0+d18f9b2';
 function manifest(ota, p4ota) {
   return {
-    commit: 'd18f9b2' + '0'.repeat(33), short: 'd18f9b2', date: '20261110',
+    channel: 'dev', commit: 'd18f9b2' + '0'.repeat(33), short: 'd18f9b2', version: V, build: 1322, date: '20261110',
     assets: {
       poe_p4: Object.assign({ stable: 'microft8-poe-p4-dev.bin', sha256: SHA }, p4ota ? { ota: p4ota } : {}),
       sidekick: Object.assign({ stable: 'microft8-sidekick-dev.bin', sha256: SHA }, ota === undefined ? {} : { ota }),
     },
   };
 }
-const OTA = { stable: 'microft8-sidekick-dev-ota.bin', filename: '20261110-microft8-sidekick-ota-d18f9b2.bin', size: 1005232, sha256: SHA, version: 'd18f9b2', proto: 14 };
+const OTA = { stable: 'microft8-sidekick-dev-ota.bin', filename: '20261110-microft8-sidekick-ota-d18f9b2.bin', size: 1005232, sha256: SHA, version: V, proto: 14 };
 
 // ---- offers ----
-assert.strictEqual(U.MANIFEST_URL, 'https://micro-ft8.kalikstein.com/download/manifest.json');
+eq0(U.MANIFEST_URLS, { dev: 'https://micro-ft8.kalikstein.com/download/manifest.json',
+  stable: 'https://micro-ft8.kalikstein.com/download/manifest-stable.json' });
 const offered = plain(U.offers(manifest(OTA), { sidekick: '7e61488' }));
 assert.deepStrictEqual(offered, [{
-  board: 'sidekick', label: 'Sidekick', from: '7e61488', to: 'd18f9b2', size: 1005232, sha256: SHA,
+  board: 'sidekick', label: 'Sidekick', from: '7e61488', to: V, size: 1005232, sha256: SHA,
   // Plain HTTP: the sidekick has no TLS, and the hash is what it checks. The dated name, which a
   // later publish never overwrites, not the stable one, so a publish mid-update changes nothing.
   url: 'http://micro-ft8.kalikstein.com/download/ota/20261110-microft8-sidekick-ota-d18f9b2.bin', proto: 14,
 }]);
-assert.deepStrictEqual(plain(U.offers(manifest(OTA), { sidekick: 'd18f9b2' })), [], 'already on the published build');
+assert.deepStrictEqual(plain(U.offers(manifest(OTA), { sidekick: V })), [], 'already on the published build');
 // Both boards behind: the main board is offered first, since it is updated first.
-const P4OTA = { stable: 'microft8-poe-p4-dev-ota.bin', filename: '20261110-microft8-poe-p4-ota-d18f9b2.bin', size: 871968, sha256: SHA, version: 'd18f9b2', proto: 15 };
+const P4OTA = { stable: 'microft8-poe-p4-dev-ota.bin', filename: '20261110-microft8-poe-p4-ota-d18f9b2.bin', size: 871968, sha256: SHA, version: V, proto: 15 };
 const both = plain(U.offers(manifest(OTA, P4OTA), { sidekick: '7e61488', main: '7e61488' }));
 assert.deepStrictEqual(both.map((o) => o.board), ['main', 'sidekick']);
 assert.deepStrictEqual(both[0], {
-  board: 'main', label: 'Main board', from: '7e61488', to: 'd18f9b2', size: 871968, sha256: SHA,
+  board: 'main', label: 'Main board', from: '7e61488', to: V, size: 871968, sha256: SHA,
   url: 'http://micro-ft8.kalikstein.com/download/ota/20261110-microft8-poe-p4-ota-d18f9b2.bin', proto: 15,
 });
-assert.deepStrictEqual(plain(U.offers(manifest(OTA, P4OTA), { sidekick: 'd18f9b2', main: '' })), [],
+assert.deepStrictEqual(plain(U.offers(manifest(OTA, P4OTA), { sidekick: V, main: '' })), [],
   'a main board that reports no version (older firmware, or not linked) is offered nothing');
 assert.strictEqual(U.startBody(both[0]).split('\n')[0], 'board=main');
 assert.strictEqual(U.offers(manifest(OTA), { sidekick: 'd18f9b2-dirty' }).length, 1, 'a changed build is not the published one');
@@ -59,15 +64,59 @@ assert.deepStrictEqual(plain(U.offers({}, { sidekick: '7e61488' })), []);
   { size: 0 }, { size: 1.5 }, { size: '1005232' },
   { sha256: SHA.toUpperCase() }, { sha256: 'abc' },
   { version: '' }, { version: 'a b' }, { version: 'a"b' }, { version: 'x'.repeat(32) },
+  // Not a dev build's version: a bench build's, a changed tree's, a release in the dev manifest.
+  { version: 'd18f9b2' }, { version: V + '-dirty' }, { version: REL },
 ].forEach(function (bad) {
   assert.deepStrictEqual(plain(U.offers(manifest(Object.assign({}, OTA, bad)), { sidekick: '7e61488' })), [], JSON.stringify(bad));
 });
-assert.strictEqual(U.offers(manifest(Object.assign({}, OTA, { version: 'x'.repeat(31) })), { sidekick: '7e61488' }).length, 1);
+
+// ---- versions and channels (tools/build_version.py writes them; tools/test_build_version.py) ----
+eq0(U.parseVersion(V), { channel: 'dev', label: 'b1322', sha: 'd18f9b2', num: null, build: 1322 });
+eq0(U.parseVersion(REL), { channel: 'stable', label: '0.1.0', sha: 'd18f9b2', num: [0, 1, 0], build: 0 });
+['d18f9b2', 'd18f9b2-dirty', V + '-dirty', REL + '-dirty', 'b0+d18f9b2', 'b1322', '0.1.0', '1322+d18f9b2', 'v0.1.0+d18f9b2',
+  'b1322+D18F9B2', 'b1322+d18f9b', '0.1+d18f9b2', '01.0.0+d18f9b2', 'unknown', '', undefined, null, 7].forEach((v) =>
+  assert.strictEqual(U.parseVersion(v), null, String(v)));
+eq0([U.versionLabel(V), U.versionLabel(REL), U.versionLabel('7e61488-dirty'), U.versionLabel(''), U.versionLabel(undefined)],
+  ['b1322', '0.1.0', '7e61488-dirty', '', '']);
+eq0([U.versionText(V), U.versionText(REL), U.versionText('7e61488'), U.versionText('')], ['b1322 (d18f9b2)', '0.1.0 (d18f9b2)', '7e61488', '']);
+// The channel is the main board's: a release is stable, anything else dev.
+eq0([U.channelOf({ main: REL, sidekick: V }), U.channelOf({ main: V, sidekick: REL }), U.channelOf({ main: '7e61488' }),
+  U.channelOf({ sidekick: REL }), U.channelOf({}), U.channelOf(null)], ['stable', 'dev', 'dev', 'dev', 'dev', 'dev']);
+eq0([U.channelName('stable'), U.channelName('dev'), U.channelName('x')], ['Stable', 'Dev', '']);
+
+// ---- a channel offers only a later build ----
+const offeredTo = (m, running, sw) => plain(U.offers(m, running, sw)).map((o) => o.board);
+eq0(offeredTo(manifest(OTA, P4OTA), { main: 'b1321+7e61488', sidekick: 'b1321+7e61488' }), ['main', 'sidekick'], 'an earlier dev build');
+eq0(offeredTo(manifest(OTA, P4OTA), { main: 'b1323+abc1234', sidekick: 'b1323+abc1234' }), [], 'a later dev build is never offered an older one');
+eq0(offeredTo(manifest(OTA, P4OTA), { main: 'b1322+abc1234', sidekick: V }), [], 'the same number is not later');
+eq0(offeredTo(manifest(OTA, P4OTA), { main: 'b99999+abc1234', sidekick: 'b999+7e61488' }), ['sidekick'], 'by number, not as text');
+eq0(offeredTo(manifest(OTA, P4OTA), { main: '7e61488', sidekick: 'b1323+abc1234-dirty' }), ['main', 'sidekick'], 'a bench build is on no channel');
+// The stable manifest, in the same form.
+function stable(number, build) {
+  const v = number + '+d18f9b2';
+  const m = manifest(Object.assign({}, OTA, { version: v, filename: 'microft8-sidekick-ota-' + number + '.bin' }),
+    Object.assign({}, P4OTA, { version: v, filename: 'microft8-poe-p4-ota-' + number + '.bin' }));
+  return Object.assign(m, { channel: 'stable', version: v, build: build });
+}
+eq0(offeredTo(stable('0.10.0', 1322), { main: '0.9.1+7e61488', sidekick: '0.9.1+7e61488' }), ['main', 'sidekick'], 'the next release');
+eq0(offeredTo(stable('0.10.0', 1322), { main: '0.10.1+abc1234', sidekick: '1.0.0+abc1234' }), [], 'never an earlier release');
+eq0(plain(U.offers(stable('0.1.0', 1322), { main: '0.0.9+7e61488' }))[0].url,
+  'http://micro-ft8.kalikstein.com/download/ota/microft8-poe-p4-ota-0.1.0.bin');
+// A half-switched station: the main board is on the release, the sidekick still on dev. It reads
+// as stable, and the stable channel's Update finishes it.
+eq0(offeredTo(stable('0.1.0', 1322), { main: REL, sidekick: 'b1330+abc1234' }), ['sidekick']);
+// A manifest never offers another channel's image, or anything without saying its channel.
+eq0(offeredTo(Object.assign(manifest(OTA, P4OTA), { channel: 'stable' }), { main: '7e61488', sidekick: '7e61488' }), []);
+eq0(offeredTo(Object.assign(manifest(OTA, P4OTA), { channel: undefined }), { main: '7e61488', sidekick: '7e61488' }), []);
+// Switching: every board that differs, an older build included.
+eq0(offeredTo(stable('0.1.0', 1322), { main: 'b1330+abc1234', sidekick: 'b1330+abc1234' }, true), ['main', 'sidekick']);
+eq0(offeredTo(manifest(OTA, P4OTA), { main: REL, sidekick: REL }, true), ['main', 'sidekick']);
+eq0(offeredTo(manifest(OTA, P4OTA), { main: V, sidekick: REL }, true), ['sidekick']);
 
 // ---- the request: the lines fw_request_parse() reads (host_mock/test_fw_policy.cpp) ----
 assert.strictEqual(U.startBody(offered[0]),
   'board=sidekick\nurl=http://micro-ft8.kalikstein.com/download/ota/20261110-microft8-sidekick-ota-d18f9b2.bin\n' +
-  'size=1005232\nsha256=' + SHA + '\nversion=d18f9b2\n');
+  'size=1005232\nsha256=' + SHA + '\nversion=' + V + '\n');
 
 assert.strictEqual(U.sizeText(1005232), '982 KB');
 assert.strictEqual(U.sizeText(839872), '820 KB');
@@ -82,21 +131,21 @@ let pl = U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }
 eq(pl.steps.map((o) => o.board), ['main', 'sidekick']);
 assert.strictEqual(pl.blocked, '');
 assert.strictEqual(pl.time, 'about three minutes');
-assert.strictEqual(U.plan(manifest(OTA15, P4OTA), { sidekick: 'd18f9b2', main: '7e61488' }, linked).time, 'about two minutes');
+assert.strictEqual(U.plan(manifest(OTA15, P4OTA), { sidekick: V, main: '7e61488' }, linked).time, 'about two minutes');
 // What fw_plan_parse() reads (host_mock/test_fw_policy.cpp): the two requests with a `next` line between.
 assert.strictEqual(pl.body, U.startBody(pl.steps[0]) + 'next\n' + U.startBody(pl.steps[1]));
 assert.strictEqual(pl.body.split('\n').filter((l) => l === 'next').length, 1);
-pl = U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: 'd18f9b2' }, linked);
+pl = U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: V }, linked);
 eq([pl.steps.map((o) => o.board), pl.blocked, pl.time, pl.body], [['sidekick'], '', 'about a minute', U.startBody(pl.steps[0])]);
-pl = U.plan(manifest(OTA15, P4OTA), { sidekick: 'd18f9b2', main: 'd18f9b2' }, linked);
+pl = U.plan(manifest(OTA15, P4OTA), { sidekick: V, main: V }, linked);
 eq([pl.steps.length, pl.blocked, pl.body], [0, '', '']);
 // Pairing. Both boards go to the manifest's protocol: fine whatever they speak now.
 assert.strictEqual(U.plan(manifest(OTA15, P4OTA), { sidekick: 'a', main: 'b' }, { hostLinked: true, mainProto: 14, sidekickProto: 14 }).blocked, '');
 // Only the sidekick is offered, and its new image speaks a protocol the main board does not.
 const OTA16 = Object.assign({}, OTA, { proto: 16 });
-assert.strictEqual(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: 'd18f9b2' }, linked).blocked, 'pair');
+assert.strictEqual(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: V }, linked).blocked, 'pair');
 // Only the main board is offered a build that speaks another protocol than the sidekick stays on.
-assert.strictEqual(U.plan(manifest(OTA, Object.assign({}, P4OTA, { proto: 16 })), { sidekick: 'd18f9b2', main: 'b' }, linked).blocked, 'pair');
+assert.strictEqual(U.plan(manifest(OTA, Object.assign({}, P4OTA, { proto: 16 })), { sidekick: V, main: 'b' }, linked).blocked, 'pair');
 // No main board answering (a sidekick on the bench by itself), or one too old to say what it speaks: not judged.
 assert.strictEqual(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: '' }, { hostLinked: false, mainProto: 0, sidekickProto: 15 }).blocked, '');
 assert.strictEqual(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: '' }, { hostLinked: true, mainProto: 0, sidekickProto: 15 }).blocked, '');
@@ -121,11 +170,11 @@ eq(U.appOffer(PUB, '__APP_BUILD__').from, 'source', 'so is an unbuilt one');
 
 // The plan with an app step: the app alone, or ahead of the firmware.
 const APP = U.appOffer(PUB, '7e61488 2026-11-10');
-pl = U.plan(manifest(OTA15, P4OTA), { sidekick: 'd18f9b2', main: 'd18f9b2' }, linked, APP);
+pl = U.plan(manifest(OTA15, P4OTA), { sidekick: V, main: V }, linked, APP);
 eq([pl.any, pl.app.to, pl.steps.length, pl.body, pl.time, pl.unavailable], [true, 'd18f9b2', 0, '', 'under a minute', '']);
 pl = U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked, APP);
 eq([pl.any, pl.steps.map((o) => o.board), pl.time], [true, ['main', 'sidekick'], 'about three minutes']);
-eq(U.plan(manifest(OTA15, P4OTA), { sidekick: 'd18f9b2', main: 'd18f9b2' }, linked, null).any, false);
+eq(U.plan(manifest(OTA15, P4OTA), { sidekick: V, main: V }, linked, null).any, false);
 // Unavailable: no main board (the boards update together), or the sidekick on its own network.
 eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '' }, { hostLinked: false, sidekickProto: 15 }, APP).unavailable, 'no_host');
 eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, Object.assign({ ap: true }, linked), APP).unavailable, 'ap');
@@ -140,16 +189,45 @@ let rv = U.reviewText(pl);
 eq(rv[0], 'Takes about three minutes. Nothing transmits until the update is done.');
 assert(/Switch the radio off/.test(rv[1]));
 eq(rv[2], 'Keep this page open until the app is installed; the rest goes on if this phone locks.');
-rv = U.reviewText(U.plan(manifest(OTA15, P4OTA), { sidekick: 'd18f9b2', main: 'd18f9b2' }, linked, APP));
+rv = U.reviewText(U.plan(manifest(OTA15, P4OTA), { sidekick: V, main: V }, linked, APP));
 eq(rv, ['Takes under a minute. Nothing transmits until the update is done.', 'Keep this page open until the app is installed.']);
-rv = U.reviewText(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: 'd18f9b2' }, linked, null));
+rv = U.reviewText(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: V }, linked, null));
 eq(rv[2], 'The update goes on if this phone locks.');
 rv.forEach((t) => assert(!/receiv|decod/i.test(t), 'no promise about receiving: ' + t));
 
 // The note under the offer: the radio off only when firmware is in the update, as the review asks.
 eq(U.offerNote(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked, APP)), 'Switch the radio off first.');
-eq(U.offerNote(U.plan(manifest(OTA15, P4OTA), { sidekick: 'd18f9b2', main: 'd18f9b2' }, linked, APP)), '', 'the app alone asks nothing of the radio');
-eq(U.offerNote(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: 'd18f9b2' }, linked, null)), U.whyText('pair') + '.');
+eq(U.offerNote(U.plan(manifest(OTA15, P4OTA), { sidekick: V, main: V }, linked, APP)), '', 'the app alone asks nothing of the radio');
+eq(U.offerNote(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: V }, linked, null)), U.whyText('pair') + '.');
+
+// ---- the plan's channel, and a switch of channel ----
+pl = U.plan(manifest(OTA15, P4OTA), { sidekick: 'b1321+7e61488', main: 'b1321+7e61488' }, linked, null);
+eq([pl.channel, pl.target, pl.switching, pl.older, pl.to, pl.steps.length], ['dev', 'dev', false, false, 'b1322', 2]);
+eq(U.reviewText(pl)[0], 'Takes about three minutes. Nothing transmits until the update is done.', 'an update says nothing of channels');
+// Dev to stable, to a release cut from an earlier commit than the build the station runs.
+const dev1330 = { sidekick: 'b1330+abc1234', main: 'b1330+abc1234' };
+eq(U.plan(stable('0.1.0', 1322), dev1330, linked, null).steps.length, 2, 'not on stable, so its Update would move it: the page asks as a switch');
+pl = U.plan(stable('0.1.0', 1322), dev1330, linked, null, true);
+eq([pl.channel, pl.target, pl.switching, pl.older, pl.to, pl.steps.map((o) => o.board), pl.steps[0].to],
+  ['dev', 'stable', true, true, '0.1.0', ['main', 'sidekick'], REL]);
+eq(U.switchLabel(pl), 'Switch to Stable (0.1.0)');
+rv = U.reviewText(pl);
+eq(rv[0], 'This station moves to the Stable channel, 0.1.0. That is an older build than the one it runs.');
+eq(rv[1], 'Takes about three minutes. Nothing transmits until the update is done.');
+assert(/Switch the radio off/.test(rv[2]));
+// The same code or later: not called older. A bench build's age is not known, and not guessed.
+eq(U.plan(stable('0.1.0', 1322), { sidekick: V, main: V }, linked, null, true).older, false);
+eq(U.plan(stable('0.1.0', 1330), { sidekick: V, main: V }, linked, null, true).older, false);
+eq(U.plan(stable('0.1.0', 1322), { sidekick: '7e61488', main: '7e61488' }, linked, null, true).older, false);
+// Stable to dev: dev is built from main, at or past any release.
+pl = U.plan(manifest(OTA15, P4OTA), { sidekick: REL, main: REL }, linked, null, true);
+eq([pl.channel, pl.target, pl.switching, pl.older, U.switchLabel(pl), U.reviewText(pl)[0]],
+  ['stable', 'dev', true, false, 'Switch to Dev (b1322)', 'This station moves to the Dev channel, b1322.']);
+// A switch is held to the same pairing rule as an update.
+eq(U.plan(stable('0.1.0', 1322), { sidekick: REL, main: 'b1330+abc1234' }, Object.assign({}, linked, { sidekickProto: 14 }), null, true).blocked, 'pair');
+// No manifest for the other channel (no release cut yet): nothing to switch to.
+pl = U.plan(null, dev1330, linked, null, true);
+eq([pl.any, pl.target, pl.to, pl.steps.length], [false, 'dev', '', 0]);
 
 // ---- the app's relay, against a fake host and sidekick ----
 function relayWorld(o) {
@@ -237,6 +315,7 @@ eq(a, ['done', 'done', 'now', 'next', 'next', 'next', 'next']);
 a = ats(pst({ state: 'done', plan: [PLAN[0]] }));
 eq(a, ['done', 'done', 'done', 'done']);
 eq(U.stepRows(null, true), []);
+eq(U.stepRows(pst({ plan: [{ board: 'main', version: REL, size: 871968 }] }), true)[3].text, 'Restart the main board into 0.1.0');
 
 assert.strictEqual(U.busy(null), false);
 ['downloading', 'verifying', 'transferring', 'restarting'].forEach((state) => assert.strictEqual(U.busy({ state }), true, state));
@@ -275,6 +354,12 @@ assert.deepStrictEqual(plain(U.outcome(st({ state: 'failed', why: 'connect', det
   { ok: false, text: 'Download failed: the sidekick could not reach the download server; check its WiFi has internet — still on 7e61488' });
 assert.deepStrictEqual(plain(U.outcome(st({ state: 'failed', why: 'cancelled' }), 'sidekick', 'd18f9b2')),
   { ok: false, text: 'Cancelled — still on 7e61488' });
+
+// A channel's version is said by its label, and still matched whole.
+eq(U.outcome(last('ok', { running: V, last: { board: 'sidekick', version: V, from: 'b1321+7e61488', result: 'ok' } }), 'sidekick', V),
+  { ok: true, text: 'Updated to b1322' });
+eq(U.outcome(st({ state: 'failed', why: 'hash', running: REL }), 'sidekick', V), { ok: false, text: 'Verification failed — still on 0.1.0' });
+assert.strictEqual(U.outcome(last('ok'), 'sidekick', V), null, 'the bare commit is another version');
 
 // A main board's update: the sidekick stays up, so the state says how it ended.
 const mst = (o) => st(Object.assign({ board: 'main', size: 871968, host: '7e61488', host_linked: true }, o));
