@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Power draw — Micro-FT8 experiments</title>
+<meta name="description" content="An experiment: what the Micro-FT8 station's two boards draw over USB-C, at rest, decoding, and through half an hour of operating.">
+<link rel="stylesheet" href="../experiments.css">
+<style>
+  .take { font-size: 1.05rem; line-height: 1.5; margin: 0 0 1rem; }
+  .take b { font-variant-numeric: tabular-nums; }
+  .tablebox { overflow-x: auto; margin: 0.25rem 0 0.75rem; }
+  table.data { border-collapse: collapse; width: 100%; font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+  table.data caption { text-align: left; font-weight: 600; padding: 0.3rem 0; }
+  table.data th, table.data td { text-align: right; padding: 0.35rem 0.4rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.data th:first-child, table.data td:first-child { text-align: left; }
+  table.data thead th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }
+  table.data tbody th { font-weight: 400; }
+  table.data tr.lead-row th, table.data tr.lead-row td { font-weight: 600; }
+  table.qsos td, table.qsos th { text-align: left; }
+</style>
+<main>
+  <nav class="crumbs"><a href="/">Micro-FT8</a> › <a href="../">Experiments</a> › Power draw</nav>
+  <p class="eyebrow">Micro-FT8 · Experiment <span class="tag">Experiment, not a feature</span></p>
+  <h1>Power draw</h1>
+  <p class="lead">
+    What the station's two boards draw over USB‑C: at rest, decoding, and through half an
+    hour of ordinary operating. One station, one meter, one afternoon.
+  </p>
+  <p class="take">
+    The boards drew <b>0.85 to 0.90&nbsp;W</b> whatever they were doing, and averaged
+    <b>0.88&nbsp;W</b> over a 29-minute session of seven QSOs. Operating cost almost nothing
+    over receiving.
+  </p>
+
+  <section>
+    <h2>The run of 14 November 2026</h2>
+    <div class="tablebox">
+      <table class="data">
+        <caption>Steady readings, before the session</caption>
+        <thead><tr><th>The station was</th><th>Power</th></tr></thead>
+        <tbody>
+          <tr><th>Both boards up, the QMX switched off, nothing to decode</th><td>0.85 W</td></tr>
+          <tr><th>Decoding FT8 on 15&nbsp;m</th><td>0.87 W</td></tr>
+          <tr><th>Decoding FT8 and FT4 together on 20&nbsp;m, a busy band</th><td>0.90 W</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="hint">
+      The first reading was 5.32&nbsp;V at 0.16&nbsp;A. The third was taken with 28 FT8 decodes
+      in a slot and 4 to 11 in each FT4 period.
+    </p>
+    <div class="tablebox">
+      <table class="data">
+        <caption>The operating session, 13:37:33 to 14:06:24 CST</caption>
+        <thead><tr><th></th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><th>Length</th><td>28 min 51 s</td></tr>
+          <tr><th>Energy, from the meter's own total, read as the session ended</th><td>0.4228 Wh</td></tr>
+          <tr class="lead-row"><th>Average power</th><td>0.88 W</td></tr>
+          <tr><th>Reading at the end: volts, amps, watts</th><td>5.3175 V, 0.1645 A, 0.8747 W</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      The session was operated from a phone as usual: calling CQ, replying, two band changes,
+      and the QSO log and the who-hears-me map opened a few times. An amplifier was in use; it
+      has its own supply. Seven QSOs were logged in it:
+    </p>
+    <div class="tablebox">
+      <table class="data qsos">
+        <thead><tr><th>Time (CST)</th><th>Band</th><th>Mode</th><th>Station</th></tr></thead>
+        <tbody>
+          <tr><td>13:42</td><td>20 m</td><td>FT4</td><td>KD5QJQ</td></tr>
+          <tr><td>13:43</td><td>20 m</td><td>FT4</td><td>K6LS</td></tr>
+          <tr><td>13:44</td><td>20 m</td><td>FT4</td><td>AG7NR</td></tr>
+          <tr><td>13:47</td><td>20 m</td><td>FT4</td><td>WD4OBP</td></tr>
+          <tr><td>13:56</td><td>15 m</td><td>FT8</td><td>KR4DFW</td></tr>
+          <tr><td>13:59</td><td>15 m</td><td>FT8</td><td>KW7E</td></tr>
+          <tr><td>14:05</td><td>20 m</td><td>FT4</td><td>K4HXM</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>How it was measured</h2>
+    <ul>
+      <li>
+        <strong>The meter:</strong> a Treedix USB‑C Explorer, in line on the main board's
+        USB‑C port, the one next to the Ethernet jack. Its energy total was cleared as the
+        session began and read as it ended; the times are a computer's clock.
+      </li>
+      <li>
+        <strong>One cable for the whole station.</strong> The sidekick's own USB cable was
+        unplugged, so it ran on the 5&nbsp;V that the cable between the two boards carries,
+        and the meter saw both boards. With a cable in each board the two supplies are joined
+        through that cable, and a meter on one of them reads only part of the current.
+      </li>
+      <li>
+        <strong>The station:</strong> an M5Stack Unit PoE‑P4 and an AtomS3&nbsp;Lite, both on
+        build <code>1db7af0</code>; a QMX (60–15&nbsp;m, firmware 1_04_010) on the main
+        board's other USB port and on its own supply; the sidekick joined to a home Wi‑Fi
+        network.
+      </li>
+      <li>
+        <strong>Nothing else was talking to the station</strong> during the session but the
+        operator's phone. What the session contained was read from the station's log
+        afterwards.
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>What this does not show</h2>
+    <ul>
+      <li>
+        <strong>The peak.</strong> These are steady readings and an average. The highest
+        draw within a slot, as each decode runs, was not recorded.
+      </li>
+      <li>
+        <strong>The sidekick running its own network,</strong> as it does in the field. Here
+        it was a client of a home network.
+      </li>
+      <li>
+        <strong>How long a phone or a power bank lasts.</strong> A supply loses some of its
+        energy making 5&nbsp;V, and that was not measured.
+      </li>
+      <li>
+        <strong>The radio.</strong> The QMX and the amplifier have their own supplies and are
+        not in any figure here.
+      </li>
+      <li>
+        <strong>The meter's accuracy.</strong> It measures 0.16&nbsp;A with a part made for up
+        to 6&nbsp;A, and its maker gives no accuracy at this level; read the figures as
+        “about 0.9&nbsp;W”, not to two decimals. One session, one meter.
+      </li>
+    </ul>
+  </section>
+
+  <footer>
+    <p><a href="../">← Experiments</a></p>
+  </footer>
+</main>
+</html>
