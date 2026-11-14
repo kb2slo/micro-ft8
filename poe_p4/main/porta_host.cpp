@@ -25,6 +25,7 @@
 #include "qso_browse.h"
 #include "radio_select.h"
 #include "radio_control.h"
+#include "tx_ready.h"
 #include "rtc_core.h"
 #include "station.h"
 #include "storage_service.h"
@@ -991,11 +992,21 @@ const char *porta_host_radio_read(void) {
     return nullptr;
 }
 
+// Call CQ and a reply are refused unless the radio is ready (tx_ready.h): a
+// queue entry with no radio is skipped slot after slot without using a try, so
+// it would key by itself when a radio was plugged in, however much later.
+static const char *tx_refusal(void) {
+    return tx_ready_refusal(radio_control_ready(), radio_select_audio_ready(), s_decode_failed);
+}
+
 const char *porta_host_cq_call(void) {
     if (porta_link_test_active()) {
         return "link test";
     }
     ensure_seeded();
+    if (const char *why = tx_refusal()) {
+        return why;
+    }
     if (autoseq_cq_entry_id() != 0) {
         return "a CQ is already queued";
     }
@@ -1082,6 +1093,9 @@ const char *porta_host_queue_cancel(uint16_t entry_id) {
 const char *porta_host_queue_reply(uint32_t decode_id) {
     if (porta_link_test_active()) {
         return "link test";
+    }
+    if (const char *why = tx_refusal()) {
+        return why;
     }
     UiRxLine msg;
     if (!find_decode_for_reply(decode_id, &msg)) {
