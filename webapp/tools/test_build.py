@@ -96,5 +96,24 @@ class RefusesAPlainAssetThatLooksCompressed(unittest.TestCase):
                 build.compress_assets(Path(tmp))
 
 
+class BuildId(unittest.TestCase):
+    def test_a_build_is_stamped_with_its_commit(self):
+        self.assertEqual(build.stamp("d18f9b2", False, "2026-11-13"), "d18f9b2 2026-11-13")
+        self.assertEqual(build.stamp("d18f9b2", True, "2026-11-13"), "d18f9b2-dirty 2026-11-13")
+
+    def test_a_release_is_stamped_with_its_version(self):
+        self.assertEqual(build.stamp("d18f9b2", False, "2026-11-13", "0.1.0+d18f9b2"), "0.1.0+d18f9b2 2026-11-13")
+        # git's short SHA grows with the repository; the version's is always seven.
+        self.assertEqual(build.stamp("d18f9b2c4", False, "2026-11-13", "0.1.0+d18f9b2"), "0.1.0+d18f9b2 2026-11-13")
+
+    def test_a_changed_tree_never_takes_a_version(self):
+        self.assertEqual(build.stamp("d18f9b2", True, "2026-11-13", "0.1.0+d18f9b2"), "d18f9b2-dirty 2026-11-13")
+
+    def test_refuses_a_version_that_is_not_a_release_of_the_commit(self):
+        for version in ("0.1.0+e6e4d88", "b1322+d18f9b2", "0.1.0", "d18f9b2"):
+            with self.assertRaises(SystemExit):
+                build.stamp("d18f9b2", False, "2026-11-13", version)
+
+
 if __name__ == "__main__":
     unittest.main()

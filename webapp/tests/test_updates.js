@@ -154,19 +154,43 @@ assert.strictEqual(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: '' }, {
 eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, Object.assign({ radioAttached: true }, linked)).blocked, '');
 
 // ---- the app: build.json against the page's own build ----
-eq(U.buildCommit('d18f9b2 2026-11-13'), { sha: 'd18f9b2', dirty: false });
-eq(U.buildCommit('d18f9b2-dirty 2026-11-13'), { sha: 'd18f9b2', dirty: true });
-[undefined, '', 'source', '__APP_BUILD__', 'unknown', 'd18f9b2', 'D18F9B2 2026-11-13', 'd18f 2026-11-13'].forEach((b) =>
+eq(U.buildCommit('d18f9b2 2026-11-13'), { sha: 'd18f9b2', dirty: false, version: '' });
+eq(U.buildCommit('d18f9b2-dirty 2026-11-13'), { sha: 'd18f9b2', dirty: true, version: '' });
+// A release's app is stamped with its version (webapp/tools/build.py, stamp()).
+eq(U.buildCommit(REL + ' 2026-11-13'), { sha: 'd18f9b2', dirty: false, version: REL });
+[undefined, '', 'source', '__APP_BUILD__', 'unknown', 'd18f9b2', 'D18F9B2 2026-11-13', 'd18f 2026-11-13',
+  V + ' 2026-11-13', REL + '-dirty 2026-11-13', '0.1.0 2026-11-13', REL].forEach((b) =>
   assert.strictEqual(U.buildCommit(b), null, String(b)));
 const PUB = { build: 'd18f9b2 2026-11-13', size: 185745 };
 assert.strictEqual(U.appOffer(PUB, 'd18f9b2 2026-11-12'), null, 'the same commit built another day is the published app');
 assert.strictEqual(U.appOffer(PUB, 'd18f9b2c 2026-11-13'), null, 'a longer short sha of the same commit');
-eq(U.appOffer(PUB, '7e61488 2026-11-10'), { board: 'app', label: 'App', from: '7e61488', to: 'd18f9b2', size: 185745 });
+eq(U.appOffer(PUB, '7e61488 2026-11-10'), { board: 'app', label: 'App', from: '7e61488', to: 'd18f9b2', size: 185745, base: '' });
 eq(U.appOffer(PUB, 'd18f9b2-dirty 2026-11-13').from, 'd18f9b2-dirty', 'a dirty page is always offered the published app');
 eq(U.appOffer(PUB, '__APP_BUILD__').from, 'source', 'so is an unbuilt one');
 [null, {}, { build: 'd18f9b2 2026-11-13' }, { build: 'd18f9b2 2026-11-13', size: 0 }, { build: 'd18f9b2 2026-11-13', size: '9' },
  { build: 'd18f9b2-dirty 2026-11-13', size: 9 }, { build: 'nope', size: 9 }].forEach((pub) =>
   assert.strictEqual(U.appOffer(pub, '7e61488 2026-11-10'), null, JSON.stringify(pub)));
+
+// A release's app: the stable manifest names it, under its release's number on the mirror.
+const RELAPP = { path: 'app/0.1.0/', build: REL + ' 2026-11-13', size: 185745 };
+const withApp = (app) => Object.assign(stable('0.1.0', 1322), { app });
+eq(U.stableApp(withApp(RELAPP)), { build: REL + ' 2026-11-13', size: 185745, base: 'https://micro-ft8.kalikstein.com/download/app/0.1.0/' });
+[undefined, null, {}, { build: RELAPP.build, size: 9 }, Object.assign({}, RELAPP, { path: 'app/0.1.0' }),
+  Object.assign({}, RELAPP, { path: '../app/0.1.0/' }), Object.assign({}, RELAPP, { path: 'app/0.1.0/x/' }),
+  Object.assign({}, RELAPP, { path: 'https://evil.example/app/0.1.0/' }), Object.assign({}, RELAPP, { path: 7 })].forEach((app) =>
+  assert.strictEqual(U.stableApp(withApp(app)), null, JSON.stringify(app)));
+assert.strictEqual(U.stableApp(Object.assign(manifest(OTA, P4OTA), { app: RELAPP })), null, 'the dev manifest names no app');
+assert.strictEqual(U.stableApp(null), null);
+// Offered by its label, from wherever the page was built; the same release is not offered again.
+eq(U.appOffer(U.stableApp(withApp(RELAPP)), '7e61488 2026-11-10'),
+  { board: 'app', label: 'App', from: '7e61488', to: '0.1.0', size: 185745, base: 'https://micro-ft8.kalikstein.com/download/app/0.1.0/' });
+assert.strictEqual(U.appOffer(U.stableApp(withApp(RELAPP)), REL + ' 2026-11-12'), null, 'this release, built another day');
+eq(U.appOffer(U.stableApp(withApp(RELAPP)), '0.0.9+7e61488 2026-11-01').from, '0.0.9');
+// The same commit built for the other channel is another app: Settings then names the channel's.
+eq(U.appOffer(U.stableApp(withApp(RELAPP)), 'd18f9b2 2026-11-13').to, '0.1.0', 'a dev page, switching to the release cut at its commit');
+eq([U.appOffer(PUB, REL + ' 2026-11-13').from, U.appOffer(PUB, REL + ' 2026-11-13').to], ['0.1.0', 'd18f9b2'], 'and back to dev');
+// An app entry that does not say it is a release's is not offered.
+assert.strictEqual(U.appOffer(U.stableApp(withApp(Object.assign({}, RELAPP, { build: 'nope' }))), '7e61488 2026-11-10'), null);
 
 // The plan with an app step: the app alone, or ahead of the firmware.
 const APP = U.appOffer(PUB, '7e61488 2026-11-10');

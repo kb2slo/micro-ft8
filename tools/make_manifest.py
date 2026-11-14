@@ -12,7 +12,9 @@ for dev, /download/manifest-stable.json for stable. `--version` is the
 version this build was told to report (tools/build_version.py), and names
 the channel; the fixed names end in it (microft8-poe-p4-dev.bin,
 microft8-poe-p4-stable.bin). A stable manifest also records its commit's
-build number, counted here, which orders the two channels' builds.
+build number, counted here, which orders the two channels' builds, and with
+`--app <bundle directory>` the release's web app: where its bundle is on the
+mirror, and the build id and size from its build.json.
 
 Each asset's SHA-256 is computed here, from the file that is uploaded. An
 `ota` entry describes a board's app image, the one an over-the-air update
@@ -128,11 +130,26 @@ def ota_entry(board, path, channel, expected, proto):
     }
 
 
-def build(commit, version, date, assets, otas, proto, generated_at, count=None):
+def app_entry(info, version, app):
+    """A release's app: its bundle's place on the mirror, and its build.json's build id and size.
+
+    The dev app is published apart from the firmware, by another workflow, so only a stable
+    manifest names one; and only one built as this release (webapp/tools/build.py, stamp())."""
+    if info["channel"] != "stable":
+        raise ManifestError("--app is for a stable manifest: the dev app is published apart from the firmware")
+    build_id, size = app.get("build"), app.get("size")
+    if not isinstance(build_id, str) or build_id.split(" ")[0] != version:
+        raise ManifestError(f"the app was built as '{build_id}', not as this release, '{version}'")
+    if not isinstance(size, int) or isinstance(size, bool) or size < 1:
+        raise ManifestError(f"the app's build.json gives no size: {size!r}")
+    return {"path": f"app/{info['label']}/", "build": build_id, "size": size}
+
+
+def build(commit, version, date, assets, otas, proto, generated_at, count=None, app=None):
     """The manifest as a dict. `assets` and `otas` map a kind to a file path.
 
     `count` is the number of commits up to and including `commit`: a stable manifest's build
-    number. A dev version carries its own."""
+    number. A dev version carries its own. `app` is a release's build.json, read."""
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ManifestError(f"--commit wants a full 40-hex SHA, not '{commit}'")
     short = commit[:7]
@@ -160,10 +177,13 @@ def build(commit, version, date, assets, otas, proto, generated_at, count=None):
         if kind in otas:
             entry["ota"] = ota_entry(kind, otas[kind], channel, version, proto)
         out[kind] = entry
-    return {
+    manifest = {
         "channel": channel, "commit": commit, "short": short, "version": version, "build": number,
         "date": date, "generated_at": generated_at, "assets": out,
     }
+    if app is not None:
+        manifest["app"] = app_entry(info, version, app)
+    return manifest
 
 
 def _pairs(values, flag):
@@ -185,17 +205,22 @@ def main(argv=None):
     ap.add_argument("--date", required=True, help="the commit's date, YYYYMMDD, UTC")
     ap.add_argument("--asset", action="append", metavar="KIND=PATH")
     ap.add_argument("--ota", action="append", metavar="BOARD=PATH")
+    ap.add_argument("--app", metavar="DIR", help="a release's built web app bundle, with its build.json")
     ap.add_argument("--out", required=True)
     args = ap.parse_args(argv)
     try:
         # A dev version carries its number; a stable build's is counted, which needs all of main's history.
         info = build_version.parse(args.version)
         count = build_version.commit_count(args.commit) if info and info["channel"] == "stable" else None
+        app = None
+        if args.app:
+            with open(os.path.join(args.app, "build.json"), encoding="utf-8") as f:
+                app = json.load(f)
         manifest = build(
             args.commit, args.version, args.date, _pairs(args.asset, "--asset"), _pairs(args.ota, "--ota"), proto_version(),
-            datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), count,
+            datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), count, app,
         )
-    except (ManifestError, build_version.VersionError, OSError) as e:
+    except (ManifestError, build_version.VersionError, OSError, ValueError) as e:
         print(f"make_manifest: {e}", file=sys.stderr)
         return 1
     with open(args.out, "w", encoding="utf-8", newline="\n") as f:
