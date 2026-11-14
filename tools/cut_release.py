@@ -2,8 +2,8 @@
 """Cut a versioned Micro-FT8 release.
 
 Creates and pushes an annotated `v<version>` tag. CI does the rest: the
-P4 firmware job builds on the tag and the release job publishes the binary
-under the tag's name.
+firmware jobs build on the tag and the release job publishes both boards'
+images under the release's number, to GitHub and to the stable channel.
 
 This script edits no source file, so there is no number to bump and no bump
 commit for the tag to land on the wrong side of.
@@ -181,7 +181,7 @@ def main() -> int:
     print(f"  tag     {tag}")
     print(f"  commit  {sha[:7]}  {subject}")
     print(f"  branch  {branch}")
-    print(f"  CI      builds the P4 image and publishes MicroFT8-PoE-P4-v{version}-Merged.bin")
+    print(f"  CI      builds both boards and publishes {version} to GitHub and the stable channel")
 
     if not args.yes:
         if input("\npush this tag? [y/N] ").strip().lower() not in ("y", "yes"):

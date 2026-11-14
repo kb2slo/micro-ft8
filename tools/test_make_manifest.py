@@ -40,8 +40,8 @@ class ManifestTest(unittest.TestCase):
             f.write(data)
         return path
 
-    def build(self, assets, otas, commit=COMMIT, version=VERSION):
-        return mm.build(commit, version, "20261110", assets, otas, 14, STAMP)
+    def build(self, assets, otas, commit=COMMIT, version=VERSION, count=None):
+        return mm.build(commit, version, "20261110", assets, otas, 14, STAMP, count)
 
     def test_full_manifest(self):
         p4_ota = app_image(VERSION, "poe_p4", 5000)
@@ -59,7 +59,7 @@ class ManifestTest(unittest.TestCase):
             },
         )
         self.assertEqual((m["commit"], m["short"], m["date"], m["generated_at"]), (COMMIT, "c6374c9", "20261110", STAMP))
-        self.assertEqual((m["version"], m["build"]), (VERSION, 1322))
+        self.assertEqual((m["channel"], m["version"], m["build"]), ("dev", VERSION, 1322))
         a = m["assets"]
         # What downloads.html reads today is unchanged.
         self.assertEqual(a["poe_p4"]["stable"], "microft8-poe-p4-dev.bin")
@@ -107,12 +107,49 @@ class ManifestTest(unittest.TestCase):
             with self.assertRaisesRegex(mm.ManifestError, "reports version"):
                 self.one_ota(app_image(version, "poe_p4"))
 
-    def test_refuses_a_version_that_is_not_a_dev_build_of_the_commit(self):
-        for version in ("c6374c9", "", "0.1.0+c6374c9", "b1322+c6374c9-dirty", "b1322"):
-            with self.assertRaisesRegex(mm.ManifestError, "wants a dev build's version"):
-                self.build({}, {}, version=version)
-        with self.assertRaisesRegex(mm.ManifestError, "not a build of commit c6374c9"):
-            self.build({}, {}, version="b1322+e6e4d88")
+    def test_a_stable_manifest_has_its_own_names_and_a_counted_build_number(self):
+        stable = "0.1.0+c6374c9"
+        p4_ota = app_image(stable, "poe_p4", 5000)
+        m = self.build(
+            {
+                "poe_p4": self.put("microft8-poe-p4-0.1.0.bin", b"merged p4"),
+                "source": self.put("microft8-source-0.1.0.tar.gz", b"src"),
+            },
+            {"poe_p4": self.put("microft8-poe-p4-ota-0.1.0.bin", p4_ota)},
+            version=stable, count=1322,
+        )
+        self.assertEqual((m["channel"], m["version"], m["build"], m["short"]), ("stable", stable, 1322, "c6374c9"))
+        a = m["assets"]
+        self.assertEqual((a["poe_p4"]["stable"], a["poe_p4"]["filename"]),
+                         ("microft8-poe-p4-stable.bin", "microft8-poe-p4-0.1.0.bin"))
+        self.assertEqual(a["source"]["stable"], "microft8-source-stable.tar.gz")
+        self.assertEqual(a["poe_p4"]["ota"], {
+            "stable": "microft8-poe-p4-stable-ota.bin",
+            "filename": "microft8-poe-p4-ota-0.1.0.bin",
+            "size": 5000,
+            "sha256": hashlib.sha256(p4_ota).hexdigest(),
+            "version": stable,
+            "proto": 14,
+        })
+        # The same commit's dev image is another build, and is not a release.
+        with self.assertRaisesRegex(mm.ManifestError, "reports version"):
+            self.build({"poe_p4": self.put("m.bin", b"m")}, {"poe_p4": self.put("o.bin", app_image(VERSION, "poe_p4"))},
+                       version=stable, count=1322)
+
+    def test_refuses_a_version_that_is_not_a_channels_build_of_the_commit(self):
+        for version in ("c6374c9", "", "b1322+c6374c9-dirty", "b1322", "0.1.0", "v0.1.0+c6374c9"):
+            with self.assertRaisesRegex(mm.ManifestError, "wants a channel's version"):
+                self.build({}, {}, version=version, count=1322)
+        for version in ("b1322+e6e4d88", "0.1.0+e6e4d88"):
+            with self.assertRaisesRegex(mm.ManifestError, "not a build of commit c6374c9"):
+                self.build({}, {}, version=version, count=1322)
+
+    def test_refuses_a_stable_manifest_with_no_build_number(self):
+        for count in (None, 0, "1322"):
+            with self.assertRaisesRegex(mm.ManifestError, "no build number"):
+                self.build({}, {}, version="0.1.0+c6374c9", count=count)
+        # A dev version's own number stands, whatever is counted.
+        self.assertEqual(self.build({}, {}, count=7)["build"], 1322)
 
     def test_refuses_an_image_too_big_to_stage(self):
         self.one_ota(app_image(VERSION, "poe_p4", mm.OTA_MAX_BYTES))
