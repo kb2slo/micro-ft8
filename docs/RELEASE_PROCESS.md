@@ -8,12 +8,15 @@ Two paths, both defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.
 | Path | Trigger | Job | Published to | PoE-P4 image | Sidekick | OTA images | Source | Getting-started sheet |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Dev | push to `main` that can change the binary | `release-main` | the mirror (**Public Cloudflare mirror**); no git tag and no GitHub release | `microft8-poe-p4-dev.bin` | `microft8-sidekick-dev.bin` | `microft8-poe-p4-dev-ota.bin`, `microft8-sidekick-dev-ota.bin`, and each under `ota/` by its dated name | `microft8-source-dev.tar.gz` | `microft8-getting-started-dev.pdf` |
-| Versioned | push of a tag matching `v*` | `release` | a GitHub release on the tag you pushed, immovable | `MicroFT8-PoE-P4-<tag>-Merged.bin` | — | — | — | `MicroFT8-Getting-Started-<tag>.pdf` |
+| Stable | push of a tag matching `v*` | `release` | a GitHub release on the tag you pushed, immovable, and the mirror | `microft8-poe-p4-<number>.bin` | `microft8-sidekick-<number>.bin` | `microft8-poe-p4-ota-<number>.bin`, `microft8-sidekick-ota-<number>.bin` | `microft8-source-<number>.tar.gz` | `microft8-getting-started-<number>.pdf` |
 
-Both publish the M5Stack Unit PoE-P4 merged image (esp32p4, 0x0, custom LittleFS
-`storage` partition in `poe_p4/partitions.csv`). Dev also publishes a **standalone merged sidekick** image
-(merged by `tools/merge_sidekick_bin.sh` in the sidekick job) and a **history-free source tarball**
-(vendored `ft8_lib`, no `.git`), and each board's **OTA image** (below). The firmware artifacts are skipped entirely for docs-only commits (the
+Both publish the same set: the M5Stack Unit PoE-P4 merged image (esp32p4, 0x0, custom LittleFS
+`storage` partition in `poe_p4/partitions.csv`), a **standalone merged sidekick** image
+(merged by `tools/merge_sidekick_bin.sh` in the sidekick job), a **history-free source tarball**
+(vendored `ft8_lib`, no `.git`), each board's **OTA image** (below), and the channel's manifest. The names
+above are a dev file's on the mirror and a stable file's on GitHub, `<number>` the tag's without its `v`; on
+the mirror a stable file has the dev name with `stable` for `dev`. The web app is not yet published with a
+release (row [nufg](roadmap/ota-updates.md#nufg)). The firmware artifacts are skipped entirely for docs-only commits (the
 `changes` path filter), so a roadmap-only merge neither rebuilds nor republishes any binary, and the dev
 channel's build is the last commit that could change one, not always the tip of `main`.
 
@@ -47,8 +50,8 @@ builds are on a channel: a local build reports its SHA at a tagged commit too, a
 version it is handed, and one naming another commit stops the build, so nothing built at a bench is taken for
 a release. The boards compare versions as whole strings, never by order
 ([sidekick.md](architecture/sidekick.md), **Firmware updates**). The web app's own build id is still its
-commit and date ([webapp.md](architecture/webapp.md), **Build**), and only the PoE-P4 image is published
-from a tag (the table above), until row [nufg](roadmap/ota-updates.md#nufg) is done.
+commit and date ([webapp.md](architecture/webapp.md), **Build**), until row
+[nufg](roadmap/ota-updates.md#nufg) is done.
 
 **An OTA image is a board's app image alone** (`poe_p4.bin`, `sidekick.bin`), which is what an over-the-air
 update writes into an OTA slot ([sidekick.md](architecture/sidekick.md), **Firmware updates**); the merged
@@ -57,7 +60,7 @@ its board (**Public Cloudflare mirror**).
 
 ## Public Cloudflare mirror (anonymous downloads)
 
-`release-main` publishes the dev channel to Cloudflare **R2** bucket
+`release-main` publishes the dev channel, and `release` the stable one, to Cloudflare **R2** bucket
 `micro-ft8-downloads`, served under the site origin by [`webapp/worker.js`](../webapp/worker.js), whose `/download/*` route is one of the two that run the Worker ([webapp.md](architecture/webapp.md), **Serving the site**):
 
 | Stable URL | Contents |
@@ -68,24 +71,30 @@ its board (**Public Cloudflare mirror**).
 | `https://micro-ft8.kalikstein.com/download/microft8-sidekick-dev-ota.bin` | Sidekick OTA image |
 | `https://micro-ft8.kalikstein.com/download/microft8-source-dev.tar.gz` | Source tarball |
 | `https://micro-ft8.kalikstein.com/download/microft8-getting-started-dev.pdf` | Getting-started sheet |
-| `https://micro-ft8.kalikstein.com/download/manifest.json` | Commit, dated filenames, SHA-256; each board's `ota` entry |
-| `https://micro-ft8.kalikstein.com/download/ota/<dated OTA filename>` | Each OTA image again by its dated name, never overwritten or deleted |
+| `https://micro-ft8.kalikstein.com/download/manifest.json` | The dev channel's manifest: commit, version, each file's own name and SHA-256, each board's `ota` entry |
+| `https://micro-ft8.kalikstein.com/download/ota/<dated OTA filename>` | Each dev OTA image again by its dated name, never overwritten or deleted |
+| the six file names above with `stable` for `dev` | The newest stable release's files, replaced at each release |
+| `https://micro-ft8.kalikstein.com/download/manifest-stable.json` | The stable channel's manifest, in the same form |
+| `https://micro-ft8.kalikstein.com/download/ota/microft8-<board>-ota-<number>.bin` | Each stable OTA image by its release's number, never overwritten or deleted |
 
 Human entry: [`https://micro-ft8.kalikstein.com/downloads.html`](https://micro-ft8.kalikstein.com/downloads.html).
 
-**The mirror is the dev channel's only home.** The site, the web flasher and the printed sheet link to names
-that never change, and those keys are overwritten every run; only an OTA image is also kept by its dated name
-(below). Firmware merges do **not** redeploy the Worker (`pages.yml` stays
+**The mirror is the dev channel's only home;** a stable release is on GitHub too, published there first. The
+site, the web flasher and the printed sheet link to names that never change, and those keys are overwritten
+every run; only an OTA image is also kept under a name of its own (below). Firmware merges do **not** redeploy the Worker (`pages.yml` stays
 path-filtered to `webapp/**`).
 
-**The manifest is written by `tools/make_manifest.py`,** before `release-main` publishes anything. Under
-`assets`, each of `poe_p4`, `sidekick`, `source` and `getting_started` has `stable` (its name here),
-`filename` (its dated name, `YYYYMMDD-microft8-<kind>-<commit>`, the date the commit's in UTC; only an OTA image is stored under it) and `sha256`. The two boards also have an `ota` entry: `stable`,
+**Each channel has its own manifest, written by `tools/make_manifest.py`** before its job publishes anything:
+one file a job, so neither rewrites part of the other's. `channel` is `dev` or `stable`. Under
+`assets`, each of `poe_p4`, `sidekick`, `source` and `getting_started` has `stable` (its fixed name here),
+`filename` (its own name: a dev file's dated one, `YYYYMMDD-microft8-<kind>-<commit>`, the date the commit's in UTC, and a stable file's by its release's number; on the mirror only an OTA image is stored under it) and `sha256`. The two boards also have an `ota` entry: `stable`,
 `filename`, `size` in bytes, `sha256`, `version` (the string built into the image) and `proto` (the
 `PORTA_PROTO_VERSION` that build speaks). Beside `commit` and `short`, the manifest's own `version` is the
-build's and `build` its number. The script reads the version out of the image and refuses to write a
-manifest, which fails the job with nothing published, when the version it is given is not a dev build of the
-commit, or an OTA image is not an app image, was built as the other board's project, reports another
+build's and `build` its number: a dev version's own, and for a stable release the number of commits up to
+its commit, counted the same way, so the one number orders the builds of both channels. The script reads the
+version out of the image and refuses to write a
+manifest, which fails the job with nothing published, when the version it is given is not a channel's build
+of the commit, or an OTA image is not an app image, was built as the other board's project, reports another
 version, or is larger than the sidekick's 3 MB OTA slot, where every image is staged. Host-tested (`tools/test_make_manifest.py`).
 
 **The stable files are replaced one at a time, the manifest last.** For the seconds between, the old manifest
@@ -155,7 +164,7 @@ these has a field consequence rather than a cosmetic one.
 
 Renaming touches names that are operator-visible:
 
-- Asset and tag names in `ci.yml` (`MicroFT8-PoE-P4-<tag>-Merged.bin`, `YYYYMMDD-microft8-<kind>-<commit>.bin`).
+- File names in `ci.yml` (`microft8-poe-p4-<number>.bin`, `YYYYMMDD-microft8-<kind>-<commit>.bin`).
 - `MICROFT8_GIT_SHA` in `ci.yml` and `sidekick/CMakeLists.txt`, and `project(sidekick)`.
 - The mDNS hostname `micro-ft8.local` ([system.md](architecture/system.md) (**Why not**)), which is in operators' browser history.
 - Clone URLs and release links in `README.md` and `docs/`. GitHub redirects a renamed repo, so these keep

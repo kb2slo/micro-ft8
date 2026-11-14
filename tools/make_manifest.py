@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write /download/manifest.json for the dev channel (docs/RELEASE_PROCESS.md).
+"""Write a channel's download manifest (docs/RELEASE_PROCESS.md, Public Cloudflare mirror).
 
   python3 tools/make_manifest.py --commit <40-hex> --version b1322+<7-hex> --date YYYYMMDD \\
       --out dist/manifest.json \\
@@ -7,17 +7,23 @@
       --asset sidekick=dist/<dated>.bin --ota sidekick=dist/<dated-ota>.bin \\
       --asset source=dist/<dated>.tar.gz --asset getting_started=dist/<dated>.pdf
 
+One file per channel, each written by one CI job: /download/manifest.json
+for dev, /download/manifest-stable.json for stable. `--version` is the
+version this build was told to report (tools/build_version.py), and names
+the channel; the fixed names end in it (microft8-poe-p4-dev.bin,
+microft8-poe-p4-stable.bin). A stable manifest also records its commit's
+build number, counted here, which orders the two channels' builds.
+
 Each asset's SHA-256 is computed here, from the file that is uploaded. An
 `ota` entry describes a board's app image, the one an over-the-air update
-writes (docs/roadmap/ota-updates.md, Manifest): its size, hash, the version
-string built into it, and the Port A protocol version this tree speaks.
+writes: its size, hash, the version string built into it, and the Port A
+protocol version this tree speaks.
 
-`--version` is the version this build was told to report
-(tools/build_version.py). It refuses to write a manifest for a version that
-is not a dev build of the commit, or for an OTA image a board would refuse or
-could not hold: not an app image, built for another board, reporting another
-version (a board checks the image's own version against the one it was told
-to expect), or larger than the sidekick's staging slot. CI runs it before
+It refuses to write a manifest for a version that is not a channel's build
+of the commit, or for an OTA image a board would refuse or could not hold:
+not an app image, built for another board, reporting another version (a
+board checks the image's own version against the one it was told to
+expect), or larger than the sidekick's staging slot. CI runs it before
 anything is published, so a bad image publishes nothing.
 
 Python's standard library only.
@@ -37,13 +43,14 @@ import build_version  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROTO_HEADER = os.path.join(ROOT, "components", "porta_proto", "include", "porta_proto.h")
 
-# kind -> (stable name's stem, extension, extra fields). The stable names are
-# the R2 keys the site and the printed sheet link to; they never change.
+# kind -> (fixed name's stem, extension, extra fields). The fixed names, the
+# stem and then the channel, are the R2 keys the site and the printed sheet
+# link to; they never change.
 ASSETS = {
-    "poe_p4": ("microft8-poe-p4-dev", ".bin", {"chip": "esp32p4", "flash_offset": "0x0"}),
-    "sidekick": ("microft8-sidekick-dev", ".bin", {"chip": "esp32s3", "flash_offset": "0x0"}),
-    "source": ("microft8-source-dev", ".tar.gz", {}),
-    "getting_started": ("microft8-getting-started-dev", ".pdf", {}),
+    "poe_p4": ("microft8-poe-p4", ".bin", {"chip": "esp32p4", "flash_offset": "0x0"}),
+    "sidekick": ("microft8-sidekick", ".bin", {"chip": "esp32s3", "flash_offset": "0x0"}),
+    "source": ("microft8-source", ".tar.gz", {}),
+    "getting_started": ("microft8-getting-started", ".pdf", {}),
 }
 # board -> the project name its app image carries (project() in its CMakeLists.txt).
 OTA_PROJECT = {"poe_p4": "poe_p4", "sidekick": "sidekick"}
@@ -74,9 +81,9 @@ def sha256_of(path):
     return h.hexdigest()
 
 
-def stable_name(kind, ota=False):
+def stable_name(kind, channel, ota=False):
     stem, ext, _ = ASSETS[kind]
-    return stem + ("-ota" if ota else "") + ext
+    return f"{stem}-{channel}" + ("-ota" if ota else "") + ext
 
 
 def proto_version(header_path=PROTO_HEADER):
@@ -102,7 +109,7 @@ def app_image_info(path):
     return _cstr(head, APP_DESC_VERSION), _cstr(head, APP_DESC_PROJECT)
 
 
-def ota_entry(board, path, expected, proto):
+def ota_entry(board, path, channel, expected, proto):
     version, project = app_image_info(path)
     if project != OTA_PROJECT[board]:
         raise ManifestError(f"{path}: built as '{project}', not {board}'s '{OTA_PROJECT[board]}'")
@@ -112,7 +119,7 @@ def ota_entry(board, path, expected, proto):
     if size > OTA_MAX_BYTES:
         raise ManifestError(f"{path}: {size} bytes will not fit the sidekick's {OTA_MAX_BYTES}-byte staging slot")
     return {
-        "stable": stable_name(board, ota=True),
+        "stable": stable_name(board, channel, ota=True),
         "filename": os.path.basename(path),
         "size": size,
         "sha256": sha256_of(path),
@@ -121,16 +128,23 @@ def ota_entry(board, path, expected, proto):
     }
 
 
-def build(commit, version, date, assets, otas, proto, generated_at):
-    """The manifest as a dict. `assets` and `otas` map a kind to a file path."""
+def build(commit, version, date, assets, otas, proto, generated_at, count=None):
+    """The manifest as a dict. `assets` and `otas` map a kind to a file path.
+
+    `count` is the number of commits up to and including `commit`: a stable manifest's build
+    number. A dev version carries its own."""
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ManifestError(f"--commit wants a full 40-hex SHA, not '{commit}'")
     short = commit[:7]
     info = build_version.parse(version)
-    if not info or info["channel"] != "dev":
-        raise ManifestError(f"--version wants a dev build's version, b<number>+<sha>, not '{version}'")
+    if not info:
+        raise ManifestError(f"--version wants a channel's version, b<number>+<sha> or <x.y.z>+<sha>, not '{version}'")
     if info["sha"] != short:
         raise ManifestError(f"--version '{version}' is not a build of commit {short}")
+    channel = info["channel"]
+    number = info["build"] if channel == "dev" else count
+    if not isinstance(number, int) or number < 1:
+        raise ManifestError(f"no build number for {version}")
     for kind in list(assets) + list(otas):
         if kind not in ASSETS:
             raise ManifestError(f"unknown asset kind '{kind}'")
@@ -141,13 +155,13 @@ def build(commit, version, date, assets, otas, proto, generated_at):
             raise ManifestError(f"--ota {board} without --asset {board}")
     out = {}
     for kind, path in assets.items():
-        entry = {"stable": stable_name(kind), "filename": os.path.basename(path), "sha256": sha256_of(path)}
+        entry = {"stable": stable_name(kind, channel), "filename": os.path.basename(path), "sha256": sha256_of(path)}
         entry.update(ASSETS[kind][2])
         if kind in otas:
-            entry["ota"] = ota_entry(kind, otas[kind], version, proto)
+            entry["ota"] = ota_entry(kind, otas[kind], channel, version, proto)
         out[kind] = entry
     return {
-        "commit": commit, "short": short, "version": version, "build": info["build"],
+        "channel": channel, "commit": commit, "short": short, "version": version, "build": number,
         "date": date, "generated_at": generated_at, "assets": out,
     }
 
@@ -174,11 +188,14 @@ def main(argv=None):
     ap.add_argument("--out", required=True)
     args = ap.parse_args(argv)
     try:
+        # A dev version carries its number; a stable build's is counted, which needs all of main's history.
+        info = build_version.parse(args.version)
+        count = build_version.commit_count(args.commit) if info and info["channel"] == "stable" else None
         manifest = build(
             args.commit, args.version, args.date, _pairs(args.asset, "--asset"), _pairs(args.ota, "--ota"), proto_version(),
-            datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), count,
         )
-    except (ManifestError, OSError) as e:
+    except (ManifestError, build_version.VersionError, OSError) as e:
         print(f"make_manifest: {e}", file=sys.stderr)
         return 1
     with open(args.out, "w", encoding="utf-8", newline="\n") as f:
