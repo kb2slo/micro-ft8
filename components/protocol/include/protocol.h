@@ -6,13 +6,12 @@
 // ---------------------------------------------------------------------------
 // Runtime protocol configuration for Micro-FT8.
 //
-// g_protocol points to the active protocol's ProtocolConfig.  It is set once
-// at boot by load_station_data() based on the protocol_mode field in
-// Station.txt, and never changed during a session.  To switch protocols the
-// user selects a new mode via Settings → Mode and reboots to apply.
-//
-// Boot-time set-once is simpler than hot-switching: no g_protocol_change_seq
-// restart loop is needed in the audio pipeline.
+// A ProtocolConfig is one mode's constants. g_protocol is the station's mode,
+// the one its own channel receives: FT8, and nothing reassigns it. FT4 is
+// received beside it on a channel of its own, which carries &kProtocolFT4 in
+// its config (docs/architecture/decode.md, Channels and FT4), and a queue
+// entry transmits in the mode of the decode it came from
+// (docs/architecture/autoseq.md, The queue).
 // ---------------------------------------------------------------------------
 
 struct ProtocolConfig {
@@ -45,7 +44,6 @@ inline constexpr ProtocolConfig kProtocolFT4 = {
     .samples_per_symbol = 2304,
 };
 
-// g_protocol — pointer to the active protocol for this boot session.
-// Defined in main.cpp (defaults to &kProtocolFT8); set by load_station_data()
-// if protocol_mode=FT4 is present in Station.txt.
+// g_protocol — the station's mode. Defined in poe_p4/main/main.cpp as
+// &kProtocolFT8.
 extern const ProtocolConfig* g_protocol;

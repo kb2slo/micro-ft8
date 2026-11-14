@@ -93,13 +93,10 @@ static void porta_beacon_send(void) {
 // disabling its (different, more aggressive) watchdog-reset trick
 // specifically on ESP32-C6 for causing full system freezes — this looks
 // like a genuine chip limitation, not a timing/implementation bug. Removed
-// rather than left in as dead, misleading UI. Next real attempt: a custom
-// second-stage bootloader that checks an RTC-memory flag and, if set, runs
-// its own flash-receiver instead of the app — sidesteps ROM strap-sampling
-// entirely, needs no wiring, but is real bootloader-level engineering
-// (higher stakes: bugs there affect every boot, not just updates) — see
-// docs/architecture/sidekick.md (Installing the sidekick from the main board)'s "Future phase" note. USB-C stays the only flash path
-// until that's built.
+// rather than left in as dead, misleading UI. The sidekick now updates itself
+// over the air into its other app slot, with no ROM bootloader involved
+// (docs/architecture/sidekick.md, Firmware updates); USB-C is for the first
+// install.
 
 // The AtomS3 Lite's user button -- the one that is not reset. GPIO41, read
 // active low against the board's own pull-up: taken from the M5Unified this
