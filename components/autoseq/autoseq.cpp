@@ -168,9 +168,13 @@ static const char* tx_name(TxMsgType tx) {
     return "?";
 }
 
-// The entry's own count if it has one, otherwise the station default.
+// The entry's own count if it has one, otherwise the station default, which an
+// opening call takes at most AUTOSEQ_OPENING_TRIES of. Reads the entry's state,
+// so set that first.
 static int entry_try_limit(const QsoContext* ctx) {
-    return ctx->tries_custom > 0 ? ctx->tries_custom : s_tries;
+    if (ctx->tries_custom > 0) return ctx->tries_custom;
+    if (ctx->state == AutoseqState::REPLYING) return std::min(s_tries, AUTOSEQ_OPENING_TRIES);
+    return s_tries;
 }
 
 // The queued CQ, as Call CQ makes it (a Free Text one-shot shares CALLING).
@@ -829,7 +833,8 @@ void autoseq_set_cq_type(AutoseqCqType type, const std::string& freetext) {
 
 // ============== Internal helpers ==============
 
-// A new step starts its count over; the limit is the entry's own or the default.
+// A new step starts its count over; the limit is the entry's own, or the
+// default as this step takes it (entry_try_limit()).
 static void set_state(QsoContext* ctx, AutoseqState s, TxMsgType first_tx) {
     ctx->state = s;
     ctx->next_tx = first_tx;
