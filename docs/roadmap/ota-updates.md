@@ -1,6 +1,6 @@
 # OTA updates (epic ukk6)
 
-After the first install, every firmware update, for every board, happens over the air from the web app. Rows: [v697](#v697), [hstv](#hstv), [yme5](#yme5), [antu](#antu), [nufg](#nufg) ([ROADMAP.md](../ROADMAP.md)).
+After the first install, every firmware update, for every board, happens over the air from the web app. Rows: [v697](#v697), [hstv](#hstv), [yme5](#yme5), [nufg](#nufg) ([ROADMAP.md](../ROADMAP.md)).
 
 ## Goal
 
@@ -52,19 +52,18 @@ Built: the plan, the pairing rule, Review, Progress and Result are in [webapp.md
 
 ## Children
 
-Only the next child is a row in the index ([ROADMAP.md](../ROADMAP.md), Now: [antu](#antu)); the others wait here, in order, until it ships. The first three are built and wait only on their field checks ([TEST_PLAN.md](../TEST_PLAN.md), Pending).
+Only the next child is a row in the index ([ROADMAP.md](../ROADMAP.md), Now: [nufg](#nufg)); the others wait here, in order, until it ships. The first three are built and wait only on their field checks ([TEST_PLAN.md](../TEST_PLAN.md), Pending).
 
 In order: each needs the one before it.
 
 * <a id="v697"></a>**v697: the sidekick updates itself** (**Built, awaiting the bench**). **Done-when:** a sidekick updates from the web app; a forced bad image rolls back (field). Built; open for the field check. **Lands in:** sidekick.md **Firmware updates**, webapp.md **Settings › Software update**, system.md and TEST_PLAN Pending, all done; this entry goes when the check passes.
 * <a id="hstv"></a>**hstv: main boards update over Port A, P4 first** (**Built, awaiting the bench**). **Done-when:** the receiver `host_mock`-tested; a P4 updates from the web app with transfer time measured, and a forced bad image rolls back (field). Built; open for the field check and the transfer time. **Lands in:** main_board.md **Firmware updates** and its partitions, sidekick.md **Firmware updates** and **Port A**, RELEASE_PROCESS.md, system.md and TEST_PLAN Pending, all done; the measured transfer time goes into sidekick.md. No README or site note for the one-time USB reflash: only a board flashed before the two-slot table needs it, and pre-alpha carries no upgrade notes.
 * <a id="yme5"></a>**yme5: the web app's update flow** (**The web app**). **Done-when:** **The web app**'s steps 1–6 walked with a QSO in progress, the phone locked mid-transfer, and a second phone open (field). Built; open for the field check. **Lands in:** webapp.md **Settings › Software update** and **The radio bar**, sidekick.md and TEST_PLAN Pending, all done; the site audit (Settings' Updates section, and Getting started's Updates line) is owed when the check passes.
-* <a id="antu"></a>**antu: one Update for the whole station.** After [yme5](#yme5); epic [eu2t](release-1-0.md) needs it. The web app is a separate bundle only for a developer's convenience; an operator sees one station and one **Update** (**Decided**). Built; open for the field check: what it does is in [webapp.md](../architecture/webapp.md), **Settings › Software update** and **Build**, and [sidekick.md](../architecture/sidekick.md), **Installing the app bundle**; images are fetched by their dated names ([RELEASE_PROCESS.md](../RELEASE_PROCESS.md), **Public Cloudflare mirror**). **Done-when:** the plan with an app step, the review's sentence and the relay are host-tested (done: `webapp/tests/test_updates.js`, `test_ask_confirm.js`); with all three behind, one **Update** ends a running CQ, brings app and both boards to the published build, and Settings shows no other update control; a band change asks in the same dialog (field). **Lands in:** webapp.md **Settings › Software update** and **Build**; sidekick.md **Installing the app bundle**; RELEASE_PROCESS.md; TEST_PLAN Pending; the site's Getting started, all done; this entry and the Now row go when the check passes.
-* <a id="nufg"></a>**nufg: versioned releases, and a version an operator can read.** After [antu](#antu); epic [eu2t](release-1-0.md) needs it. A build from a `v*` tag reports that version (`1.0.0`), any other build its SHA as today; a board running a versioned release is offered only the next versioned release, a `continuous` build only `continuous` ([RELEASE_PROCESS.md](../RELEASE_PROCESS.md)). **Done-when:** the manifest carries both channels; a board flashed from a `v*` tag shows its version in Settings and is offered the next tag, not `continuous` (field). **Lands in:** RELEASE_PROCESS.md (an image carries its version; what each channel publishes); webapp.md (**Updates**); TEST_PLAN Pending.
+* <a id="nufg"></a>**nufg: versioned releases, and a version an operator can read.** After the one Update, which shipped 2026-11-14 ([webapp.md](../architecture/webapp.md), **Settings › Software update**); epic [eu2t](release-1-0.md) needs it. A build from a `v*` tag reports that version (`1.0.0`), any other build its SHA as today; a board running a versioned release is offered only the next versioned release, a `continuous` build only `continuous` ([RELEASE_PROCESS.md](../RELEASE_PROCESS.md)). **Done-when:** the manifest carries both channels; a board flashed from a `v*` tag shows its version in Settings and is offered the next tag, not `continuous` (field). **Lands in:** RELEASE_PROCESS.md (an image carries its version; what each channel publishes); webapp.md (**Updates**); TEST_PLAN Pending.
 
 ### Later
 
-* **The sidekick downloads the app bundle itself,** published with the firmware as one unit, so the app step of [antu](#antu) needs no phone and the station has one version (with [nufg](#nufg)).
+* **The sidekick downloads the app bundle itself,** published with the firmware as one unit, so the one Update's app step ([webapp.md](../architecture/webapp.md), **Settings › Software update**) needs no phone and the station has one version (with [nufg](#nufg)).
 * **A window on `FW_CHUNK`,** if [hstv](#hstv)'s measured transfer time is too long.
 
 ## Why not
