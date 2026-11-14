@@ -7,7 +7,8 @@ cmake_minimum_required(VERSION 3.16)
 # step.
 set(IDF_TARGET esp32s3)
 
-# Exact git SHA + dirty flag, not ESP-IDF's default `git describe` (tag-
+# The version this build reports: its channel's version from CI, or its
+# exact git SHA + dirty flag, not ESP-IDF's default `git describe` (tag-
 # relative, fuzzy) — via the shared, override-aware logic in
 # tools/git_version.cmake. Same repo, same commit, so "does this sidekick
 # match the build" is an exact string comparison (docs/architecture/sidekick.md (Port A: the link to the main board)/
@@ -16,11 +17,8 @@ set(IDF_TARGET esp32s3)
 # project() — that's the only hook ESP-IDF's build system gives PROJECT_VER
 # before it falls back to `git describe`.
 set(GIT_DIR "${CMAKE_CURRENT_LIST_DIR}/..")
-include("${CMAKE_CURRENT_LIST_DIR}/../tools/git_version.cmake")  # sets SHA, DIRTY
-set(PROJECT_VER "${SHA}")
-if(DIRTY)
-    set(PROJECT_VER "${PROJECT_VER}-dirty")
-endif()
+include("${CMAKE_CURRENT_LIST_DIR}/../tools/git_version.cmake")  # sets BUILD_VERSION
+set(PROJECT_VER "${BUILD_VERSION}")
 
 # The frame codec is shared with the P4 rather than duplicated: two idf.py
 # projects compiling one file is prong 1 of docs/STYLE.md's

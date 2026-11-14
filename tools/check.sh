@@ -48,10 +48,10 @@ triggers() {
     sim)             echo 'components/* host_mock/* sidekick/main/* webapp/tests/*' ;;
     tx_e2e)          echo 'components/* tests/tx_e2e/*' ;;
     decode_recall)   echo 'components/* tools/decode_recall/* tools/iq_convert/*' ;;
-    tools)           echo 'tools/qmx_record.py tools/hl2_record.py tools/hl2_pcap.py tools/make_manifest.py tools/test_*.py webapp/tools/sidekick.py webapp/tools/install_firmware.py components/porta_proto/include/porta_proto.h sidekick/partitions.csv' ;;
+    tools)           echo 'tools/qmx_record.py tools/hl2_record.py tools/hl2_pcap.py tools/make_manifest.py tools/build_version.py tools/test_*.py webapp/tools/sidekick.py webapp/tools/install_firmware.py components/porta_proto/include/porta_proto.h sidekick/partitions.csv' ;;
     getting_started) echo 'webapp/app/* webapp/tools/* webapp/getting-started.md' ;;
     # The paths filter of ci.yml's `changes` job, which gates CI's firmware jobs.
-    sidekick|p4)     echo 'components/* sidekick/* poe_p4/* idf_component.yml */idf_component.yml tools/*.cmake tools/check_ram_budget.py .github/workflows/ci.yml' ;;
+    sidekick|p4)     echo 'components/* sidekick/* poe_p4/* idf_component.yml */idf_component.yml tools/*.cmake tools/build_version.py tools/check_ram_budget.py .github/workflows/ci.yml' ;;
   esac
 }
 NO_CHECK='*.md docs/* LICENSE *.jpeg *.jpg *.png *.svg .gitignore */.gitignore .cursor/*'
@@ -312,6 +312,7 @@ check_decode_recall() {
 # The recorders, the capture converter, the download manifest and the sidekick
 # client, each against synthetic input: no radio, no audio device, no build, no packages.
 check_tools() {
+  python3 tools/test_build_version.py
   python3 tools/test_make_manifest.py
   python3 tools/test_qmx_record.py
   python3 tools/test_hl2_record.py
