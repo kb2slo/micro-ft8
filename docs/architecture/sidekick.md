@@ -114,7 +114,7 @@ With no WiFi credentials, after a sustained loss of its network, or when the ope
 
 ## The name `micro-ft8.local`
 
-* **The sidekick answers `micro-ft8.local` over mDNS in both modes** (`mdns_bring_up()`, `wifi_prov.c`; `espressif/mdns` 1.14.1), and advertises `_http._tcp`. It has no IPv6 address, so AAAA questions go unanswered and a phone uses the A record.
+* **The sidekick answers `micro-ft8.local` over mDNS in both modes** (`mdns_bring_up()`, `wifi_prov.c`; `espressif/mdns` 1.15.1), and advertises `_http._tcp`. It has no IPv6 address, so AAAA questions go unanswered and a phone uses the A record.
 * **On a home network, a failed lookup is usually WiFi multicast loss, not the responder.** Measured 2026-11-01 in station mode, from a laptop on the same WiFi: 17% of mDNS questions sent to the multicast group went unanswered, while the same question sent unicast to the sidekick's address was answered 59 times in 60, and ping lost under 3%. An access point sends multicast with no acknowledgement or retry, so a phone's lookup can fail while the sidekick is up and serving. mDNS 1.8.2 and 1.14.1 missed at similar rates with the WiFi dropped every two minutes (13% and 18%), so the library version does not change it. The lever is the access point's multicast handling (a multicast-to-unicast option, where it has one), not our firmware.
 
 ## First install
