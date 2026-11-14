@@ -77,6 +77,10 @@ static SrProbe s_sr_probe = SrProbe::Idle;
 static bool s_sr_was_ready = false;
 static int64_t s_sr_probe_deadline_ms = 0;
 static constexpr int64_t kSrProbeMs = 1000;
+// A QMX that answers SR; has left it unanswered in the first second of a reconnect (bench,
+// 2026-11-14), so it is asked this many times before the radio is taken to have no lock.
+static constexpr int kSrProbeTries = 5;
+static int s_sr_probe_tries = 0;
 static bool s_sr_readback_pending = false;
 static SwrTrip s_swr_trip;
 static bool s_swr_operator_start_pending = false;
@@ -373,7 +377,12 @@ static void swr_lock_clear(const char *why) {
 // The operator called CQ, replied or pressed Tune (Tune: clear_anyway, since a Tune trip leaves
 // the lock set). Out of the stopped state, and the lock cleared when it was set.
 void tx_scheduler_swr_operator_start(bool clear_anyway) {
-    if (!swr_lock_known() || decode_tx_state_get_tx_active()) {
+    if (decode_tx_state_get_tx_active()) {
+        return;
+    }
+    if (!swr_lock_known()) {
+        // No lock of the radio's to clear, but our own stop still ends with the operator's tap.
+        swr_trip_operator_start(s_swr_trip);
         return;
     }
     if (amp_band_prime_busy()) {
@@ -461,6 +470,10 @@ static void swr_lock_tick(void) {
     if (!s_sr_was_ready) {
         s_sr_was_ready = true;
         s_sr_probe = SrProbe::Idle;
+        s_sr_probe_tries = 0;
+        // A new connection starts clean, whichever way the probe goes: a radio switched off and on has
+        // no lock set, and a stop left standing here could not be cleared by anything (2026-11-14).
+        s_swr_trip = SwrTrip{};
         lock->poll_with_meters(false);
     }
     if (!porta_p4_station_amp_swr_guard()) {
@@ -510,6 +523,11 @@ static void swr_lock_tick(void) {
                 debug_log_line("SWR protection lock set before we keyed: stopped until CQ, reply or Tune");
             }
         } else if (now_ms >= s_sr_probe_deadline_ms) {
+            if (++s_sr_probe_tries < kSrProbeTries) {
+                ESP_LOGI(TAG, "SR; unanswered, asking again (%d of %d)", s_sr_probe_tries + 1, kSrProbeTries);
+                s_sr_probe = SrProbe::Idle;
+                break;
+            }
             s_sr_probe = SrProbe::No;
             ESP_LOGW(TAG, "SR; unanswered: SWR protection is not handled on this connection "
                           "(QMX firmware before 1_04_004?)");
