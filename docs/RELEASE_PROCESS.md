@@ -123,10 +123,19 @@ on the wrong side of, which is the classic way a hand-run release ends up taggin
 names the published file, and the image reports the tag's number (above).
 
 It refuses, rather than warns, on: a dirty tree, not being on `main`, `HEAD` disagreeing with
-`origin/main`, a tag that already exists locally or on the remote, and a commit CI has not run green.
+`origin/main`, a tag that already exists locally or on the remote, a number not greater than every release
+already tagged, a commit whose dev build was not published, and a commit CI has not run green.
 **A missing CI run counts as a failure, not as permission** (`--skip-ci-check` overrides deliberately, and
 says so on stdout). Then it prints the tag and commit and asks before pushing;
 `--yes` skips the prompt.
+
+**A stable tag goes only on a commit whose dev build was published,** so a release is code that could be
+installed as a dev build, and run at the bench, first. Published means both boards' OTA images are on the
+mirror under their dated names (`tools/dev_build.py`, which asks the mirror). The script refuses first, and
+the tag's `release` job asks again before it publishes anything, so a tag pushed by hand does not pass. A
+commit that changed no firmware has no dev build, since CI built none: `gh workflow run CI --ref main` runs
+the firmware jobs and `release-main` on the tip of `main` whatever changed, and the tag can then be cut. Run
+it only for that: on a commit already published it uploads the two dated OTA images again.
 
 Cutting a release is also the event that ends pre-alpha — **Pre-alpha: do not carry the past** in
 [AGENTS.md](../AGENTS.md) — because a version aimed at anyone but the maintainer is the first time back-compat
