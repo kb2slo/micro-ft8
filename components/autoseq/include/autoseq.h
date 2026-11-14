@@ -12,6 +12,9 @@ constexpr int AUTOSEQ_MAX_QUEUE = 30;
 // default bounds each QSO message and starts a CQ; an entry's own count can be
 // changed in place, up to the per-kind maximum.
 constexpr int AUTOSEQ_TRIES = 6;
+// An opening call (REPLYING: our grid to a station that has not answered us)
+// stops here even when the default is higher; an entry's own count overrides it.
+constexpr int AUTOSEQ_OPENING_TRIES = 4;
 constexpr int AUTOSEQ_TRIES_MAX_QSO = 20;
 constexpr int AUTOSEQ_TRIES_MAX_CQ = 99;
 // How long a parked (inactive) entry lives. It is parked to catch DX retrying
