@@ -34,10 +34,14 @@ var MANIFEST_URLS = {
 var IMAGE_BASE = 'http://micro-ft8.kalikstein.com/download/ota/';
 // The main board first, while the sidekick still speaks its protocol.
 var BOARDS = [{ board: 'main', asset: 'poe_p4', running: 'host' }, { board: 'sidekick', asset: 'sidekick', running: 'running' }];
-var STATE_TEXT = {
-  downloading: 'Downloading', verifying: 'Checking', transferring: 'Sending to the main board',
-  restarting: 'Restarting'
-};
+// What each state of an update reads as; `name` is the board in hand, `pct` its progress or ''.
+function stateText(state, name, pct) {
+  if (state === 'downloading') return 'Downloading the ' + name + '\u2019s image' + pct;
+  if (state === 'verifying') return 'Checking the ' + name + '\u2019s image';
+  if (state === 'transferring') return 'Sending the image to the main board' + pct;
+  if (state === 'restarting') return 'Restarting the ' + name;
+  return 'Working\u2026';
+}
 
 var m = document.getElementById('m');
 var go = document.getElementById('go');
@@ -70,29 +74,38 @@ async function status() {
 
 var sleep = function (ms) { return new Promise(function (res) { setTimeout(res, ms); }); };
 
-// Follows the update to its end. The sidekick does not answer while it restarts; its `last` then
-// says what came of it.
+// Follows the update to its end. The sidekick does not answer while it restarts, and comes back
+// idle: once an update has been seen running, idle is its end, and `last` says what came of it.
+// A restart can fall between two polls, so none need fail for that.
 async function follow() {
-  var gone = false;
+  var seen = false, idleSince = Date.now();
   for (;;) {
     await sleep(2000);
     var s;
-    try { s = await status(); } catch (e) { gone = true; setMsg('Restarting…'); continue; }
+    try { s = await status(); } catch (e) { seen = true; setMsg('Restarting\u2026'); continue; }
     if (s.state === 'failed') {
       setMsg('The update failed: ' + s.why + (s.at ? ' (' + s.at + ')' : '') + '. Tap Install to try again.');
       go.disabled = false;
       return;
     }
-    if (s.state === 'done' || (gone && s.state === 'idle')) {
+    if (s.state === 'done' || (seen && s.state === 'idle')) {
       var bad = s.last && s.last.result === 'rolled_back';
       setMsg(bad ? 'The sidekick went back to the build it ran before. Tap Install to try again.'
         : 'Done. Switch the radio back on, then open the app.');
       go.disabled = false;
       return;
     }
+    if (s.state === 'idle') {
+      if (Date.now() - idleSince > 10000) {
+        setMsg('The sidekick shows no update running. Tap Install to try again.');
+        go.disabled = false;
+        return;
+      }
+      continue;
+    }
+    seen = true;
     var pct = s.size ? ' ' + Math.floor(100 * s.got / s.size) + '%' : '';
-    setMsg((STATE_TEXT[s.state] || s.state) + ' the ' + (s.board === 'main' ? 'main board' : 'sidekick') +
-      '’s image' + pct);
+    setMsg(stateText(s.state, s.board === 'main' ? 'main board' : 'sidekick', pct));
   }
 }
 
