@@ -5,7 +5,7 @@ POTA and SOTA from the field: the operator at a park or on a summit, others work
 ## Goal
 
 * **The activation runs offline.** It may be planned online beforehand; once in the field, choosing it, operating it and logging it need no internet ([system.md](../architecture/system.md), constraint 1).
-* **The top goal, built: a log pota.app and the SOTA database accept without hand-editing** ([logging.md](../architecture/logging.md), **What POTA and SOTA require**). A real upload still waits on a real activation.
+* **The top goal, built: a log pota.app and the SOTA database accept without hand-editing** ([logging.md](../architecture/logging.md), **What POTA and SOTA require**). A real pota.app upload has been accepted for activation credit (maintainer, 2026-11-15).
 * **Then what helps an activator:** a nearby registered reference picked from a list or the map, a grid that matches where the operator is, planning (references near me, 2-fer candidates), and spotting.
 
 ## Constraints
@@ -17,7 +17,7 @@ POTA and SOTA from the field: the operator at a park or on a summit, others work
 
 ## Decided
 
-* **The reference store lives on the sidekick, capped; the active references stay on the main board.** Every reader of the store is the browser, which the sidekick serves directly; the main board needs only `act_refs`.
+* **The reference store, if it is built, lives on the main board's `storage`, beside the log, capped; the sidekick has no data partition** ([ota-updates.md](ota-updates.md), **Decided**). Every reader of the store is the browser, so each read crosses Port A: a cost accepted to keep the station's data on one board. The active references stay on the main board, in `act_refs`.
 * **The store is filled from the map's own POTA and SOTA fetches,** not a second download path.
 * **No `/P` feature.** It is a regional convention, not an FT8 or program requirement, and POTA counts `K1ABC/P` as a different call from `K1ABC`, which complicates P2P matching and dupes. The own-call field is free text, so a suffixed call still logs faithfully. Reopen if an operator in a jurisdiction that expects it asks.
 * **The reference stays off the air** ([logging.md](../architecture/logging.md), **Why not**).
@@ -30,12 +30,13 @@ POTA and SOTA from the field: the operator at a park or on a summit, others work
 
 Saved areas of POTA parks and SOTA summits, each record carrying reference, program, trimmed name, lat/lon, grid and summit points, about 60 bytes.
 
-* **Layout:** a reserved directory in the sidekick's `web` partition that no bundle ships or touches (for example `data/refs/`): one file per saved area, and an index of name, bounding box, date saved and count. Reads are open; saving and deleting need the pairing token.
-* **Budget:** the partition is 1.9 MB; the bundle takes about 470 KB minified, and an install briefly stages a second copy. The store is capped (proposed 256 KB, about 4,000 references; the web build's budget assumes it, [webapp.md](../architecture/webapp.md), **Build**); the saved-areas list shows usage and refuses past the cap, saying why.
+* **Layout:** a directory of its own on the main board's `storage` partition, beside the daily logs: one file per saved area, and an index of name, bounding box, date saved and count. The browser reaches it through the sidekick, over Port A: reads by the file messages the log uses (`FILE_LIST`, `FILE_READ`), saving and deleting by messages the protocol does not have yet, behind the pairing token. Port A may change after 1.0 ([release-1-0.md](release-1-0.md), **Decided**), so nothing is reserved for it now.
+* **Budget:** `storage` is 3 MB with about 12 KB used, and 4.9 MB of the main board's flash is unallocated (read 2026-11-12, [n75z](release-1-0.md#n75z)). The store is capped so it never crowds the log (proposed 256 KB, about 4,000 references); the saved-areas list shows usage and refuses past the cap, saying why.
 * **Filled by the map's existing fetches.** `map.html` already loads POTA parks per country (`api.pota.app/program/parks/{prefix}`) and SOTA summits per association region while online. **Save this area** filters what is loaded to the view and writes it. The live path and the store share one record format and one parser, so a stored area and a live fetch draw identically; offline, the store is the map's POTA/SOTA source.
 * **Freshness:** each area shows its age; saving it again replaces it.
-* **To confirm in code first:** that bundle commit never removes files outside its manifest, and what boot or rehydrate does to an unmountable filesystem. A format would lose the store, acceptable only because it can be downloaded again.
-* **If the cap pinches:** the sidekick's OTA slots are 3 MB (`sidekick/partitions.csv`), about three times its image, so a repartition could roughly double `web`. It costs a USB reflash of every sidekick, so only alongside another one.
+* **To confirm in code first:** what a full `storage` does to the log writer, and that a store file is never listed as a day's log.
+* **If the cap pinches:** `storage` grows into the main board's unallocated flash only by a table change, which [n75z](release-1-0.md#n75z) settles before 1.0.
+* **Port A is slow for this:** a read holds the sidekick's one request at a time, as a log read does ([dlu3](../ROADMAP.md#dlu3)), so an area is read once and the browser's cache carries the map and the nearby list.
 * **The browser caches** in IndexedDB, keyed by area and version, for speed only; it is never the only copy.
 
 ### Location, nearby and the grid check
@@ -94,11 +95,11 @@ Prior art read for this design (read, not copied): Ham2K PoLo (offline park and 
 ## Open
 
 * **The store's cap,** and whether areas are named and listed for deletion (proposed: yes, with usage shown). For A3.
-* **The measured free space in `web`** on a device with the current bundle, which sets the cap. For A3.
+* **How long a saved area takes to read over Port A,** which decides how much the browser must cache. For A3.
 * **Whether the phone's GNSS works offline on iOS** through the cached `geo.html`. For [rrsp](#rrsp), whose field check answers it.
 
 ## Why not
 
 * **Full reference databases on the device.** POTA's `all_parks_ext.csv` is 9.4 MB and SOTA's `summitslist.csv` 25.2 MB (2026-09-26), against 3 MB of main-board storage; an activator needs only the references near where they are going.
 * **The active activation in browser storage only:** evicted by Safari, invisible to a second phone, absent while the phone sleeps. The main board logs the QSO, so it holds the references.
-* **The store on the main board:** a second hop over Port A and new protocol work for data only the browser reads.
+* **The store on the sidekick:** with the app inside the sidekick's image it would be the only reason for a data partition there ([ota-updates.md](ota-updates.md), **Why not**). What is taken on instead: a second hop over Port A, and new messages for data only the browser reads.
