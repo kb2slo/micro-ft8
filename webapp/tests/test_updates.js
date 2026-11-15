@@ -153,85 +153,50 @@ assert.strictEqual(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: '' }, {
 // Nothing about a radio blocks a plan: the review asks for it off, and nothing checks.
 eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, Object.assign({ radioAttached: true }, linked)).blocked, '');
 
-// ---- the app: build.json against the page's own build ----
-eq(U.buildCommit('d18f9b2 2026-11-13'), { sha: 'd18f9b2', dirty: false, version: '' });
-eq(U.buildCommit('d18f9b2-dirty 2026-11-13'), { sha: 'd18f9b2', dirty: true, version: '' });
-// A release's app is stamped with its version (webapp/tools/build.py, stamp()).
-eq(U.buildCommit(REL + ' 2026-11-13'), { sha: 'd18f9b2', dirty: false, version: REL });
-[undefined, '', 'source', '__APP_BUILD__', 'unknown', 'd18f9b2', 'D18F9B2 2026-11-13', 'd18f 2026-11-13',
-  V + ' 2026-11-13', REL + '-dirty 2026-11-13', '0.1.0 2026-11-13', REL].forEach((b) =>
-  assert.strictEqual(U.buildCommit(b), null, String(b)));
-const PUB = { build: 'd18f9b2 2026-11-13', size: 185745 };
-assert.strictEqual(U.appOffer(PUB, 'd18f9b2 2026-11-12'), null, 'the same commit built another day is the published app');
-assert.strictEqual(U.appOffer(PUB, 'd18f9b2c 2026-11-13'), null, 'a longer short sha of the same commit');
-eq(U.appOffer(PUB, '7e61488 2026-11-10'), { board: 'app', label: 'App', from: '7e61488', to: 'd18f9b2', size: 185745, base: '' });
-eq(U.appOffer(PUB, 'd18f9b2-dirty 2026-11-13').from, 'd18f9b2-dirty', 'a dirty page is always offered the published app');
-eq(U.appOffer(PUB, '__APP_BUILD__').from, 'source', 'so is an unbuilt one');
-[null, {}, { build: 'd18f9b2 2026-11-13' }, { build: 'd18f9b2 2026-11-13', size: 0 }, { build: 'd18f9b2 2026-11-13', size: '9' },
- { build: 'd18f9b2-dirty 2026-11-13', size: 9 }, { build: 'nope', size: 9 }].forEach((pub) =>
-  assert.strictEqual(U.appOffer(pub, '7e61488 2026-11-10'), null, JSON.stringify(pub)));
-
-// A release's app: the stable manifest names it, under its release's number on the mirror.
-const RELAPP = { path: 'app/0.1.0/', build: REL + ' 2026-11-13', size: 185745 };
-const withApp = (app) => Object.assign(stable('0.1.0', 1322), { app });
-eq(U.stableApp(withApp(RELAPP)), { build: REL + ' 2026-11-13', size: 185745, base: 'https://micro-ft8.kalikstein.com/download/app/0.1.0/' });
-[undefined, null, {}, { build: RELAPP.build, size: 9 }, Object.assign({}, RELAPP, { path: 'app/0.1.0' }),
-  Object.assign({}, RELAPP, { path: '../app/0.1.0/' }), Object.assign({}, RELAPP, { path: 'app/0.1.0/x/' }),
-  Object.assign({}, RELAPP, { path: 'https://evil.example/app/0.1.0/' }), Object.assign({}, RELAPP, { path: 7 })].forEach((app) =>
-  assert.strictEqual(U.stableApp(withApp(app)), null, JSON.stringify(app)));
-assert.strictEqual(U.stableApp(Object.assign(manifest(OTA, P4OTA), { app: RELAPP })), null, 'the dev manifest names no app');
-assert.strictEqual(U.stableApp(null), null);
-// Offered by its label, from wherever the page was built; the same release is not offered again.
-eq(U.appOffer(U.stableApp(withApp(RELAPP)), '7e61488 2026-11-10'),
-  { board: 'app', label: 'App', from: '7e61488', to: '0.1.0', size: 185745, base: 'https://micro-ft8.kalikstein.com/download/app/0.1.0/' });
-assert.strictEqual(U.appOffer(U.stableApp(withApp(RELAPP)), REL + ' 2026-11-12'), null, 'this release, built another day');
-eq(U.appOffer(U.stableApp(withApp(RELAPP)), '0.0.9+7e61488 2026-11-01').from, '0.0.9');
-// The same commit built for the other channel is another app: Settings then names the channel's.
-eq(U.appOffer(U.stableApp(withApp(RELAPP)), 'd18f9b2 2026-11-13').to, '0.1.0', 'a dev page, switching to the release cut at its commit');
-eq([U.appOffer(PUB, REL + ' 2026-11-13').from, U.appOffer(PUB, REL + ' 2026-11-13').to], ['0.1.0', 'd18f9b2'], 'and back to dev');
-// An app entry that does not say it is a release's is not offered.
-assert.strictEqual(U.appOffer(U.stableApp(withApp(Object.assign({}, RELAPP, { build: 'nope' }))), '7e61488 2026-11-10'), null);
-
-// The plan with an app step: the app alone, or ahead of the firmware.
-const APP = U.appOffer(PUB, '7e61488 2026-11-10');
-pl = U.plan(manifest(OTA15, P4OTA), { sidekick: V, main: V }, linked, APP);
-eq([pl.any, pl.app.to, pl.steps.length, pl.body, pl.time, pl.unavailable], [true, 'd18f9b2', 0, '', 'under a minute', '']);
-pl = U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked, APP);
-eq([pl.any, pl.steps.map((o) => o.board), pl.time], [true, ['main', 'sidekick'], 'about three minutes']);
-eq(U.plan(manifest(OTA15, P4OTA), { sidekick: V, main: V }, linked, null).any, false);
+// ---- the plan has no app step ----
+// The web app is part of the sidekick's image: a station on the published firmware has nothing to
+// update, however its page was built, and no plan carries an app.
+pl = U.plan(manifest(OTA15, P4OTA), { sidekick: V, main: V }, linked);
+eq([pl.any, pl.steps.length, pl.body, 'app' in pl], [false, 0, '', false]);
+pl = U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked);
+eq([pl.any, pl.steps.map((o) => o.board), pl.time, 'app' in pl], [true, ['main', 'sidekick'], 'about three minutes', false]);
+// A manifest that still names an app (a release cut before the bundle's publishing stops) adds nothing.
+pl = U.plan(Object.assign(stable('0.1.0', 1322), { app: { path: 'app/0.1.0/', build: REL + ' 2026-11-13', size: 185745 } }),
+  { sidekick: REL, main: REL }, linked);
+eq([pl.any, pl.steps.length], [false, 0]);
+// The body is the boards' images and nothing else: the main board's, then the sidekick's.
+pl = U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked);
+eq(pl.body.split('\n').filter((l) => /^board=|^next$/.test(l)), ['board=main', 'next', 'board=sidekick']);
 // Unavailable: no main board (the boards update together), or the sidekick on its own network.
-eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '' }, { hostLinked: false, sidekickProto: 15 }, APP).unavailable, 'no_host');
-eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, Object.assign({ ap: true }, linked), APP).unavailable, 'ap');
+eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '' }, { hostLinked: false, sidekickProto: 15 }).unavailable, 'no_host');
+eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, Object.assign({ ap: true }, linked)).unavailable, 'ap');
 assert(/main board/.test(U.unavailableText('no_host')) && /own network/.test(U.unavailableText('ap')));
 assert.strictEqual(U.unavailableText(''), '');
 
 // The review: says once that nothing transmits, names nothing it ends (the band change's dialog
-// before it did), asks for the radio off only when firmware is in it, and never promises receiving
-// goes on.
-pl = U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked, APP);
+// before it did), asks for the radio off, says the phone may lock, since no step is the page's, and
+// never promises receiving goes on.
 let rv = U.reviewText(pl);
-eq(rv[0], 'Takes about three minutes. Nothing transmits until the update is done.');
-assert(/Switch the radio off/.test(rv[1]));
-eq(rv[2], 'Keep this page open until the app is installed; the rest goes on if this phone locks.');
-rv = U.reviewText(U.plan(manifest(OTA15, P4OTA), { sidekick: V, main: V }, linked, APP));
-eq(rv, ['Takes under a minute. Nothing transmits until the update is done.', 'Keep this page open until the app is installed.']);
-rv = U.reviewText(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: V }, linked, null));
-eq(rv[2], 'The update goes on if this phone locks.');
-rv.forEach((t) => assert(!/receiv|decod/i.test(t), 'no promise about receiving: ' + t));
+eq(rv, ['Takes about three minutes. Nothing transmits until the update is done.',
+  'Switch the radio off, or unplug its USB, before you update. If it stays connected it may need switching off and on afterwards.',
+  'The update goes on if this phone locks.']);
+rv = U.reviewText(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: V }, linked));
+eq([rv[0], rv[2]], ['Takes about a minute. Nothing transmits until the update is done.', 'The update goes on if this phone locks.']);
+rv.forEach((t) => assert(!/receiv|decod|page open/i.test(t), 'no promise about receiving, and no page to keep open: ' + t));
 
-// The note under the offer: the radio off only when firmware is in the update, as the review asks.
-eq(U.offerNote(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked, APP)), 'Switch the radio off first.');
-eq(U.offerNote(U.plan(manifest(OTA15, P4OTA), { sidekick: V, main: V }, linked, APP)), '', 'the app alone asks nothing of the radio');
-eq(U.offerNote(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: V }, linked, null)), U.whyText('pair') + '.');
+// The note under the offer: the radio off, as the review asks, or why the plan cannot run.
+eq(U.offerNote(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked)), 'Switch the radio off first.');
+eq(U.offerNote(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: V }, linked)), 'Switch the radio off first.');
+eq(U.offerNote(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: V }, linked)), U.whyText('pair') + '.');
 
 // ---- the plan's channel, and a switch of channel ----
-pl = U.plan(manifest(OTA15, P4OTA), { sidekick: 'b1321+7e61488', main: 'b1321+7e61488' }, linked, null);
+pl = U.plan(manifest(OTA15, P4OTA), { sidekick: 'b1321+7e61488', main: 'b1321+7e61488' }, linked);
 eq([pl.channel, pl.target, pl.switching, pl.older, pl.to, pl.steps.length], ['dev', 'dev', false, false, 'b1322', 2]);
 eq(U.reviewText(pl)[0], 'Takes about three minutes. Nothing transmits until the update is done.', 'an update says nothing of channels');
 // Dev to stable, to a release cut from an earlier commit than the build the station runs.
 const dev1330 = { sidekick: 'b1330+abc1234', main: 'b1330+abc1234' };
-eq(U.plan(stable('0.1.0', 1322), dev1330, linked, null).steps.length, 2, 'not on stable, so its Update would move it: the page asks as a switch');
-pl = U.plan(stable('0.1.0', 1322), dev1330, linked, null, true);
+eq(U.plan(stable('0.1.0', 1322), dev1330, linked).steps.length, 2, 'not on stable, so its Update would move it: the page asks as a switch');
+pl = U.plan(stable('0.1.0', 1322), dev1330, linked, true);
 eq([pl.channel, pl.target, pl.switching, pl.older, pl.to, pl.steps.map((o) => o.board), pl.steps[0].to],
   ['dev', 'stable', true, true, '0.1.0', ['main', 'sidekick'], REL]);
 eq(U.switchLabel(pl), 'Switch to Stable (0.1.0)');
@@ -240,17 +205,17 @@ eq(rv[0], 'This station moves to the Stable channel, 0.1.0. That is an older bui
 eq(rv[1], 'Takes about three minutes. Nothing transmits until the update is done.');
 assert(/Switch the radio off/.test(rv[2]));
 // The same code or later: not called older. A bench build's age is not known, and not guessed.
-eq(U.plan(stable('0.1.0', 1322), { sidekick: V, main: V }, linked, null, true).older, false);
-eq(U.plan(stable('0.1.0', 1330), { sidekick: V, main: V }, linked, null, true).older, false);
-eq(U.plan(stable('0.1.0', 1322), { sidekick: '7e61488', main: '7e61488' }, linked, null, true).older, false);
+eq(U.plan(stable('0.1.0', 1322), { sidekick: V, main: V }, linked, true).older, false);
+eq(U.plan(stable('0.1.0', 1330), { sidekick: V, main: V }, linked, true).older, false);
+eq(U.plan(stable('0.1.0', 1322), { sidekick: '7e61488', main: '7e61488' }, linked, true).older, false);
 // Stable to dev: dev is built from main, at or past any release.
-pl = U.plan(manifest(OTA15, P4OTA), { sidekick: REL, main: REL }, linked, null, true);
+pl = U.plan(manifest(OTA15, P4OTA), { sidekick: REL, main: REL }, linked, true);
 eq([pl.channel, pl.target, pl.switching, pl.older, U.switchLabel(pl), U.reviewText(pl)[0]],
   ['stable', 'dev', true, false, 'Switch to Dev (b1322)', 'This station moves to the Dev channel, b1322.']);
 // A switch is held to the same pairing rule as an update.
-eq(U.plan(stable('0.1.0', 1322), { sidekick: REL, main: 'b1330+abc1234' }, Object.assign({}, linked, { sidekickProto: 14 }), null, true).blocked, 'pair');
+eq(U.plan(stable('0.1.0', 1322), { sidekick: REL, main: 'b1330+abc1234' }, Object.assign({}, linked, { sidekickProto: 14 }), true).blocked, 'pair');
 // No manifest for the other channel (no release cut yet): nothing to switch to.
-pl = U.plan(null, dev1330, linked, null, true);
+pl = U.plan(null, dev1330, linked, true);
 eq([pl.any, pl.target, pl.to, pl.steps.length], [false, 'dev', '', 0]);
 
 // ---- the app's relay, against a fake host and sidekick ----
@@ -300,11 +265,6 @@ function relayWorld(o) {
   eq(await U.relayApp('https://h.example/app', w.io), { ok: false, why: 'refused', detail: 'commit: rename failed' });
   ['network', 'pairing', 'firmware', 'changed', 'refused'].forEach((why) => assert(!/failed$/.test(U.appWhyText(why)), why));
 
-  // The app's row on the progress sheet.
-  eq(U.appRow({ at: 'now', done: 92873, total: 185745 }), { text: 'Install the app (181 KB)', pct: '50%', at: 'now' });
-  eq(U.appRow({ at: 'done', done: 0, total: 185745 }), { text: 'Install the app (181 KB)', pct: '', at: 'done' });
-  eq(U.appRow({ at: 'after', done: 0, total: 185745 }), { text: 'Install the app (181 KB), after the firmware', pct: '', at: 'next' });
-  eq(U.appRow({ at: 'failed', done: 0, total: 185745 }).at, 'now');
   console.log('ok (relay)');
 })().catch((e) => { console.error(e); process.exit(1); });
 

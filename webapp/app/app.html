@@ -1393,8 +1393,9 @@ function fnv1a(bytes) {
 // gap above, but the "same bytes in, same hash out" property is what makes
 // this a useful A/B against install_app.py's own printed hash.
 var loadedAppHash = null;
-// webapp/tools/build.py replaces this with "<git sha>[-dirty] <UTC date>";
-// the unbuilt source (a local preview) keeps the placeholder and shows "source".
+// webapp/tools/build.py replaces this with the build id: the version of the sidekick image the app
+// is built into, or "<git sha>[-dirty] <UTC date>" for a build on its own. The unbuilt source (a
+// local preview) keeps the placeholder and shows "source".
 var APP_BUILD = '__APP_BUILD__';
 function appBuildLabel() {
   return APP_BUILD.indexOf('__') === 0 ? 'source' : APP_BUILD;
@@ -1468,28 +1469,24 @@ setInterval(checkAppStale, 60000);
 
 // ===================== Settings: Software update =====================
 // The station's one Update (docs/architecture/webapp.md, Settings › Software update). This page
-// reads the release manifest and the published app's build.json over HTTPS. One tap holds transmit
-// off, installs the app by this page's relay, then hands the sidekick the firmware plan: each
-// image's URL, size and hash, the main board's first. The sidekick does that part and reports at
-// /api/fw/status, so it goes on with this page closed, and every phone shows the same progress. The
-// plan, the relay, the steps and every sentence are FwUpdates' (updates.js); this is the drawing and
-// the requests.
+// reads each channel's release manifest over HTTPS. One tap hands the sidekick the firmware plan:
+// each image's URL, size and hash, the main board's first. The sidekick holds transmit off, does
+// the rest and reports at /api/fw/status, so it goes on with this page closed, and every phone
+// shows the same progress. The web app is part of the sidekick's image and moves with it. The
+// plan, the steps and every sentence are FwUpdates' (updates.js); this is the drawing and the
+// requests.
 var fwManifests = { dev: null, stable: null };  // each channel's manifest as last read, or null
 var fwManifestErr = false;  // the last read failed: no internet from here
 var fwTarget = '';          // the channel the last review was for: '' the station's own, else a switch
 var fwRunning = {};         // board -> the version it reports
 var fwLink = { hostLinked: false, mainProto: 0, sidekickProto: 0 };
-var appPublished = null;    // the published app's build.json, or null
-var appHost = '';           // where the app is published: the sidekick's bundle host
 var fwStatus = null;        // the last GET /api/fw/status with a plan in it
 var fwMine = null;          // the plan this page is running, from the tap to its result
-var appRun = null;          // its app step: {at, done, total} (FwUpdates.appRow())
 var fwPolling = false;
 var fwSheetMode = '';       // '', 'progress' or 'result'
 var fwReloadOnClose = false;
 var fwStartNote = '';       // what postFwPlan() had to do to start this update, for its result
 
-var APP_HOST_DEFAULT = 'https://micro-ft8.kalikstein.com/app';
 async function readPublished() {
   try {
     var r = await fetch(FwUpdates.MANIFEST_URLS.dev, { cache: 'no-store' });
@@ -1506,18 +1503,6 @@ async function readPublished() {
   } catch (e) {
     fwManifests.stable = null;
   }
-  if (!appHost) {
-    try {
-      var hr = await fetch('/api/bundle-host', { cache: 'no-store' });
-      if (hr.ok) appHost = (await hr.json()).url || '';
-    } catch (e) { /* the default below */ }
-  }
-  try {
-    var br = await fetch((appHost || APP_HOST_DEFAULT).replace(/\/+$/, '') + '/build.json', { cache: 'no-store' });
-    appPublished = br.ok ? await br.json() : null;
-  } catch (e) {
-    appPublished = null;
-  }
 }
 
 async function checkFwUpdates() {
@@ -1531,8 +1516,7 @@ async function checkFwUpdates() {
   renderFwUpdates();
 }
 
-// The plan to `target`, a channel: the station's own (an update), or the other (a switch). The dev
-// app is the one on the sidekick's bundle host, a release's the one its manifest names.
+// The plan to `target`, a channel: the station's own (an update), or the other (a switch).
 function fwPlan(target) {
   var cfg = lastCfg || {};
   var link = {
@@ -1541,12 +1525,11 @@ function fwPlan(target) {
   };
   var channel = FwUpdates.channelOf(fwRunning);
   target = target || channel;
-  var app = FwUpdates.appOffer(target === 'dev' ? appPublished : FwUpdates.stableApp(fwManifests.stable), APP_BUILD);
-  return FwUpdates.plan(fwManifests[target], fwRunning, link, app, target !== channel);
+  return FwUpdates.plan(fwManifests[target], fwRunning, link, target !== channel);
 }
 
 // One line, the station's: whether a newer build is published and about how long it takes. The
-// app and the boards are named only in the progress and in a failure.
+// boards are named only in the progress and in a failure.
 function renderFwUpdates() {
   var list = document.getElementById('updList');
   var msg = document.getElementById('updMsg');
@@ -1649,90 +1632,18 @@ async function openFwReview(target) {
   if (yes) runUpdate(plan);
 }
 
-// The hold on transmit, for the page's own step (sidekick.md, Firmware updates: POST /api/fw/hold).
-// The main board ends a hold nobody refreshes in 90 s, so it is said again every 20 s while held.
-var fwHoldTimer = null;
-function setHold(on) {
-  clearInterval(fwHoldTimer);
-  fwHoldTimer = null;
-  var say = function () { return authPostQuiet('/api/fw/hold', on ? 'on' : 'off'); };
-  if (on) fwHoldTimer = setInterval(say, 20000);
-  return say();
-}
-
-function drawRun(fwRows, note) {
-  fwShow('progress', {
-    title: 'Updating the station',
-    steps: (appRun ? [FwUpdates.appRow(appRun)] : []).concat(fwRows || []),
-    note: note,
-  });
-}
-
-// The app's step: the relay, holding transmit off as it goes. A file published again mid-relay
-// is tried once more, against the manifest as it is then.
-async function appStep(firmwareRows) {
-  appRun.at = 'now';
-  appRun.done = 0;
-  var io = {
-    get: function (url) {
-      var ac = new AbortController();
-      var t = setTimeout(function () { ac.abort(); }, 60000);
-      return fetch(url, { cache: 'no-store', signal: ac.signal }).finally(function () { clearTimeout(t); });
-    },
-    begin: function (text) {
-      return MicroFT8Pairing.authFetch('/api/bundle/begin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text });
-    },
-    put: function (p, bytes) {
-      return MicroFT8Pairing.authFetch('/api/bundle/file?path=' + encodeURIComponent(p), { method: 'PUT', body: bytes });
-    },
-    commit: function () { return MicroFT8Pairing.authFetch('/api/bundle/commit', { method: 'POST' }); },
-    progress: function (done, total) {
-      appRun.done = done;
-      appRun.total = total || appRun.total;
-      drawRun(firmwareRows, 'Keep this page open until the app is installed.');
-    },
-  };
-  var base = (fwMine && fwMine.app && fwMine.app.base) || appHost || APP_HOST_DEFAULT;
-  var r = await FwUpdates.relayApp(base, io);
-  if (!r.ok && r.why === 'changed') r = await FwUpdates.relayApp(base, io);
-  if (r.why === 'pairing') MicroFT8Pairing.needsReauth();
-  appRun.at = r.ok ? 'done' : 'failed';
-  if (r.ok) fwReloadOnClose = true;
-  return r;
-}
-
-// One tap of Update: the hold, the app, then the firmware plan, which the sidekick runs by itself.
-// A sidekick whose firmware is too old for the app refuses it before any file lands; the app then
-// waits for the firmware and goes in after it (appRun.at 'after').
+// One tap of Update: the firmware plan, in one request, which the sidekick runs by itself. It
+// holds transmit off from the moment it accepts the plan (sidekick.md, Firmware updates), so this
+// page holds nothing and may be locked or closed from here on.
 async function runUpdate(plan) {
   fwMine = plan;
   fwStatus = null;
   fwReloadOnClose = false;
   fwStartNote = '';
-  appRun = plan.app ? { at: 'now', done: 0, total: plan.app.size } : null;
   renderFwUpdates();
-  drawRun([], '');
-  await setHold(true);
-  if (plan.app) {
-    var r = await appStep([]);
-    var later = !r.ok && r.why === 'firmware' && plan.steps.some(function (o) { return o.board === 'sidekick'; });
-    if (later) appRun.at = 'after';
-    else if (!r.ok) {
-      await setHold(false);
-      return fwResult({ ok: false, text: FwUpdates.appWhyText(r.why) }, r.detail || '');
-    }
-  }
-  if (!plan.steps.length) {
-    await setHold(false);
-    return fwResult({ ok: true, text: 'Updated to ' + plan.app.to }, '');
-  }
+  fwShow('progress', { title: 'Updating the station', steps: [], note: '' });
   var why = await postFwPlan(plan);
-  if (why) {
-    await setHold(false);
-    return fwResult({ ok: false, text: why }, '');
-  }
-  // The sidekick holds transmit from here (fw_hold_refresh_due()); the page's own refresh stops.
-  clearInterval(fwHoldTimer);
+  if (why) return fwResult({ ok: false, text: why }, '');
   followFw();
 }
 
@@ -1839,8 +1750,7 @@ async function followFw() {
     var canCancel = reachable && status && ['downloading', 'verifying', 'transferring'].indexOf(status.state) >= 0;
     fwShow('progress', {
       title: 'Updating the station',
-      steps: (fwMine && appRun ? [FwUpdates.appRow(appRun)] : []).concat(
-        FwUpdates.stepRows(fwStatus, reachable && FwUpdates.busy(status))),
+      steps: FwUpdates.stepRows(fwStatus, reachable && FwUpdates.busy(status)),
       note: 'Keep the station powered.',
       cancel: canCancel ? 'Cancel update' : '',
     });
@@ -1858,30 +1768,25 @@ async function followFw() {
     return;
   }
   if (!end) return fwResult(null, '');
+  // The sidekick's new image carries its app, and Close reloads into it. A reload after the main
+  // board's alone is harmless, and reads the station afresh.
   if (end.ok) fwReloadOnClose = true;
-  // The app waited for this firmware: it goes in now, under the hold again.
-  if (end.ok && appRun && appRun.at === 'after') {
-    await setHold(true);
-    var r = await appStep(FwUpdates.stepRows(fwStatus, false));
-    await setHold(false);
-    if (!r.ok) return fwResult({ ok: false, text: 'Firmware updated; ' + FwUpdates.appWhyText(r.why).replace(/^./, function (c) { return c.toLowerCase(); }) }, r.detail || '');
-  }
   fwResult(end, '');
 }
 
 // The result of this page's update. `end` null: the sidekick stopped answering for good.
 function fwResult(end, detail) {
-  var mine = fwMine;
-  var firmware = !!mine && mine.steps.length > 0;
+  // The app is the sidekick's: there is a new one to open only when the sidekick was updated.
+  var newApp = !!fwMine && fwMine.steps.some(function (o) { return o.board === 'sidekick'; });
   fwMine = null;
   var failed = !end || !end.ok;
   var fwFailedRows = end && !end.ok && fwStatus && fwStatus.state === 'failed' ? FwUpdates.stepRows(fwStatus, true) : [];
   fwShow('result', {
     title: end ? end.text : 'No answer from the sidekick',
-    steps: failed ? (appRun && appRun.at === 'failed' ? [FwUpdates.appRow(appRun)] : []).concat(fwFailedRows) : [],
+    steps: failed ? fwFailedRows : [],
     note: !end ? 'Check that this phone is on the sidekick’s network, then reload.'
-      : end.ok ? (firmware ? 'Switch the radio back on. If it was connected during the update and does not reconnect, switch it off and on. ' : '') +
-        'Close opens the new app.' + (fwStartNote ? ' ' + fwStartNote : '')
+      : end.ok ? 'Switch the radio back on. If it was connected during the update and does not reconnect, switch it off and on.' +
+        (newApp ? ' Close opens the new app.' : '') + (fwStartNote ? ' ' + fwStartNote : '')
       : detail || fwStartNote,
     // Retry opens the review again, against what is published then.
     failed: failed, retry: failed && !!end, cancel: 'Close',

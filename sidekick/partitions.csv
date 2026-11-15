@@ -10,9 +10,9 @@
 # USB-C reflash of every device. Cheap at one device, expensive after
 # distribution.
 #
-# web (LittleFS) claims the free tail above ota_1 (~1.9 MB). It is the sole
-# HTTP origin for HTML/JS/CSS once hydrated (docs/architecture/sidekick.md (Web root)). Firmware still
-# embeds sidekick/main/web/* as the hydrate seed; the FS is what is served.
+# web (LittleFS) claims the free tail above ota_1 (~1.9 MB). Nothing is served
+# from it: the app and the bootstrap pages are in the firmware image
+# (docs/architecture/sidekick.md (Web root)). It stays while the bundle API writes to it.
 # nvs stays at 0x9000 with its original 24 KB — move it and WiFi/token config
 # are silently lost.
 #

@@ -9,7 +9,7 @@ docs/architecture/webapp.md (Build). Steps, in order:
   5. gzip each asset where that shrinks it, keeping its name;
   6. write manifest.json from the output, so it lists the bytes as shipped;
   7. fail if a file or the whole bundle breaks the size budget (compressed bytes);
-  8. write build.json beside it: the build id and the bundle's size, for the page's update check.
+  8. write build.json beside it: the build id and the bundle's size, which an older page reads;
   9. write webapp/dist/app.pack: the same assets as one file (app_pack.py; sidekick/main/app_pack.h).
 
 Pages, CI and install_app.py all run this, so what is tested is what ships.
@@ -17,6 +17,14 @@ Pages, CI and install_app.py all run this, so what is tested is what ships.
 Usage:
   npm ci --prefix webapp/tools      # once per clone, and after package-lock.json changes
   python3 webapp/tools/build.py
+  python3 webapp/tools/build.py --version V --pack OUT
+      # as the sidekick's build runs it (sidekick/main/CMakeLists.txt): the app stamped V, the
+      # version the image reports, and the pack written to OUT too, for the image to embed
+
+MICROFT8_APP_PACK names a pack already built, by a path from the repository's root: --pack then
+copies it to OUT and builds nothing, and refuses one that is not stamped V. CI sets it, since
+ESP-IDF's container has no Node: the workflow builds the pack on the runner first, from the same
+checkout (.github/workflows/ci.yml).
 """
 
 from __future__ import annotations
@@ -46,7 +54,7 @@ import build_version  # noqa: E402
 
 BUILD_PLACEHOLDER = "__APP_BUILD__"
 
-# web_fs.c refuses a file over this (sidekick/main/web_fs.c).
+# The bundle API refuses a file over this (sidekick/main/web_bundle.c, ASSET_MAX_BYTES).
 FILE_MAX = 512 * 1024
 # The sidekick's web partition is 0x1E0000 (1,920 KB, sidekick/partitions.csv).
 # A bundle install stages a second copy before it renames into place, and the
@@ -54,8 +62,8 @@ FILE_MAX = 512 * 1024
 # store plus the bootstrap pages and LittleFS overhead must fit:
 # 2 x 800 + 256 = 1,856 KB leaves 64 KB. Raising this means shrinking the store cap.
 BUNDLE_MAX = 800 * 1024
-# gzip's magic. The sidekick keeps no manifest, so web_fs.c tells a compressed
-# asset by these first two bytes and serves it with Content-Encoding: gzip.
+# gzip's magic. The pack carries no flag for it, so the sidekick tells a compressed asset by these
+# first two bytes and serves it with Content-Encoding: gzip (sidekick/main/app_serve.c).
 GZIP_MAGIC = b"\x1f\x8b"
 
 
@@ -119,7 +127,9 @@ def compress_assets(root: Path) -> None:
             path.write_bytes(packed)
 
 
-def build() -> dict:
+def build(version: str = "") -> dict:
+    """Builds the bundle and its pack. `version` stamps the app with exactly that, the version of
+    the sidekick image it is built into; without it the stamp is build_id()'s."""
     if not (TOOLS / "node_modules" / "html-minifier-terser").is_dir():
         die("minifier not installed; run: npm ci --prefix webapp/tools")
 
@@ -134,10 +144,13 @@ def build() -> dict:
     text = app.read_text(encoding="utf-8")
     if text.count(BUILD_PLACEHOLDER) != 1:
         die(f"app.html must contain {BUILD_PLACEHOLDER} exactly once")
-    bid = build_id()
+    bid = version or build_id()
     app.write_text(text.replace(BUILD_PLACEHOLDER, bid), encoding="utf-8")
 
-    result = subprocess.run(["node", str(TOOLS / "minify.mjs"), str(OUT)])
+    try:
+        result = subprocess.run(["node", str(TOOLS / "minify.mjs"), str(OUT)])
+    except FileNotFoundError:
+        die("node not on PATH: the web build needs Node (CONTRIBUTING.md, Setup)")
     if result.returncode != 0:
         die("minify failed")
 
@@ -176,12 +189,49 @@ def write_pack(root: Path, out: Path, bid: str) -> bytes:
 
 
 def write_build_json(root: Path, bid: str, doc: dict) -> dict:
-    """build.json: what the page reads from the release host to tell whether its app is the
-    published one (webapp/app/updates.js, appOffer()), and the bundle's size for its progress."""
+    """build.json: the published bundle's build id and size. A page from before the app shipped in
+    the sidekick's image reads it from the release host to offer the app; no page of this build does."""
     info = {"build": bid, "size": sum(a["size"] for a in doc["assets"])}
     (root / gen_manifest.BUILD_NAME).write_text(json.dumps(info) + "\n", encoding="utf-8")
     return info
 
 
+def prebuilt_pack() -> Path | None:
+    """The pack MICROFT8_APP_PACK names, or None when it is unset."""
+    named = os.environ.get("MICROFT8_APP_PACK", "")
+    if not named:
+        return None
+    path = Path(named) if os.path.isabs(named) else ROOT / named
+    if not path.is_file():
+        die(f"MICROFT8_APP_PACK names {path}, which is not there")
+    return path
+
+
+def main() -> int:
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Build the web app bundle and its pack.")
+    ap.add_argument("--pack", type=Path, help="also write the pack here, only if its bytes changed")
+    ap.add_argument("--version", default="", help="stamp the app with this, the sidekick image's version")
+    args = ap.parse_args()
+    ready = prebuilt_pack() if args.pack else None
+    if ready:
+        data = ready.read_bytes()
+        try:
+            bid, assets = app_pack.unpack(data)
+        except app_pack.PackError as e:
+            die(f"{ready} is not a pack ({e})")
+        # The image would serve an app that calls itself something the image does not.
+        if args.version and bid != args.version:
+            die(f"{ready} is stamped '{bid}', and this build is '{args.version}': build the pack with --version")
+        print(f"build {bid}: {len(assets)} assets, {len(data)} bytes, as already built at {ready}")
+    else:
+        build(args.version)
+        data = PACK.read_bytes()
+    if args.pack:
+        app_pack.write_if_changed(args.pack, data)
+    return 0
+
+
 if __name__ == "__main__":
-    build()
+    raise SystemExit(main())

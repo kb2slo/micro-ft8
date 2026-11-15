@@ -9,7 +9,7 @@ The daily station is headless: a **P4 main board** (decode, TX, autoseq, log, th
 ## Constraints
 
 1. **Offline field operation is a requirement.** Summits have no cell service and no router, so the only path from phone to sidekick there is the sidekick's own access point. **The whole application runs over AP mode**; station mode (home WiFi, the phone's hotspot) is the convenience case. Nothing may treat AP mode as a transient setup state.
-2. **Internet may be required for setup and for updates, never for operating.** This is what lets the firmware carry only a small bootstrap instead of the full UI (see [sidekick.md](sidekick.md), **Web root**), and why an update may require the sidekick to be on a network with internet.
+2. **Internet may be required for updates, never for operating, and not for setup.** The app is part of the sidekick's firmware image, so a sidekick flashed over USB serves it with no network (see [sidekick.md](sidekick.md), **Web root**); an update requires the sidekick to be on a network with internet.
 3. **No dependency on a board's keyboard or screen.** The sidekick-to-main protocol is specified against the application (decode, transmit, autoseq, config, log), never against board hardware.
 
 ## The inversion: the browser is the internet device
@@ -21,7 +21,7 @@ The phone already has a cellular radio, a TLS stack, a trust store, a screen and
 ```mermaid
 flowchart TB
     subgraph net["Internet"]
-        host["Release host<br/>micro-ft8.kalikstein.com<br/>app bundle · firmware · manifests"]
+        host["Release host<br/>micro-ft8.kalikstein.com<br/>firmware · manifests"]
         third["QRZ · NOAA · POTA · SOTA<br/>called directly, CORS open"]
         worker["Worker routes<br/>for sources without CORS"]
     end
@@ -30,17 +30,16 @@ flowchart TB
     end
     subgraph sk["Sidekick — no TLS, no CA bundle"]
         http["HTTP server<br/>control API, pairing token"]
-        web["web partition · LittleFS<br/>the only served origin"]
+        web["Firmware image<br/>the web app and the setup pages,<br/>the only served origin"]
     end
     subgraph main["Main board — P4"]
         radio["Decode · TX · autoseq · log"]
         qmx["QMX over USB host"]
     end
-    host -. "fetch bundle over TLS<br/>this hop authenticates it" .-> app
+    host -. "manifests over TLS<br/>this hop authenticates the hashes" .-> app
     third -. "enrichment, when online" .-> app
     worker -. "enrichment, when online" .-> app
     app -- "control · works offline" --> http
-    app -- "install bundle, token-guarded" --> web
     host -. "firmware image, plain HTTP<br/>SHA-256 checked · updates only" .-> http
     web --> http
     http -- "framed protocol over Port A" --> radio

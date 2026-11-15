@@ -1,7 +1,7 @@
-# web/ is the single source of truth for seed assets (docs/architecture/sidekick.md (Web root)).
-# Drop a file in web/ → it is embedded, hydrated onto LittleFS, and served at
-# /<filename> by the static handler. No C table to edit. Templated routes
-# (/, /log, …) still need handlers because their URLs are not the filenames.
+# web/ is the single source of truth for the bootstrap pages (docs/architecture/sidekick.md (Web root)).
+# Drop a file in web/ → it is embedded and served at /<filename> by the static
+# handler (app_serve.c). No C table to edit. Templated routes (/, /update, …)
+# still need handlers because their URLs are not the filenames.
 
 set(WEB_DIR "${CMAKE_CURRENT_LIST_DIR}/web")
 
@@ -53,6 +53,7 @@ endif()
 set(WEB_SEED_GEN "${CMAKE_CURRENT_BINARY_DIR}/web_seed_table.c")
 set(WEB_SEED_SRCS "main.c" "wifi_prov.c" "host_link.c" "event_state.c" "pairing_token.c" "pairing_http.c"
                   "web_page.c" "web_fs.c" "web_manifest.c" "web_bundle.c" "bundle_host.c"
+                  "app_pack.c" "app_serve.c"
                   "fw_policy.c" "fw_update.c")
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     file(WRITE "${WEB_SEED_GEN}" "\
@@ -80,3 +81,28 @@ idf_component_register(
     # above, not a second handwritten list here.
     EMBED_TXTFILES ${WEB_EMBED_TXTFILES}
 )
+
+# The web app, in this image (docs/architecture/sidekick.md (Web root)): the web
+# build's pack, embedded as it is and served from where the linker put it.
+#
+# Nothing of the app is read when the build is configured. A target that runs
+# on every build has the web build write the pack (webapp/tools/build.py
+# --pack), and it rewrites the file only when its bytes change, so an
+# unchanged app relinks nothing. The app is stamped with PROJECT_VER, the
+# version this image reports: one string handed to both, so the app a sidekick
+# serves and the sidekick itself say the same. The embed depends on that target, so the image
+# cannot be linked with a pack older than the sources; and the pack's length
+# at run time is the linker's own _binary_app_pack_end - _start (app_serve.c),
+# for the reason the seed table's is (above). Needs Node and the minifier, once
+# per clone: npm ci --prefix webapp/tools (CONTRIBUTING.md, Setup).
+if(NOT CMAKE_BUILD_EARLY_EXPANSION)
+    set(APP_PACK "${CMAKE_CURRENT_BINARY_DIR}/app.pack")
+    idf_build_get_property(python PYTHON)
+    add_custom_target(app_pack
+        COMMAND ${python} "${CMAKE_CURRENT_LIST_DIR}/../../webapp/tools/build.py"
+                --version "${PROJECT_VER}" --pack "${APP_PACK}"
+        BYPRODUCTS "${APP_PACK}"
+        COMMENT "Building the web app and its pack"
+        VERBATIM)
+    target_add_binary_data(${COMPONENT_LIB} "${APP_PACK}" BINARY DEPENDS app_pack)
+endif()

@@ -25,6 +25,7 @@
 #include "web_bundle.h"
 #include "web_page.h"
 #include "web_fs.h"
+#include "app_serve.h"
 
 static const char *TAG = "wifi_prov";
 
@@ -631,17 +632,11 @@ static esp_err_t get_form(httpd_req_t *req)
     // Both are markup assembled here, not operator or scan text: the failure
     // reason is escaped just above, and each SSID in the options is escaped as
     // it is rendered.
-    // A sidekick that has never had the app installed has nothing behind
-    // "Operate in AP mode" (the app comes from /update, which needs the
-    // internet), so the page swaps that button for the first-run steps.
-    const bool installed = web_fs_exists("app.html");
     const web_sub_t subs[] = {
         {.key = "failure",  .value = failure,  .already_html = true},
         {.key = "networks", .value = networks, .already_html = true},
-        {.key = "operate_hidden", .value = installed ? "" : "hidden"},
-        {.key = "setup_hidden",   .value = installed ? "hidden" : ""},
     };
-    return web_page_send_file(req, "provision.html", subs, 4);
+    return web_page_send_file(req, "provision.html", subs, 2);
 }
 
 static esp_err_t post_provision(httpd_req_t *req)
@@ -833,8 +828,7 @@ static void httpd_start_provisioning(void)
     };
     // The form, a rescan and /update are open: they change nothing stored
     // (/update only serves the install page; its writes go through the
-    // token-guarded /api/bundle/* routes). /update is here so a phone on this
-    // AP can install the app over its own cellular data, with no home WiFi. Saving
+    // token-guarded /api/bundle/* routes). Saving
     // credentials is a config write, so it needs the token like every other
     // write (docs/architecture/system.md (Who may key the transmitter)). There is no chicken-and-egg:
     // pairing_http_init() mints the token on first boot, before any route is
@@ -872,13 +866,13 @@ static void httpd_start_provisioning(void)
     // file 404s plainly, same in both modes now. B74 follow-up, 2026-09-21:
     // no more captive-portal redirect-on-miss here (removed with the rest of
     // the captive-portal logic, see the removed configure_ap_dhcp() and
-    // web_fs.c's removed s_captive_satisfied machinery) -- it never reliably
+    // the removed s_captive_satisfied machinery) -- it never reliably
     // resolved to "Done" on iOS regardless of the DHCP option 114 experiment,
     // and the AP's own SSID (micro-ft8.local) already tells the operator
     // exactly where to navigate manually.
     httpd_register_err_handler(s_httpd, HTTPD_404_NOT_FOUND, log_not_found);
     // Static GET /* last so exact /api/... routes win.
-    web_fs_register_static(s_httpd);
+    app_serve_register(s_httpd);
 }
 
 // Advertised in both modes. On the provisioning AP it is a convenience next to
@@ -1047,7 +1041,7 @@ static void httpd_start_status(void)
     fw_update_register(s_httpd);
     web_fs_register_rehydrate(s_httpd);
     // Static GET /* last so exact /api/... routes win.
-    web_fs_register_static(s_httpd);
+    app_serve_register(s_httpd);
     httpd_register_err_handler(s_httpd, HTTPD_404_NOT_FOUND, log_not_found);
 }
 
@@ -1169,11 +1163,14 @@ void wifi_prov_start(void)
     }
     fw_update_init();
 
-    // Before any HTTP handler: mount the web FS and hydrate seed pages from
-    // the firmware embed (docs/architecture/sidekick.md (Web root)). Not ESP_ERROR_CHECK'd — a sidekick
-    // that cannot mount still beacons; pages will 500 until flash is fixed.
+    // Before any HTTP handler: the app and the bootstrap pages are served from this image
+    // (docs/architecture/sidekick.md (Web root)).
+    app_serve_init();
+    // The `web` filesystem is served from no longer; it is mounted for the bundle API, which a
+    // page from before the app shipped in the image may still call. Not ESP_ERROR_CHECK'd: a
+    // sidekick that cannot mount it serves everything it did.
     if (web_fs_init() != ESP_OK) {
-        ESP_LOGE(TAG, "Web FS unavailable — bootstrap pages will fail");
+        ESP_LOGE(TAG, "Web FS unavailable — the bundle API will refuse");
     }
 
     s_events = xEventGroupCreate();
