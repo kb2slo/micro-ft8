@@ -7,7 +7,9 @@ pushed onto and no other, so an update, a roll back or a flash of another build 
 station to its image's app. A sidekick running a release refuses it, as does one that is updating
 or has an image on trial.
 
-Builds webapp/dist first (webapp/tools/build.py, docs/architecture/webapp.md (Build)); resolves
+Builds webapp/dist first (webapp/tools/build.py, docs/architecture/webapp.md (Build)), stamping
+the app with this checkout's commit and the time, so each push has a build id of its own and a
+page left open on an earlier one is offered Reload; resolves
 the host once (mDNS is slow per request), then sends the pack using a cached pairing token if one
 is on disk (see sidekick.py). The button is only needed the first time, or if the cached token
 gets rejected (401), or with --forget-token.
@@ -20,14 +22,11 @@ Usage:
   python3 webapp/tools/install_app.py --host http://192.168.50.128
   python3 webapp/tools/install_app.py --token HEX…   # skip cache + button
   python3 webapp/tools/install_app.py --forget-token # clear cache, re-pair
-  python3 webapp/tools/install_app.py --no-build     # push webapp/dist/app.pack as it is, whatever
-                                                     # built it last (the sidekick's build stamps
-                                                     # it with the image's version)
 """
 
 from __future__ import annotations
 
-import gzip
+import datetime
 import json
 import sys
 from pathlib import Path
@@ -57,27 +56,23 @@ REFUSALS = {
     "busy": "a firmware update is running; try again when it is done",
     "confirming": "the sidekick's last update is still being confirmed; try again in a minute",
     "size": "the pack does not fit the sidekick's spare firmware slot",
-    "pack": "the sidekick read back a pack it could not use; re-run without --no-build",
+    "pack": "the sidekick read back a pack it could not use; run it again",
     "flash": "the sidekick could not write its flash",
 }
 
 
-def fnv1a(data: bytes) -> str:
-    """app.html's own fnv1a(), over the same bytes: the page hashes app.html as the browser decoded
-    it and shows the result on Settings' App line, so a gzipped file is hashed decompressed here."""
-    if data[:2] == b"\x1f\x8b":
-        data = gzip.decompress(data)
-    h = 0x811C9DC5
-    for b in data:
-        h ^= b
-        h = (h * 0x01000193) & 0xFFFFFFFF
-    return f"{h:08x}"
+def push_stamp(build_id: str, now: datetime.datetime) -> str:
+    """A pushed app's build id: the web build's own, `<sha>[-dirty] <UTC date>`, and the time. The
+    sidekick says which app it serves by this string, and a page compares it with its own stamp
+    to offer Reload (webapp/app/updates.js, appStale()), so two pushes from one changed tree on
+    one day must not share one."""
+    return f"{build_id} {now:%H:%M:%S}"
 
 
 def build_pack() -> bytes:
     import build
 
-    build.build()
+    build.build(push_stamp(build.build_id(), datetime.datetime.now(datetime.timezone.utc)))
     return PACK.read_bytes()
 
 
@@ -145,7 +140,6 @@ def main() -> int:
     ap.add_argument("--host", default=DEFAULT_HOST, help=f"sidekick base URL (default {DEFAULT_HOST})")
     ap.add_argument("--token", default="", help="pairing token hex; skips the cache and the button")
     ap.add_argument("--wait", type=float, default=WAIT_S, help=f"seconds to wait for the button (default {int(WAIT_S)})")
-    ap.add_argument("--no-build", action="store_true", help="push webapp/dist/app.pack as it is, without rebuilding")
     ap.add_argument("--forget-token", action="store_true", help="clear the cached token before running (forces the button)")
     args = ap.parse_args()
 
@@ -162,18 +156,12 @@ def main() -> int:
         die(f"sidekick not reachable at {host}/ (HTTP {code})")
     print(f"sidekick ok at {host}")
 
-    if args.no_build:
-        if not PACK.is_file():
-            die(f"missing {PACK}; run without --no-build")
-        data = PACK.read_bytes()
-    else:
-        data = build_pack()
+    data = build_pack()
     try:
         build_id, assets = app_pack.unpack(data)
     except app_pack.PackError as e:
-        die(f"{PACK} is not a pack ({e}); run without --no-build")
-    page = dict(assets).get("app.html")
-    print(f"pushing {build_id}: {len(assets)} assets, {len(data)} bytes" + (f", app.html fnv1a {fnv1a(page)}" if page else ""))
+        die(f"{PACK} is not a pack ({e})")
+    print(f"pushing {build_id}: {len(assets)} assets, {len(data)} bytes")
 
     token = args.token.strip()
     try:

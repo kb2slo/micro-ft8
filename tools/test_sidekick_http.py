@@ -6,6 +6,7 @@ a local server standing for a sidekick that takes one or refuses it. No sidekick
   python3 tools/test_sidekick_http.py
 """
 import contextlib
+import datetime
 import http.server
 import io
 import json
@@ -151,7 +152,7 @@ class BenchPush(unittest.TestCase):
     """install_app.py's one request (docs/architecture/sidekick.md, The bench push). The sidekick's
     side of it, which image a push is served on and who refuses one, is host_test_app_push's."""
 
-    PACK = app_pack.pack([("app.html", b"\x1f\x8b" + b"page" * 50), ("bands.js", b"var BANDS=1;\n")], "d18f9b2-dirty 2026-11-15")
+    PACK = app_pack.pack([("app.html", b"\x1f\x8b" + b"page" * 50), ("bands.js", b"var BANDS=1;\n")], "d18f9b2-dirty 2026-11-15 04:37:12")
 
     def target(self, answer):
         t = PushTarget(answer)
@@ -181,7 +182,7 @@ class BenchPush(unittest.TestCase):
 
     def test_the_pack_goes_in_one_request_with_the_token(self):
         t = self.target(self.takes)
-        self.assertEqual(install_app.push(t.base, "ab" * 16, self.PACK), "d18f9b2-dirty 2026-11-15")
+        self.assertEqual(install_app.push(t.base, "ab" * 16, self.PACK), "d18f9b2-dirty 2026-11-15 04:37:12")
         self.assertEqual(t.pushed, self.PACK, "the pack's bytes, as built")
         self.assertEqual(t.token, "ab" * 16)
         # Asked first with no body, then the pack, then a look at the app.
@@ -214,6 +215,17 @@ class BenchPush(unittest.TestCase):
         codes |= set(re.findall(r'push_refuse\(req, "[^"]+", "(\w+)"\)', handler))
         self.assertTrue({"release", "busy", "confirming", "size", "pack", "flash"} <= codes, codes)
         self.assertEqual(codes - set(install_app.REFUSALS), set(), "a refusal install_app.py has no words for")
+
+    def test_each_push_has_a_build_id_of_its_own(self):
+        # The page offers Reload when the sidekick's app is not the one it was stamped as, so a
+        # second push from the same changed tree on the same day must read differently.
+        at = datetime.datetime(2026, 11, 15, 4, 37, 12, tzinfo=datetime.timezone.utc)
+        first = install_app.push_stamp("d18f9b2-dirty 2026-11-15", at)
+        self.assertEqual(first, "d18f9b2-dirty 2026-11-15 04:37:12")
+        self.assertNotEqual(first, install_app.push_stamp("d18f9b2-dirty 2026-11-15", at + datetime.timedelta(seconds=1)))
+        # It fits the pack's build field with git's longest short SHA, and is nothing a version is.
+        longest = install_app.push_stamp("0123456789ab-dirty 2026-11-15", at)
+        self.assertEqual(app_pack.unpack(app_pack.pack([("app.html", b"x")], longest))[0], longest)
 
     def test_firmware_from_before_the_push_is_told_to_flash(self):
         # Such firmware matches the path only with GET /*, and answers a POST to it with 405

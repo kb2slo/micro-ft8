@@ -17,8 +17,8 @@ body:
   - type: textarea
     id: versions
     attributes:
-      label: Firmware and App
-      description: Copy the Firmware and App lines from the app's Settings. A build from source gives its commit.
+      label: Installed versions
+      description: Copy the lines under Installed from Software update, in the app's Settings. A build from source gives its commit.
       render: text
     validations:
       required: true

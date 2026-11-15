@@ -29,6 +29,10 @@ void app_serve_init(void);
 // without the NUL. False for a name that is not one.
 bool app_serve_seed(const char *name, const char **text, size_t *len);
 
+// The build id of the app being served: this image's own version, or a pushed pack's stamp. ""
+// when no pack opens. /api/config says it as sk_app, and a page stamped otherwise offers Reload.
+const char *app_serve_build(void);
+
 // Stops serving a push, if there is one, and erases its header, so the image's own app is served
 // again, now and after a restart. Call before anything else writes the spare slot (a firmware
 // update stages its image there), from the HTTP server's task, which is the only one that reads

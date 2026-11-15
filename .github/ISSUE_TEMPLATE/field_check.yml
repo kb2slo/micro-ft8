@@ -13,7 +13,7 @@ body:
     id: build
     attributes:
       label: Build
-      description: The Firmware and App lines from Settings, or the release asset name.
+      description: The lines under Installed from Software update, in the app's Settings, or the release asset name.
       render: text
     validations:
       required: true

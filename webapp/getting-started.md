@@ -80,4 +80,4 @@ One ADIF file per UTC day, kept on the main board. On **QSOs**, **Download ADI**
 
 ## Questions and feedback
 
-KB2SLO · [micro-ft8.kalikstein.com/#contact](https://micro-ft8.kalikstein.com/#contact). If something goes wrong, note the time, what you tapped, and the **Firmware** and **App** lines in **Settings**, under **Software update**.
+KB2SLO · [micro-ft8.kalikstein.com/#contact](https://micro-ft8.kalikstein.com/#contact). If something goes wrong, note the time, what you tapped, and the **Sidekick and app** and **Main board firmware** lines in **Settings**, under **Software update**.
