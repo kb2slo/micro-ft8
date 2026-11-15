@@ -47,5 +47,11 @@ assert.strictEqual(ctx.rxCue(qmx()), '', 'the QMX decoding: nothing to say');
 assert.strictEqual(ctx.rxCue(qmx({ cat_ready: '0', audio_rx: '0' }), { present: false }), 'No audio · QMX not connected');
 assert.strictEqual(ctx.rxCue(qmx({ audio_rx: '0' }), { present: true }), 'No audio · QMX audio down');
 assert.strictEqual(ctx.rxCue(qmx({ cat_ready: '0', audio_rx: '0' }), { present: true }), 'No audio · QMX connecting');
+// Nothing known of the USB port: the main board reports it only when it changes, so a sidekick
+// that restarted has no word of it. With no CAT and no audio that reads as no radio, as the radio
+// bar does, never "connecting" with nothing attached.
+assert.strictEqual(ctx.rxCue(qmx({ cat_ready: '0', audio_rx: '0' }), null), 'No audio · QMX not connected');
+assert.strictEqual(ctx.rxCue(qmx({ cat_ready: '0', audio_rx: '0' })), 'No audio · QMX not connected');
+assert.strictEqual(ctx.rxCue(qmx({ audio_rx: '0' }), null), 'No audio · QMX audio down', 'CAT up says a radio is there, whatever the port said');
 assert.strictEqual(ctx.rxCue(qmx({ decode_failed: '1' })), 'Not decoding · decoder could not start');
 console.log('rx cue: all checks passed');
