@@ -345,6 +345,22 @@ assert.strictEqual(U.busy(null), false);
 ['downloading', 'verifying', 'transferring', 'restarting'].forEach((state) => assert.strictEqual(U.busy({ state }), true, state));
 ['idle', 'done', 'failed'].forEach((state) => assert.strictEqual(U.busy({ state }), false, state));
 
+// ---- a start request that did not get through ----
+// The plan's steps, as plan() gives them: each board and the version it goes to.
+const STEPS = PLAN.map((b) => ({ board: b.board, to: b.version }));
+// The sidekick is not updating, or did not answer the question either: send it once more. An
+// earlier try's end names the plan a Retry sends, so it is not this request having arrived.
+assert.strictEqual(U.startCheck(null, STEPS), 'resend');
+['idle', 'done', 'failed'].forEach((state) => assert.strictEqual(U.startCheck(pst({ state }), STEPS), 'resend', state));
+// It is carrying this plan out: the request arrived, and a second would be refused as busy.
+['downloading', 'verifying', 'transferring', 'restarting'].forEach((state) =>
+  assert.strictEqual(U.startCheck(pst({ state, step: 1, board: 'sidekick' }), STEPS), 'started', state));
+// It is carrying out another plan: fewer boards, another version, another order, or none it names.
+assert.strictEqual(U.startCheck(pst({ state: 'downloading', plan: [PLAN[0]] }), STEPS), 'busy');
+assert.strictEqual(U.startCheck(pst({ state: 'downloading', plan: [PLAN[0], Object.assign({}, PLAN[1], { version: 'b1322+d18f9b2' })] }), STEPS), 'busy');
+assert.strictEqual(U.startCheck(pst({ state: 'downloading', plan: [PLAN[1], PLAN[0]] }), STEPS), 'busy');
+assert.strictEqual(U.startCheck({ state: 'transferring' }, STEPS), 'busy');
+
 // ---- progress ----
 const st = (o) => Object.assign({ state: 'idle', board: 'sidekick', version: 'd18f9b2', got: 0, size: 1005232, why: '', detail: 0, running: '7e61488', online: true }, o);
 assert.strictEqual(U.progressText(null, true), 'Starting…');

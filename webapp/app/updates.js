@@ -354,6 +354,23 @@ var FwUpdates = (function () {
     return !!status && ['downloading', 'verifying', 'transferring', 'restarting'].indexOf(status.state) >= 0;
   }
 
+  // POST /api/fw/start did not get through, so nobody knows whether it arrived: the sidekick can
+  // close a connection the browser still holds (wifi_prov.c, lru_purge_enable), and a browser never
+  // sends a POST again by itself. What GET /api/fw/status, read a moment later, says of it; `steps`
+  // is the plan's. 'started': the sidekick is carrying this plan out, so the request arrived.
+  // 'busy': it is carrying out another, and would refuse this one. 'resend': it is not updating, or
+  // did not answer the status read either, so the request is sent once more. Only an update in
+  // flight counts as arrived: a `failed` or `done` may be an earlier try's, and a Retry sends the
+  // same plan.
+  function startCheck(status, steps) {
+    if (!busy(status)) return 'resend';
+    var plan = status.plan || [];
+    var same = plan.length === steps.length && steps.every(function (o, i) {
+      return plan[i].board === o.board && plan[i].version === o.to;
+    });
+    return same ? 'started' : 'busy';
+  }
+
   function sizeText(bytes) {
     return bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + ' MB' : Math.round(bytes / 1024) + ' KB';
   }
@@ -451,6 +468,7 @@ var FwUpdates = (function () {
     appRow: appRow,
     stepRows: stepRows,
     busy: busy,
+    startCheck: startCheck,
     sizeText: sizeText,
     whyText: whyText,
     progressText: progressText,

@@ -1484,6 +1484,7 @@ var appRun = null;          // its app step: {at, done, total} (FwUpdates.appRow
 var fwPolling = false;
 var fwSheetMode = '';       // '', 'progress' or 'result'
 var fwReloadOnClose = false;
+var fwStartNote = '';       // what postFwPlan() had to do to start this update, for its result
 
 var APP_HOST_DEFAULT = 'https://micro-ft8.kalikstein.com/app';
 async function readPublished() {
@@ -1691,6 +1692,7 @@ async function runUpdate(plan) {
   fwMine = plan;
   fwStatus = null;
   fwReloadOnClose = false;
+  fwStartNote = '';
   appRun = plan.app ? { at: 'now', done: 0, total: plan.app.size } : null;
   renderFwUpdates();
   drawRun([], '');
@@ -1708,7 +1710,7 @@ async function runUpdate(plan) {
     await setHold(false);
     return fwResult({ ok: true, text: 'Updated to ' + plan.app.to }, '');
   }
-  var why = await postFwPlan(plan.body);
+  var why = await postFwPlan(plan);
   if (why) {
     await setHold(false);
     return fwResult({ ok: false, text: why }, '');
@@ -1718,25 +1720,65 @@ async function runUpdate(plan) {
   followFw();
 }
 
-// POST /api/fw/start. '' when it started, else why not, in words.
-async function postFwPlan(body) {
+// POST /api/fw/start, once. {sent: false, err} when the request did not get through, with the
+// browser's own words for it. Else {sent: true, why, code}: why '' when the update started, or
+// why not, in words, and the sidekick's code for it.
+async function sendFwPlan(body) {
+  var r;
   try {
-    var r = await MicroFT8Pairing.authFetch('/api/fw/start', {
+    r = await MicroFT8Pairing.authFetch('/api/fw/start', {
       method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: body,
     });
-    if (r.status == 401) {
-      MicroFT8Pairing.needsReauth();
-      return 'Press the sidekick button to pair';
-    }
-    var j = null;
-    try { j = await r.json(); } catch (e) { /* an older sidekick answers 404 with no JSON */ }
-    if (!r.ok || !j || j.ok !== true) {
-      return j && j.why ? FwUpdates.whyText(j.why) : 'This sidekick’s firmware cannot update over the air yet; flash it over USB once';
-    }
-    return '';
   } catch (e) {
+    return { sent: false, err: String(e && e.message ? e.message : e) };
+  }
+  if (r.status == 401) {
+    MicroFT8Pairing.needsReauth();
+    return { sent: true, why: 'Press the sidekick button to pair', code: '' };
+  }
+  var j = null;
+  try { j = await r.json(); } catch (e) { /* an older sidekick answers 404 with no JSON */ }
+  if (!r.ok || !j || j.ok !== true) {
+    return { sent: true, code: (j && j.why) || '',
+      why: j && j.why ? FwUpdates.whyText(j.why) : 'This sidekick’s firmware cannot update over the air yet; flash it over USB once' };
+  }
+  return { sent: true, why: '', code: '' };
+}
+
+// What the sidekick says of the plan a start request carried (FwUpdates.startCheck()).
+async function fwStartCheck(plan) {
+  var status = null;
+  try {
+    var r = await fetch('/api/fw/status', { cache: 'no-store' });
+    if (r.ok) status = await r.json();
+  } catch (e) { /* no answer here either: the next try says so */ }
+  return FwUpdates.startCheck(status, plan.steps);
+}
+
+// Starts the firmware plan: '' when it started, else why not, in words. A request that did not
+// get through is not known to have failed (FwUpdates.startCheck()), so the page asks the sidekick
+// what it is doing and sends the request once more unless the plan is already running. Seen once
+// (2026-11-14), cause unknown, so a start that needed this says so on the result (fwStartNote).
+async function postFwPlan(plan) {
+  fwStartNote = '';
+  var a = await sendFwPlan(plan.body);
+  if (a.sent) return a.why;
+  await new Promise(function (resolve) { setTimeout(resolve, 1000); });
+  var check = await fwStartCheck(plan);
+  if (check === 'started') {
+    fwStartNote = 'The start request got no answer (' + a.err + '), but the sidekick had it.';
+    return '';
+  }
+  if (check === 'busy') return FwUpdates.whyText('busy');
+  var b = await sendFwPlan(plan.body);
+  if (!b.sent) {
+    fwStartNote = 'The start request was sent twice (' + a.err + (b.err !== a.err ? '; ' + b.err : '') + ').';
     return 'The sidekick did not answer';
   }
+  // Refused as busy: the first request arrived after all, between the question and the second.
+  if (b.code === 'busy' && (await fwStartCheck(plan)) === 'started') b.why = '';
+  if (!b.why) fwStartNote = 'The start request was sent twice: the first did not get through (' + a.err + ').';
+  return b.why;
 }
 
 // How the firmware this page started ended, or null while it has not: a failure at any step, the
@@ -1822,8 +1864,8 @@ function fwResult(end, detail) {
     steps: failed ? (appRun && appRun.at === 'failed' ? [FwUpdates.appRow(appRun)] : []).concat(fwFailedRows) : [],
     note: !end ? 'Check that this phone is on the sidekick’s network, then reload.'
       : end.ok ? (firmware ? 'Switch the radio back on. If it was connected during the update and does not reconnect, switch it off and on. ' : '') +
-        'Close opens the new app.'
-      : detail,
+        'Close opens the new app.' + (fwStartNote ? ' ' + fwStartNote : '')
+      : detail || fwStartNote,
     // Retry opens the review again, against what is published then.
     failed: failed, retry: failed && !!end, cancel: 'Close',
   });
