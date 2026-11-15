@@ -251,9 +251,11 @@
   <section>
     <h2>Assets</h2>
     <p class="warn">
-      <strong>Flashing over USB can erase the station’s settings and QSO logs.</strong>
-      Save your log first: in the app, on <strong>QSOs</strong>, tap
-      <strong>Download full ADI</strong>.
+      <strong>Flashing over USB erases the board.</strong> Flashed this way, the sidekick
+      forgets its WiFi and pairing and starts as a new unit, and the main board can lose
+      the station’s settings and QSO logs. It is for a new setup or a full recovery;
+      updates are over the air, from the app. Save your log first: in the app, on
+      <strong>QSOs</strong>, tap <strong>Download full ADI</strong>.
     </p>
     <p class="note" id="serial-note">
       <strong>Flash in browser</strong> uses the Web Serial API (Chrome or Edge on
@@ -428,7 +430,9 @@ async function flashTarget(key, asset, label) {
       flashMode: "dio",
       flashFreq: "80m",
       flashSize: label.flashSize,
-      eraseAll: false,
+      // The whole chip: a USB flash is a new setup or a full recovery, and starts from nothing
+      // (docs/architecture/sidekick.md, First install).
+      eraseAll: true,
       compress: true,
       reportProgress(_i, written, total) {
         if (!total) return;

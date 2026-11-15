@@ -98,7 +98,7 @@ its commit, counted the same way, so the one number orders the builds of both ch
 version out of the image and refuses to write a
 manifest, which fails the job with nothing published, when the version it is given is not a channel's build
 of the commit, or an OTA image is not an app image, was built as the other board's project, reports another
-version, or is larger than the sidekick's 3 MB OTA slot, where every image is staged. Host-tested (`tools/test_make_manifest.py`).
+version, or is larger than the sidekick's 4,032 KB OTA slot, where every image is staged. Host-tested (`tools/test_make_manifest.py`).
 
 **The stable files are replaced one at a time, the manifest last.** For the seconds between, the old manifest
 names a hash the new image does not have, so a download checked against it fails and is retried; it cannot

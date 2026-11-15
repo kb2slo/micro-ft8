@@ -57,8 +57,10 @@ OTA_PROJECT = {"poe_p4": "poe_p4", "sidekick": "sidekick"}
 
 # Every image is staged in the sidekick's spare OTA slot before it goes
 # anywhere, a main board's included, so that slot bounds them all
-# (sidekick/partitions.csv: ota_0 and ota_1 are 0x300000 each).
-OTA_MAX_BYTES = 0x300000
+# (sidekick/partitions.csv: ota_0 and ota_1 are 0x3F0000 each). A sidekick
+# still on the table before it, with 0x300000 slots, refuses a larger image
+# with `size` and is flashed over USB.
+OTA_MAX_BYTES = 0x3F0000
 
 # An ESP-IDF app image: a 24-byte image header whose first byte is 0xE9, an
 # 8-byte segment header, then esp_app_desc_t (esp_app_desc.h).
