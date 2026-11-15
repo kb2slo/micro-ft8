@@ -31,7 +31,7 @@ Rows other epics and the index own; 1.0 is not cut until each has shipped. Each 
 
 ## Decided
 
-* **The version line starts at `v1.0.0`.** No `v*` tag exists on `origin` (`git ls-remote --tags origin 'v*'`, 2026-11-06).
+* **1.0 is `v1.0.0`,** after the `0.x` betas that began at `v0.1.0` ([RELEASE_PROCESS.md](../RELEASE_PROCESS.md), **Cutting a versioned release**).
 * **Port A may keep changing after 1.0.** Both boards update together, version pairing refuses a mismatched pair ([yme5](ota-updates.md#yme5)), and the `FW_*` messages are frozen ([ota-updates.md](ota-updates.md), **Decided**). So a Port A message, the QSO row's 255 bytes included ([syb2](ideas.md#syb2)), is not part of [n75z](#n75z).
 
 ## Children

@@ -1,6 +1,6 @@
 # Activator mode (epic I18)
 
-POTA and SOTA from the field: the operator at a park or on a summit, others working them, the whole activation run offline and logged so pota.app and the SOTA database accept it unedited. Rows: [rrsp](#rrsp), [w5nj](#w5nj) ([ROADMAP.md](../ROADMAP.md)). Built so far: the activation's references, its log and the n-fer export ([logging.md](../architecture/logging.md)); the Station sheet's references, the progress line and the cues on decodes ([webapp.md](../architecture/webapp.md), **The Station sheet**, **Activation progress**, **Worked and activation cues on decodes**).
+POTA and SOTA from the field: the operator at a park or on a summit, others working them, the whole activation run offline and logged so pota.app and the SOTA database accept it unedited. Rows: [rrsp](#rrsp), [w5nj](#w5nj) ([ROADMAP.md](../ROADMAP.md)). Built so far: the activation's references, its log and the n-fer export ([logging.md](../architecture/logging.md)); Settings › Station's references, the progress line and the cues on decodes ([webapp.md](../architecture/webapp.md), **Settings › Station**, **Activation progress**, **Worked and activation cues on decodes**).
 
 ## Goal
 
@@ -48,15 +48,15 @@ Location, in order of preference:
 3. **Manual entry,** as today.
 
 * **Nearby:** the stored extract sorted by distance from the fix (PoLo takes a 0.25° box, then sorts). The data is points, not boundaries, so the UI says "nearest registered references", never "you are in".
-* **Typed references:** search covers the whole store, not only what is nearby. A well-formed reference not in the store still adds, marked **unverified** (no name, location or grid check); the next time the app is online it checks the reference against pota.app or the SOTA API and flags one that does not exist; the per-reference export warns about an unverified reference before upload. Format-only entry is built ([webapp.md](../architecture/webapp.md), **The Station sheet**).
+* **Typed references:** search covers the whole store, not only what is nearby. A well-formed reference not in the store still adds, marked **unverified** (no name, location or grid check); the next time the app is online it checks the reference against pota.app or the SOTA API and flags one that does not exist; the per-reference export warns about an unverified reference before upload. Format-only entry is built ([webapp.md](../architecture/webapp.md), **Settings › Station**).
 * **The grid check:** a warning, never a block, when the configured grid, the fix's grid and the chosen references disagree, or a reference is further than a threshold. The operator can be right when the data is not.
 
 ### On Operate
 
 Mockups, private to the operator: "Operate Dock Options" (https://claude.ai/artifact/HazeSpixV3UbDfUJDKqzGD), its `Add a park or summit`, `Add, offline: typing a reference` and three `Map ·` boards; "Operate Redesign" (https://claude.ai/artifact/GsMDrsrNLEtnUC7aVNxptF).
 
-* **In the Station sheet:** an **unverified** badge on a reference the store does not hold; **Add a park or summit**; the grid check, on top of the sheet's format check.
-* **The add screen,** from the Station sheet: search by reference or name across the whole store, with an All / POTA / SOTA filter; the nearby list with distance, bearing and summit points and an **Add / Added** toggle on each row, so an n-fer is a few taps; a **Saved for offline** card (what is saved, how old) with **Choose on the map ›**; a well-formed reference not in the store adds as unverified, malformed input gets the format hint; a standing caveat that distances are to each reference's listed point; **Done · N added** returns to the sheet.
+* **On Settings › Station:** an **unverified** badge on a reference the store does not hold; **Add a park or summit**; the grid check, on top of the page's format check.
+* **The add screen,** from Settings › Station: search by reference or name across the whole store, with an All / POTA / SOTA filter; the nearby list with distance, bearing and summit points and an **Add / Added** toggle on each row, so an n-fer is a few taps; a **Saved for offline** card (what is saved, how old) with **Choose on the map ›**; a well-formed reference not in the store adds as unverified, malformed input gets the format hint; a standing caveat that distances are to each reference's listed point; **Done · N added** returns to that page.
 * **The map in pick mode** (`map.html?pick=refs&lat=…&lon=…`, beside `?grid=` and `?lat=&lon=`): zoomed out, your pin with its accuracy ring and **Save this area for offline**, which draws the area's outline; zoomed in, labels on, a popup's **Add to activation**, an added one blue, **Done · N** returns; offline, only saved areas draw, and saving is disabled with the reason.
 * **Changes to the map** ([webapp.md](../architecture/webapp.md), **The map**): parks as circles and summits as diamonds (both hollow circles today), added ones filled blue; the 40-marker cap never hides a reference near your pin; an outline layer for saved areas; the popup always offers **Add to activation**, however the map was opened.
 * **Honest limit:** the basemap is Natural Earth 110 m, so at park zoom the background is nearly blank. Enough to pick by distance, not to judge "am I inside?".

@@ -21,7 +21,7 @@ Spend each transmission where it can be answered: order the queue, and hold entr
 * **Hold a station that is working someone else,** with its tries frozen. Opening calls only (REPLYING); later stages are not held, since the evidence says little about mid-QSO repeats.
 * **No hold for a station that has gone unheard:** the opening limit covers it.
 * **A pin outranks only our other unanswered calls,** never a station calling us or a QSO in progress. Manual moves are pin, up and down, and Next.
-* **One ladder,** easy to reorder, set on the Station sheet and stored on the main board.
+* **One ladder,** easy to reorder, set on Settings › Station and stored on the main board.
 * **POTA and SOTA are rungs,** used at home too, in a later phase. Park to park ranks the same whoever initiated.
 * **"Needed" (DXCC, grid, park) waits** for the log database (row [I32](ideas.md#I32)).
 * **A station that calls CQ over our calls** gets no special treatment beyond the opening limit.
@@ -89,7 +89,7 @@ The active zone sorts by these keys, in order; the first is today's rule.
 * **Rungs:** **Farthest** (Station grid to the station's grid, from the QSO or the heard-grid table; no grid last), **Strongest** (newest decode's SNR), **Fewest tries** (today's rule 4), **First heard** (creation order, always the final tie-break). Later, **POTA activator** and **SOTA activator**, from a heard-activation record per call (`CQ POTA`/`CQ SOTA`, kept for hours), and park to park while we activate (epic [I18](activator-mode.md)).
 * **Default:** Farthest, Fewest tries, First heard. Not Strongest: SNR barely predicts completion.
 * **Callers to our CQ** that answered in the same slot are at one stage with no tries sent, so the ladder alone picks who gets the first report: WSJT-X's CQ: First, Max Dist and Max dB as rungs.
-* **Web app:** a Queue order list on the Station sheet with drag handles, one row per rung.
+* **Web app:** a Queue order list on Settings › Station with drag handles, one row per rung.
 
 ## Children
 
@@ -99,7 +99,7 @@ In order.
 
 ### Later
 
-* **Q4, the ladder and callers to our CQ** (**The ladder**). Done-when: host tests order two simultaneous callers by each rung; the Station sheet's order survives a reload and applies to the next sort.
+* **Q4, the ladder and callers to our CQ** (**The ladder**). Done-when: host tests order two simultaneous callers by each rung; the order set on Settings › Station survives a reload and applies to the next sort.
 * **Q3, manual order** (**Moving entries by hand**). Done-when: host tests for pin, up, down and Next, refusals across stages included; on the phone each action moves the row and changes what transmits next (field).
 * **Q5, POTA and SOTA rungs** and park to park. Done-when: host tests mark a call from `CQ POTA` and order by the rungs, and P2P ranks the same whoever called. Whether the ladder follows the CQ type, as Field Day does, is settled then.
 * **Live spots** as a second source for the activation rungs, once there is a path from the sidekick to the main board.
