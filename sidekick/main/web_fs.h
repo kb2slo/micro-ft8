@@ -1,16 +1,13 @@
 #pragma once
 
-// web_fs.h -- LittleFS web root (docs/architecture/sidekick.md (Web root)).
+// web_fs.h -- the `web` filesystem (docs/architecture/sidekick.md (Web root)).
 //
-// Partition label `web` mounts at WEB_FS_ROOT. Files under main/web/ are the
-// hydrate seed (CMake globs that directory — drop a file in, it is embedded
-// and hydrated). After hydrate, HTTP serves from the FS; embed is not a live
-// second backend. GET /* serves any path that exists on the FS (register last).
+// Partition label `web` mounts at WEB_FS_ROOT, and the files under main/web/ are hydrated onto it
+// at boot. Nothing is served from it: the app and the bootstrap pages are served from the image
+// (app_serve.h). It is still mounted because the bundle API stages and promotes onto it
+// (web_bundle.h), which a page from before the app shipped in the image may still call.
 //
-// Force re-hydrate (present-but-broken recovery) is web_fs_rehydrate(),
-// exposed as token-guarded POST /api/web/rehydrate. Restores seed files from
-// the firmware embed only; promoted app assets are left alone. USB-C reflash
-// remains the hard floor if the recovery UI itself is unreachable.
+// Force re-hydrate is web_fs_rehydrate(), exposed as token-guarded POST /api/web/rehydrate.
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -32,14 +29,8 @@ esp_err_t web_fs_init(void);
 // True after a successful web_fs_init().
 bool web_fs_ready(void);
 
-// True when `relpath` (e.g. "app.html") is a regular file on the web FS. Used
-// to tell a first-run sidekick, which has only the bootstrap pages, from one
-// that has had the app installed.
-bool web_fs_exists(const char *relpath);
-
-// Erases the whole web filesystem, installed app included, and leaves it empty.
-// The seed pages come back on the next web_fs_init(), which is what a factory
-// reset relies on (it restarts straight after). Mounted or not.
+// Erases the whole web filesystem and leaves it empty; the next web_fs_init() hydrates it again.
+// Mounted or not.
 esp_err_t web_fs_format(void);
 
 // Rewrite every seed file from the firmware embed, even if the on-disk copy
@@ -47,22 +38,8 @@ esp_err_t web_fs_format(void);
 // compare-and-write.
 esp_err_t web_fs_rehydrate(void);
 
-// POST /api/web/rehydrate — PAIRING_REQUIRED. Call before the static GET /*.
+// POST /api/web/rehydrate — PAIRING_REQUIRED.
 esp_err_t web_fs_register_rehydrate(httpd_handle_t server);
-
-// Load a file under WEB_FS_ROOT into a malloc'd buffer. `relpath` is relative
-// (e.g. "app.html"). If size_out is non-NULL it receives the byte length
-// (no trailing NUL counted). The buffer is always NUL-terminated for text
-// convenience; caller frees. NULL on error.
-char *web_fs_load(const char *relpath, size_t *size_out);
-
-// Register GET /* to serve files from the web FS. Call after every specific
-// route. Requires httpd_config.uri_match_fn = httpd_uri_match_wildcard. A
-// missing file 404s -- the same in both AP and station mode. (B74 follow-up,
-// 2026-09-21: the AP mode previously had its own captive-portal variant here
-// that redirected a miss to the portal instead -- removed with the rest of
-// the captive-portal logic, which never reliably resolved to "Done" on iOS.)
-esp_err_t web_fs_register_static(httpd_handle_t server);
 
 #ifdef __cplusplus
 }

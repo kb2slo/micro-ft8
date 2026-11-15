@@ -157,6 +157,39 @@ class RefusesAPlainAssetThatLooksCompressed(unittest.TestCase):
                 build.compress_assets(Path(tmp))
 
 
+class PrebuiltPack(unittest.TestCase):
+    """build.py --pack with MICROFT8_APP_PACK set, as CI's sidekick job runs it in a container with
+    no Node: it embeds the pack the runner built, and only if it is stamped as the image is."""
+
+    def run_build(self, tmp, version):
+        ready = Path(tmp) / "ready.pack"
+        ready.write_bytes(app_pack.pack([("app.html", b"<p>hi</p>")], "b1322+d18f9b2"))
+        out = Path(tmp) / "out.pack"
+        argv, env = sys.argv, os.environ.get("MICROFT8_APP_PACK")
+        sys.argv = ["build.py", "--pack", str(out), "--version", version]
+        os.environ["MICROFT8_APP_PACK"] = str(ready)
+        try:
+            build.main()
+        finally:
+            sys.argv = argv
+            if env is None:
+                del os.environ["MICROFT8_APP_PACK"]
+            else:
+                os.environ["MICROFT8_APP_PACK"] = env
+        return ready, out
+
+    def test_a_pack_stamped_as_the_image_is_copied_as_it_is(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ready, out = self.run_build(tmp, "b1322+d18f9b2")
+            self.assertEqual(out.read_bytes(), ready.read_bytes())
+
+    def test_a_pack_stamped_otherwise_stops_the_build(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(SystemExit):
+                self.run_build(tmp, "b1323+e6e4d88")
+            self.assertFalse((Path(tmp) / "out.pack").exists())
+
+
 class BuildId(unittest.TestCase):
     def test_a_build_is_stamped_with_its_commit(self):
         self.assertEqual(build.stamp("d18f9b2", False, "2026-11-13"), "d18f9b2 2026-11-13")

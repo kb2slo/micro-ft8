@@ -280,7 +280,7 @@ esp_err_t pairing_http_register_disclosure(httpd_handle_t server)
     // it is the physical button, checked inside the handler, plus the window
     // closing itself after one successful retrieval (or on timeout).
     // /pairing.js is not registered here: it is a plain file under web/ and is
-    // served by web_fs_register_static()'s GET /*.
+    // served by app_serve_register()'s GET /*.
     _Static_assert(PAIRING_ROUTES_DISCLOSURE == 1, "disclosure is one route");
     return pairing_http_register(server, &disclosure, PAIRING_OPEN);
 }

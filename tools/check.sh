@@ -50,8 +50,13 @@ triggers() {
     decode_recall)   echo 'components/* tools/decode_recall/* tools/iq_convert/*' ;;
     tools)           echo 'tools/qmx_record.py tools/hl2_record.py tools/hl2_pcap.py tools/make_manifest.py tools/build_version.py tools/dev_build.py tools/cut_release.py tools/test_*.py webapp/tools/sidekick.py webapp/tools/install_firmware.py components/porta_proto/include/porta_proto.h sidekick/partitions.csv' ;;
     getting_started) echo 'webapp/app/* webapp/tools/* webapp/getting-started.md' ;;
-    # The paths filter of ci.yml's `changes` job, which gates CI's firmware jobs.
-    sidekick|p4)     echo 'components/* sidekick/* poe_p4/* idf_component.yml */idf_component.yml tools/*.cmake tools/build_version.py tools/check_ram_budget.py .github/workflows/ci.yml' ;;
+    # The paths filter of ci.yml's `changes` job, which gates CI's firmware jobs, but for the web
+    # app's sources: CI builds firmware on a change to them because the sidekick's image carries
+    # the app and a dev build must be published, while here an app edit is proved by the web
+    # checks, and selecting the sidekick's build for it would ask every web change for ESP-IDF.
+    # The sidekick's build does run the web build's packer, so those two files are its own.
+    sidekick)        echo 'components/* sidekick/* poe_p4/* idf_component.yml */idf_component.yml tools/*.cmake tools/build_version.py tools/check_ram_budget.py .github/workflows/ci.yml webapp/tools/build.py webapp/tools/app_pack.py' ;;
+    p4)              echo 'components/* sidekick/* poe_p4/* idf_component.yml */idf_component.yml tools/*.cmake tools/build_version.py tools/check_ram_budget.py .github/workflows/ci.yml' ;;
   esac
 }
 NO_CHECK='*.md docs/* LICENSE *.jpeg *.jpg *.png *.svg .gitignore */.gitignore .cursor/*'
@@ -162,7 +167,8 @@ tools_for() {  # the commands a check cannot run without
   case "$1" in
     web|getting_started) echo "node npm" ;;
     webapp|sim)          echo "node" ;;
-    sidekick|p4)         echo "idf.py" ;;
+    sidekick)            echo "idf.py node npm" ;;
+    p4)                  echo "idf.py" ;;
   esac
 }
 
@@ -363,8 +369,10 @@ check_locks() {
   echo "no local paths in $(git ls-files '*dependencies.lock' | wc -l | tr -d ' ') lock file(s)"
 }
 
+# Its build runs the web build and embeds the pack, so it needs the minifier too.
 check_sidekick() {
   need_idf
+  need_npm
   need_submodule
   idf.py -C sidekick build
 }

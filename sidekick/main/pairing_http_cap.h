@@ -19,23 +19,21 @@ enum {
     PAIRING_ROUTES_WEB_BUNDLE = 3,
     PAIRING_ROUTES_BUNDLE_HOST = 2,
     PAIRING_ROUTES_FW_UPDATE = 4,  // GET /api/fw/status, POST /api/fw/start, /api/fw/cancel and /api/fw/hold
-    // B55 (docs/architecture/system.md (Constraints)): AP mode now serves the full application, the same as
-    // station mode, so it registers the same host_link/web_bundle/bundle_host/
-    // web_fs_rehydrate routes rather than a "static files only" subset. There
-    // is no separate AP-only web_fs count any more -- both modes share
-    // PAIRING_ROUTES_WEB_FS_STATION.
-    PAIRING_ROUTES_WEB_FS_STATION = 2,  // rehydrate + GET /*
+    // AP mode serves the full application, the same as station mode
+    // (docs/architecture/system.md (Constraints)), so both register the same routes below.
+    PAIRING_ROUTES_WEB_FS = 1,     // POST /api/web/rehydrate
+    PAIRING_ROUTES_APP_SERVE = 1,  // GET /*
 
     PAIRING_HTTP_MAX_ROUTES_AP = PAIRING_ROUTES_WIFI_PROV_AP_CORE +
         PAIRING_ROUTES_DISCLOSURE + PAIRING_ROUTES_HOST_LINK +
         PAIRING_ROUTES_WEB_BUNDLE + PAIRING_ROUTES_BUNDLE_HOST +
-        PAIRING_ROUTES_FW_UPDATE + PAIRING_ROUTES_WEB_FS_STATION,
+        PAIRING_ROUTES_FW_UPDATE + PAIRING_ROUTES_WEB_FS + PAIRING_ROUTES_APP_SERVE,
 
     PAIRING_HTTP_MAX_ROUTES_STATION =
         PAIRING_ROUTES_WIFI_PROV_STATION_CORE + PAIRING_ROUTES_DISCLOSURE +
         PAIRING_ROUTES_HOST_LINK + PAIRING_ROUTES_WEB_BUNDLE +
         PAIRING_ROUTES_BUNDLE_HOST + PAIRING_ROUTES_FW_UPDATE +
-        PAIRING_ROUTES_WEB_FS_STATION,
+        PAIRING_ROUTES_WEB_FS + PAIRING_ROUTES_APP_SERVE,
 
     PAIRING_HTTP_MAX_ROUTES =
         (PAIRING_HTTP_MAX_ROUTES_STATION > PAIRING_HTTP_MAX_ROUTES_AP)

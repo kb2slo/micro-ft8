@@ -10,10 +10,13 @@ Separate `idf.py` project from `poe_p4`: ESP-IDF locks target *and sdkconfig* pe
 ## Build (desk)
 
 ```bash
+npm ci --prefix webapp/tools   # once per clone: the web build's packages
 cd sidekick
 idf.py build
 idf.py flash monitor
 ```
+
+The image carries the web app: every build runs the web build (`webapp/tools/build.py`, which needs Node) and embeds its pack, so flashing the sidekick is also how its app is put on it ([`sidekick.md`](../docs/architecture/sidekick.md) (**Web root**)).
 
 **Unplug the Grove cable before flashing over USB.** With it connected and the sidekick the only board on USB, the sidekick's 5 V also feeds the main board and it restarts every few seconds; with both boards on USB its port did not enumerate (kernel error -71). Alone on USB it flashes cleanly (bench, 2026-11-15).
 
@@ -21,17 +24,16 @@ Target is pinned to `esp32s3` in `CMakeLists.txt`; no `set-target` step needed. 
 
 ## First-time setup (a newly flashed sidekick)
 
-The firmware carries only the setup pages. The app (`app.html`) is downloaded once, through your phone, which needs the internet for that one step. The sidekick's own AP has none, so either the phone uses its cellular data while joined to the AP (quickest; an iPhone does this by itself), or the sidekick joins your home WiFi (2.4 GHz only). Why: [`sidekick.md`](../docs/architecture/sidekick.md) (**Installing the app bundle**).
+The app is in the firmware image, so a newly flashed sidekick serves it at once, with no internet.
 
-1. Flash the sidekick ([Build](#build-desk), or the merged image at `0x0`). Join its WiFi network and open `http://192.168.4.1/`. Until the app is installed the page shows the first-time steps instead of "Operate in AP mode".
-2. **Over cellular:** stay on the sidekick's network and open `http://192.168.4.1/update`. Press the sidekick's button when asked, then tap **Install**. It opens the app when done.
-   **Or over home WiFi:** press the sidekick's button, pick your home WiFi, enter its password, **Save** (an iPhone Personal Hotspot needs *Maximize Compatibility* on or it will not be listed). Join the same WiFi on your phone and open `http://micro-ft8.local/update`, press the button when asked, then tap **Install**.
+1. Flash the sidekick ([Build](#build-desk), or the merged image at `0x0`). Join its WiFi network and open `http://192.168.4.1/`.
+2. Tap **Operate in AP mode** to use it on its own network, or pick your home WiFi, enter its password and **Save** (an iPhone Personal Hotspot needs *Maximize Compatibility* on or it will not be listed), then join the same WiFi on your phone and open `http://micro-ft8.local/`.
 
-**To start over** (testing, or handing the unit on): Settings > Diagnostics & reset > **Factory reset**, then confirm. It erases the saved WiFi, the installed app, the pairing, the bundle host override and the AP-mode flag, and the sidekick restarts as a new unit. It also resets the main board's station settings to defaults (a second prompt offers to delete its QSO logs too), and refuses if the main board is not linked or is transmitting. If you cannot reach the app, `idf.py erase-flash` then flash again does the same and more. 
+**To start over** (testing, or handing the unit on): Settings > Diagnostics & reset > **Factory reset**, then confirm. It erases the saved WiFi, the pairing, the bundle host override and the AP-mode flag, and the sidekick restarts as a new unit, its app still there. It also resets the main board's station settings to defaults (a second prompt offers to delete its QSO logs too), and refuses if the main board is not linked or is transmitting. If you cannot reach the app, `idf.py erase-flash` then flash again does the same and more. 
 
-**Handing a unit on** to another operator: factory reset and delete the logs too, then install the app over cellular (step 2 above) and join no WiFi network. It then arrives on its own network with the app ready, which is what the getting-started sheet in the box assumes: Settings shows Mode **AP (offline)** and Call `YOURCALL`. Print the sheet from a fresh build, so it describes the current screens: `npm ci --prefix webapp/tools` once, then `node webapp/tools/getting_started.mjs --pdf` writes `webapp/dist/getting-started.pdf`.
+**Handing a unit on** to another operator: factory reset and delete the logs too, and join no WiFi network. It then arrives on its own network with the app ready, which is what the getting-started sheet in the box assumes: Settings shows Mode **AP (offline)** and Call `YOURCALL`. Print the sheet from a fresh build, so it describes the current screens: `npm ci --prefix webapp/tools` once, then `node webapp/tools/getting_started.mjs --pdf` writes `webapp/dist/getting-started.pdf`.
 
-After that, the app is on the sidekick: Settings > Network > **Switch to AP mode** runs it with no network at all. Opening `/app.html` before step 4 shows a "not installed yet" page that points back here. If Install says it cannot reach the host, the phone has no internet: check it is on your home WiFi.
+Settings > Network > **Switch to AP mode** runs a sidekick that is on your WiFi with no network at all.
 
 ## Backing up a stock unit
 

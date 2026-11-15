@@ -7,9 +7,8 @@
 // means no formatter, validator, linter or browser could be pointed at the
 // source; a page split across four fragments could not be read as a document;
 // and every edit was a C edit. The files now live in `web/` and arrive in the
-// image through `EMBED_TXTFILES` as the hydrate seed (docs/architecture/sidekick.md (Web root)). After
-// web_fs_init(), HTTP loads pages from LittleFS via web_page_send_file() —
-// embed is not a live second backend. Files stay editable and tool-checkable.
+// image through `EMBED_TXTFILES` (docs/architecture/sidekick.md (Web root)), and
+// web_page_send_file() sends a page from that embed. Files stay editable and tool-checkable.
 //
 // Placeholders are `{{name}}`: valid HTML, so a file still opens standalone in
 // a browser with the placeholder showing as text. No printf, so no `%%`.
@@ -72,10 +71,9 @@ bool web_html_escape(const char *in, char *out, size_t out_len);
 // response on success.
 esp_err_t web_page_send(httpd_req_t *req, const char *page, const web_sub_t *subs, size_t n_subs);
 
-// Loads `relpath` from the web FS (after hydrate) and sends it like
-// web_page_send(). The FS is the sole HTTP origin for pages (docs/architecture/sidekick.md (Web root)).
-esp_err_t web_page_send_file(httpd_req_t *req, const char *relpath, const web_sub_t *subs,
-                             size_t n_subs);
+// Sends the page `name` under main/web/, from the image's embed, like web_page_send()
+// (docs/architecture/sidekick.md (Web root)). ESP_FAIL for a name that is not one.
+esp_err_t web_page_send_file(httpd_req_t *req, const char *name, const web_sub_t *subs, size_t n_subs);
 #endif
 
 #ifdef __cplusplus

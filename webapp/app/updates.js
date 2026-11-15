@@ -1,7 +1,8 @@
 // The station's one Update, without the page (docs/architecture/webapp.md, Settings › Software
-// update): what the release manifest offers each board and the published app offers the page, the
-// plan, what to hand the sidekick, the app's relay, and what progress and failure mean in words.
-// app.html draws what these return; webapp/tests/test_updates.js runs this file under node.
+// update): what the release manifest offers each board, the plan, what to hand the sidekick, and
+// what progress and failure mean in words. The web app is part of the sidekick's image, so it
+// moves with the sidekick and is no step of its own. app.html draws what these return;
+// webapp/tests/test_updates.js runs this file under node.
 //
 // Plain global, like swr_core.js: no module system.
 var FwUpdates = (function () {
@@ -19,7 +20,6 @@ var FwUpdates = (function () {
     stable: 'https://micro-ft8.kalikstein.com/download/manifest-stable.json',
   };
   var IMAGE_BASE = 'http://micro-ft8.kalikstein.com/download/ota/';
-  var DOWNLOAD_BASE = 'https://micro-ft8.kalikstein.com/download/';
 
   // board: the name the sidekick's API uses. asset: its key under the manifest's `assets`. The main
   // board is first: when both need updating it goes first, while the sidekick still speaks its
@@ -114,62 +114,21 @@ var FwUpdates = (function () {
       '\nsha256=' + offer.sha256 + '\nversion=' + offer.to + '\n';
   }
 
-  // The app's build id, as build.py stamps it into app.html and writes it to build.json:
-  // '<short sha>[-dirty] <UTC date>', or a release's '<version> <UTC date>' ('0.1.0+0c5ccec
-  // 2026-11-14'), whose `version` is then set. null for anything else, the unbuilt page's 'source'
-  // included.
-  function buildCommit(id) {
-    var m = /^(\S+) \d{4}-\d{2}-\d{2}$/.exec(typeof id === 'string' ? id : '');
-    if (!m) return null;
-    var rel = parseVersion(m[1]);
-    if (rel) return rel.channel === 'stable' ? { sha: rel.sha, dirty: false, version: m[1] } : null;
-    var c = /^([0-9a-f]{7,40})(-dirty)?$/.exec(m[1]);
-    return c ? { sha: c[1], dirty: !!c[2], version: '' } : null;
-  }
-
-  // A release's app, from the stable manifest's `app` entry (tools/make_manifest.py): the bundle
-  // under its release's number on the mirror, with the build id and size build.json would give.
-  // null when the manifest has none, or one this page should not fetch from.
-  function stableApp(manifest) {
-    var a = manifest && manifest.channel === 'stable' && manifest.app;
-    if (!a || typeof a.path !== 'string' || !/^app\/\d+\.\d+\.\d+\/$/.test(a.path)) return null;
-    return { build: a.build, size: a.size, base: DOWNLOAD_BASE + a.path };
-  }
-
-  // Whether the published app differs from the one this page runs (`installed`, its stamped build
-  // id). `published` is {build, size} and, for a release's, base: build.json beside the dev
-  // bundle's manifest, or stableApp()'s. The same app is the same commit built for the same
-  // channel: a release's is its version, a dev one's its commit, a short sha matching a longer one
-  // it begins; so a page from a release is offered the dev app of the same commit, and the other
-  // way, and Settings then names what the station is on. A page that is unbuilt or -dirty is always
-  // offered the published app. null: nothing to offer, or `published` not read or not sane.
-  function appOffer(published, installed) {
-    var to = published && buildCommit(published.build);
-    if (!to || to.dirty || typeof published.size !== 'number' || !(published.size > 0)) return null;
-    var from = buildCommit(installed);
-    if (from && !from.dirty && from.version === to.version &&
-        (from.sha.indexOf(to.sha) === 0 || to.sha.indexOf(from.sha) === 0)) return null;
-    return { board: 'app', label: 'App',
-      from: from ? (from.version ? versionLabel(from.version) : from.sha + (from.dirty ? '-dirty' : '')) : 'source',
-      to: to.version ? versionLabel(to.version) : to.sha, size: published.size, base: published.base || '' };
-  }
-
-  // What one tap of Update does (docs/roadmap/ota-updates.md, antu): the app first, by this
-  // page's relay, then every firmware offer, in order, in one request the sidekick carries out by
-  // itself (fw_plan_parse()), so a locked phone stops nothing once the app is in. `manifest` is
-  // the manifest of the channel the plan goes to: the station's own, or with `switching` the
-  // other one, which makes the same plan a switch of channel (target, switching, and older: the
-  // station runs a dev build numbered above the one it would get). `link` is the
-  // station now: {hostLinked, ap, mainProto, sidekickProto}; hostLinked is a main board linked
-  // and reporting its version, ap the sidekick on its own access point, the protos /api/config's
-  // host_proto and sk_proto (0 unknown). `app` is appOffer()'s.
+  // What one tap of Update does: every firmware offer, the main board's first, in one request the
+  // sidekick carries out by itself (fw_plan_parse()), so the phone may lock from the tap. The web
+  // app is in the sidekick's image and is no step. `manifest` is the manifest of the channel the
+  // plan goes to: the station's own, or with `switching` the other one, which makes the same plan
+  // a switch of channel (target, switching, and older: the station runs a dev build numbered above
+  // the one it would get). `link` is the station now: {hostLinked, ap, mainProto, sidekickProto};
+  // hostLinked is a main board linked and reporting its version, ap the sidekick on its own access
+  // point, the protos /api/config's host_proto and sk_proto (0 unknown).
   //
   // unavailable: '' or why no update can be offered at all: 'no_host' (no main board: the boards
   // update together, and a sidekick alone is updated over USB) or 'ap' (no internet to download
   // from). blocked: '' or why this plan must not run: 'pair', afterwards the two boards would speak
   // different Port A protocol versions, and a main board the sidekick cannot talk to can only be
   // recovered over USB. Nothing checks for a radio: the review asks for it to be off.
-  function plan(manifest, running, link, app, switching) {
+  function plan(manifest, running, link, switching) {
     var steps = offers(manifest, running, !!switching);
     var channel = channelOf(running);
     var was = parseVersion(running && running.main);
@@ -184,24 +143,20 @@ var FwUpdates = (function () {
       switching: !!switching,
       older: !!switching && !!was && was.channel === 'dev' && typeof number === 'number' && number < was.build,
       to: versionLabel(manifest && manifest.version),
-      app: app || null,
       steps: steps,
-      any: !!app || steps.length > 0,
+      any: steps.length > 0,
       unavailable: !link.hostLinked ? 'no_host' : link.ap ? 'ap' : '',
       blocked: blocked,
       body: steps.map(startBody).join('next\n'),
       // Measured 2026-11-10: a main board's update 98 s (74 s of it the transfer), the sidekick's 28
-      // to 42 s. The app's relay is seconds on a phone with signal.
-      time: !steps.length ? 'under a minute' : !main ? 'about a minute'
-        : steps.length > 1 ? 'about three minutes' : 'about two minutes',
+      // to 42 s.
+      time: !main ? 'about a minute' : steps.length > 1 ? 'about three minutes' : 'about two minutes',
     };
   }
 
-  // The note under an offered update: why it cannot run, or the radio off when firmware is in it.
-  // The app alone restarts no board, so it asks nothing of the radio, as the review does not.
+  // The note under an offered update: why it cannot run, or the radio off, which every update asks.
   function offerNote(p) {
-    if (p.blocked) return whyText(p.blocked) + '.';
-    return p.steps.length ? 'Switch the radio off first.' : '';
+    return p.blocked ? whyText(p.blocked) + '.' : 'Switch the radio off first.';
   }
 
   // Why Software update is unavailable, from plan().unavailable.
@@ -221,12 +176,9 @@ var FwUpdates = (function () {
         (p.older ? ' That is an older build than the one it runs.' : ''));
     }
     out.push('Takes ' + p.time + '. Nothing transmits until the update is done.');
-    if (p.steps.length) {
-      out.push('Switch the radio off, or unplug its USB, before you update. If it stays connected it may ' +
-        'need switching off and on afterwards.');
-    }
-    out.push(p.app ? 'Keep this page open until the app is installed' +
-      (p.steps.length ? '; the rest goes on if this phone locks.' : '.') : 'The update goes on if this phone locks.');
+    out.push('Switch the radio off, or unplug its USB, before you update. If it stays connected it may ' +
+      'need switching off and on afterwards.');
+    out.push('The update goes on if this phone locks.');
     return out;
   }
 
@@ -238,7 +190,9 @@ var FwUpdates = (function () {
   // The app's relay (docs/architecture/sidekick.md, Installing the app bundle): fetch the bundle's
   // manifest and each asset from the release host over HTTPS, which is what authenticates them, and
   // write them to the sidekick, which promotes nothing until every file is staged and checked. The
-  // manifest is read afresh each run, so a retry gets whatever is published then.
+  // manifest is read afresh each run, so a retry gets whatever is published then. No page calls it
+  // now that the app is in the sidekick's image; it goes with the bundle API
+  // (docs/roadmap/ota-updates.md, jmch).
   //
   // io: {get(url) -> Response from the host; begin(text), put(path, bytes), commit() -> Response from
   // the sidekick; progress(done, total) in bytes}. Resolves {ok: true} or {ok: false, why, detail}:
@@ -307,16 +261,6 @@ var FwUpdates = (function () {
   };
   function appWhyText(why) {
     return APP_WHY_TEXT[why] || 'The app could not be installed';
-  }
-
-  // The app's row on the progress sheet. run: {at, done, total}, at 'now', 'done', 'after' (left
-  // for after the firmware, which the app needs) or 'failed'. pct is apart from the text, as in
-  // stepRows().
-  function appRow(run) {
-    var text = 'Install the app (' + sizeText(run.total) + ')';
-    if (run.at === 'after') return { text: text + ', after the firmware', pct: '', at: 'next' };
-    var pct = run.at === 'now' && run.total > 0 ? Math.floor(run.done * 100 / run.total) + '%' : '';
-    return { text: text, pct: pct, at: run.at === 'failed' ? 'now' : run.at };
   }
 
   // The steps of an update as the progress screen lists them, from GET /api/fw/status: its `plan`
@@ -459,16 +403,12 @@ var FwUpdates = (function () {
     switchLabel: switchLabel,
     offers: offers,
     startBody: startBody,
-    buildCommit: buildCommit,
-    appOffer: appOffer,
-    stableApp: stableApp,
     plan: plan,
     unavailableText: function (why) { return UNAVAILABLE_TEXT[why] || ''; },
     reviewText: reviewText,
     offerNote: offerNote,
     relayApp: relayApp,
     appWhyText: appWhyText,
-    appRow: appRow,
     stepRows: stepRows,
     busy: busy,
     startCheck: startCheck,

@@ -15,11 +15,16 @@ Both publish the same set: the M5Stack Unit PoE-P4 merged image (esp32p4, 0x0, c
 (merged by `tools/merge_sidekick_bin.sh` in the sidekick job), a **history-free source tarball**
 (vendored `ft8_lib`, no `.git`), each board's **OTA image** (below), and the channel's manifest. The names
 above are a dev file's on the mirror and a stable file's on GitHub, `<number>` the tag's without its `v`; on
-the mirror a stable file has the dev name with `stable` for `dev`. **A release also publishes the web app,**
-built at the tag and stamped with the release's version: `microft8-app-<number>.tar.gz` on GitHub, and its
-bundle under `app/<number>/` on the mirror, which the stable manifest names. The dev app is published apart
-from the firmware, by `pages.yml` on every push that touches it ([webapp.md](architecture/webapp.md),
-**Serving the site**). The firmware artifacts are skipped entirely for docs-only commits (the
+the mirror a stable file has the dev name with `stable` for `dev`. **The sidekick's image carries the web
+app,** built with it ([sidekick.md](architecture/sidekick.md), **Web root**): the sidekick's job builds the
+app's pack on the runner, then the firmware around it. So the `changes` path filter counts `webapp/app/` and
+`webapp/tools/` as firmware, and a push to `main` that touches only the app builds and publishes a dev build
+of both boards. **A release still publishes the web app apart as well,** built at the tag and stamped with
+the release's version: `microft8-app-<number>.tar.gz` on GitHub, and its bundle under `app/<number>/` on the
+mirror, which the stable manifest names; and `pages.yml` still publishes the dev bundle on every push that
+touches it ([webapp.md](architecture/webapp.md), **Serving the site**). Only a page from before the app
+shipped in the image reads either, to relay it; both go with row [jmch](roadmap/ota-updates.md#jmch). The
+firmware artifacts are skipped entirely for docs-only commits (the
 `changes` path filter), so a roadmap-only merge neither rebuilds nor republishes any binary, and the dev
 channel's build is the last commit that could change one, not always the tip of `main`.
 

@@ -165,9 +165,8 @@ static void test_abort()
     check(!web_page_expand("x", nullptr, 0, nullptr, nullptr), "a null emit is refused");
 }
 
-// The real provision.html, expanded the way wifi_prov.c get_form() does. A
-// first-run sidekick (no app.html) must hide "Operate in AP mode", which
-// would land on a 404, and show the setup steps; an installed one the reverse.
+// The real provision.html, expanded the way wifi_prov.c get_form() does. The app is in the image,
+// so the page always offers it: there is no first-run state with install steps in its place.
 static std::string read_file(const char* path)
 {
     std::ifstream f(path);
@@ -176,29 +175,23 @@ static std::string read_file(const char* path)
     return ss.str();
 }
 
-static void test_provision_first_run()
+static void test_provision_page()
 {
     const std::string page = read_file("../sidekick/main/web/provision.html");
     check(!page.empty(), "provision.html is readable from host_mock/");
-
-    for (int installed = 0; installed <= 1; ++installed) {
-        const std::vector<web_sub_t> subs = {
-            {"failure", "", true},
-            {"networks", "", true},
-            {"operate_hidden", installed ? "" : "hidden", false},
-            {"setup_hidden", installed ? "hidden" : "", false},
-        };
-        const std::string out = expand(page, subs);
-        check(out.find("{{") == std::string::npos, "provision.html leaves no unexpanded placeholder");
-        const bool op_hidden = out.find("<div hidden>\n<a class=cta href=/app.html") != std::string::npos;
-        const bool setup_hidden = out.find("<div hidden>\n<p class=first>") != std::string::npos;
-        check(op_hidden == !installed, "operate button hidden exactly when the app is not installed");
-        check(setup_hidden == !!installed, "first-run steps hidden exactly when the app is installed");
-    }
-
-    const std::string setup = read_file("../sidekick/main/web/setup.html");
-    check(!setup.empty() && setup.find("{{") == std::string::npos,
-          "setup.html is served unchanged, so it has no placeholders");
+    const std::vector<web_sub_t> subs = {
+        {"failure", "", true},
+        {"networks", "", true},
+    };
+    const std::string out = expand(page, subs);
+    check(out.find("{{") == std::string::npos, "provision.html leaves no unexpanded placeholder");
+    check(out.find("<a class=cta href=/app.html") != std::string::npos, "it offers the app");
+    check(out.find("hidden>\n<a class=cta href=/app.html") == std::string::npos, "and never hides it");
+    check(out.find("/update") == std::string::npos, "and sends nobody to install one");
+    // Nor does the page shown after WiFi is saved, which once sent a first-time operator to /update.
+    const std::string saved = read_file("../sidekick/main/web/saved.html");
+    check(!saved.empty() && saved.find("/update") == std::string::npos && saved.find("Install") == std::string::npos,
+          "saved.html sends nobody to install the app");
 }
 
 int main()
@@ -206,7 +199,7 @@ int main()
     test_escape();
     test_expand();
     test_abort();
-    test_provision_first_run();
+    test_provision_page();
 
     if (g_fail == 0) {
         std::printf("web_page: all checks passed\n");

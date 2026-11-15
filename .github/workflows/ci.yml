@@ -47,6 +47,10 @@ jobs:
               - 'tools/**/*.cmake'
               - 'tools/build_version.py'
               - 'tools/check_ram_budget.py'
+              # The web app ships inside the sidekick's image, so a change to it
+              # is a firmware change, and on main publishes a dev build.
+              - 'webapp/app/**'
+              - 'webapp/tools/**'
               - '.github/workflows/ci.yml'
 
   # Each step is one check of tools/check.sh, which says what it runs; a
@@ -168,6 +172,19 @@ jobs:
           echo "MICROFT8_VERSION=${version}" >> "$GITHUB_ENV"
           echo "version: ${version:-the commit alone}"
 
+      # The web app ships in this image: the sidekick's build embeds the web
+      # build's pack (sidekick/main/CMakeLists.txt). ESP-IDF's container has
+      # no Node, so the pack is built here, from this same checkout, and the
+      # build in the container is told to embed that file as it is
+      # (MICROFT8_APP_PACK, webapp/tools/build.py). The app is stamped with the
+      # version the image will report, as tools/git_version.cmake works it out:
+      # the channel's version, or for a pull request the head commit alone. The
+      # build in the container refuses a pack stamped anything else.
+      - name: Build the web app's pack
+        run: |
+          npm ci --prefix webapp/tools
+          python3 webapp/tools/build.py --version "${MICROFT8_VERSION:-${MICROFT8_GIT_SHA:0:7}}"
+
       - name: Build sidekick with ESP-IDF 5.5.5
         uses: espressif/esp-idf-ci-action@v1
         with:
@@ -176,7 +193,7 @@ jobs:
           # sidekick/CMakeLists.txt pins IDF_TARGET too; keep the two agreeing.
           target: esp32s3
           path: sidekick
-          extra_docker_args: -e MICROFT8_GIT_SHA=${{ env.MICROFT8_GIT_SHA }} -e MICROFT8_VERSION=${{ env.MICROFT8_VERSION }}
+          extra_docker_args: -e MICROFT8_GIT_SHA=${{ env.MICROFT8_GIT_SHA }} -e MICROFT8_VERSION=${{ env.MICROFT8_VERSION }} -e MICROFT8_APP_PACK=webapp/dist/app.pack
           command: idf.py build
 
       # One 0x0 image for desk esptool, merged from the build's four pieces
