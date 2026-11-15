@@ -51,11 +51,11 @@ import build_version  # noqa: E402
 
 BUILD_PLACEHOLDER = "__APP_BUILD__"
 
-# The pack is part of the sidekick's image, which must fit a firmware slot: 0x300000 (3,072 KB,
+# The pack is part of the sidekick's image, which must fit a firmware slot: 0x3F0000 (4,032 KB,
 # sidekick/partitions.csv), with the sidekick's own code about 1,100 KB of it (measured
 # 2026-11-15: an image of 1,288,160 bytes, 186,869 of them the pack). 800 KB keeps the image
-# under 2 MB, a third of the slot spare for the code to grow. Raising this is a choice about the
-# slot, not about the app alone.
+# under 2 MB, half the slot spare for the code to grow. Raising this is a choice about the slot,
+# not about the app alone.
 BUNDLE_MAX = 800 * 1024
 # gzip's magic. The pack carries no flag for it, so the sidekick tells a compressed asset by these
 # first two bytes and serves it with Content-Encoding: gzip (sidekick/main/app_serve.c).

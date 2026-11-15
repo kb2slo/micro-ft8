@@ -2,6 +2,9 @@
 # Merge a built sidekick's flash pieces into one 0x0 image for desk esptool.
 # Offsets match sidekick/partitions.csv (bootloader 0x0, table 0x8000,
 # otadata 0xF000, app/ota_0 0x20000).
+# merge_bin fills the gaps with 0xFF, nvs at 0x9000 among them, so the image
+# erases the sidekick's settings: a USB flash is a full wipe
+# (docs/architecture/sidekick.md (First install)).
 #
 # Usage: tools/merge_sidekick_bin.sh [builddir] [outfile]
 # Defaults: sidekick/build/{,sidekick_merged.bin}

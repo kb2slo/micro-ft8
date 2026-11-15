@@ -4,22 +4,17 @@
 # into the spare slot (docs/architecture/sidekick.md (Firmware updates)); the ROM/USB-C path remains first install and hard
 # recovery. With otadata erased the bootloader boots ota_0.
 #
-# 3 MB slots on an 8 MB part. Measured 2026-09-09 on esp32s3: IDF's
-# simple_ota_example (WiFi + HTTPS + CA) is 911 KB; a sidekick without a TLS
-# stack is smaller, and 3 MB is roughly 2x headroom — resizing later costs a
-# USB-C reflash of every device. Cheap at one device, expensive after
-# distribution.
-#
-# web (LittleFS) claims the free tail above ota_1 (~1.9 MB). Nothing mounts or
-# serves it: the app and the bootstrap pages are in the firmware image
-# (docs/architecture/sidekick.md (Web root)).
-# nvs stays at 0x9000 with its original 24 KB — move it and WiFi/token config
-# are silently lost.
+# The two slots take the whole of the 8 MB part above 0x20000, 4,032 KB each:
+# the app is in the firmware image (docs/architecture/sidekick.md (Web root)),
+# and the station's data is the main board's, so the sidekick has no
+# filesystem. An image was 1,245,136 bytes on 2026-11-15. This table is final
+# for 1.0 (docs/roadmap/release-1-0.md): changing it costs every unit a USB
+# flash, which erases its settings.
+# nvs stays at 0x9000 with its original 24 KB.
 #
 # Name,     Type, SubType,  Offset,   Size,    Flags
 nvs,        data, nvs,      0x9000,   0x6000,
 otadata,    data, ota,      0xF000,   0x2000,
 phy_init,   data, phy,      0x11000,  0x1000,
-ota_0,      app,  ota_0,    0x20000,  0x300000,
-ota_1,      app,  ota_1,    0x320000, 0x300000,
-web,        data, littlefs, 0x620000, 0x1E0000,
+ota_0,      app,  ota_0,    0x20000,  0x3F0000,
+ota_1,      app,  ota_1,    0x410000, 0x3F0000,
