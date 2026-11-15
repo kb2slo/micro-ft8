@@ -65,7 +65,7 @@ jobs:
         with:
           submodules: true
 
-      - name: Web bundle build
+      - name: Web app build
         run: tools/check.sh --only web
 
       - name: Webapp tests
@@ -319,17 +319,7 @@ jobs:
           ./tools/make_source_archive.sh dist "${short}"
           mv "dist/microft8-source-${short}.tar.gz" "dist/microft8-source-${number}.tar.gz"
 
-      # The web app as this release: its build id carries the version
-      # (webapp/tools/build.py), and the bundle goes out with the boards' images.
-      - name: Build the release's app
-        run: |
-          version="$(python3 tools/build_version.py --ref "${GITHUB_REF}" --sha "${GITHUB_SHA}")"
-          npm ci --prefix webapp/tools
-          MICROFT8_VERSION="${version}" python3 webapp/tools/build.py
-          cat webapp/dist/app/build.json
-          tar -czf "dist/microft8-app-${NUMBER}.tar.gz" -C webapp/dist app
-
-      # Before anything is published: it refuses an image or an app that does not report
+      # Before anything is published: it refuses an image that does not report
       # this release's version (tools/make_manifest.py), and then nothing below runs.
       - name: Write the stable manifest
         run: |
@@ -340,8 +330,7 @@ jobs:
             --asset "poe_p4=dist/microft8-poe-p4-${NUMBER}.bin" --ota "poe_p4=dist/microft8-poe-p4-ota-${NUMBER}.bin" \
             --asset "sidekick=dist/microft8-sidekick-${NUMBER}.bin" --ota "sidekick=dist/microft8-sidekick-ota-${NUMBER}.bin" \
             --asset "source=dist/microft8-source-${NUMBER}.tar.gz" \
-            --asset "getting_started=dist/microft8-getting-started-${NUMBER}.pdf" \
-            --app webapp/dist/app
+            --asset "getting_started=dist/microft8-getting-started-${NUMBER}.pdf"
           cat dist/manifest-stable.json
 
       - uses: softprops/action-gh-release@v3
@@ -354,7 +343,6 @@ jobs:
             dist/microft8-sidekick-ota-${{ env.NUMBER }}.bin
             dist/microft8-source-${{ env.NUMBER }}.tar.gz
             dist/microft8-getting-started-${{ env.NUMBER }}.pdf
-            dist/microft8-app-${{ env.NUMBER }}.tar.gz
             dist/manifest-stable.json
           body: |
             Micro-FT8 ${{ env.NUMBER }}, a stable release. First install and recovery, in a browser: https://micro-ft8.kalikstein.com/downloads.html
@@ -372,8 +360,6 @@ jobs:
             ```
 
             **Over-the-air images** — `microft8-poe-p4-ota-${{ env.NUMBER }}.bin` and `microft8-sidekick-ota-${{ env.NUMBER }}.bin`: each board's app image alone, which an update from the web app writes. Not for flashing at `0x0`. `manifest-stable.json` has every file's SHA-256.
-
-            **Web app** — `microft8-app-${{ env.NUMBER }}.tar.gz`: the bundle the sidekick serves, as built for this release; an update installs it with the boards' images.
 
             **Source** — `microft8-source-${{ env.NUMBER }}.tar.gz`: history-free tree at this tag, including vendored `ft8_lib` (no `.git`).
 
@@ -406,17 +392,6 @@ jobs:
           # Each OTA image again under its own name, which is never overwritten: what an update downloads.
           put "ota/microft8-poe-p4-ota-${NUMBER}.bin" "dist/microft8-poe-p4-ota-${NUMBER}.bin" application/octet-stream
           put "ota/microft8-sidekick-ota-${NUMBER}.bin" "dist/microft8-sidekick-ota-${NUMBER}.bin" application/octet-stream
-          # The app's bundle under the release's number, never overwritten either. Its assets are
-          # stored as built, gzipped under their own names (webapp/tools/build.py), so as bytes;
-          # only its manifest and build.json are JSON as they are.
-          for f in webapp/dist/app/*; do
-            name="$(basename "${f}")"
-            case "${name}" in
-              manifest.json|build.json) ctype='application/json; charset=utf-8' ;;
-              *) ctype=application/octet-stream ;;
-            esac
-            put "app/${NUMBER}/${name}" "${f}" "${ctype}"
-          done
           put manifest-stable.json dist/manifest-stable.json 'application/json; charset=utf-8'
 
   release-main:

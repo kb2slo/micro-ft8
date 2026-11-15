@@ -40,8 +40,8 @@ class ManifestTest(unittest.TestCase):
             f.write(data)
         return path
 
-    def build(self, assets, otas, commit=COMMIT, version=VERSION, count=None, app=None):
-        return mm.build(commit, version, "20261110", assets, otas, 14, STAMP, count, app)
+    def build(self, assets, otas, commit=COMMIT, version=VERSION, count=None):
+        return mm.build(commit, version, "20261110", assets, otas, 14, STAMP, count)
 
     def test_full_manifest(self):
         p4_ota = app_image(VERSION, "poe_p4", 5000)
@@ -135,23 +135,6 @@ class ManifestTest(unittest.TestCase):
         with self.assertRaisesRegex(mm.ManifestError, "reports version"):
             self.build({"poe_p4": self.put("m.bin", b"m")}, {"poe_p4": self.put("o.bin", app_image(VERSION, "poe_p4"))},
                        version=stable, count=1322)
-
-    def test_a_stable_manifest_names_the_releases_app(self):
-        stable = "0.1.0+c6374c9"
-        app = {"build": stable + " 2026-11-10", "size": 185745}
-        m = self.build({}, {}, version=stable, count=1322, app=app)
-        # What webapp/app/updates.js's stableApp() reads (webapp/tests/test_updates.js).
-        self.assertEqual(m["app"], {"path": "app/0.1.0/", "build": stable + " 2026-11-10", "size": 185745})
-        self.assertNotIn("app", self.build({}, {}, version=stable, count=1322))
-        # Built from the same commit with no version handed to it, from a changed tree, or as another release.
-        for build_id in ("c6374c9 2026-11-10", "c6374c9-dirty 2026-11-10", "0.0.9+c6374c9 2026-11-10", "unknown", None):
-            with self.assertRaisesRegex(mm.ManifestError, "not as this release"):
-                self.build({}, {}, version=stable, count=1322, app={"build": build_id, "size": 185745})
-        for size in (0, None, "185745", True):
-            with self.assertRaisesRegex(mm.ManifestError, "gives no size"):
-                self.build({}, {}, version=stable, count=1322, app={"build": stable + " 2026-11-10", "size": size})
-        with self.assertRaisesRegex(mm.ManifestError, "for a stable manifest"):
-            self.build({}, {}, app={"build": VERSION + " 2026-11-10", "size": 185745})
 
     def test_refuses_a_version_that_is_not_a_channels_build_of_the_commit(self):
         for version in ("c6374c9", "", "b1322+c6374c9-dirty", "b1322", "0.1.0", "v0.1.0+c6374c9"):

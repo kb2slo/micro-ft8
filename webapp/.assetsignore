@@ -1,8 +1,9 @@
 # Wrangler's own tooling installs itself here at deploy time (workingDirectory:
 # webapp in .github/workflows/pages.yml) -- none of this is site content.
 node_modules
-# The build's output (webapp/tools/build.py); pages.yml moves the built bundle
-# into app/ before deploying, so dist/ never ships on its own.
+# The web app's sources and the build's output (webapp/tools/build.py): the app ships in the
+# sidekick's image, not on the site (docs/architecture/sidekick.md, Web root).
+app
 dist
 wrangler.jsonc
 worker.js

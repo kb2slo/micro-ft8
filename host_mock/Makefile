@@ -56,9 +56,7 @@ FILE_LIST_TARGET = host_test_file_list
 PORTA_PROTO_TARGET = host_test_porta_proto
 PAIRING_TOKEN_TARGET = host_test_pairing_token
 WEB_PAGE_TARGET = host_test_web_page
-WEB_MANIFEST_TARGET = host_test_web_manifest
 EVENT_STATE_TARGET = host_test_event_state
-BUNDLE_HOST_TARGET = host_test_bundle_host
 FW_POLICY_TARGET = host_test_fw_policy
 APP_PACK_TARGET = host_test_app_pack
 APP_PUSH_TARGET = host_test_app_push
@@ -100,7 +98,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARG
      $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) \
      $(FILE_LIST_TARGET) \
      $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
-     $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(EVENT_STATE_TARGET) $(BUNDLE_HOST_TARGET) $(FW_POLICY_TARGET) $(APP_PACK_TARGET) $(APP_PUSH_TARGET) $(PORTA_FW_RX_TARGET) \
+     $(WEB_PAGE_TARGET) $(EVENT_STATE_TARGET) $(FW_POLICY_TARGET) $(APP_PACK_TARGET) $(APP_PUSH_TARGET) $(PORTA_FW_RX_TARGET) \
      $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(MODE_ENTRIES_TARGET) $(ROGERS_ONCE_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
      $(CAT_REPLY_PARSER_TARGET) $(AMP_BAND_PRIME_TARGET) $(SWR_SWEEP_TARGET) $(SWR_TRIP_TARGET) $(TX_READY_TARGET) $(TX_OFFSET_TARGET) $(QMX_IQ_LINK_TARGET) $(QMX_MENU_READ_TARGET) $(QMX_MENU_WRITE_TARGET) $(QMX_IQ_CHANNEL_TARGET) \
      $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(BLOCK_ACTIVITY_TARGET) $(CORE_BUSY_TARGET) \
@@ -385,28 +383,12 @@ test_web_page.o: test_web_page.cpp
 $(WEB_PAGE_TARGET): $(WEB_PAGE_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
-WEB_MANIFEST_OBJ = web_manifest.o test_web_manifest.o
-web_manifest.o: ../sidekick/main/web_manifest.c
-	$(CC) $(CFLAGS) -I../sidekick/main -c $< -o $@
-test_web_manifest.o: test_web_manifest.cpp
-	$(CXX) $(CXXFLAGS) -I../sidekick/main -c $< -o $@
-$(WEB_MANIFEST_TARGET): $(WEB_MANIFEST_OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^
-
 EVENT_STATE_OBJ = event_state.o porta_event_json.o test_event_state.o
 event_state.o: ../sidekick/main/event_state.c
 	$(CC) $(CFLAGS) -I../components/porta_proto/include -c $< -o $@
 test_event_state.o: test_event_state.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -I../sidekick/main -c $< -o $@
 $(EVENT_STATE_TARGET): $(EVENT_STATE_OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^
-
-BUNDLE_HOST_OBJ = bundle_host.o test_bundle_host.o
-bundle_host.o: ../sidekick/main/bundle_host.c
-	$(CC) $(CFLAGS) -I../sidekick/main -c $< -o $@
-test_bundle_host.o: test_bundle_host.cpp
-	$(CXX) $(CXXFLAGS) -I../sidekick/main -c $< -o $@
-$(BUNDLE_HOST_TARGET): $(BUNDLE_HOST_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 FW_POLICY_OBJ = fw_policy.o porta_fw_rx.o porta_proto.o test_fw_policy.o
@@ -486,9 +468,7 @@ clean:
 	      $(FILE_LIST_TARGET) \
 	      $(PAIRING_TOKEN_OBJ) $(PAIRING_TOKEN_TARGET) \
 	      $(WEB_PAGE_OBJ) $(WEB_PAGE_TARGET) \
-	      $(WEB_MANIFEST_OBJ) $(WEB_MANIFEST_TARGET) \
 	      $(EVENT_STATE_OBJ) $(EVENT_STATE_TARGET) \
-	      $(BUNDLE_HOST_OBJ) $(BUNDLE_HOST_TARGET) \
 	      $(FW_POLICY_OBJ) $(FW_POLICY_TARGET) \
 	      $(APP_PACK_OBJ) $(APP_PACK_TARGET) app_pack_sample.bin \
 	      $(APP_PUSH_OBJ) $(APP_PUSH_TARGET) \

@@ -1,4 +1,4 @@
-// Minifies a built web bundle in place: every .html (with its inline scripts
+// Minifies a built web app in place: every .html (with its inline scripts
 // and styles) and every .js. Run by webapp/tools/build.py, never by hand:
 //
 //   node webapp/tools/minify.mjs webapp/dist/app
@@ -43,7 +43,7 @@ function compileCheck(code, filename) {
 async function main() {
   const dir = process.argv[2];
   if (!dir || !fs.statSync(dir).isDirectory()) {
-    console.error('usage: node minify.mjs <bundle dir>');
+    console.error('usage: node minify.mjs <app dir>');
     process.exit(2);
   }
   for (const name of fs.readdirSync(dir).sort()) {

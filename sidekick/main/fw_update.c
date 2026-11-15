@@ -728,30 +728,6 @@ static esp_err_t post_cancel(httpd_req_t *req)
     return send_json(req, "200 OK", "{\"ok\":true}");
 }
 
-// POST /api/fw/hold, body "on" or "off": the page holds transmit off before its own step of an
-// update (the app's install, which this sidekick takes no part in starting) and gives it back
-// when there is no firmware to follow. The main board ends a hold nobody refreshes, so a page
-// that goes away mid-step strands nothing.
-static esp_err_t post_hold(httpd_req_t *req)
-{
-    char body[8] = "";
-    if (req->content_len == 0 || req->content_len >= sizeof(body) ||
-        httpd_req_recv(req, body, req->content_len) != (int)req->content_len) {
-        return refuse(req, "400 Bad Request", "body");
-    }
-    const bool on = strcmp(body, "on") == 0;
-    if (!on && strcmp(body, "off") != 0) {
-        return refuse(req, "400 Bad Request", "body");
-    }
-    lock();
-    const bool busy = state_busy(s_st.state);
-    unlock();
-    if (fw_page_hold_applies(on, busy)) {
-        hold(on);
-    }
-    return send_json(req, "200 OK", "{\"ok\":true}");
-}
-
 esp_err_t fw_update_register(httpd_handle_t server)
 {
     if (!server) {
@@ -766,9 +742,6 @@ esp_err_t fw_update_register(httpd_handle_t server)
     static const httpd_uri_t cancel = {
         .uri = "/api/fw/cancel", .method = HTTP_POST, .handler = post_cancel,
     };
-    static const httpd_uri_t hold_uri = {
-        .uri = "/api/fw/hold", .method = HTTP_POST, .handler = post_hold,
-    };
 
     const struct {
         const httpd_uri_t *uri;
@@ -777,7 +750,6 @@ esp_err_t fw_update_register(httpd_handle_t server)
         { &status, PAIRING_OPEN },
         { &start, PAIRING_REQUIRED },
         { &cancel, PAIRING_REQUIRED },
-        { &hold_uri, PAIRING_REQUIRED },
     };
     _Static_assert(sizeof(routes) / sizeof(routes[0]) == PAIRING_ROUTES_FW_UPDATE, "fw_update route count");
     for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i) {

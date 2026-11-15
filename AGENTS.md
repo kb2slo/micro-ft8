@@ -171,9 +171,9 @@ the only place every agent and every person can see them — see "Memory lives i
   it): the fix may already be released.
 
 - **`webapp/app/` is source; what ships is its build** (`python3 webapp/tools/build.py`, after
-  `npm ci --prefix webapp/tools` once per clone): minified into `webapp/dist/app/`, manifest written from the output,
-  size budget checked ([architecture/webapp.md](docs/architecture/webapp.md), **Build**). Never commit a
-  manifest or build output; both are ignored. Pages, CI's Host tests, the sidekick's build and `install_app.py` each build, so an edit
+  `npm ci --prefix webapp/tools` once per clone): minified into `webapp/dist/app/` and packed,
+  size budget checked ([architecture/webapp.md](docs/architecture/webapp.md), **Build**). Never commit build
+  output; it is ignored. CI's Host tests, the sidekick's build and `install_app.py` each build, so an edit
   under `webapp/app/` needs no extra step. Before pushing one, run `tools/check.sh --changed`: it runs that
   build, as CI does.
 

@@ -3,7 +3,7 @@
 
 The layout is in sidekick/main/app_pack.h, whose reader is tested against what this writes
 (host_mock/test_app_pack.cpp reads `--sample`'s output). webapp/tools/build.py calls pack() on the
-built bundle.
+built app.
 
   python3 webapp/tools/app_pack.py --sample out.bin   # the fixed pack the C reader's test reads
   python3 webapp/tools/app_pack.py --list some.pack   # a pack's build id and assets

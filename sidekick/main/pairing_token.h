@@ -2,8 +2,8 @@
 
 // pairing_token.h -- authorization for the sidekick's HTTP API (I28b, docs/architecture/system.md (Who may key the transmitter)).
 //
-// docs/architecture/system.md (Why not signing) rejected image signing: the bundle is already authenticated by
-// the browser's TLS session to the bundle host, one hop before the device sees
+// docs/architecture/system.md (Why not signing) rejected image signing: an image's hash is already
+// authenticated by the browser's TLS session to the release host, one hop before the device sees
 // it. What the device actually lacks is a way to tell an operator's paired
 // browser from any other device on the LAN. This is that, and it is therefore
 // the whole of the security design rather than a layer on top of one.
@@ -56,8 +56,7 @@ extern "C" {
 // operator happens to visit, since a form POST of urlencoded data needs no
 // preflight and would carry the cookie automatically. An explicit token the
 // attacker cannot read closes that, and costs nothing here because requests
-// from the app are same-origin -- the simple-request rule in docs/architecture/sidekick.md (Installing the app bundle) applies
-// to the cross-origin bundle fetch, not to this.
+// from the app are same-origin.
 // A header is also the *only* place the token may travel, which is a
 // constraint rather than a preference. Checking a `token=` form field would
 // mean reading the request body before the handler does, and esp_http_server

@@ -19,11 +19,7 @@ the mirror a stable file has the dev name with `stable` for `dev`. **The sidekic
 app,** built with it ([sidekick.md](architecture/sidekick.md), **Web root**): the sidekick's job builds the
 app's pack on the runner, then the firmware around it. So the `changes` path filter counts `webapp/app/` and
 `webapp/tools/` as firmware, and a push to `main` that touches only the app builds and publishes a dev build
-of both boards. **A release still publishes the web app apart as well,** built at the tag and stamped with
-the release's version: `microft8-app-<number>.tar.gz` on GitHub, and its bundle under `app/<number>/` on the
-mirror, which the stable manifest names; and `pages.yml` still publishes the dev bundle on every push that
-touches it ([webapp.md](architecture/webapp.md), **Serving the site**). Only a page from before the app
-shipped in the image reads either, to relay it; both go with row [jmch](roadmap/ota-updates.md#jmch). The
+of both boards. The app is published nowhere else. The
 firmware artifacts are skipped entirely for docs-only commits (the
 `changes` path filter), so a roadmap-only merge neither rebuilds nor republishes any binary, and the dev
 channel's build is the last commit that could change one, not always the tip of `main`.
@@ -83,7 +79,6 @@ its board (**Public Cloudflare mirror**).
 | the six file names above with `stable` for `dev` | The newest stable release's files, replaced at each release |
 | `https://micro-ft8.kalikstein.com/download/manifest-stable.json` | The stable channel's manifest, in the same form |
 | `https://micro-ft8.kalikstein.com/download/ota/microft8-<board>-ota-<number>.bin` | Each stable OTA image by its release's number, never overwritten or deleted |
-| `https://micro-ft8.kalikstein.com/download/app/<number>/<file>` | Each release's web app bundle, as built: its `manifest.json`, `build.json` and assets, never overwritten or deleted |
 
 Human entry: [`https://micro-ft8.kalikstein.com/downloads.html`](https://micro-ft8.kalikstein.com/downloads.html).
 
@@ -97,9 +92,7 @@ one file a job, so neither rewrites part of the other's. `channel` is `dev` or `
 `assets`, each of `poe_p4`, `sidekick`, `source` and `getting_started` has `stable` (its fixed name here),
 `filename` (its own name: a dev file's dated one, `YYYYMMDD-microft8-<kind>-<commit>`, the date the commit's in UTC, and a stable file's by its release's number; on the mirror only an OTA image is stored under it) and `sha256`. The two boards also have an `ota` entry: `stable`,
 `filename`, `size` in bytes, `sha256`, `version` (the string built into the image) and `proto` (the
-`PORTA_PROTO_VERSION` that build speaks). A stable manifest's `app` names the release's web app: `path` (`app/<number>/`, under the mirror's
-`/download/`), and `build` and `size` from the bundle's `build.json`; the script refuses an app that was not
-built as that release. Beside `commit` and `short`, the manifest's own `version` is the
+`PORTA_PROTO_VERSION` that build speaks). Beside `commit` and `short`, the manifest's own `version` is the
 build's and `build` its number: a dev version's own, and for a stable release the number of commits up to
 its commit, counted the same way, so the one number orders the builds of both channels. The script reads the
 version out of the image and refuses to write a

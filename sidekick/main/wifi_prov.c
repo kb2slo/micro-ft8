@@ -20,11 +20,8 @@
 #include "mdns.h"
 #include "pairing_http.h"
 #include "pairing_http_cap.h"
-#include "bundle_host.h"
 #include "fw_update.h"
-#include "web_bundle.h"
 #include "web_page.h"
-#include "web_fs.h"
 #include "app_serve.h"
 
 static const char *TAG = "wifi_prov";
@@ -796,12 +793,9 @@ static void httpd_start_provisioning(void)
     cfg.max_open_sockets = 10;
     // Match the compile-time pairing slot table (pairing_http_cap.h).
     cfg.max_uri_handlers = PAIRING_HTTP_MAX_ROUTES_AP;
-    // Crashed with a stack overflow in the field 2026-09-20 without this:
-    // this httpd now runs the same host_link/web_bundle/bundle_host routes
-    // httpd_start_status() always has, and that function's own comment
-    // already explains why they need it (manifest + mbedtls + VFS blew the
-    // IDF default 4 KB stack on begin/commit) -- this config just never got
-    // the same bump when those routes were added here for B55.
+    // Crashed with a stack overflow in the field 2026-09-20 without this, when
+    // AP mode gained the routes httpd_start_status() has: the same stack as
+    // there (see its comment).
     cfg.stack_size = 8192;
     cfg.uri_match_fn = httpd_uri_match_wildcard;
     if (httpd_start(&s_httpd, &cfg) != ESP_OK) {
@@ -827,8 +821,8 @@ static void httpd_start_provisioning(void)
         .uri = "/ap-config", .method = HTTP_POST, .handler = post_ap_config,
     };
     // The form, a rescan and /update are open: they change nothing stored
-    // (/update only serves the install page; its writes go through the
-    // token-guarded /api/bundle/* routes). Saving
+    // (/update only serves its page; the update it starts goes through the
+    // token-guarded POST /api/fw/start). Saving
     // credentials is a config write, so it needs the token like every other
     // write (docs/architecture/system.md (Who may key the transmitter)). There is no chicken-and-egg:
     // pairing_http_init() mints the token on first boot, before any route is
@@ -858,10 +852,7 @@ static void httpd_start_provisioning(void)
     // routes station mode does -- each module applies its own per-route
     // policy (pairing_http.h).
     host_link_register_uris(s_httpd);
-    web_bundle_register(s_httpd);
-    bundle_host_register(s_httpd);
     fw_update_register(s_httpd);
-    web_fs_register_rehydrate(s_httpd);
     // Same error handler and static route station mode uses -- a missing
     // file 404s plainly, same in both modes now. B74 follow-up, 2026-09-21:
     // no more captive-portal redirect-on-miss here (removed with the rest of
@@ -927,7 +918,7 @@ static void format_uptime(int64_t total_seconds, char *buf, size_t buf_len)
 }
 
 // status.html is retired: the network info and actions it held (SSID, IP,
-// firmware, uptime, Forget WiFi, Enter AP mode, Restore seed pages) now live
+// firmware, uptime, Forget WiFi, Enter AP mode) now live
 // in app.html's Settings > Network section -- same design system, same
 // pairing gate, one app instead of a second bespoke unstyled page. "/" in
 // station mode just hands off to the app -- Operate (the default view), not
@@ -944,10 +935,7 @@ static esp_err_t get_root_redirect(httpd_req_t *req)
 
 static esp_err_t get_update(httpd_req_t *req)
 {
-    const web_sub_t subs[] = {
-        {.key = "bundle_host", .value = bundle_host_get()},
-    };
-    return web_page_send_file(req, "update.html", subs, 1);
+    return web_page_send_file(req, "update.html", NULL, 0);
 }
 
 static esp_err_t post_forget(httpd_req_t *req)
@@ -981,9 +969,10 @@ static void httpd_start_status(void)
     // (4 usable) is too tight for a real browser session. TEST_PLAN.md
     // Unverified -- no on-device heap reading behind this number yet.
     cfg.max_open_sockets = 10;
-    // Capacity tracks pairing_http_cap.h (station sum). Bundle handlers also
-    // need headroom above the IDF default 4 KB stack (manifest + mbedtls +
-    // VFS blew it on begin/commit).
+    // Capacity tracks pairing_http_cap.h (station sum). The handlers need
+    // headroom above the IDF default 4 KB stack: the bundle API's, since
+    // deleted, blew it (manifest + mbedtls + VFS). Not measured without them,
+    // so left at 8 KB.
     cfg.max_uri_handlers = PAIRING_HTTP_MAX_ROUTES_STATION;
     cfg.stack_size = 8192;
     cfg.uri_match_fn = httpd_uri_match_wildcard;
@@ -1036,10 +1025,7 @@ static void httpd_start_status(void)
     // and open/guarded policy genuinely differ and a shared helper would just
     // hide that at a call site instead of removing it.
     host_link_register_uris(s_httpd);
-    web_bundle_register(s_httpd);
-    bundle_host_register(s_httpd);
     fw_update_register(s_httpd);
-    web_fs_register_rehydrate(s_httpd);
     // Static GET /* last so exact /api/... routes win.
     app_serve_register(s_httpd);
     httpd_register_err_handler(s_httpd, HTTPD_404_NOT_FOUND, log_not_found);
@@ -1158,20 +1144,11 @@ void wifi_prov_start(void)
     if (pairing_http_init() != ESP_OK) {
         ESP_LOGE(TAG, "Pairing unavailable — every guarded route will refuse");
     }
-    if (bundle_host_init() != ESP_OK) {
-        ESP_LOGE(TAG, "Bundle host URL unavailable — using compile default if possible");
-    }
     fw_update_init();
 
     // Before any HTTP handler: the app and the bootstrap pages are served from this image
     // (docs/architecture/sidekick.md (Web root)).
     app_serve_init();
-    // The `web` filesystem is served from no longer; it is mounted for the bundle API, which a
-    // page from before the app shipped in the image may still call. Not ESP_ERROR_CHECK'd: a
-    // sidekick that cannot mount it serves everything it did.
-    if (web_fs_init() != ESP_OK) {
-        ESP_LOGE(TAG, "Web FS unavailable — the bundle API will refuse");
-    }
 
     s_events = xEventGroupCreate();
     ESP_ERROR_CHECK(esp_netif_init());
@@ -1282,22 +1259,20 @@ void wifi_prov_forget_and_restart(void)
 
 void wifi_prov_factory_reset_and_restart(void)
 {
-    // Both halves are attempted whatever the other does: a half-reset unit is
-    // still better off restarted than left running with a stale app or token.
+    // Restarted whatever the erase does: a half-reset unit is still better off
+    // restarted than left running with a stale token.
     nvs_handle_t h;
     bool nvs_ok = false;
     if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
         nvs_ok = nvs_erase_all(h) == ESP_OK && nvs_commit(h) == ESP_OK;
         nvs_close(h);
     }
-    const bool fs_ok = web_fs_format() == ESP_OK;
     // A new unit serves its image's app, not one pushed from the bench.
     app_serve_drop_push();
-    if (nvs_ok && fs_ok) {
+    if (nvs_ok) {
         ESP_LOGW(TAG, "Factory reset done -- restarting as a fresh unit");
     } else {
-        ESP_LOGE(TAG, "Factory reset incomplete (settings %s, web files %s) -- restarting anyway",
-                 nvs_ok ? "ok" : "FAILED", fs_ok ? "ok" : "FAILED");
+        ESP_LOGE(TAG, "Factory reset incomplete (settings FAILED) -- restarting anyway");
     }
     vTaskDelay(pdMS_TO_TICKS(200));
     esp_restart();

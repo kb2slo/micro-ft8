@@ -4,7 +4,7 @@
 // run_worker_first names exactly this path.
 //
 // /download/* is served from the DOWNLOADS R2 bucket (both channels'
-// firmware, source and getting-started sheet, and each release's app). See
+// firmware, source and getting-started sheet). See
 // docs/RELEASE_PROCESS.md.
 //
 // A path with no file never lands here: Static Assets answers it with 404.html
@@ -27,8 +27,8 @@ async function serveDownload(request, env, url) {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  // Key is everything after "/download/": one file name, one under ota/ (each OTA image by its
-  // own name), or one under app/<release>/ (a release's app bundle): docs/RELEASE_PROCESS.md.
+  // Key is everything after "/download/": one file name, or one under ota/ (each OTA image by its
+  // own name): docs/RELEASE_PROCESS.md.
   // Reject empty, traversal, and any other nesting.
   let key;
   try {
@@ -70,8 +70,7 @@ async function serveDownload(request, env, url) {
 
 // The file's own name when `key` is one this route serves, else "".
 function fileName(key) {
-  const app = /^app\/\d+\.\d+\.\d+\//.exec(key);
-  const name = app ? key.slice(app[0].length) : key.startsWith("ota/") ? key.slice(4) : key;
+  const name = key.startsWith("ota/") ? key.slice(4) : key;
   if (!name || name.includes("/") || name.includes("\\") || name.includes("..")) return "";
   return name;
 }

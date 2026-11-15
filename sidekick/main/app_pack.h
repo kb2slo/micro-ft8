@@ -1,7 +1,7 @@
 #pragma once
 
 // app_pack.h -- the web app as one file: the reader (docs/roadmap/ota-updates.md, The app in the
-// sidekick's image). webapp/tools/app_pack.py writes a pack from the built bundle; this reads one
+// sidekick's image). webapp/tools/app_pack.py writes a pack from the built app; this reads one
 // where it lies, copying nothing, so an asset is served straight from the bytes it was given.
 // No ESP-IDF in it. Host-tested against the builder's own output (host_test_app_pack).
 //

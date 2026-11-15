@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
-"""Build the web app bundle: webapp/app (hand-edited sources) -> webapp/dist/app (what ships).
+"""Build the web app: webapp/app (hand-edited sources) -> webapp/dist/app and its pack (what ships).
 
 docs/architecture/webapp.md (Build). Steps, in order:
-  1. copy the sources (never manifest.json or dotfiles);
+  1. copy the sources (never dotfiles);
   2. stamp the build id into app.html (its __APP_BUILD__ placeholder);
   3. minify HTML and JS and compile-check every script (minify.mjs);
   4. compact the JSON data files;
   5. gzip each asset where that shrinks it, keeping its name;
-  6. write manifest.json from the output, so it lists the bytes as shipped;
-  7. fail if a file or the whole bundle breaks the size budget (compressed bytes);
-  8. write build.json beside it: the build id and the bundle's size, which an older page reads;
-  9. write webapp/dist/app.pack: the same assets as one file (app_pack.py; sidekick/main/app_pack.h).
+  6. fail if the app breaks the size budget (compressed bytes);
+  7. write webapp/dist/app.pack: the assets as one file (app_pack.py; sidekick/main/app_pack.h).
 
-Pages, CI and install_app.py all run this, so what is tested is what ships.
+The sidekick's build, CI and install_app.py all run this, so what is tested is what ships.
 
 Usage:
   npm ci --prefix webapp/tools      # once per clone, and after package-lock.json changes
@@ -47,20 +45,17 @@ PACK = ROOT / "webapp" / "dist" / "app.pack"
 
 sys.path.insert(0, str(TOOLS))
 import app_pack  # noqa: E402
-import gen_manifest  # noqa: E402
 
 sys.path.insert(0, str(TOOLS.parents[1] / "tools"))
 import build_version  # noqa: E402
 
 BUILD_PLACEHOLDER = "__APP_BUILD__"
 
-# The bundle API refuses a file over this (sidekick/main/web_bundle.c, ASSET_MAX_BYTES).
-FILE_MAX = 512 * 1024
-# The sidekick's web partition is 0x1E0000 (1,920 KB, sidekick/partitions.csv).
-# A bundle install stages a second copy before it renames into place, and the
-# reference store's proposed cap is 256 KB (docs/roadmap/activator-mode.md), so two bundles plus the
-# store plus the bootstrap pages and LittleFS overhead must fit:
-# 2 x 800 + 256 = 1,856 KB leaves 64 KB. Raising this means shrinking the store cap.
+# The pack is part of the sidekick's image, which must fit a firmware slot: 0x300000 (3,072 KB,
+# sidekick/partitions.csv), with the sidekick's own code about 1,100 KB of it (measured
+# 2026-11-15: an image of 1,288,160 bytes, 186,869 of them the pack). 800 KB keeps the image
+# under 2 MB, a third of the slot spare for the code to grow. Raising this is a choice about the
+# slot, not about the app alone.
 BUNDLE_MAX = 800 * 1024
 # gzip's magic. The pack carries no flag for it, so the sidekick tells a compressed asset by these
 # first two bytes and serves it with Content-Encoding: gzip (sidekick/main/app_serve.c).
@@ -117,7 +112,7 @@ def compress_assets(root: Path) -> None:
     bytes. A plain asset that already starts with gzip's magic would be served
     as compressed, so the build refuses one."""
     for path in sorted(root.iterdir()):
-        if not path.is_file() or path.name in gen_manifest.NOT_ASSETS:
+        if not path.is_file():
             continue
         data = path.read_bytes()
         if data[:2] == GZIP_MAGIC:
@@ -127,7 +122,7 @@ def compress_assets(root: Path) -> None:
             path.write_bytes(packed)
 
 
-def build(version: str = "") -> dict:
+def build(version: str = "") -> None:
     """Builds the bundle and its pack. `version` stamps the app with exactly that, the version of
     the sidekick image it is built into; without it the stamp is build_id()'s."""
     if not (TOOLS / "node_modules" / "html-minifier-terser").is_dir():
@@ -137,7 +132,7 @@ def build(version: str = "") -> dict:
         shutil.rmtree(OUT)
     OUT.mkdir(parents=True)
     for src in sorted(SRC.iterdir()):
-        if src.is_file() and src.name not in gen_manifest.NOT_ASSETS and not src.name.startswith("."):
+        if src.is_file() and not src.name.startswith("."):
             shutil.copy2(src, OUT / src.name)
 
     app = OUT / "app.html"
@@ -158,42 +153,26 @@ def build(version: str = "") -> dict:
         compact_json(path)
 
     compress_assets(OUT)
-    doc = gen_manifest.write(OUT)
 
-    src_total = sum(p.stat().st_size for p in SRC.iterdir() if p.is_file() and p.name != gen_manifest.MANIFEST_NAME)
-    out_total = sum(p.stat().st_size for p in OUT.iterdir() if p.is_file())
-    too_big = [a for a in doc["assets"] if a["size"] > FILE_MAX]
-    for a in too_big:
-        print(f"build: {a['path']} is {a['size']} bytes; the sidekick refuses files over {FILE_MAX}", file=sys.stderr)
-    print(f"build {bid}: {len(doc['assets'])} assets, {src_total} -> {out_total} bytes as shipped, gzipped "
+    src_total = sum(p.stat().st_size for p in SRC.iterdir() if p.is_file())
+    shipped = [p for p in OUT.iterdir() if p.is_file()]
+    out_total = sum(p.stat().st_size for p in shipped)
+    print(f"build {bid}: {len(shipped)} assets, {src_total} -> {out_total} bytes as shipped, gzipped "
           f"({out_total * 100 // max(1, src_total)}% of source; budget {BUNDLE_MAX})")
-    if too_big:
-        die("a file is over the sidekick's per-file limit")
     if out_total > BUNDLE_MAX:
-        die(f"bundle is {out_total} bytes, over the {BUNDLE_MAX}-byte budget (see BUNDLE_MAX)")
-    write_build_json(OUT, bid, doc)
+        die(f"the app is {out_total} bytes, over the {BUNDLE_MAX}-byte budget (see BUNDLE_MAX)")
     write_pack(OUT, PACK, bid)
-    return doc
 
 
 def write_pack(root: Path, out: Path, bid: str) -> bytes:
-    """The pack: the manifest's assets, as shipped, in one file stamped with the build id. Neither
-    the manifest nor build.json is in it. Left alone when it would not change, so a build that
-    embeds it relinks only when the app did."""
+    """The pack: the assets, as shipped, in one file stamped with the build id. Left alone when it
+    would not change, so a build that embeds it relinks only when the app did."""
     try:
-        data = app_pack.pack_dir(root, bid, skip=gen_manifest.NOT_ASSETS)
+        data = app_pack.pack_dir(root, bid)
     except app_pack.PackError as e:
         die(str(e))
     app_pack.write_if_changed(out, data)
     return data
-
-
-def write_build_json(root: Path, bid: str, doc: dict) -> dict:
-    """build.json: the published bundle's build id and size. A page from before the app shipped in
-    the sidekick's image reads it from the release host to offer the app; no page of this build does."""
-    info = {"build": bid, "size": sum(a["size"] for a in doc["assets"])}
-    (root / gen_manifest.BUILD_NAME).write_text(json.dumps(info) + "\n", encoding="utf-8")
-    return info
 
 
 def prebuilt_pack() -> Path | None:
@@ -210,7 +189,7 @@ def prebuilt_pack() -> Path | None:
 def main() -> int:
     import argparse
 
-    ap = argparse.ArgumentParser(description="Build the web app bundle and its pack.")
+    ap = argparse.ArgumentParser(description="Build the web app and its pack.")
     ap.add_argument("--pack", type=Path, help="also write the pack here, only if its bytes changed")
     ap.add_argument("--version", default="", help="stamp the app with this, the sidekick image's version")
     args = ap.parse_args()

@@ -1,65 +1,102 @@
 <!doctype html>
 <meta name=viewport content='width=device-width,initial-scale=1'>
-<title>Install app</title>
+<title>Install the published build</title>
 
 <!--
-  Phone-relayed bundle install (docs/architecture/sidekick.md (Installing the app bundle)). Fetches the manifest from the
-  configured HTTPS bundle host (simple GET, no custom headers), then POSTs
-  through /api/bundle/* with the pairing token. Digests are checked on the
-  device; this page does not need crypto.subtle (unavailable on plain HTTP).
+  Recovery when the app will not load (docs/architecture/sidekick.md (Web root)): the station's
+  channel's published build, installed with the same request the app's Update makes
+  (POST /api/fw/start), every board that differs from it, the main board first. Served from the
+  image, so it works whatever app is served. Needs no crypto.subtle (unavailable on plain HTTP):
+  the sidekick checks each image against the hash the manifest, read here over HTTPS, gives.
 -->
 
 <style>
 body{font-family:system-ui;margin:2rem auto;max-width:24rem;padding:0 1rem;line-height:1.4}
 button{width:100%;padding:.7rem;font-size:1rem;margin-top:1rem}
 #m{color:#666;font-size:.85rem;min-height:1.2em;white-space:pre-wrap}
-code{font-size:.85rem;word-break:break-all}
 a{color:#06c}
 </style>
 
-<h2>Install app</h2>
-<p>Fetches from the bundle host over HTTPS, then writes the web filesystem on this device.</p>
-<p>Host: <code id=host>{{bundle_host}}</code></p>
+<h2>Install the published build</h2>
+<p>Puts this station back on its channel's published build, the app with it. Switch the radio off first.</p>
 <button id=go type=button disabled>Install</button>
-<button id=rh type=button>Restore seed pages</button>
 <p id=m></p>
 <p><a href="/app.html">Open app</a></p>
 
 <script src=/pairing.js></script>
 <script>
-var host = document.getElementById('host').textContent.trim();
+// The same URLs and checks as the app's update (webapp/app/updates.js), kept here so this page
+// needs nothing of the app.
+var MANIFEST_URLS = {
+  dev: 'https://micro-ft8.kalikstein.com/download/manifest.json',
+  stable: 'https://micro-ft8.kalikstein.com/download/manifest-stable.json'
+};
+var IMAGE_BASE = 'http://micro-ft8.kalikstein.com/download/ota/';
+// The main board first, while the sidekick still speaks its protocol.
+var BOARDS = [{ board: 'main', asset: 'poe_p4', running: 'host' }, { board: 'sidekick', asset: 'sidekick', running: 'running' }];
+var STATE_TEXT = {
+  downloading: 'Downloading', verifying: 'Checking', transferring: 'Sending to the main board',
+  restarting: 'Restarting'
+};
+
 var m = document.getElementById('m');
 var go = document.getElementById('go');
-
-// /update.html is also served as a plain static file, and then nothing expands
-// {{bundle_host}}. Send the operator to /update, which does (in both modes).
-// Say so rather than fetch from "{{bundle_host}}/manifest.json".
-var noHost = host.indexOf('{{') === 0;
-function showNoHost() {
-  go.disabled = true;
-  setMsg('Open this page as /update (no .html) so it knows where to download the app from.');
-}
-if (noHost) showNoHost();
-
 function setMsg(t) { m.textContent = t; }
 
-// fetch() has no timeout: on a network that is up but routes nowhere (a phone
-// that keeps to a WiFi with no internet) the request just hangs, and the page
-// sits on "Fetching ..." forever. Abort it so the catch below can explain.
+// fetch() has no timeout: on a network that routes nowhere it hangs.
 function fetchTimeout(url, ms) {
   var ctl = new AbortController();
   var t = setTimeout(function () { ctl.abort(); }, ms);
-  return fetch(url, { signal: ctl.signal }).finally(function () { clearTimeout(t); });
+  return fetch(url, { signal: ctl.signal, cache: 'no-store' }).finally(function () { clearTimeout(t); });
 }
 
-function joinUrl(base, rel) {
-  if (base.slice(-1) === '/') base = base.slice(0, -1);
-  if (rel.charAt(0) === '/') rel = rel.slice(1);
-  return base + '/' + rel;
+function otaOk(o) {
+  return !!o && typeof o.filename === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(o.filename) &&
+    typeof o.size === 'number' && o.size > 0 && o.size % 1 === 0 &&
+    typeof o.sha256 === 'string' && /^[0-9a-f]{64}$/.test(o.sha256) &&
+    typeof o.version === 'string' && /^[!#-\[\]-~]{1,31}$/.test(o.version);
+}
+
+// A station's channel is its main board's: a release is stable, anything else dev.
+function channelOf(hostVersion) {
+  return /^\d+\.\d+\.\d+\+[0-9a-f]{7}$/.test(hostVersion || '') ? 'stable' : 'dev';
+}
+
+async function status() {
+  var r = await fetchTimeout('/api/fw/status', 5000);
+  if (!r.ok) throw new Error('status HTTP ' + r.status);
+  return r.json();
+}
+
+var sleep = function (ms) { return new Promise(function (res) { setTimeout(res, ms); }); };
+
+// Follows the update to its end. The sidekick does not answer while it restarts; its `last` then
+// says what came of it.
+async function follow() {
+  var gone = false;
+  for (;;) {
+    await sleep(2000);
+    var s;
+    try { s = await status(); } catch (e) { gone = true; setMsg('Restarting…'); continue; }
+    if (s.state === 'failed') {
+      setMsg('The update failed: ' + s.why + (s.at ? ' (' + s.at + ')' : '') + '. Tap Install to try again.');
+      go.disabled = false;
+      return;
+    }
+    if (s.state === 'done' || (gone && s.state === 'idle')) {
+      var bad = s.last && s.last.result === 'rolled_back';
+      setMsg(bad ? 'The sidekick went back to the build it ran before. Tap Install to try again.'
+        : 'Done. Switch the radio back on, then open the app.');
+      go.disabled = false;
+      return;
+    }
+    var pct = s.size ? ' ' + Math.floor(100 * s.got / s.size) + '%' : '';
+    setMsg((STATE_TEXT[s.state] || s.state) + ' the ' + (s.board === 'main' ? 'main board' : 'sidekick') +
+      '’s image' + pct);
+  }
 }
 
 async function install() {
-  if (noHost) { showNoHost(); return; }
   if (!MicroFT8Pairing.getToken()) {
     setMsg('Press the pairing button first.');
     MicroFT8Pairing.needsReauth();
@@ -67,132 +104,58 @@ async function install() {
   }
   go.disabled = true;
   try {
-    var manUrl = joinUrl(host, 'manifest.json');
-    setMsg('Fetching ' + manUrl);
-    var mr = await fetchTimeout(manUrl, 15000);
+    var s = await status();
+    if (!s.host_linked || !s.host) {
+      throw new Error('This needs the main board connected to the sidekick. Without it, flash the sidekick over USB from the downloads page.');
+    }
+    if (!s.online) {
+      throw new Error('This needs the sidekick on WiFi with internet; it is on its own network. Without it, flash over USB from the downloads page.');
+    }
+    var channel = channelOf(s.host);
+    setMsg('Reading the ' + channel + ' channel’s build…');
+    var mr;
+    try {
+      mr = await fetchTimeout(MANIFEST_URLS[channel], 15000);
+    } catch (e) {
+      throw new Error('Could not reach the release host. This phone needs internet.');
+    }
     if (!mr.ok) throw new Error('manifest HTTP ' + mr.status);
-    var manifestText = await mr.text();
-    var manifest = JSON.parse(manifestText);
-    if (!manifest.assets || !manifest.assets.length) {
-      throw new Error('manifest has no assets');
-    }
-
-    setMsg('Begin install…');
-    var br = await MicroFT8Pairing.authFetch('/api/bundle/begin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: manifestText
+    var manifest = await mr.json();
+    var lines = [];
+    BOARDS.forEach(function (b) {
+      var o = manifest.assets && manifest.assets[b.asset] && manifest.assets[b.asset].ota;
+      if (!otaOk(o) || o.version === s[b.running]) return;
+      lines.push('board=' + b.board + '\nurl=' + IMAGE_BASE + o.filename + '\nsize=' + o.size +
+        '\nsha256=' + o.sha256 + '\nversion=' + o.version + '\n');
     });
-    if (br.status == 401) {
+    if (!lines.length) {
+      setMsg('This station already runs the published build (' + s.running + ').');
+      go.disabled = false;
+      return;
+    }
+    var r = await MicroFT8Pairing.authFetch('/api/fw/start', { method: 'POST', body: lines.join('next\n') });
+    if (r.status === 401) {
       MicroFT8Pairing.needsReauth();
-      throw new Error('pairing required');
+      throw new Error('Press the pairing button.');
     }
-    if (!br.ok) throw new Error('begin: ' + (await br.text()));
-
-    for (var i = 0; i < manifest.assets.length; i++) {
-      var a = manifest.assets[i];
-      var assetUrl = new URL(a.path, manUrl).href;
-      setMsg('Fetching ' + a.path + ' (' + (i + 1) + '/' + manifest.assets.length + ')');
-      var ar = await fetchTimeout(assetUrl, 60000);
-      if (!ar.ok) throw new Error(a.path + ' HTTP ' + ar.status);
-      var buf = await ar.arrayBuffer();
-      if (buf.byteLength !== a.size) {
-        throw new Error(a.path + ' size ' + buf.byteLength + ' != ' + a.size);
-      }
-      setMsg('Uploading ' + a.path);
-      var ur = await MicroFT8Pairing.authFetch(
-        '/api/bundle/file?path=' + encodeURIComponent(a.path),
-        { method: 'PUT', body: buf }
-      );
-      if (ur.status == 401) {
-        MicroFT8Pairing.needsReauth();
-        throw new Error('pairing required');
-      }
-      if (!ur.ok) throw new Error('put ' + a.path + ': ' + (await ur.text()));
-    }
-
-    setMsg('Commit…');
-    var cr = await MicroFT8Pairing.authFetch('/api/bundle/commit', { method: 'POST' });
-    if (cr.status == 401) {
-      MicroFT8Pairing.needsReauth();
-      throw new Error('pairing required');
-    }
-    if (!cr.ok) throw new Error('commit: ' + (await cr.text()));
-
-    // Land on app.html when this bundle has it; older Pages manifests only
-    // shipped installed.html — hardcoding /app.html 404'd after a "successful" install.
-    var land = 'installed.html';
-    for (var j = 0; j < manifest.assets.length; j++) {
-      var p = manifest.assets[j].path;
-      if (p === 'app.html') { land = 'app.html'; break; }
-      if (p === 'installed.html') land = 'installed.html';
-    }
-    setMsg('Installed. Opening /' + land + ' …');
-    location.href = '/' + land;
+    if (!r.ok) throw new Error('The sidekick refused: ' + (await r.text()));
+    setMsg('Started.');
+    follow();
   } catch (e) {
-    // fetch() rejects with a bare TypeError ("Load failed" / "Failed to fetch")
-    // when the host cannot be reached, which tells a first-time operator
-    // nothing. The usual cause is a phone with no internet.
-    var offline = e instanceof TypeError || (e && e.name === 'AbortError');
-    setMsg(offline
-      ? 'Could not reach ' + host + '. This phone needs internet to download the app. ' +
-        'On the sidekick\u2019s own network, check mobile data is on; if the phone has not switched to it, ' +
-        'disconnect from this WiFi and join it again; ' +
-        'or join your home WiFi (the same one the sidekick is on) and try again.'
-      : String(e && e.message ? e.message : e));
+    setMsg(String(e && e.message ? e.message : e));
     go.disabled = false;
-  }
-}
-
-// In-page confirm — native confirm() often cancels silently on phones.
-var rhArmed = false;
-async function rehydrate() {
-  if (!MicroFT8Pairing.getToken()) {
-    rhArmed = false;
-    setMsg('Press the pairing button first.');
-    MicroFT8Pairing.needsReauth();
-    return;
-  }
-  if (!rhArmed) {
-    rhArmed = true;
-    setMsg('Tap Restore again to rewrite seed pages (app files kept).');
-    return;
-  }
-  rhArmed = false;
-  setMsg('Restoring…');
-  try {
-    var r = await MicroFT8Pairing.authFetch('/api/web/rehydrate', { method: 'POST' });
-    if (r.status == 401) {
-      MicroFT8Pairing.needsReauth();
-      setMsg('Press the pairing button');
-      return;
-    }
-    if (!r.ok) {
-      setMsg('Restore failed: ' + (await r.text()));
-      return;
-    }
-    setMsg('Seed pages restored from firmware.');
-  } catch (e) {
-    setMsg('Restore error: ' + (e && e.message ? e.message : e));
   }
 }
 
 MicroFT8Pairing.boot({
   status: m,
-  onPaired: function () {
-    if (noHost) { showNoHost(); return; }
-    setMsg('Paired — ready to install');
-    go.disabled = false;
-  }
+  onPaired: function () { setMsg('Paired, ready to install'); go.disabled = false; }
 });
-if (noHost) {
-  showNoHost();
-} else if (MicroFT8Pairing.getToken()) {
-  setMsg('Paired — ready to install');
+if (MicroFT8Pairing.getToken()) {
+  setMsg('Paired, ready to install');
   go.disabled = false;
 } else {
   setMsg('Press the pairing button');
 }
 go.onclick = install;
-document.getElementById('rh').onclick = rehydrate;
 </script>

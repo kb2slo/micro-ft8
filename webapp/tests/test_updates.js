@@ -178,10 +178,6 @@ pl = U.plan(manifest(OTA15, P4OTA), { sidekick: V, main: V }, linked);
 eq([pl.any, pl.steps.length, pl.body, 'app' in pl], [false, 0, '', false]);
 pl = U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked);
 eq([pl.any, pl.steps.map((o) => o.board), pl.time, 'app' in pl], [true, ['main', 'sidekick'], 'about three minutes', false]);
-// A manifest that still names an app (a release cut before the bundle's publishing stops) adds nothing.
-pl = U.plan(Object.assign(stable('0.1.0', 1322), { app: { path: 'app/0.1.0/', build: REL + ' 2026-11-13', size: 185745 } }),
-  { sidekick: REL, main: REL }, linked);
-eq([pl.any, pl.steps.length], [false, 0]);
 // The body is the boards' images and nothing else: the main board's, then the sidekick's.
 pl = U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked);
 eq(pl.body.split('\n').filter((l) => /^board=|^next$/.test(l)), ['board=main', 'next', 'board=sidekick']);
@@ -235,56 +231,6 @@ eq(U.plan(stable('0.1.0', 1322), { sidekick: REL, main: 'b1330+abc1234' }, Objec
 // No manifest for the other channel (no release cut yet): nothing to switch to.
 pl = U.plan(null, dev1330, linked, true);
 eq([pl.any, pl.target, pl.to, pl.steps.length], [false, 'dev', '', 0]);
-
-// ---- the app's relay, against a fake host and sidekick ----
-function relayWorld(o) {
-  o = o || {};
-  const files = { 'app.html': 'A'.repeat(10), 'updates.js': 'B'.repeat(5) };
-  const man = { api_min: 3, assets: Object.keys(files).map((p) => ({ path: p, sha256: '0'.repeat(64), size: files[p].length })) };
-  const calls = [];
-  const res = (status, body) => ({ ok: status >= 200 && status < 300, status,
-    text: async () => body || '', arrayBuffer: async () => new TextEncoder().encode(body || '').buffer });
-  const io = {
-    get: async (url) => {
-      calls.push('get ' + url);
-      if (o.offline) throw new TypeError('Load failed');
-      if (url.endsWith('/manifest.json')) return res(200, JSON.stringify(man));
-      const name = url.split('/').pop();
-      return res(200, o.grown === name ? files[name] + 'x' : files[name]);
-    },
-    begin: async (text) => { calls.push('begin'); assert.deepStrictEqual(JSON.parse(text), man, 'the manifest posted as fetched'); return o.begin || res(200); },
-    put: async (path, bytes) => { calls.push('put ' + path + ' ' + bytes.byteLength); return o.put || res(200); },
-    commit: async () => { calls.push('commit'); return o.commit || res(200); },
-    progress: (done, total) => calls.push('progress ' + done + '/' + total),
-  };
-  return { io, calls, res };
-}
-(async function () {
-  let w = relayWorld();
-  eq(await U.relayApp('https://h.example/app/', w.io), { ok: true });
-  eq(w.calls, ['get https://h.example/app/manifest.json', 'begin', 'progress 0/15',
-    'get https://h.example/app/app.html', 'put app.html 10', 'progress 10/15',
-    'get https://h.example/app/updates.js', 'put updates.js 5', 'progress 15/15', 'commit']);
-  // Firmware too old for this app: refused at begin, nothing staged; the plan runs the firmware first.
-  w = relayWorld(); w.io.begin = async () => w.res(400, 'api_min 3 requires firmware API 3 (have 2)');
-  eq((await U.relayApp('https://h.example/app', w.io)).why, 'firmware');
-  // Published again mid-relay: a size the manifest does not name, or a hash the sidekick refuses.
-  w = relayWorld({ grown: 'updates.js' });
-  eq((await U.relayApp('https://h.example/app', w.io)).why, 'changed');
-  assert(!w.calls.includes('commit') && !w.calls.some((c) => c.startsWith('put updates.js')), 'nothing promoted');
-  w = relayWorld(); w.io.put = async () => w.res(400, 'sha256 mismatch');
-  eq((await U.relayApp('https://h.example/app', w.io)).why, 'changed');
-  // Not paired, the host out of reach, anything else refused.
-  w = relayWorld(); w.io.begin = async () => w.res(401);
-  eq((await U.relayApp('https://h.example/app', w.io)).why, 'pairing');
-  w = relayWorld({ offline: true });
-  eq((await U.relayApp('https://h.example/app', w.io)).why, 'network');
-  w = relayWorld(); w.io.commit = async () => w.res(500, 'rename failed');
-  eq(await U.relayApp('https://h.example/app', w.io), { ok: false, why: 'refused', detail: 'commit: rename failed' });
-  ['network', 'pairing', 'firmware', 'changed', 'refused'].forEach((why) => assert(!/failed$/.test(U.appWhyText(why)), why));
-
-  console.log('ok (relay)');
-})().catch((e) => { console.error(e); process.exit(1); });
 
 // ---- the progress screen's steps ----
 const PLAN = [{ board: 'main', version: 'd18f9b2', size: 871968 }, { board: 'sidekick', version: 'd18f9b2', size: 1005232 }];
