@@ -1783,7 +1783,7 @@ async function followFw() {
       title: 'Updating the station',
       steps: (fwMine && appRun ? [FwUpdates.appRow(appRun)] : []).concat(
         FwUpdates.stepRows(fwStatus, reachable && FwUpdates.busy(status))),
-      note: 'Keep both boards powered.',
+      note: 'Keep the station powered.',
       cancel: canCancel ? 'Cancel update' : '',
     });
     await new Promise(function (resolve) { setTimeout(resolve, 1000); });
