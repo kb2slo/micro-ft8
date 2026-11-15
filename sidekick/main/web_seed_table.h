@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 typedef struct {
-    const char *name;      // path under the web FS root, e.g. "pairing.js"
+    const char *name;      // served at /<name>, e.g. "pairing.js"
     const char *embed;     // NUL-terminated EMBED_TXTFILES blob, start
     const char *embed_end; // one past EMBED_TXTFILES' own appended NUL --
                             // i.e. one past (last real byte + 1). Content
@@ -23,9 +23,8 @@ typedef struct {
     // just because an existing web/ file's content changed size, so this
     // silently stayed frozen through edit after edit while the embedded
     // blob itself kept getting correctly re-embedded on every build
-    // (a separate, properly-tracked step) -- and hydrate_seeds() (web_fs.c)
-    // wrote exactly that many, too few, bytes to the device's LittleFS every
-    // time. _binary_X_end is the linker's own placement of the actual
+    // (a separate, properly-tracked step) -- and exactly that many, too
+    // few, bytes of every page were sent. _binary_X_end is the linker's own placement of the actual
     // embedded data; it cannot be stale relative to embed, because both
     // come from the same link.
 } web_seed_file_t;

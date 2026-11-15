@@ -114,7 +114,7 @@ function world(running, start, arrives) {
   const posts = (reqs) => reqs.filter((r) => r.indexOf('POST') === 0);
   assert.deepStrictEqual(posts(w.requests), ['POST /api/fw/start'], 'one request starts the whole update');
   assert.deepStrictEqual([...new Set(w.requests)], ['POST /api/fw/start', 'GET /api/fw/status'],
-    'no app relay (/api/bundle/*), no hold of the page\'s own (/api/fw/hold), nothing fetched for the app');
+    'the update\'s own request and its progress, and nothing fetched for the app');
   assert.deepStrictEqual(w.box.sent.split('\n').filter((l) => /^board=|^next$/.test(l)), ['board=main', 'next', 'board=sidekick'],
     'the plan is the boards\' images, the main board\'s first');
   assert.deepStrictEqual([end.mode, end.title, end.failed, end.retry], ['result', 'Updated to b1322', false, false]);

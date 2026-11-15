@@ -38,7 +38,7 @@ PORT = 8787
 
 
 class Handler(SimpleHTTPRequestHandler):
-    # The sidekick sends these with charset=utf-8 (sidekick/main/web_fs.c) and
+    # The sidekick sends these with charset=utf-8 (sidekick/main/app_serve.c) and
     # the pages carry no <meta charset>, so say the same here or "·" renders as "Â·".
     extensions_map = {**SimpleHTTPRequestHandler.extensions_map,
                       ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8"}
@@ -53,7 +53,7 @@ class Handler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     # --dist: the build gzips an asset where that shrinks it, and the sidekick
-    # tells one by its first two bytes (sidekick/main/web_fs.c); do the same.
+    # tells one by its first two bytes (sidekick/main/app_serve.c); do the same.
     _gzipped = False
 
     def __init__(self, *args, **kwargs):

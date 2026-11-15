@@ -3,13 +3,9 @@
 # it never serves this file, and it applies none of it to what worker.js returns
 # (/download/* and /pskreporter set their own headers).
 
-# CORS on everything. The sidekick's plain-HTTP page (http://micro-ft8.local) fetches the app
-# bundle from /app/ cross-origin to install and update it (docs/architecture/sidekick.md,
-# Installing the app bundle), and map.html fetches /data/ne_10m_places.json the same way.
-# Static Assets sends no CORS header by default, unlike GitHub Pages, which that doc's host
-# requirement was measured against. The redirect needs it too: the sidekick asks for
-# /app/app.html, which Static Assets 307s to /app/app, and a cross-origin fetch fails on a
-# redirect without the header.
+# CORS on everything. The sidekick's plain-HTTP app (http://micro-ft8.local) fetches
+# /data/ne_10m_places.json cross-origin (map.html). Static Assets sends no CORS header by
+# default. /download/* is worker.js's, which sets its own.
 /*
   Access-Control-Allow-Origin: *
 

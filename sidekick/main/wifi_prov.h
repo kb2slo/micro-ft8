@@ -26,7 +26,7 @@
 // AP is reachable on purpose, not only by accident of no credentials being
 // set. B74 follow-up (2026-09-21): there is no auto-popping OS captive-
 // portal sign-in sheet any more -- that mechanism (DHCP option 114, a DNS-
-// hijack server, and a "resolve to Done" probe-response dance in web_fs.c)
+// hijack server, and a "resolve to Done" probe-response dance)
 // never reliably resolved to "Done" on iOS regardless of tuning, and was the
 // actual source of the cellular-retention trade-off this file used to fight
 // over DHCP options. An operator navigates to http://micro-ft8.local/
@@ -102,9 +102,8 @@ void wifi_prov_forget_and_restart(void);
 
 // Returns the sidekick to a fresh-from-flash state and restarts. Does not
 // return. Erases everything stored in the "sidekick" NVS namespace (WiFi
-// credentials, the AP-mode flag, the pairing token, the bundle host) and
-// formats the web filesystem, so the installed app is gone and only the
-// firmware's seed pages come back. Every browser that had paired must pair
+// credentials, the AP-mode flag, the pairing token) and drops a bench push,
+// so it serves its image's app. Every browser that had paired must pair
 // again. The main board's own settings are not touched.
 void wifi_prov_factory_reset_and_restart(void);
 

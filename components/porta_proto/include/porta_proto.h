@@ -60,8 +60,7 @@ extern "C" {
 
 #define PORTA_PROTO_SYNC 0xC6u
 
-// Bumped only when a change breaks an older peer. docs/architecture/sidekick.md (Installing the app bundle)'s version
-// pairing applies here too: this is NOT the git build version the beacon
+// Bumped only when a change breaks an older peer. This is NOT the git build version the beacon
 // carries -- they answer different questions, and conflating them is how a
 // cosmetic rebuild reads as a protocol change.
 // v2 (2026-09-28): DECODE carries its slot and the radio's dial frequency.

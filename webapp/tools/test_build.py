@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Host test for the bundle's compress step and the manifest written after it
-(webapp/tools/build.py, gen_manifest.py; docs/architecture/webapp.md, Build).
+"""Host test for the web build's compress step and its pack
+(webapp/tools/build.py; docs/architecture/webapp.md, Build).
 
 Synthetic assets in a temporary directory: no npm, no minifier, no sidekick.
 
   python3 webapp/tools/test_build.py
 """
 import gzip
-import hashlib
-import json
 import os
 import sys
 import tempfile
@@ -18,7 +16,6 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import app_pack  # noqa: E402
 import build  # noqa: E402
-import gen_manifest  # noqa: E402
 
 PAGE = ("<!doctype html><meta charset=utf-8><title>t</title>" + "<p>CQ KB2SLO EN52</p>" * 400).encode()
 TINY = b"x"  # gzip's header alone is bigger than this
@@ -31,26 +28,9 @@ class CompressedBuild(unittest.TestCase):
         (self.root / "app.html").write_bytes(PAGE)
         (self.root / "tiny.js").write_bytes(TINY)
         build.compress_assets(self.root)
-        self.doc = gen_manifest.write(self.root)
-        self.on_disk = json.loads((self.root / gen_manifest.MANIFEST_NAME).read_text())
 
     def tearDown(self):
         self.tmp.cleanup()
-
-    def test_manifest_has_only_the_fields_the_sidekick_parses(self):
-        # web_manifest.c refuses a field it does not know.
-        self.assertEqual(set(self.on_disk), {"api_min", "assets"})
-        for a in self.on_disk["assets"]:
-            self.assertEqual(set(a), {"path", "sha256", "size"})
-
-    def test_api_min_refuses_firmware_that_would_serve_gzip_raw(self):
-        self.assertEqual(self.on_disk["api_min"], 3)
-
-    def test_manifest_lists_the_bytes_as_shipped(self):
-        for a in self.on_disk["assets"]:
-            data = (self.root / a["path"]).read_bytes()
-            self.assertEqual(a["size"], len(data), a["path"])
-            self.assertEqual(a["sha256"], hashlib.sha256(data).hexdigest(), a["path"])
 
     def test_an_asset_that_shrinks_ships_gzipped_under_its_own_name(self):
         data = (self.root / "app.html").read_bytes()
@@ -60,26 +40,6 @@ class CompressedBuild(unittest.TestCase):
 
     def test_an_asset_that_would_grow_ships_as_it_was(self):
         self.assertEqual((self.root / "tiny.js").read_bytes(), TINY)
-
-    def test_the_manifest_itself_is_not_compressed_or_listed(self):
-        self.assertNotIn(gen_manifest.MANIFEST_NAME, [a["path"] for a in self.on_disk["assets"]])
-        self.assertEqual((self.root / gen_manifest.MANIFEST_NAME).read_bytes()[:1], b"{")
-
-    def test_build_json_sits_beside_the_manifest_and_is_not_an_asset(self):
-        info = build.write_build_json(self.root, "d18f9b2 2026-11-13", self.doc)
-        on_disk = json.loads((self.root / gen_manifest.BUILD_NAME).read_text())
-        self.assertEqual(on_disk, info)
-        self.assertEqual(on_disk["build"], "d18f9b2 2026-11-13")
-        self.assertEqual(on_disk["size"], sum(a["size"] for a in self.on_disk["assets"]))
-        # Written after the manifest, and a rebuild of the manifest still leaves it out.
-        again = gen_manifest.write(self.root)
-        self.assertNotIn(gen_manifest.BUILD_NAME, [a["path"] for a in again["assets"]])
-        # Never gzipped: Pages serves it as plain JSON, with no Content-Encoding.
-        fresh = Path(self.tmp.name) / "fresh"
-        fresh.mkdir()
-        (fresh / gen_manifest.BUILD_NAME).write_text(json.dumps({"build": "x " * 400, "size": 1}))
-        build.compress_assets(fresh)
-        self.assertEqual((fresh / gen_manifest.BUILD_NAME).read_bytes()[:1], b"{")
 
     def test_same_input_builds_the_same_bytes(self):
         again = Path(self.tmp.name) / "again"
@@ -100,27 +60,20 @@ class Pack(unittest.TestCase):
         (self.root / "app.html").write_bytes(PAGE)
         (self.root / "tiny.js").write_bytes(TINY)
         build.compress_assets(self.root)
-        self.doc = gen_manifest.write(self.root)
-        build.write_build_json(self.root, "d18f9b2 2026-11-13", self.doc)
         self.out = Path(self.tmp.name) / "app.pack"
         self.data = build.write_pack(self.root, self.out, "d18f9b2 2026-11-13")
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_the_pack_holds_the_manifests_assets_as_shipped(self):
+    def test_the_pack_holds_the_assets_as_shipped(self):
         bid, assets = app_pack.unpack(self.out.read_bytes())
         self.assertEqual(bid, "d18f9b2 2026-11-13")
-        self.assertEqual([name for name, _ in assets], [a["path"] for a in self.doc["assets"]])
-        for (name, data), a in zip(assets, self.doc["assets"]):
-            self.assertEqual(hashlib.sha256(data).hexdigest(), a["sha256"], name)
+        self.assertEqual([name for name, _ in assets], ["app.html", "tiny.js"])
+        for name, data in assets:
+            self.assertEqual(data, (self.root / name).read_bytes(), name)
         # As shipped: the page is still gzipped inside it, for the sidekick to serve as it is.
         self.assertEqual(dict(assets)["app.html"][:2], build.GZIP_MAGIC)
-
-    def test_neither_the_manifest_nor_build_json_is_in_it(self):
-        names = [name for name, _ in app_pack.unpack(self.data)[1]]
-        self.assertNotIn(gen_manifest.MANIFEST_NAME, names)
-        self.assertNotIn(gen_manifest.BUILD_NAME, names)
 
     def test_same_input_packs_the_same_bytes_and_leaves_the_file_alone(self):
         before = self.out.stat().st_mtime_ns

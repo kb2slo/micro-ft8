@@ -587,11 +587,6 @@ static void test_hold()
     check(!fw_hold_refresh_due(0x00000100u, 0xFFFFFF00u), "and not, 512 ms after, across it");
     // The main board gives up on a hold it stops hearing of: it must hear several times inside that.
     check(3 * FW_HOLD_REFRESH_MS <= PORTA_FW_HOLD_TIMEOUT_MS, "three refreshes fit in the main board's timeout");
-    // The page's hold, around the app's install.
-    check(fw_page_hold_applies(true, false), "the page holds before its step");
-    check(fw_page_hold_applies(true, true), "and may say so again during an update");
-    check(fw_page_hold_applies(false, false), "it gives the hold back when no firmware follows");
-    check(!fw_page_hold_applies(false, true), "but cannot end the hold of an update that is running");
 }
 
 static void test_confirm()

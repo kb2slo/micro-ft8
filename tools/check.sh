@@ -235,9 +235,9 @@ need_idf() {
   esac
 }
 
-# The bundle pages.yml deploys (docs/architecture/webapp.md, Build): minify,
-# compile-check every script, gzip, write the manifest, hold the size budget;
-# then the compress step and its manifest on synthetic assets.
+# The app the sidekick's image embeds (docs/architecture/webapp.md, Build): minify,
+# compile-check every script, gzip, hold the size budget, pack; then the
+# compress step and the pack on synthetic assets.
 check_web() {
   need_npm
   python3 webapp/tools/build.py

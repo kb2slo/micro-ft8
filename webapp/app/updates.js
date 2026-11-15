@@ -206,82 +206,6 @@ var FwUpdates = (function () {
     return 'Switch to ' + CHANNEL_NAMES[p.target] + (p.to ? ' (' + p.to + ')' : '');
   }
 
-  // The app's relay (docs/architecture/sidekick.md, Installing the app bundle): fetch the bundle's
-  // manifest and each asset from the release host over HTTPS, which is what authenticates them, and
-  // write them to the sidekick, which promotes nothing until every file is staged and checked. The
-  // manifest is read afresh each run, so a retry gets whatever is published then. No page calls it
-  // now that the app is in the sidekick's image; it goes with the bundle API
-  // (docs/roadmap/ota-updates.md, jmch).
-  //
-  // io: {get(url) -> Response from the host; begin(text), put(path, bytes), commit() -> Response from
-  // the sidekick; progress(done, total) in bytes}. Resolves {ok: true} or {ok: false, why, detail}:
-  // why 'network' (the host could not be reached or refused), 'pairing' (401), 'firmware' (the
-  // sidekick's firmware is too old for this app: api_min), 'changed' (a file differed from the
-  // manifest: published again mid-relay, or altered on the way), 'refused' (anything else the
-  // sidekick said no to, in detail).
-  async function relayApp(base, io) {
-    // Manifest paths are relative and never climb (web_manifest.c refuses one that does), so each
-    // asset is the base and its path.
-    var root = base.replace(/\/+$/, '') + '/';
-    var manUrl = root + 'manifest.json';
-    var manifest, text;
-    try {
-      var mr = await io.get(manUrl);
-      if (!mr.ok) return { ok: false, why: 'network', detail: 'manifest HTTP ' + mr.status };
-      text = await mr.text();
-      manifest = JSON.parse(text);
-    } catch (e) {
-      return { ok: false, why: 'network', detail: String(e && e.message ? e.message : e) };
-    }
-    var assets = (manifest && manifest.assets) || [];
-    if (!assets.length) return { ok: false, why: 'network', detail: 'manifest has no assets' };
-    var total = assets.reduce(function (n, a) { return n + (a.size | 0); }, 0);
-    var refused = async function (r, what) {
-      if (r.status === 401) return { ok: false, why: 'pairing' };
-      var said = '';
-      try { said = await r.text(); } catch (e) { /* no body */ }
-      if (what === 'begin' && /api_min/.test(said)) return { ok: false, why: 'firmware', detail: said };
-      if (what === 'put' && /sha256 mismatch/.test(said)) return { ok: false, why: 'changed', detail: said };
-      return { ok: false, why: 'refused', detail: what + ': ' + said };
-    };
-    var r = await io.begin(text);
-    if (!r.ok) return refused(r, 'begin');
-    var done = 0;
-    io.progress(0, total);
-    for (var i = 0; i < assets.length; i++) {
-      var a = assets[i], bytes;
-      try {
-        var ar = await io.get(root + a.path);
-        if (!ar.ok) return { ok: false, why: 'network', detail: a.path + ' HTTP ' + ar.status };
-        bytes = await ar.arrayBuffer();
-      } catch (e) {
-        return { ok: false, why: 'network', detail: String(e && e.message ? e.message : e) };
-      }
-      if (bytes.byteLength !== a.size) {
-        return { ok: false, why: 'changed', detail: a.path + ' size ' + bytes.byteLength + ' != ' + a.size };
-      }
-      r = await io.put(a.path, bytes);
-      if (!r.ok) return refused(r, 'put');
-      done += a.size;
-      io.progress(done, total);
-    }
-    r = await io.commit();
-    if (!r.ok) return refused(r, 'commit');
-    return { ok: true };
-  }
-
-  // The app's failure in words, by relayApp()'s `why`.
-  var APP_WHY_TEXT = {
-    network: 'The app could not be downloaded: this phone needs internet',
-    pairing: 'Press the pairing button',
-    firmware: 'The app needs newer sidekick firmware',
-    changed: 'The app was published again while it installed',
-    refused: 'The sidekick refused the app',
-  };
-  function appWhyText(why) {
-    return APP_WHY_TEXT[why] || 'The app could not be installed';
-  }
-
   // The steps of an update as the progress screen lists them, from GET /api/fw/status: its `plan`
   // (the boards, in order), `step` (the one in hand) and `state`. Each {text, pct, at}: at is
   // 'done', 'now' or 'next'; a failure leaves its step 'now'. pct is the step in hand's progress,
@@ -428,8 +352,6 @@ var FwUpdates = (function () {
     unavailableText: function (why) { return UNAVAILABLE_TEXT[why] || ''; },
     reviewText: reviewText,
     offerNote: offerNote,
-    relayApp: relayApp,
-    appWhyText: appWhyText,
     stepRows: stepRows,
     busy: busy,
     startCheck: startCheck,

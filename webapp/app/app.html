@@ -1095,7 +1095,6 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 
         <div class="hd sep">Reset</div>
         <div class=setbtns>
-          <button id=netRehydrate type=button disabled>Restore seed pages</button>
           <button id=netFactory type=button class=btn-danger disabled>Factory reset</button>
         </div>
         <p id=resetMsg class=setnote></p>
@@ -3363,42 +3362,6 @@ function tokSave() {
 onTapOnce(document.getElementById('tokSave'), tokSave);
 document.getElementById('tokInput').value = MicroFT8Pairing.getToken();
 
-// In-page arm/confirm (not window.confirm), same reasoning status.html's own
-// version had: phones often dismiss the native dialog with no status text
-// and no POST, which reads as a dead button.
-var netRehydrateArmed = false;
-document.getElementById('netRehydrate').onclick = async function () {
-  var msg = document.getElementById('resetMsg');
-  if (!MicroFT8Pairing.getToken()) {
-    netRehydrateArmed = false;
-    msg.textContent = 'Press the pairing button first.';
-    MicroFT8Pairing.needsReauth();
-    return;
-  }
-  if (!netRehydrateArmed) {
-    netRehydrateArmed = true;
-    msg.textContent = 'Tap Restore again to rewrite seed pages (app files kept).';
-    return;
-  }
-  netRehydrateArmed = false;
-  msg.textContent = 'Restoring…';
-  try {
-    var r = await MicroFT8Pairing.authFetch('/api/web/rehydrate', { method: 'POST' });
-    if (r.status == 401) {
-      MicroFT8Pairing.needsReauth();
-      msg.textContent = 'Press the pairing button';
-      return;
-    }
-    if (!r.ok) {
-      msg.textContent = 'Restore failed: ' + (await r.text());
-      return;
-    }
-    msg.textContent = 'Seed pages restored from firmware.';
-  } catch (e) {
-    msg.textContent = 'Restore error: ' + (e && e.message ? e.message : e);
-  }
-};
-
 // Factory reset: native confirm()s, as Forget, AP mode and the retune prompt use. It resets the
 // main board's settings and this sidekick's app, saved WiFi and pairing; the QSO logs on the main
 // board go only when the second prompt says so, since they cannot be recreated. The sidekick
@@ -4019,7 +3982,6 @@ function enableWrites(on) {
   document.querySelectorAll('#opBandGrid .bandbtn').forEach(function (b) { b.disabled = !on; });
   document.getElementById('netForget').disabled = !on;
   document.getElementById('netModeSwitch').disabled = !on;
-  document.getElementById('netRehydrate').disabled = !on;
   document.getElementById('netFactory').disabled = !on;
   document.getElementById('apSave').disabled = !on;
   document.getElementById('apReset').disabled = !on;

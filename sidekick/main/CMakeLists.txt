@@ -31,8 +31,8 @@ foreach(name IN LISTS WEB_SEED_NAMES)
         # No file(SIZE ...) here on purpose -- field-found 2026-09-20, that
         # was a configure-time-only read (same class of bug as git_version.
         # cmake's SHA/DIRTY) that went stale across edits and silently
-        # truncated every seed file hydrate_seeds() wrote, identically for
-        # every client, no error anywhere. Using EMBED_TXTFILES' own
+        # truncated every seed page, identically for every client, no error
+        # anywhere. Using EMBED_TXTFILES' own
         # _binary_X_end symbol instead means the size is embed_end - embed,
         # taken from the linker's actual placement of the data -- it cannot
         # be stale relative to the embed itself, because both come from the
@@ -52,7 +52,7 @@ endif()
 
 set(WEB_SEED_GEN "${CMAKE_CURRENT_BINARY_DIR}/web_seed_table.c")
 set(WEB_SEED_SRCS "main.c" "wifi_prov.c" "host_link.c" "event_state.c" "pairing_token.c" "pairing_http.c"
-                  "web_page.c" "web_fs.c" "web_manifest.c" "web_bundle.c" "bundle_host.c"
+                  "web_page.c"
                   "app_pack.c" "app_push.c" "app_serve.c"
                   "fw_policy.c" "fw_update.c")
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)
@@ -74,7 +74,7 @@ idf_component_register(
     SRCS ${WEB_SEED_SRCS}
     INCLUDE_DIRS "."
     REQUIRES nvs_flash esp_wifi esp_netif esp_event esp_http_server esp_http_client esp_app_format app_update porta_proto
-             esp_driver_gpio esp_driver_uart esp_timer espressif__mdns joltwallet__littlefs mbedtls
+             esp_driver_gpio esp_driver_uart esp_timer espressif__mdns mbedtls
 
     # Real files under web/, NUL-terminated by EMBED_TXTFILES. Placeholders are
     # {{name}}, not printf — CSS can say width:100%. The file list is the glob

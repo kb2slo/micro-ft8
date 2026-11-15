@@ -10,9 +10,9 @@
 # USB-C reflash of every device. Cheap at one device, expensive after
 # distribution.
 #
-# web (LittleFS) claims the free tail above ota_1 (~1.9 MB). Nothing is served
-# from it: the app and the bootstrap pages are in the firmware image
-# (docs/architecture/sidekick.md (Web root)). It stays while the bundle API writes to it.
+# web (LittleFS) claims the free tail above ota_1 (~1.9 MB). Nothing mounts or
+# serves it: the app and the bootstrap pages are in the firmware image
+# (docs/architecture/sidekick.md (Web root)).
 # nvs stays at 0x9000 with its original 24 KB — move it and WiFi/token config
 # are silently lost.
 #

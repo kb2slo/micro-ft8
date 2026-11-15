@@ -5,8 +5,8 @@
   "use strict";
   var C = Charts;
   var SERIES = { "10m": "var(--s1)", "15m": "var(--s2)", "20m": "var(--s3)", "40m": "var(--s4)" };
-  // The site's own copy of the app's Natural Earth 110m land: the hosted /app/ is the
-  // gzipped bundle the sidekick installs, not files a page can read (docs/architecture/webapp.md, Experiments).
+  // The site's own copy of the app's Natural Earth 110m land: the app is not on the site
+  // (docs/architecture/webapp.md, Experiments).
   var LAND_URL = "/data/ne_110m_land.json";
   var MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August",
                 "September", "October", "November", "December"];
