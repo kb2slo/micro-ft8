@@ -300,7 +300,7 @@ var FwUpdates = (function () {
   // The app's failure in words, by relayApp()'s `why`.
   var APP_WHY_TEXT = {
     network: 'The app could not be downloaded: this phone needs internet',
-    pairing: 'Press the sidekick button to pair',
+    pairing: 'Press the pairing button',
     firmware: 'The app needs newer sidekick firmware',
     changed: 'The app was published again while it installed',
     refused: 'The sidekick refused the app',

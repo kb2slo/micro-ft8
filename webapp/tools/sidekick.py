@@ -157,7 +157,7 @@ def clear_token() -> None:
 def wait_for_token(host: str, wait_s: float) -> str:
     print()
     print("Close browser tabs on the sidekick (they race for the token).")
-    print(f"Press the sidekick button now — polling for up to {int(wait_s)} s…")
+    print(f"Press the sidekick's pairing button now — polling for up to {int(wait_s)} s…")
     print()
     deadline = time.monotonic() + wait_s
     last_tick = -1

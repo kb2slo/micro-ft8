@@ -1634,7 +1634,7 @@ async function openFwReview(target) {
   if (!plan.switching) fwTarget = '';
   if (!plan.any || plan.unavailable || plan.blocked) return;
   if (!paired()) {
-    msg.textContent = 'Press the sidekick button to pair first.';
+    msg.textContent = 'Press the pairing button first.';
     MicroFT8Pairing.needsReauth();
     return;
   }
@@ -1750,7 +1750,7 @@ async function sendFwPlan(body) {
   }
   if (r.status == 401) {
     MicroFT8Pairing.needsReauth();
-    return { sent: true, why: 'Press the sidekick button to pair', code: '' };
+    return { sent: true, why: 'Press the pairing button', code: '' };
   }
   var j = null;
   try { j = await r.json(); } catch (e) { /* an older sidekick answers 404 with no JSON */ }
@@ -2103,7 +2103,7 @@ function settingsMenuModel(s) {
   if (s.updateAvailable) m.update = row('Update available', 'amber', '!');
   else if (s.appStale) m.update = row('A newer app is available · reload', 'amber', '!');
   else if (s.fwChecked) m.update = row('No updates', '', '\u2713');
-  else m.update = row(s.fwNoNet ? 'Cannot be checked from here' : 'Not checked yet');
+  else m.update = row(s.fwNoNet ? 'Cannot check without internet' : 'Not checked yet');
   var theme = s.theme === 'light' ? 'Light' : s.theme === 'dark' ? 'Dark' : 'Theme matches phone';
   m.device = row((s.units === 'mi' ? 'Miles' : 'Kilometers') + ' · ' + theme);
   return m;
@@ -2868,7 +2868,7 @@ function radioBarState(chip, hud, ctx) {
   }
   // Not paired: this phone can watch but not transmit or change anything.
   if (ctx.unpaired) {
-    return { state: 'unpaired', tone: 'amber', main: where, sub: 'Not paired \u00b7 press the sidekick\u2019s button',
+    return { state: 'unpaired', tone: 'amber', main: where, sub: 'Not paired \u00b7 press the pairing button',
              glyph: '!', label: 'Pair \u203a', stop: '' };
   }
   // Not on the air, but the last two transmissions tripped: the main board has ended the CQ and
@@ -3219,7 +3219,7 @@ async function linkTestRefresh() {
 async function linkTestPost(body) {
   var msg = document.getElementById('linkTestMsg');
   if (!MicroFT8Pairing.getToken()) {
-    msg.textContent = 'Press the sidekick button to pair first.';
+    msg.textContent = 'Press the pairing button first.';
     MicroFT8Pairing.needsReauth();
     return;
   }
@@ -3227,7 +3227,7 @@ async function linkTestPost(body) {
     var r = await MicroFT8Pairing.authFetch('/api/link-test', { method: 'POST', body: body });
     if (r.status == 401) {
       MicroFT8Pairing.needsReauth();
-      msg.textContent = 'Press the sidekick button to pair';
+      msg.textContent = 'Press the pairing button';
       return;
     }
     var s = await r.json();
@@ -3258,7 +3258,7 @@ document.getElementById('linkTestStop').onclick = function () { linkTestPost('st
 
 async function netAction(path, busyMsg, onOk) {
   if (!MicroFT8Pairing.getToken()) {
-    document.getElementById('netMsg').textContent = 'Press the sidekick button to pair first.';
+    document.getElementById('netMsg').textContent = 'Press the pairing button first.';
     MicroFT8Pairing.needsReauth();
     return;
   }
@@ -3267,7 +3267,7 @@ async function netAction(path, busyMsg, onOk) {
     var r = await MicroFT8Pairing.authFetch(path, { method: 'POST' });
     if (r.status == 401) {
       MicroFT8Pairing.needsReauth();
-      document.getElementById('netMsg').textContent = 'Press the sidekick button to pair';
+      document.getElementById('netMsg').textContent = 'Press the pairing button';
       return;
     }
     onOk();
@@ -3387,7 +3387,7 @@ onTapOnce(document.getElementById('apReset'), function () {
 async function apSubmit(ssid, pass) {
   var msg = document.getElementById('apMsg');
   if (!MicroFT8Pairing.getToken()) {
-    msg.textContent = 'Press the sidekick button to pair first.';
+    msg.textContent = 'Press the pairing button first.';
     MicroFT8Pairing.needsReauth();
     return;
   }
@@ -3418,7 +3418,7 @@ async function apSubmit(ssid, pass) {
     });
     if (r.status == 401) {
       MicroFT8Pairing.needsReauth();
-      msg.textContent = 'Press the sidekick button to pair';
+      msg.textContent = 'Press the pairing button';
       return;
     }
     var j = null;
@@ -3473,7 +3473,7 @@ document.getElementById('netRehydrate').onclick = async function () {
   var msg = document.getElementById('resetMsg');
   if (!MicroFT8Pairing.getToken()) {
     netRehydrateArmed = false;
-    msg.textContent = 'Press the sidekick button to pair first.';
+    msg.textContent = 'Press the pairing button first.';
     MicroFT8Pairing.needsReauth();
     return;
   }
@@ -3488,7 +3488,7 @@ document.getElementById('netRehydrate').onclick = async function () {
     var r = await MicroFT8Pairing.authFetch('/api/web/rehydrate', { method: 'POST' });
     if (r.status == 401) {
       MicroFT8Pairing.needsReauth();
-      msg.textContent = 'Press the sidekick button to pair';
+      msg.textContent = 'Press the pairing button';
       return;
     }
     if (!r.ok) {
@@ -3510,7 +3510,7 @@ document.getElementById('netRehydrate').onclick = async function () {
 document.getElementById('netFactory').onclick = async function () {
   var msg = document.getElementById('resetMsg');
   if (!MicroFT8Pairing.getToken()) {
-    msg.textContent = 'Press the sidekick button to pair first.';
+    msg.textContent = 'Press the pairing button first.';
     MicroFT8Pairing.needsReauth();
     return;
   }
@@ -3524,7 +3524,7 @@ document.getElementById('netFactory').onclick = async function () {
     if (r.status == 401) {
       document.getElementById('resetWait').hidden = true;
       MicroFT8Pairing.needsReauth();
-      msg.textContent = 'Press the sidekick button to pair';
+      msg.textContent = 'Press the pairing button';
       return;
     }
     if (!r.ok) {
@@ -3628,7 +3628,7 @@ async function putConfigLine(line, busyMsg, alertOnFail) {
     return false;
   }
   if (!MicroFT8Pairing.getToken()) {
-    failMsg('Press the sidekick button to pair first.');
+    failMsg('Press the pairing button first.');
     MicroFT8Pairing.needsReauth();
     return false;
   }
@@ -3639,7 +3639,7 @@ async function putConfigLine(line, busyMsg, alertOnFail) {
   });
   if (r.status == 401) {
     MicroFT8Pairing.needsReauth();
-    failMsg('Press the sidekick button to pair');
+    failMsg('Press the pairing button');
     return false;
   }
   var j = await r.json().catch(function () { return {}; });
@@ -4082,7 +4082,7 @@ async function radioPost(path, body, busyMsg) {
     return false;
   }
   if (!MicroFT8Pairing.getToken()) {
-    failMsg('Press the sidekick button to pair first.');
+    failMsg('Press the pairing button first.');
     MicroFT8Pairing.needsReauth();
     return false;
   }
@@ -4091,7 +4091,7 @@ async function radioPost(path, body, busyMsg) {
   var r = await MicroFT8Pairing.authFetch(path, opts);
   if (r.status == 401) {
     MicroFT8Pairing.needsReauth();
-    failMsg('Press the sidekick button to pair');
+    failMsg('Press the pairing button');
     return false;
   }
   var j = await r.json().catch(function () { return {}; });
@@ -5497,7 +5497,7 @@ async function sendReply(id) {
     return;
   }
   if (!MicroFT8Pairing.getToken()) {
-    failMsg('Press the sidekick button to pair first.');
+    failMsg('Press the pairing button first.');
     MicroFT8Pairing.needsReauth();
     return;
   }
@@ -5510,7 +5510,7 @@ async function sendReply(id) {
     var r = await MicroFT8Pairing.authFetch('/api/queue/reply', { method: 'POST', body: String(id) });
     if (r.status == 401) {
       MicroFT8Pairing.needsReauth();
-      reason = 'Press the sidekick button to pair.';
+      reason = 'Press the pairing button.';
     } else {
       var j = await r.json().catch(function () { return {}; });
       if (!r.ok || j.ok === false) reason = j.why || ('refused (' + r.status + ')');
@@ -5759,7 +5759,7 @@ function applyEvent(e) {
   }
 }
 
-// The sidekick button held toward the AP reset: the events reply carries the seconds held
+// The pairing button, the sidekick's one button, held toward the AP reset: the events reply carries the seconds held
 // (`hold`, 0 when not, of `hold_of`). From the second second a card says to keep holding, so a short
 // pairing press never shows it; at the last second it becomes the same wait-and-reload card a Save uses.
 // Letting go early closes it. It only opens over an idle page, never over another card.
@@ -5793,7 +5793,7 @@ function updateResetHold(hold, of) {
       box.hidden = false;
     }
     document.getElementById('resetWaitText').textContent =
-      'Keep holding the sidekick button to reset its WiFi name and password to the defaults (' + hold +
+      'Keep holding the pairing button to reset the sidekick\u2019s WiFi name and password to the defaults (' + hold +
       ' of ' + of + ' seconds). Let go to cancel.';
     return;
   }
@@ -6927,7 +6927,7 @@ async function downloadAllAdif(linkEl) {
 // could be removed.
 async function clearAllAdif() {
   if (!MicroFT8Pairing.getToken()) {
-    failMsg('Press the sidekick button to pair');
+    failMsg('Press the pairing button');
     return;
   }
   if (!window.confirm('Delete all ADI log files on the radio?')) return;
@@ -6935,7 +6935,7 @@ async function clearAllAdif() {
     var r = await MicroFT8Pairing.authFetch('/api/log/files', { method: 'DELETE' });
     if (r.status === 401) {
       MicroFT8Pairing.needsReauth();
-      failMsg('Press the sidekick button to pair');
+      failMsg('Press the pairing button');
       return;
     }
     var j = await r.json().catch(function () { return {}; });

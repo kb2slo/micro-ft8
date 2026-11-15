@@ -107,7 +107,7 @@ assert.strictEqual(bar('ready', null, { linkLost: false }).state, 'ready');
 s = bar('lost', null, { unpaired: true });
 assert.strictEqual(s.state, 'unpaired');
 assert.strictEqual(s.tone, 'amber');
-assert.strictEqual(s.sub, 'Not paired · press the sidekick’s button');
+assert.strictEqual(s.sub, 'Not paired · press the pairing button');
 assert.strictEqual(bar('ready', null, { unpaired: true, linkLost: true }).state, 'nolink');
 
 assert.strictEqual(bar('ready', tx(), { unpaired: true }).state, 'tx');

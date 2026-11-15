@@ -2,7 +2,7 @@
 //
 // Served at /pairing.js. Pages include it with <script src=/pairing.js></script>
 // and call MicroFT8Pairing.boot(...) so re-auth is the same gesture everywhere:
-// press the sidekick button; this script claims the token while the disclosure
+// press the pairing button (the sidekick's one button); this script claims the token while the disclosure
 // window is open. No copy-paste, no prompt().
 //
 // The device-side window is one-shot: the first successful GET closes it, so a
@@ -58,7 +58,7 @@
   async function pollUntilPaired() {
     if (polling) return;
     polling = true;
-    setStatus('Press the sidekick button to pair');
+    setStatus('Press the pairing button');
     try {
       for (;;) {
         if (getToken()) {
@@ -74,7 +74,7 @@
             return;
           }
         } catch (e) { /* keep waiting */ }
-        setStatus('Press the sidekick button to pair');
+        setStatus('Press the pairing button');
         await new Promise(function (resolve) { setTimeout(resolve, POLL_MS) });
       }
     } finally {

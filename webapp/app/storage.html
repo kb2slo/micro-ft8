@@ -86,7 +86,7 @@ document.getElementById('refresh').onclick = render;
 // re-pairing (the "unpaired" test case) without losing the rest of the
 // cache (decode-slot timestamps, callsign grid cache, theme/unit prefs).
 document.getElementById('clearToken').onclick = function () {
-  if (confirm('Clear the pairing token for this browser? The sidekick button will need to be pressed again to re-pair.')) {
+  if (confirm('Clear the pairing token for this browser? The pairing button will need to be pressed again.')) {
     MicroFT8Pairing.clearToken();
     render();
   }

@@ -87,7 +87,7 @@ assert.deepStrictEqual(row(model({ paired: false }).pairing), ['Not paired · pr
 // One Update for the station: the parts are not named here (docs/roadmap/ota-updates.md, antu).
 assert.deepStrictEqual(row(model({ updateAvailable: true, appStale: true }).update), ['Update available', 'amber', '!']);
 assert.deepStrictEqual(row(model({ appStale: true }).update), ['A newer app is available · reload', 'amber', '!']);
-assert.deepStrictEqual(row(model({ fwChecked: false, fwNoNet: true }).update), ['Cannot be checked from here', '', '']);
+assert.deepStrictEqual(row(model({ fwChecked: false, fwNoNet: true }).update), ['Cannot check without internet', '', '']);
 assert.deepStrictEqual(row(model({ fwChecked: false }).update), ['Not checked yet', '', '']);
 
 // This device.

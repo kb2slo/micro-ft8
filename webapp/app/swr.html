@@ -334,7 +334,7 @@ function schedulePoll() {
 async function post(path, body) {
   if (!MicroFT8Pairing.getToken()) {
     MicroFT8Pairing.needsReauth();
-    return { ok: false, why: 'Press the sidekick button to pair first.' };
+    return { ok: false, why: 'Press the pairing button first.' };
   }
   var opts = { method: 'POST' };
   if (body !== undefined) opts.body = body;
@@ -342,7 +342,7 @@ async function post(path, body) {
   try { r = await MicroFT8Pairing.authFetch(path, opts); } catch (e) { return { ok: false, why: 'No answer from the station.' }; }
   if (r.status === 401) {
     MicroFT8Pairing.needsReauth();
-    return { ok: false, why: 'Press the sidekick button to pair.' };
+    return { ok: false, why: 'Press the pairing button.' };
   }
   var j = await r.json().catch(function () { return {}; });
   if (!r.ok && j.ok === undefined) j = { ok: false, why: 'HTTP ' + r.status };

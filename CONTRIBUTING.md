@@ -45,7 +45,7 @@ Once per machine:
   `sudo usermod -aG dialout $USER`, then reboot. Logging out is not always enough: on a desktop whose
   terminals are started by the systemd user manager, they keep the groups it started with.
 - **The sidekick's pairing token.** The first `python3 webapp/tools/install_app.py` on a machine waits
-  for the sidekick's button, then caches the token.
+  for the sidekick's pairing button, then caches the token.
 
 A bench board keeps whatever was last flashed or pushed to it, from any machine and any branch. Before a
 field check, check what it runs ([TEST_PLAN.md](docs/TEST_PLAN.md), **Pending**).

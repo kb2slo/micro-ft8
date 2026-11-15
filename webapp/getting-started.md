@@ -42,7 +42,7 @@ You need the main board and sidekick on their Grove cable, your QMX (validated o
 
 ## 3. Pair your phone
 
-- **Operate**'s bottom bar says **Not paired** until you press the button on top of the sidekick.
+- **Operate**'s bottom bar says **Not paired** until you press the pairing button, on top of the sidekick.
 - A paired browser can transmit and change settings; anyone on the network can watch. It also sets the station's clock from the phone, which FT8 needs (the main board has no clock), so open the app once after every power-up, with the phone's time set automatically.
 
 ## 4. Set up your station
@@ -72,7 +72,7 @@ One ADIF file per UTC day, kept on the main board. On **QSOs**, **Download ADI**
 
 - *CAT or Audio not ✓:* unplug the QMX's USB at the main board and plug it back in, or switch the QMX off and on. A restart of the main board while the QMX is connected can leave it unable to reconnect until you do.
 - *A busy band but no decodes:* reload the app, so it sets the clock again. Still none: check **Radio firmware** in the radio bar's drawer; before 1.04.010 it may lack IQ mode.
-- *Asked to pair again:* a new phone, a cleared browser or another address each take one button press.
+- *Asked to pair again:* a new phone, a cleared browser or another address each take one press of the pairing button.
 - *Internet* is never needed to operate. When the phone has it, a tapped callsign shows QRZ details, and **Tools** adds space weather and, on its map, POTA and SOTA spots.
 - *SWR sweep,* on **Tools**: set the QMX's *Tune* power to 25% or more first.
 - *Home WiFi instead* (2.4 GHz only): in **Settings**, tap **Network**, then **Join a network →**, pick it and tap **Save and join**; then use [`http://micro-ft8.local`](http://micro-ft8.local/), typing `http://` (Safari otherwise tries `https://` and fails). Away from that network, the sidekick's own comes back within a minute of power-up.
