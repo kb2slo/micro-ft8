@@ -160,7 +160,10 @@ button:disabled{opacity:.45}
 #fwCard h2,#askCard h2{font-size:1.05rem;margin:0 0 .6rem}
 #fwCard p,#askCard p{font-size:.9rem;margin:.5rem 0;line-height:1.45}
 #fwCard ul{list-style:none;margin:.5rem 0;padding:0;font-size:.9rem;line-height:1.6}
-#fwSteps li::before{content:'\25CB';display:inline-block;width:1.4em;color:GrayText}
+#fwSteps li{display:flex;align-items:baseline}
+#fwSteps li::before{content:'\25CB';flex:none;width:1.4em;color:GrayText}
+#fwSteps li>span:first-child{flex:1;min-width:0}
+#fwSteps .pct{flex:none;margin-left:.6em;white-space:nowrap;font-variant-numeric:tabular-nums}
 #fwSteps li.done::before{content:'\2713';color:var(--accent)}
 #fwSteps li.now::before{content:'\25CF';color:var(--accent)}
 #fwSteps li.next{color:GrayText}
@@ -1564,14 +1567,17 @@ function renderFwUpdates() {
     row.appendChild(line);
     list.appendChild(row);
   }
-  document.getElementById('updOpen').hidden = !offered || !!plan.blocked || fwPolling || !!fwMine;
+  // Not while the progress or result sheet is up: its backdrop lets the page show through, and an
+  // Update button behind "Updated to …" reads as one more to run.
+  var busy = fwPolling || !!fwMine || !!fwSheetMode;
+  document.getElementById('updOpen').hidden = !offered || !!plan.blocked || busy;
   document.getElementById('tabUpdate').hidden = !offered || !paired();
   // The other channel, under Update: offered when it has published a build this station's boards
   // do not run, on the terms an update is.
   document.getElementById('fwChannel').textContent = fwLink.hostLinked ? FwUpdates.channelName(plan.channel) : '—';
   var other = fwPlan(plan.channel === 'stable' ? 'dev' : 'stable');
   var sw = document.getElementById('updSwitch');
-  sw.hidden = !other.steps.length || !!other.unavailable || !!other.blocked || fwPolling || !!fwMine;
+  sw.hidden = !other.steps.length || !!other.unavailable || !!other.blocked || busy;
   sw.textContent = FwUpdates.switchLabel(other);
   if (plan.unavailable) msg.textContent = FwUpdates.unavailableText(plan.unavailable);
   else if (offered) msg.textContent = FwUpdates.offerNote(plan);
@@ -1584,7 +1590,17 @@ function fwFill(id, items) {
   ul.textContent = '';
   items.forEach(function (it) {
     var li = document.createElement('li');
-    li.textContent = it.text;
+    var text = document.createElement('span');
+    text.textContent = it.text;
+    li.appendChild(text);
+    // The step in hand's percentage, in its own box at the end of the first line: appended to the
+    // text, it wrapped onto a line of its own on a long step.
+    if (it.pct) {
+      var pct = document.createElement('span');
+      pct.className = 'pct';
+      pct.textContent = it.pct;
+      li.appendChild(pct);
+    }
     li.className = it.at;
     ul.appendChild(li);
   });
@@ -1758,7 +1774,7 @@ async function fwStartCheck(plan) {
 // Starts the firmware plan: '' when it started, else why not, in words. A request that did not
 // get through is not known to have failed (FwUpdates.startCheck()), so the page asks the sidekick
 // what it is doing and sends the request once more unless the plan is already running. Seen once
-// (2026-11-14), cause unknown, so a start that needed this says so on the result (fwStartNote).
+// (2026-11-15), cause unknown, so a start that needed this says so on the result (fwStartNote).
 async function postFwPlan(plan) {
   fwStartNote = '';
   var a = await sendFwPlan(plan.body);
@@ -1836,6 +1852,7 @@ async function followFw() {
       fwShow('result', { title: end.text, failed: !end.ok, cancel: 'Close' });
     } else {    // it ended; the radio bar and Settings say the rest
       fwShow('', {});
+      renderFwUpdates();
     }
     checkFwUpdates();
     return;
@@ -1886,6 +1903,9 @@ document.getElementById('fwCancel').onclick = async function () {
   // The page that ran the update reloads into what it installed.
   if (fwReloadOnClose) { location.reload(); return; }
   fwShow('', {});
+  // At once, from what is already read: checkFwUpdates() draws only after its fetches, and Update
+  // is hidden while the sheet is up.
+  renderFwUpdates();
   checkFwUpdates();
 };
 checkFwUpdates();

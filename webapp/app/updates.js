@@ -310,18 +310,21 @@ var FwUpdates = (function () {
   }
 
   // The app's row on the progress sheet. run: {at, done, total}, at 'now', 'done', 'after' (left
-  // for after the firmware, which the app needs) or 'failed'.
+  // for after the firmware, which the app needs) or 'failed'. pct is apart from the text, as in
+  // stepRows().
   function appRow(run) {
     var text = 'Install the app (' + sizeText(run.total) + ')';
-    if (run.at === 'now' && run.total > 0) text += ' \u00b7 ' + Math.floor(run.done * 100 / run.total) + '%';
-    if (run.at === 'after') return { text: text + ', after the firmware', at: 'next' };
-    return { text: text, at: run.at === 'failed' ? 'now' : run.at };
+    if (run.at === 'after') return { text: text + ', after the firmware', pct: '', at: 'next' };
+    var pct = run.at === 'now' && run.total > 0 ? Math.floor(run.done * 100 / run.total) + '%' : '';
+    return { text: text, pct: pct, at: run.at === 'failed' ? 'now' : run.at };
   }
 
   // The steps of an update as the progress screen lists them, from GET /api/fw/status: its `plan`
-  // (the boards, in order), `step` (the one in hand) and `state`. Each {text, at}: at is 'done',
-  // 'now' or 'next'; a failure leaves its step 'now'. `reachable` false means the sidekick is not
-  // answering, which at the end of its own update is its restart.
+  // (the boards, in order), `step` (the one in hand) and `state`. Each {text, pct, at}: at is
+  // 'done', 'now' or 'next'; a failure leaves its step 'now'. pct is the step in hand's progress,
+  // '43%', or '': apart from the text, so the sheet keeps it on the row's first line when a long
+  // step wraps. `reachable` false means the sidekick is not answering, which at the end of its own
+  // update is its restart.
   function stepRows(status, reachable) {
     var rows = [];
     var boards = (status && status.plan) || [];
@@ -343,9 +346,9 @@ var FwUpdates = (function () {
     return rows.map(function (r, i) {
       var pct = '';
       if (i === idx && (state === 'downloading' || state === 'transferring') && status.size > 0) {
-        pct = ' \u00b7 ' + Math.floor(status.got * 100 / status.size) + '%';
+        pct = Math.floor(status.got * 100 / status.size) + '%';
       }
-      return { text: r.text + pct, at: allDone || (idx >= 0 && i < idx) ? 'done' : (i === idx ? 'now' : 'next') };
+      return { text: r.text, pct: pct, at: allDone || (idx >= 0 && i < idx) ? 'done' : (i === idx ? 'now' : 'next') };
     });
   }
 

@@ -301,9 +301,9 @@ function relayWorld(o) {
   ['network', 'pairing', 'firmware', 'changed', 'refused'].forEach((why) => assert(!/failed$/.test(U.appWhyText(why)), why));
 
   // The app's row on the progress sheet.
-  eq(U.appRow({ at: 'now', done: 92873, total: 185745 }), { text: 'Install the app (181 KB) · 50%', at: 'now' });
-  eq(U.appRow({ at: 'done', done: 0, total: 185745 }), { text: 'Install the app (181 KB)', at: 'done' });
-  eq(U.appRow({ at: 'after', done: 0, total: 185745 }), { text: 'Install the app (181 KB), after the firmware', at: 'next' });
+  eq(U.appRow({ at: 'now', done: 92873, total: 185745 }), { text: 'Install the app (181 KB)', pct: '50%', at: 'now' });
+  eq(U.appRow({ at: 'done', done: 0, total: 185745 }), { text: 'Install the app (181 KB)', pct: '', at: 'done' });
+  eq(U.appRow({ at: 'after', done: 0, total: 185745 }), { text: 'Install the app (181 KB), after the firmware', pct: '', at: 'next' });
   eq(U.appRow({ at: 'failed', done: 0, total: 185745 }).at, 'now');
   console.log('ok (relay)');
 })().catch((e) => { console.error(e); process.exit(1); });
@@ -323,8 +323,12 @@ let a = ats(pst({ state: 'downloading' }));
 eq([a[0], count(a, 'next')], ['now', 6]);
 a = ats(pst({ state: 'transferring', got: 435984 }));
 eq(a, ['done', 'done', 'now', 'next', 'next', 'next', 'next']);
-assert.strictEqual(U.stepRows(pst({ state: 'transferring', got: 435984 }), true)[2].text, 'Send it to the main board · 50%');
-assert.strictEqual(U.stepRows(pst({ state: 'downloading', got: 87196 }), true)[0].text, 'Download the main board’s image (852 KB) · 9%');
+// The percentage is apart from the text, on the step in hand only: the sheet draws it at the end of
+// the row's first line, where a long step's wrap cannot leave it on a line of its own.
+eq(U.stepRows(pst({ state: 'transferring', got: 435984 }), true)[2], { text: 'Send it to the main board', pct: '50%', at: 'now' });
+eq(U.stepRows(pst({ state: 'downloading', got: 87196 }), true)[0], { text: 'Download the main board’s image (852 KB)', pct: '9%', at: 'now' });
+eq(U.stepRows(pst({ state: 'transferring', got: 435984 }), true).map((r) => r.pct), ['', '', '50%', '', '', '', '']);
+eq(U.stepRows(pst({ state: 'verifying' }), true).map((r) => r.pct).join(''), '');
 a = ats(pst({ state: 'downloading', step: 1, board: 'sidekick', size: 1005232 }));
 eq(a, ['done', 'done', 'done', 'done', 'now', 'next', 'next']);
 a = ats(pst({ state: 'restarting', step: 1, board: 'sidekick' }));
