@@ -20,6 +20,7 @@
 #include "mbedtls/sha256.h"
 #include "nvs.h"
 
+#include "app_serve.h"
 #include "fw_policy.h"
 #include "host_link.h"
 #include "pairing_http.h"
@@ -167,6 +168,19 @@ void fw_update_init(void)
                  fw_last_name(fw_last_result(&s_last, esp_app_get_description()->version, s_pending_verify)));
     }
     nvs_close(h);
+}
+
+bool fw_update_busy(void)
+{
+    lock();
+    const bool busy = state_busy(s_st.state);
+    unlock();
+    return busy;
+}
+
+bool fw_update_on_trial(void)
+{
+    return s_pending_verify;
 }
 
 static bool store_record(const fw_record_t *rec)
@@ -690,6 +704,9 @@ static esp_err_t post_start(httpd_req_t *req)
         return refuse(req, "409 Conflict", why);
     }
     hold(true);  // before the first byte is fetched: nothing transmits during any step
+    // The image is staged in the spare slot, where a bench push lies: any update ends one, a main
+    // board's included, and one that fails before its first byte too.
+    app_serve_drop_push();
     if (xTaskCreate(update_task, "fw_update", 8192, NULL, 4, NULL) != pdPASS) {
         fail("flash", ESP_ERR_NO_MEM);
         return refuse(req, "500 Internal Server Error", "flash");

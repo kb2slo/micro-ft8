@@ -22,7 +22,7 @@ enum {
     // AP mode serves the full application, the same as station mode
     // (docs/architecture/system.md (Constraints)), so both register the same routes below.
     PAIRING_ROUTES_WEB_FS = 1,     // POST /api/web/rehydrate
-    PAIRING_ROUTES_APP_SERVE = 1,  // GET /*
+    PAIRING_ROUTES_APP_SERVE = 2,  // POST /api/app/push, GET /*
 
     PAIRING_HTTP_MAX_ROUTES_AP = PAIRING_ROUTES_WIFI_PROV_AP_CORE +
         PAIRING_ROUTES_DISCLOSURE + PAIRING_ROUTES_HOST_LINK +

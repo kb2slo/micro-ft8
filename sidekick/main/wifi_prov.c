@@ -1291,6 +1291,8 @@ void wifi_prov_factory_reset_and_restart(void)
         nvs_close(h);
     }
     const bool fs_ok = web_fs_format() == ESP_OK;
+    // A new unit serves its image's app, not one pushed from the bench.
+    app_serve_drop_push();
     if (nvs_ok && fs_ok) {
         ESP_LOGW(TAG, "Factory reset done -- restarting as a fresh unit");
     } else {

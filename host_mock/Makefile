@@ -61,6 +61,7 @@ EVENT_STATE_TARGET = host_test_event_state
 BUNDLE_HOST_TARGET = host_test_bundle_host
 FW_POLICY_TARGET = host_test_fw_policy
 APP_PACK_TARGET = host_test_app_pack
+APP_PUSH_TARGET = host_test_app_push
 PORTA_FW_RX_TARGET = host_test_porta_fw_rx
 RECENT_QSO_TARGET = host_test_recent_qso
 QUEUE_HEAD_TARGET = host_test_queue_head
@@ -99,7 +100,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARG
      $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) \
      $(FILE_LIST_TARGET) \
      $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
-     $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(EVENT_STATE_TARGET) $(BUNDLE_HOST_TARGET) $(FW_POLICY_TARGET) $(APP_PACK_TARGET) $(PORTA_FW_RX_TARGET) \
+     $(WEB_PAGE_TARGET) $(WEB_MANIFEST_TARGET) $(EVENT_STATE_TARGET) $(BUNDLE_HOST_TARGET) $(FW_POLICY_TARGET) $(APP_PACK_TARGET) $(APP_PUSH_TARGET) $(PORTA_FW_RX_TARGET) \
      $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(MODE_ENTRIES_TARGET) $(ROGERS_ONCE_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
      $(CAT_REPLY_PARSER_TARGET) $(AMP_BAND_PRIME_TARGET) $(SWR_SWEEP_TARGET) $(SWR_TRIP_TARGET) $(TX_READY_TARGET) $(TX_OFFSET_TARGET) $(QMX_IQ_LINK_TARGET) $(QMX_MENU_READ_TARGET) $(QMX_MENU_WRITE_TARGET) $(QMX_IQ_CHANNEL_TARGET) \
      $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(BLOCK_ACTIVITY_TARGET) $(CORE_BUSY_TARGET) \
@@ -429,6 +430,14 @@ app_pack_sample.bin: ../webapp/tools/app_pack.py
 $(APP_PACK_TARGET): $(APP_PACK_OBJ) app_pack_sample.bin
 	$(CXX) $(CXXFLAGS) -o $@ $(APP_PACK_OBJ)
 
+APP_PUSH_OBJ = app_push.o test_app_push.o
+app_push.o: ../sidekick/main/app_push.c
+	$(CC) $(CFLAGS) -I../sidekick/main -c $< -o $@
+test_app_push.o: test_app_push.cpp
+	$(CXX) $(CXXFLAGS) -I../sidekick/main -c $< -o $@
+$(APP_PUSH_TARGET): $(APP_PUSH_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
 PORTA_FW_RX_OBJ = porta_fw_rx.o test_porta_fw_rx.o
 porta_fw_rx.o: ../components/porta/porta_fw_rx.c
 	$(CC) $(CFLAGS) -I../components/porta/include -I../components/porta_proto/include -c $< -o $@
@@ -482,6 +491,7 @@ clean:
 	      $(BUNDLE_HOST_OBJ) $(BUNDLE_HOST_TARGET) \
 	      $(FW_POLICY_OBJ) $(FW_POLICY_TARGET) \
 	      $(APP_PACK_OBJ) $(APP_PACK_TARGET) app_pack_sample.bin \
+	      $(APP_PUSH_OBJ) $(APP_PUSH_TARGET) \
 	      $(PORTA_FW_RX_OBJ) $(PORTA_FW_RX_TARGET) \
 	      $(DIAL_HISTORY_OBJ) $(DIAL_HISTORY_TARGET) \
 	      $(ADIF_LOGGER_OBJ) $(ADIF_LOGGER_TARGET) \
