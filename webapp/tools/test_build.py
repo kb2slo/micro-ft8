@@ -16,6 +16,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import app_pack  # noqa: E402
 import build  # noqa: E402
 import gen_manifest  # noqa: E402
 
@@ -86,6 +87,66 @@ class CompressedBuild(unittest.TestCase):
         (again / "app.html").write_bytes(PAGE)
         build.compress_assets(again)
         self.assertEqual((again / "app.html").read_bytes(), (self.root / "app.html").read_bytes())
+
+
+class Pack(unittest.TestCase):
+    """The bundle as one file. That the sidekick's reader agrees with this builder is
+    host_mock/test_app_pack.cpp's, which reads `app_pack.py --sample`'s output."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "app"
+        self.root.mkdir()
+        (self.root / "app.html").write_bytes(PAGE)
+        (self.root / "tiny.js").write_bytes(TINY)
+        build.compress_assets(self.root)
+        self.doc = gen_manifest.write(self.root)
+        build.write_build_json(self.root, "d18f9b2 2026-11-13", self.doc)
+        self.out = Path(self.tmp.name) / "app.pack"
+        self.data = build.write_pack(self.root, self.out, "d18f9b2 2026-11-13")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_the_pack_holds_the_manifests_assets_as_shipped(self):
+        bid, assets = app_pack.unpack(self.out.read_bytes())
+        self.assertEqual(bid, "d18f9b2 2026-11-13")
+        self.assertEqual([name for name, _ in assets], [a["path"] for a in self.doc["assets"]])
+        for (name, data), a in zip(assets, self.doc["assets"]):
+            self.assertEqual(hashlib.sha256(data).hexdigest(), a["sha256"], name)
+        # As shipped: the page is still gzipped inside it, for the sidekick to serve as it is.
+        self.assertEqual(dict(assets)["app.html"][:2], build.GZIP_MAGIC)
+
+    def test_neither_the_manifest_nor_build_json_is_in_it(self):
+        names = [name for name, _ in app_pack.unpack(self.data)[1]]
+        self.assertNotIn(gen_manifest.MANIFEST_NAME, names)
+        self.assertNotIn(gen_manifest.BUILD_NAME, names)
+
+    def test_same_input_packs_the_same_bytes_and_leaves_the_file_alone(self):
+        before = self.out.stat().st_mtime_ns
+        self.assertEqual(build.write_pack(self.root, self.out, "d18f9b2 2026-11-13"), self.data)
+        self.assertEqual(self.out.stat().st_mtime_ns, before)
+        self.assertNotEqual(build.write_pack(self.root, self.out, "e6e4d88 2026-11-14"), self.data)
+
+    def test_the_sample_round_trips(self):
+        data = app_pack.pack(app_pack.SAMPLE, app_pack.SAMPLE_BUILD)
+        self.assertEqual(app_pack.unpack(data), (app_pack.SAMPLE_BUILD, sorted(app_pack.SAMPLE)))
+
+    def test_refuses_what_the_reader_would(self):
+        ok = [("app.html", b"x")]
+        for bad in ([], [("a/b.js", b"")], [(".hidden", b"")], [("n" * 56, b"")], ok + ok):
+            with self.assertRaises(app_pack.PackError):
+                app_pack.pack(bad, "d18f9b2")
+        for bid in ("", 'say "hi"', "back\\slash", "x" * 48, "caf\u00e9"):
+            with self.assertRaises(app_pack.PackError):
+                app_pack.pack(ok, bid)
+
+    def test_unpack_refuses_a_pack_that_lies(self):
+        for cut in (0, 10, len(self.data) - 1):
+            with self.assertRaises(app_pack.PackError):
+                app_pack.unpack(self.data[:cut])
+        with self.assertRaises(app_pack.PackError):
+            app_pack.unpack(b"X" + self.data[1:])
 
 
 class RefusesAPlainAssetThatLooksCompressed(unittest.TestCase):

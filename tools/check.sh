@@ -44,7 +44,7 @@ triggers() {
   case "$1" in
     web)             echo 'webapp/app/* webapp/tools/*' ;;
     webapp)          echo 'webapp/*' ;;
-    host_mock)       echo 'components/* host_mock/* sidekick/main/*' ;;
+    host_mock)       echo 'components/* host_mock/* sidekick/main/* webapp/tools/app_pack.py' ;;
     sim)             echo 'components/* host_mock/* sidekick/main/* webapp/tests/*' ;;
     tx_e2e)          echo 'components/* tests/tx_e2e/*' ;;
     decode_recall)   echo 'components/* tools/decode_recall/* tools/iq_convert/*' ;;

@@ -10,6 +10,7 @@ docs/architecture/webapp.md (Build). Steps, in order:
   6. write manifest.json from the output, so it lists the bytes as shipped;
   7. fail if a file or the whole bundle breaks the size budget (compressed bytes);
   8. write build.json beside it: the build id and the bundle's size, for the page's update check.
+  9. write webapp/dist/app.pack: the same assets as one file (app_pack.py; sidekick/main/app_pack.h).
 
 Pages, CI and install_app.py all run this, so what is tested is what ships.
 
@@ -33,8 +34,11 @@ TOOLS = Path(__file__).resolve().parent
 ROOT = TOOLS.parents[1]
 SRC = ROOT / "webapp" / "app"
 OUT = ROOT / "webapp" / "dist" / "app"
+# The bundle as one file, beside it and never inside it: it is not one of its own assets.
+PACK = ROOT / "webapp" / "dist" / "app.pack"
 
 sys.path.insert(0, str(TOOLS))
+import app_pack  # noqa: E402
 import gen_manifest  # noqa: E402
 
 sys.path.insert(0, str(TOOLS.parents[1] / "tools"))
@@ -155,7 +159,20 @@ def build() -> dict:
     if out_total > BUNDLE_MAX:
         die(f"bundle is {out_total} bytes, over the {BUNDLE_MAX}-byte budget (see BUNDLE_MAX)")
     write_build_json(OUT, bid, doc)
+    write_pack(OUT, PACK, bid)
     return doc
+
+
+def write_pack(root: Path, out: Path, bid: str) -> bytes:
+    """The pack: the manifest's assets, as shipped, in one file stamped with the build id. Neither
+    the manifest nor build.json is in it. Left alone when it would not change, so a build that
+    embeds it relinks only when the app did."""
+    try:
+        data = app_pack.pack_dir(root, bid, skip=gen_manifest.NOT_ASSETS)
+    except app_pack.PackError as e:
+        die(str(e))
+    app_pack.write_if_changed(out, data)
+    return data
 
 
 def write_build_json(root: Path, bid: str, doc: dict) -> dict:
