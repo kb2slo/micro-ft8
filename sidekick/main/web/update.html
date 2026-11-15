@@ -61,7 +61,7 @@ function joinUrl(base, rel) {
 async function install() {
   if (noHost) { showNoHost(); return; }
   if (!MicroFT8Pairing.getToken()) {
-    setMsg('Press the sidekick button to pair first.');
+    setMsg('Press the pairing button first.');
     MicroFT8Pairing.needsReauth();
     return;
   }
@@ -149,7 +149,7 @@ var rhArmed = false;
 async function rehydrate() {
   if (!MicroFT8Pairing.getToken()) {
     rhArmed = false;
-    setMsg('Press the sidekick button to pair first.');
+    setMsg('Press the pairing button first.');
     MicroFT8Pairing.needsReauth();
     return;
   }
@@ -164,7 +164,7 @@ async function rehydrate() {
     var r = await MicroFT8Pairing.authFetch('/api/web/rehydrate', { method: 'POST' });
     if (r.status == 401) {
       MicroFT8Pairing.needsReauth();
-      setMsg('Press the sidekick button to pair');
+      setMsg('Press the pairing button');
       return;
     }
     if (!r.ok) {
@@ -191,7 +191,7 @@ if (noHost) {
   setMsg('Paired — ready to install');
   go.disabled = false;
 } else {
-  setMsg('Press the sidekick button to pair');
+  setMsg('Press the pairing button');
 }
 go.onclick = install;
 document.getElementById('rh').onclick = rehydrate;
