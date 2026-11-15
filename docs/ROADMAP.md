@@ -8,6 +8,7 @@ How things work now: `architecture/` (start at [architecture/system.md](architec
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
+| knwx | <a id="knwx"></a>What changed, shown before an update | Epic [ukk6](roadmap/ota-updates.md#knwx). An update can remove or change what an operator uses, as the build of 2026-11-13 did with Field Day and the free-text CQ, and the review sheet shows only one version becoming another; each release carries a short note for an operator, shown before they update. **Done-when:** a host test holds which notes show for a running version and an offered one, a skipped release included; `make_manifest.py` fails a versioned release that has no note; a board on one release, offered a later one, shows that release's note in the review sheet (field). |
 
 ## Backlog
 
