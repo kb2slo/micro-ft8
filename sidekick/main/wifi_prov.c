@@ -896,7 +896,7 @@ static void mdns_bring_up(void)
     }
     started = true;
     mdns_hostname_set(WIFI_PROV_MDNS_HOST);
-    mdns_instance_name_set("Micro-FT8 sidekick");
+    mdns_instance_name_set("Micro-FT8");
     // Advertising the service as well as the hostname is what makes the device
     // show up in network browsers, not just resolve when you already know the
     // name.
