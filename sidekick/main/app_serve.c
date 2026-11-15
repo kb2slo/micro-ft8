@@ -263,6 +263,11 @@ void app_serve_init(void)
              (unsigned)s_image.len);
 }
 
+const char *app_serve_build(void)
+{
+    return s_push_ok ? s_push.build : s_image_ok ? s_image.build : "";
+}
+
 bool app_serve_seed(const char *name, const char **text, size_t *len)
 {
     for (size_t i = 0; i < web_seed_files_count; ++i) {

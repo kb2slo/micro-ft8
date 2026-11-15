@@ -153,6 +153,24 @@ assert.strictEqual(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: '' }, {
 // Nothing about a radio blocks a plan: the review asks for it off, and nothing checks.
 eq(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, Object.assign({ radioAttached: true }, linked)).blocked, '');
 
+// ---- the stale rule: this page against the app the sidekick serves ----
+// /api/config's sk_app is the sidekick's own version (the app is part of its image) or a bench
+// push's build id; the page was stamped with the same string when it was built.
+assert.strictEqual(U.appStale(V, V), false, 'the app the sidekick serves');
+assert.strictEqual(U.appStale('b1323+e6e4d88', V), true, 'the sidekick was updated under this page');
+assert.strictEqual(U.appStale('b1321+7e61488', V), true, 'or rolled back: other, not only newer');
+assert.strictEqual(U.appStale('d18f9b2-dirty 2026-11-15', V), true, 'or an app was pushed from the bench');
+assert.strictEqual(U.appStale(V, 'd18f9b2-dirty 2026-11-15'), true, 'or the push this page came from is gone');
+assert.strictEqual(U.appStale('d18f9b2-dirty', 'd18f9b2-dirty'), false, 'a bench build serving its own app');
+// A sidekick that does not say (firmware from before the app shipped in its image, the
+// simulator) gives nothing to compare, and neither does an unbuilt page.
+[undefined, null, '', 7].forEach((served) => assert.strictEqual(U.appStale(served, V), false, String(served)));
+['__APP_BUILD__', '', undefined, null].forEach((mine) => assert.strictEqual(U.appStale(V, mine), false, String(mine)));
+// Settings names the app apart from the sidekick only when it is not the image's own.
+assert.strictEqual(U.pushedApp(V, V), null, 'one version says the sidekick and its app');
+assert.strictEqual(U.pushedApp('d18f9b2-dirty 2026-11-15', V), 'd18f9b2-dirty 2026-11-15');
+[undefined, null, ''].forEach((served) => assert.strictEqual(U.pushedApp(served, V), null, String(served)));
+
 // ---- the plan has no app step ----
 // The web app is part of the sidekick's image: a station on the published firmware has nothing to
 // update, however its page was built, and no plan carries an app.

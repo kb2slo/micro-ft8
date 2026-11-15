@@ -2,7 +2,7 @@
 // Settings' menu (docs/architecture/webapp.md, Settings): runs app.html's own settingsMenuModel(),
 // which says what each row reads under its name and when it turns amber. A row that wants
 // attention says so in words and a glyph as well as the tint, and the Software update row's
-// order is: an update running, a firmware update, a newer app, then what the check found.
+// order is: an update running, a firmware update, an app that changed under the page, then what the check found.
 // Also holds the markup to the model: every page has a row, every row a page, and a Back.
 'use strict';
 const vm = require('vm');
@@ -86,7 +86,7 @@ assert.deepStrictEqual(row(model({ paired: false }).pairing), ['Not paired · pr
 // Software update, highest first.
 // One Update for the station: the parts are not named here (docs/roadmap/ota-updates.md, antu).
 assert.deepStrictEqual(row(model({ updateAvailable: true, appStale: true }).update), ['Update available', 'amber', '!']);
-assert.deepStrictEqual(row(model({ appStale: true }).update), ['A newer app is available · reload', 'amber', '!']);
+assert.deepStrictEqual(row(model({ appStale: true }).update), ['The app has been updated · reload', 'amber', '!']);
 assert.deepStrictEqual(row(model({ fwChecked: false, fwNoNet: true }).update), ['Cannot check without internet', '', '']);
 assert.deepStrictEqual(row(model({ fwChecked: false }).update), ['Not checked yet', '', '']);
 

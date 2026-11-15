@@ -16,6 +16,7 @@
 #include "pairing_http.h"
 #include "pairing_http_cap.h"
 #include "porta_proto.h"
+#include "app_serve.h"
 #include "web_page.h"
 #include "wifi_prov.h"
 
@@ -494,6 +495,10 @@ static size_t sidekick_facts_json(char *out, size_t cap)
         { "sk_ip", wifi_prov_ip_str() },
         { "sk_uptime", wifi_prov_uptime_str() },
         { "sk_fw_version", wifi_prov_fw_version() },
+        // The app this sidekick serves: its own version, the app being part of its image, or the
+        // build id of one pushed from the bench. A page stamped otherwise is older than what a
+        // reload would get, and says so (webapp.md, Settings › Software update).
+        { "sk_app", app_serve_build() },
         { "sk_proto", sk_proto },
         { "host_fw_version", host_version },
         { "host_proto", host_proto },

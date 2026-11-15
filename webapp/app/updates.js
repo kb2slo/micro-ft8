@@ -114,6 +114,25 @@ var FwUpdates = (function () {
       '\nsha256=' + offer.sha256 + '\nversion=' + offer.to + '\n';
   }
 
+  // Whether this page is not the app the sidekick now serves. `served` is /api/config's sk_app:
+  // the sidekick's own version, the app being part of its image, or the build id of an app pushed
+  // from the bench, which carries the time it was built, so no two pushes share one. `mine` is this
+  // page's stamp, which the build wrote into it from the same string. They differ once the sidekick has been updated, rolled back or pushed to under an open
+  // page, and a reload then gets the app that goes with it. Never true for a sidekick that does
+  // not say (firmware from before the app shipped in its image, or the simulator), nor for an
+  // unbuilt page, which has no stamp to compare.
+  function appStale(served, mine) {
+    if (typeof served !== 'string' || !served) return false;
+    if (typeof mine !== 'string' || !mine || mine.indexOf('__') === 0) return false;
+    return served !== mine;
+  }
+
+  // What Settings calls the app when it is not the image's own: null when the sidekick serves the
+  // app built with it (one version says both), else the pushed app's build id.
+  function pushedApp(served, sidekick) {
+    return typeof served === 'string' && served && served !== sidekick ? served : null;
+  }
+
   // What one tap of Update does: every firmware offer, the main board's first, in one request the
   // sidekick carries out by itself (fw_plan_parse()), so the phone may lock from the tap. The web
   // app is in the sidekick's image and is no step. `manifest` is the manifest of the channel the
@@ -402,6 +421,8 @@ var FwUpdates = (function () {
     channelName: function (channel) { return CHANNEL_NAMES[channel] || ''; },
     switchLabel: switchLabel,
     offers: offers,
+    appStale: appStale,
+    pushedApp: pushedApp,
     startBody: startBody,
     plan: plan,
     unavailableText: function (why) { return UNAVAILABLE_TEXT[why] || ''; },
