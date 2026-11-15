@@ -16,7 +16,7 @@ idf.py build
 idf.py flash monitor
 ```
 
-The image carries the web app: every build runs the web build (`webapp/tools/build.py`, which needs Node) and embeds its pack, so flashing the sidekick is also how its app is put on it ([`sidekick.md`](../docs/architecture/sidekick.md) (**Web root**)).
+The image carries the web app: every build runs the web build (`webapp/tools/build.py`, which needs Node) and embeds its pack, so flashing the sidekick is also how its app is put on it ([`sidekick.md`](../docs/architecture/sidekick.md) (**Web root**)). For an edit to the app alone, `python3 webapp/tools/install_app.py` pushes the built app onto a running sidekick, which serves it until its firmware next changes (**The bench push**, same doc); a sidekick on a release refuses it.
 
 **Unplug the Grove cable before flashing over USB.** With it connected and the sidekick the only board on USB, the sidekick's 5 V also feeds the main board and it restarts every few seconds; with both boards on USB its port did not enumerate (kernel error -71). Alone on USB it flashes cleanly (bench, 2026-11-15).
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Shared "talk to a real sidekick" plumbing for webapp/tools/*.py scripts
-(docs/architecture/system.md (Who may key the transmitter)'s pairing token, docs/architecture/sidekick.md (Installing the app bundle)'s bundle API, and whatever hardware-test
+(docs/architecture/system.md (Who may key the transmitter)'s pairing token, the bench push and the firmware update's API in docs/architecture/sidekick.md, and whatever hardware-test
 scripts follow). Not a CLI on its own.
 
 Token caching: the pairing token is scoped to one physical sidekick and does

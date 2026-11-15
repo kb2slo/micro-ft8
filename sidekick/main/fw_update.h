@@ -9,6 +9,7 @@
 // that needs the network, the flash and a restart, and is verified on
 // hardware.
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "esp_err.h"
@@ -26,3 +27,9 @@ esp_err_t fw_update_register(httpd_handle_t server);
 // trial until it is marked valid here; one that never earns it restarts, and
 // the bootloader goes back to the image before it (fw_confirm_decide()).
 void fw_update_tick(uint32_t uptime_s, uint32_t beacons_sent);
+
+// Whether an update is running, and whether the running image is still on trial. Either way the
+// spare slot is spoken for: by the image being staged, or by the one to go back to. A bench push,
+// which is written there too, asks (app_serve.c).
+bool fw_update_busy(void);
+bool fw_update_on_trial(void);
