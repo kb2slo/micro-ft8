@@ -4225,7 +4225,12 @@ function rxCue(cfg, usb) {
     if (!audio) return 'No audio · HL2 starting';
   } else if (!audio) {
     if (usb && !usb.present) return 'No audio · QMX not connected';
-    return yn(cfg.cat_ready) === 'yes' ? 'No audio · QMX audio down' : 'No audio · QMX connecting';
+    if (yn(cfg.cat_ready) === 'yes') return 'No audio · QMX audio down';
+    // No CAT and no audio. "Connecting" only when the main board has said a device is there. It
+    // reports the USB port when it changes, so after a sidekick restart nothing is known of it
+    // (usb is null): the radio bar reads No radio then (radioChipState()), and this says the same,
+    // not "connecting" with nothing attached (bench, 2026-11-15).
+    return usb && usb.present ? 'No audio · QMX connecting' : 'No audio · QMX not connected';
   }
   if (yn(cfg.decode_failed) === 'yes') return 'Not decoding · decoder could not start';
   if (yn(cfg.hl2_overload) === 'yes') return 'Overload · ADC clipping';
