@@ -53,4 +53,5 @@ report("config", rows)
 cfg = json.loads(get("/api/config")[2])
 print("sk", cfg.get("sk_fw_version"), "uptime", cfg.get("sk_uptime"), "heap", cfg.get("sk_heap_free"), "min", cfg.get("sk_heap_min"),
       "tcp", cfg.get("sk_tcp_used"), "held", cfg.get("sk_tcp_held"), "held peak", cfg.get("sk_tcp_held_peak"), "backlog peak", cfg.get("sk_tcp_backlog_peak"),
-      "worker queue peak", cfg.get("sk_worker_queue_peak"))
+      "worker queues", cfg.get("sk_worker_queue_peak"), cfg.get("sk_files_queue_peak"),
+      "httpd held peak ms", cfg.get("sk_httpd_held_peak_ms"))

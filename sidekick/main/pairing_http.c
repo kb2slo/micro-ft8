@@ -32,7 +32,7 @@ typedef struct {
     esp_err_t (*handler)(httpd_req_t *req);
     void             *user_ctx;
     pairing_policy_t  policy;
-    bool              on_worker;  // waits on the main board: served by http_worker.c
+    http_worker_id_t  worker;     // HTTP_WORKER_NONE: the server's task runs it (http_worker.h)
 } route_t;
 
 static route_t s_routes[PAIRING_HTTP_MAX_ROUTES];
@@ -204,19 +204,22 @@ static esp_err_t dispatch(httpd_req_t *req)
     // Hand the handler the context it was registered with, not ours.
     req->user_ctx = route->user_ctx;
     const int64_t t0 = esp_timer_get_time();
-    // A request that waits on the main board goes to the worker, so this task keeps serving everyone else
-    // (docs/architecture/sidekick.md, Tasks and cores). If it cannot be handed over, it runs here, as before.
-    if (route->on_worker && http_worker_submit(req, route->handler, t0) == ESP_OK) {
+    // A request that waits on the main board, or sends a file, goes to its worker, so this task keeps serving
+    // everyone else (docs/architecture/sidekick.md, Tasks and cores). If it cannot be handed over, it runs
+    // here, as before.
+    if (route->worker != HTTP_WORKER_NONE && http_worker_submit(route->worker, req, route->handler, t0) == ESP_OK) {
         return ESP_OK;
     }
-    // Anything run here holds every other request and every new connection while it runs: log a slow one.
+    // Anything run here holds every other request and every new connection while it runs: log a slow one,
+    // and count it toward what the held check (http_worker_watch()) reports.
     const esp_err_t err = route->handler(req);
     http_worker_note_slow(req, t0);
+    http_worker_note_inline(req, (esp_timer_get_time() - t0) / 1000);
     return err;
 }
 
 static esp_err_t route_register(httpd_handle_t server, const httpd_uri_t *uri, pairing_policy_t policy,
-                                bool on_worker)
+                                http_worker_id_t worker)
 {
     if (!server || !uri || !uri->handler) {
         return ESP_ERR_INVALID_ARG;
@@ -230,7 +233,7 @@ static esp_err_t route_register(httpd_handle_t server, const httpd_uri_t *uri, p
     route->handler  = uri->handler;
     route->user_ctx = uri->user_ctx;
     route->policy   = policy;
-    route->on_worker = on_worker;
+    route->worker   = worker;
 
     // esp_http_server copies the descriptor, but keeps our user_ctx pointer --
     // hence the static table rather than a stack temporary.
@@ -248,12 +251,13 @@ static esp_err_t route_register(httpd_handle_t server, const httpd_uri_t *uri, p
 
 esp_err_t pairing_http_register(httpd_handle_t server, const httpd_uri_t *uri, pairing_policy_t policy)
 {
-    return route_register(server, uri, policy, false);
+    return route_register(server, uri, policy, HTTP_WORKER_NONE);
 }
 
-esp_err_t pairing_http_register_on_worker(httpd_handle_t server, const httpd_uri_t *uri, pairing_policy_t policy)
+esp_err_t pairing_http_register_on_worker(httpd_handle_t server, const httpd_uri_t *uri, pairing_policy_t policy,
+                                          http_worker_id_t worker)
 {
-    return route_register(server, uri, policy, true);
+    return route_register(server, uri, policy, worker);
 }
 
 // Serves the token while the window is open. 404 when shut, not 403: a closed

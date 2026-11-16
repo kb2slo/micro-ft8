@@ -652,7 +652,7 @@ static esp_err_t refuse(httpd_req_t *req, const char *status, const char *why)
 
 static esp_err_t post_start(httpd_req_t *req)
 {
-    static char body[FW_BODY_MAX];  // httpd task only
+    static char body[FW_BODY_MAX];  // the files worker only (fw_update_register())
     if (req->content_len == 0 || req->content_len >= sizeof(body)) {
         return refuse(req, "400 Bad Request", "body");
     }
@@ -753,7 +753,12 @@ esp_err_t fw_update_register(httpd_handle_t server)
     };
     _Static_assert(sizeof(routes) / sizeof(routes[0]) == PAIRING_ROUTES_FW_UPDATE, "fw_update route count");
     for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i) {
-        const esp_err_t err = pairing_http_register(server, routes[i].uri, routes[i].policy);
+        // The start drops a pushed app (app_serve_drop_push()), unmapping what the files worker reads, so it
+        // runs there too (http_worker.h, HTTP_WORKER_FILES).
+        const esp_err_t err = routes[i].uri == &start
+                                  ? pairing_http_register_on_worker(server, routes[i].uri, routes[i].policy,
+                                                                    HTTP_WORKER_FILES)
+                                  : pairing_http_register(server, routes[i].uri, routes[i].policy);
         if (err != ESP_OK) {
             return err;
         }

@@ -1,11 +1,9 @@
-// The worker that serves requests which wait on the main board (http_worker.h; docs/architecture/sidekick.md,
-// Tasks and cores). esp_http_server runs every handler on its one task, and that task also accepts new
-// connections, so a handler waiting seconds for the main board stopped every client, connections included.
-// Such a request is handed here as an async copy (httpd_req_async_handler_begin()); the server's task goes
-// back to its other sockets, and the socket being answered is left alone until the copy is completed.
-//
-// One worker, so main-board requests still run one at a time: wait_reply() (host_link.c) matches a reply to
-// its request by one byte and holds one reply slot, which needs exactly that.
+// The workers that serve requests which would hold the web server's own task (http_worker.h;
+// docs/architecture/sidekick.md, Tasks and cores). esp_http_server runs every handler on its one task, and that
+// task also accepts new connections, so a handler waiting seconds for the main board, or sending a file to a
+// slow client, stopped every client, connections included. Such a request is handed to a worker as an async
+// copy (httpd_req_async_handler_begin()); the server's task goes back to its other sockets, and the socket
+// being answered is left alone until the copy is completed.
 
 #include <stdio.h>
 #include <string.h>
@@ -27,8 +25,10 @@ static const char *TAG = "http_worker";
 // queue this deep is never full; if it were, the request is answered busy (http_worker_submit()).
 #define WORKER_QUEUE_LEN 10
 // The server task's own stack (wifi_prov.c), since the same handlers run here. The alive line reports what
-// is left unused (http_worker_stack_free()), which is what a smaller figure would be chosen from.
+// each leaves unused (http_worker_stack_free()), which is what a smaller figure would be chosen from.
 #define WORKER_STACK 8192
+// A check of the server's task that has not come back in this long is given up and reported.
+#define WATCH_GIVE_UP_US (30 * 1000 * 1000)
 
 typedef struct {
     httpd_req_t   *req;
@@ -36,9 +36,17 @@ typedef struct {
     int64_t        t0_us;
 } work_t;
 
-static QueueHandle_t s_queue;
-static TaskHandle_t  s_task;
-static volatile uint32_t s_queue_peak;
+typedef struct {
+    const char       *name;
+    QueueHandle_t     queue;
+    TaskHandle_t      task;
+    volatile uint32_t queue_peak;
+} worker_t;
+
+static worker_t s_workers[HTTP_WORKER_COUNT] = {
+    [HTTP_WORKER_MAIN_BOARD] = { .name = "http_main_board" },
+    [HTTP_WORKER_FILES]      = { .name = "http_files" },
+};
 
 static const char *method_name(int m)
 {
@@ -111,10 +119,10 @@ static void run(work_t *w)
 
 static void worker_task(void *arg)
 {
-    (void)arg;
+    worker_t *wk = (worker_t *)arg;
     work_t w;
     for (;;) {
-        if (xQueueReceive(s_queue, &w, portMAX_DELAY) == pdTRUE) {
+        if (xQueueReceive(wk->queue, &w, portMAX_DELAY) == pdTRUE) {
             run(&w);
         }
     }
@@ -122,57 +130,127 @@ static void worker_task(void *arg)
 
 void http_worker_start(void)
 {
-    if (s_queue) {
-        return;
-    }
-    s_queue = xQueueCreate(WORKER_QUEUE_LEN, sizeof(work_t));
-    if (!s_queue) {
-        ESP_LOGE(TAG, "no queue: main-board requests stay on the server's task");
-        return;
-    }
-    // The server task's priority (5, esp_http_server's default), so neither starves the other.
-    if (xTaskCreate(worker_task, "http_worker", WORKER_STACK, NULL, 5, &s_task) != pdPASS) {
-        vQueueDelete(s_queue);
-        s_queue = NULL;
-        ESP_LOGE(TAG, "no task: main-board requests stay on the server's task");
+    for (int i = 0; i < HTTP_WORKER_COUNT; ++i) {
+        worker_t *wk = &s_workers[i];
+        if (wk->queue) {
+            continue;
+        }
+        wk->queue = xQueueCreate(WORKER_QUEUE_LEN, sizeof(work_t));
+        // The server task's priority (5, esp_http_server's default), so none starves another.
+        if (!wk->queue || xTaskCreate(worker_task, wk->name, WORKER_STACK, wk, 5, &wk->task) != pdPASS) {
+            if (wk->queue) {
+                vQueueDelete(wk->queue);
+                wk->queue = NULL;
+            }
+            ESP_LOGE(TAG, "%s not started: its requests stay on the server's task", wk->name);
+        }
     }
 }
 
-esp_err_t http_worker_submit(httpd_req_t *req, http_worker_fn fn, int64_t t0_us)
+esp_err_t http_worker_submit(http_worker_id_t id, httpd_req_t *req, http_worker_fn fn, int64_t t0_us)
 {
-    if (!s_queue) {
+    if (id < 0 || id >= HTTP_WORKER_COUNT || !s_workers[id].queue) {
         return ESP_ERR_INVALID_STATE;
     }
+    worker_t *wk = &s_workers[id];
     httpd_req_t *copy = NULL;
     const esp_err_t err = httpd_req_async_handler_begin(req, &copy);
     if (err != ESP_OK) {
         return err;  // nothing handed over: the caller runs it, as before
     }
     work_t w = { .req = copy, .fn = fn, .t0_us = t0_us };
-    if (xQueueSend(s_queue, &w, 0) != pdTRUE) {
+    if (xQueueSend(wk->queue, &w, 0) != pdTRUE) {
         // Not reachable while the queue is as deep as the server has sockets, but if it were: the copy owns
-        // the request now, and running it here could overlap the worker's own wait on the main board, so
-        // it is answered busy instead and the page asks again.
-        ESP_LOGW(TAG, "queue full: %s answered busy", req->uri);
+        // the request now, and running it here could overlap the worker's own handler, so it is answered
+        // busy instead and the page asks again.
+        ESP_LOGW(TAG, "%s queue full: %s answered busy", wk->name, req->uri);
         httpd_resp_set_status(copy, "503 Service Unavailable");
         httpd_resp_set_type(copy, "application/json");
         httpd_resp_sendstr(copy, "{\"ok\":false,\"why\":\"sidekick busy\"}");
         httpd_req_async_handler_complete(copy);
         return ESP_OK;
     }
-    const uint32_t waiting = (uint32_t)uxQueueMessagesWaiting(s_queue);
-    if (waiting > s_queue_peak) {
-        s_queue_peak = waiting;
+    const uint32_t waiting = (uint32_t)uxQueueMessagesWaiting(wk->queue);
+    if (waiting > wk->queue_peak) {
+        wk->queue_peak = waiting;
     }
     return ESP_OK;
 }
 
-uint32_t http_worker_queue_peak(void)
+uint32_t http_worker_queue_peak(http_worker_id_t id)
 {
-    return s_queue_peak;
+    return (id >= 0 && id < HTTP_WORKER_COUNT) ? s_workers[id].queue_peak : 0;
 }
 
-uint32_t http_worker_stack_free(void)
+uint32_t http_worker_stack_free(http_worker_id_t id)
 {
-    return s_task ? (uint32_t)uxTaskGetStackHighWaterMark(s_task) : 0;
+    if (id < 0 || id >= HTTP_WORKER_COUNT || !s_workers[id].task) {
+        return 0;
+    }
+    return (uint32_t)uxTaskGetStackHighWaterMark(s_workers[id].task);
+}
+
+// The held check. What the server's task ran itself since the last check, written by
+// http_worker_note_inline() and read and reset by watch_landed(): both on the server's task, so no lock.
+static uint32_t s_inline_n;
+static int64_t  s_inline_ms;
+static int64_t  s_inline_top_ms;
+static char     s_inline_top[40];
+// The check in flight: written by the main loop before queuing it, read by watch_landed() after.
+static volatile int64_t s_watch_sent_us;
+static volatile bool    s_watch_out;
+static volatile uint32_t s_held_peak_ms;
+
+void http_worker_note_inline(httpd_req_t *req, int64_t ms)
+{
+    s_inline_n++;
+    s_inline_ms += ms;
+    if (ms >= s_inline_top_ms) {
+        s_inline_top_ms = ms;
+        snprintf(s_inline_top, sizeof(s_inline_top), "%s %.30s", method_name(req->method), req->uri);
+    }
+}
+
+static void watch_landed(void *arg)
+{
+    (void)arg;
+    const int64_t held_ms = (esp_timer_get_time() - s_watch_sent_us) / 1000;
+    if (held_ms > s_held_peak_ms) {
+        s_held_peak_ms = (uint32_t)held_ms;
+    }
+    if (held_ms > HOST_LINK_SLOW_MS) {
+        char line[128];
+        snprintf(line, sizeof(line), "SK httpd held %lld ms: %lu req %lld ms, top %s", (long long)held_ms,
+                 (unsigned long)s_inline_n, (long long)s_inline_ms, s_inline_n ? s_inline_top : "-");
+        host_link_log(line);
+    }
+    s_inline_n = 0;
+    s_inline_ms = 0;
+    s_inline_top_ms = 0;
+    s_inline_top[0] = '\0';
+    s_watch_out = false;
+}
+
+void http_worker_watch(httpd_handle_t server)
+{
+    if (!server) {
+        return;
+    }
+    const int64_t now = esp_timer_get_time();
+    if (s_watch_out) {
+        if (now - s_watch_sent_us < WATCH_GIVE_UP_US) {
+            return;  // still held, or still on its way: it reports when it lands
+        }
+        host_link_log("SK httpd held over 30 s: check given up");
+    }
+    s_watch_sent_us = now;
+    s_watch_out = true;
+    if (httpd_queue_work(server, watch_landed, NULL) != ESP_OK) {
+        s_watch_out = false;
+    }
+}
+
+uint32_t http_worker_held_peak_ms(void)
+{
+    return s_held_peak_ms;
 }

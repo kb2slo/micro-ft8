@@ -189,7 +189,7 @@ void app_main(void)
     // so nothing about network bring-up is allowed to delay or block it.
     porta_beacon_init();
     host_link_start();
-    // Before the web server: the requests that wait on the main board are handed to it.
+    // Before the web server: the requests that wait on the main board, and files, are handed to them.
     http_worker_start();
     wifi_prov_start();
     // After wifi_prov_start(), which is what initialises NVS and mints the
@@ -216,6 +216,7 @@ void app_main(void)
         }
         button_check_hold();
         net_health_sample();
+        http_worker_watch(wifi_prov_httpd());
         if (heartbeat % 5 == 0) {
             // With the link's and the network's health: on the console, out of band, so a stalled web server
             // still shows (docs/architecture/sidekick.md, Tasks and cores).
@@ -223,9 +224,13 @@ void app_main(void)
             char net[128];
             host_link_health(health, sizeof(health));
             net_health_str(net, sizeof(net));
-            ESP_LOGI(TAG, "alive: %" PRIu32 " wifi=%s %s %s wq=%" PRIu32 " wstack=%" PRIu32, heartbeat / 5,
-                     wifi_prov_is_online() ? "up" : (wifi_prov_ap_active() ? "ap" : "down"), health, net,
-                     http_worker_queue_peak(), http_worker_stack_free());
+            ESP_LOGI(TAG,
+                     "alive: %" PRIu32 " wifi=%s %s %s held=%" PRIu32 " wq=%" PRIu32 "/%" PRIu32 " wstack=%" PRIu32
+                     "/%" PRIu32,
+                     heartbeat / 5, wifi_prov_is_online() ? "up" : (wifi_prov_ap_active() ? "ap" : "down"), health,
+                     net, http_worker_held_peak_ms(), http_worker_queue_peak(HTTP_WORKER_MAIN_BOARD),
+                     http_worker_queue_peak(HTTP_WORKER_FILES), http_worker_stack_free(HTTP_WORKER_MAIN_BOARD),
+                     http_worker_stack_free(HTTP_WORKER_FILES));
         }
         ++heartbeat;
         vTaskDelay(pdMS_TO_TICKS(LOOP_TICK_MS));

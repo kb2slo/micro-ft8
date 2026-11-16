@@ -473,7 +473,7 @@ static size_t sidekick_facts_json(char *out, size_t cap)
     const bool linked = host_link_host_hello(&proto, host_version, &hello_age) && hello_age < HOST_LINK_HELLO_FRESH_MS;
     snprintf(host_proto, sizeof(host_proto), "%u", (unsigned)proto);
     snprintf(sk_proto, sizeof(sk_proto), "%u", (unsigned)PORTA_PROTO_VERSION);
-    char num[12][12];
+    char num[14][12];
     snprintf(num[0], sizeof(num[0]), "%" PRIu32, s_rx_dec.crc_errors);
     snprintf(num[1], sizeof(num[1]), "%" PRIu32, s_rx_dec.frames_ok);
     snprintf(num[2], sizeof(num[2]), "%" PRIu32, s_ring_gap_events);
@@ -487,8 +487,10 @@ static size_t sidekick_facts_json(char *out, size_t cap)
     snprintf(num[7], sizeof(num[7]), "%" PRIu32, tcp.used);
     snprintf(num[8], sizeof(num[8]), "%" PRIu32, net_health_held_peak());
     snprintf(num[9], sizeof(num[9]), "%" PRIu32, net_health_backlog_peak());
-    snprintf(num[10], sizeof(num[10]), "%" PRIu32, http_worker_queue_peak());
+    snprintf(num[10], sizeof(num[10]), "%" PRIu32, http_worker_queue_peak(HTTP_WORKER_MAIN_BOARD));
     snprintf(num[11], sizeof(num[11]), "%" PRIu32, tcp.held);
+    snprintf(num[12], sizeof(num[12]), "%" PRIu32, http_worker_queue_peak(HTTP_WORKER_FILES));
+    snprintf(num[13], sizeof(num[13]), "%" PRIu32, http_worker_held_peak_ms());
     const struct {
         const char *key;
         const char *value;
@@ -505,6 +507,8 @@ static size_t sidekick_facts_json(char *out, size_t cap)
         { "sk_tcp_held_peak", num[8] },
         { "sk_tcp_backlog_peak", num[9] },
         { "sk_worker_queue_peak", num[10] },
+        { "sk_files_queue_peak", num[12] },
+        { "sk_httpd_held_peak_ms", num[13] },
         { "sk_wifi_mode", wifi_prov_ap_active() ? "ap" : "station" },
         { "sk_network_name", wifi_prov_network_name() },
         { "sk_ip", wifi_prov_ip_str() },
@@ -523,7 +527,7 @@ static size_t sidekick_facts_json(char *out, size_t cap)
         { "sk_ap_ssid", wifi_prov_ap_ssid() },
         { "sk_ap_secured", wifi_prov_ap_secured() ? "1" : "0" },
     };
-    static char esc[PORTA_CONFIG_VALUE_MAX * 6 + 1];  // the worker task only (config replies)
+    static char esc[PORTA_CONFIG_VALUE_MAX * 6 + 1];  // the main-board worker only (config replies)
     size_t w = 0;
     out[0] = '\0';
     for (size_t i = 0; i < sizeof(facts) / sizeof(facts[0]); ++i) {
@@ -544,7 +548,7 @@ static size_t sidekick_facts_json(char *out, size_t cap)
 // config_json_stop()), or {"ok":false,"why":...} when it did not.
 static esp_err_t send_config_reply(httpd_req_t *req, const char *why)
 {
-    // Static: config replies are served by the one worker task (http_worker.h),
+    // Static: config replies are served by the main-board worker (http_worker.h),
     // one at a time, and its stack is better spent elsewhere.
     static char facts[1024];
     static char esc[PORTA_EVENT_TEXT_MAX * 6 + 1];
@@ -801,7 +805,7 @@ static void gather_abandon(void)
 // and the two numberings overlap (PORTA_ACT_CQ_CALL and PORTA_MSG_FILE_READ are
 // both 0x0C). So `message` says which this is: only a message gets a gathered
 // body or a longer wait. One request is outstanding at a time (every route that
-// waits here runs on the one worker task, http_worker.h), so the byte alone
+// waits here runs on the main-board worker, http_worker.h), so the byte alone
 // matches the reply to its request.
 static esp_err_t wait_reply(httpd_req_t *req, uint8_t verb, bool message)
 {
@@ -869,7 +873,7 @@ static esp_err_t wait_reply(httpd_req_t *req, uint8_t verb, bool message)
         lock_give();
     }
 
-    // A slow wait holds every other request to the main board (they run one at a time on the worker): say
+    // A slow wait holds every other request to the main board (they run one at a time on its worker): say
     // which message, how long, and whether the main board ever answered.
     const uint32_t wait_ms = now_ms() - wait_t0;
     if (wait_ms > HOST_LINK_SLOW_MS) {
@@ -2110,8 +2114,8 @@ void host_link_register_uris(httpd_handle_t server)
     // docs/architecture/system.md (Who may key the transmitter) already opened up for the event feed. Log delete is destructive —
     // PAIRING_REQUIRED. (/log's own raw viewer.html is retired -- app.html's
     // Operate view is the same event feed, same design system.)
-    // `worker`: the handler sends to the main board and waits for its answer, so it runs on the one worker
-    // task (pairing_http_register_on_worker()) and every main-board request stays one at a time, which
+    // `worker`: the handler sends to the main board and waits for its answer, so it runs on the main-board
+    // worker (pairing_http_register_on_worker()) and every main-board request stays one at a time, which
     // wait_reply() needs. Events, state and the link test's counters only read what porta_rx already holds,
     // and stay on the server's task.
     const struct {
@@ -2146,7 +2150,8 @@ void host_link_register_uris(httpd_handle_t server)
                    "host_link route count");
     for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i) {
         const esp_err_t err = routes[i].worker
-                                  ? pairing_http_register_on_worker(server, routes[i].uri, routes[i].policy)
+                                  ? pairing_http_register_on_worker(server, routes[i].uri, routes[i].policy,
+                                                                    HTTP_WORKER_MAIN_BOARD)
                                   : pairing_http_register(server, routes[i].uri, routes[i].policy);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "register %s failed: %s", routes[i].uri->uri, esp_err_to_name(err));

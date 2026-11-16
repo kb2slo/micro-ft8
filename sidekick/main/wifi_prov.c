@@ -863,7 +863,13 @@ static void httpd_start_provisioning(void)
     _Static_assert(sizeof(core) / sizeof(core[0]) == PAIRING_ROUTES_WIFI_PROV_AP_CORE,
                    "AP core route count");
     for (size_t i = 0; i < sizeof(core) / sizeof(core[0]); ++i) {
-        pairing_http_register(s_httpd, core[i].uri, core[i].policy);
+        // A factory reset drops the pushed app, unmapping what the files worker reads: it runs there too
+        // (http_worker.h, HTTP_WORKER_FILES).
+        if (core[i].uri == &factory_reset) {
+            pairing_http_register_on_worker(s_httpd, core[i].uri, core[i].policy, HTTP_WORKER_FILES);
+        } else {
+            pairing_http_register(s_httpd, core[i].uri, core[i].policy);
+        }
     }
     pairing_http_register_disclosure(s_httpd);
     // B55 (docs/architecture/system.md (Constraints)): AP mode is a real operating mode now, not only a
@@ -1035,7 +1041,13 @@ static void httpd_start_status(void)
     _Static_assert(sizeof(core) / sizeof(core[0]) == PAIRING_ROUTES_WIFI_PROV_STATION_CORE,
                    "station core route count");
     for (size_t i = 0; i < sizeof(core) / sizeof(core[0]); ++i) {
-        pairing_http_register(s_httpd, core[i].uri, core[i].policy);
+        // A factory reset drops the pushed app, unmapping what the files worker reads: it runs there too
+        // (http_worker.h, HTTP_WORKER_FILES).
+        if (core[i].uri == &factory_reset) {
+            pairing_http_register_on_worker(s_httpd, core[i].uri, core[i].policy, HTTP_WORKER_FILES);
+        } else {
+            pairing_http_register(s_httpd, core[i].uri, core[i].policy);
+        }
     }
     pairing_http_register_disclosure(s_httpd);
     // Same application routes httpd_start_provisioning() now registers for AP
@@ -1225,6 +1237,8 @@ void wifi_prov_start(void)
 }
 
 bool wifi_prov_is_online(void) { return s_online; }
+
+httpd_handle_t wifi_prov_httpd(void) { return s_httpd; }
 const char *wifi_prov_ssid(void) { return s_ssid; }
 bool wifi_prov_ap_active(void) { return s_ap_active; }
 int wifi_prov_ap_reset_hold(void) { return s_ap_reset_hold; }

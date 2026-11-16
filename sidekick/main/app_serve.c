@@ -373,12 +373,14 @@ esp_err_t app_serve_register(httpd_handle_t server)
         .handler = get_static,
     };
     _Static_assert(PAIRING_ROUTES_APP_SERVE == 2, "POST /api/app/push, GET /*");
+    // Both on the files worker (http_worker.h), which is then the only task that reads the pushed app's
+    // mapping or unmaps it: a file sent to a slow client no longer holds the server's own task.
     // It replaces what every page of the station is: a write, like any other.
-    const esp_err_t err = pairing_http_register(server, &push, PAIRING_REQUIRED);
+    const esp_err_t err = pairing_http_register_on_worker(server, &push, PAIRING_REQUIRED, HTTP_WORKER_FILES);
     if (err != ESP_OK) {
         return err;
     }
     // Open: the same as reading any other page on the device (docs/architecture/system.md (Who may
     // key the transmitter)).
-    return pairing_http_register(server, &route, PAIRING_OPEN);
+    return pairing_http_register_on_worker(server, &route, PAIRING_OPEN, HTTP_WORKER_FILES);
 }
