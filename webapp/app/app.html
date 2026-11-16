@@ -748,11 +748,11 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       <div class=setbody>
         <p id=stationCached class=setnote hidden></p>
         <div class=hd>Identity</div>
-        <div class=setrow><label class=fld><span>Call</span><input id=call autocomplete=off spellcheck=false></label></div>
-        <div class=setrow><label class=fld><span>Grid</span><input id=grid autocomplete=off spellcheck=false maxlength=8></label></div>
+        <div class=setrow><label class=fld><span>Call</span><input id=call data-select=all autocomplete=off spellcheck=false></label></div>
+        <div class=setrow><label class=fld><span>Grid</span><input id=grid data-select=all autocomplete=off spellcheck=false maxlength=8></label></div>
         <p id=gridHint class=setnote>The CQ carries the first four characters.</p>
         <button id=gridLocateBtn type=button class="dlink setlink">Set from GPS &rarr;</button>
-        <div class=setrow><label class=fld><span>Comment</span><input id=comment1 autocomplete=off></label></div>
+        <div class=setrow><label class=fld><span>Comment</span><input id=comment1 data-select=off:prose autocomplete=off></label></div>
 
         <div class="hd sep">Calling CQ</div>
         <div class=setrow><div class=diagrow><span>Sends</span><span id=sheetSendsText>&mdash;</span></div></div>
@@ -771,7 +771,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         <!-- Shown only for Other (cqModChoice(), setStationForm()): any other
              word a CQ can carry before the call, such as HI or AK. -->
         <div class=setrow id=cqModRow hidden>
-          <label class=fld><span>CQ &hellip;</span><input id=cq_mod autocomplete=off autocapitalize=characters maxlength=4 placeholder="HI"></label>
+          <label class=fld><span>CQ &hellip;</span><input id=cq_mod data-select=all autocomplete=off autocapitalize=characters maxlength=4 placeholder="HI"></label>
         </div>
 
         <div class="hd sep">QSOs</div>
@@ -794,7 +794,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
             </select>
           </label>
         </div>
-        <div class=setrow><label class=fld><span>Offset Hz</span><input id=offset class=num type=number inputmode=numeric></label></div>
+        <div class=setrow><label class=fld><span>Offset Hz</span><input id=offset class=num inputmode=numeric data-select=all autocomplete=off></label></div>
         <div class=setrow>
           <label class=fld><span>Skip TX1</span>
             <select id=skiptx1 class=onoff>
@@ -811,7 +811,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
              #actRefRows; the Add row always stays last. -->
         <div class="hd sep">Activation</div>
         <div id=actRefRows></div>
-        <div class=setrow><label class="fld stack"><span>Reference</span><input id=actRefAdd autocomplete=off spellcheck=false placeholder="US-1234 or W7O/CC-001"></label></div>
+        <div class=setrow><label class="fld stack"><span>Reference</span><input id=actRefAdd data-select=off:empty autocomplete=off spellcheck=false placeholder="US-1234 or W7O/CC-001"></label></div>
         <div class=setbtns><button id=actRefAddBtn type=button>Add</button></div>
       </div>
     </div>
@@ -837,13 +837,13 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
           <div class="hd sep">In the radio</div>
           <div class=setrow id=radioTuneRow hidden>
             <label class=fld><span>Tune power (%)</span>
-              <input id=radio_tune_pct class=num type=number min=0 max=99 step=1 inputmode=numeric autocomplete=off>
+              <input id=radio_tune_pct class=num inputmode=numeric data-select=all autocomplete=off>
             </label>
           </div>
           <p class=setnote>The power of the radio's SWR Tune carrier, used by Tune, the SWR sweep and amplifier priming. The sweep reads best at 25% or more. <button type=button id=tuneFix25 class=dlink hidden>Set it to 25%</button></p>
           <div class=setrow id=radioPaVoltsRow hidden>
             <label class=fld><span>Max. PA voltage (V)</span>
-              <input id=radio_pa_volts class=num type=number min=0 max=99.9 step=0.1 inputmode=decimal autocomplete=off>
+              <input id=radio_pa_volts class=num inputmode=decimal data-select=all autocomplete=off>
             </label>
           </div>
           <p class=setnote>The ceiling on the voltage the radio gives its power amplifier, which sets its output power: lower it for less power.</p>
@@ -905,7 +905,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         <div class="hd sep">Timing</div>
         <div class=setrow>
           <label class=fld><span>Min TX delay (ms)</span>
-            <input id=tx_min_delay_ms class=num type=number min=0 max=500 step=10 inputmode=numeric autocomplete=off>
+            <input id=tx_min_delay_ms class=num inputmode=numeric data-select=all autocomplete=off>
           </label>
         </div>
         <p class=setnote>The radio keys, then waits this long before sending RF, so the amp's relay can switch first and the QMX's SWR protection doesn't trip on the switching. 0 to 500 ms; the default is 50, which is also what is used with Amplifier Off. A reply started late waits the full delay and loses the tones that pass in the meantime.</p>
@@ -970,8 +970,8 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 
         <div class="hd sep">Sidekick's own network</div>
         <p class=setnote>The network the sidekick raises when it has no WiFi to join. A password keeps phones that are only looking for internet from joining it. Saving restarts it, and a phone on it must rejoin. Whatever you name it, the app is at micro-ft8.local or 192.168.4.1.</p>
-        <div class=setrow><label class=fld><span>Name</span><input id=apSsid enterkeyhint=done maxlength=32 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false placeholder=micro-ft8.local></label></div>
-        <div class=setrow><label class=fld><span>Password</span><input id=apPass enterkeyhint=done maxlength=63 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false></label></div>
+        <div class=setrow><label class=fld><span>Name</span><input id=apSsid data-select=off:name enterkeyhint=done maxlength=32 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false placeholder=micro-ft8.local></label></div>
+        <div class=setrow><label class=fld><span>Password</span><input id=apPass data-select=off:secret enterkeyhint=done maxlength=63 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false></label></div>
         <div class=setbtns>
           <button id=apSave type=button class=btn-primary disabled>Save</button>
           <button id=apReset type=button disabled>Reset to default</button>
@@ -989,7 +989,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 
         <div class="hd sep">Pairing token</div>
         <p class=setnote>The key this browser sends to change the sidekick. Each address (micro-ft8.local, 192.168.x.x) keeps its own copy, so to pair another address without the button, copy the token from one and paste it into the other. 32 characters, 0-9 and a-f.</p>
-        <div class=setrow><label class="fld stack"><span>Token</span><input id=tokInput maxlength=32 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false></label></div>
+        <div class=setrow><label class="fld stack"><span>Token</span><input id=tokInput data-select=off:secret maxlength=32 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false></label></div>
         <div class=setbtns>
           <button id=tokSave type=button class=btn-primary>Save</button>
         </div>
@@ -1201,7 +1201,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
           <div id=opBandGrid class=bandgrid></div>
           <div id=opFreqRow>
             <button id=opFreqDown type=button disabled aria-label="Down 1 kHz">&minus;</button>
-            <input id=opFreqInput type=number step=0.001 inputmode=decimal enterkeyhint=done aria-label="Frequency, MHz or kHz" placeholder="MHz or kHz">
+            <input id=opFreqInput inputmode=decimal data-select=all autocomplete=off enterkeyhint=done aria-label="Frequency, MHz or kHz" placeholder="MHz or kHz">
             <button id=opFreqUp type=button disabled aria-label="Up 1 kHz">+</button>
             <button id=opFreqSet type=button disabled>Set</button>
           </div>
@@ -1317,6 +1317,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 <script src=/pairing.js></script>
 <script src=bands.js></script>
 <script src=radio_settings.js></script>
+<script src=fields.js></script>
 <script src=callinfo.js></script>
 <script src=pskr_core.js></script>
 <script src=pskr_live.js></script>
@@ -2458,7 +2459,13 @@ function sheetTriesStep(delta) {
 holdRepeat(document.getElementById('sheetTriesDown'), function () { sheetTriesStep(-1); });
 holdRepeat(document.getElementById('sheetTriesUp'), function () { sheetTriesStep(1); });
 document.getElementById('offset').onchange = function () {
-  sheetPutLine('offset=' + this.value, 'Setting TX offset…');
+  var v = this.value.trim();
+  if (!/^\d+$/.test(v)) {  // a text field (Fields): only whole Hz are sent
+    failMsg('Offset: whole Hz, such as 1500');
+    this.value = String(lastCfg.offset || '');
+    return;
+  }
+  sheetPutLine('offset=' + v, 'Setting TX offset…');
 };
 document.getElementById('offset_src').onchange = function () {
   sheetPutLine('offset_src=' + this.value, 'Setting offset source…');
@@ -3800,7 +3807,8 @@ function refuseDockFreq(why) {
 function applyDockFreqInput() {
   var raw = document.getElementById('opFreqInput').value;
   freqAppliedValue = raw;
-  var v = parseFloat(raw);
+  // A text field (Fields): only a plain number, so "14,074" is refused rather than read as 14.
+  var v = /^\s*\d+(\.\d+)?\s*$/.test(raw || '') ? parseFloat(raw) : NaN;
   if (!raw || !isFinite(v) || v <= 0) {
     refuseDockFreq('Enter a frequency.');
     return;

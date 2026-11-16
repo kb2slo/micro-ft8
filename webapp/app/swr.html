@@ -89,7 +89,7 @@ td.bad{color:var(--warn);font-weight:600}
 <div id=fineRow><label><input type=checkbox id=fine> Fine (twice the points)</label></div>
 <div class=sechd><label for=tunePct>Tune power</label></div>
 <div id=tuneRow hidden>
-  <input id=tunePct type=number min=0 max=99 step=1 inputmode=numeric autocomplete=off> %
+  <input id=tunePct inputmode=numeric data-select=all autocomplete=off> %
 </div>
 <p class=note><span id=tuneNote>Set the radio's Tune to 25% or more: below that the reading is biased high and noisy.</span>
   <button type=button id=tuneFix class=linkbtn hidden>Set it to 25%</button></p>
@@ -111,6 +111,7 @@ td.bad{color:var(--warn);font-weight:600}
 <script src=/pairing.js></script>
 <script src=bands.js></script>
 <script src=radio_settings.js></script>
+<script src=fields.js></script>
 <script src=swr_core.js></script>
 <script>
 'use strict';
