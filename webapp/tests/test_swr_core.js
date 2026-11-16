@@ -148,6 +148,40 @@ check(rows[1].swept === true && rows[1].minSwr === 1.3 && rows[1].goodShare === 
 const sav = S.saveable(st);
 check(sav.readings[14100000] === 130 && Object.keys(sav).length === 2, 'what is kept is readings and a time');
 
+// Rejoining a run after the page was closed (decided 2026-11-16): kept as it goes, brought back running.
+{
+  const plan = S.planSweep([20], false);
+  check(plan.totalPoints > 4 && !plan.error, 'a real plan to rejoin');
+  const run = S.newState(plan, 1000);
+  run.readings[14100000] = 130;
+  run.tuneLabel = 'Tune 30%';
+  const kept = JSON.parse(JSON.stringify(S.resumable(run, 500, 520)));
+  check(kept.startSeq === 500 && kept.evSeq === 520, 'where the run began and where the page had read to');
+  const back = S.resume(kept);
+  check(back && back.phase === 'running' && back.readings[14100000] === 130 && back.startedAt === 1000 &&
+        back.tuneLabel === 'Tune 30%', 'resumed running, with its readings, start and label');
+  check(S.resume(null) === null && S.resume({ readings: {} }) === null, 'not a kept run: nothing');
+  // After a gap the countdown uses the planned pace, not the pace of the points seen.
+  const gap = S.resume(kept);
+  for (let i = 0; i < 4; i++) gap.readings[14000000 + i * 25000] = 150;
+  const seenPace = S.remainingMs(gap, 1000 + 60000);
+  gap.missed = true;
+  const planned = S.remainingMs(gap, 1000 + 60000);
+  check(planned < seenPace && planned === (plan.totalPoints - S.measuredCount(gap)) * S.POINT_MS,
+        'a run with a gap counts down at the planned pace');
+  // Missed events: the reply starts later than asked, or has nothing while the stream moved on.
+  check(!S.missedSince(520, [{ s: 520 }, { s: 521 }], 522), 'contiguous: nothing missed');
+  check(S.missedSince(520, [{ s: 600 }], 601), 'the ring dropped 520..599');
+  check(S.missedSince(520, [], 700), 'all of it dropped');
+  check(!S.missedSince(520, [], 520), 'nothing new: nothing missed');
+  check(!S.missedSince(0, [{ s: 600 }], 601), 'a first read from 0 is not a gap');
+  // A sweep someone else started: its end is DONE or ABORTED.
+  check(S.sweepEnded([{ s: 10, d: 6, k: 0 }, { s: 11, d: 6, k: 2 }], 10) && S.sweepEnded([{ s: 10, d: 6, k: 3, why: 0 }], 10),
+        'done or aborted ends it');
+  check(!S.sweepEnded([{ s: 10, d: 6, k: 0 }, { s: 11, d: 1 }], 10) && !S.sweepEnded([], 10), 'a point or another event does not');
+  check(!S.sweepEnded([{ s: 5, d: 6, k: 2 }, { s: 12, d: 6, k: 0 }], 10), 'an earlier sweep\'s end, still in the ring, does not');
+}
+
 // The Tune power the sweep runs at (radio_tune_pct): labelled, and below 25% a warning.
 let t = S.tuneNote('50');
 check(!t.warn && t.label === 'Tune 50%' && /25% or more/.test(t.text), 'at 50%: what the setting is, no warning');

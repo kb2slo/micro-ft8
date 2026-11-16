@@ -2793,6 +2793,13 @@ function radioBarState(chip, hud, ctx) {
     return { state: 'nolink', tone: 'red', main: 'No contact with the station',
              sub: 'No answer from the sidekick or main board', glyph: '✕', label: 'Radio ›', stop: '' };
   }
+  // An SWR sweep keys the radio a point at a time and sends no TX status, so it is said here, on
+  // every tab, with its Stop; a tap on the bar opens the sweep page (radio.md, The SWR sweep on the
+  // main board). Leaving that page while it runs would otherwise leave no way to see or stop it.
+  if (ctx.sweep) {
+    return { state: 'sweep', tone: 'red', main: 'SWR sweep running',
+             sub: 'A carrier at each point · tap to open the sweep', glyph: '●', label: '', stop: 'Stop sweep' };
+  }
   // Not paired: this phone can watch but not transmit or change anything.
   if (ctx.unpaired) {
     return { state: 'unpaired', tone: 'amber', main: where, sub: 'Not paired \u00b7 press the pairing button',
@@ -2896,6 +2903,7 @@ function setDrawerOpen(open) {
   renderRadioBar();
 }
 
+var radioBarShown = '';  // the state renderRadioBar() last drew: a tap on the bar acts on it
 function renderRadioBar() {
   var cfg = lastCfg;
   var chip = radioChipState(cfg);
@@ -2908,8 +2916,10 @@ function renderRadioBar() {
     band: operatingBandName(cfg),
     freq: khz != null ? khzToMhzLabel(khz) : '', radio: radioNameOf(), swrTrips: swrTrack.count,
     act: refs.length ? ' · ' + refs.length + (refs.length === 1 ? ' ref' : ' refs') + ' · 0000Z ' + utcDayLeft(Date.now()) : '',
-    wantMHz: rs ? fmtHzMHz(rs.hz) : '', linkLost: linkLost(), unpaired: !paired(), noMain: mainBoardAway()
+    wantMHz: rs ? fmtHzMHz(rs.hz) : '', linkLost: linkLost(), unpaired: !paired(), noMain: mainBoardAway(),
+    sweep: yn(cfg.swr_sweep) === 'yes'
   });
+  radioBarShown = st.state;
   document.getElementById('tabUnpaired').hidden = paired();
   var bar = document.getElementById('opRadioBar');
   bar.className = 't-' + st.tone + (drawerOpen ? ' open' : '');
@@ -4098,7 +4108,10 @@ document.getElementById('opRadioRetuneReady').onclick = function () {
 };
 // The bar's chevron, body and label open and close the drawer; opening asks
 // the radio for its state. Stop is a separate button (rbStop, below).
-document.getElementById('rbToggle').onclick = function () { setDrawerOpen(!drawerOpen); };
+document.getElementById('rbToggle').onclick = function () {
+  if (radioBarShown === 'sweep') { location.href = 'swr.html'; return; }  // the way back to a running sweep
+  setDrawerOpen(!drawerOpen);
+};
 document.getElementById('opTune').onclick = function () {
   var next = (yn(lastCfg.tune) === 'yes') ? '0' : '1';
   radioPost('/api/radio/tune', next, 'Tune…')
@@ -4112,6 +4125,12 @@ document.getElementById('opTune').onclick = function () {
 // fires once that cancel actually succeeded. Decided at the tap, from what is
 // on the air (txIsOurCq()).
 document.getElementById('rbStop').onclick = function () {
+  // A sweep ends on the one stop control, as the sweep page's Stop does (porta_host_tx_cancel()).
+  if (yn(lastCfg.swr_sweep) === 'yes') {
+    radioPost('/api/tx/cancel', undefined, 'Stopping the sweep…')
+      .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
+    return;
+  }
   // Tune is not a queued transmission: ending it is the Tune control's own off.
   if (yn(lastCfg.tune) === 'yes') {
     radioPost('/api/radio/tune', '0', 'Stopping Tune…')
@@ -4376,15 +4395,22 @@ function renderCountdown() {
   var onAir = txHud && txHud.active && !txHud.nk;
   var readout = onAir && !txHud.aborted
     ? txReadout(txHud, yn(lastCfg.tune) === 'yes' || txHud.x === 'TUNE', now - txKeyedAt, lastCfg.radio_tune_pct) : null;
+  // An SWR sweep keys the radio with no TX status: the slot bar, on every tab, says so in the colours of
+  // a transmission. A tap on its row goes to Operate (slotRowTap()), where the radio bar has Stop sweep
+  // and opens the sweep page.
+  if (!onAir && yn(lastCfg.swr_sweep) === 'yes') {
+    onAir = true;
+    readout = { text: 'SWR sweep running', dead: false };
+  }
   var cue = readout || onAir ? '' : rxCue(lastCfg, usbState) || (live ? clockCue(band.tallies) : '');
   var slotText = document.getElementById('opSlotText');
   slotText.textContent = readout ? readout.text : onAir ? '' : cue || (live ? activityLabel(band.act, now, p) : '');
   slotText.className = cue ? 'warn' : '';
   fill.style.width = (frac * 100).toFixed(1) + '%';
-  fill.className = onAir && txHud.aborted ? 'halt' : readout && readout.dead ? 'dead' : (onAir ? 'tx' : '');
+  fill.className = onAir && txHud && txHud.aborted ? 'halt' : readout && readout.dead ? 'dead' : (onAir ? 'tx' : '');
   drawActivity(onAir || !live ? [] : activityStrip(band.act, now, p));
   tag.textContent = parity ? 'O' : 'E';
-  tag.className = onAir && !txHud.aborted ? 'tx' : '';
+  tag.className = onAir && !(txHud && txHud.aborted) ? 'tx' : '';
   tag.setAttribute('aria-label', (parity ? 'Odd' : 'Even') + ' slot');
   var hz = slotState && slotState.hz;
   if (typeof hz === 'number' && hz >= PASSBAND_HZ_MIN && hz <= PASSBAND_HZ_MAX) {
