@@ -97,7 +97,7 @@ assert.strictEqual(serial.state, 'bad');
 assert.ok(/Serial 6 on PTT/.test(serial.lines[0]), 'serial named');
 assert.strictEqual(serial.lines.length, 1);
 
-// An active band the radio does not have is not this check's (row vcng's band ceiling).
+// An active band the radio does not have is not this check's (Settings offers only the radio's bands).
 assert.strictEqual(check(Object.assign({ amp_ptt: '1' }, midBand, { active_bands: '80 40' })).state, 'ok');
 
 // Set it writes the bands the radio transmits on, as its Transmit flags say: the operator's choice.

@@ -33,6 +33,19 @@ var BAND_EDGES_KHZ = {
 // band numbers, "m" suffix tolerated implicitly since parseInt stops at the
 // first non-digit. Empty or unrecognized text means "no filter", i.e. every
 // band is active -- the `any` flag.
+// The bands the radio has (radio_bands, metres, as the main board read them at link-up), as a set;
+// null until the read has finished, when every band is offered.
+function radioBandSet(cfg) {
+  var text = String((cfg && cfg.radio_bands) || '').trim();
+  if (!text) return null;
+  var have = {};
+  text.split(/\s+/).forEach(function (t) {
+    var n = parseInt(t, 10);
+    if (n > 0) have[n] = true;
+  });
+  return have;
+}
+
 function parseActiveBands(text) {
   var want = {};
   var any = false;

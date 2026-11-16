@@ -588,6 +588,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 .bandchip span{display:flex;align-items:center;justify-content:center;min-height:44px;box-sizing:border-box;font-size:.8rem;font-family:ui-monospace,monospace;background:ButtonFace;color:ButtonText;border:1px solid GrayText;border-radius:.4rem}
 .bandchip input:checked+span{color:Canvas;background:var(--accent);border-color:var(--accent);font-weight:700}
 .bandchip input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+.bandchip.offradio span{border-style:dashed;text-decoration:line-through}
 .callink{text-decoration:underline;text-decoration-style:dotted;cursor:pointer}
 .gridlink{text-decoration:underline;text-decoration-style:dotted;cursor:pointer;color:inherit}
 .qrow .call,.frow .call{cursor:pointer;text-decoration:underline;text-decoration-style:dotted}
@@ -835,6 +836,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         <div class="hd sep">Bands</div>
         <p class=setnote>Which bands appear. Band and frequency are set from Operate's radio bar.</p>
         <div id=bandList class=bandgrid></div>
+        <p id=bandRadioNote class=setnote hidden></p>
 
         <div class="hd sep">Modes</div>
         <div class=setrow>
@@ -2057,20 +2059,42 @@ function bandFreq(cfg, idx) {
 
 // One button per band, in the drawer's grid: a checkbox for active_bands membership only. Band and
 // frequency (band_sel, band<N>) left Settings for the radio
-// drawer's band grid and frequency row (webapp.md, Band and frequency).
+// drawer's band grid and frequency row (webapp.md, Band and frequency). Once the main board has read
+// the radio, only its bands are offered (radioBandSet()); a band saved in active_bands that the
+// radio lacks is still shown, ticked and marked, so it is not dropped without the operator.
 function buildBandRows(cfg) {
   var parsed = parseActiveBands(cfg.active_bands);
+  var radio = radioBandSet(cfg);
   var container = document.getElementById('bandList');
   container.innerHTML = '';
+  var missing = [];
   BANDS.forEach(function (b) {
     var checked = parsed.any ? !!parsed.want[b.n] : true;
+    var onRadio = !radio || !!radio[b.n];
+    if (!onRadio && !(parsed.any && parsed.want[b.n])) return;
+    if (!onRadio) missing.push(b.name);
     var chip = document.createElement('label');
-    chip.className = 'bandchip';
+    chip.className = 'bandchip' + (onRadio ? '' : ' offradio');
     chip.innerHTML =
       '<input type=checkbox class=bandactive data-n="' + b.n + '"' +
         (checked ? ' checked' : '') + '><span>' + esc(b.name) + '</span>';
     container.appendChild(chip);
   });
+  var note = document.getElementById('bandRadioNote');
+  note.hidden = !radio;
+  note.textContent = !radio ? '' :
+    'The bands the radio has' + (cfg.radio_model ? ' (' + cfg.radio_model + ')' : '') + '.' +
+    (missing.length ? ' ' + missing.join(', ') + (missing.length > 1 ? ' are' : ' is') +
+      ' saved but not on this radio, so not offered on Operate; untick to drop.' : '');
+}
+
+// The bands Operate's grid offers: the active ones the radio has, else every band the radio has.
+function dockBands(cfg) {
+  var parsed = parseActiveBands(cfg.active_bands);
+  var radio = radioBandSet(cfg);
+  var onRadio = BANDS.filter(function (b) { return !radio || radio[b.n]; });
+  var active = onRadio.filter(function (b) { return !parsed.any || parsed.want[b.n]; });
+  return active.length ? active : (onRadio.length ? onRadio : BANDS.slice());
 }
 
 // Finds which amateur band a typed frequency falls in, by the Region 2 edge
@@ -2116,10 +2140,10 @@ function khzToMhzLabel(khz) {
 // used to need, still real for a touch target under a finger (see
 // syncDockBandGrid() for the periodic-poll half, which only re-classes the
 // already-built buttons).
+var builtRadioBands = '';  // the radio_bands the grids were last built for
 function buildDockBandGrid(cfg) {
-  var parsed = parseActiveBands(cfg.active_bands);
-  var active = BANDS.filter(function (b) { return !parsed.any || parsed.want[b.n]; });
-  if (!active.length) active = BANDS.slice();
+  builtRadioBands = String(cfg.radio_bands || '');
+  var active = dockBands(cfg);
   var grid = document.getElementById('opBandGrid');
   grid.style.gridTemplateColumns = 'repeat(' + Math.min(active.length, 7) + ', 1fr)';
   var cur = String(cfg.band_sel !== undefined && cfg.band_sel !== null ? cfg.band_sel : '');
@@ -3033,6 +3057,12 @@ document.getElementById('ampPttSet').onclick = function () {
 };
 
 function applyOperateLive(cfg) {
+  // The radio's bands arrive after link-up and change only with the radio, so the grids are
+  // rebuilt then and not on every poll.
+  if (String(cfg.radio_bands || '') !== builtRadioBands) {
+    buildBandRows(cfg);
+    buildDockBandGrid(cfg);
+  }
   renderAmpPttCheck(cfg);
   updateLogFree(cfg);
   syncDockBandGrid(cfg);
