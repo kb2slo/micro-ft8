@@ -48,7 +48,7 @@ triggers() {
     sim)             echo 'components/* host_mock/* sidekick/main/* webapp/tests/*' ;;
     tx_e2e)          echo 'components/* tests/tx_e2e/*' ;;
     decode_recall)   echo 'components/* tools/decode_recall/* tools/iq_convert/*' ;;
-    tools)           echo 'tools/qmx_record.py tools/hl2_record.py tools/hl2_pcap.py tools/make_manifest.py tools/build_version.py tools/dev_build.py tools/cut_release.py tools/test_*.py webapp/tools/sidekick.py webapp/tools/install_firmware.py webapp/tools/install_app.py webapp/tools/app_pack.py sidekick/main/app_push.c sidekick/main/app_serve.c components/porta_proto/include/porta_proto.h sidekick/partitions.csv' ;;
+    tools)           echo 'tools/qmx_record.py tools/hl2_record.py tools/hl2_pcap.py tools/make_manifest.py tools/build_version.py tools/dev_build.py tools/cut_release.py tools/test_*.py test_apps/decode_bench/tools/run_on_device.py test_apps/decode_bench/tools/test_run_on_device.py webapp/tools/sidekick.py webapp/tools/install_firmware.py webapp/tools/install_app.py webapp/tools/app_pack.py sidekick/main/app_push.c sidekick/main/app_serve.c components/porta_proto/include/porta_proto.h sidekick/partitions.csv' ;;
     getting_started) echo 'webapp/app/* webapp/tools/* webapp/getting-started.md' ;;
     # The paths filter of ci.yml's `changes` job, which gates CI's firmware jobs, but for the web
     # app's sources: CI builds firmware on a change to them because the sidekick's image carries
@@ -326,6 +326,7 @@ check_tools() {
   python3 tools/test_hl2_record.py
   python3 tools/test_hl2_pcap.py
   python3 tools/test_sidekick_http.py
+  python3 test_apps/decode_bench/tools/test_run_on_device.py
 }
 
 # The sheet's on-screen-text check, and its page limit wherever Chrome is
