@@ -13,6 +13,8 @@
 
 #include "fw_update.h"
 #include "host_link.h"
+#include "http_worker.h"
+#include "net_health.h"
 #include "pairing_http.h"
 #include "porta_proto.h"
 #include "wifi_prov.h"
@@ -187,6 +189,8 @@ void app_main(void)
     // so nothing about network bring-up is allowed to delay or block it.
     porta_beacon_init();
     host_link_start();
+    // Before the web server: the requests that wait on the main board are handed to it.
+    http_worker_start();
     wifi_prov_start();
     // After wifi_prov_start(), which is what initialises NVS and mints the
     // token; a press before there is a token to disclose would do nothing.
@@ -211,12 +215,17 @@ void app_main(void)
             pairing_http_open_disclosure();
         }
         button_check_hold();
+        net_health_sample();
         if (heartbeat % 5 == 0) {
-            // With the link's health: on the console, out of band, so a stalled web server still shows (row dlu3).
+            // With the link's and the network's health: on the console, out of band, so a stalled web server
+            // still shows (docs/architecture/sidekick.md, Tasks and cores).
             char health[128];
+            char net[96];
             host_link_health(health, sizeof(health));
-            ESP_LOGI(TAG, "alive: %" PRIu32 " wifi=%s %s", heartbeat / 5,
-                     wifi_prov_is_online() ? "up" : (wifi_prov_ap_active() ? "ap" : "down"), health);
+            net_health_str(net, sizeof(net));
+            ESP_LOGI(TAG, "alive: %" PRIu32 " wifi=%s %s %s wq=%" PRIu32 " wstack=%" PRIu32, heartbeat / 5,
+                     wifi_prov_is_online() ? "up" : (wifi_prov_ap_active() ? "ap" : "down"), health, net,
+                     http_worker_queue_peak(), http_worker_stack_free());
         }
         ++heartbeat;
         vTaskDelay(pdMS_TO_TICKS(LOOP_TICK_MS));

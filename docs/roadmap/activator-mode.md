@@ -36,7 +36,7 @@ Saved areas of POTA parks and SOTA summits, each record carrying reference, prog
 * **Freshness:** each area shows its age; saving it again replaces it.
 * **To confirm in code first:** what a full `storage` does to the log writer, and that a store file is never listed as a day's log.
 * **If the cap pinches:** `storage` grows into the main board's unallocated flash only by a table change, which [n75z](release-1-0.md#n75z) settles before 1.0.
-* **Port A is slow for this:** a read holds the sidekick's one request at a time, as a log read does ([dlu3](../ROADMAP.md#dlu3)), so an area is read once and the browser's cache carries the map and the nearby list.
+* **Port A is slow for this:** a read holds every other request to the main board while it waits, as a log read does ([sidekick.md](../architecture/sidekick.md), **Tasks and cores**), so an area is read once and the browser's cache carries the map and the nearby list.
 * **The browser caches** in IndexedDB, keyed by area and version, for speed only; it is never the only copy.
 
 ### Location, nearby and the grid check

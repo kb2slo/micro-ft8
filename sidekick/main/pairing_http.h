@@ -35,6 +35,12 @@ esp_err_t pairing_http_init(void);
 // owns a named count and asserts its routes[] length against it.
 esp_err_t pairing_http_register(httpd_handle_t server, const httpd_uri_t *uri, pairing_policy_t policy);
 
+// The same, for a route whose handler waits on the main board over Port A: it is served by the one worker
+// task (http_worker.h), so the server's own task keeps accepting and answering everything else while it
+// waits. Every route that sends to the main board and waits for its answer is registered this way: the
+// worker running them one at a time is what wait_reply() (host_link.c) relies on.
+esp_err_t pairing_http_register_on_worker(httpd_handle_t server, const httpd_uri_t *uri, pairing_policy_t policy);
+
 // Registers the token disclosure route and the shared pairing.js script. Call
 // from both the provisioning and station servers: the route exists in either
 // mode, because docs/architecture/system.md (Constraints) makes AP mode an operating mode rather than a

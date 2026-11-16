@@ -31,11 +31,12 @@ void host_link_log(const char *text);
 
 // The link's health for the console heartbeat (main.c's alive line): internal heap free, lowest and largest
 // block, the ring's next sequence number and gap count, and Port A's frames and CRC errors. Out of band, so
-// it keeps reporting while the web server is stalled (row dlu3).
+// it keeps reporting while the web server is stalled (docs/architecture/sidekick.md, Tasks and cores).
 void host_link_health(char *out, size_t cap);
 
-// A request or a Port A wait slower than this is logged (row dlu3, docs/ROADMAP.md): the server runs one
-// request at a time, so a slow one holds every other.
+// A request or a Port A wait slower than this is logged (docs/architecture/sidekick.md, Tasks and cores): a
+// slow request on the server's task holds every other request and new connection, and a slow one on the
+// worker every other request to the main board.
 #define HOST_LINK_SLOW_MS 500
 
 // Asks the main board to reset its Station settings (and, when `logs`, delete its QSO logs).
