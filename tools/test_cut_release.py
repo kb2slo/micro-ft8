@@ -3,8 +3,11 @@
 
   python3 tools/test_cut_release.py
 """
+import contextlib
+import io
 import os
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -42,6 +45,34 @@ class CutReleaseTest(unittest.TestCase):
             self.assertIsNone(cr.SEMVER.match(version), version)
             with self.assertRaises(bv.VersionError):
                 bv.version_for("refs/tags/v" + version, sha, None)
+
+    def test_a_release_needs_its_note_before_it_is_tagged(self):
+        with tempfile.TemporaryDirectory() as notes:
+            with self.assertRaisesRegex(cr.Abort, "has no note"):
+                cr.require_note("0.2.0", notes)
+            with open(os.path.join(notes, "0.2.0.md"), "w", encoding="utf-8") as f:
+                f.write("# 0.2.0\n")
+            with self.assertRaisesRegex(cr.Abort, "says nothing"):
+                cr.require_note("0.2.0", notes)
+            with open(os.path.join(notes, "0.2.0.md"), "w", encoding="utf-8") as f:
+                f.write("# 0.2.0\n## New\n- FT4 CQ.\n")
+            cr.require_note("0.2.0", notes)
+
+    def test_the_note_is_approved_only_by_typing_its_version_at_a_terminal(self):
+        note, changes = "# 0.2.0\n## New\n- FT4 CQ.\n", ["Add FT4 CQ"]
+        # What it prints for the maintainer is not what is tested here.
+        self.enterContext(contextlib.redirect_stdout(io.StringIO()))
+        answers = lambda *a: (lambda prompt: a[0])
+        cr.approve_note("0.2.0", note, changes, answers("0.2.0"), True)
+        cr.approve_note("0.2.0", note, changes, answers("  0.2.0\n"), True)
+        for typed in ("y", "yes", "", "0.2", "v0.2.0"):
+            with self.assertRaisesRegex(cr.Abort, "not approved"):
+                cr.approve_note("0.2.0", note, changes, answers(typed), True)
+        # No terminal: refused before anything is asked, whatever would have been answered.
+        asked = []
+        with self.assertRaisesRegex(cr.Abort, "at a terminal"):
+            cr.approve_note("0.2.0", note, changes, lambda p: asked.append(p) or "0.2.0", False)
+        self.assertEqual(asked, [])
 
 
 if __name__ == "__main__":

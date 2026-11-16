@@ -232,6 +232,43 @@ eq(U.plan(stable('0.1.0', 1322), { sidekick: REL, main: 'b1330+abc1234' }, Objec
 pl = U.plan(null, dev1330, linked, true);
 eq([pl.any, pl.target, pl.to, pl.steps.length], [false, 'dev', '', 0]);
 
+// ---- release notes before an update (docs/RELEASE_PROCESS.md, Release notes) ----
+// As tools/make_manifest.py writes them: every release up to this one, newest first.
+const NOTES = [
+  { version: '0.3.0', new: ['FT4 CQ.'], changed: [], removed: ['Field Day.'] },
+  { version: '0.2.0', new: [], changed: ['Tries count per message.'], removed: [] },
+  { version: '0.1.0', new: ['The first beta.'], changed: [], removed: [] },
+];
+const withNotes = (number, build) => Object.assign(stable(number, build), { notes: NOTES.filter((n) => n.version <= number) });
+const at = (v) => ({ main: v + '+abc1234', sidekick: v + '+abc1234' });
+const versions = (notes) => plain(notes).map((n) => n.version);
+// One release on: its note alone.
+eq(versions(U.notesFor(withNotes('0.3.0', 1400), at('0.2.0'))), ['0.3.0']);
+// A release skipped: both, newest first; never the one it runs, nor an earlier one.
+eq(versions(U.notesFor(withNotes('0.3.0', 1400), at('0.1.0'))), ['0.3.0', '0.2.0']);
+// From before any note: every later one.
+eq(versions(U.notesFor(withNotes('0.3.0', 1400), at('0.0.9'))), ['0.3.0', '0.2.0', '0.1.0']);
+// A later release than the one offered is never shown, even if a manifest carried it.
+eq(versions(U.notesFor(Object.assign(stable('0.2.0', 1350), { notes: NOTES }), at('0.1.0'))), ['0.2.0']);
+// A switch from dev, or a main board on a bench build: the offered release's note alone.
+eq(versions(U.notesFor(withNotes('0.3.0', 1400), dev1330, true)), ['0.3.0']);
+eq(versions(U.notesFor(withNotes('0.3.0', 1400), { main: '7e61488', sidekick: '7e61488' })), ['0.3.0']);
+// The dev channel, and a manifest with no notes: none.
+eq(versions(U.notesFor(manifest(OTA, P4OTA), at('0.1.0'))), []);
+eq(versions(U.notesFor(stable('0.3.0', 1400), at('0.1.0'))), []);
+// A malformed entry is skipped, a stray line dropped.
+eq(plain(U.notesFor(Object.assign(stable('0.3.0', 1400), { notes: [{ version: 'x' }, { version: '0.3.0', new: ['a', 7, ''] }] }), at('0.2.0'))),
+  [{ version: '0.3.0', new: ['a'], changed: [], removed: [] }]);
+// The plan carries them only when it offers something, and the review shows them first.
+pl = U.plan(withNotes('0.3.0', 1400), at('0.1.0'), linked);
+eq(versions(pl.notes), ['0.3.0', '0.2.0']);
+eq(U.reviewText(pl).slice(0, 5), ['What 0.3.0 changes:', 'New: FT4 CQ.', 'Removed: Field Day.',
+  'What 0.2.0 changes:', 'Changed: Tries count per message.']);
+eq(U.reviewText(pl)[5], 'Takes about three minutes. Nothing transmits until the update is done.');
+eq(versions(U.plan(withNotes('0.3.0', 1400), at('0.3.0'), linked).notes), []);
+pl = U.plan(withNotes('0.3.0', 1400), dev1330, linked, true);
+eq(U.reviewText(pl).slice(0, 3), ['This station moves to the Stable channel, 0.3.0.', 'What 0.3.0 changes:', 'New: FT4 CQ.']);
+
 // ---- the progress screen's steps ----
 const PLAN = [{ board: 'main', version: 'd18f9b2', size: 871968 }, { board: 'sidekick', version: 'd18f9b2', size: 1005232 }];
 const pst = (o) => Object.assign({ state: 'idle', board: 'main', step: 0, plan: PLAN, got: 0, size: 871968, why: '', at: '' }, o);

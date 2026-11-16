@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The web app as one file: the builder (docs/roadmap/ota-updates.md, The app in the sidekick's image).
+"""The web app as one file: the builder (docs/architecture/sidekick.md, Web root).
 
 The layout is in sidekick/main/app_pack.h, whose reader is tested against what this writes
 (host_mock/test_app_pack.cpp reads `--sample`'s output). webapp/tools/build.py calls pack() on the

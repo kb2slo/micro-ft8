@@ -33,6 +33,14 @@ class ManifestTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
+        # Release notes, as docs/releases/ holds them: one for the release the stable cases build.
+        self.notes = os.path.join(self.tmp.name, "releases")
+        os.mkdir(self.notes)
+        self.note("0.1.0", "# 0.1.0\n\n## New\n- The first beta.\n")
+
+    def note(self, label, text):
+        with open(os.path.join(self.notes, label + ".md"), "w", encoding="utf-8") as f:
+            f.write(text)
 
     def put(self, name, data):
         path = os.path.join(self.tmp.name, name)
@@ -41,7 +49,7 @@ class ManifestTest(unittest.TestCase):
         return path
 
     def build(self, assets, otas, commit=COMMIT, version=VERSION, count=None):
-        return mm.build(commit, version, "20261110", assets, otas, 14, STAMP, count)
+        return mm.build(commit, version, "20261110", assets, otas, 14, STAMP, count, self.notes)
 
     def test_full_manifest(self):
         p4_ota = app_image(VERSION, "poe_p4", 5000)
@@ -135,6 +143,41 @@ class ManifestTest(unittest.TestCase):
         with self.assertRaisesRegex(mm.ManifestError, "reports version"):
             self.build({"poe_p4": self.put("m.bin", b"m")}, {"poe_p4": self.put("o.bin", app_image(VERSION, "poe_p4"))},
                        version=stable, count=1322)
+
+    def test_a_stable_manifest_carries_its_note_and_every_earlier_one(self):
+        self.note("0.2.0", "# 0.2.0\n\n## New\n- FT4 CQ.\n\n## Removed\n- Field Day.\n")
+        self.note("0.10.0", "# 0.10.0\n## Changed\n- Later than this release, so not carried.\n")
+        m = self.build({}, {}, version="0.2.0+c6374c9", count=1400)
+        self.assertEqual(m["notes"], [
+            {"version": "0.2.0", "new": ["FT4 CQ."], "changed": [], "removed": ["Field Day."]},
+            {"version": "0.1.0", "new": ["The first beta."], "changed": [], "removed": []},
+        ])
+        # Ordered as numbers, not as text: 0.10.0 is after 0.2.0.
+        m = self.build({}, {}, version="0.10.0+c6374c9", count=1500)
+        self.assertEqual([n["version"] for n in m["notes"]], ["0.10.0", "0.2.0", "0.1.0"])
+        # A dev manifest carries none.
+        self.assertNotIn("notes", self.build({}, {}))
+
+    def test_a_release_with_no_note_or_a_malformed_one_is_refused(self):
+        with self.assertRaisesRegex(mm.ManifestError, "has no note"):
+            self.build({}, {}, version="0.3.0+c6374c9", count=1500)
+        for text, why in (
+            ("## New\n- x\n", "must start with '# 0.3.0'"),
+            ("# 0.3.0\n", "says nothing"),
+            ("# 0.3.0\n- before any heading\n", "not a heading"),
+            ("# 0.3.0\n## Fixed\n- x\n", "not a heading"),
+            ("# 0.3.0\n## New\nprose, not a line\n", "not a heading"),
+            ("# 0.3.0\n## New\n- x\n## New\n- y\n", "twice"),
+            ("# 0.3.0\n## New\n- " + "x" * 201 + "\n", "1 to 200 characters"),
+        ):
+            self.note("0.3.0", text)
+            with self.assertRaisesRegex(mm.ManifestError, why):
+                self.build({}, {}, version="0.3.0+c6374c9", count=1500)
+        # An earlier release's malformed note is refused too: the app is handed every one.
+        self.note("0.3.0", "# 0.3.0\n## New\n- x\n")
+        self.note("0.1.0", "# 0.1.0\n")
+        with self.assertRaisesRegex(mm.ManifestError, "0.1.0 says nothing"):
+            self.build({}, {}, version="0.3.0+c6374c9", count=1500)
 
     def test_refuses_a_version_that_is_not_a_channels_build_of_the_commit(self):
         for version in ("c6374c9", "", "b1322+c6374c9-dirty", "b1322", "0.1.0", "v0.1.0+c6374c9"):

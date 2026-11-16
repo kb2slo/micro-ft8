@@ -12,7 +12,10 @@ for dev, /download/manifest-stable.json for stable. `--version` is the
 version this build was told to report (tools/build_version.py), and names
 the channel; the fixed names end in it (microft8-poe-p4-dev.bin,
 microft8-poe-p4-stable.bin). A stable manifest also records its commit's
-build number, counted here, which orders the two channels' builds.
+build number, counted here, which orders the two channels' builds, and the
+release notes (docs/releases/<x.y.z>.md) of this release and every one
+before it, newest first, which the web app shows before an update. A stable
+manifest is refused when its own release has no note.
 
 Each asset's SHA-256 is computed here, from the file that is uploaded. An
 `ota` entry describes a board's app image, the one an over-the-air update
@@ -42,6 +45,7 @@ import build_version  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROTO_HEADER = os.path.join(ROOT, "components", "porta_proto", "include", "porta_proto.h")
+NOTES_DIR = os.path.join(ROOT, "docs", "releases")
 
 # kind -> (fixed name's stem, extension, extra fields). The fixed names, the
 # stem and then the channel, are the R2 keys the site and the printed sheet
@@ -130,7 +134,64 @@ def ota_entry(board, path, channel, expected, proto):
     }
 
 
-def build(commit, version, date, assets, otas, proto, generated_at, count=None):
+# A release note (docs/RELEASE_PROCESS.md, Release notes): "# <x.y.z>", then any of three headings, each
+# with one-line bullets, written for an operator. Anything else is refused, so every note the app is
+# handed can be shown as it is.
+NOTE_HEADINGS = {"## New": "new", "## Changed": "changed", "## Removed": "removed"}
+NOTE_LINE_MAX = 200
+SEMVER = re.compile(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)")
+
+
+def parse_note(text, label):
+    """A release note as {version, new, changed, removed}, or ManifestError naming what is wrong."""
+    lines = [l.rstrip() for l in text.splitlines()]
+    lines = [l for l in lines if l.strip()]
+    if not lines or lines[0] != f"# {label}":
+        raise ManifestError(f"release note for {label} must start with '# {label}'")
+    note = {"version": label, "new": [], "changed": [], "removed": []}
+    under = None
+    for l in lines[1:]:
+        if l in NOTE_HEADINGS:
+            under = NOTE_HEADINGS[l]
+            if note[under]:
+                raise ManifestError(f"release note for {label}: '{l}' twice")
+        elif l.startswith("- ") and under:
+            line = l[2:].strip()
+            if not line or len(line) > NOTE_LINE_MAX:
+                raise ManifestError(f"release note for {label}: a line must be 1 to {NOTE_LINE_MAX} characters: {l!r}")
+            note[under].append(line)
+        else:
+            raise ManifestError(f"release note for {label}: not a heading ({', '.join(NOTE_HEADINGS)}) or a '- ' line under one: {l!r}")
+    if not (note["new"] or note["changed"] or note["removed"]):
+        raise ManifestError(f"release note for {label} says nothing")
+    return note
+
+
+def load_note(label, notes_dir=NOTES_DIR):
+    """The note for release `label`, read from notes_dir; ManifestError when it is missing or malformed."""
+    path = os.path.join(notes_dir, f"{label}.md")
+    if not os.path.isfile(path):
+        raise ManifestError(f"release {label} has no note: write {os.path.relpath(path, ROOT)} (docs/RELEASE_PROCESS.md, Release notes)")
+    with open(path, encoding="utf-8") as f:
+        return parse_note(f.read(), label)
+
+
+def _semver(label):
+    return tuple(int(x) for x in SEMVER.fullmatch(label).groups())
+
+
+def release_notes(label, notes_dir=NOTES_DIR):
+    """This release's note and every earlier release's there is one for, newest first."""
+    mine = load_note(label, notes_dir)
+    out = [mine]
+    for name in os.listdir(notes_dir) if os.path.isdir(notes_dir) else []:
+        other = name[:-3] if name.endswith(".md") else ""
+        if SEMVER.fullmatch(other) and _semver(other) < _semver(label):
+            out.append(load_note(other, notes_dir))
+    return sorted(out, key=lambda n: _semver(n["version"]), reverse=True)
+
+
+def build(commit, version, date, assets, otas, proto, generated_at, count=None, notes_dir=NOTES_DIR):
     """The manifest as a dict. `assets` and `otas` map a kind to a file path.
 
     `count` is the number of commits up to and including `commit`: a stable manifest's build
@@ -166,6 +227,8 @@ def build(commit, version, date, assets, otas, proto, generated_at, count=None):
         "channel": channel, "commit": commit, "short": short, "version": version, "build": number,
         "date": date, "generated_at": generated_at, "assets": out,
     }
+    if channel == "stable":
+        manifest["notes"] = release_notes(info["label"], notes_dir)
     return manifest
 
 
