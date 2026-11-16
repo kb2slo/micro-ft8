@@ -1124,6 +1124,28 @@ static esp_err_t post_radio_ptt(httpd_req_t *req)
     return wait_action_reply(req, PORTA_ACT_RADIO_SET_PTT);
 }
 
+// POST /api/radio/setting  body: "<key>=<value>", such as radio_tune_pct=40: set one of the radio's own
+// settings, written to its EEPROM and never stored by us (docs/architecture/radio.md, The radio's
+// settings in Radio & bands). Which keys the main board takes is its own; this checks only the shape.
+// The write's progress arrives in later config polls as radio_setting_write. Token required.
+static esp_err_t post_radio_setting(httpd_req_t *req)
+{
+    char body[PORTA_RADIO_SETTING_MAX + 1] = {0};
+    const int received = httpd_req_recv(req, body, sizeof(body) - 1);
+    uint8_t frame[PORTA_PROTO_MAX_FRAME];
+    const size_t n = received > 0 ? porta_proto_encode_radio_set_setting(body, frame, sizeof(frame)) : 0;
+    if (n == 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "body: <key>=<value>");
+        return ESP_FAIL;
+    }
+    reply_reset();
+    if (!porta_send(frame, n)) {
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
+    }
+    return wait_action_reply(req, PORTA_ACT_RADIO_SET_SETTING);
+}
+
 // POST /api/queue/tries   body: "<entry_id> <tries>" (0 = the station default)
 // POST /api/queue/parity  body: "<entry_id> <parity>" (0 even, 1 odd; the CQ only)
 // Both address an entry by its id, as /api/queue/cancel does. Token required.
@@ -2026,6 +2048,9 @@ void host_link_register_uris(httpd_handle_t server)
     static const httpd_uri_t radio_ptt = {
         .uri = "/api/radio/ptt", .method = HTTP_POST, .handler = post_radio_ptt,
     };
+    static const httpd_uri_t radio_setting = {
+        .uri = "/api/radio/setting", .method = HTTP_POST, .handler = post_radio_setting,
+    };
     static const httpd_uri_t swr_start = {
         .uri = "/api/swr/start", .method = HTTP_POST, .handler = post_swr_start,
     };
@@ -2083,6 +2108,7 @@ void host_link_register_uris(httpd_handle_t server)
         { &radio_tune, PAIRING_REQUIRED },
         { &radio_read, PAIRING_REQUIRED },
         { &radio_ptt, PAIRING_REQUIRED },
+        { &radio_setting, PAIRING_REQUIRED },
         { &cq, PAIRING_REQUIRED },
         { &swr_start, PAIRING_REQUIRED },
         { &link_test_get, PAIRING_OPEN },

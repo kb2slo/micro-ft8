@@ -159,7 +159,7 @@ A menu and eight pages, one shown at a time inside the tab (`showSetPage()`), so
   | Heading | Page | Holds |
   | --- | --- | --- |
   | Operating | **Station** | **Settings › Station**: identity, how it calls CQ, QSOs, activation references |
-  | | **Radio & bands** | Radio, the active bands, Protocol, Also decode FT4 |
+  | | **Radio & bands** | Radio, In the radio (the radio's own settings: Tune power, Max. PA voltage), the active bands, Also decode FT4 |
   | | **Amplifier** | the **Amplifier** switch and, while it is On, **Settings › Amplifier: the PTT check**, Min TX delay and the two RF-sensing options |
   | System | **Network** | the sidekick's mode, network and address, Forget WiFi, the sidekick's own network |
   | | **Pairing** | whether this browser is paired, and the token |
@@ -172,6 +172,10 @@ A menu and eight pages, one shown at a time inside the tab (`showSetPage()`), so
 * **A page** has **‹ Settings** and its title in a header that stays, and comes in from the right; the menu comes back from the left (no motion under the system's reduce-motion setting). Focus goes to the page's title, and on the way back to the row that opened it. The Settings tab, tapped while on Settings, returns to the menu; leaving the tab and coming back keeps the page. `#network` opens the Network page and `#station` the Station page (`applyHashRoute()`). A page is not a history entry: the browser's Back leaves the app.
 * **Controls, in Operate's vocabulary.** A field is one line, its name left and its value right. A typed value is the drawer's frequency field (boxed, monospaced, bold); a menu is the Decodes bar's pill, and an On/Off menu fills with the accent when On (`select.onoff`, CSS `:has()`; without it the pill still reads On); a tick box is a switch; the active bands are the drawer's band grid, four across, any number on (a hidden tick box under each button, so the control and its `change` event are what they were). One filled button for a page's main action (**Update**, **Save**), and the radio bar's Stop outline for **Forget WiFi** and **Factory reset**. A warning (`.setnote.warn`) is the radio bar's amber tint with an edge.
 * **Each message stays by its button:** Network's actions report under Forget WiFi (`#netMsg`), Factory reset under itself (`#resetMsg`).
+
+### Settings › Radio & bands: In the radio
+
+The radio's own settings (`RADIO_SETTINGS`, `renderRadioSettings()`; [radio.md](radio.md), **The radio's settings in Radio & bands**): **Tune power (%)** and **Max. PA voltage (V)**. A row shows once the main board has read its setting from this radio (`radio_tune_pct`, `radio_pa_volts` in the config reply), and the section hides when none is, as with the HL2. A change posts `/api/radio/setting` with `<key>=<value>`; a value that is not a plain number is refused in the page and the field reset. While `radio_setting_write` reads `writing`, the fields are disabled and a line says so, and a failure stays in amber. The field then shows what the radio's next read holds. Nothing is stored on the station.
 
 ### Settings › Amplifier: the PTT check
 

@@ -766,6 +766,35 @@ static void test_action_radio_set_ptt()
     }
 }
 
+static void test_action_radio_set_setting()
+{
+    porta_decoder_t d;
+    porta_decoder_init(&d);
+    uint8_t buf[PORTA_PROTO_MAX_FRAME];
+    size_t n = porta_proto_encode_radio_set_setting("radio_tune_pct=40", buf, sizeof(buf));
+    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1 && got[0].len == 1 + 17, "radio_set_setting is the verb and the text");
+    if (got.size() == 1) {
+        char text[PORTA_RADIO_SETTING_MAX + 1];
+        check(porta_proto_parse_radio_set_setting(&got[0], text, sizeof(text)) &&
+                  strcmp(text, "radio_tune_pct=40") == 0,
+              "radio_set_setting parses to its text");
+        check(!porta_proto_parse_radio_set_ptt(&got[0], nullptr), "radio_set_setting is not radio_set_ptt");
+        char small[8];
+        check(!porta_proto_parse_radio_set_setting(&got[0], small, sizeof(small)), "a buffer too small refuses");
+    }
+    // Only one key=value, printable, with something either side of the '=' is encoded.
+    check(porta_proto_encode_radio_set_setting("radio_tune_pct", buf, sizeof(buf)) == 0, "no '='");
+    check(porta_proto_encode_radio_set_setting("=40", buf, sizeof(buf)) == 0, "no key");
+    check(porta_proto_encode_radio_set_setting("k=", buf, sizeof(buf)) == 0, "no value");
+    check(porta_proto_encode_radio_set_setting("k=4=0", buf, sizeof(buf)) == 0, "two '='");
+    check(porta_proto_encode_radio_set_setting("k=4 0", buf, sizeof(buf)) == 0, "a space");
+    check(porta_proto_encode_radio_set_setting("k=4\n", buf, sizeof(buf)) == 0, "a newline");
+    check(porta_proto_encode_radio_set_setting(nullptr, buf, sizeof(buf)) == 0, "null");
+    const std::string long_text = std::string(PORTA_RADIO_SETTING_MAX, 'k') + "=1";
+    check(porta_proto_encode_radio_set_setting(long_text.c_str(), buf, sizeof(buf)) == 0, "too long");
+}
+
 static void test_action_radio_read()
 {
     porta_decoder_t d;
@@ -1922,6 +1951,7 @@ int main()
     test_tx_hud_not_keyed();
     test_action_radio_read();
     test_action_radio_set_ptt();
+    test_action_radio_set_setting();
     test_action_queue_cancel_and_reply();
     test_action_file_delete();
     test_action_sweep_start();

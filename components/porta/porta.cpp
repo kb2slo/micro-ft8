@@ -48,6 +48,7 @@ const char* porta_host_cq_call(void);
 const char* porta_host_radio_read(void);
 // Set the radio's PTT outputs for an amplifier: 1 TX PTT grounded, 2 TX PTT +5V.
 const char* porta_host_radio_set_ptt(uint8_t keying);
+const char* porta_host_radio_set_setting(const char* key, const char* value);
 const char* porta_host_queue_tries(uint16_t entry_id, uint8_t tries);
 const char* porta_host_queue_parity(uint16_t entry_id, uint8_t parity);
 // active: cancel TX, clear the queue (the CQ with it), and key Tune when asked.
@@ -835,6 +836,22 @@ void handle_action(const porta_frame_t& f) {
       return;
     }
     const char* why = porta_host_radio_set_ptt(keying);
+    if (why) {
+      enqueue(buf, porta_proto_encode_nak(verb, why, buf, sizeof(buf)));
+    } else {
+      enqueue(buf, porta_proto_encode_ack(verb, buf, sizeof(buf)));
+    }
+    return;
+  }
+  case PORTA_ACT_RADIO_SET_SETTING: {
+    char text[PORTA_RADIO_SETTING_MAX + 1];
+    if (!porta_proto_parse_radio_set_setting(&f, text, sizeof(text))) {
+      enqueue(buf, porta_proto_encode_nak(verb, "malformed", buf, sizeof(buf)));
+      return;
+    }
+    char* eq = strchr(text, '=');
+    *eq = 0;
+    const char* why = porta_host_radio_set_setting(text, eq + 1);
     if (why) {
       enqueue(buf, porta_proto_encode_nak(verb, why, buf, sizeof(buf)));
     } else {

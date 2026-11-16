@@ -745,8 +745,8 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
             ESP_LOGI(TAG, "radio firmware %s", fw);
         }
     }
-    // The radio's own band and PTT settings, read at link-up, for Settings > Amplifier's check.
-    // Absent until the read has finished on this radio.
+    // The radio's own band and PTT settings, read at link-up, for Settings > Amplifier's check, and
+    // the settings Radio & bands shows. Absent until the read has finished on this radio.
     radio_config_t radio_cfg;
     if (radio_control_get_config(&radio_cfg)) {
         char cbuf[320];
@@ -754,8 +754,11 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
         text += cbuf;
     }
     char write_status[96];
-    if (radio_control_config_write_status(write_status, sizeof(write_status))) {
+    if (radio_control_config_write_status(RADIO_WRITE_PTT, write_status, sizeof(write_status))) {
         text += std::string("radio_ptt_write=") + write_status + "\n";
+    }
+    if (radio_control_config_write_status(RADIO_WRITE_SETTING, write_status, sizeof(write_status))) {
+        text += std::string("radio_setting_write=") + write_status + "\n";
     }
     radio_state_t rs;
     if (radio_control_get_state(&rs)) {
@@ -964,6 +967,26 @@ const char *porta_host_radio_set_ptt(uint8_t keying) {
         return "the radio is busy: transmitting, tuning or sweeping";
     }
     return radio_control_set_ptt_outputs(static_cast<radio_ptt_keying_t>(keying));
+}
+
+// Settings > Radio & bands' radio settings (architecture/radio.md, The radio's settings in Radio &
+// bands): written to the radio, never stored here, so only when nothing keys the radio; its progress
+// is radio_setting_write.
+const char *porta_host_radio_set_setting(const char *key, const char *value) {
+    const radio_setting_t setting = radio_setting_from_key(key);
+    if (setting == RADIO_SETTING_COUNT) {
+        return "unknown setting";
+    }
+    if (porta_link_test_active()) {
+        return "link test";
+    }
+    if (!radio_control_ready()) {
+        return "CAT not ready";
+    }
+    if (decode_tx_state_get_tx_active() || s_tune || swr_sweep_busy() || amp_band_prime_busy()) {
+        return "the radio is busy: transmitting, tuning or sweeping";
+    }
+    return radio_control_set_setting(setting, value);
 }
 
 const char *porta_host_radio_read(void) {

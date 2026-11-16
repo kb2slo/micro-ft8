@@ -11,9 +11,16 @@
 // done when an MM reply carries the new value: the manual does not say what a write answers, so
 // this holds whether or not it echoes, and proves every cell. `?;` or no such reply in time stops
 // the write (Failed); what was written stays written, and the re-read after shows the radio as it is.
+//
+// The same machine writes one of the settings Settings > Radio & bands shows (kQmxSettingPath,
+// architecture/radio.md, The radio's settings in Radio & bands), as one cell: qmx_menu_setting_plan().
+// Its value is a number, and its read-back matches when it reads as the same number ("40" and
+// "40.0"); a radio that clamps or refuses a value out of its range fails the write, and the re-read
+// shows what it holds.
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "qmx_menu_read.h"
@@ -23,11 +30,13 @@ enum class QmxPttKeying : uint8_t { Ground = 1, Plus5v = 2 };
 
 static constexpr int kQmxMenuWriteMax = kQmxMenuBandColumns * kQmxFlagCount + 1;
 static constexpr int kQmxSerial6Item = -1;  // QmxMenuWriteItem::flag for Serial 6 on PTT
+static constexpr int kQmxSettingItem = -2;  // QmxMenuWriteItem::flag for a setting; column is its index
 
 struct QmxMenuWriteItem {
     int8_t column = 0;
-    int8_t flag = 0;  // a QmxBandFlag, or kQmxSerial6Item
+    int8_t flag = 0;  // a QmxBandFlag, kQmxSerial6Item or kQmxSettingItem
     bool enable = false;
+    char value[kQmxSettingValueMax] = {};  // a setting's value
 };
 
 enum class QmxMenuWritePhase : uint8_t { Idle, Waiting, Reload, Done };
@@ -84,9 +93,77 @@ static inline int qmx_menu_write_plan(const QmxRadioSettings& radio, QmxPttKeyin
     return w.count;
 }
 
+// A setting's value as the operator gives it: one to seven digits, with at most one '.' between
+// digits. Nothing else is sent to the radio.
+static inline bool qmx_setting_value_ok(const char* value)
+{
+    if (!value) {
+        return false;
+    }
+    const size_t n = strlen(value);
+    if (n == 0 || n >= 8 || value[0] == '.' || value[n - 1] == '.') {
+        return false;
+    }
+    int dots = 0;
+    for (size_t i = 0; i < n; ++i) {
+        if (value[i] == '.') {
+            ++dots;
+        } else if (value[i] < '0' || value[i] > '9') {
+            return false;
+        }
+    }
+    return dots <= 1;
+}
+
+// Two values read as the same number: what the radio wrote back for a setting, or holds already.
+static inline bool qmx_setting_values_match(const char* a, const char* b)
+{
+    if (!a || !b || !a[0] || !b[0]) {
+        return false;
+    }
+    char* end_a = nullptr;
+    char* end_b = nullptr;
+    const double x = strtod(a, &end_a);
+    const double y = strtod(b, &end_b);
+    if (*end_a != 0 || *end_b != 0) {
+        return strcmp(a, b) == 0;
+    }
+    const double d = x - y;
+    return d < 1e-6 && d > -1e-6;
+}
+
+// Plans writing setting `index` to `value` from a finished read. Returns the number of cells to
+// write: 1, or 0 when the radio already holds it (no EEPROM write). The caller checks the value with
+// qmx_setting_value_ok() first.
+static inline int qmx_menu_setting_plan(const QmxRadioSettings& radio, int index, const char* value, QmxMenuWrite& w)
+{
+    w = QmxMenuWrite{};
+    if (index < 0 || index >= kQmxSettingCount || qmx_setting_values_match(radio.setting[index], value)) {
+        return 0;
+    }
+    QmxMenuWriteItem& item = w.items[w.count++];
+    item.column = static_cast<int8_t>(index);
+    item.flag = kQmxSettingItem;
+    snprintf(item.value, sizeof(item.value), "%s", value);
+    w.phase = QmxMenuWritePhase::Idle;
+    return w.count;
+}
+
 static inline const char* qmx_menu_write_value(const QmxMenuWriteItem& item)
 {
+    if (item.flag == kQmxSettingItem) {
+        return item.value;
+    }
     return item.enable ? "ENABLED" : "DISABLED";
+}
+
+// The radio's read-back says the item holds what was written.
+static inline bool qmx_menu_write_landed(const QmxMenuWriteItem& item, const char* mm_value)
+{
+    if (item.flag == kQmxSettingItem) {
+        return qmx_setting_values_match(mm_value, item.value);
+    }
+    return strcmp(mm_value, qmx_menu_write_value(item)) == 0;
 }
 
 // The item's path, such as `Band config.|TX PTT grounded[3]`.
@@ -94,6 +171,8 @@ static inline void qmx_menu_write_path(const QmxMenuWriteItem& item, char* out, 
 {
     if (item.flag == kQmxSerial6Item) {
         snprintf(out, cap, "System config|GPS & Ser. ports|Serial 6 on PTT");
+    } else if (item.flag == kQmxSettingItem) {
+        snprintf(out, cap, "%s", kQmxSettingPath[item.column]);
     } else {
         snprintf(out, cap, "Band config.|%s[%d]", kQmxBandFlagRow[item.flag], item.column);
     }
@@ -145,7 +224,7 @@ static inline QmxMenuWriteAction qmx_menu_write_step(QmxMenuWrite& w, bool ready
                 w.refused = true;
                 return QmxMenuWriteAction::Failed;
             }
-            if (mm_count != w.mm_seen && strcmp(mm_value, qmx_menu_write_value(w.items[w.next])) == 0) {
+            if (mm_count != w.mm_seen && qmx_menu_write_landed(w.items[w.next], mm_value)) {
                 if (++w.next >= w.count) {
                     w.phase = QmxMenuWritePhase::Reload;
                     return QmxMenuWriteAction::Reload;

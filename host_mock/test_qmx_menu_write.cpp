@@ -40,6 +40,7 @@ struct FakeRadio {
     bool echo_write = false;
     bool refuse_writes = false;
     bool ignore_writes = false;
+    const char* store_as = nullptr;  // stores this in place of what is written, as a radio clamping it would
     uint32_t mm_count = 0;
     uint32_t refused = 0;
     std::string last;
@@ -62,7 +63,7 @@ struct FakeRadio {
             return;
         }
         if (!ignore_writes) {
-            cells[path] = value;
+            cells[path] = store_as ? store_as : value;
         }
         if (echo_write) {
             reply(value);
@@ -214,6 +215,72 @@ int main()
         expect(qmx_menu_write_step(w, false, false, 0, "", 0, 5010) == QmxMenuWriteAction::Failed, "link drops");
         expect(qmx_menu_write_step(w, true, false, 0, "", 0, 5020) == QmxMenuWriteAction::None, "and stays done");
     }
+
+    // A setting: one cell, its write and read-back, matched as a number.
+    {
+        QmxRadioSettings r = qmx_plus();
+        snprintf(r.setting[0], sizeof(r.setting[0]), "%s", "50");
+        QmxMenuWrite w;
+        expect(qmx_menu_setting_plan(r, 0, "50.0", w) == 0, "setting: the radio holds it already, no write");
+        expect(qmx_menu_setting_plan(r, 0, "40", w) == 1, "setting: one cell");
+        char cmd[128];
+        qmx_menu_write_command(w, cmd, sizeof(cmd));
+        expect(strcmp(cmd, "MMProtection|Tune %=40;MMProtection|Tune %;") == 0, "setting: its write and read-back");
+        FakeRadio radio;
+        radio.store_as = "40.0";
+        int sent = 0;
+        expect(run(w, radio, &sent) == QmxMenuWriteAction::Done && sent == 1, "setting: 40.0 reads back as 40");
+    }
+
+    // Max. PA voltage, a decimal: 11.5 to 9, read back as the radio gives it.
+    {
+        QmxRadioSettings r = qmx_plus();
+        snprintf(r.setting[1], sizeof(r.setting[1]), "%s", "11.5");
+        QmxMenuWrite w;
+        expect(qmx_menu_setting_plan(r, 1, "11.50", w) == 0, "PA voltage: 11.50 is what it holds");
+        expect(qmx_menu_setting_plan(r, 1, "9", w) == 1, "PA voltage: one cell");
+        char cmd[128];
+        qmx_menu_write_command(w, cmd, sizeof(cmd));
+        expect(strcmp(cmd, "MMProtection|Max. PA voltage=9;MMProtection|Max. PA voltage;") == 0,
+               "PA voltage: its write and read-back");
+        FakeRadio radio;
+        radio.store_as = "9.0";
+        int sent = 0;
+        expect(run(w, radio, &sent) == QmxMenuWriteAction::Done, "PA voltage: 9.0 reads back as 9");
+    }
+
+    // A radio that holds something else after the write (clamped) fails it, as not read back.
+    {
+        QmxRadioSettings r = qmx_plus();
+        QmxMenuWrite w;
+        qmx_menu_setting_plan(r, 0, "250", w);
+        FakeRadio radio;
+        radio.store_as = "100";
+        int sent = 0;
+        expect(run(w, radio, &sent) == QmxMenuWriteAction::Failed && !w.refused, "setting clamped: not read back");
+    }
+
+    // A refused setting write fails, as refused.
+    {
+        QmxRadioSettings r = qmx_plus();
+        QmxMenuWrite w;
+        qmx_menu_setting_plan(r, 0, "30", w);
+        FakeRadio radio;
+        radio.refuse_writes = true;
+        int sent = 0;
+        expect(run(w, radio, &sent) == QmxMenuWriteAction::Failed && w.refused, "setting refused");
+    }
+
+    // Only a plain number goes to the radio.
+    expect(qmx_setting_value_ok("40") && qmx_setting_value_ok("12.5"), "plain numbers");
+    expect(!qmx_setting_value_ok("") && !qmx_setting_value_ok("-5") && !qmx_setting_value_ok("4;MU"),
+           "empty, signed, or a command smuggled in");
+    expect(!qmx_setting_value_ok("1.2.3") && !qmx_setting_value_ok(".5") && !qmx_setting_value_ok("5.") &&
+               !qmx_setting_value_ok("12345678"),
+           "two dots, a bare dot, too long");
+    expect(qmx_setting_values_match("40", "40.0") && !qmx_setting_values_match("40", "41") &&
+               !qmx_setting_values_match("", "40"),
+           "values matched as numbers");
 
     if (g_fails) {
         fprintf(stderr, "%d failure(s)\n", g_fails);

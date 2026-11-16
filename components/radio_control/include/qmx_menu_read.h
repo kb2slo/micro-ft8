@@ -2,7 +2,8 @@
 
 // Reads, at each CAT link-up, the QMX settings the station depends on, with the Menu Manager
 // (architecture/radio.md, Menu Manager): each band's name, Transmit flag and four PTT outputs from
-// the Band config. table, then System config's Band version and Serial 6 on PTT. Pure: the caller
+// the Band config. table, then System config's Band version and Serial 6 on PTT, then the settings
+// Settings > Radio & bands shows (kQmxSettingPath, one per radio_setting_t). Pure: the caller
 // sends each command and hands back the replies, so the host test drives it with made-up replies.
 //
 // One query at a time: `MM<path>;` then wait for its `MM<value>;`, or `?;` for an item the radio
@@ -18,6 +19,15 @@
 
 static constexpr int kQmxMenuBandColumns = 16;  // Band config.[16] on QMX 1_04_010
 static constexpr int64_t kQmxMenuReplyMs = 1000;
+
+// The radio's settings that Settings > Radio & bands shows and writes (radio_setting_t, radio_control.h),
+// each by its Menu Manager path. A setting is a line here and a key there.
+static constexpr int kQmxSettingCount = 2;
+static constexpr int kQmxSettingValueMax = 12;  // RADIO_SETTING_VALUE_MAX
+static constexpr const char* kQmxSettingPath[kQmxSettingCount] = {
+    "Protection|Tune %",          // RADIO_SETTING_TUNE_PCT: a byte, "25"
+    "Protection|Max. PA voltage",  // RADIO_SETTING_PA_VOLTS: a decimal, "11.5" (QMX 1_04_010, 2026-11-15)
+};
 
 // A Band config. flag: 1 ENABLED, 0 DISABLED, -1 not read (refused, or not a known value).
 enum QmxBandFlag : uint8_t {
@@ -44,6 +54,7 @@ struct QmxRadioSettings {
     QmxBandSettings bands[kQmxMenuBandColumns];
     char band_version[24] = {};  // "QMX+ 160-6m"; empty when not read
     int8_t serial6_on_ptt = -1;  // 1 ENABLED (the PTT jack is a serial port), 0 DISABLED, -1 not read
+    char setting[kQmxSettingCount][kQmxSettingValueMax] = {};  // as the radio gives it; empty: not read
 };
 
 enum class QmxMenuReadPhase : uint8_t {
@@ -59,14 +70,16 @@ enum class QmxMenuReadAction : uint8_t {
     NoReply,  // a query went unanswered: the read stopped, result is partial
 };
 
-// What is being read: the band names, then each band's flags, then the two System config items.
-enum class QmxMenuStage : uint8_t { BandName, BandFlag, BandVersion, Serial6, Finished };
+// What is being read: the band names, then each band's flags, then the two System config items,
+// then each setting.
+enum class QmxMenuStage : uint8_t { BandName, BandFlag, BandVersion, Serial6, Setting, Finished };
 
 struct QmxMenuRead {
     QmxMenuReadPhase phase = QmxMenuReadPhase::Idle;
     QmxMenuStage stage = QmxMenuStage::BandName;
     int column = 0;
     int flag = 0;
+    int setting = 0;
     int64_t deadline_ms = 0;
     uint32_t mm_seen = 0;       // the caller's MM reply count when the query went out
     uint32_t refused_seen = 0;  // and its `?;` count
@@ -88,6 +101,9 @@ static inline void qmx_menu_read_command(const QmxMenuRead& read, char* out, siz
             return;
         case QmxMenuStage::Serial6:
             snprintf(out, cap, "MMSystem config|GPS & Ser. ports|Serial 6 on PTT;");
+            return;
+        case QmxMenuStage::Setting:
+            snprintf(out, cap, "MM%s;", kQmxSettingPath[read.setting]);
             return;
         case QmxMenuStage::Finished:
             break;
@@ -163,7 +179,16 @@ static inline void qmx_menu_read_take(QmxMenuRead& read, const char* value)
             return;
         case QmxMenuStage::Serial6:
             r.serial6_on_ptt = value ? qmx_menu_flag_value(value) : -1;
-            read.stage = QmxMenuStage::Finished;
+            read.setting = 0;
+            read.stage = kQmxSettingCount > 0 ? QmxMenuStage::Setting : QmxMenuStage::Finished;
+            return;
+        case QmxMenuStage::Setting:
+            if (value) {
+                snprintf(r.setting[read.setting], sizeof(r.setting[read.setting]), "%s", value);
+            }
+            if (++read.setting >= kQmxSettingCount) {
+                read.stage = QmxMenuStage::Finished;
+            }
             return;
         case QmxMenuStage::Finished:
             return;

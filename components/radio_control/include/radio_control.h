@@ -76,11 +76,26 @@ typedef struct {
     int8_t rx_ptt_ground;
 } radio_band_config_t;
 
+// The radio's own settings that Settings > Radio & bands shows and writes (architecture/radio.md,
+// The radio's settings in Radio & bands). Held by the radio and never stored by us: read at each
+// link-up, written only when the operator changes one. Each has its config-reply key.
+typedef enum {
+    RADIO_SETTING_TUNE_PCT = 0,  // radio_tune_pct: the SWR Tune carrier's power, % (QMX Protection > Tune %)
+    RADIO_SETTING_PA_VOLTS,      // radio_pa_volts: the PA's supply ceiling, V, which sets the output power
+                                 // (QMX Protection > Max. PA voltage)
+    RADIO_SETTING_COUNT,
+} radio_setting_t;
+#define RADIO_SETTING_VALUE_MAX 12  // a value's text, terminated
+const char* radio_setting_key(radio_setting_t setting);  // "radio_tune_pct"; null out of range
+// The setting a key names, or RADIO_SETTING_COUNT for none.
+radio_setting_t radio_setting_from_key(const char* key);
+
 typedef struct {
     char model[24];  // the radio's band set, such as "QMX+ 160-6m"; empty when not read
     int band_count;
     radio_band_config_t bands[RADIO_CONFIG_BANDS_MAX];
     int8_t ptt_is_serial;  // 1 the PTT jack is a serial port instead (QMX Serial 6 on PTT)
+    char settings[RADIO_SETTING_COUNT][RADIO_SETTING_VALUE_MAX];  // as the radio gives each; empty: not read
 } radio_config_t;
 
 // What a radio_control_rx_path_tick() did.
@@ -116,13 +131,19 @@ bool radio_control_get_config(radio_config_t* out);
 // returns nullptr, or says why not. Its progress is radio_control_config_write_status().
 typedef enum { RADIO_PTT_GROUND = 1, RADIO_PTT_5V = 2 } radio_ptt_keying_t;
 const char* radio_control_set_ptt_outputs(radio_ptt_keying_t keying);
-// The last write's state for the config reply ("writing", "done 12", "nothing to write",
+// Sets one of the radio's settings to `value` (a number, as the radio writes it), as its menu would
+// (QMX: the Menu Manager write, architecture/radio.md, The radio's settings in Radio & bands); then
+// the radio is read again. Starts the write and returns nullptr, or says why not.
+const char* radio_control_set_setting(radio_setting_t setting, const char* value);
+// What a write sets: the PTT outputs, or one setting. Each keeps its own status.
+typedef enum { RADIO_WRITE_PTT = 0, RADIO_WRITE_SETTING = 1 } radio_write_kind_t;
+// The last write of that kind for the config reply ("writing", "done 12", "nothing to write",
 // "failed at <path>: ..."); false when none has run since this radio connected.
-bool radio_control_config_write_status(char* out, size_t cap);
+bool radio_control_config_write_status(radio_write_kind_t kind, char* out, size_t cap);
 // `config` as the config reply's lines (architecture/webapp.md, Settings > Amplifier): radio_model,
 // radio_bands (metres, space-separated, as active_bands), radio_band_tx (1, 0 or ? a band),
 // radio_ptt (four characters a band: TX PTT +5V, TX PTT grounded, RX PTT +5V, RX PTT grounded, each
-// 1, 0 or ?) and radio_ptt_serial. Writes at most `cap` bytes, always terminated; returns the length.
+// 1, 0 or ?), radio_ptt_serial, and each setting read (radio_tune_pct, ...). Writes at most `cap` bytes, always terminated; returns the length.
 size_t radio_config_format(const radio_config_t* config, char* out, size_t cap);
 // Asks the radio to push its state when it changes (QMX AI2;), or to stop (AI0;);
 // ESP_ERR_NOT_SUPPORTED where it cannot. A radio without the command ignores it.

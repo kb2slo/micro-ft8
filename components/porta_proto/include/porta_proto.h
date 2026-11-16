@@ -116,7 +116,9 @@ extern "C" {
 // off, it is over. The sidekick says "on" again while one runs, and the host ends a hold it has
 // not heard of for PORTA_FW_HOLD_TIMEOUT_MS. A v17 host ACKs and holds nothing; a v17 sidekick
 // never asks, and the host then holds from FW_BEGIN.
-#define PORTA_PROTO_VERSION 18u
+// v19 (2026-11-15): the RADIO_SET_SETTING action (set one of the radio's own settings, such as the
+// QMX's Tune %). An older host NAKs it as unknown. Both ends are flashed together.
+#define PORTA_PROTO_VERSION 19u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -530,6 +532,7 @@ typedef enum {
     PORTA_ACT_RADIO_READ   = 0x0F,  // verb only: ask the radio for its state (IF;); the answer is in the config snapshot
     PORTA_ACT_RADIO_SET_PTT = 0x10, // payload: u8 keying (1 TX PTT grounded, 2 TX PTT +5V); progress in the config snapshot
     PORTA_ACT_UPDATE_MODE  = 0x11,  // payload: u8 on: an update is running, or is over (the v18 note). Always ACKed. Frozen (the v15 note)
+    PORTA_ACT_RADIO_SET_SETTING = 0x12, // payload: "<key>=<value>" text, such as radio_tune_pct=40; progress in the config snapshot
 } porta_action_verb_t;
 
 // FACTORY_RESET flags. Station settings are always reset; the QSO logs only when asked,
@@ -568,6 +571,12 @@ bool porta_proto_parse_radio_read(const porta_frame_t *f);
 // does not parse.
 size_t porta_proto_encode_radio_set_ptt(uint8_t keying, uint8_t *out, size_t out_cap);
 bool porta_proto_parse_radio_set_ptt(const porta_frame_t *f, uint8_t *keying_out);
+// Set one of the radio's settings: verb + "<key>=<value>", 3 to PORTA_RADIO_SETTING_MAX bytes of
+// printable text with one '='. Which keys and values the host takes is its own (radio_setting_t);
+// the parse checks only the shape. `out` gets the text, terminated.
+#define PORTA_RADIO_SETTING_MAX 48u
+size_t porta_proto_encode_radio_set_setting(const char *key_value, uint8_t *out, size_t out_cap);
+bool porta_proto_parse_radio_set_setting(const porta_frame_t *f, char *out, size_t out_cap);
 
 // Queue tries: verb + u16 entry_id + u8 tries. 0 returns the entry to the
 // station default; the host refuses a count out of range for that entry.
