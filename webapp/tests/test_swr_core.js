@@ -11,6 +11,7 @@ const app = path.join(__dirname, '..', 'app');
 const root = path.join(__dirname, '..', '..');
 const ctx = vm.createContext({});
 vm.runInContext(fs.readFileSync(path.join(app, 'bands.js'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(app, 'radio_settings.js'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(app, 'swr_core.js'), 'utf8'), ctx);
 const S = vm.runInContext('SwrCore', ctx);
 
@@ -149,11 +150,12 @@ check(sav.readings[14100000] === 130 && Object.keys(sav).length === 2, 'what is 
 
 // The Tune power the sweep runs at (radio_tune_pct): labelled, and below 25% a warning.
 let t = S.tuneNote('50');
-check(!t.warn && t.label === 'Tune 50%' && /50%/.test(t.text), 'at 50% the note names it, no warning');
+check(!t.warn && t.label === 'Tune 50%' && /25% or more/.test(t.text), 'at 50%: what the setting is, no warning');
 t = S.tuneNote('25');
 check(!t.warn, 'at 25% exactly, no warning');
 t = S.tuneNote('10');
-check(t.warn && t.label === 'Tune 10%' && /Radio & bands/.test(t.text), 'below 25% it warns and says where to raise it');
+check(t.warn && t.label === 'Tune 10%' && /biased high/.test(t.text), 'below 25% it warns');
+check(S.MIN_TUNE_PCT === 25, 'the floor is radio_settings.js\'s TUNE_PCT_FOR_SWEEP');
 t = S.tuneNote(undefined);
 check(!t.warn && t.label === '' && /25%/.test(t.text), 'not read: the standing advice, no label');
 check(S.tuneNote('').label === '' && S.tuneNote('x').label === '', 'empty or not a number reads as not read');

@@ -840,7 +840,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
               <input id=radio_tune_pct class=num type=number min=0 max=99 step=1 inputmode=numeric autocomplete=off>
             </label>
           </div>
-          <p class=setnote>The power of the radio's SWR Tune carrier, used by Tune, the SWR sweep and amplifier priming. The sweep reads best at 25% or more.</p>
+          <p class=setnote>The power of the radio's SWR Tune carrier, used by Tune, the SWR sweep and amplifier priming. The sweep reads best at 25% or more. <button type=button id=tuneFix25 class=dlink hidden>Set it to 25%</button></p>
           <div class=setrow id=radioPaVoltsRow hidden>
             <label class=fld><span>Max. PA voltage (V)</span>
               <input id=radio_pa_volts class=num type=number min=0 max=99.9 step=0.1 inputmode=decimal autocomplete=off>
@@ -1316,6 +1316,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 
 <script src=/pairing.js></script>
 <script src=bands.js></script>
+<script src=radio_settings.js></script>
 <script src=callinfo.js></script>
 <script src=pskr_core.js></script>
 <script src=pskr_live.js></script>
@@ -2820,14 +2821,16 @@ function radioBarState(chip, hud, ctx) {
 // and "0.0 W · no RF" once a transmission keyed keyedMs ago still reads 0 W past its first tone
 // and first meter reply (the first poll comes before the first tone, so it reads 0 on every
 // transmission): the radio is keyed but sending nothing, and the SWR it reports then means
-// nothing. hud: the TX HUD event. {text, dead}.
+// nothing. hud: the TX HUD event. tunePct: the radio's Tune % (radio_tune_pct), named while tuning
+// when the radio has reported it, since it sets the carrier's power. {text, dead}.
 var TX_NO_RF_AFTER_MS = 1500;
-function txReadout(hud, tuning, keyedMs) {
+function txReadout(hud, tuning, keyedMs, tunePct) {
   if (hud.wrblk) return { text: 'Write blocked', dead: false };
   if (hud.pw === 0 && keyedMs > TX_NO_RF_AFTER_MS) return { text: '0.0 W \u00b7 no RF', dead: true };
   var meter = (hud.pw > -1 ? (hud.pw / 10).toFixed(1) + ' W' : '\u2014 W') + ' \u00b7 ' +
     (hud.swr > -1 ? 'SWR ' + (hud.swr / 100).toFixed(2) : 'SWR \u2014');
-  return { text: (tuning ? 'Tune \u00b7 ' : '') + meter, dead: false };
+  var tune = 'Tune ' + (tunePct !== undefined && tunePct !== null && tunePct !== '' ? tunePct + '% ' : '') + '\u00b7 ';
+  return { text: (tuning ? tune : '') + meter, dead: false };
 }
 
 // Counts SWR-tripped transmissions in a row, as the main board does (components/swr_trip): a
@@ -3058,31 +3061,18 @@ function renderAmpPttCheck(cfg) {
   else if (w.indexOf('failed') === 0) el.textContent += '\nThe last write ' + w + '.';
 }
 
-// Settings › Radio & bands › In the radio: the radio's own settings, each by its config-reply key and
-// its row (architecture/radio.md, The radio's settings in Radio & bands). A row shows once the main
-// board has read the setting from this radio; a change is posted to /api/radio/setting and written to
-// the radio, whose next read is what the field then shows. Nothing is stored on the station. Each takes
-// what the radio's own menu editor takes (digits before the point, decimals after), as the main board
-// checks (kQmxSettingShape, qmx_menu_read.h): the QMX stores anything an MM write sends.
-var RADIO_SETTINGS = [
-  { key: 'radio_tune_pct', row: 'radioTuneRow', name: 'Tune power', digits: 2, decimals: 0 },
-  { key: 'radio_pa_volts', row: 'radioPaVoltsRow', name: 'Max. PA voltage', digits: 2, decimals: 1 },
-];
-
-// Why a value cannot be sent for setting `s`, or null when it can: the words the main board uses.
-function radioSettingRefusal(s, v) {
-  if (!/^\d+(\.\d+)?$/.test(v)) return s.name + ': a number';
-  var parts = v.split('.');
-  if (parts[0].length <= s.digits && (parts[1] || '').length <= s.decimals) return null;
-  var max = new Array(s.digits + 1).join('9') + (s.decimals ? '.' + new Array(s.decimals + 1).join('9') : '');
-  return s.name + ': 0 to ' + max + (s.decimals === 1 ? ', one decimal place' : s.decimals > 1 ? ', two or more decimal places' : '');
-}
+// Settings › Radio & bands › In the radio: the radio's own settings (RADIO_SETTINGS and
+// radioSettingRefusal() in radio_settings.js, shared with swr.html), each in its row here
+// (architecture/radio.md, The radio's settings in Radio & bands). A row shows once the main board has
+// read the setting from this radio; a change is posted to /api/radio/setting and written to the radio,
+// whose next read is what the field then shows. Nothing is stored on the station.
+var RADIO_SETTING_ROW = { radio_tune_pct: 'radioTuneRow', radio_pa_volts: 'radioPaVoltsRow' };
 
 function renderRadioSettings(cfg) {
   var any = false;
   RADIO_SETTINGS.forEach(function (s) {
     var have = cfg[s.key] !== undefined && cfg[s.key] !== null && cfg[s.key] !== '';
-    document.getElementById(s.row).hidden = !have;
+    document.getElementById(RADIO_SETTING_ROW[s.key]).hidden = !have;
     any = any || have;
     var input = document.getElementById(s.key);
     if (have && document.activeElement !== input) input.value = String(cfg[s.key]);
@@ -3094,7 +3084,19 @@ function renderRadioSettings(cfg) {
   status.classList.toggle('warn', w.indexOf('failed') === 0);
   status.textContent = w === 'writing' ? 'Writing to the radio…' : 'The last write ' + w + '.';
   RADIO_SETTINGS.forEach(function (s) { document.getElementById(s.key).disabled = w === 'writing'; });
+  // One tap to the Tune % the SWR sweep reads true at, offered while the radio holds another.
+  var fix = document.getElementById('tuneFix25');
+  var tune = cfg.radio_tune_pct;
+  fix.hidden = tune === undefined || tune === null || tune === '' || parseFloat(tune) === TUNE_PCT_FOR_SWEEP;
+  fix.textContent = 'Set it to ' + TUNE_PCT_FOR_SWEEP + '%';
+  fix.disabled = w === 'writing';
 }
+
+document.getElementById('tuneFix25').onclick = function () {
+  var input = document.getElementById('radio_tune_pct');
+  input.value = String(TUNE_PCT_FOR_SWEEP);
+  input.onchange();
+};
 
 RADIO_SETTINGS.forEach(function (s) {
   var input = document.getElementById(s.key);
@@ -4365,7 +4367,7 @@ function renderCountdown() {
   var frac = intoSlot / p;
   var onAir = txHud && txHud.active && !txHud.nk;
   var readout = onAir && !txHud.aborted
-    ? txReadout(txHud, yn(lastCfg.tune) === 'yes' || txHud.x === 'TUNE', now - txKeyedAt) : null;
+    ? txReadout(txHud, yn(lastCfg.tune) === 'yes' || txHud.x === 'TUNE', now - txKeyedAt, lastCfg.radio_tune_pct) : null;
   var cue = readout || onAir ? '' : rxCue(lastCfg, usbState) || (live ? clockCue(band.tallies) : '');
   var slotText = document.getElementById('opSlotText');
   slotText.textContent = readout ? readout.text : onAir ? '' : cue || (live ? activityLabel(band.act, now, p) : '');
