@@ -5,7 +5,7 @@
 
 follow: since= the last reply's seq, as the app polls. catchup: since=1 every time, a full ring, the worst case.
 A connect near 1, 3 or 7 s is a SYN the client had to send again: the network lost it, or the sidekick dropped it
-(sk_tcp_peak and sk_tcp_backlog_peak in /api/config say whether it was out of connections)."""
+(sk_tcp_held_peak and sk_tcp_backlog_peak in /api/config say whether it was out of connections)."""
 import http.client, json, sys, time, urllib.parse
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 100
 HOST = sys.argv[2] if len(sys.argv) > 2 else "http://micro-ft8.local"
@@ -52,5 +52,5 @@ for _ in range(N):
 report("config", rows)
 cfg = json.loads(get("/api/config")[2])
 print("sk", cfg.get("sk_fw_version"), "uptime", cfg.get("sk_uptime"), "heap", cfg.get("sk_heap_free"), "min", cfg.get("sk_heap_min"),
-      "tcp", cfg.get("sk_tcp_used"), "peak", cfg.get("sk_tcp_peak"), "backlog peak", cfg.get("sk_tcp_backlog_peak"),
+      "tcp", cfg.get("sk_tcp_used"), "held", cfg.get("sk_tcp_held"), "held peak", cfg.get("sk_tcp_held_peak"), "backlog peak", cfg.get("sk_tcp_backlog_peak"),
       "worker queue peak", cfg.get("sk_worker_queue_peak"))

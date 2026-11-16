@@ -220,7 +220,7 @@ void app_main(void)
             // With the link's and the network's health: on the console, out of band, so a stalled web server
             // still shows (docs/architecture/sidekick.md, Tasks and cores).
             char health[128];
-            char net[96];
+            char net[128];
             host_link_health(health, sizeof(health));
             net_health_str(net, sizeof(net));
             ESP_LOGI(TAG, "alive: %" PRIu32 " wifi=%s %s %s wq=%" PRIu32 " wstack=%" PRIu32, heartbeat / 5,

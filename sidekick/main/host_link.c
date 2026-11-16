@@ -473,7 +473,7 @@ static size_t sidekick_facts_json(char *out, size_t cap)
     const bool linked = host_link_host_hello(&proto, host_version, &hello_age) && hello_age < HOST_LINK_HELLO_FRESH_MS;
     snprintf(host_proto, sizeof(host_proto), "%u", (unsigned)proto);
     snprintf(sk_proto, sizeof(sk_proto), "%u", (unsigned)PORTA_PROTO_VERSION);
-    char num[11][12];
+    char num[12][12];
     snprintf(num[0], sizeof(num[0]), "%" PRIu32, s_rx_dec.crc_errors);
     snprintf(num[1], sizeof(num[1]), "%" PRIu32, s_rx_dec.frames_ok);
     snprintf(num[2], sizeof(num[2]), "%" PRIu32, s_ring_gap_events);
@@ -481,13 +481,14 @@ static size_t sidekick_facts_json(char *out, size_t cap)
     snprintf(num[4], sizeof(num[4]), "%u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     snprintf(num[5], sizeof(num[5]), "%u", (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
     snprintf(num[6], sizeof(num[6]), "%u", (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
-    // The network's side of a stall (net_health.h, http_worker.h): a peak at the slot count or the backlog's
-    // limit means new connections were dropped unanswered at some point since boot.
+    // The network's side of a stall (net_health.h, http_worker.h): a held peak at the slot count, or a
+    // backlog peak at its limit, means new connections were dropped unanswered at some point since boot.
     const net_tcp_t tcp = net_health_last();
     snprintf(num[7], sizeof(num[7]), "%" PRIu32, tcp.used);
-    snprintf(num[8], sizeof(num[8]), "%" PRIu32, net_health_used_peak());
+    snprintf(num[8], sizeof(num[8]), "%" PRIu32, net_health_held_peak());
     snprintf(num[9], sizeof(num[9]), "%" PRIu32, net_health_backlog_peak());
     snprintf(num[10], sizeof(num[10]), "%" PRIu32, http_worker_queue_peak());
+    snprintf(num[11], sizeof(num[11]), "%" PRIu32, tcp.held);
     const struct {
         const char *key;
         const char *value;
@@ -500,7 +501,8 @@ static size_t sidekick_facts_json(char *out, size_t cap)
         { "sk_heap_min", num[5] },
         { "sk_heap_largest", num[6] },
         { "sk_tcp_used", num[7] },
-        { "sk_tcp_peak", num[8] },
+        { "sk_tcp_held", num[11] },
+        { "sk_tcp_held_peak", num[8] },
         { "sk_tcp_backlog_peak", num[9] },
         { "sk_worker_queue_peak", num[10] },
         { "sk_wifi_mode", wifi_prov_ap_active() ? "ap" : "station" },
