@@ -245,6 +245,30 @@ int main()
         const size_t n = radio_config_format(&c, small, sizeof(small));
         expect(n == sizeof(small) - 1 && small[n] == 0, "a short buffer is filled and terminated");
     }
+    {
+        radio_config_t c = {};
+        snprintf(c.model, sizeof(c.model), "QMX 60-15m");
+        c.band_count = 0;
+        c.ptt_is_serial = -1;
+        snprintf(c.settings[RADIO_SETTING_TUNE_PCT], sizeof(c.settings[0]), "50");
+        char text[256];
+        radio_config_format(&c, text, sizeof(text));
+        expect(strstr(text, "\nradio_tune_pct=50\n") != nullptr, "a setting read is its own line");
+        snprintf(c.settings[RADIO_SETTING_PA_VOLTS], sizeof(c.settings[0]), "11.5");
+        radio_config_format(&c, text, sizeof(text));
+        expect(strstr(text, "\nradio_pa_volts=11.5\n") != nullptr, "Max. PA voltage too");
+        c.settings[RADIO_SETTING_PA_VOLTS][0] = 0;
+        c.settings[RADIO_SETTING_TUNE_PCT][0] = 0;
+        radio_config_format(&c, text, sizeof(text));
+        expect(strstr(text, "radio_tune_pct") == nullptr, "a setting not read is absent");
+        expect(radio_setting_from_key("radio_tune_pct") == RADIO_SETTING_TUNE_PCT, "a setting by its key");
+        expect(radio_setting_from_key("radio_bands") == RADIO_SETTING_COUNT &&
+                   radio_setting_from_key(nullptr) == RADIO_SETTING_COUNT,
+               "anything else is no setting");
+        expect(strcmp(radio_setting_key(RADIO_SETTING_TUNE_PCT), "radio_tune_pct") == 0 &&
+                   radio_setting_key(RADIO_SETTING_COUNT) == nullptr,
+               "a setting's key");
+    }
     expect(g_calls == 0, "no call reaches the QMX's ops while NONE is selected");
     const radio_control_capabilities_t* caps = radio_control_get_capabilities();
     expect(caps && !caps->has_swr && !caps->has_wattmeter, "NONE has no capabilities");

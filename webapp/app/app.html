@@ -831,6 +831,26 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         </div>
         <p class=setnote>Connect, tune and clock sync now live on Operate. A new radio takes over at once; the change is refused while transmitting or tuning.</p>
 
+        <!-- The radio's own settings (RADIO_SETTINGS, renderRadioSettings()): read from the radio when
+             it connects and written to it on a change, never stored on the station. -->
+        <div id=radioSettings hidden>
+          <div class="hd sep">In the radio</div>
+          <div class=setrow id=radioTuneRow hidden>
+            <label class=fld><span>Tune power (%)</span>
+              <input id=radio_tune_pct class=num type=number min=0 max=100 step=1 inputmode=numeric autocomplete=off>
+            </label>
+          </div>
+          <p class=setnote>The power of the radio's SWR Tune carrier, used by Tune, the SWR sweep and amplifier priming. The sweep reads best at 25% or more.</p>
+          <div class=setrow id=radioPaVoltsRow hidden>
+            <label class=fld><span>Max. PA voltage (V)</span>
+              <input id=radio_pa_volts class=num type=number min=0 step=0.1 inputmode=decimal autocomplete=off>
+            </label>
+          </div>
+          <p class=setnote>The ceiling on the voltage the radio gives its power amplifier, which sets its output power: lower it for less power.</p>
+          <p class=setnote>These are the radio's own settings, as its menu has them: read when it connects, and a change is written to the radio. They are not kept here, and are refused while the radio transmits.</p>
+          <p id=radioSettingStatus class=setnote hidden></p>
+        </div>
+
         <!-- The drawer's band grid again (.bandgrid), here with any number on: the bands that
              appear there (buildBandRows()). -->
         <div class="hd sep">Bands</div>
@@ -3038,6 +3058,49 @@ function renderAmpPttCheck(cfg) {
   else if (w.indexOf('failed') === 0) el.textContent += '\nThe last write ' + w + '.';
 }
 
+// Settings › Radio & bands › In the radio: the radio's own settings, each by its config-reply key and
+// its row (architecture/radio.md, The radio's settings in Radio & bands). A row shows once the main
+// board has read the setting from this radio; a change is posted to /api/radio/setting and written to
+// the radio, whose next read is what the field then shows. Nothing is stored on the station.
+var RADIO_SETTINGS = [
+  { key: 'radio_tune_pct', row: 'radioTuneRow', name: 'Tune power' },
+  { key: 'radio_pa_volts', row: 'radioPaVoltsRow', name: 'Max. PA voltage' },
+];
+
+function renderRadioSettings(cfg) {
+  var any = false;
+  RADIO_SETTINGS.forEach(function (s) {
+    var have = cfg[s.key] !== undefined && cfg[s.key] !== null && cfg[s.key] !== '';
+    document.getElementById(s.row).hidden = !have;
+    any = any || have;
+    var input = document.getElementById(s.key);
+    if (have && document.activeElement !== input) input.value = String(cfg[s.key]);
+  });
+  document.getElementById('radioSettings').hidden = !any;
+  var w = String(cfg.radio_setting_write || '');
+  var status = document.getElementById('radioSettingStatus');
+  status.hidden = !(w === 'writing' || w.indexOf('failed') === 0);
+  status.classList.toggle('warn', w.indexOf('failed') === 0);
+  status.textContent = w === 'writing' ? 'Writing to the radio…' : 'The last write ' + w + '.';
+  RADIO_SETTINGS.forEach(function (s) { document.getElementById(s.key).disabled = w === 'writing'; });
+}
+
+RADIO_SETTINGS.forEach(function (s) {
+  var input = document.getElementById(s.key);
+  input.onchange = function () {
+    var v = input.value.trim();
+    if (!/^\d+(\.\d+)?$/.test(v)) {
+      failMsg(s.name + ': a number');
+      input.value = String(lastCfg[s.key] || '');
+      return;
+    }
+    if (v === String(lastCfg[s.key])) return;
+    radioPost('/api/radio/setting', s.key + '=' + v, 'Setting ' + s.name.toLowerCase() + '…').then(function (ok) {
+      if (!ok) input.value = String(lastCfg[s.key] || '');
+    });
+  };
+});
+
 // The bands the radio transmits on (radio_band_tx 1), which Set it writes: the operator's choice in
 // the radio, left as it is.
 function radioTransmitBands(cfg) {
@@ -3064,6 +3127,7 @@ function applyOperateLive(cfg) {
     buildDockBandGrid(cfg);
   }
   renderAmpPttCheck(cfg);
+  renderRadioSettings(cfg);
   updateLogFree(cfg);
   syncDockBandGrid(cfg);
   syncFreqInput(cfg);

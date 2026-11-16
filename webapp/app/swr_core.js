@@ -238,6 +238,24 @@ var SwrCore = (function () {
   }
 
   // What is kept on the phone to draw behind the next run: readings only, never the record.
+  // The sweep's carrier is the QMX's Tune power (radio_tune_pct, read from the radio at link-up;
+  // architecture/radio.md, QMX SWR Tune over CAT): below MIN_TUNE_PCT the reading is biased high and
+  // noisy. What the page says about it: {text, warn, label}; label is for the plot, '' when unknown.
+  var MIN_TUNE_PCT = 25;
+  function tuneNote(pctText) {
+    var pct = parseFloat(pctText);
+    if (pctText === undefined || pctText === null || pctText === '' || !isFinite(pct)) {
+      return { text: 'Transmits a short carrier at each point, at the QMX\'s own Tune power. Set it to ' + MIN_TUNE_PCT +
+        '% or more: below that the reading is biased high and noisy.', warn: false, label: '' };
+    }
+    var shown = String(pctText).trim() + '%';
+    if (pct < MIN_TUNE_PCT) {
+      return { text: 'The QMX\'s Tune power is ' + shown + ': below ' + MIN_TUNE_PCT + '% the reading is biased high and noisy. ' +
+        'Raise it in Settings › Radio & bands.', warn: true, label: 'Tune ' + shown };
+    }
+    return { text: 'Transmits a short carrier at each point, at the QMX\'s Tune power, ' + shown + '.', warn: false, label: 'Tune ' + shown };
+  }
+
   function saveable(state) {
     return { at: state.endedAt || state.startedAt, readings: state.readings };
   }
@@ -247,6 +265,7 @@ var SwrCore = (function () {
     SWR_LOW: SWR_LOW, SWR_HIGH: SWR_HIGH, GOOD_SWR: GOOD_SWR,
     sweepableBands: sweepableBands, defaultBands: defaultBands, planSweep: planSweep, requestBody: requestBody,
     newState: newState, applyEvent: applyEvent, abortLocally: abortLocally, remainingMs: remainingMs, measuredCount: measuredCount,
-    summary: summary, plotModel: plotModel, saveable: saveable, fmtDuration: fmtDuration
+    summary: summary, plotModel: plotModel, saveable: saveable, fmtDuration: fmtDuration,
+    MIN_TUNE_PCT: MIN_TUNE_PCT, tuneNote: tuneNote
   };
 })();

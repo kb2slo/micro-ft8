@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <cstring>
 
 #include "dial_history.h"
 #include "rtc_core.h"
@@ -232,9 +233,29 @@ const char* radio_control_set_ptt_outputs(radio_ptt_keying_t keying) {
     return ops->set_ptt_outputs(keying);
 }
 
-bool radio_control_config_write_status(char* out, size_t cap) {
+const char* radio_control_set_setting(radio_setting_t setting, const char* value) {
     const radio_control_ops_t* ops = current_ops();
-    return ops && ops->config_write_status && ops->config_write_status(out, cap);
+    if (!ops || !ops->set_setting) return "this radio cannot set its settings";
+    if (!radio_setting_key(setting)) return "unknown setting";
+    return ops->set_setting(setting, value);
+}
+
+bool radio_control_config_write_status(radio_write_kind_t kind, char* out, size_t cap) {
+    const radio_control_ops_t* ops = current_ops();
+    return ops && ops->config_write_status && ops->config_write_status(kind, out, cap);
+}
+
+static const char* const kRadioSettingKey[RADIO_SETTING_COUNT] = {"radio_tune_pct", "radio_pa_volts"};
+
+const char* radio_setting_key(radio_setting_t setting) {
+    return setting >= 0 && setting < RADIO_SETTING_COUNT ? kRadioSettingKey[setting] : nullptr;
+}
+
+radio_setting_t radio_setting_from_key(const char* key) {
+    for (int i = 0; key && i < RADIO_SETTING_COUNT; ++i) {
+        if (strcmp(key, kRadioSettingKey[i]) == 0) return static_cast<radio_setting_t>(i);
+    }
+    return RADIO_SETTING_COUNT;
 }
 
 static char flag_char(int8_t flag) {
@@ -272,6 +293,11 @@ size_t radio_config_format(const radio_config_t* config, char* out, size_t cap) 
             flag_char(b.rx_ptt_ground));
     }
     put("\nradio_ptt_serial=%c\n", flag_char(config->ptt_is_serial));
+    for (int i = 0; i < RADIO_SETTING_COUNT; ++i) {
+        if (config->settings[i][0]) {
+            put("%s=%s\n", kRadioSettingKey[i], config->settings[i]);
+        }
+    }
     return len;
 }
 

@@ -838,6 +838,59 @@ size_t porta_proto_encode_radio_set_ptt(uint8_t keying, uint8_t *out, size_t out
     return porta_proto_encode(PORTA_MSG_ACTION, payload, sizeof(payload), out, out_cap);
 }
 
+static bool radio_setting_text_ok(const uint8_t *text, size_t len)
+{
+    if (len < 3 || len > PORTA_RADIO_SETTING_MAX) {
+        return false;
+    }
+    size_t eq = 0;
+    int eqs = 0;
+    for (size_t i = 0; i < len; ++i) {
+        if (text[i] < 0x21 || text[i] > 0x7e) {
+            return false;
+        }
+        if (text[i] == '=') {
+            eq = i;
+            ++eqs;
+        }
+    }
+    return eqs == 1 && eq > 0 && eq < len - 1;
+}
+
+size_t porta_proto_encode_radio_set_setting(const char *key_value, uint8_t *out, size_t out_cap)
+{
+    if (!key_value) {
+        return 0;
+    }
+    const size_t len = strlen(key_value);
+    if (!radio_setting_text_ok((const uint8_t *)key_value, len)) {
+        return 0;
+    }
+    uint8_t payload[1 + PORTA_RADIO_SETTING_MAX];
+    payload[0] = PORTA_ACT_RADIO_SET_SETTING;
+    memcpy(payload + 1, key_value, len);
+    return porta_proto_encode(PORTA_MSG_ACTION, payload, 1 + len, out, out_cap);
+}
+
+bool porta_proto_parse_radio_set_setting(const porta_frame_t *f, char *out, size_t out_cap)
+{
+    if (!f || f->type != PORTA_MSG_ACTION || f->len < 1 || f->payload[0] != PORTA_ACT_RADIO_SET_SETTING) {
+        return false;
+    }
+    const size_t len = (size_t)f->len - 1;
+    if (!radio_setting_text_ok(f->payload + 1, len)) {
+        return false;
+    }
+    if (out) {
+        if (out_cap <= len) {
+            return false;
+        }
+        memcpy(out, f->payload + 1, len);
+        out[len] = 0;
+    }
+    return true;
+}
+
 bool porta_proto_parse_radio_set_ptt(const porta_frame_t *f, uint8_t *keying_out)
 {
     if (!f || f->type != PORTA_MSG_ACTION || f->len != 2 || f->payload[0] != PORTA_ACT_RADIO_SET_PTT) {

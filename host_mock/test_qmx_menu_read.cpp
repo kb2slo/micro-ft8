@@ -25,6 +25,8 @@ struct FakeRadio {
     const char* band_version = "";
     const char* serial6 = "DISABLED";
     bool refuse_serial6 = false;
+    const char* tune_pct = "50";  // nullptr: refused, as a firmware without the item would
+    const char* pa_volts = "11.5";  // as a QMX 60-15m on 1_04_010 answered, 2026-11-15
 
     // The reply's value, or nullptr for `?;`.
     std::string answer(const std::string& cmd, bool* refused) const
@@ -49,6 +51,12 @@ struct FakeRadio {
         }
         if (cmd == "MMSystem config|GPS & Ser. ports|Serial 6 on PTT;" && !refuse_serial6) {
             return serial6;
+        }
+        if (cmd == "MMProtection|Tune %;" && tune_pct) {
+            return tune_pct;
+        }
+        if (cmd == "MMProtection|Max. PA voltage;" && pa_volts) {
+            return pa_volts;
         }
         *refused = true;
         return "";
@@ -124,7 +132,10 @@ int main()
         expect(r.bands[0].flag[kQmxFlagTxPttGround] == 0, "QMX+: 160 m TX PTT grounded off");
         expect(strcmp(r.band_version, "QMX+ 160-6m") == 0, "QMX+: band version");
         expect(r.serial6_on_ptt == 0, "QMX+: Serial 6 on PTT off");
-        expect(sent == 13 + 12 * kQmxFlagCount + 2, "QMX+: 13 names (the 13th reads 0), 5 flags a band, 2 items");
+        expect(strcmp(r.setting[0], "50") == 0, "QMX+: Tune %");
+        expect(strcmp(r.setting[1], "11.5") == 0, "QMX+: Max. PA voltage, a decimal kept as given");
+        expect(sent == 13 + 12 * kQmxFlagCount + 2 + kQmxSettingCount,
+               "QMX+: 13 names (the 13th reads 0), 5 flags a band, 2 items, the settings");
         expect(qmx_menu_read_step(read, true, false, 0, "", 0, now) == QmxMenuReadAction::None, "QMX+: then quiet");
     }
 
@@ -159,7 +170,8 @@ int main()
         int64_t now = 0;
         expect(run(read, radio, &sent, &now) == QmxMenuReadAction::Done, "16 bands: read to the end");
         expect(read.result.band_count == kQmxMenuBandColumns, "16 bands: all of them");
-        expect(sent == kQmxMenuBandColumns * (1 + kQmxFlagCount) + 2, "16 bands: no 17th name asked");
+        expect(sent == kQmxMenuBandColumns * (1 + kQmxFlagCount) + 2 + kQmxSettingCount,
+               "16 bands: no 17th name asked");
     }
 
     // A refused item reads as unknown, and the read goes on.
@@ -172,6 +184,31 @@ int main()
         expect(run(read, radio, &sent, &now) == QmxMenuReadAction::Done, "refused: still done");
         expect(read.result.serial6_on_ptt == -1, "refused: Serial 6 unknown");
         expect(read.result.band_count == 12, "refused: the rest read");
+    }
+
+    // A setting the radio refuses reads as not read (empty), and the read still finishes.
+    {
+        FakeRadio radio = qmx_plus();
+        radio.tune_pct = nullptr;
+        QmxMenuRead read;
+        int sent = 0;
+        int64_t now = 0;
+        expect(run(read, radio, &sent, &now) == QmxMenuReadAction::Done, "refused setting: still done");
+        expect(read.result.setting[0][0] == 0, "refused setting: empty");
+        expect(strcmp(read.result.setting[1], "11.5") == 0, "refused setting: the next one still read");
+    }
+
+    // The settings' commands are their paths.
+    {
+        QmxMenuRead read;
+        read.stage = QmxMenuStage::Setting;
+        read.setting = 0;
+        char cmd[64];
+        qmx_menu_read_command(read, cmd, sizeof(cmd));
+        expect(strcmp(cmd, "MMProtection|Tune %;") == 0, "Tune %'s query");
+        read.setting = 1;
+        qmx_menu_read_command(read, cmd, sizeof(cmd));
+        expect(strcmp(cmd, "MMProtection|Max. PA voltage;") == 0, "Max. PA voltage's query");
     }
 
     // A value that is neither ENABLED nor DISABLED reads as unknown.

@@ -327,6 +327,11 @@ static void publish_config(const QmxRadioSettings& r) {
                       b.flag[kQmxFlagRxPtt5v], b.flag[kQmxFlagRxPttGround]};
     }
     c.ptt_is_serial = r.serial6_on_ptt;
+    static_assert(kQmxSettingCount == RADIO_SETTING_COUNT, "a path in kQmxSettingPath for each radio_setting_t");
+    static_assert(kQmxSettingValueMax == RADIO_SETTING_VALUE_MAX, "a setting's value fits either side");
+    for (int i = 0; i < kQmxSettingCount; ++i) {
+        snprintf(c.settings[i], sizeof(c.settings[i]), "%s", r.setting[i]);
+    }
     s_config = c;
     s_config_valid = true;
 }
@@ -349,6 +354,9 @@ static void log_radio_settings(const QmxRadioSettings& r) {
     static const char* const kFlag[] = {"?", "off", "on"};
     ESP_LOGI(TAG, "QMX menus: band version \"%s\", %d bands, Serial 6 on PTT %s", r.band_version, r.band_count,
              kFlag[r.serial6_on_ptt + 1]);
+    for (int i = 0; i < kQmxSettingCount; ++i) {
+        ESP_LOGI(TAG, "QMX %s: %s", kQmxSettingPath[i], r.setting[i][0] ? r.setting[i] : "not read");
+    }
     for (int c = 0; c < r.band_count; ++c) {
         const QmxBandSettings& b = r.bands[c];
         ESP_LOGI(TAG, "QMX band %d m: Transmit %s, TX PTT +5V %s, TX PTT grounded %s, RX PTT +5V %s, RX PTT grounded %s",
@@ -358,32 +366,53 @@ static void log_radio_settings(const QmxRadioSettings& r) {
     }
 }
 
-// Setting the PTT outputs (architecture/radio.md, Setting the PTT outputs). Asked for from the Port A
-// task, run here in the main loop, which owns the read it plans from.
+// Setting the PTT outputs, or one of the settings Radio & bands shows (architecture/radio.md, Setting
+// the PTT outputs; The radio's settings in Radio & bands). Asked for from the Port A task, run here in
+// the main loop, which owns the read it plans from. One write at a time, each kind with its status.
 static QmxMenuWrite s_menu_write;
 static volatile int s_write_requested;  // a QmxPttKeying, 0 none
+static volatile int s_setting_requested = -1;  // a radio_setting_t, -1 none
+static char s_setting_value[kQmxSettingValueMax];
 static volatile bool s_write_running;
-static char s_write_status[96];
-static volatile bool s_write_status_set;
+static radio_write_kind_t s_write_kind;  // of the write running
+static char s_write_status[2][96];
+static volatile bool s_write_status_set[2];
 
-static void set_write_status(const char* text) {
-    s_write_status_set = false;
-    snprintf(s_write_status, sizeof(s_write_status), "%s", text);
-    s_write_status_set = true;
+static void set_write_status(radio_write_kind_t kind, const char* text) {
+    s_write_status_set[kind] = false;
+    snprintf(s_write_status[kind], sizeof(s_write_status[kind]), "%s", text);
+    s_write_status_set[kind] = true;
+}
+
+static const char* write_refusal(void) {
+    if (!s_config_valid) return "the radio's settings are not read yet";
+    if (s_write_requested || s_setting_requested >= 0 || s_write_running) return "already writing";
+    return nullptr;
 }
 
 static const char* qmx_set_ptt_outputs(radio_ptt_keying_t keying) {
     if (keying != RADIO_PTT_GROUND && keying != RADIO_PTT_5V) return "unknown keying";
-    if (!s_config_valid) return "the radio's settings are not read yet";
-    if (s_write_requested || s_write_running) return "already writing";
-    set_write_status("writing");
+    if (const char* why = write_refusal()) return why;
+    set_write_status(RADIO_WRITE_PTT, "writing");
     s_write_requested = keying;
     return nullptr;
 }
 
-static bool qmx_config_write_status(char* out, size_t cap) {
-    if (!s_write_status_set) return false;
-    if (out && cap) snprintf(out, cap, "%s", s_write_status);
+static const char* qmx_set_setting(radio_setting_t setting, const char* value) {
+    if (setting < 0 || setting >= kQmxSettingCount) return "unknown setting";
+    if (!qmx_setting_value_ok(value)) return "not a number";
+    if (const char* why = write_refusal()) return why;
+    if (!s_config.settings[setting][0]) return "the radio did not report this setting";
+    snprintf(s_setting_value, sizeof(s_setting_value), "%s", value);
+    set_write_status(RADIO_WRITE_SETTING, "writing");
+    s_setting_requested = setting;
+    return nullptr;
+}
+
+static bool qmx_config_write_status(radio_write_kind_t kind, char* out, size_t cap) {
+    if (kind != RADIO_WRITE_PTT && kind != RADIO_WRITE_SETTING) return false;
+    if (!s_write_status_set[kind]) return false;
+    if (out && cap) snprintf(out, cap, "%s", s_write_status[kind]);
     return true;
 }
 
@@ -400,10 +429,24 @@ static bool qmx_menu_write_tick(bool ready, bool busy) {
         const int cells = qmx_menu_write_plan(s_menu_read.result, keying, s_menu_write);
         s_write_requested = 0;
         if (cells == 0) {
-            set_write_status("nothing to write");
+            set_write_status(RADIO_WRITE_PTT, "nothing to write");
             return false;
         }
         ESP_LOGI(TAG, "QMX PTT outputs: writing %d cells", cells);
+        s_write_kind = RADIO_WRITE_PTT;
+        s_write_running = true;
+    }
+    if (s_setting_requested >= 0 && !s_write_running) {
+        const int index = s_setting_requested;
+        const int cells = qmx_menu_setting_plan(s_menu_read.result, index, s_setting_value, s_menu_write);
+        s_setting_requested = -1;
+        if (cells == 0) {
+            set_write_status(RADIO_WRITE_SETTING, "nothing to write");
+            return false;
+        }
+        ESP_LOGI(TAG, "QMX %s: writing %s (was %s)", kQmxSettingPath[index], s_setting_value,
+                 s_menu_read.result.setting[index]);
+        s_write_kind = RADIO_WRITE_SETTING;
         s_write_running = true;
     }
     if (!s_write_running) return false;
@@ -417,7 +460,7 @@ static bool qmx_menu_write_tick(bool ready, bool busy) {
             char cmd[160];
             qmx_menu_write_command(s_menu_write, cmd, sizeof(cmd));
             if (qmx_send_cmd(cmd, 200) != ESP_OK) {
-                ESP_LOGW(TAG, "QMX PTT outputs: %s not sent", cmd);
+                ESP_LOGW(TAG, "QMX menu write: %s not sent", cmd);
             }
             break;
         }
@@ -427,9 +470,9 @@ static bool qmx_menu_write_tick(bool ready, bool busy) {
         case QmxMenuWriteAction::Done: {
             char text[32];
             snprintf(text, sizeof(text), "done %d", s_menu_write.count);
-            ESP_LOGI(TAG, "QMX PTT outputs: %d cells written, MU; sent; reading the radio again",
+            ESP_LOGI(TAG, "QMX menu write: %d cells written, MU; sent; reading the radio again",
                      s_menu_write.count);
-            set_write_status(text);
+            set_write_status(s_write_kind, text);
             s_write_running = false;
             reread_radio();
             break;
@@ -440,8 +483,8 @@ static bool qmx_menu_write_tick(bool ready, bool busy) {
             qmx_menu_write_path(s_menu_write.items[s_menu_write.next], path, sizeof(path));
             snprintf(text, sizeof(text), "failed at %s: %s", path,
                      !ready ? "radio gone" : s_menu_write.refused ? "refused" : "not read back");
-            ESP_LOGW(TAG, "QMX PTT outputs: %s (%d of %d written)", text, s_menu_write.next, s_menu_write.count);
-            set_write_status(text);
+            ESP_LOGW(TAG, "QMX menu write: %s (%d of %d written)", text, s_menu_write.next, s_menu_write.count);
+            set_write_status(s_write_kind, text);
             s_write_running = false;
             if (ready) reread_radio();
             break;
@@ -456,7 +499,7 @@ static void qmx_menu_read_tick(bool ready, bool busy) {
     const int64_t now_ms = esp_timer_get_time() / 1000;
     if (!ready) {
         s_config_valid = false;  // the next radio may be another
-        if (!s_write_running) s_write_status_set = false;
+        if (!s_write_running) s_write_status_set[RADIO_WRITE_PTT] = s_write_status_set[RADIO_WRITE_SETTING] = false;
     }
     switch (qmx_menu_read_step(s_menu_read, ready, busy, mm_count, value, cat_cdc_refusals(), now_ms)) {
         case QmxMenuReadAction::None:
@@ -581,6 +624,7 @@ static const radio_control_ops_t k_ops = {
     .state_changes = qmx_state_changes,
     .get_config = qmx_get_config,
     .set_ptt_outputs = qmx_set_ptt_outputs,
+    .set_setting = qmx_set_setting,
     .config_write_status = qmx_config_write_status,
 };
 

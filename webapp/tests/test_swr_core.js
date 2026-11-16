@@ -147,5 +147,16 @@ check(rows[1].swept === true && rows[1].minSwr === 1.3 && rows[1].goodShare === 
 const sav = S.saveable(st);
 check(sav.readings[14100000] === 130 && Object.keys(sav).length === 2, 'what is kept is readings and a time');
 
+// The Tune power the sweep runs at (radio_tune_pct): labelled, and below 25% a warning.
+let t = S.tuneNote('50');
+check(!t.warn && t.label === 'Tune 50%' && /50%/.test(t.text), 'at 50% the note names it, no warning');
+t = S.tuneNote('25');
+check(!t.warn, 'at 25% exactly, no warning');
+t = S.tuneNote('10');
+check(t.warn && t.label === 'Tune 10%' && /Radio & bands/.test(t.text), 'below 25% it warns and says where to raise it');
+t = S.tuneNote(undefined);
+check(!t.warn && t.label === '' && /25%/.test(t.text), 'not read: the standing advice, no label');
+check(S.tuneNote('').label === '' && S.tuneNote('x').label === '', 'empty or not a number reads as not read');
+
 if (failed) process.exit(1);
 console.log('All swr_core checks passed');
