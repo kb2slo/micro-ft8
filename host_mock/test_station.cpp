@@ -175,7 +175,6 @@ int main()
         expect_float(s.band_freq[5], 14074.0f, "band5 freq");
         expect_int(s.radio, 2, "radio=QDX reads as the QMX: no QDX backend");
         expect_str(s.cq_mod, "DX", "cq_mod trimmed and upper");
-        expect_true(!s.protocol_ft4, "beacon must not imply ft4");
         {
             const std::string text = station_serialize(s);
             expect_true(text.find("date=") == std::string::npos, "old date= not rewritten");
@@ -213,17 +212,11 @@ int main()
     {
         StationSettings s;
         station_settings_init(&s);
-        station_parse("protocol_mode=FT4\nft4_band5=14080\nband5=14074\n", &s);
-        expect_true(s.protocol_ft4, "ft4 mode");
-        expect_true(s.ft4_band_freq_set[5], "ft4 band5");
-        expect_float(s.ft4_band_freq[5], 14080.0f, "ft4 freq");
-        expect_true(s.band_freq_set[5], "ft8 band5 also parsed");
-        expect_float(s.band_freq[5], 14074.0f, "ft8 freq kept");
-        s.serialize_ft4_band_keys = true;
+        station_parse("band5=14074\n", &s);
+        expect_true(s.band_freq_set[5], "band5 parsed");
+        expect_float(s.band_freq[5], 14074.0f, "band5 freq");
         const std::string text = station_serialize(s);
-        expect_true(text.find("protocol_mode=FT4") != std::string::npos, "serialize ft4");
-        expect_true(text.find("ft4_band5=14080") != std::string::npos, "serialize ft4 band");
-        expect_true(text.find("band5=14074") == std::string::npos, "serialize omits inactive prefix");
+        expect_true(text.find("band5=14074") != std::string::npos, "serialize band5");
         expect_true(text.find("beacon=") == std::string::npos, "no beacon line");
         expect_true(text.find("date=") == std::string::npos, "no date line");
         expect_true(text.find("time=") == std::string::npos, "no time line");
@@ -299,23 +292,21 @@ int main()
     // station_key_names_operating_band (docs/architecture/webapp.md, "The
     // dock"): does this CONFIG key need the VFO already on the operating band
     // to take effect right now.
-    expect_true(station_key_names_operating_band("band_sel", 5, false), "band_sel always names the operating band");
-    expect_true(station_key_names_operating_band("band_sel", 0, true), "band_sel regardless of protocol");
-    expect_true(station_key_names_operating_band("band5", 5, false), "FT8 freq for the operating band");
-    expect_true(!station_key_names_operating_band("band5", 5, true), "FT8 key while FT4 is active is not operating");
-    expect_true(station_key_names_operating_band("ft4_band5", 5, true), "FT4 freq for the operating band");
-    expect_true(!station_key_names_operating_band("ft4_band5", 5, false), "FT4 key while FT8 is active is not operating");
-    expect_true(!station_key_names_operating_band("band3", 5, false), "a different band's frequency is not operating");
-    expect_true(!station_key_names_operating_band("active_bands", 5, false), "active_bands never names the operating band");
-    expect_true(!station_key_names_operating_band("call", 5, false), "an unrelated key is never the operating band");
-    expect_true(!station_key_names_operating_band(nullptr, 5, false), "a null key is never the operating band");
+    expect_true(station_key_names_operating_band("band_sel", 5), "band_sel always names the operating band");
+    expect_true(station_key_names_operating_band("band5", 5), "the operating band's frequency");
+    expect_true(!station_key_names_operating_band("band3", 5), "a different band's frequency is not operating");
+    expect_true(!station_key_names_operating_band("active_bands", 5), "active_bands never names the operating band");
+    expect_true(!station_key_names_operating_band("call", 5), "an unrelated key is never the operating band");
+    expect_true(!station_key_names_operating_band(nullptr, 5), "a null key is never the operating band");
+    expect_true(!station_key_known("protocol_mode"), "protocol_mode is no longer a key");
+    expect_true(!station_key_known("ft4_band5"), "nor ft4_band<N>");
 
     // station_vfo_refusal: a refused band change says "band", a refused
     // frequency write says "frequency", each with the reason.
     expect_str(station_vfo_refusal("band_sel", true), "band saved, VFO not moved (TX active)", "band_sel, TX active");
     expect_str(station_vfo_refusal("band_sel", false), "band saved, VFO not moved (CAT not ready)", "band_sel, CAT not ready");
     expect_str(station_vfo_refusal("band5", true), "frequency saved, VFO not moved (TX active)", "frequency, TX active");
-    expect_str(station_vfo_refusal("ft4_band5", false), "frequency saved, VFO not moved (CAT not ready)", "FT4 frequency, CAT not ready");
+    expect_str(station_vfo_refusal("band5", false), "frequency saved, VFO not moved (CAT not ready)", "frequency, CAT not ready");
 
     if (g_fails) {
         fprintf(stderr, "%d FAIL(s)\n", g_fails);
@@ -323,7 +314,6 @@ int main()
     }
     expect_true(station_key_known("call"), "call known");
     expect_true(station_key_known("band0"), "band0 known");
-    expect_true(station_key_known("ft4_band3"), "ft4_band3 known");
     expect_true(!station_key_known("beacon"), "beacon not a CONFIG key");
     expect_true(!station_key_known("streaming"), "live streaming is GET-only");
     expect_true(!station_key_known("cat_ready"), "live cat_ready is GET-only");

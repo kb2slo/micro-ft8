@@ -26,8 +26,6 @@ constexpr int kStationAmpPtt5v = 2;      // TX PTT +5V
 struct StationSettings {
     float band_freq[kStationBandCount];
     bool band_freq_set[kStationBandCount];
-    float ft4_band_freq[kStationBandCount];
-    bool ft4_band_freq_set[kStationBandCount];
 
     int offset_hz;
     int band_sel;
@@ -49,8 +47,6 @@ struct StationSettings {
     bool amp_prime_on_band_change = false;  // brief QMX SWR Tune pulse after an explicit band change
     bool rx_ft4 = false;  // also decode FT4 beside FT8 from the QMX's I/Q, listen only (docs/architecture/decode.md, FT4)
     int tries;  // transmissions per QSO message, and a CQ's to start (autoseq.md, Tries)
-    bool protocol_ft4;
-    bool serialize_ft4_band_keys;
     // "POTA:US-1234,SOTA:W7O/CC-001" -- the active activation's references,
     // entered in Settings > Station (architecture/webapp.md, "Activation").
     // Empty means no activation. Normalized (program upper-cased, malformed
@@ -95,11 +91,10 @@ bool act_refs_prefer_sota(const std::string& act_refs);
 
 // True when a CONFIG write of this key needs the VFO already on the
 // operating band to take effect right now: band_sel itself (it picks the new
-// operating band), or that band's own frequency key under the active
-// protocol (band<band_sel> for FT8, ft4_band<band_sel> for FT4). A frequency
-// written for a different band, or for the other protocol's table, is a
-// config edit that does not need the radio to move.
-bool station_key_names_operating_band(const char* key, int band_sel, bool protocol_ft4);
+// operating band), or that band's own frequency key, band<band_sel>. A
+// frequency written for a different band is a config edit that does not need
+// the radio to move.
+bool station_key_names_operating_band(const char* key, int band_sel);
 
 // The CONFIG refusal for such a write when the VFO did not move: "band saved,
 // VFO not moved (…)" for band_sel, "frequency saved, VFO not moved (…)" for a

@@ -98,7 +98,7 @@ function freshSandbox() {
     learnCallsignGrid: function () {},
     band: {},
     noteBandEvent: function () {},
-    periodMs: function () { return 15000; },
+    SLOT_MS: 15000,
   };
   vm.createContext(sandbox);
   vm.runInContext(extracted, sandbox, { filename: 'app.html (extracted)' });

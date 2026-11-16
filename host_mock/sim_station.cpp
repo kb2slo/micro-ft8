@@ -73,7 +73,6 @@ static void seed_config(const TestData& td)
     g_cfg["rx_ft4"] = "0";
     g_cfg["amp_prime_on_band_change"] = "0";
     g_cfg["band_sel"] = "5";
-    g_cfg["protocol_mode"] = "FT8";
     g_cfg["active_bands"] = "40 30 20 17 15 12 10";
     g_cfg["act_refs"] = "";
     g_cfg["cat_ready"] = "1";

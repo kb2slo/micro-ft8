@@ -838,15 +838,6 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 
         <div class="hd sep">Modes</div>
         <div class=setrow>
-          <label class=fld><span>Protocol</span>
-            <select id=protocol_mode>
-              <option value=FT8>FT8</option>
-              <option value=FT4 disabled>FT4</option>
-            </select>
-          </label>
-        </div>
-        <p class=setnote>FT4 is not built yet: the main board runs FT8 whatever is chosen here.</p>
-        <div class=setrow>
           <label class=fld><span>Also decode FT4</span>
             <select id=rx_ft4 class=onoff>
               <option value=0>Off</option>
@@ -1315,7 +1306,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 // Station): a format check, a stepper, a list.
 var FIELDS = [
   'call','comment1',
-  'radio','protocol_mode','skiptx1','amp','tx_min_delay_ms','amp_ptt','amp_swr_guard',
+  'radio','skiptx1','amp','tx_min_delay_ms','amp_ptt','amp_swr_guard',
   'amp_prime_on_band_change','rx_ft4'
 ];
 // The CQ's modifier (autoseq.md, The CQ's modifier): the word between CQ and the call, '' for a
@@ -2059,16 +2050,13 @@ var lastCfgAt = 0; // when the main board last answered; kept with the cache
 
 function bandFreq(cfg, idx) {
   var k = 'band' + idx;
-  var fk = 'ft4_band' + idx;
-  if (cfg[k] !== undefined && cfg[k] !== null && cfg[k] !== '') return String(cfg[k]);
-  if (cfg[fk] !== undefined && cfg[fk] !== null && cfg[fk] !== '') return String(cfg[fk]);
-  return '';
+  return (cfg[k] !== undefined && cfg[k] !== null && cfg[k] !== '') ? String(cfg[k]) : '';
 }
 
 // parseActiveBands() lives in bands.js (shared with swr.html).
 
 // One button per band, in the drawer's grid: a checkbox for active_bands membership only. Band and
-// frequency (band_sel, band<N>/ft4_band<N>) left Settings for the radio
+// frequency (band_sel, band<N>) left Settings for the radio
 // drawer's band grid and frequency row (webapp.md, Band and frequency).
 function buildBandRows(cfg) {
   var parsed = parseActiveBands(cfg.active_bands);
@@ -2095,26 +2083,21 @@ function bandForKhz(khz) {
   return null;
 }
 
-// The operating band's current frequency in kHz: an explicit bandN=/
-// ft4_bandN= override when CONFIG carries one, else BANDS[i]'s default for
-// the active protocol. Null when band_sel itself is unknown (no config yet).
-// The operating band's FT4 dial in kHz, where an FT4 channel beside FT8 listens: an ft4_bandN= override,
-// else BANDS[i]'s default. Null when band_sel is unknown.
+// The operating band's FT4 dial in kHz, where an FT4 channel beside FT8 listens: BANDS[i]'s.
+// Null when band_sel is unknown.
 function currentFt4DialKhz(cfg) {
   var idx = (cfg.band_sel !== undefined && cfg.band_sel !== null) ? parseInt(cfg.band_sel, 10) : NaN;
   var band = BANDS[idx];
-  if (!band) return null;
-  var fk = 'ft4_band' + idx;
-  return parseFloat(cfg[fk] !== undefined && cfg[fk] !== null && cfg[fk] !== '' ? cfg[fk] : band.ft4);
+  return band ? band.ft4 : null;
 }
 
+// The operating band's current frequency in kHz: an explicit bandN= override when CONFIG carries
+// one, else BANDS[i]'s FT8 default. Null when band_sel itself is unknown (no config yet).
 function currentDockFreqKhz(cfg) {
   var idx = (cfg.band_sel !== undefined && cfg.band_sel !== null) ? parseInt(cfg.band_sel, 10) : NaN;
   var band = BANDS[idx];
   if (!band) return null;
-  var override = bandFreq(cfg, idx);
-  var isFt4 = cfg.protocol_mode === 'FT4';
-  return parseFloat(override || (isFt4 ? band.ft4 : band.ft8));
+  return parseFloat(bandFreq(cfg, idx) || band.ft8);
 }
 
 // Stations store tenths of a kHz, so MHz needs at most 4 decimals -- trims
@@ -2219,10 +2202,6 @@ function setForm(cfg) {
   FIELDS.forEach(function (k) {
     var el = document.getElementById(k);
     if (!el) return;
-    if (k === 'protocol_mode') {
-      el.value = (cfg.protocol_mode === 'FT4') ? 'FT4' : 'FT8';
-      return;
-    }
     if (cfg[k] === undefined || cfg[k] === null) return;
     el.value = String(cfg[k]);
   });
@@ -2448,8 +2427,7 @@ document.getElementById('offset_src').onchange = function () {
 FIELDS.forEach(function (k) {
   document.getElementById(k).onchange = function () {
     var v = this.value;
-    if (k === 'protocol_mode') v = (v === 'FT4') ? 'FT4' : 'FT8';
-    else if (this.tagName === 'INPUT') v = v.trim();
+    if (this.tagName === 'INPUT') v = v.trim();
     putConfigLine(k + '=' + v, 'Setting ' + k.replace(/_/g, ' ') + '…', false)
       .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
   };
@@ -3619,11 +3597,6 @@ function endQueueAndTx() {
   return Promise.all(stops);
 }
 
-// The app's standard frequency for a band under the active protocol (BANDS).
-function standardKhz(band) {
-  return lastCfg.protocol_mode === 'FT4' ? band.ft4 : band.ft8;
-}
-
 // Operator-requested: a band change means every queued contact was for the
 // old band, and an in-flight TX on the old frequency should not continue
 // once the operator has already moved on -- so a band change cancels both
@@ -3641,11 +3614,11 @@ function standardKhz(band) {
 async function changeBand(idx) {
   var band = BANDS[parseInt(idx, 10)];
   if (!band) return false;
-  var std = standardKhz(band);
+  var std = band.ft8;
   if (String(band.i) === String(lastCfg.band_sel) && currentDockFreqKhz(lastCfg) === std) return true;
   if (!(await confirmRetune('Change band'))) return false;
   freqDirty = false;
-  var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + band.i;
+  var key = 'band' + band.i;
   endQueueAndTx().then(function () {
     return putConfigLine(key + '=' + std + '\nband_sel=' + band.i, 'Changing band…', true);
   }).catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
@@ -3669,7 +3642,7 @@ async function setOperatingBandFreq(khz) {
   if (isNaN(idx)) return false;
   var stopping = retuneEnds().length > 0;
   if (!(await confirmRetune('Change frequency'))) return false;
-  var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + idx;
+  var key = 'band' + idx;
   (stopping ? endQueueAndTx() : Promise.resolve()).then(function () {
     return putConfigLine(key + '=' + khz, 'Setting frequency…', true);
   }).then(refreshFreqInput)
@@ -3698,7 +3671,7 @@ async function switchToBandWithFreq(band, khz) {
     ok: 'Change band',
   });
   if (!yes) return false;
-  var key = (lastCfg.protocol_mode === 'FT4' ? 'ft4_band' : 'band') + band.i;
+  var key = 'band' + band.i;
   endQueueAndTx().then(function () {
     return putConfigLine(key + '=' + khz + '\nband_sel=' + band.i, 'Changing band…', true);
   }).catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
@@ -4039,12 +4012,10 @@ document.getElementById('rbStop').onclick = function () {
 };
 // ===================== Operate: countdown + parity (client clock, no wire dependency) =====================
 
-var PROTO_PERIOD_MS = { FT8: 15000, FT4: 7500 };
 var PASSBAND_HZ_MIN = 200, PASSBAND_HZ_MAX = 3000; // the decoder's passband
 
-function periodMs() {
-  return PROTO_PERIOD_MS[(lastCfg.protocol_mode === 'FT4') ? 'FT4' : 'FT8'];
-}
+// The station's own slot: FT8's (FT4 beside it is decoded, and replied to, in FT4's own slots).
+var SLOT_MS = 15000;
 
 // Last time /api/config actually answered with real values (not a cache
 // replay, not a "no reply from host" NAK -- see host_link.c's
@@ -4281,7 +4252,7 @@ function renderCountdown() {
     tag.className = '';
     return;
   }
-  var p = periodMs();
+  var p = SLOT_MS;
   var now = Date.now();
   var intoSlot = now % p;
   var parity = Math.floor(now / p) % 2;
@@ -4807,7 +4778,7 @@ function decodeColorClass(d) {
 // button, and the main board remembers only its last 64 decodes for a reply
 // (decode_pipeline.cpp), two or three slots on a busy band.
 function slotReplyOpen(slot, nowMs) {
-  var len = slot.lenMs || (lastCfg.protocol_mode === 'FT4' ? 7500 : 15000);
+  var len = slot.lenMs || SLOT_MS;
   return (nowMs - slot.ts) < 2 * len;
 }
 
@@ -4981,8 +4952,7 @@ function spotBadgeLabel(spot, refs) {
 }
 
 function slotMode(slot) {
-  if (slot.lenMs) return slot.lenMs < 10000 ? 'FT4' : 'FT8';
-  return lastCfg.protocol_mode === 'FT4' ? 'FT4' : 'FT8';
+  return slot.lenMs && slot.lenMs < 10000 ? 'FT4' : 'FT8';
 }
 
 var opLog = { file: '', rows: [], busy: false };
@@ -5573,7 +5543,7 @@ function applyEvent(e) {
     pendingDecodesSp = sp;
     pendingDecodesSi = si;
     pendingDecodesSl = e.sl || 0;
-    noteBandEvent(band, e, periodMs()); // counts toward the clock cue
+    noteBandEvent(band, e, SLOT_MS); // counts toward the clock cue
     // fq: the dial, in kHz to 0.1, at the middle of this decode's signal; 0
     // when the host does not know it.
     pendingDecodes.push({ id: e.id, dt: e.dt, hz: e.hz, snr: e.snr, x: e.x,
@@ -5604,7 +5574,7 @@ function applyEvent(e) {
     noteTxHud(swrTrack, txHud);
     if (txHud.active) PskrLive.noteTx();
   } else if (e.d === 8 || e.d === 0) {
-    noteBandEvent(band, e, periodMs());
+    noteBandEvent(band, e, SLOT_MS);
   } else if (e.d === 7) {
     // The radio told the main board its state changed (AI2;): a knob turn, a mode or split change,
     // TX starting or ending. Put it where the poll would, so the bar follows at once; the next
