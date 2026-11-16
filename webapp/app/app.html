@@ -837,13 +837,13 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
           <div class="hd sep">In the radio</div>
           <div class=setrow id=radioTuneRow hidden>
             <label class=fld><span>Tune power (%)</span>
-              <input id=radio_tune_pct class=num type=number min=0 max=100 step=1 inputmode=numeric autocomplete=off>
+              <input id=radio_tune_pct class=num type=number min=0 max=99 step=1 inputmode=numeric autocomplete=off>
             </label>
           </div>
           <p class=setnote>The power of the radio's SWR Tune carrier, used by Tune, the SWR sweep and amplifier priming. The sweep reads best at 25% or more.</p>
           <div class=setrow id=radioPaVoltsRow hidden>
             <label class=fld><span>Max. PA voltage (V)</span>
-              <input id=radio_pa_volts class=num type=number min=0 step=0.1 inputmode=decimal autocomplete=off>
+              <input id=radio_pa_volts class=num type=number min=0 max=99.9 step=0.1 inputmode=decimal autocomplete=off>
             </label>
           </div>
           <p class=setnote>The ceiling on the voltage the radio gives its power amplifier, which sets its output power: lower it for less power.</p>
@@ -3061,11 +3061,22 @@ function renderAmpPttCheck(cfg) {
 // Settings › Radio & bands › In the radio: the radio's own settings, each by its config-reply key and
 // its row (architecture/radio.md, The radio's settings in Radio & bands). A row shows once the main
 // board has read the setting from this radio; a change is posted to /api/radio/setting and written to
-// the radio, whose next read is what the field then shows. Nothing is stored on the station.
+// the radio, whose next read is what the field then shows. Nothing is stored on the station. Each takes
+// what the radio's own menu editor takes (digits before the point, decimals after), as the main board
+// checks (kQmxSettingShape, qmx_menu_read.h): the QMX stores anything an MM write sends.
 var RADIO_SETTINGS = [
-  { key: 'radio_tune_pct', row: 'radioTuneRow', name: 'Tune power' },
-  { key: 'radio_pa_volts', row: 'radioPaVoltsRow', name: 'Max. PA voltage' },
+  { key: 'radio_tune_pct', row: 'radioTuneRow', name: 'Tune power', digits: 2, decimals: 0 },
+  { key: 'radio_pa_volts', row: 'radioPaVoltsRow', name: 'Max. PA voltage', digits: 2, decimals: 1 },
 ];
+
+// Why a value cannot be sent for setting `s`, or null when it can: the words the main board uses.
+function radioSettingRefusal(s, v) {
+  if (!/^\d+(\.\d+)?$/.test(v)) return s.name + ': a number';
+  var parts = v.split('.');
+  if (parts[0].length <= s.digits && (parts[1] || '').length <= s.decimals) return null;
+  var max = new Array(s.digits + 1).join('9') + (s.decimals ? '.' + new Array(s.decimals + 1).join('9') : '');
+  return s.name + ': 0 to ' + max + (s.decimals === 1 ? ', one decimal place' : s.decimals > 1 ? ', two or more decimal places' : '');
+}
 
 function renderRadioSettings(cfg) {
   var any = false;
@@ -3089,8 +3100,9 @@ RADIO_SETTINGS.forEach(function (s) {
   var input = document.getElementById(s.key);
   input.onchange = function () {
     var v = input.value.trim();
-    if (!/^\d+(\.\d+)?$/.test(v)) {
-      failMsg(s.name + ': a number');
+    var why = radioSettingRefusal(s, v);
+    if (why) {
+      failMsg(why);
       input.value = String(lastCfg[s.key] || '');
       return;
     }

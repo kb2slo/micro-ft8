@@ -401,6 +401,12 @@ static const char* qmx_set_ptt_outputs(radio_ptt_keying_t keying) {
 static const char* qmx_set_setting(radio_setting_t setting, const char* value) {
     if (setting < 0 || setting >= kQmxSettingCount) return "unknown setting";
     if (!qmx_setting_value_ok(value)) return "not a number";
+    if (!qmx_setting_value_fits(setting, value)) {
+        // The radio would store it anyway: its own editor is the only limit (qmx_menu_read.h).
+        static char why[48];
+        qmx_setting_range_text(setting, why, sizeof(why));
+        return why;
+    }
     if (const char* why = write_refusal()) return why;
     if (!s_config.settings[setting][0]) return "the radio did not report this setting";
     snprintf(s_setting_value, sizeof(s_setting_value), "%s", value);

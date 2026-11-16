@@ -21,12 +21,28 @@ static constexpr int kQmxMenuBandColumns = 16;  // Band config.[16] on QMX 1_04_
 static constexpr int64_t kQmxMenuReplyMs = 1000;
 
 // The radio's settings that Settings > Radio & bands shows and writes (radio_setting_t, radio_control.h),
-// each by its Menu Manager path. A setting is a line here and a key there.
+// each by its Menu Manager path and the shape its own menu editor takes. A setting is a line here and a
+// key there.
 static constexpr int kQmxSettingCount = 2;
 static constexpr int kQmxSettingValueMax = 12;  // RADIO_SETTING_VALUE_MAX
 static constexpr const char* kQmxSettingPath[kQmxSettingCount] = {
     "Protection|Tune %",          // RADIO_SETTING_TUNE_PCT: a byte, "25"
     "Protection|Max. PA voltage",  // RADIO_SETTING_PA_VOLTS: a decimal, "11.5" (QMX 1_04_010, 2026-11-15)
+};
+
+// What the radio's own menu editor lets an operator enter for each setting: whole digits, and digits
+// after the point. The QMX stores whatever an MM write sends (Tune % 250 was taken and shown on its
+// menu, 1_04_010, 2026-11-16), so this is the only range check (architecture/radio.md, The radio's
+// settings in Radio & bands). Read from each item's description (`MM<path>?;`, its param: the
+// editor's width), as tools/qmx_menu_probe printed it: Tune % a byte of 2, Max. PA voltage a decimal
+// of 4 ("11.5").
+struct QmxSettingShape {
+    int8_t digits;    // before the point
+    int8_t decimals;  // after it; 0: a whole number
+};
+static constexpr QmxSettingShape kQmxSettingShape[kQmxSettingCount] = {
+    {2, 0},  // Tune %: 0 to 99
+    {2, 1},  // Max. PA voltage: 0 to 99.9
 };
 
 // A Band config. flag: 1 ENABLED, 0 DISABLED, -1 not read (refused, or not a known value).

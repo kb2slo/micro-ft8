@@ -271,6 +271,25 @@ int main()
         expect(run(w, radio, &sent) == QmxMenuWriteAction::Failed && w.refused, "setting refused");
     }
 
+    // Only what the radio's own editor takes: Tune % two whole digits, Max. PA voltage two and one
+    // decimal. 250 was stored by a QMX over MM on 2026-11-16, so these are refused before any write.
+    expect(qmx_setting_value_fits(0, "0") && qmx_setting_value_fits(0, "30") && qmx_setting_value_fits(0, "99"),
+           "Tune %: 0 to 99");
+    expect(!qmx_setting_value_fits(0, "250") && !qmx_setting_value_fits(0, "100") && !qmx_setting_value_fits(0, "30.5"),
+           "Tune %: not 250, not 100, not a decimal");
+    expect(qmx_setting_value_fits(1, "11.5") && qmx_setting_value_fits(1, "9") && qmx_setting_value_fits(1, "99.9"),
+           "PA voltage: 0 to 99.9");
+    expect(!qmx_setting_value_fits(1, "9.25") && !qmx_setting_value_fits(1, "100") && !qmx_setting_value_fits(1, "-1"),
+           "PA voltage: not two decimals, not three digits, not signed");
+    expect(!qmx_setting_value_fits(2, "1") && !qmx_setting_value_fits(-1, "1"), "no such setting");
+    {
+        char text[48];
+        qmx_setting_range_text(0, text, sizeof(text));
+        expect(strcmp(text, "0 to 99") == 0, "Tune %'s range in words");
+        qmx_setting_range_text(1, text, sizeof(text));
+        expect(strcmp(text, "0 to 99.9, one decimal place") == 0, "PA voltage's range in words");
+    }
+
     // Only a plain number goes to the radio.
     expect(qmx_setting_value_ok("40") && qmx_setting_value_ok("12.5"), "plain numbers");
     expect(!qmx_setting_value_ok("") && !qmx_setting_value_ok("-5") && !qmx_setting_value_ok("4;MU"),

@@ -175,7 +175,7 @@ A menu and eight pages, one shown at a time inside the tab (`showSetPage()`), so
 
 ### Settings › Radio & bands: In the radio
 
-The radio's own settings (`RADIO_SETTINGS`, `renderRadioSettings()`; [radio.md](radio.md), **The radio's settings in Radio & bands**): **Tune power (%)** and **Max. PA voltage (V)**. A row shows once the main board has read its setting from this radio (`radio_tune_pct`, `radio_pa_volts` in the config reply), and the section hides when none is, as with the HL2. A change posts `/api/radio/setting` with `<key>=<value>`; a value that is not a plain number is refused in the page and the field reset. While `radio_setting_write` reads `writing`, the fields are disabled and a line says so, and a failure stays in amber. The field then shows what the radio's next read holds. Nothing is stored on the station.
+The radio's own settings (`RADIO_SETTINGS`, `renderRadioSettings()`; [radio.md](radio.md), **The radio's settings in Radio & bands**): **Tune power (%)** and **Max. PA voltage (V)**. A row shows once the main board has read its setting from this radio (`radio_tune_pct`, `radio_pa_volts` in the config reply), and the section hides when none is, as with the HL2. A change posts `/api/radio/setting` with `<key>=<value>`; a value the radio's own menu editor would not take (not a plain number, or outside its digits: Tune power 0 to 99, Max. PA voltage 0 to 99.9 with one decimal; `radioSettingRefusal()`) is refused in the page with the range, and the field reset. While `radio_setting_write` reads `writing`, the fields are disabled and a line says so, and a failure stays in amber. The field then shows what the radio's next read holds. Nothing is stored on the station.
 
 ### Settings › Amplifier: the PTT check
 
