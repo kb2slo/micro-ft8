@@ -28,8 +28,10 @@ typedef enum {
 void http_worker_start(void);
 
 // From the server's task only: hands `req` to worker `w`, which runs `fn` on a copy of it and answers. On
-// ESP_OK the request is the worker's and the caller returns at once; otherwise nothing was handed over and
-// the caller runs `fn` itself. `t0_us` is when the server took the request, for the slow-request note.
+// ESP_OK the request is answered or will be (by the worker; or busy, 503, when there was no memory for the
+// copy, since running it here could overlap the worker's own handler) and the caller returns at once. Only
+// when worker `w` was never started does it return an error, and the caller runs `fn` itself, as before.
+// `t0_us` is when the server took the request, for the slow-request note.
 esp_err_t http_worker_submit(http_worker_id_t w, httpd_req_t *req, http_worker_fn fn, int64_t t0_us);
 
 // Writes `SK slow <method> <uri> <ms> ms <client>` into the event ring when a request took longer than

@@ -154,9 +154,15 @@ esp_err_t http_worker_submit(http_worker_id_t id, httpd_req_t *req, http_worker_
     }
     worker_t *wk = &s_workers[id];
     httpd_req_t *copy = NULL;
-    const esp_err_t err = httpd_req_async_handler_begin(req, &copy);
-    if (err != ESP_OK) {
-        return err;  // nothing handed over: the caller runs it, as before
+    if (httpd_req_async_handler_begin(req, &copy) != ESP_OK) {
+        // No memory for the copy. Running it here instead could overlap the worker's own handler: a second
+        // wait on the main board's one reply slot, or a file read while the files worker unmaps the pushed app.
+        // So it is answered busy, on this task, and the page asks again.
+        ESP_LOGW(TAG, "%s: no memory to hand %s over, answered busy", wk->name, req->uri);
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"sidekick busy\"}");
+        return ESP_OK;
     }
     work_t w = { .req = copy, .fn = fn, .t0_us = t0_us };
     if (xQueueSend(wk->queue, &w, 0) != pdTRUE) {

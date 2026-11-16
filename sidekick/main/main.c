@@ -1,9 +1,11 @@
 #include <inttypes.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_app_desc.h"
+#include "esp_heap_caps.h"
 #include "esp_idf_version.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -180,6 +182,30 @@ static void button_check_hold(void)
     }
 }
 
+// Each time the lowest free internal heap since boot falls a further HEAP_LOW_STEP below HEAP_LOW_FROM, writes
+// what came with it into the event ring, so a low can be matched to its cause with no console
+// (docs/architecture/sidekick.md, Tasks and cores).
+#define HEAP_LOW_FROM (48 * 1024)
+#define HEAP_LOW_STEP (4 * 1024)
+
+static void heap_low_check(void)
+{
+    static size_t reported = HEAP_LOW_FROM;
+    const size_t min = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL);
+    if (min + HEAP_LOW_STEP > reported) {
+        return;
+    }
+    reported = min;
+    const net_tcp_t tcp = net_health_last();
+    char line[128];
+    snprintf(line, sizeof(line), "SK heap low %u free %u big %u tcp %lu/%lu wq %lu/%lu", (unsigned)min,
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), (unsigned long)tcp.used,
+             (unsigned long)tcp.held, (unsigned long)http_worker_queue_peak(HTTP_WORKER_MAIN_BOARD),
+             (unsigned long)http_worker_queue_peak(HTTP_WORKER_FILES));
+    host_link_log(line);
+}
+
 void app_main(void)
 {
     ESP_LOGI(TAG, "Micro-FT8 sidekick booting (IDF %s)", esp_get_idf_version());
@@ -217,6 +243,7 @@ void app_main(void)
         button_check_hold();
         net_health_sample();
         http_worker_watch(wifi_prov_httpd());
+        heap_low_check();
         if (heartbeat % 5 == 0) {
             // With the link's and the network's health: on the console, out of band, so a stalled web server
             // still shows (docs/architecture/sidekick.md, Tasks and cores).
