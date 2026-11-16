@@ -64,10 +64,9 @@ function extractVarLine(text, name) {
 }
 
 const extracted = [
-  extractVarLine(src, 'pendingDecodes'),
-  extractVarLine(src, 'pendingDecodesSp'),
-  extractVarLine(src, 'pendingDecodesSi'),
-  extractVarLine(src, 'pendingDecodesSl'),
+  extractVarLine(src, 'pendingBatches'),
+  extractFunction(src, 'newPendingBatch'),
+  extractFunction(src, 'flushDecodeBatches'),
   extractVarLine(src, 'slotState'),
   extractVarLine(src, 'decodeSlots'),
   extractVarLine(src, 'DECODE_SLOTS_MAX'),
@@ -124,6 +123,36 @@ function check(name, fn) {
   }
 }
 
+// ---- FT4 beside FT8: an FT4 decode between one FT8 slot's decodes (bench, 2026-11-16) ----
+// One open batch for both modes split the FT8 slot in two around it: 19:08:15-30z showed twice.
+check('an FT4 decode arriving between one FT8 slot\'s decodes does not split that slot', () => {
+  const sb = freshSandbox();
+  const ft8 = (id, x) => decodeEvt(id, 0.1, 1000 + id, -5, x, { si: 119657077, sl: 150, fq: 14074000 });
+  const ft4 = (id, x) => decodeEvt(id, 0.1, 1000 + id, -5, x, { si: 239314154, sl: 75, fq: 14080000 });
+  [ft8(1, 'CQ A1AA FN20'), ft8(2, 'CQ B1BB FN20'), ft4(3, 'CQ C1CC FN20'), ft8(4, 'CQ D1DD FN20')].forEach(sb.applyEvent);
+  sb.flushDecodeBatches();
+  assert.strictEqual(sb.decodeSlots.length, 2, 'one FT8 batch and one FT4 batch');
+  const ft8Slot = sb.decodeSlots.find((s) => s.lenMs === 15000);
+  const ft4Slot = sb.decodeSlots.find((s) => s.lenMs === 7500);
+  assert.strictEqual(ft8Slot.length, 3, 'the FT8 slot keeps all three');
+  assert.strictEqual(ft4Slot.length, 1);
+  // The FT8 slot ends at 19:08:30 and the FT4 one at 19:08:22.5: the later is on top.
+  assert.strictEqual(sb.decodeSlots[0], ft8Slot, 'the slot that ends later is first');
+});
+
+check('each mode still starts a new batch on its own next slot', () => {
+  const sb = freshSandbox();
+  const ft8 = (id, si) => decodeEvt(id, 0.1, 1000 + id, -5, 'CQ A1AA FN20', { si: si, sl: 150, fq: 14074000 });
+  const ft4 = (id, si) => decodeEvt(id, 0.1, 1000 + id, -5, 'CQ C1CC FN20', { si: si, sl: 75, fq: 14080000 });
+  // FT4's next slot closes its first, with FT8's slot still open across both (DECODE_SLOTS_MAX is 3).
+  [ft4(1, 200), ft8(2, 100), ft4(3, 201), ft8(4, 100)].forEach(sb.applyEvent);
+  sb.flushDecodeBatches();
+  assert.strictEqual(sb.decodeSlots.length, 3, 'one FT8 slot and two FT4 slots');
+  assert.strictEqual(sb.decodeSlots.filter((s) => s.lenMs === 7500).length, 2, 'FT4 split on its own next slot');
+  const ft8Slot = sb.decodeSlots.find((s) => s.lenMs === 15000);
+  assert.strictEqual(ft8Slot.length, 2, 'FT8 kept both of its slot\'s decodes across FT4\'s');
+});
+
 // ---- The reported bug: two real slots land in one poll response ----------
 check('two real slots in one poll render as two separate batches, not one', () => {
   const sb = freshSandbox();
@@ -135,7 +164,7 @@ check('two real slots in one poll render as two separate batches, not one', () =
     decodeEvt(3, 0.0, 844, 5, 'CQ TI5RR EK70'),
   ];
   events.forEach(sb.applyEvent);
-  sb.flushDecodeBatch(); // pollEvents() always flushes whatever remains at the end of a poll
+  sb.flushDecodeBatches(); // pollEvents() always flushes whatever remains at the end of a poll
 
   assert.strictEqual(sb.decodeSlots.length, 2, 'expected one batch per real slot');
   // decodeSlots is newest-first (unshift).
@@ -159,7 +188,7 @@ check('decodes from a single real slot still render as one batch', () => {
     decodeEvt(2, 1.5, 562, 12, 'CQ W6ACT CM97'),
   ];
   events.forEach(sb.applyEvent);
-  sb.flushDecodeBatch();
+  sb.flushDecodeBatches();
 
   assert.strictEqual(sb.decodeSlots.length, 1);
   assert.strictEqual(sb.decodeSlots[0].length, 2);
@@ -173,7 +202,7 @@ check('decodes before any SLOT_STATE is seen do not crash or wrongly split', () 
     decodeEvt(2, 1.5, 562, 12, 'CQ W6ACT CM97'),
   ];
   events.forEach(sb.applyEvent);
-  sb.flushDecodeBatch();
+  sb.flushDecodeBatches();
 
   assert.strictEqual(sb.decodeSlots.length, 1);
   assert.strictEqual(sb.decodeSlots[0].length, 2);
@@ -188,7 +217,7 @@ check('decodeSlots stays capped at DECODE_SLOTS_MAX after a multi-slot poll', ()
     events.push(decodeEvt(slot, 0, 800, 10, 'CQ N0CALL AA00'));
   }
   events.forEach(sb.applyEvent);
-  sb.flushDecodeBatch();
+  sb.flushDecodeBatches();
 
   assert.strictEqual(sb.decodeSlots.length, sb.DECODE_SLOTS_MAX);
 });
@@ -203,7 +232,7 @@ const SLOT = 119267489; // a 2026 FT8 slot index; it ends at (SLOT + 1) * 15 s
 check('a v2 slot is timed at its end, on the 15 s grid', () => {
   const sb = freshSandbox();
   sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ K1ABC FN42', { si: SLOT, sl: 150, fq: 7074000 }));
-  sb.flushDecodeBatch();
+  sb.flushDecodeBatches();
   assert.strictEqual(sb.decodeSlots[0].ts, (SLOT + 1) * 15000);
   assert.strictEqual((sb.decodeSlots[0].ts / 1000) % 15, 0);
   assert.strictEqual(sb.decodeSlots[0].freqKhz, '7074');
@@ -212,7 +241,7 @@ check('a v2 slot is timed at its end, on the 15 s grid', () => {
 check('an FT4 slot ends on its 7.5 s grid', () => {
   const sb = freshSandbox();
   sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ K1ABC FN42', { si: 2 * SLOT + 1, sl: 75, fq: 7047500 }));
-  sb.flushDecodeBatch();
+  sb.flushDecodeBatches();
   assert.strictEqual(sb.decodeSlots[0].ts, (2 * SLOT + 2) * 7500);
   assert.strictEqual(sb.decodeSlots[0].freqKhz, '7047.5');
 });
@@ -220,7 +249,7 @@ check('an FT4 slot ends on its 7.5 s grid', () => {
 check('the host\'s frequency labels a slot, not the config current when it arrives', () => {
   const sb = freshSandbox(); // lastCfg says 15 m / 21074: the radio has moved on since
   sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ K1ABC FN42', { si: SLOT, sl: 150, fq: 7074000 }));
-  sb.flushDecodeBatch();
+  sb.flushDecodeBatches();
   assert.strictEqual(sb.decodeSlots[0].freqKhz, '7074');
   assert.strictEqual(sb.decodeSlots[0].band, ''); // named from freqKhz when drawn
 });
@@ -231,7 +260,7 @@ check('a slot retuned partway through becomes two batches with the same time, an
   sb.applyEvent(decodeEvt(1, 0.1, 900, -3, 'CQ K1ABC FN42', { si: SLOT, sl: 150, fq: 14074000 }));
   sb.applyEvent(decodeEvt(2, 0.2, 1200, -8, 'CQ W2DEF FN20', { si: SLOT, sl: 150, fq: 7074000 }));
   sb.applyEvent(decodeEvt(3, 0.3, 1500, -12, 'CQ N3GHI FN10', { si: SLOT, sl: 150, fq: 14074000 }));
-  sb.flushDecodeBatch();
+  sb.flushDecodeBatches();
   assert.strictEqual(sb.decodeSlots.length, 2);
   const byFreq = {};
   sb.decodeSlots.forEach(slot => { byFreq[slot.freqKhz] = slot; });
@@ -244,7 +273,7 @@ check('a decode with no frequency joins its slot\'s named frequency instead of f
   const sb = freshSandbox();
   sb.applyEvent(decodeEvt(1, 0.1, 900, -3, 'CQ K1ABC FN42', { si: SLOT, sl: 150, fq: 0 }));
   sb.applyEvent(decodeEvt(2, 0.2, 1200, -8, 'CQ W2DEF FN20', { si: SLOT, sl: 150, fq: 14074000 }));
-  sb.flushDecodeBatch();
+  sb.flushDecodeBatches();
   assert.strictEqual(sb.decodeSlots.length, 1);
   assert.strictEqual(sb.decodeSlots[0].length, 2);
   assert.strictEqual(sb.decodeSlots[0].freqKhz, '14074');
@@ -254,7 +283,7 @@ check('the next v2 slot starts a new batch without any SLOT_STATE parity flip', 
   const sb = freshSandbox();
   sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ K1ABC FN42', { si: SLOT, sl: 150, fq: 7074000 }));
   sb.applyEvent(decodeEvt(2, 0.1, 900, -5, 'CQ K1ABC FN42', { si: SLOT + 1, sl: 150, fq: 7074000 }));
-  sb.flushDecodeBatch();
+  sb.flushDecodeBatches();
   assert.strictEqual(sb.decodeSlots.length, 2);
   assert.strictEqual(sb.decodeSlots[0].ts - sb.decodeSlots[1].ts, 15000);
 });
@@ -263,7 +292,7 @@ check('without slot fields (a v1 host), a batch takes the latest config and arri
   const sb = freshSandbox();
   const before = Date.now();
   sb.applyEvent(decodeEvt(1, 0.1, 900, -5, 'CQ K1ABC FN42'));
-  sb.flushDecodeBatch();
+  sb.flushDecodeBatches();
   assert.strictEqual(sb.decodeSlots[0].freqKhz, '21074');
   assert.strictEqual(sb.decodeSlots[0].band, '15m');
   assert(sb.decodeSlots[0].ts >= before);
@@ -378,7 +407,7 @@ check("a reload's /api/state reply replaces the cached slots, queue and TX HUD",
   const sb = freshSandbox();
   // What loadStateCache() restored: a slot from long ago, a finished QSO, a transmission.
   sb.applyEvent(decodeEvt(7, 0.1, 900, -5, 'CQ OLD1 FN42', { si: SLOT - 400, sl: 150, fq: 14074000 }));
-  sb.flushDecodeBatch();
+  sb.flushDecodeBatches();
   sb.queue = { 9: { dxcall: 'OLD1', state: 2 } };
   sb.queueOrder = ['9'];
   sb.txHud = { active: true };
@@ -388,7 +417,7 @@ check("a reload's /api/state reply replaces the cached slots, queue and TX HUD",
     decodeEvt(1, 0.1, 900, -5, 'CQ N6HAN CM87', { si: SLOT, sl: 150, fq: 14074000 }),
     decodeEvt(2, 0.0, 1200, -12, 'AG6AQ N6HAN -12', { si: SLOT + 1, sl: 150, fq: 14074000 }),
   ].forEach(sb.applyEvent);
-  sb.flushDecodeBatch();
+  sb.flushDecodeBatches();
 
   assert.strictEqual(sb.decodeSlots.length, 2, 'only the slots the sidekick has');
   assert.strictEqual(sb.decodeSlots.map((sl) => sl[0].x).join('|'), 'AG6AQ N6HAN -12|CQ N6HAN CM87');
