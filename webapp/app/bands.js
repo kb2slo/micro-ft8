@@ -2,7 +2,7 @@
 // Plain globals, like callinfo.js: there is no module system across these pages.
 // Index order matches the Station.txt band keys. ft8 and ft4 mirror the P4's
 // tables (kFt8DefaultKhz and kFt4DefaultKhz in poe_p4/main/porta_host.cpp) byte-for-byte,
-// since CONFIG only ever reports an *override* (bandN=/ft4_bandN=) when one
+// since CONFIG only ever reports an *override* (bandN=) when one
 // has actually been stored -- an un-set band has no value on the wire at all,
 // and this is the only place that knows what it defaults to.
 var BANDS = [

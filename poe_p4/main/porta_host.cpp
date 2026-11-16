@@ -20,7 +20,6 @@
 #include "porta.h"
 #include "porta_proto.h"
 #include "porta_host.h"
-#include "protocol.h"
 #include "qmx_transport.h"
 #include "qso_browse.h"
 #include "radio_select.h"
@@ -45,7 +44,6 @@ static bool s_seeded = false;
 static bool s_tune = false;
 static std::atomic<uint32_t> s_amp_prime_end_ms{0};
 
-extern const ProtocolConfig *g_protocol;
 extern AdifLoggerDedupe s_adif_logger_dedupe;
 
 // FT8 band names, in Station.txt band-index order.
@@ -56,8 +54,8 @@ static const float kFt8DefaultKhz[kStationBandCount] = {
     1840.f, 3573.f, 5357.f, 7074.f, 10136.f, 14074.f,
     18100.f, 21074.f, 24915.f, 28074.f, 50313.f, 144174.f,
 };
-// FT4's dials, as webapp/app/bands.js has them: where an FT4 channel beside FT8 listens unless Station.txt
-// sets ft4_band<N> (docs/architecture/decode.md, FT4).
+// FT4's dials, as webapp/app/bands.js has them: where an FT4 channel beside FT8 listens
+// (docs/architecture/decode.md, FT4).
 static const float kFt4DefaultKhz[kStationBandCount] = {
     1843.f, 3575.f, 5357.f, 7047.5f, 10140.f, 14080.f,
     18104.f, 21140.f, 24919.f, 28180.f, 50318.f, 144170.f,
@@ -102,8 +100,6 @@ static void station_seed_adv_defaults(void) {
     s_station.comment1 = "micro-ft8 /Radio";
     s_station.active_bands = "80 40 30 20 17 15 12 10";
     s_station.tries = AUTOSEQ_TRIES;
-    s_station.protocol_ft4 = false;
-    s_station.serialize_ft4_band_keys = false;
     set_station_call();
     s_seeded = true;
     sync_autoseq_station();
@@ -140,7 +136,6 @@ static void load_station_from_storage(void) {
         return;
     }
     station_parse(text, &s_station);
-    s_station.serialize_ft4_band_keys = s_station.protocol_ft4;
     set_station_call();
     sync_autoseq_station();
     ESP_LOGI(TAG, "loaded Station.txt call=%s grid=%s", s_station.call.c_str(),
@@ -371,8 +366,7 @@ int32_t porta_p4_station_ft4_dial_offset_hz(void) {
         return 0;
     }
     const double ft8_khz = s_station.band_freq_set[idx] ? s_station.band_freq[idx] : kFt8DefaultKhz[idx];
-    const double ft4_khz = s_station.ft4_band_freq_set[idx] ? s_station.ft4_band_freq[idx] : kFt4DefaultKhz[idx];
-    return (int32_t)lround((ft4_khz - ft8_khz) * 1000.0);
+    return (int32_t)lround((kFt4DefaultKhz[idx] - ft8_khz) * 1000.0);
 }
 
 bool porta_p4_station_amp_swr_guard(void) {
@@ -833,8 +827,7 @@ const char *porta_host_config_set(const char *key, const char *value) {
         }
     }
 
-    if (station_key_names_operating_band(key, s_station.band_sel,
-                                         g_protocol == &kProtocolFT4)) {
+    if (station_key_names_operating_band(key, s_station.band_sel)) {
         if (s_tune) {
             return "Tune is on";
         }
@@ -867,7 +860,6 @@ const char *porta_host_config_set(const char *key, const char *value) {
     const int radio_was = s_station.radio;
     const bool act_refs_was_empty = s_station.act_refs.empty();
     station_parse(line, &s_station);
-    s_station.serialize_ft4_band_keys = s_station.protocol_ft4;
     set_station_call();
 
     // Activation start (act_refs empty -> non-empty) picks the CQ's modifier
@@ -893,13 +885,12 @@ const char *porta_host_config_set(const char *key, const char *value) {
     }
 
     if (strcmp(key, "band_sel") == 0 || strcmp(key, "active_bands") == 0 ||
-        strncmp(key, "band", 4) == 0 || strncmp(key, "ft4_band", 8) == 0) {
+        strncmp(key, "band", 4) == 0) {
         const char *why = sync_vfo("porta config");
         // A write that names the band actually being operated
         // needs the VFO to have moved to mean what it says. Other band-ish
         // keys stay silent on a sync miss.
-        if (why && station_key_names_operating_band(key, s_station.band_sel,
-                                                      g_protocol == &kProtocolFT4)) {
+        if (why && station_key_names_operating_band(key, s_station.band_sel)) {
             ESP_LOGI(TAG, "config %s=%s (saved, VFO not moved: %s)", key, value, why);
             if (strcmp(why, "TX active") == 0 || strcmp(why, "CAT not ready") == 0) {
                 return station_vfo_refusal(key, strcmp(why, "TX active") == 0);

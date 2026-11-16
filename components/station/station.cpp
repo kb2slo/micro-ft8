@@ -199,7 +199,6 @@ enum class StationKey {
     ActiveBands,
     Tries,
     TxMinDelay,
-    ProtocolMode,
     ActRefs,
     Unknown,
 };
@@ -225,7 +224,6 @@ StationKey key_from_name(const std::string& name)
     if (name == "active_bands") return StationKey::ActiveBands;
     if (name == "tries") return StationKey::Tries;
     if (name == "tx_min_delay_ms") return StationKey::TxMinDelay;
-    if (name == "protocol_mode") return StationKey::ProtocolMode;
     if (name == "act_refs") return StationKey::ActRefs;
     return StationKey::Unknown;
 }
@@ -332,11 +330,6 @@ void apply_key(StationSettings* io, StationKey key, const std::string& value)
                 io->tx_min_delay_ms = val;
             }
             break;
-        case StationKey::ProtocolMode: {
-            std::string mode = trim_upper_copy(value);
-            io->protocol_ft4 = (mode == "FT4");
-            break;
-        }
         case StationKey::ActRefs:
             io->act_refs = normalize_act_refs(value);
             break;
@@ -357,13 +350,6 @@ void apply_line(StationSettings* io, const std::string& raw)
 
     int idx = -1;
     float fval = 0.0f;
-    if (sscanf(line.c_str(), "ft4_band%d=%f", &idx, &fval) == 2) {
-        if (idx >= 0 && idx < kStationBandCount) {
-            io->ft4_band_freq[idx] = fval;
-            io->ft4_band_freq_set[idx] = true;
-        }
-        return;
-    }
     if (sscanf(line.c_str(), "band%d=%f", &idx, &fval) == 2) {
         if (idx >= 0 && idx < kStationBandCount) {
             io->band_freq[idx] = fval;
@@ -428,17 +414,14 @@ void station_parse(const std::string& text, StationSettings* io)
 std::string station_serialize(const StationSettings& in)
 {
     std::string out;
-    const char* band_prefix = in.serialize_ft4_band_keys ? "ft4_band" : "band";
-    const float* freqs = in.serialize_ft4_band_keys ? in.ft4_band_freq : in.band_freq;
-    const bool* set = in.serialize_ft4_band_keys ? in.ft4_band_freq_set : in.band_freq_set;
     for (int i = 0; i < kStationBandCount; ++i) {
-        if (!set[i]) {
+        if (!in.band_freq_set[i]) {
             continue;
         }
         char key[16];
-        snprintf(key, sizeof(key), "%s%d", band_prefix, i);
+        snprintf(key, sizeof(key), "band%d", i);
         char fbuf[16];
-        format_freq(freqs[i], fbuf, sizeof(fbuf));
+        format_freq(in.band_freq[i], fbuf, sizeof(fbuf));
         put_str(out, key, fbuf);
     }
     put_int(out, "offset", in.offset_hz);
@@ -459,9 +442,6 @@ std::string station_serialize(const StationSettings& in)
     put_int(out, "amp_ptt", in.amp_ptt);
     put_int(out, "rx_ft4", in.rx_ft4 ? 1 : 0);
     put_int(out, "amp_prime_on_band_change", in.amp_prime_on_band_change ? 1 : 0);
-    if (in.protocol_ft4) {
-        out += "protocol_mode=FT4\n";
-    }
     put_str(out, "act_refs", in.act_refs);
     return out;
 }
@@ -512,13 +492,13 @@ bool station_key_known(const char* name)
             return true;
     }
     int idx = 0;
-    if (sscanf(name, "band%d", &idx) == 1 || sscanf(name, "ft4_band%d", &idx) == 1) {
+    if (sscanf(name, "band%d", &idx) == 1) {
         return idx >= 0 && idx < kStationBandCount;
     }
     return false;
 }
 
-bool station_key_names_operating_band(const char* key, int band_sel, bool protocol_ft4)
+bool station_key_names_operating_band(const char* key, int band_sel)
 {
     if (!key) {
         return false;
@@ -527,14 +507,7 @@ bool station_key_names_operating_band(const char* key, int band_sel, bool protoc
         return true;
     }
     int idx = -1;
-    if (sscanf(key, "ft4_band%d", &idx) == 1) {
-        return protocol_ft4 && idx == band_sel;
-    }
-    idx = -1;
-    if (sscanf(key, "band%d", &idx) == 1) {
-        return !protocol_ft4 && idx == band_sel;
-    }
-    return false;
+    return sscanf(key, "band%d", &idx) == 1 && idx == band_sel;
 }
 
 const char* station_vfo_refusal(const char* key, bool tx_active)
