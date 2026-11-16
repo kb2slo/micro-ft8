@@ -23,6 +23,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import dev_build  # noqa: E402
+import make_manifest  # noqa: E402
 
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 REMOTE = "origin"
@@ -103,6 +104,41 @@ def remote_tags() -> list[str]:
     return [line.split("refs/tags/", 1)[1] for line in lines if "refs/tags/" in line and not line.endswith("^{}")]
 
 
+def require_note(version: str, notes_dir: str = make_manifest.NOTES_DIR) -> None:
+    """Refuse a release with no note, or a malformed one, before it is tagged: the tag's CI job would
+    refuse it anyway (tools/make_manifest.py), after building both boards. The tree is clean and up to
+    date by now, so the note read here is the one the tag carries."""
+    try:
+        make_manifest.release_notes(version, notes_dir)
+    except make_manifest.ManifestError as exc:
+        raise Abort(str(exc))
+
+
+def approve_note(version: str, note: str, changes: list[str], ask, is_tty: bool) -> None:
+    """The maintainer approves the release's note, at a terminal (docs/RELEASE_PROCESS.md, Release
+    notes). `note` is the file as written, `changes` the commit subjects since the last release, `ask`
+    reads one line. Refused when input is not a terminal, so no script or agent can answer, and
+    approved only by typing the version: --yes never skips this."""
+    if not is_tty:
+        raise Abort("the release note is approved at a terminal by the maintainer; this input is not one")
+    print(f"\n--- the note operators will read before they update to {version} ---")
+    print(note.rstrip())
+    print(f"\n--- what changed since the last release ({len(changes)} commits) ---")
+    for subject in changes:
+        print(f"  {subject}")
+    answer = ask(f"\napprove this note? type {version} to approve: ").strip()
+    if answer != version:
+        raise Abort("the release note was not approved")
+
+
+def changes_since_last_release(tags: list[str]) -> list[str]:
+    """The commit subjects on HEAD since the newest release tag, or all of them before the first."""
+    numbered = sorted((n, t) for t in tags if (n := release_number(t)))
+    since = f"{numbered[-1][1]}..HEAD" if numbered else "HEAD"
+    out = run("git", "log", "--format=%s", since)
+    return out.splitlines() if out else []
+
+
 def require_dev_build(sha: str) -> None:
     """Refuse a commit whose dev build was not published (tools/dev_build.py)."""
     try:
@@ -168,6 +204,7 @@ def main() -> int:
         sha = require_up_to_date()
         require_tag_free(tag)
         require_newer(version, remote_tags())
+        require_note(version)
         require_dev_build(sha)
         if args.skip_ci_check:
             print("! skipping the CI check")
@@ -182,6 +219,14 @@ def main() -> int:
     print(f"  commit  {sha[:7]}  {subject}")
     print(f"  branch  {branch}")
     print(f"  CI      builds both boards and publishes {version} to GitHub and the stable channel")
+
+    try:
+        with open(os.path.join(make_manifest.NOTES_DIR, f"{version}.md"), encoding="utf-8") as f:
+            note = f.read()
+        approve_note(version, note, changes_since_last_release(remote_tags()), input, sys.stdin.isatty())
+    except Abort as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
     if not args.yes:
         if input("\npush this tag? [y/N] ").strip().lower() not in ("y", "yes"):

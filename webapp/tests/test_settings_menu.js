@@ -84,7 +84,7 @@ assert.strictEqual(model({ netMode: undefined, netName: '', netIp: '' }).network
 assert.deepStrictEqual(row(model({ paired: false }).pairing), ['Not paired · press the sidekick\'s button', 'amber', '!']);
 
 // Software update, highest first.
-// One Update for the station: the parts are not named here (docs/roadmap/ota-updates.md, antu).
+// One Update for the station: the parts are not named here (docs/architecture/updates.md, Constraints).
 assert.deepStrictEqual(row(model({ updateAvailable: true, appStale: true }).update), ['Update available', 'amber', '!']);
 assert.deepStrictEqual(row(model({ appStale: true }).update), ['The app has been updated · reload', 'amber', '!']);
 assert.deepStrictEqual(row(model({ fwChecked: false, fwNoNet: true }).update), ['Cannot check without internet', '', '']);

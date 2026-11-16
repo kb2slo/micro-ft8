@@ -17,7 +17,7 @@ POTA and SOTA from the field: the operator at a park or on a summit, others work
 
 ## Decided
 
-* **The reference store, if it is built, lives on the main board's `storage`, beside the log, capped; the sidekick has no data partition** ([ota-updates.md](ota-updates.md), **Decided**). Every reader of the store is the browser, so each read crosses Port A: a cost accepted to keep the station's data on one board. The active references stay on the main board, in `act_refs`.
+* **The reference store, if it is built, lives on the main board's `storage`, beside the log, capped; the sidekick has no data partition** ([updates.md](../architecture/updates.md), **Decided**). Every reader of the store is the browser, so each read crosses Port A: a cost accepted to keep the station's data on one board. The active references stay on the main board, in `act_refs`.
 * **The store is filled from the map's own POTA and SOTA fetches,** not a second download path.
 * **No `/P` feature.** It is a regional convention, not an FT8 or program requirement, and POTA counts `K1ABC/P` as a different call from `K1ABC`, which complicates P2P matching and dupes. The own-call field is free text, so a suffixed call still logs faithfully. Reopen if an operator in a jurisdiction that expects it asks.
 * **The reference stays off the air** ([logging.md](../architecture/logging.md), **Why not**).
@@ -102,4 +102,4 @@ Prior art read for this design (read, not copied): Ham2K PoLo (offline park and 
 
 * **Full reference databases on the device.** POTA's `all_parks_ext.csv` is 9.4 MB and SOTA's `summitslist.csv` 25.2 MB (2026-09-26), against 3 MB of main-board storage; an activator needs only the references near where they are going.
 * **The active activation in browser storage only:** evicted by Safari, invisible to a second phone, absent while the phone sleeps. The main board logs the QSO, so it holds the references.
-* **The store on the sidekick:** with the app inside the sidekick's image it would be the only reason for a data partition there ([ota-updates.md](ota-updates.md), **Why not**). What is taken on instead: a second hop over Port A, and new messages for data only the browser reads.
+* **The store on the sidekick:** with the app inside the sidekick's image it would be the only reason for a data partition there ([updates.md](../architecture/updates.md), **Why not**). What is taken on instead: a second hop over Port A, and new messages for data only the browser reads.

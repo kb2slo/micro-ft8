@@ -1,0 +1,49 @@
+# Updates
+
+After the first install over USB, every update of either board is over the air, started from the web app. This doc is the decisions that bind the whole update; how each part does its share is in the doc for that part:
+
+* **The sidekick:** the request, the download, the checks, staging, the trial, and the transfer down Port A ([sidekick.md](sidekick.md), **Firmware updates**); its flash layout ([sidekick.md](sidekick.md), **Hardware**); `/update`, the way back when the app will not load ([sidekick.md](sidekick.md), **Firmware updates**).
+* **The main board:** HELLO, the receiver, what `FW_END` checks, the trial, and the hold on transmit ([main_board.md](main_board.md), **Firmware updates**).
+* **The web app:** Settings › Software update, from the plan to the result ([webapp.md](webapp.md), **Settings › Software update**).
+* **Publishing:** the channels, the manifests, the images and release notes ([RELEASE_PROCESS.md](../RELEASE_PROCESS.md)).
+* **First install and recovery:** the Web Serial flasher on the downloads page writes a full merged image over USB ([sidekick.md](sidekick.md), **First install**; [main_board.md](main_board.md), **Two USB-C ports**).
+
+## Constraints
+
+* **No TLS and no signing on the device.** Trust comes from the browser's HTTPS fetch of the manifest ([system.md](system.md), **The inversion** and **Why not signing**).
+* **An update starts only by an operator's action in the app,** never remotely and never by itself (maintainer, 2026-11-12). The operator is asked to switch the radio off first and back on when it is done.
+* **One update, as the operator sees it** (maintainer, 2026-11-12). The app, the main board and the sidekick are parts of it, named in its progress and in a failure, and nowhere else offered or described apart.
+* **The main board has no network.** Its image reaches it over Port A.
+
+## Decided
+
+* **The sidekick downloads images itself,** not the phone: one path, not two (**Why not**).
+* **The operator is asked to switch the radio off for a firmware update, and nothing checks.** One left connected may need switching off and on afterwards; that is all a check would prevent, and two attempts at one cost more than it is worth ([main_board.md](main_board.md), **Firmware updates**).
+* **Nothing transmits during any step of an update** (maintainer, 2026-11-12, at the bench: a CQ went out through a 79 s transfer). From the tap to the end the main board holds transmit off and ends its queue; it goes on receiving, and the operator starts again afterwards.
+* **The boards update together** (maintainer, 2026-11-12). **Update** is offered only when a main board is linked and the sidekick has internet, and takes every part that differs to the published build; nothing is offered for part of a station, and a sidekick with no main board is not updated over the air at all (USB is the way out). Two boards cannot be made atomic, since each installs and restarts by itself: the main board goes first, so its failure changes nothing, and if the sidekick's then fails, the next **Update** finishes it. The app enforces this; the sidekick still takes a one-board request, which is how `install_firmware.py` sends a bench build.
+* **When both boards need updating, the main board goes first,** while the sidekick still speaks its protocol. **The `FW_*` messages are frozen across `PORTA_PROTO_VERSION` bumps,** so any two builds can always carry an update between them.
+* **A main-board image counts as good** once the Port A handshake with the sidekick completes after its restart; otherwise the bootloader rolls back. The update is reported done only when the version the board then reports equals the manifest's.
+* **Two channels, stable and dev.** Stable is a `v*` tag, cut by hand, semver; dev is every firmware build CI publishes from `main`, numbered by `main`'s commit count. A version carries its commit after a `+` (`0.1.0+ab12cd3`, `b1234+ab12cd3`); a local build reports its SHA alone, at a tagged commit too, so a bench build is never taken for a release. The boards compare versions as opaque strings, so none of this changes them.
+* **A station's channel is read from its main board's version,** with no stored setting: semver is stable, anything else dev. Within a channel only a newer build is offered; a part running something from outside the channel (a bench build) is offered the channel's build.
+* **An operator switches channel from Settings,** to an older build included: Settings names the station's channel and offers the other ("Switch to Stable (0.1.0)"), which is the one Update against the other channel's manifest, whatever its build number, the review saying when that build is older. The main board updates first, so a switch that fails halfway already reads as the new channel and the next Update finishes it.
+* **Each channel has its own manifest file,** owned by one CI job, so no job rewrites part of another's. The stable one records its commit's build number, which orders versions across the channels, and carries the release notes.
+* **Every release has a note for operators, shown before they update** (maintainer, 2026-11-14 and 15), since an update can remove or change what an operator uses and a version number says nothing of that ([RELEASE_PROCESS.md](../RELEASE_PROCESS.md), **Release notes**).
+* **A stable tag goes only on a commit whose dev build was published:** both boards' dated OTA images for it are on the mirror. `cut_release.py` refuses first, and the tag's CI job refuses before it publishes, so a tag pushed by hand cannot pass. A stable release is then code that could be run as a dev build first.
+* **A field result is recorded by commit, and counts for every build of that commit:** local, dev or stable. No check needs a build from CI, but the stable channel's own, which runs on real tags.
+* **The first stable tag, `v0.1.0`, is the first beta.** A beta is a named build for testers. It does not promise that an update keeps settings or a log, in either direction: that starts at 1.0 ([release-1-0.md](../roadmap/release-1-0.md#n75z)), so until then an older build may meet files a newer one wrote.
+* **A USB flash is a full wipe** (maintainer, 2026-11-15): for a new setup or a full recovery ([sidekick.md](sidekick.md), **First install**). Every other update is over the air.
+* **The web app is part of the sidekick's image** (maintainer, 2026-11-15): one artifact that updates, confirms and rolls back together, and a first install that needs no internet ([sidekick.md](sidekick.md), **Web root**). **An app change therefore reaches a dev station as a sidekick update,** and an app change reflashes the main board too, since every board whose version differs is offered. The cost is accepted until it bites.
+* **A bench push replaces the image's app only on the image it was pushed onto, and never on a release,** so any firmware change returns a station to its image's app ([sidekick.md](sidekick.md), **The bench push**).
+* **The sidekick has no filesystem:** two firmware slots and its settings in NVS ([sidekick.md](sidekick.md), **Hardware**). The station's data is the main board's.
+
+## Why not
+
+* **The phone relays the image:** it works in AP mode wherever the phone has signal, but the whole image sits in the browser as a Blob (Safari cannot stream a request body), and iOS suspends the page if the screen locks mid-upload.
+* **IP over Port A** (PPP, NAPT on the sidekick, lwIP and HTTP on the main board): a redesign of Port A that costs RAM on the main board and runs slower than raw chunks on the same wire, and it would let a main board download for itself, the unattended-update trigger for reopening signing. Reopen if a main board needs the network for something continuous that cannot be handed down over Port A.
+* **The P4 on its own Ethernet:** not a path this project uses ([main_board.md](main_board.md)).
+* **TLS on the sidekick:** not needed while the host serves plain HTTP ([sidekick.md](sidekick.md), **Why the sidekick has no TLS**). Reopen if the host ever forces HTTPS; measure the handshake's heap cost first, since the sidekick has no PSRAM.
+* **The sidekick downloads the app bundle and switches it in after the firmware confirms:** a downloader, staging and a second copy to roll back to, all of which the bootloader gives an app inside the image.
+* **A data partition on the sidekick,** for the app or for a park and summit store: with the app in the image it would exist for the store alone, and the station's data is the main board's ([activator-mode.md](../roadmap/activator-mode.md), **Decided**).
+* **App-only publishes sent to dev stations through the bench push,** to spare them a sidekick update: it would bring back a relay through the phone and the app's publishing, and each published app would have to name the one firmware build it goes with.
+* **An "Update available" line on Operate, or a banner:** Operate has none (operator decision 2026-10-25). The Settings tab's dot is the notice, and the progress sheet covers the radio bar on a phone following an update.
+* **A time left on the transfer:** the progress shows a percentage only.

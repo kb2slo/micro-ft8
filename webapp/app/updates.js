@@ -23,7 +23,7 @@ var FwUpdates = (function () {
 
   // board: the name the sidekick's API uses. asset: its key under the manifest's `assets`. The main
   // board is first: when both need updating it goes first, while the sidekick still speaks its
-  // protocol (docs/roadmap/ota-updates.md, Decided).
+  // protocol (docs/architecture/updates.md, Decided).
   var BOARDS = [
     { board: 'main', asset: 'poe_p4', label: 'Main board' },
     { board: 'sidekick', asset: 'sidekick', label: 'Sidekick' },
@@ -64,7 +64,7 @@ var FwUpdates = (function () {
   }
 
   // The station's channel, read from the version its main board reports, with no stored setting:
-  // a release is stable, anything else dev (docs/roadmap/ota-updates.md, Decided). The main board
+  // a release is stable, anything else dev (docs/architecture/updates.md, Decided). The main board
   // updates first, so a switch that fails halfway already reads as the channel it was going to,
   // and the next Update finishes it.
   function channelOf(running) {
@@ -106,6 +106,30 @@ var FwUpdates = (function () {
       });
     });
     return out;
+  }
+
+  // The release notes an update shows before it runs (docs/RELEASE_PROCESS.md, Release notes): from a
+  // stable manifest's `notes`, newest first, the releases after the one the main board runs, up to
+  // the one offered, so a station that skipped a release reads both. A switch from dev, or a main
+  // board on no release, shows the offered release's alone: a dev build is not ordered against a
+  // release by its number, and a dev station has run code at least as new. The dev channel has none.
+  function notesFor(manifest, running, switching) {
+    if (!manifest || manifest.channel !== 'stable' || !Array.isArray(manifest.notes)) return [];
+    var to = parseVersion(manifest.version);
+    if (!to) return [];
+    var was = parseVersion(running && running.main);
+    var after = !switching && was && was.channel === 'stable' ? was : null;
+    var lines = function (v) { return Array.isArray(v) ? v.filter(function (l) { return typeof l === 'string' && l; }) : []; };
+    var out = [];
+    manifest.notes.forEach(function (n) {
+      var v = n && parseVersion(n.version + '+0000000');
+      if (!v) return;
+      if (laterBuild(v, to)) return;
+      if (after ? !laterBuild(v, after) : v.label !== to.label) return;
+      out.push({ version: v.label, num: v.num, new: lines(n.new), changed: lines(n.changed), removed: lines(n.removed) });
+    });
+    out.sort(function (a, b) { return laterBuild({ channel: 'stable', num: a.num }, { channel: 'stable', num: b.num }) ? -1 : 1; });
+    return out.map(function (n) { return { version: n.version, new: n.new, changed: n.changed, removed: n.removed }; });
   }
 
   // One image's lines in POST /api/fw/start's body (sidekick/main/fw_policy.h, fw_request_parse()).
@@ -167,6 +191,7 @@ var FwUpdates = (function () {
       unavailable: !link.hostLinked ? 'no_host' : link.ap ? 'ap' : '',
       blocked: blocked,
       body: steps.map(startBody).join('next\n'),
+      notes: steps.length ? notesFor(manifest, running, !!switching) : [],
       // Measured 2026-11-10: a main board's update 98 s (74 s of it the transfer), the sidekick's 28
       // to 42 s.
       time: !main ? 'about a minute' : steps.length > 1 ? 'about three minutes' : 'about two minutes',
@@ -194,6 +219,12 @@ var FwUpdates = (function () {
       out.push('This station moves to the ' + CHANNEL_NAMES[p.target] + ' channel, ' + p.to + '.' +
         (p.older ? ' That is an older build than the one it runs.' : ''));
     }
+    (p.notes || []).forEach(function (n) {
+      out.push('What ' + n.version + ' changes:');
+      [['New', n.new], ['Changed', n.changed], ['Removed', n.removed]].forEach(function (k) {
+        k[1].forEach(function (l) { out.push(k[0] + ': ' + l); });
+      });
+    });
     out.push('Takes ' + p.time + '. Nothing transmits until the update is done.');
     out.push('Switch the radio off, or unplug its USB, before you update. If it stays connected it may ' +
       'need switching off and on afterwards.');
@@ -351,6 +382,7 @@ var FwUpdates = (function () {
     plan: plan,
     unavailableText: function (why) { return UNAVAILABLE_TEXT[why] || ''; },
     reviewText: reviewText,
+    notesFor: notesFor,
     offerNote: offerNote,
     stepRows: stepRows,
     busy: busy,

@@ -129,14 +129,15 @@ name, one under `ota/`, or one under `app/<number>/`, and nothing else nested (`
 python3 tools/cut_release.py 3.0.0
 ```
 
-That is the whole procedure. The script creates and pushes the annotated `v3.0.0` tag; CI does the rest.
+That, after its release note is committed (**Release notes**, below), is the whole procedure. The script creates and pushes the annotated `v3.0.0` tag; CI does the rest.
 It **edits no source file**, so there is no number to bump and therefore no bump commit for the tag to land
 on the wrong side of, which is the classic way a hand-run release ends up tagging the wrong thing. The tag
 names the published file, and the image reports the tag's number (above).
 
 It refuses, rather than warns, on: a dirty tree, not being on `main`, `HEAD` disagreeing with
 `origin/main`, a tag that already exists locally or on the remote, a number not greater than every release
-already tagged, a commit whose dev build was not published, and a commit CI has not run green.
+already tagged, a release with no note or a malformed one, a commit whose dev build was not published, and
+a commit CI has not run green.
 **A missing CI run counts as a failure, not as permission** (`--skip-ci-check` overrides deliberately, and
 says so on stdout). Then it prints the tag and commit and asks before pushing;
 `--yes` skips the prompt.
@@ -156,9 +157,39 @@ carry the past**. Back-compat becomes an obligation at 1.0 ([roadmap/release-1-0
 Version tags are immovable by convention: re-pointing one breaks the single guarantee a version number
 carries. To fix a bad release, cut the next one.
 
-Use lowercase `v`. No `v*` tag has been cut here yet; Wei's upstream tags are uppercase (`V1.1` …
+Use lowercase `v`. Wei's upstream tags are uppercase (`V1.1` …
 `V2.1b`). Git refs are case-sensitive and the trigger glob is `v*`, so a `V3.0.0` would silently build
 nothing.
+
+### Release notes
+
+**Every release has a note for operators, shown before they update** (maintainer, 2026-11-14 and 15). An update can remove or change what an operator uses, as the build of
+2026-11-13 did with Field Day and the free-text CQ, and a version number says nothing of that.
+
+* **Written in the repository,** `docs/releases/<x.y.z>.md`, committed before the tag, so the build can
+  require it: `# <x.y.z>`, then any of `## New`, `## Changed` and `## Removed`, each with one-line bullets
+  (`- `) of at most 200 characters, in an operator's words, naming what they see and tap. Nothing else is
+  allowed in the file, so every note can be shown as it is. Not GitHub's generated notes, which are a commit
+  list for contributors, and not text kept only on GitHub, which nothing here can check.
+* **Approved by the maintainer, twice** (maintainer, 2026-11-15). An agent may draft a note, from
+  `git log v<last>..main` and what an operator sees change; the maintainer approves its whole text in chat
+  before it is committed ([AGENTS.md](../AGENTS.md), **Chat gates**), and it reaches `main` in a pull request
+  before the tag. Then `tools/cut_release.py` prints the note as operators will read it, with the commit
+  subjects since the last release beside it, and tags only once the maintainer types the version to approve
+  it (`approve_note()`). It refuses to ask when its input is not a terminal, so no script or agent can
+  answer, and `--yes` skips only the tag prompt after it. So a release cannot be cut unattended; releases
+  are cut by hand anyway. Typing the version does not prove the note was read: it is a deliberate act at the
+  maintainer's keyboard, after the content was reviewed in the pull request.
+* **Required.** `tools/cut_release.py` refuses to tag a release with no note, or a malformed one, and
+  `tools/make_manifest.py` refuses to write its manifest, which fails the tag's job before anything is
+  published (`parse_note()`, host-tested by `tools/test_make_manifest.py` and `tools/test_cut_release.py`).
+* **Carried in the stable manifest,** as `notes`: this release's and every earlier one's, newest first,
+  each `{version, new, changed, removed}`. All of them, while there are few: a cap would need a rule for a
+  station older than the oldest carried. Revisit when the manifest grows. The dev manifest carries none.
+* **Shown in the review before an update** ([webapp.md](architecture/webapp.md), **Settings › Software
+  update**), and opening the GitHub release's text (`docs/releases/<number>.md` and then what each file is,
+  written by the tag's job).
+* `v0.1.0` has no note: it was cut before this, and nothing goes back to add one.
 
 ## If the project is renamed or de-forked
 

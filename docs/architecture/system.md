@@ -1,10 +1,10 @@
 # System architecture: the phone is the UI, the sidekick is a peripheral
 
-How the boards, the phone and the internet divide the work, and who may key the transmitter. Component detail, one doc per area: [sidekick.md](sidekick.md), [webapp.md](webapp.md), [radio.md](radio.md), [hl2.md](hl2.md), [autoseq.md](autoseq.md), [decode.md](decode.md), [ft8_lib.md](ft8_lib.md), [main_board.md](main_board.md), [memory.md](memory.md), [time.md](time.md), [logging.md](logging.md).
+How the boards, the phone and the internet divide the work, and who may key the transmitter. Component detail, one doc per area: [sidekick.md](sidekick.md), [webapp.md](webapp.md), [radio.md](radio.md), [hl2.md](hl2.md), [autoseq.md](autoseq.md), [decode.md](decode.md), [ft8_lib.md](ft8_lib.md), [main_board.md](main_board.md), [memory.md](memory.md), [time.md](time.md), [logging.md](logging.md), [updates.md](updates.md).
 
 ## The station
 
-The daily station is headless: a **P4 main board** (decode, TX, autoseq, log, the radio over USB host), an **AtomS3 Lite sidekick** (WiFi, HTTP server, web root), and a **phone browser as the only UI**. Updates: epic [ukk6](../roadmap/ota-updates.md).
+The daily station is headless: a **P4 main board** (decode, TX, autoseq, log, the radio over USB host), an **AtomS3 Lite sidekick** (WiFi, HTTP server, web root), and a **phone browser as the only UI**. Updates: [updates.md](updates.md).
 
 ## Constraints
 
@@ -64,7 +64,7 @@ A headless radio driven by a local HTTP API means any device on the network coul
 * **Reads are open on principle.** Anyone may listen to amateur transmissions, and Part 97 forbids obscuring their meaning, so decodes, status and the log are open to anyone who can reach the device. What needs authorization is *changing* the device: transmit control, firmware updates, a bench push of the app, every config write (WiFi credentials included, in AP mode as in station mode), and the clock sync (a write, even though idempotent). This is the reason reads are open, not convenience, and it rules out a read-scoped token: a watch-only guest needs no credential.
 * **The carve-out: a credential is not radio data.** A read that would return the WiFi password or the token stays guarded. That is why each route's policy is a required argument where it is registered rather than derived from the HTTP method: "GET is open" is silently wrong for the first route that returns a secret, and an undeclared route is a build error.
 * **Retrieving the token is a button press.** The token must be readable on demand, not merely resettable: a new phone, cleared storage, or Safari evicting script-writable storage after seven days unused all lose it. The AtomS3's user button (GPIO41, active low) opens a **one-shot** disclosure window: the first successful read claims and closes it, and it times out after a couple of minutes otherwise. Every page loads `/pairing.js`, which polls for the window and stores the token. The token is not rotated on retrieval, which would log out every paired browser. Gating on the button, not on AP mode, is the point: AP mode is normal operation (constraint 1), so "disclosed only in AP mode" would be no gate at all.
-* **One operator, many screens.** Every paired browser holds the same token and is an equal controller; the last command wins. That fits a single licensee. An update locks every browser out of transmitting (epic [ukk6](../roadmap/ota-updates.md), **Update mode**). Reopen if a second operator ever shares a station.
+* **One operator, many screens.** Every paired browser holds the same token and is an equal controller; the last command wins. That fits a single licensee. An update locks every browser out of transmitting ([updates.md](updates.md), **Decided**). Reopen if a second operator ever shares a station.
 * **Honest limit.** The token travels in clear over plain HTTP, so anyone who can read the traffic can replay it. WPA2/WPA3 per-station encryption makes that materially harder; an open network does not, and the sidekick's own AP is open unless the operator sets a password ([sidekick.md](sidekick.md), **The access point**), so by default the token crosses the air in clear. Raising the bar would need a certificate for a name that resolves on one LAN, which the design declines ([webapp.md](webapp.md), **A non-secure origin**).
 
 ### Why not signing
