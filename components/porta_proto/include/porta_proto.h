@@ -327,8 +327,9 @@ bool porta_proto_parse_decode(const porta_frame_t *f, porta_decode_event_t *out)
 //
 // `mode` is the mode the entry transmits in, a number (PORTA_QUEUE_MODE_*, RxMode's values) and not a
 // flag, so a later mode needs no new bit. `dial_hz` is the dial it transmits from: on one QMX its
-// mode's dial on the band, worked out when the event is sent. `offset_hz` is the audio offset it last
-// transmitted on, the QSO's held offset (docs/architecture/autoseq.md, TX offset), 0 before its first.
+// mode's dial on the band, worked out when the event is sent. `offset_hz` is the QSO's held audio
+// offset (docs/architecture/autoseq.md, TX offset), held from when its first transmission is armed: 0
+// until then.
 // IDLE sends all three as 0.
 
 #define PORTA_CALLSIGN_MAX 16u
@@ -350,7 +351,7 @@ typedef struct {
     uint8_t  flags;         // PORTA_QUEUE_*
     uint8_t  mode;          // PORTA_QUEUE_MODE_*
     uint32_t dial_hz;       // the dial it transmits from
-    uint16_t offset_hz;     // the offset it last transmitted on, 0 before its first
+    uint16_t offset_hz;     // the QSO's held offset, 0 until its first transmission is armed
     char     dxcall[PORTA_CALLSIGN_MAX + 1];
 } porta_queue_entry_event_t;
 
