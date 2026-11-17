@@ -473,7 +473,7 @@ static size_t sidekick_facts_json(char *out, size_t cap)
     const bool linked = host_link_host_hello(&proto, host_version, &hello_age) && hello_age < HOST_LINK_HELLO_FRESH_MS;
     snprintf(host_proto, sizeof(host_proto), "%u", (unsigned)proto);
     snprintf(sk_proto, sizeof(sk_proto), "%u", (unsigned)PORTA_PROTO_VERSION);
-    char num[14][12];
+    char num[13][12];
     snprintf(num[0], sizeof(num[0]), "%" PRIu32, s_rx_dec.crc_errors);
     snprintf(num[1], sizeof(num[1]), "%" PRIu32, s_rx_dec.frames_ok);
     snprintf(num[2], sizeof(num[2]), "%" PRIu32, s_ring_gap_events);
@@ -489,8 +489,7 @@ static size_t sidekick_facts_json(char *out, size_t cap)
     snprintf(num[9], sizeof(num[9]), "%" PRIu32, net_health_backlog_peak());
     snprintf(num[10], sizeof(num[10]), "%" PRIu32, http_worker_queue_peak(HTTP_WORKER_MAIN_BOARD));
     snprintf(num[11], sizeof(num[11]), "%" PRIu32, tcp.held);
-    snprintf(num[12], sizeof(num[12]), "%" PRIu32, http_worker_queue_peak(HTTP_WORKER_FILES));
-    snprintf(num[13], sizeof(num[13]), "%" PRIu32, http_worker_held_peak_ms());
+    snprintf(num[12], sizeof(num[12]), "%" PRIu32, http_worker_held_peak_ms());
     const struct {
         const char *key;
         const char *value;
@@ -507,8 +506,7 @@ static size_t sidekick_facts_json(char *out, size_t cap)
         { "sk_tcp_held_peak", num[8] },
         { "sk_tcp_backlog_peak", num[9] },
         { "sk_worker_queue_peak", num[10] },
-        { "sk_files_queue_peak", num[12] },
-        { "sk_httpd_held_peak_ms", num[13] },
+        { "sk_httpd_held_peak_ms", num[12] },
         { "sk_wifi_mode", wifi_prov_ap_active() ? "ap" : "station" },
         { "sk_network_name", wifi_prov_network_name() },
         { "sk_ip", wifi_prov_ip_str() },

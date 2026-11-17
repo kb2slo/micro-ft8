@@ -204,7 +204,7 @@ static esp_err_t dispatch(httpd_req_t *req)
     // Hand the handler the context it was registered with, not ours.
     req->user_ctx = route->user_ctx;
     const int64_t t0 = esp_timer_get_time();
-    // A request that waits on the main board, or sends a file, goes to its worker, so this task keeps serving
+    // A request that waits on the main board goes to its worker, so this task keeps serving
     // everyone else (docs/architecture/sidekick.md, Tasks and cores). It runs here only if that worker was
     // never started.
     if (route->worker != HTTP_WORKER_NONE && http_worker_submit(route->worker, req, route->handler, t0) == ESP_OK) {

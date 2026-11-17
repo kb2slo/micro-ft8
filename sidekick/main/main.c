@@ -198,11 +198,10 @@ static void heap_low_check(void)
     reported = min;
     const net_tcp_t tcp = net_health_last();
     char line[128];
-    snprintf(line, sizeof(line), "SK heap low %u free %u big %u tcp %lu/%lu wq %lu/%lu", (unsigned)min,
+    snprintf(line, sizeof(line), "SK heap low %u free %u big %u tcp %lu/%lu wq %lu", (unsigned)min,
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), (unsigned long)tcp.used,
-             (unsigned long)tcp.held, (unsigned long)http_worker_queue_peak(HTTP_WORKER_MAIN_BOARD),
-             (unsigned long)http_worker_queue_peak(HTTP_WORKER_FILES));
+             (unsigned long)tcp.held, (unsigned long)http_worker_queue_peak(HTTP_WORKER_MAIN_BOARD));
     host_link_log(line);
 }
 
@@ -215,7 +214,7 @@ void app_main(void)
     // so nothing about network bring-up is allowed to delay or block it.
     porta_beacon_init();
     host_link_start();
-    // Before the web server: the requests that wait on the main board, and files, are handed to them.
+    // Before the web server: the requests that wait on the main board are handed to it.
     http_worker_start();
     wifi_prov_start();
     // After wifi_prov_start(), which is what initialises NVS and mints the
@@ -252,12 +251,10 @@ void app_main(void)
             host_link_health(health, sizeof(health));
             net_health_str(net, sizeof(net));
             ESP_LOGI(TAG,
-                     "alive: %" PRIu32 " wifi=%s %s %s held=%" PRIu32 " wq=%" PRIu32 "/%" PRIu32 " wstack=%" PRIu32
-                     "/%" PRIu32,
+                     "alive: %" PRIu32 " wifi=%s %s %s held=%" PRIu32 " wq=%" PRIu32 " wstack=%" PRIu32,
                      heartbeat / 5, wifi_prov_is_online() ? "up" : (wifi_prov_ap_active() ? "ap" : "down"), health,
                      net, http_worker_held_peak_ms(), http_worker_queue_peak(HTTP_WORKER_MAIN_BOARD),
-                     http_worker_queue_peak(HTTP_WORKER_FILES), http_worker_stack_free(HTTP_WORKER_MAIN_BOARD),
-                     http_worker_stack_free(HTTP_WORKER_FILES));
+                     http_worker_stack_free(HTTP_WORKER_MAIN_BOARD));
         }
         ++heartbeat;
         vTaskDelay(pdMS_TO_TICKS(LOOP_TICK_MS));

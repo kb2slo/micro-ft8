@@ -38,9 +38,8 @@ esp_err_t pairing_http_init(void);
 esp_err_t pairing_http_register(httpd_handle_t server, const httpd_uri_t *uri, pairing_policy_t policy);
 
 // The same, for a route served by worker `worker` (http_worker.h), so the server's own task keeps accepting
-// and answering everything else meanwhile. HTTP_WORKER_MAIN_BOARD for every route that sends to the main
-// board and waits for its answer, which wait_reply() (host_link.c) needs run one at a time;
-// HTTP_WORKER_FILES for every route that reads or unmaps the pushed app's mapping (app_serve.c).
+// and answering everything else meanwhile: HTTP_WORKER_MAIN_BOARD, for every route that sends to the main
+// board and waits for its answer, which wait_reply() (host_link.c) needs run one at a time.
 esp_err_t pairing_http_register_on_worker(httpd_handle_t server, const httpd_uri_t *uri, pairing_policy_t policy,
                                           http_worker_id_t worker);
 

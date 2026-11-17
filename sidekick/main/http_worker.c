@@ -1,9 +1,8 @@
-// The workers that serve requests which would hold the web server's own task (http_worker.h;
-// docs/architecture/sidekick.md, Tasks and cores). esp_http_server runs every handler on its one task, and that
-// task also accepts new connections, so a handler waiting seconds for the main board, or sending a file to a
-// slow client, stopped every client, connections included. Such a request is handed to a worker as an async
-// copy (httpd_req_async_handler_begin()); the server's task goes back to its other sockets, and the socket
-// being answered is left alone until the copy is completed.
+// The worker that serves requests which wait on the main board (http_worker.h; docs/architecture/sidekick.md,
+// Tasks and cores). esp_http_server runs every handler on its one task, and that task also accepts new
+// connections, so a handler waiting seconds for the main board stopped every client, connections included.
+// Such a request is handed here as an async copy (httpd_req_async_handler_begin()); the server's task goes
+// back to its other sockets, and the socket being answered is left alone until the copy is completed.
 
 #include <stdio.h>
 #include <string.h>
@@ -45,7 +44,6 @@ typedef struct {
 
 static worker_t s_workers[HTTP_WORKER_COUNT] = {
     [HTTP_WORKER_MAIN_BOARD] = { .name = "http_main_board" },
-    [HTTP_WORKER_FILES]      = { .name = "http_files" },
 };
 
 static const char *method_name(int m)
@@ -156,8 +154,8 @@ esp_err_t http_worker_submit(http_worker_id_t id, httpd_req_t *req, http_worker_
     httpd_req_t *copy = NULL;
     if (httpd_req_async_handler_begin(req, &copy) != ESP_OK) {
         // No memory for the copy. Running it here instead could overlap the worker's own handler: a second
-        // wait on the main board's one reply slot, or a file read while the files worker unmaps the pushed app.
-        // So it is answered busy, on this task, and the page asks again.
+        // wait on the main board's one reply slot. So it is answered busy, on this task, and the page asks
+        // again.
         ESP_LOGW(TAG, "%s: no memory to hand %s over, answered busy", wk->name, req->uri);
         httpd_resp_set_status(req, "503 Service Unavailable");
         httpd_resp_set_type(req, "application/json");

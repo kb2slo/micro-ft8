@@ -1,9 +1,9 @@
 #pragma once
 
-// http_worker.h -- the tasks that serve the requests which would otherwise hold the web server's own task: one
-// for those that wait on the main board, one for files. The server's task keeps accepting connections and
-// answering events and state while either works (docs/architecture/sidekick.md, Tasks and cores). Also the
-// check that says when the server's task itself was held, and by what.
+// http_worker.h -- the task that serves the requests which wait on the main board, so the web server's own
+// task keeps accepting connections and answering events, state and files while one of them waits
+// (docs/architecture/sidekick.md, Tasks and cores). Also the check that says when the server's task itself
+// was held, and by what.
 
 #include <stdint.h>
 
@@ -16,15 +16,14 @@ typedef enum {
     HTTP_WORKER_NONE = -1,  // runs on the server's task
     // Sends to the main board and waits on porta_rx for its answer. One task, so these run one at a time,
     // which wait_reply() (host_link.c) needs: it matches a reply to its request by one byte.
+    // Files stay on the server's task: a worker for them cost about 19 KB more at the heap's low and made the
+    // worst page load slower, not faster (2026-11-16, docs/architecture/sidekick.md, Tasks and cores).
     HTTP_WORKER_MAIN_BOARD = 0,
-    // Files, the bench push, a firmware update's start and a factory reset: everything that reads the pushed
-    // app's flash mapping or unmaps it (app_serve.c), so one task is still the only one that touches it.
-    HTTP_WORKER_FILES,
     HTTP_WORKER_COUNT,
 } http_worker_id_t;
 
-// Creates the workers and their queues. Call once, before the web server starts. A worker that cannot be
-// created leaves its requests on the server's task, as before, which is the direction a failure should go.
+// Creates the worker and its queue. Call once, before the web server starts. If it cannot be created, its
+// requests stay on the server's task, as before, which is the direction a failure should go.
 void http_worker_start(void);
 
 // From the server's task only: hands `req` to worker `w`, which runs `fn` on a copy of it and answers. On
