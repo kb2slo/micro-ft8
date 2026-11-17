@@ -40,6 +40,12 @@ h1{font-size:1.1rem;margin:0}
 #bands label.on{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 14%, transparent)}
 #bands input,#fineRow input{margin:0}
 #fineRow{margin:.2rem 0 .4rem}
+#tuneRow{display:flex;align-items:center;gap:.4rem;margin:.2rem 0;font-size:.9rem}
+.sechd{font-size:.72rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:GrayText;margin:.9rem 0 .1rem}
+button.linkbtn{border:0;background:transparent;color:var(--accent);padding:0 .15rem;min-height:0;font:inherit;font-weight:700;cursor:pointer;text-decoration:underline}
+button.linkbtn:disabled{opacity:.45}
+#tunePct[aria-invalid=true]{border-color:var(--danger);outline:1px solid var(--danger)}
+#tunePct{font:inherit;font-family:ui-monospace,monospace;font-weight:700;width:3.6em;padding:.4rem .5rem;border:1px solid GrayText;border-radius:.4rem;background:Canvas;color:CanvasText;min-height:44px;box-sizing:border-box}
 #runRow{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin:.6rem 0 .3rem}
 button{font:inherit;padding:.55rem 1rem;border-radius:.5rem;border:1px solid var(--accent);background:var(--accent);color:Canvas;font-weight:700;min-height:44px}
 button:disabled{opacity:.45}
@@ -48,6 +54,7 @@ button#stop{border-color:var(--danger);background:var(--danger)}
 #status{font-size:.9rem;min-height:1.3rem;margin:.2rem 0}
 #status.err{color:var(--danger)}
 #tuneNote.warn{color:var(--warn);font-weight:600}
+#tuneNote.warn::before{content:'\26A0\FE0E  '}
 #rotateHint{display:none;font-size:.78rem;color:GrayText;margin:.2rem 0}
 @media (orientation: portrait) and (max-width: 700px){ #rotateHint{display:block} }
 #plotWrap{margin:.4rem 0;border:1px solid var(--grid);border-radius:.5rem;overflow:hidden}
@@ -75,14 +82,23 @@ td.bad{color:var(--warn);font-weight:600}
   <a id=back href=app.html>&larr; Tools</a>
   <h1>SWR sweep</h1>
 </div>
-<p class=note><span id=tuneNote>Transmits a short carrier at each point, at the QMX's own Tune power. Set it to 25% or more: below that the reading is biased high and noisy.</span> Reception is interrupted while it runs.</p>
+<!-- Setup in the order it is done, each note beside what it is about: the bands, the Tune power the
+     sweep runs at (the radio's own setting), then Run and what pressing it does. -->
+<div class=sechd>Bands</div>
 <div id=bands></div>
 <div id=fineRow><label><input type=checkbox id=fine> Fine (twice the points)</label></div>
+<div class=sechd><label for=tunePct>Tune power</label></div>
+<div id=tuneRow hidden>
+  <input id=tunePct inputmode=numeric data-select=all autocomplete=off> %
+</div>
+<p class=note><span id=tuneNote>Set the radio's Tune to 25% or more: below that the reading is biased high and noisy.</span>
+  <button type=button id=tuneFix class=linkbtn hidden>Set it to 25%</button></p>
 <div id=runRow>
   <button id=run type=button>Run SWR sweep</button>
   <button id=stop type=button hidden>Stop</button>
   <span id=estimate></span>
 </div>
+<p class=note>Sends a short carrier at each point; reception stops while it runs.</p>
 <div id=status></div>
 <div id=rotateHint>Rotate your phone for a wider plot.</div>
 <div id=plotWrap><svg id=plot></svg></div>
@@ -94,6 +110,8 @@ td.bad{color:var(--warn);font-weight:600}
 
 <script src=/pairing.js></script>
 <script src=bands.js></script>
+<script src=radio_settings.js></script>
+<script src=fields.js></script>
 <script src=swr_core.js></script>
 <script>
 'use strict';
@@ -133,19 +151,86 @@ var lastSweepRowAt = 0;  // when the host last said anything about this run
 var STOP_GRACE_MS = 3000;   // after Stop, the host's ABORTED should land this fast
 var SILENT_MS = 20000;      // a run that has said nothing for this long is treated as over
 
-// The Tune power note above the bands, and the label a run carries on its plot.
+// The Tune power note above the bands, and the label a run carries on its plot. The field beside Run
+// shows the radio's Tune % once it has reported it, and sets it (setTunePct()).
 function renderTuneNote() {
   var n = SwrCore.tuneNote(tunePct);
   var el = document.getElementById('tuneNote');
   el.textContent = n.text;
   el.className = n.warn ? 'warn' : '';
+  var fix = document.getElementById('tuneFix');
+  fix.hidden = !n.warn;
+  fix.textContent = 'Set it to ' + TUNE_PCT_FOR_SWEEP + '%';
+  fix.disabled = document.getElementById('tunePct').disabled;
+  var input = document.getElementById('tunePct');
+  document.getElementById('tuneRow').hidden = tunePct === null;
+  if (tunePct !== null && document.activeElement !== input && !tuneWrite && input.getAttribute('aria-invalid') !== 'true') {
+    input.value = String(tunePct);
+  }
 }
+
+// Writes the radio's Tune % as Settings › Radio & bands does (POST /api/radio/setting; architecture/radio.md,
+// The radio's settings in Radio & bands), then waits for the main board to read the radio again, which is
+// what the field then shows. Nothing is stored on the station.
+var TUNE_WRITE_WAIT_MS = 6000;
+// The write in flight, or null. Run waits for it (runSweep()), and nothing re-reading the radio
+// overwrites the field while it runs, so a value typed and then Run tapped is the one the sweep uses.
+var tuneWrite = null;
+function setTunePct() {
+  if (!tuneWrite) tuneWrite = writeTunePct().finally(function () { tuneWrite = null; renderTuneNote(); });
+  return tuneWrite;
+}
+
+// Resolves true when the radio holds the field's value (written now, or already), false when the value
+// was refused or the write failed; the status line says which.
+async function writeTunePct() {
+  var input = document.getElementById('tunePct');
+  var v = input.value.trim();
+  var setting = radioSetting('radio_tune_pct');
+  var why = radioSettingRefusal(setting, v);
+  // A refused value stays in the field, marked, so Run refuses it too rather than sweeping at the old one.
+  input.setAttribute('aria-invalid', why ? 'true' : 'false');
+  if (why) { setStatus(why + '.', true); return false; }
+  if (v === String(tunePct)) return true;
+  input.disabled = true;
+  setStatus('Writing Tune power to the radio…');
+  var held = false;
+  var r = await post('/api/radio/setting', 'radio_tune_pct=' + v);
+  if (!r.ok) {
+    setStatus('Could not set Tune power: ' + (r.why || 'refused') + '.', true);
+  } else {
+    var until = Date.now() + TUNE_WRITE_WAIT_MS;
+    var j = null;
+    while (Date.now() < until) {
+      await new Promise(function (resolve) { setTimeout(resolve, 400); });
+      j = await readTunePct();
+      if (j && j.radio_setting_write !== 'writing' && j.radio_tune_pct !== undefined) break;
+    }
+    var w = j ? String(j.radio_setting_write || '') : '';
+    if (w.indexOf('failed') === 0) setStatus('The write ' + w + '.', true);
+    else if (j && j.radio_tune_pct !== undefined) {
+      held = String(j.radio_tune_pct) === v || parseFloat(j.radio_tune_pct) === parseFloat(v);
+      setStatus('Tune power is ' + j.radio_tune_pct + '%.', !held);
+    } else setStatus('The radio has not been read again yet.', true);
+  }
+  input.disabled = !!state && state.phase === 'running';
+  await readTunePct();
+  return held;
+}
+document.getElementById('tunePct').addEventListener('change', setTunePct);
+document.getElementById('tuneFix').addEventListener('click', function () {
+  document.getElementById('tunePct').value = String(TUNE_PCT_FOR_SWEEP);
+  setTunePct();
+});
 
 async function readTunePct() {
   try {
     var r = await fetch('/api/config', { cache: 'no-store' });
     var j = await r.json();
-    tunePct = j.radio_tune_pct === undefined ? null : j.radio_tune_pct;
+    // While the radio is linked but being read again (after a write), keep the last value rather than
+    // hide the field for that second; a radio gone (CAT down) hides it.
+    if (j.radio_tune_pct !== undefined) tunePct = j.radio_tune_pct;
+    else if (j.cat_ready !== '1') tunePct = null;
     return j;
   } catch (e) {
     return null;
@@ -292,6 +377,8 @@ function renderRunState() {
   elStop.hidden = !running;
   elBands.querySelectorAll('input').forEach(function (cb) { cb.disabled = running; });
   elFine.disabled = running;
+  document.getElementById('tunePct').disabled = running;
+  document.getElementById('tuneFix').disabled = running;
   if (running) {
     var left = SwrCore.remainingMs(state, Date.now());
     setStatus('Sweeping, about ' + SwrCore.fmtDuration(left) + ' left (' + SwrCore.measuredCount(state) + ' of ' + state.plan.totalPoints + ' points).');
@@ -412,10 +499,19 @@ async function startSweep(plan) {
 async function runSweep() {
   var plan = currentPlan();
   if (plan.error) { setStatus(plan.error, true); return; }
+  // A Tune power typed and not yet written (or being written: leaving the field to tap Run sends it)
+  // is written first, and the sweep waits for the radio to hold it; a refused value starts nothing.
+  var typed = document.getElementById('tunePct').value.trim();
+  if (tuneWrite || (tunePct !== null && typed !== String(tunePct))) {
+    elRun.disabled = true;
+    var held = await (tuneWrite || setTunePct());
+    elRun.disabled = false;
+    if (!held) return;
+  }
   if (state && state.phase !== 'running') prevRun = SwrCore.saveable(state);
   elRun.disabled = true;
   setStatus('Starting…');
-  await readTunePct();  // the radio's Tune power as it is now: the operator may have just changed it
+  await readTunePct();  // the radio's Tune power as it is now, which labels the run
   var tune = SwrCore.tuneNote(tunePct);
   var result = await startSweep(plan);
   elRun.disabled = false;

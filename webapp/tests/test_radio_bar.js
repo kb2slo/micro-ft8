@@ -70,12 +70,14 @@ assert.strictEqual(s.stop, 'Stop TX');
 assert.strictEqual(s.label, '', 'Stop takes the label\'s place');
 assert.strictEqual(bar('ready', tx({ x: 'CQ KB2SLO FN30' }), { ourCq: true }).stop, 'Stop CQ');
 // The readout inside the slot bar (txReadout()).
-const ro = (hud, tuning, ms) => sb.txReadout(tx(hud), !!tuning, ms === undefined ? 5000 : ms);
+const ro = (hud, tuning, ms, pct) => sb.txReadout(tx(hud), !!tuning, ms === undefined ? 5000 : ms, pct);
 assert.strictEqual(ro({}).text, '4.9 W · SWR 1.30');
 assert.strictEqual(ro({}).dead, false);
 assert.strictEqual(ro({ pw: -1, swr: -1 }).text, '— W · SWR —', 'no reading yet is not zero');
 assert.strictEqual(ro({ wrblk: true }).text, 'Write blocked');
-assert.strictEqual(ro({ x: 'TUNE' }, true).text, 'Tune · 4.9 W · SWR 1.30');
+assert.strictEqual(ro({ x: 'TUNE' }, true).text, 'Tune · 4.9 W · SWR 1.30', 'Tune % not reported: not named');
+assert.strictEqual(ro({ x: 'TUNE' }, true, 5000, '30').text, 'Tune 30% · 4.9 W · SWR 1.30', 'the radio\'s Tune % named');
+assert.strictEqual(ro({}, false, 5000, '30').text, '4.9 W · SWR 1.30', 'only while tuning');
 assert.strictEqual(ro({ pw: 0, swr: 445 }, false, sb.TX_NO_RF_AFTER_MS + 1).text, '0.0 W · no RF',
   'keyed past the first tone and meter reply at 0 W: no RF, and its SWR means nothing');
 assert.strictEqual(ro({ pw: 0, swr: 445 }, false, sb.TX_NO_RF_AFTER_MS + 1).dead, true);

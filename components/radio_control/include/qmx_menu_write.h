@@ -115,6 +115,43 @@ static inline bool qmx_setting_value_ok(const char* value)
     return dots <= 1;
 }
 
+// The value fits setting `index`'s editor (kQmxSettingShape): at most its digits before the point and
+// its decimals after. qmx_setting_value_ok() is checked first.
+static inline bool qmx_setting_value_fits(int index, const char* value)
+{
+    if (index < 0 || index >= kQmxSettingCount || !qmx_setting_value_ok(value)) {
+        return false;
+    }
+    const QmxSettingShape& shape = kQmxSettingShape[index];
+    const char* dot = strchr(value, '.');
+    const size_t whole = dot ? static_cast<size_t>(dot - value) : strlen(value);
+    const size_t after = dot ? strlen(dot + 1) : 0;
+    return whole <= static_cast<size_t>(shape.digits) && after <= static_cast<size_t>(shape.decimals);
+}
+
+// Says what setting `index` takes, from its shape: "0 to 99", "0 to 99.9, one decimal place".
+static inline void qmx_setting_range_text(int index, char* out, size_t cap)
+{
+    if (index < 0 || index >= kQmxSettingCount) {
+        snprintf(out, cap, "unknown setting");
+        return;
+    }
+    const QmxSettingShape& shape = kQmxSettingShape[index];
+    char max[16] = {};
+    int n = 0;
+    for (int i = 0; i < shape.digits && n < 8; ++i) {
+        max[n++] = '9';
+    }
+    if (shape.decimals > 0) {
+        max[n++] = '.';
+        for (int i = 0; i < shape.decimals && n < 14; ++i) {
+            max[n++] = '9';
+        }
+    }
+    snprintf(out, cap, "0 to %s%s", max,
+             shape.decimals == 1 ? ", one decimal place" : shape.decimals > 1 ? ", two or more decimal places" : "");
+}
+
 // Two values read as the same number: what the radio wrote back for a setting, or holds already.
 static inline bool qmx_setting_values_match(const char* a, const char* b)
 {

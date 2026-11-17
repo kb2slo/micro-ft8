@@ -241,19 +241,20 @@ var SwrCore = (function () {
   // The sweep's carrier is the QMX's Tune power (radio_tune_pct, read from the radio at link-up;
   // architecture/radio.md, QMX SWR Tune over CAT): below MIN_TUNE_PCT the reading is biased high and
   // noisy. What the page says about it: {text, warn, label}; label is for the plot, '' when unknown.
-  var MIN_TUNE_PCT = 25;
+  // The note sits under the page's Tune power field, so it says only what the value means; below the
+  // floor the page offers to set it (TUNE_PCT_FOR_SWEEP, radio_settings.js, loaded first).
+  var MIN_TUNE_PCT = TUNE_PCT_FOR_SWEEP;
   function tuneNote(pctText) {
     var pct = parseFloat(pctText);
     if (pctText === undefined || pctText === null || pctText === '' || !isFinite(pct)) {
-      return { text: 'Transmits a short carrier at each point, at the QMX\'s own Tune power. Set it to ' + MIN_TUNE_PCT +
-        '% or more: below that the reading is biased high and noisy.', warn: false, label: '' };
+      return { text: 'Set the radio\'s Tune to ' + MIN_TUNE_PCT + '% or more: below that the reading is biased high and noisy.',
+        warn: false, label: '' };
     }
     var shown = String(pctText).trim() + '%';
     if (pct < MIN_TUNE_PCT) {
-      return { text: 'The QMX\'s Tune power is ' + shown + ': below ' + MIN_TUNE_PCT + '% the reading is biased high and noisy. ' +
-        'Raise it in Settings › Radio & bands.', warn: true, label: 'Tune ' + shown };
+      return { text: 'Below ' + MIN_TUNE_PCT + '% the reading is biased high and noisy.', warn: true, label: 'Tune ' + shown };
     }
-    return { text: 'Transmits a short carrier at each point, at the QMX\'s Tune power, ' + shown + '.', warn: false, label: 'Tune ' + shown };
+    return { text: 'The radio\'s Tune setting. The sweep reads best at ' + MIN_TUNE_PCT + '% or more.', warn: false, label: 'Tune ' + shown };
   }
 
   function saveable(state) {
