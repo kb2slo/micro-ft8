@@ -132,7 +132,9 @@ var SwrCore = (function () {
     var done = measuredCount(state);
     var left = Math.max(0, state.plan.totalPoints - skippedPoints - done);
     var per = POINT_MS;
-    if (done >= 2) per = Math.max(1, (nowMs - state.startedAt) / done);
+    // The pace so far, from the points seen: not after a gap, when points ran unseen and the pace would
+    // read slow (a rejoin after a minute away read "2:58 left" a few seconds from the end, 2026-11-16).
+    if (done >= 2 && !state.missed) per = Math.max(1, (nowMs - state.startedAt) / done);
     return left * per;
   }
 
@@ -257,6 +259,36 @@ var SwrCore = (function () {
     return { text: 'The radio\'s Tune setting. The sweep reads best at ' + MIN_TUNE_PCT + '% or more.', warn: false, label: 'Tune ' + shown };
   }
 
+  // A run in progress, kept by the page as it goes so it can rejoin the run after being closed and
+  // opened again: the sweep runs on in the main board (docs/architecture/radio.md, The SWR sweep on
+  // the main board). startSeq and evSeq are where in the station's event stream the run began and
+  // where the page had read to.
+  function resumable(state, startSeq, evSeq) {
+    return { plan: state.plan, startedAt: state.startedAt, readings: state.readings, skipped: state.skipped,
+             startSeq: startSeq, evSeq: evSeq, missed: !!state.missed, tuneLabel: state.tuneLabel || '',
+             tuneWarn: !!state.tuneWarn };
+  }
+  // The running state back from resumable()'s object, or null if it is not one.
+  function resume(saved) {
+    if (!saved || !saved.plan || !saved.plan.ranges || !saved.readings || typeof saved.evSeq !== 'number') return null;
+    return { phase: 'running', plan: saved.plan, readings: saved.readings, skipped: saved.skipped || {},
+             startedAt: saved.startedAt, endedAt: null, reason: null, missed: !!saved.missed,
+             tuneLabel: saved.tuneLabel || '', tuneWarn: !!saved.tuneWarn };
+  }
+  // Whether events after sinceSeq were dropped before the page read them: the station keeps only its
+  // last events, so a page away (or asleep) long enough loses some. events: the reply's, oldest first;
+  // seq: its next sequence number.
+  function missedSince(sinceSeq, events, seq) {
+    if (!(sinceSeq > 0)) return false;
+    if (events && events.length) return events[0].s > sinceSeq;
+    return seq > sinceSeq;
+  }
+  // Whether these events say a sweep ended (DONE or ABORTED) at or after fromSeq: how a page watching a
+  // sweep it did not start knows it is over. An earlier sweep's end, still in the ring, is not this one's.
+  function sweepEnded(events, fromSeq) {
+    return (events || []).some(function (e) { return e.s >= fromSeq && e.d === 6 && (e.k === 2 || e.k === 3); });
+  }
+
   function saveable(state) {
     return { at: state.endedAt || state.startedAt, readings: state.readings };
   }
@@ -267,6 +299,7 @@ var SwrCore = (function () {
     sweepableBands: sweepableBands, defaultBands: defaultBands, planSweep: planSweep, requestBody: requestBody,
     newState: newState, applyEvent: applyEvent, abortLocally: abortLocally, remainingMs: remainingMs, measuredCount: measuredCount,
     summary: summary, plotModel: plotModel, saveable: saveable, fmtDuration: fmtDuration,
-    MIN_TUNE_PCT: MIN_TUNE_PCT, tuneNote: tuneNote
+    MIN_TUNE_PCT: MIN_TUNE_PCT, tuneNote: tuneNote,
+    resumable: resumable, resume: resume, missedSince: missedSince, sweepEnded: sweepEnded
   };
 })();

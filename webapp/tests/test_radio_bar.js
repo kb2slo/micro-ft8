@@ -116,6 +116,19 @@ assert.strictEqual(bar('ready', tx(), { unpaired: true }).state, 'tx');
 
 // A sidekick with no main board (webapp.md, The radio bar): its own state, saying what to check. It outranks No
 // contact, which cannot say which end is missing, and Not paired, since pairing would change nothing yet.
+// A sweep running: said on every tab, with its Stop, whatever the chip (decided 2026-11-16: leaving the
+// sweep page while it ran left no way to see or stop it).
+s = bar('ready', null, { sweep: true });
+assert.strictEqual(s.state, 'sweep');
+assert.strictEqual(s.tone, 'red');
+assert.strictEqual(s.stop, 'Stop sweep');
+assert(/tap to open the sweep/.test(s.sub));
+assert.strictEqual(bar('drift', null, { sweep: true }).state, 'sweep', 'over a radio-bar problem state');
+assert.strictEqual(bar('ready', null, { sweep: true, unpaired: true }).state, 'sweep', 'unpaired still sees it');
+assert.strictEqual(bar('ready', null, { sweep: true, linkLost: true }).state, 'nolink', 'a lost link knows nothing current');
+assert.strictEqual(bar('ready', tx({ x: 'TUNE' }), { sweep: true, tune: true }).state, 'tune', 'a keyed transmission says itself');
+assert.strictEqual(bar('ready', null, {}).state, 'ready', 'no sweep, no sweep state');
+
 s = bar('none', null, { noMain: true });
 assert.deepStrictEqual([s.state, s.tone, s.main, s.sub, s.stop],
   ['nomain', 'red', 'Main board not connected', 'Check the cable between the boards and the main board\u2019s power', '']);

@@ -727,9 +727,11 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
 
     char live[320];
     snprintf(live, sizeof(live),
-             "streaming=%d\ncat_ready=%d\ntune=%d\nband_name=%s\nfreq_khz=%d\n"
+             "streaming=%d\ncat_ready=%d\ntune=%d\nswr_sweep=%d\nband_name=%s\nfreq_khz=%d\n"
              "audio_rx=%d\nclock_set=%d\ndecode_failed=%d\nhl2=%s\nhl2_overload=%d\n",
-             radio_select_audio_ready() ? 1 : 0, radio_control_ready() ? 1 : 0, s_tune ? 1 : 0, band_name,
+             radio_select_audio_ready() ? 1 : 0, radio_control_ready() ? 1 : 0, s_tune ? 1 : 0,
+             swr_sweep_busy() ? 1 : 0,  // a sweep keys the radio: the radio bar shows it on every tab
+             band_name,
              freq_khz, radio_select_audio_ready() ? 1 : 0, rtc_is_set() ? 1 : 0, s_decode_failed ? 1 : 0,
              hl2_transport_state_name(), hl2_transport_overloaded() ? 1 : 0);
     text += live;

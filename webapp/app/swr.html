@@ -124,6 +124,9 @@ var THEME_KEY = 'microft8_theme_v1';
 })();
 
 var PREV_KEY = 'microft8_swr_prev_v1';
+// The run in progress, kept as it goes (SwrCore.resumable()), so a page closed and opened again rejoins
+// a sweep that ran on in the main board. Gone once the run ends.
+var RUN_KEY = 'microft8_swr_run_v1';
 var NS = 'http://www.w3.org/2000/svg';
 var REFUSALS_ASKED = { 'a CQ is queued': 1, 'a QSO is queued': 1, 'transmitting': 1, 'tune is on': 1 };
 
@@ -150,6 +153,8 @@ var stopAskedAt = 0;     // when Stop was tapped and the host acknowledged it
 var lastSweepRowAt = 0;  // when the host last said anything about this run
 var STOP_GRACE_MS = 3000;   // after Stop, the host's ABORTED should land this fast
 var SILENT_MS = 20000;      // a run that has said nothing for this long is treated as over
+var otherSweep = false;      // the station is sweeping for a run this page did not start: Stop, and no plot
+var otherFrom = -1;          // the event its end is looked for from: the stream as the page first read it
 
 // The Tune power note above the bands, and the label a run carries on its plot. The field beside Run
 // shows the radio's Tune % once it has reported it, and sets it (setTunePct()).
@@ -372,14 +377,16 @@ function renderSummary() {
 // ---------------------------------------------------------------- state and countdown
 
 function renderRunState() {
-  var running = !!state && state.phase === 'running';
+  var running = (!!state && state.phase === 'running') || otherSweep;
   elRun.hidden = running;
   elStop.hidden = !running;
   elBands.querySelectorAll('input').forEach(function (cb) { cb.disabled = running; });
   elFine.disabled = running;
   document.getElementById('tunePct').disabled = running;
   document.getElementById('tuneFix').disabled = running;
-  if (running) {
+  if (otherSweep) {
+    setStatus('A sweep started on another device is running. Stop ends it.');
+  } else if (running) {
     var left = SwrCore.remainingMs(state, Date.now());
     setStatus('Sweeping, about ' + SwrCore.fmtDuration(left) + ' left (' + SwrCore.measuredCount(state) + ' of ' + state.plan.totalPoints + ' points).');
   }
@@ -394,7 +401,20 @@ function finishRun() {
   } else if (state.phase === 'aborted') {
     setStatus(state.reason, true);
   }
+  if (state.missed) {
+    elRanNote.textContent = 'Some points were not seen: the page was closed or asleep for part of the run. ' + elRanNote.textContent;
+  }
   try { localStorage.setItem(PREV_KEY, JSON.stringify(SwrCore.saveable(state))); } catch (e) { /* the page works without it */ }
+  try { localStorage.removeItem(RUN_KEY); } catch (e) { /* none kept */ }
+}
+
+function keepRun() {
+  if (!state || state.phase !== 'running') return;
+  try { localStorage.setItem(RUN_KEY, JSON.stringify(SwrCore.resumable(state, startSeq, evSeq))); } catch (e) { /* the page works without it */ }
+}
+
+function loadRun() {
+  try { return SwrCore.resume(JSON.parse(localStorage.getItem(RUN_KEY) || 'null')); } catch (e) { return null; }
 }
 
 function loadPrev() {
@@ -430,10 +450,19 @@ async function poll() {
   if (polling) return;
   polling = true;
   try {
-    var r = await fetch('/api/events?since=' + evSeq, { cache: 'no-store' });
+    var since = evSeq;
+    var r = await fetch('/api/events?since=' + since, { cache: 'no-store' });
     var j = await r.json();
+    if (state && state.phase === 'running' && SwrCore.missedSince(since, j.events, j.seq)) state.missed = true;
     var changed = j.events && j.events.length ? applyRows(j.events) : false;
     evSeq = j.seq;
+    keepRun();
+    if (otherSweep && otherFrom < 0) otherFrom = j.seq;
+    else if (otherSweep && SwrCore.sweepEnded(j.events, otherFrom)) { otherSweep = false; setStatus('The other sweep ended.'); changed = true; }
+    if (otherSweep) {  // its end may have been dropped from the ring: the station's own word decides
+      var c = await (await fetch('/api/config', { cache: 'no-store' })).json();
+      if (c.swr_sweep !== '1') { otherSweep = false; setStatus('The other sweep ended.'); changed = true; }
+    }
     if (changed) { draw(); renderSummary(); renderRunState(); }
   } catch (e) { /* next tick */ }
   polling = false;
@@ -566,14 +595,35 @@ draw();
 renderSummary();
 
 (async function boot() {
+  var sweeping = null;  // whether the station says a sweep runs; null when its settings could not be read
   try {
     var j = await readTunePct();
     if (!j) throw new Error('no config');
     buildBandBoxes(j.active_bands || '');
     tuneOn = j.tune === '1' || j.tune === 'yes';
+    // A run this page started and was closed during: rejoin it where the page left off, and catch up
+    // on what the station still holds. Ended while away: its end is read back, or it is ended here.
+    var kept = loadRun();
+    if (kept) {
+      var saved = JSON.parse(localStorage.getItem(RUN_KEY));
+      state = kept;
+      startSeq = saved.startSeq;
+      evSeq = saved.evSeq;
+      lastSweepRowAt = Date.now();
+    } else if (j.swr_sweep === '1') {
+      otherSweep = true;
+    }
+    sweeping = j.swr_sweep === '1';
   } catch (e) { setStatus('Could not read the station\'s settings.', true); }
   MicroFT8Pairing.boot({ status: null, onPaired: function () {} });
   await poll();
+  if (state && state.phase === 'running' && sweeping === false) {
+    SwrCore.abortLocally(state, Date.now(), 'The sweep ended while this page was closed.');
+    finishRun();
+  }
+  draw();
+  renderSummary();
+  renderRunState();
   schedulePoll();
 })();
 </script>
