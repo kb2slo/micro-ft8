@@ -1,5 +1,6 @@
 #include "wifi_prov.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "esp_event.h"
@@ -20,6 +21,7 @@
 #include "mdns.h"
 #include "pairing_http.h"
 #include "pairing_http_cap.h"
+#include "porta_proto.h"
 #include "fw_update.h"
 #include "web_page.h"
 #include "app_serve.h"
@@ -312,6 +314,8 @@ static bool force_ap_flag_get_and_clear(void)
 // ---------------------------------------------------------------------------
 
 static uint8_t s_last_disconnect_reason;
+// When a network that was up was lost, for the "back after" line; 0 while up.
+static int64_t s_lost_at_us;
 
 // True only while we are deliberately trying to join. The AP runs in APSTA so
 // it can scan, and bringing that up fires WIFI_EVENT_STA_START just like a
@@ -354,8 +358,17 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
         const wifi_event_sta_disconnected_t *d =
             (const wifi_event_sta_disconnected_t *)data;
-        s_online = false;
         s_last_disconnect_reason = d ? d->reason : 0;
+        // A network that was up and went: into the event ring, so /api/events and the app's log show it
+        // beside a stall when the console is not attached (docs/architecture/sidekick.md, Tasks and cores).
+        if (s_online) {
+            s_lost_at_us = esp_timer_get_time();
+            char line[PORTA_EVENT_TEXT_MAX + 1];
+            snprintf(line, sizeof(line), "SK wifi lost: %s (%u)", disconnect_reason_text(s_last_disconnect_reason),
+                     (unsigned)s_last_disconnect_reason);
+            host_link_log(line);
+        }
+        s_online = false;
         if (!s_join_active) {
             return;  // APSTA station side idling alongside the AP; not a join
         }
@@ -404,6 +417,12 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
         s_retries = 0;
         s_online = true;
         s_was_online = true;
+        if (s_lost_at_us) {
+            char line[PORTA_EVENT_TEXT_MAX + 1];
+            snprintf(line, sizeof(line), "SK wifi back after %lld ms", (long long)((esp_timer_get_time() - s_lost_at_us) / 1000));
+            host_link_log(line);
+            s_lost_at_us = 0;
+        }
         xEventGroupSetBits(s_events, BIT_GOT_IP);
     }
 }
@@ -1206,6 +1225,8 @@ void wifi_prov_start(void)
 }
 
 bool wifi_prov_is_online(void) { return s_online; }
+
+httpd_handle_t wifi_prov_httpd(void) { return s_httpd; }
 const char *wifi_prov_ssid(void) { return s_ssid; }
 bool wifi_prov_ap_active(void) { return s_ap_active; }
 int wifi_prov_ap_reset_hold(void) { return s_ap_reset_hold; }

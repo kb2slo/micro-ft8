@@ -95,6 +95,8 @@ constexpr int kTxBufBytes = 4096;
 constexpr int kUartRxBytes = 4096;
 constexpr UBaseType_t kRxTaskPrio = 6;
 constexpr int kRxFrameQueueLen = 8;
+// A control frame left in the queue longer than this is logged (porta_tick()).
+constexpr uint32_t kRxFrameSlowMs = 250;
 
 const char* kTag = "PORTA";
 
@@ -118,6 +120,9 @@ void link_unlock() {
   xSemaphoreGive(s_link_lock);
 }
 porta_frame_t s_rx_frames[kRxFrameQueueLen];
+// When each queued frame arrived, so porta_tick() can say when the main loop left one waiting (the sidekick's
+// matching line is `SK wait`, docs/architecture/sidekick.md, Tasks and cores).
+uint32_t s_rx_frame_at[kRxFrameQueueLen];
 int s_rx_frame_head = 0;
 int s_rx_frame_tail = 0;
 int s_rx_frame_count = 0;
@@ -512,18 +517,20 @@ void rx_queue_frame(const porta_frame_t& frame) {
     return;
   }
   s_rx_frames[s_rx_frame_tail] = frame;
+  s_rx_frame_at[s_rx_frame_tail] = now_ms();
   s_rx_frame_tail = (s_rx_frame_tail + 1) % kRxFrameQueueLen;
   s_rx_frame_count++;
   link_unlock();
 }
 
-bool rx_take_frame(porta_frame_t* frame) {
+bool rx_take_frame(porta_frame_t* frame, uint32_t* arrived_ms) {
   link_lock();
   if (s_rx_frame_count == 0) {
     link_unlock();
     return false;
   }
   *frame = s_rx_frames[s_rx_frame_head];
+  *arrived_ms = s_rx_frame_at[s_rx_frame_head];
   s_rx_frame_head = (s_rx_frame_head + 1) % kRxFrameQueueLen;
   s_rx_frame_count--;
   link_unlock();
@@ -1440,8 +1447,22 @@ void porta_tick() {
 
   if (s_rx_task != nullptr) {
     porta_frame_t frame;
-    while (rx_take_frame(&frame)) {
+    uint32_t arrived_ms = 0;
+    while (rx_take_frame(&frame, &arrived_ms)) {
+      // The sidekick waits on each of these (a config read up to 5 s) and every other request to the main
+      // board waits behind it, so a frame the main loop left waiting is logged with how long.
+      const uint32_t waited_ms = now_ms() - arrived_ms;
+      if (waited_ms > kRxFrameSlowMs) {
+        ESP_LOGW(kTag, "frame 0x%02x waited %" PRIu32 " ms for the main loop", frame.type, waited_ms);
+      }
       handle_frame(frame);
+    }
+    // A full queue drops the frame with no answer, which the sidekick sees as `SK wait ... no ACK`.
+    static uint32_t s_overrun_logged = 0;
+    const uint32_t overrun = s_rx_overrun.load();
+    if (overrun != s_overrun_logged) {
+      ESP_LOGW(kTag, "control queue full: %" PRIu32 " frames dropped since boot", overrun);
+      s_overrun_logged = overrun;
     }
   } else {
     uint8_t buf[128];

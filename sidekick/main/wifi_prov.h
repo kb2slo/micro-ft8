@@ -1,5 +1,7 @@
 #pragma once
 
+#include "esp_http_server.h"
+
 // ============================================================================
 // wifi_prov.h — WiFi bring-up and SoftAP credential provisioning.
 //
@@ -46,6 +48,9 @@
 void wifi_prov_start(void);
 
 // True once an IP has been obtained on the station interface.
+// The web server, or NULL before it starts: for the held check (http_worker_watch()).
+httpd_handle_t wifi_prov_httpd(void);
+
 bool wifi_prov_is_online(void);
 
 // SSID currently joined, or "" when offline. Points at static storage.

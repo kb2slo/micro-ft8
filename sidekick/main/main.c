@@ -1,9 +1,11 @@
 #include <inttypes.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_app_desc.h"
+#include "esp_heap_caps.h"
 #include "esp_idf_version.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -13,6 +15,8 @@
 
 #include "fw_update.h"
 #include "host_link.h"
+#include "http_worker.h"
+#include "net_health.h"
 #include "pairing_http.h"
 #include "porta_proto.h"
 #include "wifi_prov.h"
@@ -178,6 +182,29 @@ static void button_check_hold(void)
     }
 }
 
+// Each time the lowest free internal heap since boot falls a further HEAP_LOW_STEP below HEAP_LOW_FROM, writes
+// what came with it into the event ring, so a low can be matched to its cause with no console
+// (docs/architecture/sidekick.md, Tasks and cores).
+#define HEAP_LOW_FROM (48 * 1024)
+#define HEAP_LOW_STEP (4 * 1024)
+
+static void heap_low_check(void)
+{
+    static size_t reported = HEAP_LOW_FROM;
+    const size_t min = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL);
+    if (min + HEAP_LOW_STEP > reported) {
+        return;
+    }
+    reported = min;
+    const net_tcp_t tcp = net_health_last();
+    char line[128];
+    snprintf(line, sizeof(line), "SK heap low %u free %u big %u tcp %lu/%lu wq %lu", (unsigned)min,
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL), (unsigned long)tcp.used,
+             (unsigned long)tcp.held, (unsigned long)http_worker_queue_peak(HTTP_WORKER_MAIN_BOARD));
+    host_link_log(line);
+}
+
 void app_main(void)
 {
     ESP_LOGI(TAG, "Micro-FT8 sidekick booting (IDF %s)", esp_get_idf_version());
@@ -187,6 +214,8 @@ void app_main(void)
     // so nothing about network bring-up is allowed to delay or block it.
     porta_beacon_init();
     host_link_start();
+    // Before the web server: the requests that wait on the main board are handed to it.
+    http_worker_start();
     wifi_prov_start();
     // After wifi_prov_start(), which is what initialises NVS and mints the
     // token; a press before there is a token to disclose would do nothing.
@@ -211,12 +240,21 @@ void app_main(void)
             pairing_http_open_disclosure();
         }
         button_check_hold();
+        net_health_sample();
+        http_worker_watch(wifi_prov_httpd());
+        heap_low_check();
         if (heartbeat % 5 == 0) {
-            // With the link's health: on the console, out of band, so a stalled web server still shows (row dlu3).
+            // With the link's and the network's health: on the console, out of band, so a stalled web server
+            // still shows (docs/architecture/sidekick.md, Tasks and cores).
             char health[128];
+            char net[128];
             host_link_health(health, sizeof(health));
-            ESP_LOGI(TAG, "alive: %" PRIu32 " wifi=%s %s", heartbeat / 5,
-                     wifi_prov_is_online() ? "up" : (wifi_prov_ap_active() ? "ap" : "down"), health);
+            net_health_str(net, sizeof(net));
+            ESP_LOGI(TAG,
+                     "alive: %" PRIu32 " wifi=%s %s %s held=%" PRIu32 " wq=%" PRIu32 " wstack=%" PRIu32,
+                     heartbeat / 5, wifi_prov_is_online() ? "up" : (wifi_prov_ap_active() ? "ap" : "down"), health,
+                     net, http_worker_held_peak_ms(), http_worker_queue_peak(HTTP_WORKER_MAIN_BOARD),
+                     http_worker_stack_free(HTTP_WORKER_MAIN_BOARD));
         }
         ++heartbeat;
         vTaskDelay(pdMS_TO_TICKS(LOOP_TICK_MS));

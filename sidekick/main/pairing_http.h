@@ -11,6 +11,8 @@
 #include "esp_err.h"
 #include "esp_http_server.h"
 
+#include "http_worker.h"
+
 #include "pairing_token.h"
 
 // Loads the device token from NVS, minting and storing one if there is none.
@@ -34,6 +36,12 @@ esp_err_t pairing_http_init(void);
 // Slot-table capacity is compile-time: see pairing_http_cap.h. Each module
 // owns a named count and asserts its routes[] length against it.
 esp_err_t pairing_http_register(httpd_handle_t server, const httpd_uri_t *uri, pairing_policy_t policy);
+
+// The same, for a route served by worker `worker` (http_worker.h), so the server's own task keeps accepting
+// and answering everything else meanwhile: HTTP_WORKER_MAIN_BOARD, for every route that sends to the main
+// board and waits for its answer, which wait_reply() (host_link.c) needs run one at a time.
+esp_err_t pairing_http_register_on_worker(httpd_handle_t server, const httpd_uri_t *uri, pairing_policy_t policy,
+                                          http_worker_id_t worker);
 
 // Registers the token disclosure route and the shared pairing.js script. Call
 // from both the provisioning and station servers: the route exists in either
