@@ -45,8 +45,8 @@ idf.py -B build_o2_internal -D SDKCONFIG=build_o2_internal/sdkconfig \
 Flash **the app slot only** and capture the output:
 
 ```bash
-python tools/run_on_device.py /dev/cu.usbmodemXXXX build_o2/decode_bench.bin p4_O2_psram.log
-python tools/run_on_device.py /dev/cu.usbmodemXXXX build_o2_internal/decode_bench.bin p4_O2_internal.log
+python tools/run_on_device.py auto build_o2/decode_bench.bin p4_O2_psram.log
+python tools/run_on_device.py auto build_o2_internal/decode_bench.bin p4_O2_internal.log
 ```
 
 Diff the `MSG` lines for identical decodes; compare `RESULT` `total_ms` (and the `BENCH` line's

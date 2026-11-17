@@ -13,20 +13,25 @@ sdkconfig.defaults.<target>).
 Run inside the ESP-IDF environment (needs esptool and pyserial).
 """
 import argparse
-import glob
 import os
 import subprocess
 import sys
 import time
 
 import serial
+import serial.tools.list_ports
+
+
+ESPRESSIF_VID = 0x303A  # the P4's USB-Serial-JTAG (its PROG port), on any OS
 
 
 def resolve(path):
-    """'auto' means the first /dev/cu.usbmodem*: a replug can change the name (1101 -> 101 seen once)."""
+    """'auto' means the first Espressif USB serial port, found by its USB vendor ID rather than its name, which
+    differs by OS (/dev/cu.usbmodem* on macOS, /dev/ttyACM* on Linux, COM* on Windows) and can change on a
+    replug (1101 -> 101 seen once on macOS). '' when there is none."""
     if path != "auto":
         return path
-    found = sorted(glob.glob("/dev/cu.usbmodem*"))
+    found = sorted(p.device for p in serial.tools.list_ports.comports() if p.vid == ESPRESSIF_VID)
     return found[0] if found else ""
 
 
@@ -46,7 +51,7 @@ def open_port(path, deadline):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("port", help="serial port, or 'auto' for the first /dev/cu.usbmodem*")
+    ap.add_argument("port", help="serial port, or 'auto' for the first Espressif USB serial port")
     ap.add_argument("image")
     ap.add_argument("log")
     ap.add_argument("--chip", default="esp32p4")
