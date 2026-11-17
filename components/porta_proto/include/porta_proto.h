@@ -118,7 +118,9 @@ extern "C" {
 // never asks, and the host then holds from FW_BEGIN.
 // v19 (2026-11-15): the RADIO_SET_SETTING action (set one of the radio's own settings, such as the
 // QMX's Tune %). An older host NAKs it as unknown. Both ends are flashed together.
-#define PORTA_PROTO_VERSION 19u
+// v20 (2026-11-17): QUEUE_ENTRY carries the entry's mode, dial and TX offset. A v19 peer's shorter
+// frame is refused. Both ends are flashed together.
+#define PORTA_PROTO_VERSION 20u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -322,6 +324,12 @@ bool porta_proto_parse_decode(const porta_frame_t *f, porta_decode_event_t *out)
 //
 // `tries_sent` of `try_limit` are transmissions (docs/architecture/autoseq.md,
 // Tries): a QSO's count is per step, the CQ's (dxcall "CQ") is the whole CQ.
+//
+// `mode` is the mode the entry transmits in, a number (PORTA_QUEUE_MODE_*, RxMode's values) and not a
+// flag, so a later mode needs no new bit. `dial_hz` is the dial it transmits from: on one QMX its
+// mode's dial on the band, worked out when the event is sent. `offset_hz` is the audio offset it last
+// transmitted on, the QSO's held offset (docs/architecture/autoseq.md, TX offset), 0 before its first.
+// IDLE sends all three as 0.
 
 #define PORTA_CALLSIGN_MAX 16u
 
@@ -330,6 +338,9 @@ bool porta_proto_parse_decode(const porta_frame_t *f, porta_decode_event_t *out)
 #define PORTA_QUEUE_ODD    0x01u  // the entry transmits on odd slots
 #define PORTA_QUEUE_CUSTOM 0x02u  // its count is its own, not the station default
 
+#define PORTA_QUEUE_MODE_FT8 0u
+#define PORTA_QUEUE_MODE_FT4 1u
+
 typedef struct {
     uint32_t epoch_secs;
     uint16_t entry_id;
@@ -337,6 +348,9 @@ typedef struct {
     uint8_t  tries_sent;
     uint8_t  try_limit;
     uint8_t  flags;         // PORTA_QUEUE_*
+    uint8_t  mode;          // PORTA_QUEUE_MODE_*
+    uint32_t dial_hz;       // the dial it transmits from
+    uint16_t offset_hz;     // the offset it last transmitted on, 0 before its first
     char     dxcall[PORTA_CALLSIGN_MAX + 1];
 } porta_queue_entry_event_t;
 

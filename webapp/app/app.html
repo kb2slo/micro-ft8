@@ -304,6 +304,7 @@ body:not(.on-operate) #opDock{display:none}
 .qrow{display:flex;align-items:center;gap:.5rem;padding:.25rem 0;min-height:2.2rem;border-bottom:1px solid color-mix(in srgb, GrayText 15%, transparent)}
 .qrow .call{font-family:ui-monospace,monospace;font-weight:700}
 .qrow .qgap{flex:1}
+.qrow .qmode{font-size:.65rem;font-weight:700;color:GrayText}
 /* What the newest decode said about this station (queueLastHeard()). */
 .qrow .qcue{flex:1;min-width:0;font-size:.7rem;color:GrayText;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* A row's count is a button: a tap opens the tries stepper (#opTriesEdit). */
@@ -4703,7 +4704,7 @@ function renderQueue() {
   var rows = document.getElementById('opQueueRows');
   if (reconcileReplies()) renderDecodes();
   var pending = pendingReplyCalls().filter(function (c) { return !queueHasCall(c); });
-  // One line a row (webapp.md, Operate's pinned regions): call, its count, state, ×. No "Queue"
+  // One line a row (webapp.md, Operate's pinned regions): call, its mode, its count, state, ×. No "Queue"
   // label and no empty line: with nothing queued the CQ row is the first row.
   var placeholders = pending.map(function (c) {
     return '<div class="qrow pending"><span class=call>' + esc(c) + '</span><span class=qgap></span>' +
@@ -4714,6 +4715,7 @@ function renderQueue() {
     var q = queue[id];
     return '<div class="qrow' + (flashCalls[q.dxcall] ? ' flash' : '') + '">' +
       '<span class="call callink" data-call="' + esc(q.dxcall) + '">' + esc(q.dxcall) + '</span>' +
+      '<span class=qmode>' + (q.mode === 1 ? 'FT4' : 'FT8') + '</span>' +
       '<button type=button class="qtries' + (q.custom ? ' custom' : '') + '" data-id="' + id + '"' +
       (writesEnabled ? '' : ' disabled') + '>' + esc(triesLabel(q)) + '</button>' +
       '<span class=qcue>' + (showQueueMarks ? esc(queueLastHeard(q.dxcall, nowMs)) : '') + '</span>' +
@@ -5714,6 +5716,9 @@ function applyEvent(e) {
     } else {
       queue[e.eid] = { dxcall: e.x, state: e.st, tries_sent: e.ts, try_limit: e.tl,
                        parity: e.p | 0, custom: !!e.cu, lastSeenMs: Date.now(),
+                       // The mode it transmits in (0 FT8, 1 FT4), and its dial and held TX offset, which
+                       // nothing reads yet (webapp.md, Operate's pinned regions).
+                       mode: e.md | 0, dial_hz: e.fq || 0, offset_hz: e.off | 0,
                        since: queue[e.eid] && queue[e.eid].dxcall === e.x ? queue[e.eid].since : Date.now() };
     }
   } else if (e.d === 3) {

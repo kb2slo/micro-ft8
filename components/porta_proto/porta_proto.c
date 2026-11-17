@@ -297,8 +297,9 @@ bool porta_proto_parse_decode(const porta_frame_t *f, porta_decode_event_t *out)
     return true;
 }
 
-// subtype | epoch(4) | entry_id(2) | state | tries_sent | try_limit | flags | dxcall_len | dxcall...
-#define QUEUE_ENTRY_FIXED_LEN (EVENT_HEADER_LEN + 2u + 1u + 1u + 1u + 1u + 1u)
+// subtype | epoch(4) | entry_id(2) | state | tries_sent | try_limit | flags | mode | dial_hz(4) |
+// offset_hz(2) | dxcall_len | dxcall...
+#define QUEUE_ENTRY_FIXED_LEN (EVENT_HEADER_LEN + 2u + 1u + 1u + 1u + 1u + 1u + 4u + 2u + 1u)
 
 size_t porta_proto_encode_queue_entry(const porta_queue_entry_event_t *q,
                                       uint8_t *out, size_t out_cap)
@@ -318,7 +319,10 @@ size_t porta_proto_encode_queue_entry(const porta_queue_entry_event_t *q,
     payload[8] = q->tries_sent;
     payload[9] = q->try_limit;
     payload[10] = q->flags;
-    payload[11] = (uint8_t)call_n;
+    payload[11] = q->mode;
+    put_u32(&payload[12], q->dial_hz);
+    put_u16(&payload[16], q->offset_hz);
+    payload[18] = (uint8_t)call_n;
     if (call_n > 0) {
         memcpy(&payload[QUEUE_ENTRY_FIXED_LEN], q->dxcall, call_n);
     }
@@ -332,7 +336,7 @@ bool porta_proto_parse_queue_entry(const porta_frame_t *f, porta_queue_entry_eve
         f->payload[0] != PORTA_EVT_QUEUE_ENTRY) {
         return false;
     }
-    const uint8_t call_n = f->payload[11];
+    const uint8_t call_n = f->payload[18];
     if ((size_t)QUEUE_ENTRY_FIXED_LEN + call_n > f->len || call_n > PORTA_CALLSIGN_MAX) {
         return false;
     }
@@ -343,6 +347,9 @@ bool porta_proto_parse_queue_entry(const porta_frame_t *f, porta_queue_entry_eve
     out->tries_sent   = f->payload[8];
     out->try_limit    = f->payload[9];
     out->flags        = f->payload[10];
+    out->mode         = f->payload[11];
+    out->dial_hz      = get_u32(&f->payload[12]);
+    out->offset_hz    = get_u16(&f->payload[16]);
     memcpy(out->dxcall, &f->payload[QUEUE_ENTRY_FIXED_LEN], call_n);
     out->dxcall[call_n] = '\0';
     return true;
