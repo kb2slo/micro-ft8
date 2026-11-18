@@ -51,3 +51,14 @@ with every TCP slot in use, and in three hours about 100 events reads an hour to
 13.7 s, and 21 failed. The pages had piled up events reads (four with one `since` out at once), and each
 connection holds up to its send buffer unacknowledged. That led to the app's polls one at a time and the
 2,880-byte send buffer ([sidekick.md](../../docs/architecture/sidekick.md), **Tasks and cores**).
+
+**Run 2** (2026-11-18, 12:08 to 22:08 UTC, the same pool with the app's polls one at a time and lwIP's send
+buffer at 2,880 bytes; 20 m, busier than run 1's night, about 23 FT8 messages a slot; the maintainer
+operating from a phone 12:20 to 13:55). The heap's low since boot was **17,400 bytes**, against run 1's 392,
+and held there for the last six hours; the median free heap again held at about 87.5 KB and the largest block
+never fell below 28,672 bytes, against 1,408. Events reads: median 58 ms, 99th percentile 744 ms against
+4,013, worst 6.0 s against 13.7 s, 32 an hour over 500 ms against 43. The 51 that failed came in outages of
+the sidekick's WiFi link, each with the heap reader failing in the same second and nothing in the sidekick's
+log: one of 2 minutes at 20:43 UTC, too long for the ring to keep its own `SK wifi` lines, and one at 14:40
+(`SK wifi lost: … (4)`, back after 5.6 s). Its link was slower than the router's all day, idle as well:
+pings averaged 38 ms against 15. A page reload's median was 687 ms over that link.
