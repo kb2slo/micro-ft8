@@ -251,10 +251,12 @@ void app_main(void)
             host_link_health(health, sizeof(health));
             net_health_str(net, sizeof(net));
             ESP_LOGI(TAG,
-                     "alive: %" PRIu32 " wifi=%s %s %s held=%" PRIu32 " wq=%" PRIu32 " wstack=%" PRIu32,
+                     "alive: %" PRIu32 " wifi=%s %s %s held=%" PRIu32 " wq=%" PRIu32 " wstack=%" PRIu32
+                     " sq=%" PRIu32 " sstack=%" PRIu32 " cuts=%" PRIu32,
                      heartbeat / 5, wifi_prov_is_online() ? "up" : (wifi_prov_ap_active() ? "ap" : "down"), health,
                      net, http_worker_held_peak_ms(), http_worker_queue_peak(HTTP_WORKER_MAIN_BOARD),
-                     http_worker_stack_free(HTTP_WORKER_MAIN_BOARD));
+                     http_worker_stack_free(HTTP_WORKER_MAIN_BOARD), http_worker_queue_peak(HTTP_WORKER_SENDERS),
+                     http_worker_stack_free(HTTP_WORKER_SENDERS), http_worker_send_cuts());
         }
         ++heartbeat;
         vTaskDelay(pdMS_TO_TICKS(LOOP_TICK_MS));

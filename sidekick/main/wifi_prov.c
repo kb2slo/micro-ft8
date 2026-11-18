@@ -18,6 +18,7 @@
 #include "nvs_flash.h"
 
 #include "host_link.h"
+#include "http_worker.h"
 #include "mdns.h"
 #include "pairing_http.h"
 #include "pairing_http_cap.h"
@@ -816,6 +817,8 @@ static void httpd_start_provisioning(void)
     // AP mode gained the routes httpd_start_status() has: the same stack as
     // there (see its comment).
     cfg.stack_size = 8192;
+    // Each connection's replies keep a send deadline, whichever task sends them (http_worker.h).
+    cfg.open_fn = http_worker_session_open;
     cfg.uri_match_fn = httpd_uri_match_wildcard;
     if (httpd_start(&s_httpd, &cfg) != ESP_OK) {
         ESP_LOGE(TAG, "httpd_start failed");
@@ -994,6 +997,8 @@ static void httpd_start_status(void)
     // so left at 8 KB.
     cfg.max_uri_handlers = PAIRING_HTTP_MAX_ROUTES_STATION;
     cfg.stack_size = 8192;
+    // Each connection's replies keep a send deadline, whichever task sends them (http_worker.h).
+    cfg.open_fn = http_worker_session_open;
     cfg.uri_match_fn = httpd_uri_match_wildcard;
     if (httpd_start(&s_httpd, &cfg) != ESP_OK) {
         ESP_LOGE(TAG, "httpd_start failed");

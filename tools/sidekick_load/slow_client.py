@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""A client slow to take its reply, as a phone in WiFi power save is (roadmap row uwzn): for SECONDS it GETs
-PATH again and again with a small receive buffer, reading CHUNK bytes every GAP seconds, so the sidekick's
-send waits on it. One line per request to stdout: UTC time, bytes, seconds it took. README.md says how it
-is used beside probe.py.
+"""A client slow to take its reply, as a phone in WiFi power save is (docs/architecture/sidekick.md, Tasks and
+cores): for SECONDS it GETs PATH again and again with a small receive buffer, reading CHUNK bytes every GAP
+seconds, so the sidekick's send waits on it. One line per request to stdout: UTC time, bytes, seconds it took.
+README.md says how it is used beside probe.py.
 
     python3 tools/sidekick_load/slow_client.py http://192.168.50.128 60 /app.html 1024 0.25"""
 import socket, sys, time, urllib.parse

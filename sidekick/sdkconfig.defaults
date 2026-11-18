@@ -33,6 +33,13 @@ CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=n
 # Pending.
 CONFIG_LWIP_MAX_SOCKETS=16
 
+# What a connection may have sent and not yet had acknowledged: 2 MSS, not IDF's 4. lwIP keeps those bytes
+# until the client acknowledges them, closed connections included, so the worst case is every TCP slot full:
+# 16 x 5760 is 92 KB, more than the ~87 KB the sidekick has free, and a WiFi stall overnight took the heap to
+# 392 bytes (2026-11-18; docs/architecture/sidekick.md, Tasks and cores). 16 x 2880 is 46 KB. A send to one client goes at half the bytes
+# in flight per round trip: a page reload's median went from 343 to 472 ms on the bench's WiFi (2026-11-18).
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=2880
+
 # Port A. A WiFi flash access otherwise stalls the UART interrupt longer than
 # the 128-byte FIFO.
 CONFIG_UART_ISR_IN_IRAM=y

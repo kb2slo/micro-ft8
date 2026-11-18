@@ -5,7 +5,8 @@
 import json, sys, time, urllib.request
 host, minutes, out_path = sys.argv[1], float(sys.argv[2]), sys.argv[3]
 keys = ("sk_fw_version", "sk_uptime", "sk_heap_free", "sk_heap_min", "sk_heap_largest", "sk_httpd_held_peak_ms",
-        "sk_worker_queue_peak", "sk_tcp_held_peak", "sk_tcp_backlog_peak", "sk_ring_gaps", "sk_crc_errors")
+        "sk_worker_queue_peak", "sk_tcp_used", "sk_tcp_held", "sk_tcp_held_peak", "sk_tcp_backlog_peak", "sk_ring_gaps",
+        "sk_crc_errors", "sk_send_queue_peak", "sk_files_wait_peak", "sk_send_stack_free", "sk_send_cuts")
 out = open(out_path, "a", buffering=1); end = time.time() + 60 * minutes
 while time.time() < end:
     stamp = time.strftime("%H:%M:%S", time.gmtime())

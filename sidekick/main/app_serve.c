@@ -13,11 +13,15 @@
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
 #include "mbedtls/sha256.h"
 
 #include "app_pack.h"
 #include "app_push.h"
 #include "fw_update.h"
+#include "http_worker.h"
 #include "pairing_http.h"
 #include "pairing_http_cap.h"
 #include "web_seed_table.h"
@@ -45,6 +49,28 @@ static bool                        s_push_ok;
 static bool                        s_push_mapped;
 static esp_partition_mmap_handle_t s_push_map;
 
+// Files are sent by the sender pool (http_worker.h), several at once and straight from mapped flash, while a
+// push is written and dropped by other tasks (the push's own request, a firmware update). So a sender counts
+// itself in before it sends from the push and out after, and the push is unmapped only once none is: a send
+// from flash unmapped under it would fault. s_push_ok and s_push_readers change only under s_push_lock.
+static SemaphoreHandle_t s_push_lock;
+static int               s_push_readers;
+// A send lasts at most HTTP_SEND_DEADLINE_MS, so a reader is out well within this.
+#define PUSH_READERS_WAIT_MS (HTTP_SEND_DEADLINE_MS + 5000)
+
+static void push_lock(void)
+{
+    if (!s_push_lock) {
+        s_push_lock = xSemaphoreCreateMutex();  // first called at boot, before the server starts
+    }
+    xSemaphoreTake(s_push_lock, portMAX_DELAY);
+}
+
+static void push_unlock(void)
+{
+    xSemaphoreGive(s_push_lock);
+}
+
 static const esp_partition_t *spare_slot(void)
 {
     return esp_ota_get_next_update_partition(NULL);
@@ -52,11 +78,30 @@ static const esp_partition_t *spare_slot(void)
 
 static void push_unmap(void)
 {
-    s_push_ok = false;
-    if (s_push_mapped) {
-        esp_partition_munmap(s_push_map);
-        s_push_mapped = false;
+    push_lock();
+    s_push_ok = false;  // no sender starts on it from here
+    push_unlock();
+    if (!s_push_mapped) {
+        return;
     }
+    for (int waited = 0;; waited += 10) {
+        push_lock();
+        const int readers = s_push_readers;
+        push_unlock();
+        if (readers == 0) {
+            break;
+        }
+        if (waited >= PUSH_READERS_WAIT_MS) {
+            // Not reachable while every send has its deadline. Left mapped rather than fault a sender: no
+            // longer served, and a later map takes a new handle.
+            ESP_LOGE(TAG, "pushed app still being sent after %d ms: left mapped", waited);
+            s_push_mapped = false;
+            return;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    esp_partition_munmap(s_push_map);
+    s_push_mapped = false;
 }
 
 // Maps the pack `head` describes and checks it where it lies: its hash, which is a read back of
@@ -80,7 +125,9 @@ static const char *push_map(const esp_partition_t *slot, const app_push_head_t *
         push_unmap();
         return bad;
     }
+    push_lock();
     s_push_ok = true;
+    push_unlock();
     return NULL;
 }
 
@@ -313,6 +360,8 @@ static const char *mime_for(const char *name)
     return "application/octet-stream";
 }
 
+static esp_err_t serve_from(httpd_req_t *req, const char *name, const app_pack_t *pack);
+
 // Serves GET /<name> when a more specific route did not match.
 static esp_err_t get_static(httpd_req_t *req)
 {
@@ -330,11 +379,30 @@ static esp_err_t get_static(httpd_req_t *req)
     name[len - 1] = '\0';
 
     // A name is looked up, never opened: one with a slash or dots in it simply matches nothing.
+    // A push is served in the image's place, whole: never one build's page with another's script.
+    push_lock();
+    const bool        from_push = s_push_ok;
+    const app_pack_t *pack = from_push ? &s_push : s_image_ok ? &s_image : NULL;
+    if (from_push) {
+        s_push_readers++;
+    }
+    push_unlock();
+    const esp_err_t err = serve_from(req, name, pack);
+    if (from_push) {
+        push_lock();
+        s_push_readers--;
+        push_unlock();
+    }
+    return err;
+}
+
+// Sends `name` from `pack` (or the seed pages when there is none), counted in as a reader of a push by the
+// caller.
+static esp_err_t serve_from(httpd_req_t *req, const char *name, const app_pack_t *pack)
+{
     const uint8_t *bytes = NULL;
     size_t         size = 0;
     const char    *text = NULL;
-    // A push is served in the image's place, whole: never one build's page with another's script.
-    const app_pack_t *pack = s_push_ok ? &s_push : s_image_ok ? &s_image : NULL;
     if (pack && app_pack_find(pack, name, &bytes, &size)) {
         // The build ships an asset gzipped where that shrinks it, under its own name
         // (docs/architecture/webapp.md, Build), and refuses a plain one that starts with gzip's
@@ -379,6 +447,7 @@ esp_err_t app_serve_register(httpd_handle_t server)
         return err;
     }
     // Open: the same as reading any other page on the device (docs/architecture/system.md (Who may
-    // key the transmitter)).
-    return pairing_http_register(server, &route, PAIRING_OPEN);
+    // key the transmitter)). Sent by the sender pool, at most HTTP_FILE_SENDERS at once, so a client slow to
+    // take a page holds one sender and not the server, and events always have one (http_worker.h).
+    return pairing_http_register_on_worker(server, &route, PAIRING_OPEN, HTTP_WORKER_FILES);
 }
