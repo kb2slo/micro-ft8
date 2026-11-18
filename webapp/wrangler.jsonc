@@ -18,6 +18,14 @@
       "bucket_name": "micro-ft8-downloads"
     }
   ],
+  // One data point per file /download/ serves (worker.js, countDownload()):
+  // docs/architecture/webapp.md, Download counts.
+  "analytics_engine_datasets": [
+    {
+      "binding": "DOWNLOAD_COUNTS",
+      "dataset": "micro_ft8_downloads"
+    }
+  ],
   "routes": [
     {
       "pattern": "micro-ft8.kalikstein.com",

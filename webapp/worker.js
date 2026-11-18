@@ -5,7 +5,8 @@
 //
 // /download/* is served from the DOWNLOADS R2 bucket (both channels'
 // firmware, source and getting-started sheet). See
-// docs/RELEASE_PROCESS.md.
+// docs/RELEASE_PROCESS.md. Each file it serves is counted, by its name and
+// by whether the downloads page's flasher fetched it (countDownload()).
 //
 // A path with no file never lands here: Static Assets answers it with 404.html
 // (wrangler.jsonc, not_found_handling). The last return is a backstop only.
@@ -55,7 +56,8 @@ async function serveDownload(request, env, url) {
   }
   // Binaries/tarballs: Save As with the stable filename. JSON stays inline for
   // the downloads page fetch (and for humans opening the manifest in a tab).
-  if (!key.endsWith(".json") && !key.endsWith(".sha256")) {
+  const inline = key.endsWith(".json") || key.endsWith(".sha256");
+  if (!inline) {
     headers.set(
       "content-disposition",
       `attachment; filename="${name.replace(/"/g, "")}"`,
@@ -65,7 +67,23 @@ async function serveDownload(request, env, url) {
   if (request.method === "HEAD") {
     return new Response(null, { status: 200, headers });
   }
+  // A manifest or a checksum is a page or a station asking what is published, not a download.
+  if (!inline) countDownload(env, key, url);
   return new Response(obj.body, { status: 200, headers });
+}
+
+// One Analytics Engine data point per file served: its key, and how it was fetched, "usb" by the
+// downloads page's flasher (which asks with ?via=usb) and "download" by anything else, a station's
+// update included (told by its key, under ota/). Nothing about who asked is written. The key is
+// also the index, Analytics Engine's sampling key. A count never fails a download: with no binding
+// (a local run) or a refused write, the file is still served.
+function countDownload(env, key, url) {
+  const via = url.searchParams.get("via") === "usb" ? "usb" : "download";
+  try {
+    env.DOWNLOAD_COUNTS.writeDataPoint({ blobs: [key, via], indexes: [key] });
+  } catch (e) {
+    // Uncounted, and served.
+  }
 }
 
 // The file's own name when `key` is one this route serves, else "".

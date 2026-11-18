@@ -18,7 +18,9 @@ const STORED = {
   'private/notes.txt': 'other',
 };
 const asked = [];
+const counted = [];
 const env = {
+  DOWNLOAD_COUNTS: { writeDataPoint: (p) => { counted.push(p); } },
   DOWNLOADS: {
     get: async (key) => {
       asked.push(key);
@@ -55,5 +57,32 @@ const env = {
   assert.strictEqual((await get('/download/ota/microft8-poe-p4-ota-0.2.0.bin')).status, 404);
   assert.strictEqual((await get('/download/manifest.json', 'POST')).status, 405);
   assert.strictEqual((await get('/elsewhere')).status, 404);
+
+  // Download counts: one point per file served, by its key and by how it was fetched. A manifest,
+  // a HEAD, a refusal and a missing file are not downloads.
+  counted.length = 0;
+  for (const p of ['manifest.json', 'manifest-stable.json', 'ota/microft8-poe-p4-ota-0.2.0.bin',
+    'app/0.1.0/app.html', 'private/notes.txt']) await get('/download/' + p);
+  await get('/download/microft8-poe-p4-dev.bin', 'HEAD');
+  await get('/download/microft8-poe-p4-dev.bin', 'POST');
+  assert.deepStrictEqual(counted, [], 'not downloads');
+  await get('/download/microft8-poe-p4-dev.bin');
+  await get('/download/microft8-poe-p4-dev.bin?via=usb');
+  await get('/download/microft8-poe-p4-dev.bin?via=other');
+  await get('/download/ota/microft8-poe-p4-ota-0.1.0.bin');
+  assert.deepStrictEqual(counted, [
+    { blobs: ['microft8-poe-p4-dev.bin', 'download'], indexes: ['microft8-poe-p4-dev.bin'] },
+    { blobs: ['microft8-poe-p4-dev.bin', 'usb'], indexes: ['microft8-poe-p4-dev.bin'] },
+    { blobs: ['microft8-poe-p4-dev.bin', 'download'], indexes: ['microft8-poe-p4-dev.bin'] },
+    { blobs: ['ota/microft8-poe-p4-ota-0.1.0.bin', 'download'], indexes: ['ota/microft8-poe-p4-ota-0.1.0.bin'] },
+  ]);
+  // The query string names no other file, and a count that cannot be written still serves the file.
+  assert.strictEqual(await (await get('/download/microft8-poe-p4-dev.bin?via=usb')).text(), 'p4');
+  for (const counts of [undefined, { writeDataPoint() { throw new Error('refused'); } }]) {
+    const r = await worker.fetch(new Request('https://micro-ft8.kalikstein.com/download/microft8-poe-p4-dev.bin'),
+      { DOWNLOADS: env.DOWNLOADS, DOWNLOAD_COUNTS: counts });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(await r.text(), 'p4');
+  }
   console.log('ok');
 })().catch((e) => { console.error(e); process.exit(1); });

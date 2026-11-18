@@ -123,6 +123,19 @@ name, or one under `ota/`, and nothing else nested (`webapp/tests/test_worker.js
 3. Deploy `webapp/` so the Worker picks up the `DOWNLOADS` R2 binding (`wrangler.jsonc`), then wait for
    the next firmware merge (or re-run `release-main`) to fill the bucket.
 
+### Download counts
+
+The Worker counts each file it serves ([webapp.md](architecture/webapp.md), **Download counts**). To read
+them, the maintainer makes a Cloudflare API token with **Account · Account Analytics · Read**, kept off
+GitHub, and asks Analytics Engine's SQL API, here for the last 30 days by file and by `usb` or `download`:
+
+```bash
+curl -s "https://api.cloudflare.com/client/v4/accounts/<account id>/analytics_engine/sql" --header "Authorization: Bearer <token>" --data "SELECT blob1 AS file, blob2 AS via, SUM(_sample_interval) AS n FROM micro_ft8_downloads WHERE timestamp > NOW() - INTERVAL '30' DAY GROUP BY blob1, blob2 ORDER BY n DESC"
+```
+
+`SUM(_sample_interval)`, not `COUNT()`: Analytics Engine may sample, and each kept row stands for that many.
+It keeps three months, so a figure worth keeping longer is copied out by hand.
+
 ## Cutting a versioned release
 
 ```bash

@@ -386,7 +386,8 @@ async function flashTarget(key, asset, label) {
   let transport = null;
   try {
     log("Fetching " + asset.stable + "…");
-    const resp = await fetch("/download/" + asset.stable, { cache: "no-store" });
+    // via=usb: worker.js counts this fetch as a flash from this page, not a saved file.
+    const resp = await fetch("/download/" + asset.stable + "?via=usb", { cache: "no-store" });
     if (!resp.ok) throw new Error("Download failed: HTTP " + resp.status);
     const data = new Uint8Array(await resp.arrayBuffer());
     if (data.byteLength < 1024) throw new Error("Image too small (" + data.byteLength + " bytes)");
