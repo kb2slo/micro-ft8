@@ -44,6 +44,12 @@ Operate keeps its status on top and its controls at the bottom, and only the dec
 * **Bottom, top to bottom:** the QSO rows, one line each (call, its mode, **FT8** or **FT4**, from the entry's `md`, `n/N tries`, state, ×; the entry's dial and offset, `fq` and `off`, are kept on it unread until several channels need them), about two showing before they scroll in place, with no label and no empty line; rows scrolled out of sight show as a fade and a count at that edge, "+2 more ▾" below and "1 above ▴" above (`renderQueueMore()`, operator request 2026-10-25), which take no taps; the CQ row; the tries stepper while open; the radio bar; the drawer while open, below the bar.
 * **Measured** in the browser at 402 × 874 pt, the iPhone 17 Pro's screen, on 2026-10-26, with no title row or status line: the decode list under the Decodes bar is 512 pt closed with two QSOs and an activation line (the canvas drew about 510). With the drawer open it loses about 190 pt (the canvas's drawer was about 150; this one adds the radio's line). On the phone, Safari's own bars take more; the layout passed the operator's phone check on 2026-10-26, unmeasured there.
 
+### The live polls
+
+The page follows the station by polling the sidekick (`tick()`, once a second): `/api/state` on its first poll and `/api/events?since=` after it ([sidekick.md](sidekick.md), **Port A**), and `/api/config` every 5 s (`pollLiveStatus()`).
+
+* **Polls never overlap** (`pollEvents()`, `pollLiveStatus()`; `webapp/tests/test_live_poll.js`). A poll still out when the next is due is not sent again, and one is given up after 10 s, so a stalled network leaves one request a page, not one more a second: overnight on 2026-11-18 a page had four events reads with one `since` out at once, and the requests that piled up took the sidekick's heap to 660 bytes ([sidekick.md](sidekick.md), **Tasks and cores**). 10 s, not less: a slow answer cut short is asked again from the same `since`, its backlog with it, in the middle of the stall; overnight 0.7% of events reads took over 5 s and 0.1% over 10 s. A config read waits up to 5 s on the main board, so its 10 s is the same as a log read's (`logFetchJson()`).
+
 ### The radio bar
 
 The bottom row of Operate (`#opRadioBar`): the band and frequency, a sub-line, and on the right a label, or **Stop** while something is on the air. It shows one state, highest first (`radioBarState()`, host-tested by `webapp/tests/test_radio_bar.js`), each with a glyph as well as a tint:

@@ -204,15 +204,19 @@ static esp_err_t dispatch(httpd_req_t *req)
     // Hand the handler the context it was registered with, not ours.
     req->user_ctx = route->user_ctx;
     const int64_t t0 = esp_timer_get_time();
-    // A request that waits on the main board goes to its worker, so this task keeps serving
-    // everyone else (docs/architecture/sidekick.md, Tasks and cores). It runs here only if that worker was
-    // never started.
+    // Its reply has HTTP_SEND_DEADLINE_MS from its first byte, whichever task sends it.
+    const int fd = httpd_req_to_sockfd(req);
+    http_worker_send_begin(fd);
+    // A request that waits, on the main board or on a slow client, goes to its worker, so this task keeps
+    // serving everyone else (docs/architecture/sidekick.md, Tasks and cores). It runs here only if that
+    // worker was never started.
     if (route->worker != HTTP_WORKER_NONE && http_worker_submit(route->worker, req, route->handler, t0) == ESP_OK) {
         return ESP_OK;
     }
     // Anything run here holds every other request and every new connection while it runs: log a slow one,
     // and count it toward what the held check (http_worker_watch()) reports.
     const esp_err_t err = route->handler(req);
+    http_worker_send_end(fd);
     http_worker_note_slow(req, t0);
     http_worker_note_inline(req, (esp_timer_get_time() - t0) / 1000);
     return err;

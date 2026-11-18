@@ -1,9 +1,11 @@
-// The worker that serves requests which wait on the main board (http_worker.h; docs/architecture/sidekick.md,
+// The workers that serve requests off the web server's own task (http_worker.h; docs/architecture/sidekick.md,
 // Tasks and cores). esp_http_server runs every handler on its one task, and that task also accepts new
-// connections, so a handler waiting seconds for the main board stopped every client, connections included.
-// Such a request is handed here as an async copy (httpd_req_async_handler_begin()); the server's task goes
-// back to its other sockets, and the socket being answered is left alone until the copy is completed.
+// connections, so a handler that waited, on the main board or on a client slow to take its reply, stopped
+// every client, connections included. Such a request is handed here as an async copy
+// (httpd_req_async_handler_begin()); the server's task goes back to its other sockets, and the socket being
+// answered is left alone until the copy is completed.
 
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -11,6 +13,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
@@ -26,25 +29,43 @@ static const char *TAG = "http_worker";
 // The server task's own stack (wifi_prov.c), since the same handlers run here. The alive line reports what
 // each leaves unused (http_worker_stack_free()), which is what a smaller figure would be chosen from.
 #define WORKER_STACK 8192
+// A sender runs only files, events and state, none of which waits on the main board or touches mbedtls. Its
+// stack never used is in the alive line (sstack) and /api/config (sk_send_stack_free).
+#define SENDER_STACK 6144
 // A check of the server's task that has not come back in this long is given up and reported.
 #define WATCH_GIVE_UP_US (30 * 1000 * 1000)
+#define WORKER_TASKS_MAX HTTP_SENDERS
+// The server's own send timeout (HTTPD_DEFAULT_CONFIG()'s send_wait_timeout, which wifi_prov.c keeps), put back
+// on a socket after a request whose deadline shortened it.
+#define SERVER_SEND_WAIT_MS 5000
 
 typedef struct {
     httpd_req_t   *req;
     http_worker_fn fn;
     int64_t        t0_us;
+    bool           file;  // counts toward HTTP_FILE_SENDERS
 } work_t;
 
 typedef struct {
     const char       *name;
+    int               ntasks;
+    uint32_t          stack;
     QueueHandle_t     queue;
-    TaskHandle_t      task;
+    TaskHandle_t      tasks[WORKER_TASKS_MAX];
     volatile uint32_t queue_peak;
 } worker_t;
 
 static worker_t s_workers[HTTP_WORKER_COUNT] = {
-    [HTTP_WORKER_MAIN_BOARD] = { .name = "http_main_board" },
+    [HTTP_WORKER_MAIN_BOARD] = { .name = "http_main_board", .ntasks = 1, .stack = WORKER_STACK },
+    [HTTP_WORKER_SENDERS]    = { .name = "http_send", .ntasks = HTTP_SENDERS, .stack = SENDER_STACK },
+    [HTTP_WORKER_FILES]      = { .name = "http_files" },  // no tasks of its own: the senders'
 };
+
+// Files in the senders' queue or being sent, at most HTTP_FILE_SENDERS; the rest wait in s_files_wait, in order,
+// and go into the queue as one finishes. Under s_files_lock: the server's task submits, a sender finishes.
+static SemaphoreHandle_t s_files_lock;
+static QueueHandle_t     s_files_wait;
+static int               s_files_active;
 
 static const char *method_name(int m)
 {
@@ -100,6 +121,34 @@ void http_worker_note_slow(httpd_req_t *req, int64_t t0_us)
     host_link_log(line);
 }
 
+// Answers a handed-over request busy and hands its socket back: the page asks again.
+static void answer_busy(httpd_req_t *copy)
+{
+    httpd_resp_set_status(copy, "503 Service Unavailable");
+    httpd_resp_set_type(copy, "application/json");
+    httpd_resp_sendstr(copy, "{\"ok\":false,\"why\":\"sidekick busy\"}");
+    http_worker_send_end(httpd_req_to_sockfd(copy));
+    httpd_req_async_handler_complete(copy);
+}
+
+// A file has been sent: the next one waiting takes its place in the senders' queue, or there is one fewer.
+static void file_done(void)
+{
+    xSemaphoreTake(s_files_lock, portMAX_DELAY);
+    work_t next;
+    bool   moved = false;
+    while (!moved && xQueueReceive(s_files_wait, &next, 0) == pdTRUE) {
+        moved = xQueueSend(s_workers[HTTP_WORKER_SENDERS].queue, &next, 0) == pdTRUE;
+        if (!moved) {
+            answer_busy(next.req);  // not reachable: the queue holds every socket the server has
+        }
+    }
+    if (!moved) {
+        s_files_active--;
+    }
+    xSemaphoreGive(s_files_lock);
+}
+
 static void run(work_t *w)
 {
     const esp_err_t err = w->fn(w->req);
@@ -109,9 +158,13 @@ static void run(work_t *w)
     // handed back, so the close cannot land on a session slot the server has reused.
     httpd_handle_t hd = w->req->handle;
     const int fd = httpd_req_to_sockfd(w->req);
+    http_worker_send_end(fd);
     httpd_req_async_handler_complete(w->req);
     if (err != ESP_OK) {
         httpd_sess_trigger_close(hd, fd);
+    }
+    if (w->file) {
+        file_done();
     }
 }
 
@@ -130,16 +183,35 @@ void http_worker_start(void)
 {
     for (int i = 0; i < HTTP_WORKER_COUNT; ++i) {
         worker_t *wk = &s_workers[i];
-        if (wk->queue) {
+        if (wk->queue || wk->ntasks == 0) {
             continue;
         }
         wk->queue = xQueueCreate(WORKER_QUEUE_LEN, sizeof(work_t));
-        // The server task's priority (5, esp_http_server's default), so none starves another.
-        if (!wk->queue || xTaskCreate(worker_task, wk->name, WORKER_STACK, wk, 5, &wk->task) != pdPASS) {
-            if (wk->queue) {
-                vQueueDelete(wk->queue);
-                wk->queue = NULL;
+        if (!wk->queue) {
+            ESP_LOGE(TAG, "%s not started: its requests stay on the server's task", wk->name);
+            continue;
+        }
+        // The server task's priority (5, esp_http_server's default), so none starves another. Not pinned: the
+        // scheduler spreads them over both cores.
+        for (int t = 0; t < wk->ntasks; ++t) {
+            char name[16];
+            snprintf(name, sizeof(name), wk->ntasks > 1 ? "%s%d" : "%s", wk->name, t);
+            if (xTaskCreate(worker_task, name, wk->stack, wk, 5, &wk->tasks[t]) != pdPASS) {
+                wk->tasks[t] = NULL;
+                ESP_LOGE(TAG, "%s not started", name);
             }
+        }
+        if (i == HTTP_WORKER_SENDERS && wk->tasks[0]) {
+            s_files_lock = xSemaphoreCreateMutex();
+            s_files_wait = xQueueCreate(WORKER_QUEUE_LEN, sizeof(work_t));
+            if (!s_files_lock || !s_files_wait) {
+                ESP_LOGE(TAG, "files not limited: no memory for their queue");  // they share the pool unlimited
+            }
+        }
+        if (!wk->tasks[0]) {
+            // Not even one: leave its requests on the server's task. Any other that did start only waits.
+            vQueueDelete(wk->queue);
+            wk->queue = NULL;
             ESP_LOGE(TAG, "%s not started: its requests stay on the server's task", wk->name);
         }
     }
@@ -147,10 +219,12 @@ void http_worker_start(void)
 
 esp_err_t http_worker_submit(http_worker_id_t id, httpd_req_t *req, http_worker_fn fn, int64_t t0_us)
 {
-    if (id < 0 || id >= HTTP_WORKER_COUNT || !s_workers[id].queue) {
+    const bool file = id == HTTP_WORKER_FILES;
+    const http_worker_id_t to = file ? HTTP_WORKER_SENDERS : id;
+    if (id < 0 || id >= HTTP_WORKER_COUNT || !s_workers[to].queue) {
         return ESP_ERR_INVALID_STATE;
     }
-    worker_t *wk = &s_workers[id];
+    worker_t *wk = &s_workers[to];
     httpd_req_t *copy = NULL;
     if (httpd_req_async_handler_begin(req, &copy) != ESP_OK) {
         // No memory for the copy. Running it here instead could overlap the worker's own handler: a second
@@ -160,18 +234,35 @@ esp_err_t http_worker_submit(http_worker_id_t id, httpd_req_t *req, http_worker_
         httpd_resp_set_status(req, "503 Service Unavailable");
         httpd_resp_set_type(req, "application/json");
         httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"sidekick busy\"}");
+        http_worker_send_end(httpd_req_to_sockfd(req));
         return ESP_OK;
     }
-    work_t w = { .req = copy, .fn = fn, .t0_us = t0_us };
-    if (xQueueSend(wk->queue, &w, 0) != pdTRUE) {
-        // Not reachable while the queue is as deep as the server has sockets, but if it were: the copy owns
+    work_t w = { .req = copy, .fn = fn, .t0_us = t0_us, .file = file && s_files_lock && s_files_wait };
+    bool queued;
+    if (w.file) {
+        xSemaphoreTake(s_files_lock, portMAX_DELAY);
+        if (s_files_active < HTTP_FILE_SENDERS) {
+            queued = xQueueSend(wk->queue, &w, 0) == pdTRUE;
+            if (queued) {
+                s_files_active++;
+            }
+        } else {
+            queued = xQueueSend(s_files_wait, &w, 0) == pdTRUE;
+            const uint32_t waiting = (uint32_t)uxQueueMessagesWaiting(s_files_wait);
+            if (queued && waiting > s_workers[HTTP_WORKER_FILES].queue_peak) {
+                s_workers[HTTP_WORKER_FILES].queue_peak = waiting;
+            }
+        }
+        xSemaphoreGive(s_files_lock);
+    } else {
+        queued = xQueueSend(wk->queue, &w, 0) == pdTRUE;
+    }
+    if (!queued) {
+        // Not reachable while the queues are as deep as the server has sockets, but if it were: the copy owns
         // the request now, and running it here could overlap the worker's own handler, so it is answered
         // busy instead and the page asks again.
         ESP_LOGW(TAG, "%s queue full: %s answered busy", wk->name, req->uri);
-        httpd_resp_set_status(copy, "503 Service Unavailable");
-        httpd_resp_set_type(copy, "application/json");
-        httpd_resp_sendstr(copy, "{\"ok\":false,\"why\":\"sidekick busy\"}");
-        httpd_req_async_handler_complete(copy);
+        answer_busy(copy);
         return ESP_OK;
     }
     const uint32_t waiting = (uint32_t)uxQueueMessagesWaiting(wk->queue);
@@ -188,10 +279,32 @@ uint32_t http_worker_queue_peak(http_worker_id_t id)
 
 uint32_t http_worker_stack_free(http_worker_id_t id)
 {
-    if (id < 0 || id >= HTTP_WORKER_COUNT || !s_workers[id].task) {
+    if (id < 0 || id >= HTTP_WORKER_COUNT) {
         return 0;
     }
-    return (uint32_t)uxTaskGetStackHighWaterMark(s_workers[id].task);
+    uint32_t least = 0;
+    bool     any = false;
+    for (int t = 0; t < s_workers[id].ntasks; ++t) {
+        if (s_workers[id].tasks[t]) {
+            const uint32_t f = (uint32_t)uxTaskGetStackHighWaterMark(s_workers[id].tasks[t]);
+            if (!any || f < least) {
+                least = f;
+            }
+            any = true;
+        }
+    }
+    return least;
+}
+
+int http_worker_sender_index(void)
+{
+    const TaskHandle_t self = xTaskGetCurrentTaskHandle();
+    for (int t = 0; t < HTTP_SENDERS; ++t) {
+        if (s_workers[HTTP_WORKER_SENDERS].tasks[t] == self) {
+            return t;
+        }
+    }
+    return -1;
 }
 
 // The held check. What the server's task ran itself since the last check, written by
@@ -257,4 +370,102 @@ void http_worker_watch(httpd_handle_t server)
 uint32_t http_worker_held_peak_ms(void)
 {
     return s_held_peak_ms;
+}
+
+// Each reply's send deadline (HTTP_SEND_DEADLINE_MS). Per socket, indexed from LWIP_SOCKET_OFFSET: `armed` is set
+// by the dispatcher on the server's task before the request is answered, and `started_us` by the send itself
+// on whichever task answers it. One request is answered on a socket at a time (the server leaves a socket
+// alone while its async copy is out), so no lock.
+typedef struct {
+    volatile bool    armed;
+    volatile int64_t started_us;
+} send_clock_t;
+
+static send_clock_t      s_send[CONFIG_LWIP_MAX_SOCKETS];
+static volatile uint32_t s_send_cuts;
+
+static send_clock_t *send_clock(int fd)
+{
+    const int i = fd - LWIP_SOCKET_OFFSET;
+    return (i >= 0 && i < CONFIG_LWIP_MAX_SOCKETS) ? &s_send[i] : NULL;
+}
+
+static void set_send_timeout(int fd, int64_t ms)
+{
+    const struct timeval tv = { .tv_sec = (time_t)(ms / 1000), .tv_usec = (suseconds_t)((ms % 1000) * 1000) };
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+}
+
+// esp_http_server's own send (httpd_default_send()), but no single send may run past the request's deadline:
+// the socket's timeout is cut to what is left before each one, and once nothing is left the send fails, which
+// ends the reply and closes the connection. lwIP returns what it wrote when the timeout passes, so a client
+// that takes a little at a time is cut within a send of its deadline.
+static int deadline_send(httpd_handle_t hd, int fd, const char *buf, size_t len, int flags)
+{
+    (void)hd;
+    if (!buf) {
+        return HTTPD_SOCK_ERR_INVALID;
+    }
+    send_clock_t *c = send_clock(fd);
+    if (c && c->armed) {
+        const int64_t now = esp_timer_get_time();
+        if (!c->started_us) {
+            c->started_us = now;
+        }
+        const int64_t left_ms = HTTP_SEND_DEADLINE_MS - (now - c->started_us) / 1000;
+        if (left_ms <= 0) {
+            c->armed = false;  // one line a reply
+            s_send_cuts++;
+            char line[64];
+            snprintf(line, sizeof(line), "SK send cut at %d ms", HTTP_SEND_DEADLINE_MS);
+            host_link_log(line);
+            return HTTPD_SOCK_ERR_FAIL;
+        }
+        set_send_timeout(fd, left_ms);
+    }
+    const int ret = send(fd, buf, len, flags);
+    if (ret < 0) {
+        return (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) ? HTTPD_SOCK_ERR_TIMEOUT
+                                                                            : HTTPD_SOCK_ERR_FAIL;
+    }
+    return ret;
+}
+
+esp_err_t http_worker_session_open(httpd_handle_t hd, int sockfd)
+{
+    send_clock_t *c = send_clock(sockfd);
+    if (c) {
+        c->armed = false;
+        c->started_us = 0;
+    }
+    // A connection without it only loses the deadline; it is still served.
+    httpd_sess_set_send_override(hd, sockfd, deadline_send);
+    return ESP_OK;
+}
+
+void http_worker_send_begin(int sockfd)
+{
+    send_clock_t *c = send_clock(sockfd);
+    if (c) {
+        c->started_us = 0;
+        c->armed = true;
+    }
+}
+
+void http_worker_send_end(int sockfd)
+{
+    send_clock_t *c = send_clock(sockfd);
+    if (c && c->started_us) {
+        // The next request on this connection starts from the server's own send timeout, not what was left.
+        set_send_timeout(sockfd, SERVER_SEND_WAIT_MS);
+    }
+    if (c) {
+        c->armed = false;
+        c->started_us = 0;
+    }
+}
+
+uint32_t http_worker_send_cuts(void)
+{
+    return s_send_cuts;
 }

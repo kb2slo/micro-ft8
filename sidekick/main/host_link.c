@@ -170,41 +170,51 @@ static void json_escape(const char *in, char *out, size_t out_cap)
 // An events or state reply is written into one buffer and sent a few KB at a time. One chunk per row was
 // six small socket writes an event (each chunk is its size, its data and a CRLF; the comma was a chunk too),
 // so a full ring was hundreds of them, each held back by TCP until the last was acknowledged: one reply
-// took 1 to 2.5 s and every other request waited behind it (2026-11-08). Events and state are served on the
-// server's one task (not the worker, http_worker.h), so one static buffer serves every reply.
+// took 1 to 2.5 s and every other request waited behind it (2026-11-08). Events and state are served by the
+// sender pool (http_worker.h), several at once, so each sender has a buffer of its own; one that runs on the
+// server's task, only when the pool never started, has the first, which no sender then uses.
 #define EVENTS_BATCH_BYTES 4096
-static char s_batch[EVENTS_BATCH_BYTES];
-static size_t s_batch_len;
+typedef struct {
+    char   buf[EVENTS_BATCH_BYTES];
+    size_t len;
+} batch_t;
+static batch_t s_batches[HTTP_SENDERS];
 
-static void batch_flush(httpd_req_t *req)
+static batch_t *batch_own(void)
 {
-    if (s_batch_len > 0) {
-        httpd_resp_send_chunk(req, s_batch, s_batch_len);
-        s_batch_len = 0;
+    const int i = http_worker_sender_index();
+    return &s_batches[i < 0 ? 0 : i];
+}
+
+static void batch_flush(httpd_req_t *req, batch_t *b)
+{
+    if (b->len > 0) {
+        httpd_resp_send_chunk(req, b->buf, b->len);
+        b->len = 0;
     }
 }
 
-static void batch_add(httpd_req_t *req, const char *text)
+static void batch_add(httpd_req_t *req, batch_t *b, const char *text)
 {
     const size_t n = strlen(text);
-    if (s_batch_len + n > sizeof(s_batch)) {
-        batch_flush(req);
+    if (b->len + n > sizeof(b->buf)) {
+        batch_flush(req, b);
     }
-    if (n > sizeof(s_batch)) {
+    if (n > sizeof(b->buf)) {
         httpd_resp_send_chunk(req, text, n);  // larger than the buffer: on its own
         return;
     }
-    memcpy(s_batch + s_batch_len, text, n);
-    s_batch_len += n;
+    memcpy(b->buf + b->len, text, n);
+    b->len += n;
 }
 
-static void batch_begin(httpd_req_t *req)
+static void batch_begin(httpd_req_t *req, batch_t *b)
 {
-    s_batch_len = 0;
-    batch_add(req, "{\"events\":[");
+    b->len = 0;
+    batch_add(req, b, "{\"events\":[");
 }
 
-static void send_event_row(httpd_req_t *req, const event_t *e, bool *first)
+static void send_event_row(httpd_req_t *req, batch_t *b, const event_t *e, bool *first)
 {
     // Worst case: text fully \u-escaped (6 bytes a char) plus a DECODE's
     // fixed fields, the largest (~165 bytes with v2's slot and dial), and the comma before it.
@@ -213,11 +223,11 @@ static void send_event_row(httpd_req_t *req, const event_t *e, bool *first)
     if (event_json(e, row + 1, sizeof(row) - 1) == 0) {
         return;
     }
-    batch_add(req, *first ? row + 1 : row);
+    batch_add(req, b, *first ? row + 1 : row);
     *first = false;
 }
 
-static esp_err_t send_events_tail(httpd_req_t *req, uint32_t head)
+static esp_err_t send_events_tail(httpd_req_t *req, batch_t *b, uint32_t head)
 {
     // `hold`: seconds the sidekick button has been held toward the AP reset (0
     // when not), `hold_of`: the seconds that complete it. It rides here because this is the one reply the page reads
@@ -225,8 +235,8 @@ static esp_err_t send_events_tail(httpd_req_t *req, uint32_t head)
     char tail[80];
     snprintf(tail, sizeof(tail), "],\"seq\":%" PRIu32 ",\"hold\":%d,\"hold_of\":%d}", head,
              wifi_prov_ap_reset_hold(), WIFI_PROV_AP_RESET_HOLD_SECS);
-    batch_add(req, tail);
-    batch_flush(req);
+    batch_add(req, b, tail);
+    batch_flush(req, b);
     return httpd_resp_send_chunk(req, NULL, 0);
 }
 
@@ -249,7 +259,8 @@ static esp_err_t get_events(httpd_req_t *req)
     }
 
     httpd_resp_set_type(req, "application/json");
-    batch_begin(req);
+    batch_t *b = batch_own();
+    batch_begin(req, b);
 
     bool first = true;
     uint32_t head;
@@ -277,12 +288,12 @@ static esp_err_t get_events(httpd_req_t *req)
             continue;   // overwritten while we walked; skip rather than lie
         }
         xSemaphoreGive(s_lock);
-        send_event_row(req, &e, &first);
+        send_event_row(req, b, &e, &first);
         xSemaphoreTake(s_lock, portMAX_DELAY);
     }
     xSemaphoreGive(s_lock);
 
-    return send_events_tail(req, head);
+    return send_events_tail(req, b, head);
 }
 
 // GET /api/state?slots=<n>
@@ -306,7 +317,8 @@ static esp_err_t get_state(httpd_req_t *req)
     }
 
     httpd_resp_set_type(req, "application/json");
-    batch_begin(req);
+    batch_t *b = batch_own();
+    batch_begin(req, b);
 
     bool first = true;
     event_t e;
@@ -316,12 +328,12 @@ static esp_err_t get_state(httpd_req_t *req)
     while (event_state_next(&s_state, after, head, slots, now_ms(), &e)) {
         xSemaphoreGive(s_lock);
         after = e.seq;
-        send_event_row(req, &e, &first);
+        send_event_row(req, b, &e, &first);
         xSemaphoreTake(s_lock, portMAX_DELAY);
     }
     xSemaphoreGive(s_lock);
 
-    return send_events_tail(req, head);
+    return send_events_tail(req, b, head);
 }
 
 // Last reply the host sent to an action, so the browser learns whether its
@@ -473,7 +485,7 @@ static size_t sidekick_facts_json(char *out, size_t cap)
     const bool linked = host_link_host_hello(&proto, host_version, &hello_age) && hello_age < HOST_LINK_HELLO_FRESH_MS;
     snprintf(host_proto, sizeof(host_proto), "%u", (unsigned)proto);
     snprintf(sk_proto, sizeof(sk_proto), "%u", (unsigned)PORTA_PROTO_VERSION);
-    char num[13][12];
+    char num[17][12];
     snprintf(num[0], sizeof(num[0]), "%" PRIu32, s_rx_dec.crc_errors);
     snprintf(num[1], sizeof(num[1]), "%" PRIu32, s_rx_dec.frames_ok);
     snprintf(num[2], sizeof(num[2]), "%" PRIu32, s_ring_gap_events);
@@ -490,6 +502,10 @@ static size_t sidekick_facts_json(char *out, size_t cap)
     snprintf(num[10], sizeof(num[10]), "%" PRIu32, http_worker_queue_peak(HTTP_WORKER_MAIN_BOARD));
     snprintf(num[11], sizeof(num[11]), "%" PRIu32, tcp.held);
     snprintf(num[12], sizeof(num[12]), "%" PRIu32, http_worker_held_peak_ms());
+    snprintf(num[13], sizeof(num[13]), "%" PRIu32, http_worker_queue_peak(HTTP_WORKER_SENDERS));
+    snprintf(num[14], sizeof(num[14]), "%" PRIu32, http_worker_stack_free(HTTP_WORKER_SENDERS));
+    snprintf(num[15], sizeof(num[15]), "%" PRIu32, http_worker_send_cuts());
+    snprintf(num[16], sizeof(num[16]), "%" PRIu32, http_worker_queue_peak(HTTP_WORKER_FILES));
     const struct {
         const char *key;
         const char *value;
@@ -507,6 +523,10 @@ static size_t sidekick_facts_json(char *out, size_t cap)
         { "sk_tcp_backlog_peak", num[9] },
         { "sk_worker_queue_peak", num[10] },
         { "sk_httpd_held_peak_ms", num[12] },
+        { "sk_send_queue_peak", num[13] },
+        { "sk_send_stack_free", num[14] },
+        { "sk_send_cuts", num[15] },
+        { "sk_files_wait_peak", num[16] },
         { "sk_wifi_mode", wifi_prov_ap_active() ? "ap" : "station" },
         { "sk_network_name", wifi_prov_network_name() },
         { "sk_ip", wifi_prov_ip_str() },
@@ -2114,43 +2134,42 @@ void host_link_register_uris(httpd_handle_t server)
     // Operate view is the same event feed, same design system.)
     // `worker`: the handler sends to the main board and waits for its answer, so it runs on the main-board
     // worker (pairing_http_register_on_worker()) and every main-board request stays one at a time, which
-    // wait_reply() needs. Events, state and the link test's counters only read what porta_rx already holds,
-    // and stay on the server's task.
+    // wait_reply() needs. Events and state only read what porta_rx already holds, but a reply can be the whole
+    // ring, sent at the client's pace, so they go to the sender pool. The link test's counters stay on the
+    // server's task: a few bytes, on a bench tool.
     const struct {
         const httpd_uri_t *uri;
         pairing_policy_t policy;
-        bool worker;
+        http_worker_id_t worker;
     } routes[] = {
-        { &events, PAIRING_OPEN, false },
-        { &state, PAIRING_OPEN, false },
-        { &settime, PAIRING_REQUIRED, true },
-        { &tx_cancel, PAIRING_REQUIRED, true },
-        { &config_get, PAIRING_OPEN, true },
-        { &config_put, PAIRING_REQUIRED, true },
-        { &radio_connect, PAIRING_REQUIRED, true },
-        { &radio_tune, PAIRING_REQUIRED, true },
-        { &radio_read, PAIRING_REQUIRED, true },
-        { &radio_ptt, PAIRING_REQUIRED, true },
-        { &radio_setting, PAIRING_REQUIRED, true },
-        { &cq, PAIRING_REQUIRED, true },
-        { &swr_start, PAIRING_REQUIRED, true },
-        { &link_test_get, PAIRING_OPEN, false },
-        { &link_test_post, PAIRING_REQUIRED, true },
-        { &queue_cancel, PAIRING_REQUIRED, true },
-        { &queue_reply, PAIRING_REQUIRED, true },
-        { &queue_tries, PAIRING_REQUIRED, true },
-        { &queue_parity, PAIRING_REQUIRED, true },
-        { &log_files, PAIRING_OPEN, true },
-        { &log_files_delete, PAIRING_REQUIRED, true },
-        { &log_entries, PAIRING_OPEN, true },
+        { &events, PAIRING_OPEN, HTTP_WORKER_SENDERS },
+        { &state, PAIRING_OPEN, HTTP_WORKER_SENDERS },
+        { &settime, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
+        { &tx_cancel, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
+        { &config_get, PAIRING_OPEN, HTTP_WORKER_MAIN_BOARD },
+        { &config_put, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
+        { &radio_connect, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
+        { &radio_tune, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
+        { &radio_read, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
+        { &radio_ptt, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
+        { &radio_setting, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
+        { &cq, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
+        { &swr_start, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
+        { &link_test_get, PAIRING_OPEN, HTTP_WORKER_NONE },
+        { &link_test_post, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
+        { &queue_cancel, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
+        { &queue_reply, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
+        { &queue_tries, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
+        { &queue_parity, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
+        { &log_files, PAIRING_OPEN, HTTP_WORKER_MAIN_BOARD },
+        { &log_files_delete, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
+        { &log_entries, PAIRING_OPEN, HTTP_WORKER_MAIN_BOARD },
     };
     _Static_assert(sizeof(routes) / sizeof(routes[0]) == PAIRING_ROUTES_HOST_LINK,
                    "host_link route count");
     for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i) {
-        const esp_err_t err = routes[i].worker
-                                  ? pairing_http_register_on_worker(server, routes[i].uri, routes[i].policy,
-                                                                    HTTP_WORKER_MAIN_BOARD)
-                                  : pairing_http_register(server, routes[i].uri, routes[i].policy);
+        const esp_err_t err = pairing_http_register_on_worker(server, routes[i].uri, routes[i].policy,
+                                                              routes[i].worker);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "register %s failed: %s", routes[i].uri->uri, esp_err_to_name(err));
         }
