@@ -18,3 +18,17 @@ One run, per build:
 **Run each build at least twice.** The heap low is one worst moment in ten minutes, and on 2026-11-16 the
 same image gave 46,664 and 23,344 bytes, a wider spread than any difference between builds. The load is far
 heavier than an operator's (nine page loads a minute), so a low under 40 KB here is not a station's.
+
+## A slow client (roadmap row uwzn)
+
+`slow_client.py` takes its reply slowly, as a phone in WiFi power save does: a small receive buffer, a
+chunk every quarter second. Run it beside `probe.py` with no other client on the station:
+
+* `python3 tools/sidekick_load/slow_client.py <sidekick> 60 /app.html 1024 0.25`
+* `python3 tools/sidekick_load/probe.py <sidekick> 60 0.5 probe.log`
+
+**Done** for row uwzn is the probe's reads under 500 ms throughout. On 2026-11-18 (sidekick `7c34a5a`, both run from
+one computer on the same WiFi) the probe alone read in a median 48 ms (worst 623 ms, 46 reads); beside the
+slow client all six of its reads timed out at 10 s, and the sidekick logged `SK slow GET /app.html 61181 ms`
+and `SK httpd held over 30 s`. The slow client took 22,328 of the file's 53,055 bytes in 61 s: as long as it
+takes something, nothing ends its send, and `httpd` serves no one else.
