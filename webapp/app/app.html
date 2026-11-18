@@ -3930,9 +3930,17 @@ async function loadConfig() {
 }
 
 // Periodic, Operate-only refresh: live header fields alone, never the form.
+// One at a time, like pollEvents(), and given up later: a config read waits up to 5 s on the main
+// board before the sidekick answers it (docs/architecture/sidekick.md, Tasks and cores).
+var STATUS_POLL_TIMEOUT_MS = 10000;
+var cfgPolling = false;
 async function pollLiveStatus() {
+  if (cfgPolling) return;
+  cfgPolling = true;
+  var ac = new AbortController();
+  var timer = setTimeout(function () { ac.abort(); }, STATUS_POLL_TIMEOUT_MS);
   try {
-    var r = await fetch('/api/config', { cache: 'no-store' });
+    var r = await fetch('/api/config', { cache: 'no-store', signal: ac.signal });
     if (!r.ok) return;
     var cfg = await r.json();
     noteSidekickAnswer(cfg);
@@ -3948,7 +3956,10 @@ async function pollLiveStatus() {
     PskrLive.sync();
     applyOperateLive(cfg);
     setMainBoardLive(true);
-  } catch (e) { /* next tick */ }
+  } catch (e) { /* next tick */ } finally {
+    clearTimeout(timer);
+    cfgPolling = false;
+  }
   // Gated internally (paired + backoff timer), so this is a no-op almost
   // every tick -- an actual sync attempt only every CLOCK_AUTO_SYNC_MS, or
   // every few seconds right after one that failed.
@@ -5811,11 +5822,25 @@ function resetLiveState() {
   txHud = null;
 }
 
+// One poll at a time, given up after LIVE_POLL_TIMEOUT_MS. tick() calls this every second whether
+// or not the last poll has answered, so without the flag a stalled network piled up a request a
+// second, each holding a connection and its reply's memory on the sidekick: the overnight run of
+// 2026-11-18 had four reads with one `since` out at once and the sidekick's heap at 660 bytes
+// (docs/architecture/sidekick.md, Tasks and cores). With the flag the timer only recovers a poll that never settles, so it is long
+// enough not to cut a slow answer and retry its backlog in the middle of a stall: overnight, 0.7% of
+// reads took over 5 s and 0.1% over 10 s, none over 20 s, the sidekick's own send deadline. It covers
+// the body as well as the headers, as logFetchJson()'s does.
+var LIVE_POLL_TIMEOUT_MS = 10000;
+var evPolling = false;
 async function pollEvents() {
+  if (evPolling) return;
+  evPolling = true;
+  var ac = new AbortController();
+  var timer = setTimeout(function () { ac.abort(); }, LIVE_POLL_TIMEOUT_MS);
   try {
     var fresh = !evSeq;
     var r = await fetch(fresh ? '/api/state?slots=' + DECODE_SLOTS_MAX : '/api/events?since=' + evSeq,
-                        { cache: 'no-store' });
+                        { cache: 'no-store', signal: ac.signal });
     var j = await r.json();
     if (fresh) resetLiveState();
     var gotEvents = j.events && j.events.length;
@@ -5845,6 +5870,9 @@ async function pollEvents() {
   } catch (e) {
     // The sidekick restarting out from under a hold card is the reset itself.
     if (holdCardOpen) startHoldReset();
+  } finally {
+    clearTimeout(timer);
+    evPolling = false;
   }
 }
 
