@@ -8,6 +8,7 @@ How things work now: `architecture/` (start at [architecture/system.md](architec
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
+| uwzn | <a id="uwzn"></a>Sidekick: a slow client cannot hold the server | A file or events reply is sent on `httpd`'s own task, so one client slow to acknowledge holds every other: on 2026-11-17 cold page loads held it up to 3961 ms, and events replies to a phone with a warm cache 1.8 s each ([TEST_PLAN.md](TEST_PLAN.md), the sidekick worker row; [sidekick.md](architecture/sidekick.md), **Tasks and cores**). First a committed repro, a client that reads slowly beside one timing `/api/events`, since the files worker taken out on 2026-11-16 was judged under a load with no slow client. Leading design (maintainer, 2026-11-17): sends leave `httpd` for a small pool of sender tasks across both cores, each owning its client's buffer; measured on the repro against a larger TCP send buffer, the pool's size set by the heap. **Done-when:** with one client reading slowly, another's events reads stay under 500 ms and the lowest free heap stays above 40 KB, on the repro committed in `tools/`. |
 
 ## Backlog
 
