@@ -64,7 +64,7 @@ its board (**Public Cloudflare mirror**).
 ## Public Cloudflare mirror (anonymous downloads)
 
 `release-main` publishes the dev channel, and `release` the stable one, to Cloudflare **R2** bucket
-`micro-ft8-downloads`, served under the site origin by [`webapp/worker.js`](../webapp/worker.js), whose `/download/*` route is one of the two that run the Worker ([webapp.md](architecture/webapp.md), **Serving the site**):
+`micro-ft8-downloads`, served under the site origin by [`webapp/worker.js`](../webapp/worker.js), whose `/download/*` route is the only one that runs the Worker ([webapp.md](architecture/webapp.md), **Serving the site**):
 
 | Stable URL | Contents |
 | --- | --- |
@@ -111,7 +111,7 @@ newer one. The stable `-ota` names stay for people and scripts. Uploaded before 
 **Nothing expires them:** firmware is published only when a push touches it, so the build the manifest names can
 be months old, and an age rule would delete the image every update needs. They cost about 2 MB a firmware
 push against R2's 10 GB free tier; prune by hand, never the build the manifest names. The Worker serves one
-name, one under `ota/`, or one under `app/<number>/`, and nothing else nested (`webapp/tests/test_worker.js`).
+name, or one under `ota/`, and nothing else nested (`webapp/tests/test_worker.js`).
 
 ### One-time setup
 
