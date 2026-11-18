@@ -122,15 +122,26 @@ name, or one under `ota/`, and nothing else nested (`webapp/tests/test_worker.js
    Workers deploy permission already used by `pages.yml`. `CLOUDFLARE_ACCOUNT_ID` is unchanged.
 3. Deploy `webapp/` so the Worker picks up the `DOWNLOADS` R2 binding (`wrangler.jsonc`), then wait for
    the next firmware merge (or re-run `release-main`) to fill the bucket.
+4. Enable Analytics Engine for the account, once, in the Cloudflare dashboard (the account's
+   `workers/analytics-engine` page). Until then a deploy with the `DOWNLOAD_COUNTS` binding is refused
+   with code 10089, and the site stays on its last deploy.
 
 ### Download counts
 
 The Worker counts each file it serves ([webapp.md](architecture/webapp.md), **Download counts**). To read
-them, the maintainer makes a Cloudflare API token with **Account · Account Analytics · Read**, kept off
-GitHub, and asks Analytics Engine's SQL API, here for the last 30 days by file and by `usb` or `download`:
+them, open the dataset in the Cloudflare dashboard: **Analytics Engine**, **Studio**, table
+`micro_ft8_downloads`. The table lists each point, `blob1` the file and `blob2` `usb` or `download`, and
+its **Query** tab takes SQL, here the last 30 days by file and by `usb` or `download`:
+
+```sql
+SELECT blob1 AS file, blob2 AS via, SUM(_sample_interval) AS n FROM micro_ft8_downloads WHERE timestamp > NOW() - INTERVAL '30' DAY GROUP BY blob1, blob2 ORDER BY n DESC
+```
+
+A script asks the same of Analytics Engine's SQL API, with a Cloudflare API token that has
+**Account · Account Analytics · Read**, kept off GitHub:
 
 ```bash
-curl -s "https://api.cloudflare.com/client/v4/accounts/<account id>/analytics_engine/sql" --header "Authorization: Bearer <token>" --data "SELECT blob1 AS file, blob2 AS via, SUM(_sample_interval) AS n FROM micro_ft8_downloads WHERE timestamp > NOW() - INTERVAL '30' DAY GROUP BY blob1, blob2 ORDER BY n DESC"
+curl -s "https://api.cloudflare.com/client/v4/accounts/<account id>/analytics_engine/sql" --header "Authorization: Bearer <token>" --data "<the query>"
 ```
 
 `SUM(_sample_interval)`, not `COUNT()`: Analytics Engine may sample, and each kept row stands for that many.
