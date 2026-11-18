@@ -4,6 +4,7 @@
 #include "heard_grid.h"
 #include "host_mocks.h"
 #include "porta_proto.h"
+#include "queue_event.h"
 
 #include <cstdio>
 #include <cstring>
@@ -13,6 +14,8 @@ static Scenario* s_current = nullptr;
 
 static const uint32_t kEpochBase = 1700000000u;
 static const uint32_t kDialHz = 14074000u;
+// 20 m's FT4 dial, 14.080 MHz, beside FT8's (porta_p4_station_ft4_dial_offset_hz() on the board).
+static const int32_t kFt4DialOffsetHz = 6000;
 
 static void push_raw(Scenario& s, const char* row)
 {
@@ -188,16 +191,8 @@ void scenario_emit_status(Scenario& s)
             continue;
         }
         ids.push_back(ctx.entry_id);
-        porta_queue_entry_event_t q;
-        memset(&q, 0, sizeof(q));
+        porta_queue_entry_event_t q = queue_entry_event(ctx, s.dial_hz ? s.dial_hz : kDialHz, kFt4DialOffsetHz);
         q.epoch_secs = s.epoch_secs;
-        q.entry_id = ctx.entry_id;
-        q.state = (uint8_t)ctx.state;
-        q.tries_sent = (uint8_t)ctx.tries_sent;
-        q.try_limit = (uint8_t)ctx.try_limit;
-        q.flags = (uint8_t)(((ctx.slot_id & 1) ? PORTA_QUEUE_ODD : 0) |
-                            (ctx.tries_custom ? PORTA_QUEUE_CUSTOM : 0));
-        snprintf(q.dxcall, sizeof(q.dxcall), "%s", ctx.dxcall.c_str());
         n = porta_event_json_queue(row, sizeof(row), s.next_seq, &q);
         if (n > 0) {
             push_raw(s, row);
@@ -214,11 +209,8 @@ void scenario_emit_status(Scenario& s)
         if (still) {
             continue;
         }
-        porta_queue_entry_event_t q;
-        memset(&q, 0, sizeof(q));
+        porta_queue_entry_event_t q = queue_entry_gone_event(id);
         q.epoch_secs = s.epoch_secs;
-        q.entry_id = id;
-        q.state = (uint8_t)AutoseqState::IDLE;
         n = porta_event_json_queue(row, sizeof(row), s.next_seq, &q);
         if (n > 0) {
             push_raw(s, row);

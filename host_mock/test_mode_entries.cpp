@@ -9,12 +9,14 @@
  * - The QSO is logged with its entry's mode.
  * - The CQ is FT8's, so Call CQ takes an FT8 QSO's parity, never an FT4 one's.
  * - Recently worked is asked in the decode's mode: a station just worked on FT8 can start a QSO on FT4.
+ * - An entry's QUEUE_ENTRY event carries its mode, its mode's dial and its held TX offset (queue_event.h).
  */
 #include <cstdio>
 #include <string>
 
 #include "autoseq.h"
 #include "host_mocks.h"
+#include "queue_event.h"
 
 static int s_failed = 0;
 static void check(bool ok, const char* what) {
@@ -152,7 +154,33 @@ static void test_recent_per_mode() {
     autoseq_set_recent_qso_callback(nullptr);
 }
 
+static void test_queue_event_carries_mode() {
+    reset();
+    autoseq_on_touch(line("CQ", "K1ABC", "FN42", RxMode::FT4, 0));
+    autoseq_on_touch(line("CQ", "K2DEF", "FN42", RxMode::FT8, 0));
+    QsoContext ft4, ft8;
+    check(count("K1ABC", RxMode::FT4, &ft4) == 1 && count("K2DEF", RxMode::FT8, &ft8) == 1, "both queued");
+    const uint32_t ft8_dial = 14074000u;
+    const int32_t ft4_offset = 6000;  // 20 m: FT4 at 14.080 MHz
+    porta_queue_entry_event_t q = queue_entry_event(ft4, ft8_dial, ft4_offset);
+    check(q.mode == PORTA_QUEUE_MODE_FT4 && q.dial_hz == 14080000u, "an FT4 entry's event carries FT4 and its dial");
+    check(q.offset_hz == 0, "no offset before its first transmission");
+    q = queue_entry_event(ft8, ft8_dial, ft4_offset);
+    check(q.mode == PORTA_QUEUE_MODE_FT8 && q.dial_hz == ft8_dial, "an FT8 entry's event carries FT8 and its dial");
+    check(std::string(q.dxcall) == "K2DEF" && q.entry_id == ft8.entry_id, "and its call and id");
+
+    check(autoseq_hold_tx_offset(ft4.entry_id, 1916), "the FT4 QSO holds an offset");
+    count("K1ABC", RxMode::FT4, &ft4);
+    check(queue_entry_event(ft4, ft8_dial, ft4_offset).offset_hz == 1916, "its event carries the held offset");
+    check(queue_entry_event(ft4, 0, ft4_offset).dial_hz == 0, "an unknown dial stays unknown in FT4");
+
+    q = queue_entry_gone_event(ft4.entry_id);
+    check(q.state == PORTA_QUEUE_STATE_IDLE && q.mode == 0 && q.dial_hz == 0 && q.offset_hz == 0 && !q.dxcall[0],
+          "a gone entry's event is IDLE and nothing else");
+}
+
 int main() {
+    test_queue_event_carries_mode();
     test_touch_ft4_queues_ft4();
     test_decode_continues_own_mode_only();
     test_touch_leaves_other_mode();

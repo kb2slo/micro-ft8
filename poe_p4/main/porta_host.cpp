@@ -21,6 +21,7 @@
 #include "porta_proto.h"
 #include "porta_host.h"
 #include "qmx_transport.h"
+#include "queue_event.h"
 #include "qso_browse.h"
 #include "radio_select.h"
 #include "radio_control.h"
@@ -312,8 +313,8 @@ static bool log_adif_entry(const std::string &dxcall, const std::string &dxgrid,
     station.my_gridsquare = grid_ft8_4(s_station.grid);
     station.mode = mode == RxMode::FT4 ? "FT4" : "FT8";
     // The QSO's own dial, as WSJT-X logs it: FT4's beside FT8 is FT8's plus the band's FT4 offset.
-    const int dial_hz = station_freq_hz() + (mode == RxMode::FT4 ? porta_p4_station_ft4_dial_offset_hz() : 0);
-    station.freq_mhz = adif_freq_mhz((uint32_t)dial_hz);
+    station.freq_mhz = adif_freq_mhz(
+        queue_mode_dial_hz(mode, (uint32_t)station_freq_hz(), porta_p4_station_ft4_dial_offset_hz()));
     {
         const int idx = s_station.band_sel;
         station.band_name = (idx >= 0 && idx < kStationBandCount) ? kBandNames[idx] : "";
@@ -408,6 +409,8 @@ void porta_p4_companion_status_tick(void) {
                           (uint16_t)(armed ? armed_offset_hz : 0));
 
     uint16_t current_ids[AUTOSEQ_MAX_QUEUE];
+    const uint32_t ft8_dial_hz = (uint32_t)porta_p4_station_freq_hz();
+    const int32_t ft4_dial_offset_hz = porta_p4_station_ft4_dial_offset_hz();
     const int n = autoseq_active_count();
     int filled = 0;
     for (int i = 0; i < n && filled < AUTOSEQ_MAX_QUEUE; ++i) {
@@ -416,10 +419,8 @@ void porta_p4_companion_status_tick(void) {
             continue;
         }
         current_ids[filled++] = ctx.entry_id;
-        const uint8_t flags = (uint8_t)(((ctx.slot_id & 1) ? PORTA_QUEUE_ODD : 0) |
-                                        (ctx.tries_custom ? PORTA_QUEUE_CUSTOM : 0));
-        porta_emit_queue_entry(ctx.entry_id, (uint8_t)ctx.state, (uint8_t)ctx.tries_sent,
-                               (uint8_t)ctx.try_limit, flags, ctx.dxcall.c_str());
+        const porta_queue_entry_event_t q = queue_entry_event(ctx, ft8_dial_hz, ft4_dial_offset_hz);
+        porta_emit_queue_entry(&q);
     }
     for (int i = 0; i < s_last_active_count; ++i) {
         bool still_here = false;
@@ -430,7 +431,8 @@ void porta_p4_companion_status_tick(void) {
             }
         }
         if (!still_here) {
-            porta_emit_queue_entry(s_last_active_ids[i], 6 /* IDLE */, 0, 0, 0, "");
+            const porta_queue_entry_event_t q = queue_entry_gone_event(s_last_active_ids[i]);
+            porta_emit_queue_entry(&q);
         }
     }
     memcpy(s_last_active_ids, current_ids, sizeof(uint16_t) * (size_t)filled);

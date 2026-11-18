@@ -1197,19 +1197,10 @@ void porta_emit_decode(uint32_t decode_id, const char* text, int snr, int offset
   enqueue(buf, n);
 }
 
-void porta_emit_queue_entry(uint16_t entry_id, uint8_t state, uint8_t tries_sent,
-                            uint8_t try_limit, uint8_t flags, const char* dxcall) {
-  if (!s_running) return;
-  porta_queue_entry_event_t q = {};
+void porta_emit_queue_entry(const porta_queue_entry_event_t* entry) {
+  if (!s_running || !entry) return;
+  porta_queue_entry_event_t q = *entry;
   q.epoch_secs = host_epoch_secs();
-  q.entry_id = entry_id;
-  q.state = state;
-  q.tries_sent = tries_sent;
-  q.try_limit = try_limit;
-  q.flags = flags;
-  if (dxcall) {
-    strncpy(q.dxcall, dxcall, sizeof(q.dxcall) - 1);
-  }
   uint8_t buf[PORTA_PROTO_MAX_FRAME];
   const size_t n = porta_proto_encode_queue_entry(&q, buf, sizeof(buf));
   enqueue(buf, n);

@@ -403,9 +403,26 @@ static void test_queue_entry_event()
     in.tries_sent = 2;
     in.try_limit = 12;
     in.flags = PORTA_QUEUE_ODD | PORTA_QUEUE_CUSTOM;
+    in.mode = PORTA_QUEUE_MODE_FT4;
+    in.dial_hz = 14080000u;  // 20 m's FT4 dial
+    in.offset_hz = 1916;
     std::snprintf(in.dxcall, sizeof(in.dxcall), "KB2SLO/P");  // exercise a portable suffix
 
     size_t n = porta_proto_encode_queue_entry(&in, buf, sizeof(buf));
+    {
+        // v20's layout, pinned: subtype | epoch(4) | entry_id(2) | state | tries_sent | try_limit |
+        // flags | mode | dial_hz(4) | offset_hz(2) | dxcall_len | dxcall. Little-endian, as every field.
+        const uint8_t want[] = {PORTA_EVT_QUEUE_ENTRY, 0x79, 0x29, 0xA2, 0x6A, 0x92, 0x10, 1, 2, 12,
+                                PORTA_QUEUE_ODD | PORTA_QUEUE_CUSTOM, PORTA_QUEUE_MODE_FT4,
+                                0x00, 0xD8, 0xD6, 0x00, 0x7C, 0x07, 8,
+                                'K', 'B', '2', 'S', 'L', 'O', '/', 'P'};
+        porta_decoder_t pin;
+        porta_decoder_init(&pin);
+        auto frames = run(&pin, std::vector<uint8_t>(buf, buf + n));
+        check(frames.size() == 1 && frames[0].len == sizeof(want) &&
+                  std::memcmp(frames[0].payload, want, sizeof(want)) == 0,
+              "queue_entry's v20 payload is pinned byte for byte");
+    }
     auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
     check(got.size() == 1, "queue_entry event decodes");
     if (got.size() == 1) {
@@ -415,6 +432,9 @@ static void test_queue_entry_event()
         check(out.state == 1, "state round-trips");
         check(out.tries_sent == 2 && out.try_limit == 12, "tries round-trip");
         check(out.flags == (PORTA_QUEUE_ODD | PORTA_QUEUE_CUSTOM), "parity and custom round-trip");
+        check(out.mode == PORTA_QUEUE_MODE_FT4, "mode round-trips");
+        check(out.dial_hz == 14080000u, "dial round-trips");
+        check(out.offset_hz == 1916, "TX offset round-trips");
         check(std::string(out.dxcall) == "KB2SLO/P", "dxcall with a portable suffix round-trips");
 
         porta_decode_event_t dec;
@@ -437,11 +457,20 @@ static void test_queue_entry_event()
     // rejected rather than read past the payload.
     porta_frame_t stub = {};
     stub.type = PORTA_MSG_EVENT;
-    stub.len = 12;  // fixed part only
+    stub.len = 19;  // fixed part only
     stub.payload[0] = PORTA_EVT_QUEUE_ENTRY;
-    stub.payload[11] = 5;  // claims a 5-byte dxcall that is not there
+    stub.payload[18] = 5;  // claims a 5-byte dxcall that is not there
     porta_queue_entry_event_t out;
     check(!porta_proto_parse_queue_entry(&stub, &out), "a truncated dxcall is rejected");
+
+    // A v19 frame (12-byte fixed part, no mode, dial or offset) is refused, not read as v20.
+    porta_frame_t v19 = {};
+    v19.type = PORTA_MSG_EVENT;
+    v19.len = 12 + 5;
+    v19.payload[0] = PORTA_EVT_QUEUE_ENTRY;
+    v19.payload[11] = 5;
+    std::memcpy(&v19.payload[12], "N6HAN", 5);
+    check(!porta_proto_parse_queue_entry(&v19, &out), "a v19 queue_entry frame is refused");
 }
 
 static void test_slot_state_event()
@@ -1526,11 +1555,14 @@ static void test_event_json()
     q.tries_sent = 0;
     q.try_limit = 6;
     q.flags = PORTA_QUEUE_ODD;
+    q.mode = PORTA_QUEUE_MODE_FT4;
+    q.dial_hz = 14080000u;
+    q.offset_hz = 1916;
     std::snprintf(q.dxcall, sizeof(q.dxcall), "N6HAN");
     check(porta_event_json_queue(row, sizeof(row), 4, &q) > 0, "queue row encodes");
     check_row(row,
               "{\"s\":4,\"t\":1700000001,\"d\":2,\"eid\":2,\"st\":1,\"ts\":0,\"tl\":6,"
-              "\"p\":1,\"cu\":0,\"x\":\"N6HAN\"}",
+              "\"p\":1,\"cu\":0,\"md\":1,\"fq\":14080000,\"off\":1916,\"x\":\"N6HAN\"}",
               "queue row");
 
     porta_slot_state_event_t slot;

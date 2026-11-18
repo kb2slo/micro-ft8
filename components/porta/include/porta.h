@@ -61,12 +61,10 @@ void porta_emit_decode(uint32_t decode_id, const char* text, int snr, int offset
                        float dt_s, bool is_cq, bool is_to_me, bool is_recent_qso,
                        uint32_t slot_idx, uint8_t slot_len_ds, uint32_t dial_hz);
 
-// One autoseq queue row (I28d, docs/architecture/webapp.md (Screens)). `state` is the AutoseqState
-// wire value; IDLE (6) is the removal signal, not a separate flag -- callers
-// use it to tell a browser an entry is gone, same as the host side does.
-// `flags` is PORTA_QUEUE_*.
-void porta_emit_queue_entry(uint16_t entry_id, uint8_t state, uint8_t tries_sent,
-                            uint8_t try_limit, uint8_t flags, const char* dxcall);
+// One autoseq queue row (docs/architecture/webapp.md, Operate's pinned regions), built by
+// queue_entry_event() or queue_entry_gone_event() (queue_event.h); IDLE is the removal signal, not a
+// separate flag. The epoch is stamped here.
+void porta_emit_queue_entry(const porta_queue_entry_event_t* q);
 
 // Global slot scalars, not any one queue entry's -- see porta_slot_state_event_t
 // in porta_proto.h. Emitted periodically (main.cpp), not on change: one
