@@ -40,6 +40,13 @@ CONFIG_LWIP_MAX_SOCKETS=16
 # in flight per round trip: a page reload's median went from 343 to 472 ms on the bench's WiFi (2026-11-18).
 CONFIG_LWIP_TCP_SND_BUF_DEFAULT=2880
 
+# The web server's queue of work for its own task (httpd_queue_work(), and every async request handed back) is
+# its control socket's UDP mailbox: IDF's 6 places. With the sender pool, requests come back from four tasks at
+# once during a page load and filled it, so the server could not queue closing an idle connection and refused
+# a new one instead (`ctrl socket queue full`, `error accepting new connection`, 2026-11-18, six pages on the
+# AP). 16 places cost a few dozen bytes for each of the sidekick's few UDP sockets.
+CONFIG_LWIP_UDP_RECVMBOX_SIZE=16
+
 # Port A. A WiFi flash access otherwise stalls the UART interrupt longer than
 # the 128-byte FIFO.
 CONFIG_UART_ISR_IN_IRAM=y

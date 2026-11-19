@@ -62,3 +62,13 @@ the sidekick's WiFi link, each with the heap reader failing in the same second a
 log: one of 2 minutes at 20:43 UTC, too long for the ring to keep its own `SK wifi` lines, and one at 14:40
 (`SK wifi lost: … (4)`, back after 5.6 s). Its link was slower than the router's all day, idle as well:
 pings averaged 38 ms against 15. A page reload's median was 687 ms over that link.
+
+**On the AP** (2026-11-18, sidekick in AP mode at `192.168.4.1`, the computer joined to it and on Ethernet for
+everything else). `TOKEN_FILE=webapp/tools/.sidekick_token` pairs the pages, as an operator's phone is, and
+`PAGES` sets how many: with `PAGES=6` the sidekick's web server ran out of room in its own work queue during page
+loads (14 `ctrl socket queue full` and 8 `error accepting new connection` console lines in 24 minutes), which led to
+`CONFIG_LWIP_UDP_RECVMBOX_SIZE=16`; at 16 the same load logged neither in 58 minutes, with events reads at a median of
+19 ms and a p99 of 112 ms outside the client's own outages. The sidekick's USB console shows these lines and each
+device joining or leaving the AP, which the event ring does not keep. A laptop with a Qualcomm WCN6855 (`ath11k`)
+left the AP every 30 s under this load at 20 and at 40 MHz, on either firmware; a test client without it measures
+the sidekick more cleanly.
