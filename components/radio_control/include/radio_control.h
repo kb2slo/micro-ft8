@@ -179,6 +179,14 @@ esp_err_t radio_control_key_up(void);
 // How long after the slot boundary this radio's first tone is due (tx_timing.h).
 int radio_control_tone_lead_ms(void);
 esp_err_t radio_control_set_tune(bool enable, int freq_hz, int tone_hz);
+// What has the radio keyed, for the TX watchdog (tx_watchdog.h; docs/architecture/radio.md, The TX watchdog):
+// a message from radio_control_begin_tx() to radio_control_end_tx(), Tune from radio_control_set_tune(true) to
+// (false) or an end_tx(). Set before the radio is told, so a key the radio then refused is still timed until the
+// stop its caller sends. The SWR sweep and the amplifier prime key through radio_control_swr_io() and are bounded
+// by their own runs (swr_sweep.h, amp_band_prime.h), so they are not counted here.
+typedef enum { RADIO_KEYED_NONE = 0, RADIO_KEYED_MESSAGE, RADIO_KEYED_TUNE } radio_keyed_t;
+// The key now, and since when (esp_timer's clock, in ms, which no clock set moves) when it is not NONE.
+radio_keyed_t radio_control_keyed(int64_t* since_ms);
 esp_err_t radio_control_set_time(int hour, int minute, int second);
 // Transmit held off, for the length of a firmware update and before any restart the board starts itself
 // (main_board.md, Firmware updates). While held nothing keys the radio: radio_control_begin_tx(),

@@ -25,6 +25,7 @@ INCLUDES = -I. \
            -I../components/amp_band_prime/include \
            -I../components/swr_sweep/include \
            -I../components/swr_trip/include \
+           -I../components/tx_watchdog/include \
            -I../components/ft8_lib -I../components/ft8_lib/vendor \
            -I../components/ft8_lib/vendor/ft8 \
            -I../components/porta_proto/include \
@@ -72,6 +73,7 @@ CAT_REPLY_PARSER_TARGET = host_test_cat_reply_parser
 AMP_BAND_PRIME_TARGET = host_test_amp_band_prime
 SWR_SWEEP_TARGET = host_test_swr_sweep
 SWR_TRIP_TARGET = host_test_swr_trip
+TX_WATCHDOG_TARGET = host_test_tx_watchdog
 TX_READY_TARGET = host_test_tx_ready
 TX_OFFSET_TARGET = host_test_tx_offset
 QMX_IQ_LINK_TARGET = host_test_qmx_iq_link
@@ -101,7 +103,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARG
      $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
      $(WEB_PAGE_TARGET) $(EVENT_STATE_TARGET) $(FW_POLICY_TARGET) $(AP_NAME_TARGET) $(APP_PACK_TARGET) $(APP_PUSH_TARGET) $(PORTA_FW_RX_TARGET) \
      $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(MODE_ENTRIES_TARGET) $(ROGERS_ONCE_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
-     $(CAT_REPLY_PARSER_TARGET) $(AMP_BAND_PRIME_TARGET) $(SWR_SWEEP_TARGET) $(SWR_TRIP_TARGET) $(TX_READY_TARGET) $(TX_OFFSET_TARGET) $(QMX_IQ_LINK_TARGET) $(QMX_MENU_READ_TARGET) $(QMX_MENU_WRITE_TARGET) $(QMX_IQ_CHANNEL_TARGET) \
+     $(CAT_REPLY_PARSER_TARGET) $(AMP_BAND_PRIME_TARGET) $(SWR_SWEEP_TARGET) $(SWR_TRIP_TARGET) $(TX_WATCHDOG_TARGET) $(TX_READY_TARGET) $(TX_OFFSET_TARGET) $(QMX_IQ_LINK_TARGET) $(QMX_MENU_READ_TARGET) $(QMX_MENU_WRITE_TARGET) $(QMX_IQ_CHANNEL_TARGET) \
      $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(BLOCK_ACTIVITY_TARGET) $(CORE_BUSY_TARGET) \
      $(DECODE_RETRY_TARGET) $(DECODE_BUDGET_TARGET) $(DECODE_SYNC_TARGET) $(DECODE_SNR_TARGET) \
      $(PORTA_OUT_QUEUE_TARGET) $(HEARD_GRID_TARGET) $(DECODE_FIELDS_TARGET) $(RTC_CORE_TARGET) \
@@ -125,6 +127,10 @@ $(UNIQUE_TARGET): $(UNIQUE_OBJ)
 
 CQ_TRIES_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_cq_tries.o
 $(CQ_TRIES_TARGET): $(CQ_TRIES_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+TX_WATCHDOG_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_tx_watchdog.o
+$(TX_WATCHDOG_TARGET): $(TX_WATCHDOG_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 TX_OFFSET_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_tx_offset.o

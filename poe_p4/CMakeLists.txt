@@ -26,6 +26,7 @@ set(EXTRA_COMPONENT_DIRS
     "${CMAKE_CURRENT_LIST_DIR}/../components/amp_band_prime"
     "${CMAKE_CURRENT_LIST_DIR}/../components/swr_sweep"
     "${CMAKE_CURRENT_LIST_DIR}/../components/swr_trip"
+    "${CMAKE_CURRENT_LIST_DIR}/../components/tx_watchdog"
     "${CMAKE_CURRENT_LIST_DIR}/../components/dial_history"
     "${CMAKE_CURRENT_LIST_DIR}/../components/decode_types"
     "${CMAKE_CURRENT_LIST_DIR}/../components/decode_tx_state"

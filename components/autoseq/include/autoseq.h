@@ -87,6 +87,9 @@ struct QsoContext {
     int tries_sent = 0;
     int try_limit = AUTOSEQ_TRIES;
     int tries_custom = 0;   // the entry's own limit; 0 follows the station default
+    // Every transmission of a QSO over its life, each step and each reactivation counted, never started over: the
+    // TX watchdog's bound on a QSO that keeps changing step (tx_watchdog.h, autoseq_tick()). A CQ's tries are its own.
+    int tx_total = 0;
     bool logged = false;    // Prevents duplicate ADIF logging
     // SIGNOFF handling:
     // true  -> after sending TX5, park context in inactive for possible late RR73

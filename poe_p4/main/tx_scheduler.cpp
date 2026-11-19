@@ -13,6 +13,7 @@
 #include "decode_tx_state.h"
 #include "esp_log.h"
 #include "esp_random.h"
+#include "esp_timer.h"
 #include "ft8/constants.h"
 #include "ft8/encode.h"
 #include "ft8/message.h"
@@ -25,6 +26,7 @@
 #include "tx_timing.h"
 #include "swr_sweep.h"
 #include "swr_trip.h"
+#include "tx_watchdog.h"
 
 // The protocol a transmission goes out in is its autoseq entry's (AutoseqTxEntry::mode), not a station-wide
 // one: FT8, or FT4 beside it (docs/architecture/autoseq.md, The slot cycle).
@@ -85,9 +87,12 @@ static bool s_sr_readback_pending = false;
 static SwrTrip s_swr_trip;
 static bool s_swr_operator_start_pending = false;
 static bool s_swr_operator_clear_anyway = false;
-// Slot a trip or a Tune trip ended a transmission in; the TX HUD shows it for the rest of it.
-static int64_t s_swr_abort_until_ms = 0;
+// Slot a trip, a Tune trip or the TX watchdog ended a transmission in; the TX HUD shows why for the rest of it.
+static int64_t s_abort_until_ms = 0;
+static const char *s_abort_reason = nullptr;
 static constexpr const char *kSwrReason = "SWR protection";
+// The TX HUD reason (PORTA_TX_HUD_REASON_MAX, 24): the radio bar reads "TX aborted · keyed too long".
+static constexpr const char *kWatchdogReason = "keyed too long";
 
 // The policy is tx_offset_resolve() (tx_offset.h); a QSO's first roll is kept on its entry.
 static int resolve_tx_offset(const AutoseqTxEntry &e) {
@@ -399,9 +404,14 @@ bool tx_scheduler_swr_tripped(void) {
     return swr_lock_set();
 }
 
-void tx_scheduler_swr_abort_note(void) {
+static void abort_note(const char *reason) {
     const int64_t now_ms = rtc_now_ms();
-    s_swr_abort_until_ms = (now_ms / s_tx_proto->slot_time_ms + 1) * s_tx_proto->slot_time_ms;
+    s_abort_until_ms = (now_ms / s_tx_proto->slot_time_ms + 1) * s_tx_proto->slot_time_ms;
+    s_abort_reason = reason;
+}
+
+void tx_scheduler_swr_abort_note(void) {
+    abort_note(kSwrReason);
 }
 
 const char *tx_scheduler_hud_not_keyed_reason(void) {
@@ -411,9 +421,20 @@ const char *tx_scheduler_hud_not_keyed_reason(void) {
 }
 
 const char *tx_scheduler_hud_abort_reason(void) {
-    return rtc_now_ms() < s_swr_abort_until_ms
-               ? kSwrReason
+    return rtc_now_ms() < s_abort_until_ms
+               ? s_abort_reason
                : nullptr;
+}
+
+// Ends every QSO and the CQ, as a second SWR trip in a row does: parked, so a late answer still finds its
+// metadata, and nothing keys again until the operator starts something.
+static void stop_station(void) {
+    s_qso_xmit = false;
+    std::vector<QsoContext> active;
+    autoseq_get_active_contexts(active);
+    for (const QsoContext &q : active) {
+        autoseq_drop_by_entry_id(q.entry_id);
+    }
 }
 
 // The radio's lock ended this transmission. Handled like a TX cancel (docs/architecture/autoseq.md,
@@ -428,7 +449,8 @@ static void tx_swr_tripped(void) {
     s_tx_keyed_down = false;
     decode_tx_state_set_was_txing(false);
     s_tx_cancel_until_ms = s_tx_slot_start_ms + s_tx_proto->slot_time_ms;
-    s_swr_abort_until_ms = s_tx_cancel_until_ms;
+    s_abort_until_ms = s_tx_cancel_until_ms;
+    s_abort_reason = kSwrReason;
 
     if (swr_trip_on_trip(s_swr_trip) == SwrTripAction::Retry) {
         // What the trip happened after, so a trip with no band change behind it can be told apart (radio.md, Prime an
@@ -444,12 +466,37 @@ static void tx_swr_tripped(void) {
     }
     ESP_LOGE(TAG, "TX tripped the radio's SWR protection twice in a row: lock left set, station stopped");
     debug_log_line("TX tripped SWR protection twice in a row: stopped, CQ ended and QSOs cancelled");
-    s_qso_xmit = false;
-    std::vector<QsoContext> active;
-    autoseq_get_active_contexts(active);
-    for (const QsoContext &q : active) {
-        autoseq_drop_by_entry_id(q.entry_id);
+    stop_station();
+}
+
+// The TX watchdog (docs/architecture/radio.md, The TX watchdog; the policy is tx_watchdog.h). However the radio
+// came to be keyed and whatever our own state says, a key held past its cap is stopped through the one stop
+// control. A message held that long means nothing would key it down, so the station stops too; Tune just ends.
+static void tx_watchdog_tick(void) {
+    int64_t since_ms = 0;
+    const radio_keyed_t keyed = radio_control_keyed(&since_ms);
+    if (keyed == RADIO_KEYED_NONE) {
+        return;
     }
+    const TxWatchdogKey key = keyed == RADIO_KEYED_TUNE ? TxWatchdogKey::Tune : TxWatchdogKey::Message;
+    const int64_t now_ms = esp_timer_get_time() / 1000;
+    if (!tx_watchdog_key_over(key, since_ms, now_ms)) {
+        return;
+    }
+    const int64_t held_ms = now_ms - since_ms;
+    const char *what = key == TxWatchdogKey::Tune ? "Tune" : "a transmission";
+    ESP_LOGE(TAG, "TX watchdog: %s held the radio keyed %lld ms, over its %lld ms cap: stopped", what,
+             (long long)held_ms, (long long)tx_watchdog_cap_ms(key));
+    debug_log_line(std::string("TX watchdog: ") + what + " keyed " + std::to_string((long long)(held_ms / 1000)) +
+                   " s, stopped" + (key == TxWatchdogKey::Message ? ", CQ ended and QSOs cancelled" : ""));
+    if (key == TxWatchdogKey::Message) {
+        stop_station();
+    }
+    porta_host_tx_cancel();  // tx_scheduler_cancel(), Tune, a prime and a sweep
+    // The stop above reaches the radio only while CAT is ready; this one also ends the key's timing, so a radio
+    // that went away keyed is not stopped again every pass.
+    radio_control_end_tx();
+    abort_note(kWatchdogReason);
 }
 
 // Learns at each CAT connect whether the radio answers SR; (QMX 1_04_004 and later), and
@@ -696,7 +743,28 @@ static void check_slot_boundary(void) {
     }
 }
 
+// The radio went away (CAT lost, or another radio selected): what was queued ends, as on a second SWR trip in a
+// row, so nothing keys by itself when a radio is back, however much later (docs/architecture/autoseq.md, The
+// queue). Call CQ and a reply are refused meanwhile (tx_ready.h), so nothing is queued until the operator acts.
+static void radio_lost_tick(void) {
+    static bool s_was_ready = false;
+    const bool ready = radio_control_ready();
+    if (s_was_ready && !ready) {
+        std::vector<QsoContext> active;
+        autoseq_get_active_contexts(active);
+        if (!active.empty()) {
+            ESP_LOGW(TAG, "Radio lost: CQ ended and %d queued QSO(s) cancelled", (int)active.size());
+            debug_log_line("Radio lost: CQ ended and queued QSOs cancelled");
+        }
+        stop_station();
+        s_pending_tx_valid = false;
+    }
+    s_was_ready = ready;
+}
+
 void tx_scheduler_tick(void) {
+    tx_watchdog_tick();
+    radio_lost_tick();
     swr_lock_tick();
     check_slot_boundary();
     tx_tick();
