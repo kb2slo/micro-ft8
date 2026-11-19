@@ -160,14 +160,17 @@ var QrzSync = (function () {
   // One sync. Everything it touches is handed in, so the page, a test and a bench script run the same
   // steps:
   //   key            the logbook's API key
+  //   logbook        the logbook's callsign when it is already known, which saves the status call
   //   version        the web app's version, which the relay names to QRZ
   //   relay(path, body)  -> Promise of the relay's JSON reply (worker.js, /qrz/*); rejects when unreachable
-  //   readRows()     -> Promise of the station's rows, each with its `date`
+  //   readRows()     -> Promise of the station's rows, each with its `date`; rejects when the station
+  //                     does not answer
   //   buildAdif(row) -> the ADIF record to send for a row
   //   maxCalls       relay calls this run may make (callsLeft())
   //   send           false to stop once the plan is known and send nothing
   // Resolves to { ok, error, reason, calls, logbook, rows, held, extra, skipped, plan, sent, duplicates,
-  // refused, cleanThrough }:
+  // refused, cleanThrough }. error is the relay's ('auth', 'qrz', ...), or 'unreachable', 'station',
+  // 'budget' or 'too_many':
   //   plan     the rows to send; sent, duplicates, refused: what became of them
   //   cleanThrough  the last day ('YYYYMMDD') up to which every QSO is now at QRZ, for daysToRead(); ''
   //                 when the run did not get that far
@@ -188,13 +191,15 @@ var QrzSync = (function () {
     }
     function fail(e) {
       if (e && e.budget) out.error = 'budget';
+      else if (e && e.station) out.error = 'station';
       else if (e && e.reply) { out.error = e.reply.error || 'qrz'; out.reason = e.reply.reason || ''; }
       else out.error = 'unreachable';
       return out;
     }
-    return call('/qrz/status', {}).then(function (status) {
+    var book = deps.logbook ? Promise.resolve({ callsign: deps.logbook }) : call('/qrz/status', {});
+    return book.then(function (status) {
       out.logbook = upper(status.callsign);
-      return deps.readRows();
+      return deps.readRows().then(null, function () { throw { station: true }; });
     }).then(function (read) {
       rows = read || [];
       out.rows = rows.length;

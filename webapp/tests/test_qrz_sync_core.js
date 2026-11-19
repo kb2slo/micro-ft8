@@ -213,6 +213,15 @@ function station(rows, held, opts) {
     assert.deepStrictEqual([r.ok, r.error, r.cleanThrough], [false, 'unreachable', ''], down);
   }
 
+  // A logbook already known is not asked for again; a station that does not answer is said so.
+  s = station(rows, held);
+  r = plain(await Q.run(Object.assign(s.deps, { logbook: 'k1abc', send: false })));
+  assert.deepStrictEqual([r.ok, r.logbook, r.held, r.calls, s.asked.map((a) => a[0])], [true, 'K1ABC', 1, 1, ['/qrz/fetch']]);
+  s = station(rows, held);
+  s.deps.readRows = async () => { throw new Error('timeout'); };
+  r = plain(await Q.run(s.deps));
+  assert.deepStrictEqual([r.ok, r.error, r.calls], [false, 'station', 1]);
+
   // The run stops at its call allowance instead of going over it.
   s = station(many, []);
   r = plain(await Q.run(Object.assign(s.deps, { maxCalls: 3 })));
