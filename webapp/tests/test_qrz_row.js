@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // The QRZ row on QSOs and the line under the key on Settings (docs/architecture/webapp.md, QRZ sync):
 // runs app.html's own qrzRowModel() and qrzKeyLineModel(), which say what each reads, when it is amber,
-// the one button the row shows and what a tap does. Also holds the markup to them: the row, the key and
-// the sentence that says where the key goes.
+// the one button the row shows and what a tap does. Also holds the markup to them: the row, the key, the
+// sentence that says where the key goes, and the switch for sending by itself with what it says it does.
 'use strict';
 const vm = require('vm');
 const fs = require('fs');
@@ -31,7 +31,7 @@ function extractFunction(text, name) {
 const ctx = vm.createContext({});
 vm.runInContext(extractFunction(src, 'qrzRowModel'), ctx);
 vm.runInContext(extractFunction(src, 'qrzKeyLineModel'), ctx);
-const row = (s) => JSON.parse(JSON.stringify(ctx.qrzRowModel(Object.assign({ key: true, phase: 'idle', sending: 0, result: null }, s))));
+const row = (s) => JSON.parse(JSON.stringify(ctx.qrzRowModel(Object.assign({ key: true, live: false, phase: 'idle', sending: 0, result: null }, s))));
 const looked = (r) => ({ result: Object.assign({ ok: true, logbook: 'K1ABC', held: 92, left: 0, otherCall: 0 }, r) });
 const plain = { tone: '', glyph: '', act: '', chev: false };
 
@@ -50,6 +50,12 @@ assert.deepStrictEqual(row(looked({})), Object.assign({}, plain, { text: 'Up to 
 assert.deepStrictEqual(row(looked({ left: 55 })), Object.assign({}, plain, { text: '55 to send', tap: 'send', act: 'Send' }));
 assert.deepStrictEqual(row(looked({ left: 1 })).text, '1 to send');
 assert.deepStrictEqual(row(looked({ held: 0, left: 0 })).text, 'Up to date', 'an empty log is up to date');
+
+// With sending by itself on, an up-to-date row says so; anything older still shows its count and Send.
+assert.deepStrictEqual(row(Object.assign({ live: true }, looked({}))),
+  Object.assign({}, plain, { text: 'Up to date \u00b7 sends as you log', tap: 'look', glyph: '\u2713' }));
+assert.deepStrictEqual(row(Object.assign({ live: true }, looked({ left: 55 }))), Object.assign({}, plain, { text: '55 to send', tap: 'send', act: 'Send' }));
+assert.strictEqual(row({ live: true, result: { ok: false, error: 'unreachable' } }).text, 'Cannot reach QRZ', 'a problem reads the same');
 
 // A problem is amber, in words and a glyph as well as the tint, and says what a tap will do about it.
 const amber = (text, tap) => Object.assign({}, plain, { text, tap, tone: 'amber', glyph: '!', chev: tap === 'setup' });
@@ -80,6 +86,9 @@ assert.deepStrictEqual(line({ state: 'unchecked' }), { text: 'Saved. Cannot reac
 for (const piece of ['<button id=qrzRow type=button class=navrow>', '<span class=navmain>QRZ logbook</span>', 'id=qrzRowText', 'id=qrzRowAct',
   '<span>QRZ logbook key</span><input id=qrzKey', 'id=qrzKeyLine',
   'Kept in this browser only. It goes to QRZ through micro-ft8.kalikstein.com, which does not keep it.',
+  '<span>Send new QSOs to QRZ</span>', '<select id=qrzLive class=onoff>',
+  'As they are logged, while this app is open, within about five minutes. QSOs logged before this was turned on wait for Send on the QSOs tab.',
+  'id=tabQrz class=tabdot',
   '<script src=qrz_sync_core.js></script>']) {
   assert.ok(src.includes(piece), 'app.html holds: ' + piece);
 }
@@ -87,5 +96,5 @@ for (const piece of ['<button id=qrzRow type=button class=navrow>', '<span class
 const log = src.slice(src.indexOf('<section id=view-log>'), src.indexOf('<section id=view-tools>'));
 assert.ok(log.indexOf('id=qrzRow') > 0 && log.indexOf('id=qrzRow') < log.indexOf('id=logList'), 'the row is above the list');
 const station = src.slice(src.indexOf('id=setp-station'), src.indexOf('id=setp-radio'));
-assert.ok(station.includes('id=qrzKey'), 'the key is on the Station page');
+assert.ok(station.includes('id=qrzKey') && station.indexOf('id=qrzLive') > station.indexOf('id=qrzKey'), 'the key is on the Station page, the switch under it');
 console.log('ok');

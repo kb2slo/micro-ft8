@@ -170,15 +170,19 @@ var QrzSync = (function () {
   //   buildAdif(row) -> the ADIF record to send for a row
   //   maxCalls       relay calls this run may make (callsLeft())
   //   send           false to stop once the plan is known and send nothing
+  //   sendFrom       'YYYYMMDD': with send, only QSOs dated that day or later go up, and older ones wait
   // Resolves to { ok, error, reason, calls, logbook, rows, held, extra, skipped, plan, sent, duplicates,
   // refused, cleanThrough }. error is the relay's ('auth', 'qrz', ...), or 'unreachable', 'station',
   // 'budget' or 'too_many':
-  //   plan     the rows to send; sent, duplicates, refused: what became of them
-  //   cleanThrough  the last day ('YYYYMMDD') up to which every QSO is now at QRZ, for daysToRead(); ''
-  //                 when the run did not get that far
+  //   plan     the rows QRZ lacked; sent, duplicates, refused: what became of those that went
+  //   unsent   how many of them QRZ still lacks: not sent, held back by sendFrom, or refused
+  //   cleanThrough  the last day ('YYYYMMDD') up to which every QSO is now at QRZ, for daysToRead(): the
+  //                 day before the oldest unsent QSO's, or the newest row's when none is unsent; '' when
+  //                 there is no such day or the run failed
   function run(deps) {
     var out = { ok: false, error: '', reason: '', calls: 0, logbook: '', rows: 0, held: 0, extra: 0, skipped: [],
-      plan: [], sent: 0, duplicates: 0, refused: [], cleanThrough: '' };
+      plan: [], sent: 0, duplicates: 0, refused: [], unsent: 0, cleanThrough: '' };
+    var atQrz = [];  // by place in the plan: the rows this run put there
     var maxCalls = deps.maxCalls === undefined ? HOUR_CALLS : deps.maxCalls;
     var rows = [];
     function call(path, body) {
@@ -223,19 +227,21 @@ var QrzSync = (function () {
       out.extra = m.extra.length;
       out.skipped = m.skipped.map(function (s) { return { row: rows[s.ours], why: s.why }; });
       out.plan = m.unsent.map(function (i) { return rows[i]; });
-      if (deps.send === false || out.plan.length === 0) return;
-      var left = out.plan.slice();
-      function tally(results, rowsSent) {
+      if (deps.send === false) return;
+      var left = [];  // places in the plan
+      out.plan.forEach(function (q, k) { if (!deps.sendFrom || q.date >= deps.sendFrom) left.push(k); });
+      function tally(results, places) {
         (results || []).forEach(function (r, k) {
           if (r.result === 'inserted') out.sent += 1;
           else if (r.result === 'duplicate') out.duplicates += 1;
-          else out.refused.push({ row: rowsSent[k], reason: r.reason || '' });
+          else out.refused.push({ row: out.plan[places[k]], reason: r.reason || '' });
+          if (r.result === 'inserted' || r.result === 'duplicate') atQrz[places[k]] = true;
         });
       }
       function batch() {
         if (left.length === 0) return;
         var now = left.splice(0, BATCH);
-        return call('/qrz/insert', { records: now.map(deps.buildAdif) }).then(function (reply) {
+        return call('/qrz/insert', { records: now.map(function (k) { return deps.buildAdif(out.plan[k]); }) }).then(function (reply) {
           tally(reply.results, now);
           return batch();
         }, function (e) {
@@ -247,13 +253,16 @@ var QrzSync = (function () {
       return batch();
     }).then(function () {
       out.ok = true;
-      // Clean when nothing is left to send: then every usable QSO up to the newest row is at QRZ.
-      var sentAll = deps.send !== false || out.plan.length === 0;
-      if (sentAll && out.refused.length === 0) {
-        rows.forEach(function (q) {
-          if (minuteOf(q.date, q.time) !== null && q.date > out.cleanThrough) out.cleanThrough = q.date;
-        });
-      }
+      var oldestUnsent = '';
+      out.plan.forEach(function (q, k) {
+        if (atQrz[k]) return;
+        out.unsent += 1;
+        if (!oldestUnsent || q.date < oldestUnsent) oldestUnsent = q.date;
+      });
+      rows.forEach(function (q) {
+        if (minuteOf(q.date, q.time) === null || (oldestUnsent && q.date >= oldestUnsent)) return;
+        if (q.date > out.cleanThrough) out.cleanThrough = q.date;
+      });
       return out;
     }, fail);
   }
