@@ -47,7 +47,9 @@ var QrzSync = (function () {
   // The station's rows against QRZ's records for the same days.
   //   ours:   [{ date: 'YYYYMMDD', time, call, band, mode, station_callsign }], as the log API gives a row,
   //           with its day file's date
-  //   theirs: the relay's records: { logid, call, qso_date, time_on, band, mode, ... }
+  //   theirs: the relay's records, QRZ's fields under QRZ's names: { call, qso_date, time_on, band, mode,
+  //           submode, app_qrzlog_logid, ... }. QRZ writes FT4 as a mode; a record that reached it as MFSK
+  //           with SUBMODE FT4 is the same contact.
   // Returns indexes into both:
   //   pairs    [{ ours, theirs }]  QSOs QRZ holds
   //   unsent   [ours]              QSOs to send
@@ -69,7 +71,7 @@ var QrzSync = (function () {
     theirs.forEach(function (r, j) {
       var minute = minuteOf(r.qso_date, r.time_on);
       if (minute === null) return;
-      var key = contactKey(r.call, r.band, r.mode);
+      var key = contactKey(r.call, r.band, r.submode || r.mode);
       (byKey[key] = byKey[key] || []).push({ j: j, minute: minute });
     });
     // Every pairing within the window, nearest first, each side used once. Ties go to the lower

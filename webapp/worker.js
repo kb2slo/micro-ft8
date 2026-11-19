@@ -253,7 +253,7 @@ async function qrzFetch(ask) {
   if (reply.RESULT !== "OK") return qrzError(reply);
   const records = trimQrzRecords(reply.ADIF || "");
   let last = after;
-  for (const r of records) last = Math.max(last, Number(r.logid) || 0);
+  for (const r of records) last = Math.max(last, Number(r.app_qrzlog_logid) || 0);
   return { ok: true, records, more: records.length >= QRZ_PAGE, next: last + 1 };
 }
 
@@ -283,18 +283,19 @@ export function trimQrzRecords(escaped) {
   return records;
 }
 
+// The fields of a QRZ record that are passed on, under QRZ's own names and as QRZ wrote them. A record
+// is named fields from end to end: the app reads the names it needs, and when it comes to need another
+// the name is added here and nothing else about the reply changes. Never a name that says who the other
+// operator is.
+const QRZ_PASS = ["app_qrzlog_logid", "call", "qso_date", "time_on", "band", "mode", "submode",
+  "station_callsign", "app_qrzlog_status"];
+
 function trimmedQrzRecord(f) {
-  return {
-    logid: f.app_qrzlog_logid || "",
-    call: f.call,
-    qso_date: f.qso_date || "",
-    time_on: f.time_on || "",
-    band: f.band || "",
-    // QRZ writes FT4 as a mode; a record that came in as MFSK with SUBMODE FT4 is the same QSO.
-    mode: f.submode || f.mode || "",
-    station_callsign: f.station_callsign || "",
-    confirmed: f.app_qrzlog_status === "C",
-  };
+  const out = {};
+  for (const name of QRZ_PASS) {
+    if (f[name] !== undefined && f[name] !== "") out[name] = f[name];
+  }
+  return out;
 }
 
 // Each record in turn, since QRZ takes one a call. A QSO QRZ already holds is refused as a duplicate, with

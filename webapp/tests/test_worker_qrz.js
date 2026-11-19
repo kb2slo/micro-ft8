@@ -86,11 +86,11 @@ globalThis.fetch = async (url, init) => {
   const page = await ask('/qrz/fetch', { key: KEY, from: '2026-05-28', to: '2026-11-19', after: 0 });
   assert.deepStrictEqual(calls[0].form, { KEY: KEY, ACTION: 'FETCH', OPTION: 'BETWEEN:2026-05-28+2026-11-19,MAX:250,AFTERLOGID:0' });
   assert.deepStrictEqual(page.records, [
-    { logid: '1458502669', call: 'N5XYZ', qso_date: '20260528', time_on: '2354', band: '20m', mode: 'FT8',
-      station_callsign: 'K1ABC', confirmed: false },
-    { logid: '1531992047', call: 'VA3ABC', qso_date: '20261115', time_on: '2210', band: '20M', mode: 'FT4',
-      station_callsign: 'K1ABC', confirmed: true },
-  ], 'a comment\'s own <eor> ends no record, a name with an accent shifts nothing, MFSK with SUBMODE FT4 is FT4');
+    { app_qrzlog_logid: '1458502669', call: 'N5XYZ', qso_date: '20260528', time_on: '2354', band: '20m', mode: 'FT8',
+      station_callsign: 'K1ABC', app_qrzlog_status: 'N' },
+    { app_qrzlog_logid: '1531992047', call: 'VA3ABC', qso_date: '20261115', time_on: '2210', band: '20M', mode: 'MFSK',
+      submode: 'FT4', station_callsign: 'K1ABC', app_qrzlog_status: 'C' },
+  ], 'QRZ\'s fields under QRZ\'s names; a comment\'s own <eor> ends no record, a name with an accent shifts nothing');
   assert.strictEqual(page.more, false, 'a short page is the last');
   assert.strictEqual(page.next, 1531992048, 'the next page starts after the highest ID');
   for (const personal of ['JOS', 'example.org', 'KETTERING', 'N039', 'SOMEBODY', '5W']) {

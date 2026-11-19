@@ -17,8 +17,8 @@ const plain = (x) => JSON.parse(JSON.stringify(x));
 const row = (date, time, call, band, mode, station) =>
   ({ date, time, call, band: band || '20m', mode: mode || 'FT8', station_callsign: station || 'K1ABC', grid: 'FN42' });
 const rec = (logid, date, time, call, band, mode) =>
-  ({ logid: String(logid), call, qso_date: date, time_on: time, band: band || '20m', mode: mode || 'FT8',
-    station_callsign: 'K1ABC', confirmed: false });
+  ({ app_qrzlog_logid: String(logid), call, qso_date: date, time_on: time, band: band || '20m', mode: mode || 'FT8',
+    station_callsign: 'K1ABC', app_qrzlog_status: 'N' });
 
 // --- minuteOf ---
 assert.strictEqual(Q.minuteOf('20261119', '21:54'), Date.UTC(2026, 10, 19, 21, 54) / 60000);
@@ -42,7 +42,7 @@ for (const [d, t] of [['19700101', '00:05'], ['19991231', '2359'], ['20261340', 
     row('19700101', '00:03', 'ZZ9ZZ'),                  // 8: logged with the clock unset
   ];
   const theirs = [
-    rec(101, '20261115', '2210', 'va3abc', '20M', 'FT4'),
+    Object.assign(rec(101, '20261115', '2210', 'va3abc', '20M', 'MFSK'), { submode: 'FT4' }),  // as an upload of ours reads
     rec(102, '20261116', '0003', 'W1AAA'),
     rec(103, '20261116', '1010', 'W1AAA'),
     rec(104, '20261116', '1100', 'N5XYZ', '20m', 'FT8'),
@@ -61,6 +61,8 @@ for (const [d, t] of [['19700101', '00:05'], ['19991231', '2359'], ['20261340', 
   const m = plain(Q.match(ours, [rec(1, '20261116', '1019', 'W1AAA'), rec(2, '20261116', '1002', 'W1AAA')], 'K1ABC'));
   assert.deepStrictEqual(m.pairs, [{ ours: 0, theirs: 1 }, { ours: 1, theirs: 0 }]);
   // One record between two QSOs goes to the nearer, and the other QSO is unsent.
+  // QRZ's own way of writing FT4, as a mode, matches too.
+  assert.strictEqual(plain(Q.match([row('20261115', '22:10', 'VA3ABC', '20m', 'FT4')], [rec(1, '20261115', '2210', 'VA3ABC', '20m', 'FT4')], 'K1ABC')).pairs.length, 1);
   const one = plain(Q.match(ours, [rec(1, '20261116', '1012', 'W1AAA')], 'K1ABC'));
   assert.deepStrictEqual([one.pairs, one.unsent], [[{ ours: 1, theirs: 0 }], [0]]);
   // Exactly the window is in; a minute more is out.
@@ -135,9 +137,10 @@ function station(rows, held, opts) {
       if (p === '/qrz/status') return opts.status || { ok: true, callsign: 'K1ABC', count: held.length };
       if (p === '/qrz/fetch') {
         const size = opts.page || 250;
-        const left = held.filter((r) => Number(r.logid) >= body.after);
+        const left = held.filter((r) => Number(r.app_qrzlog_logid) >= body.after);
         const now = left.slice(0, size);
-        return { ok: true, records: now, more: now.length >= size, next: now.length ? Number(now[now.length - 1].logid) + 1 : body.after };
+        return { ok: true, records: now, more: now.length >= size,
+          next: now.length ? Number(now[now.length - 1].app_qrzlog_logid) + 1 : body.after };
       }
       if (p === '/qrz/insert') {
         if (opts.insert) return opts.insert(body.records);
