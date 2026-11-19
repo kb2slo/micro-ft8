@@ -29,8 +29,60 @@ bool qso_store_find_qrz(const QsoStore& store, uint64_t qrz_logid, uint32_t* id_
     return false;
 }
 
+// Whether `list`, a record's comma list of references, holds `ref`, without regard to case.
+static bool list_holds(const Field& list, const char* ref, size_t ref_len)
+{
+    const char* p = list.value;
+    const char* end = list.value + list.value_len;
+    while (p < end) {
+        const char* item = p;
+        while (p < end && *p != ',') ++p;
+        const char* item_end = p;
+        while (item < item_end && *item == ' ') ++item;
+        while (item_end > item && item_end[-1] == ' ') --item_end;
+        if ((size_t)(item_end - item) == ref_len) {
+            size_t i = 0;
+            while (i < ref_len && to_upper(item[i]) == to_upper(ref[i])) ++i;
+            if (i == ref_len) return true;
+        }
+        if (p < end) ++p;
+    }
+    return false;
+}
+
+// Whether a record was logged at one of `my_refs` ("POTA:US-1234,SOTA:W7O/CC-001"): its MY_POTA_REF holds
+// one of the parks or its MY_SOTA_REF one of the summits. Reads the record's fields, so it is asked last,
+// of the few records everything else has let through.
+static bool logged_at(const QsoStore& store, const QsoStoreEntry& entry, const char* my_refs)
+{
+    std::string fields;
+    Field parks{};
+    Field summits{};
+    if (!current_fields(store, entry, &fields)) return false;
+    const bool has_parks = find_field(fields, "my_pota_ref", &parks);
+    const bool has_summits = find_field(fields, "my_sota_ref", &summits);
+    for (const char* p = my_refs; *p != '\0';) {
+        const char* item = p;
+        while (*p != '\0' && *p != ',') ++p;
+        const char* item_end = p;
+        if (*p == ',') ++p;
+        while (item < item_end && *item == ' ') ++item;
+        while (item_end > item && item_end[-1] == ' ') --item_end;
+        const char* colon = (const char*)memchr(item, ':', (size_t)(item_end - item));
+        const char* ref = colon != nullptr ? colon + 1 : item;
+        const size_t ref_len = (size_t)(item_end - ref);
+        if (ref_len == 0) continue;
+        bool summit = memchr(ref, '/', ref_len) != nullptr;
+        if (colon != nullptr) summit = to_upper(item[0]) == 'S';  // "SOTA:", against "POTA:"
+        if (summit ? has_summits && list_holds(summits, ref, ref_len) : has_parks && list_holds(parks, ref, ref_len)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool qso_store_worked(const QsoStore& store, const char* call, const char* band, const char* mode,
-                      uint32_t since_date, uint32_t* id_out)
+                      uint32_t since_date, const char* my_refs, uint32_t* id_out)
 {
     char upper[kQsoStoreNameChars + 1];
     uint8_t band_at = kQsoStoreNoName;
@@ -58,7 +110,9 @@ bool qso_store_worked(const QsoStore& store, const char* call, const char* band,
             ++a;
             ++b;
         }
-        if (*a == '\0' && *b == '\0') best = entry.id;
+        if (*a != '\0' || *b != '\0') continue;
+        if (my_refs != nullptr && my_refs[0] != '\0' && !logged_at(store, entry, my_refs)) continue;
+        best = entry.id;
     }
     if (best != 0 && id_out != nullptr) *id_out = best;
     return best != 0;
@@ -86,6 +140,8 @@ size_t qso_store_select(const QsoStore& store, const QsoStoreFilter& filter, siz
                 break;
         }
         if (!wanted) continue;
+        const bool at_refs = filter.my_refs != nullptr && filter.my_refs[0] != '\0';
+        if (at_refs && !logged_at(store, entry, filter.my_refs)) continue;
         if (matched >= skip && written < take) ids[written++] = entry.id;
         ++matched;
     }

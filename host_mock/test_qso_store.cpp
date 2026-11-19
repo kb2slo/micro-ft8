@@ -201,7 +201,7 @@ static void verify(const QsoStore& store, const World& w, const char* what)
         if (rec.fields.count("band") && !mode_of(rec.fields).empty()) {
             uint32_t worked = 0;
             const bool yes = qso_store_worked(store, rec.fields.at("call").c_str(), rec.fields.at("band").c_str(),
-                                              mode_of(rec.fields).c_str(), 0, &worked);
+                                              mode_of(rec.fields).c_str(), 0, nullptr, &worked);
             CHECK(yes && worked == want, "%s: worked(%s) names %u, want %u", what, entry->call, (unsigned)worked,
                   (unsigned)want);
         }
@@ -312,8 +312,8 @@ static void test_fields()
     CHECK(add(&rig.store, "<call:5>W1DUP<band:3>20M<mode:3>FT8<BAND:3>40M", 0, &id) == QsoStoreStatus::OK &&
               qso_store_get(rig.store, id, &got) && got == "<call:5>W1DUP<mode:3>FT8<band:3>40M",
           "a field named twice is kept once, with its last value: %s", got.c_str());
-    CHECK(qso_store_worked(rig.store, "W1DUP", "40M", "FT8", 0, nullptr) &&
-              !qso_store_worked(rig.store, "W1DUP", "20M", "FT8", 0, nullptr),
+    CHECK(qso_store_worked(rig.store, "W1DUP", "40M", "FT8", 0, nullptr, nullptr) &&
+              !qso_store_worked(rig.store, "W1DUP", "20M", "FT8", 0, nullptr, nullptr),
           "and indexed by it");
     const size_t end = rig.store.end;
     CHECK(add(&rig.store, "<band:3>20M<mode:3>FT8") == QsoStoreStatus::BAD_FIELDS, "no CALL");
@@ -343,18 +343,21 @@ static void test_patch_delete_worked()
     add(&rig.store, "<call:5>K1ABC<band:3>20M<mode:3>FT8<qso_date:8>20261119<time_on:6>215400<app_qrzlog_logid:2>55",
         kQsoStoreForeign, &d);
 
-    CHECK(qso_store_worked(rig.store, "k1abc", "20m", "ft8", 0, &got_id) && got_id == d,
+    CHECK(qso_store_worked(rig.store, "k1abc", "20m", "ft8", 0, nullptr, &got_id) && got_id == d,
           "worked names the newest match, own or foreign, whatever the case");
-    CHECK(qso_store_worked(rig.store, "K1ABC", "40M", "FT4", 0, &got_id) && got_id == b,
+    CHECK(qso_store_worked(rig.store, "K1ABC", "40M", "FT4", 0, nullptr, &got_id) && got_id == b,
           "a record logged MFSK with SUBMODE FT4 is FT4");
-    CHECK(!qso_store_worked(rig.store, "K1ABC", "40M", "MFSK", 0, nullptr), "and is not MFSK");
-    CHECK(!qso_store_worked(rig.store, "K1ABC", "40M", "FT8", 0, nullptr), "another mode on the band is not worked");
-    CHECK(!qso_store_worked(rig.store, "K1ABC", "15M", "FT8", 0, nullptr), "a band no record is on");
-    CHECK(qso_store_worked(rig.store, "K1ABC", nullptr, nullptr, 0, &got_id) && got_id == d, "any band and mode");
-    CHECK(qso_store_worked(rig.store, "K1ABC", "40M", nullptr, 20261110, &got_id) && got_id == b, "on or after a date");
-    CHECK(!qso_store_worked(rig.store, "K1ABC", "40M", nullptr, 20261111, nullptr), "not before it");
-    CHECK(!qso_store_worked(rig.store, "K1AB", nullptr, nullptr, 0, nullptr) &&
-          !qso_store_worked(rig.store, "K1ABCD", nullptr, nullptr, 0, nullptr),
+    CHECK(!qso_store_worked(rig.store, "K1ABC", "40M", "MFSK", 0, nullptr, nullptr), "and is not MFSK");
+    CHECK(!qso_store_worked(rig.store, "K1ABC", "40M", "FT8", 0, nullptr, nullptr),
+          "another mode on the band is not worked");
+    CHECK(!qso_store_worked(rig.store, "K1ABC", "15M", "FT8", 0, nullptr, nullptr), "a band no record is on");
+    CHECK(qso_store_worked(rig.store, "K1ABC", nullptr, nullptr, 0, nullptr, &got_id) && got_id == d,
+          "any band and mode");
+    CHECK(qso_store_worked(rig.store, "K1ABC", "40M", nullptr, 20261110, nullptr, &got_id) && got_id == b,
+          "on or after a date");
+    CHECK(!qso_store_worked(rig.store, "K1ABC", "40M", nullptr, 20261111, nullptr, nullptr), "not before it");
+    CHECK(!qso_store_worked(rig.store, "K1AB", nullptr, nullptr, 0, nullptr, nullptr) &&
+          !qso_store_worked(rig.store, "K1ABCD", nullptr, nullptr, 0, nullptr, nullptr),
           "a call is matched whole");
 
     // Fields set, removed and left alone.
@@ -378,10 +381,11 @@ static void test_patch_delete_worked()
     // An edit that moves a record to another call, band and mode moves what worked() says.
     CHECK(patch(&rig.store, c, "<call:6>N0CALL<band:3>40M<submode:3>FT4") == QsoStoreStatus::OK,
           "edit call, band and mode");
-    CHECK(!qso_store_worked(rig.store, "W9XY", nullptr, nullptr, 0, nullptr), "the old call is no longer worked");
-    CHECK(qso_store_worked(rig.store, "N0CALL", "40M", "FT4", 0, &got_id) && got_id == c, "the new one is");
+    CHECK(!qso_store_worked(rig.store, "W9XY", nullptr, nullptr, 0, nullptr, nullptr),
+          "the old call is no longer worked");
+    CHECK(qso_store_worked(rig.store, "N0CALL", "40M", "FT4", 0, nullptr, &got_id) && got_id == c, "the new one is");
     CHECK(patch(&rig.store, c, "<submode:0>") == QsoStoreStatus::OK &&
-          qso_store_worked(rig.store, "N0CALL", "40M", "FT8", 0, nullptr),
+          qso_store_worked(rig.store, "N0CALL", "40M", "FT8", 0, nullptr, nullptr),
           "with SUBMODE gone the mode is MODE again");
 
     // Select: a day, whose, unsent, paging, both orders.
@@ -412,6 +416,47 @@ static void test_patch_delete_worked()
     foreign.whose = QsoStoreWhose::FOREIGN;
     CHECK(qso_store_select(rig.store, foreign, 0, ids, 8, nullptr) == 1 && ids[0] == d, "foreign records");
 
+    // During an activation only a QSO logged at one of the station's references counts.
+    {
+        Rig park;
+        Disk park_disk;
+        uint32_t home = 0, one = 0, two = 0, summit = 0;
+        qso_store_create(&park.store, park.buffers(), 1, disk_append, &park_disk);
+        add(&park.store, "<call:5>K1ABC<band:3>20M<mode:3>FT8<qso_date:8>20261119", 0, &home);
+        add(&park.store, "<call:4>W9XY<band:3>20M<mode:3>FT8<qso_date:8>20261119<my_pota_ref:7>US-1234", 0, &one);
+        add(&park.store, "<call:4>AA1A<band:3>20M<mode:3>FT8<qso_date:8>20261119<my_pota_ref:16>us-1234, US-5678",
+            0, &two);
+        add(&park.store, "<call:4>AA1A<band:3>20M<mode:3>FT8<qso_date:8>20261119<my_sota_ref:10>W7O/CC-001",
+            0, &summit);
+        const QsoStore& s = park.store;
+        CHECK(qso_store_worked(s, "K1ABC", "20M", "FT8", 0, nullptr, nullptr) &&
+                  qso_store_worked(s, "K1ABC", "20M", "FT8", 0, "", nullptr),
+              "away from an activation a station worked from home is worked");
+        CHECK(!qso_store_worked(s, "K1ABC", "20M", "FT8", 0, "POTA:US-1234", nullptr), "from the park it is not yet");
+        CHECK(qso_store_worked(s, "W9XY", "20M", "FT8", 0, "POTA:US-1234", &got_id) && got_id == one,
+              "a station worked at this park is");
+        CHECK(!qso_store_worked(s, "W9XY", "20M", "FT8", 0, "POTA:US-9999", nullptr) &&
+                  !qso_store_worked(s, "W9XY", "20M", "FT8", 0, "POTA:US-123", nullptr),
+              "at another park it is not, and a reference is matched whole");
+        CHECK(qso_store_worked(s, "AA1A", "20M", "FT8", 0, "POTA:US-5678", &got_id) && got_id == two &&
+                  qso_store_worked(s, "AA1A", "20M", "FT8", 0, "pota:us-1234", &got_id) && got_id == two,
+              "a QSO logged at two parks counts at each, whatever the case");
+        CHECK(qso_store_worked(s, "AA1A", "20M", "FT8", 0, "POTA:US-9999,SOTA:W7O/CC-001", &got_id) && got_id == summit,
+              "any one of several references will do, a summit among them");
+        CHECK(!qso_store_worked(s, "AA1A", "20M", "FT8", 0, "SOTA:US-1234", nullptr),
+              "a park's reference is not looked for among summits");
+        CHECK(qso_store_worked(s, "AA1A", "20M", "FT8", 0, "W7O/CC-001", &got_id) && got_id == summit &&
+                  qso_store_worked(s, "W9XY", "20M", "FT8", 0, "US-1234", nullptr),
+              "with no program named, a / makes it a summit");
+        QsoStoreFilter at;
+        at.date = 20261119;
+        at.my_refs = "POTA:US-1234";
+        CHECK(qso_store_select(s, at, 0, ids, 8, &matched) == 2 && ids[0] == one && ids[1] == two,
+              "today's QSOs at a park, for its progress count");
+        at.my_refs = "POTA:US-5678";
+        CHECK(qso_store_select(s, at, 0, ids, 8, &matched) == 1 && ids[0] == two, "and at the other park of a 2-fer");
+    }
+
     // Delete.
     end = rig.store.end;
     CHECK(qso_store_delete(&rig.store, d) == QsoStoreStatus::OK && rig.store.end == end + kQsoStoreEntryOverhead,
@@ -419,7 +464,7 @@ static void test_patch_delete_worked()
     CHECK(!qso_store_get(rig.store, d, &got) && qso_store_delete(&rig.store, d) == QsoStoreStatus::NOT_FOUND &&
           patch(&rig.store, d, "<comment:1>x") == QsoStoreStatus::NOT_FOUND,
           "a deleted record is gone");
-    CHECK(qso_store_worked(rig.store, "K1ABC", "20M", "FT8", 0, &got_id) && got_id == a,
+    CHECK(qso_store_worked(rig.store, "K1ABC", "20M", "FT8", 0, nullptr, &got_id) && got_id == a,
           "worked falls back to the record that remains");
     CHECK(!qso_store_find_qrz(rig.store, 55, &got_id), "and its QRZ ID names nothing");
     CHECK(add(&rig.store, "<call:4>AA1A", 0, &got_id) == QsoStoreStatus::OK && got_id == d + 1,
@@ -559,7 +604,7 @@ static void test_cut_and_damage()
               "%s: logging carries on", what);
         Rig third;
         CHECK(third.load(&part).status == QsoStoreStatus::OK &&
-              qso_store_worked(third.store, "ZL1A", "20M", "FT8", 0, nullptr),
+              qso_store_worked(third.store, "ZL1A", "20M", "FT8", 0, nullptr, nullptr),
               "%s: and what was logged then is kept", what);
     }
 
@@ -685,7 +730,7 @@ static void test_limits_and_failures()
               qso_store_meta_set(&rig.store, "k", "v") == QsoStoreStatus::WRITE_FAILED,
               "nor a change to one");
         CHECK(rig.store.end == end && rig.store.next_id == id + 1 &&
-              !qso_store_worked(rig.store, "W9XY", nullptr, nullptr, 0, nullptr) &&
+              !qso_store_worked(rig.store, "W9XY", nullptr, nullptr, 0, nullptr, nullptr) &&
               qso_store_get(rig.store, id, &got) && got == "<call:5>K1ABC<band:3>20M<mode:3>FT8" &&
               !qso_store_meta_get(rig.store, "k", &got),
               "the store is as it was");
@@ -773,10 +818,10 @@ static void test_many_records()
         }
     }
     uint32_t got = 0;
-    CHECK(qso_store_worked(rig.store, "N1234R3", "20M", "FT8", 0, &got) && got == 1234,
+    CHECK(qso_store_worked(rig.store, "N1234R3", "20M", "FT8", 0, nullptr, &got) && got == 1234,
           "a record is found under its newest call");
-    CHECK(!qso_store_worked(rig.store, "N1234R2", nullptr, nullptr, 0, nullptr) &&
-          !qso_store_worked(rig.store, "K1000ABA", nullptr, nullptr, 0, nullptr),
+    CHECK(!qso_store_worked(rig.store, "N1234R2", nullptr, nullptr, 0, nullptr, nullptr) &&
+          !qso_store_worked(rig.store, "K1000ABA", nullptr, nullptr, 0, nullptr, nullptr),
           "and under none of its old ones");
     const std::vector<Change> changes = read_feed(rig.store);
     Rig again(1024 * 1024, 3000, 8192);

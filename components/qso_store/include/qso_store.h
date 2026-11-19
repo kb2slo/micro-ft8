@@ -153,8 +153,14 @@ bool qso_store_find_qrz(const QsoStore& store, uint64_t qrz_logid, uint32_t* id_
 // Worked before: the newest record with this call, own or foreign, on `band` and `mode` (either may be
 // nullptr for any; mode is FT4 for a record logged MFSK with SUBMODE FT4), dated `since_date` or later
 // (0 for ever). Names compare without regard to case. One table lookup, so it can be asked per decode.
+//
+// `my_refs` is nullptr or "" away from an activation. During one it is the station's references as its
+// settings hold them ("POTA:US-1234,SOTA:W7O/CC-001"), and only a record logged at one of them counts:
+// each park or summit is its own log, so a station worked from home that morning is not yet worked from
+// the park, and a record logged at two parks counts at each. A reference with no program is a summit
+// when it holds a `/`, else a park.
 bool qso_store_worked(const QsoStore& store, const char* call, const char* band, const char* mode,
-                      uint32_t since_date, uint32_t* id_out);
+                      uint32_t since_date, const char* my_refs, uint32_t* id_out);
 
 enum class QsoStoreWhose : uint8_t { ANY, OWN, FOREIGN };
 
@@ -163,6 +169,7 @@ struct QsoStoreFilter {
     QsoStoreWhose whose = QsoStoreWhose::ANY;
     bool unsent = false;                      // only records with no QRZ ID that are not marked uploaded
     bool newest_first = false;                // by ID: for own records, the order they were logged in
+    const char* my_refs = nullptr;            // only records logged at one of these, as qso_store_worked() takes them
 };
 
 // The IDs of the records matching `filter`, after the first `skip` of them, at most `take`. Returns how
