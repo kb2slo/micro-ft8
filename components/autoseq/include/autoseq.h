@@ -102,7 +102,8 @@ struct QsoContext {
     int offset_hz = 1500;   // where DX was heard
     // The offset this QSO transmits on, held from its first transmission to
     // its end, parked and reactivated included; 0 until one is rolled
-    // (tx_offset.h, autoseq_hold_tx_offset()).
+    // (tx_offset.h, autoseq_hold_tx_offset()). A fresh entry starts on the
+    // offset its station last heard from us (autoseq_remembered_tx_offset()).
     int tx_offset_hz = 0;
     int slot_id = 0;        // TX slot (0=even, 1=odd), in its own mode's slots
     // The mode it runs in: a decode continues the entry for its call in its own mode only, so an FT8 QSO and
@@ -249,8 +250,16 @@ void autoseq_mark_sent(int64_t slot_idx);
 // Called from tx_start() immediately before TX emission begins.
 // Logs the QSO if we're about to emit TX4 (RR73) or TX5 (73) — this is the
 // single logging trigger. ctx->logged flag prevents duplicate logs across
-// retries or re-emissions.
-void autoseq_on_tx_starting();
+// retries or re-emissions. `offset_hz` is the audio offset it goes out on, 0
+// when nothing is keyed: remembered for its station, or as the CQ's, so a
+// fresh entry for a station that heard it starts there (autoseq_remembered_tx_offset()).
+void autoseq_on_tx_starting(int offset_hz = 0);
+
+// The TX offset a fresh entry for `dxcall` in `mode` starts on (QsoContext::tx_offset_hz), 0 for none: the
+// offset last transmitted to that station, within AUTOSEQ_INACTIVE_EXPIRY_MS; else, when the station is
+// `calling_us` in FT8, the offset our CQ last went out on, within the same time (docs/architecture/autoseq.md,
+// TX offset). Read at `now_ms`, esp_timer's clock.
+int autoseq_remembered_tx_offset(const std::string& dxcall, RxMode mode, bool calling_us, int64_t now_ms);
 
 // Get display strings for active QSOs
 void autoseq_get_qso_states(std::vector<std::string>& out);

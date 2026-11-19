@@ -72,6 +72,19 @@ static int64_t s_last_tx_slot_idx = -1000;
 // entry_id of the entry that went on the air (autoseq_on_tx_starting), which
 // the next autoseq_tick() advances. 0: nothing transmitted since the last tick.
 static uint16_t s_tx_entry_id = 0;
+
+// The offsets stations last heard us on (autoseq_remembered_tx_offset()): one per station and mode, kept for
+// AUTOSEQ_INACTIVE_EXPIRY_MS after the transmission, the oldest overwritten when full; and our CQ's.
+struct SentOffset {
+    std::string dxcall;  // upper case; empty for a free slot
+    RxMode mode = RxMode::FT8;
+    int offset_hz = 0;
+    int64_t at_ms = 0;
+};
+static constexpr int kSentOffsetSlots = 16;
+static SentOffset s_sent_offsets[kSentOffsetSlots];
+static int s_cq_offset_hz = 0;
+static int64_t s_cq_offset_at_ms = 0;
 static int s_last_tx_parity = -1;
 
 // ============== Forward declarations ==============
@@ -184,6 +197,9 @@ void autoseq_init() {
     s_last_tx_parity = -1;
     s_tx_entry_id = 0;
     s_tx_msg_buffer.clear();
+    for (SentOffset& o : s_sent_offsets) o = SentOffset{};
+    s_cq_offset_hz = 0;
+    s_cq_offset_at_ms = 0;
 }
 
 void autoseq_clear() {
@@ -469,6 +485,8 @@ AutoseqTouchResult autoseq_on_touch(const UiRxLine& msg, bool hold_queue_head) {
     // Check if it's addressed to me (normalize to handle <> wrapped hashed calls)
     std::string f1_norm = normalize_call_token(msg.field1);
     std::string my_norm = normalize_call_token(s_my_call);
+    ctx->tx_offset_hz = autoseq_remembered_tx_offset(
+        dxcall, msg.mode, !my_norm.empty() && f1_norm == my_norm, mono_ms());
 
     if (!my_norm.empty() && f1_norm == my_norm) {
         generate_response(ctx, msg, true);
@@ -701,10 +719,56 @@ void autoseq_mark_sent(int64_t slot_idx) {
 //   (b) Log timestamps are unique per TX slot (only one TX per slot).
 //   (c) snr_tx/snr_rx are both latched by the time we reach ROGERS/SIGNOFF
 //       (we reached those states via parse_rcvd_msg updates on received TX2/TX3).
-void autoseq_on_tx_starting() {
+static std::string upper_call(const std::string& call) {
+    std::string up = call;
+    for (auto& ch : up) ch = toupper((unsigned char)ch);
+    return up;
+}
+
+static void remember_tx_offset(const QsoContext& ctx, int offset_hz, int64_t now_ms) {
+    if (offset_hz <= 0) return;
+    if (is_cq_entry(ctx)) {
+        s_cq_offset_hz = offset_hz;
+        s_cq_offset_at_ms = now_ms;
+        return;
+    }
+    const std::string call = upper_call(ctx.dxcall);
+    if (call.empty()) return;
+    SentOffset* slot = &s_sent_offsets[0];
+    for (SentOffset& o : s_sent_offsets) {
+        if (o.dxcall == call && o.mode == ctx.mode) {
+            slot = &o;
+            break;
+        }
+        if (o.at_ms < slot->at_ms) slot = &o;  // free slots read 0, so they go first
+    }
+    slot->dxcall = call;
+    slot->mode = ctx.mode;
+    slot->offset_hz = offset_hz;
+    slot->at_ms = now_ms;
+}
+
+int autoseq_remembered_tx_offset(const std::string& dxcall, RxMode mode, bool calling_us, int64_t now_ms) {
+    const std::string call = upper_call(dxcall);
+    for (const SentOffset& o : s_sent_offsets) {
+        if (!call.empty() && o.dxcall == call && o.mode == mode &&
+            now_ms - o.at_ms < AUTOSEQ_INACTIVE_EXPIRY_MS) {
+            return o.offset_hz;
+        }
+    }
+    // A station calling us after our CQ answers where it heard the CQ. The CQ is FT8's.
+    if (calling_us && mode == RxMode::FT8 && s_cq_offset_hz > 0 &&
+        now_ms - s_cq_offset_at_ms < AUTOSEQ_INACTIVE_EXPIRY_MS) {
+        return s_cq_offset_hz;
+    }
+    return 0;
+}
+
+void autoseq_on_tx_starting(int offset_hz) {
     if (s_active_count == 0) return;
     QsoContext* ctx = &s_queue[0];
     s_tx_entry_id = ctx->entry_id;
+    remember_tx_offset(*ctx, offset_hz, mono_ms());
     if (ctx->next_tx == TxMsgType::TX4 || ctx->next_tx == TxMsgType::TX5) {
         log_qso_if_needed(ctx);
     }
@@ -1268,6 +1332,7 @@ static void on_decode(const UiRxLine& msg) {
 
     QsoContext* ctx = append_ctx();
     ctx->mode = msg.mode;
+    ctx->tx_offset_hz = autoseq_remembered_tx_offset(dxcall, msg.mode, true, mono_ms());
     generate_response(ctx, msg, true);
     ESP_LOGI(TAG, "on_decode: NEW ctx %s, state=%s next=%s",
              ctx->dxcall.c_str(), state_name(ctx->state), tx_name(ctx->next_tx));
