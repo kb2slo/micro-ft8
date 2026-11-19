@@ -1067,7 +1067,11 @@ static void start_ap(void)
     wifi_config_t cfg = {0};
     strncpy((char *)cfg.ap.ssid, ssid, sizeof(cfg.ap.ssid));
     cfg.ap.ssid_len = strlen(ssid);
-    cfg.ap.max_connection = 2;
+    // Eight, not two: an operator's phone brings its watch, and an iPad or Mac on the same iCloud account would join
+    // too, each holding a place while silent; with two places a phone and its watch locked a laptop out
+    // (2026-11-18). A joined client costs about 1.2 KB of heap, and what clients' HTTP traffic can hold is bounded
+    // by TCP slots, not by clients (CONFIG_LWIP_TCP_SND_BUF_DEFAULT, sdkconfig.defaults).
+    cfg.ap.max_connection = 8;
     // Open unless the operator set a password (row rgg2). A fixed password
     // shipped in a public repo would be the appearance of security, not
     // security, so the default stays open and a password is the operator's own.
