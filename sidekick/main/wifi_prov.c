@@ -1090,6 +1090,14 @@ static void start_ap(void)
     ensure_sta_netif();
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_APSTA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &cfg));
+    // 20 MHz, not IDF's 40: on 2.4 GHz a 40 MHz AP spans two of the three channels that do not overlap, crowding
+    // every network near a club station or a field day, and phones join at 20 MHz on 2.4 GHz anyway (an iPhone
+    // and its watch did, offered 40; 2026-11-18). The sidekick's pages need nothing like 20 MHz's rate. Before
+    // esp_wifi_start(), so the first beacon says so; a failure leaves IDF's default, which still serves.
+    const esp_err_t bw = esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20);
+    if (bw != ESP_OK) {
+        ESP_LOGW(TAG, "AP bandwidth not set to 20 MHz: %s", esp_err_to_name(bw));
+    }
     ESP_ERROR_CHECK(esp_wifi_start());
     // Modem sleep (the default) is a known trigger for CCMP replay-detection
     // and block-ack churn on some APs/clients -- the radio goes quiet between
