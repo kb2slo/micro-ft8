@@ -320,14 +320,12 @@ static void sample_decode_cores(void) {
   s_idle_at_decode[1] = (uint32_t)ulTaskGetIdleRunTimeCounterForCore(1);
 }
 
-// One line per receive slot, sent as a Port A log (the sidekick prints it).
-// dec is esp_timer, sampled before that send: a clock step in this function
-// must not land in the duration. left is the soft clock's time until the
-// boundary. y is the sync step this slot, 0 if none: the console UART is not written, since a line
-// per message at 115200 was inside this function's timer. b is each core's busy
-// percent over this decode (core 0, then core 1). The text fits
-// PORTA_EVENT_TEXT_MAX (64). A line that does not is resent without y, so a
-// truncated event cannot clip b into a different number.
+// One line per receive slot, on the console (docs/architecture/decode.md, Slot lines), written after the
+// slot is marked done, since a line is milliseconds at 115200. dec is esp_timer, sampled before the
+// write: a clock step in this function must not land in the duration. left is the soft clock's time
+// until the boundary. y is the sync step this slot, 0 if none: a line per message at 115200 was once
+// inside the decode's timer. b is each core's busy percent over this decode (core 0, then core 1). A
+// line over 64 characters is written without y, so the line keeps one shape for the tools that parse it.
 static void log_slot_summary(const ft8_slot_t* slot, const decode_core_t* core, int num_candidates,
                              int msg_count, int tome, int sync_ms, int64_t decode_t0_us) {
   const int64_t dec_ms = (esp_timer_get_time() - decode_t0_us) / 1000;
@@ -342,11 +340,14 @@ static void log_slot_summary(const ft8_slot_t* slot, const decode_core_t* core, 
       (uint32_t)ulTaskGetIdleRunTimeCounterForCore(1) - s_idle_at_decode[1], elapsed);
   // The work counted: units, searches run, and '!' when the budget cut the slot short.
   const char* cut = core->cut ? "!" : "";
-  // "SLOT" for the station's channel, which tools/ parse; "SLOT/FT4" for one that only listens.
+  // "SLOT" for the station's channel, which tools/ parse from the console (tools/p4_console.py);
+  // "SLOT/FT4" for one that only listens. Not Port A: a line a slot took the sidekick's event ring
+  // from decodes (docs/architecture/decode.md, Slot lines).
   char suffix[8] = "";
   if (!slot->station) snprintf(suffix, sizeof(suffix), "/%s", slot->mode->name);
   const int searches = core->pass + 1;
-  // 128 covers a full int64 print. The event field keeps 64 characters.
+  // 128 covers a full int64 print. The y field is left out past 64 characters, as when this was a
+  // Port A log line (64 at most), so the line keeps one shape for the tools that parse it.
   char buf[128];
   int n = snprintf(buf, sizeof(buf),
                    "SLOT%s %lld c%d m%d t%d dec%lld left%lld y%d u%dp%d%s b%d/%d", suffix,
@@ -358,7 +359,7 @@ static void log_slot_summary(const ft8_slot_t* slot, const decode_core_t* core, 
              (long long)slot_idx, num_candidates, msg_count, tome,
              (long long)dec_ms, (long long)left_ms, core->spent, searches, cut, busy0, busy1);
   }
-  debug_log_line(buf);
+  ESP_LOGI(TAG, "%s", buf);
 }
 
 // What decode_slot() does with each new message, in candidate order (decode_workers.h): the DXpedition
@@ -580,7 +581,6 @@ void decode_slot(const ft8_slot_t* slot) {
 
   int tome = 0;
   for (int i = 0; i < dc.count; ++i) if (dc.dec[i].is_to_me) tome++;
-  log_slot_summary(slot, &core, num_candidates, dc.count, tome, sync_ms, decode_t0_us);
 
   // Publish, then mark this slot's decode applied, then clear the in-progress
   // flag, in that order. The TX trigger on core 0 reads in_progress and the
@@ -588,6 +588,9 @@ void decode_slot(const ft8_slot_t* slot) {
   // slot's result is already waiting for decode_pipeline_apply(), and the
   // trigger holds until the main loop has applied it.
   mark_station_slot_done(slot);
+  // After the mark, as on the path above: a console line is milliseconds at 115200, and the TX trigger
+  // waits on the mark. dec still stops where the slot's work did, since nothing between costs time.
+  log_slot_summary(slot, &core, num_candidates, dc.count, tome, sync_ms, decode_t0_us);
 }
 
 // One channel's slot, on the main loop.

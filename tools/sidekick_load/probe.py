@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Reads /api/events on a new connection every GAP seconds for SECONDS, one line per read to OUT:
 UTC time, connect ms, reply ms, events (or FAIL, ms to failure, error). With LOG_OUT, also every log line in
-the ring, the sidekick's (`SK ...`: heap lows, slow requests, held server, cut sends) and the main board's (slot
-timing, audio lost, stalls), and each radio state, with the read's time. README.md says how it is used.
+the ring, the sidekick's (`SK ...`: heap lows, slow requests, held server, cut sends) and the main board's (audio
+lost, stalls; each slot's timing is on its console instead, tools/p4_console.py), and each radio state, with
+the read's time. README.md says how it is used.
 
     python3 tools/sidekick_load/probe.py http://192.168.50.128 600 0.5 probe.log [log.txt]"""
 import http.client, json, sys, time, urllib.parse

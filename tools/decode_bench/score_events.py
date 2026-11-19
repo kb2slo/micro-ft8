@@ -5,8 +5,12 @@ The log is one JSON event per line, as the sidekick serves them (docs/architectu
 Port A), deduplicated by sequence number `s`: `d` 0 a log line, 1 a decode, 2 a queue entry,
 4 the transmission's status, 7 the radio's state. Plain or gzipped.
 
-    python3 tools/decode_bench/score_events.py LOG [--from HH:MM:SS] [--to HH:MM:SS]
+    python3 tools/decode_bench/score_events.py LOG [--console P4.jsonl] [--from HH:MM:SS] [--to HH:MM:SS]
                                                [--call KB2SLO] [--timeline CALL]
+
+The main board's per-slot lines (`SLOT`, `SKIP`) are on its console, not in the events: record it beside
+the events with tools/p4_console.py and pass it as --console. A log recorded before they moved off Port A
+(the corpora up to 2026-11-19) has them as `d` 0 rows, and needs no --console.
 
 Prints, within the window (UTC, on the log's first day):
   * decode load per mode: slots decoded, messages, `left`, slots stopped at their budget;
@@ -43,6 +47,19 @@ def load(path):
             e = json.loads(line)
             rows.setdefault(e["s"], e)
     return [rows[s] for s in sorted(rows)]
+
+
+def load_console(path):
+    """tools/p4_console.py's rows as `d` 0 events, for the scorers that read log lines."""
+    opener = gzip.open if path.endswith(".gz") else open
+    with opener(path, "rt") as f:
+        return [{"t": r["t"], "d": 0, "x": r["x"]} for r in map(json.loads, f) if r.get("x")]
+
+
+def merge(events, console):
+    """The events in their order, with the console's rows placed by time (a stable sort: same-second rows keep
+    their order)."""
+    return sorted(events + console, key=lambda e: e.get("t", 0))
 
 
 def day_time(events, text):
@@ -95,7 +112,7 @@ def decode_load(events, starts):
     print(f"Transmissions: {len(starts)}")
     print("== Decodes past their boundary (nearest transmission start, s)")
     for t, mode, left in late:
-        print(f"{hms(t)} {mode} left {left} ms, {nearest(t, starts):+d}")
+        print(f"{hms(t)} {mode} left {left} ms, {round(nearest(t, starts)):+d}")
     print("== STALL, when the wait ended (gap ms, empty reads, nearest transmission start, s)")
     for t, gap, empty in stalls:
         print(f"{hms(t)}.{int(t * 10) % 10} gap {gap} empty {empty}, {nearest(t, starts):+.1f}")
@@ -173,6 +190,7 @@ def timeline(events, call):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("log")
+    ap.add_argument("--console", help="the main board's console for the same session (tools/p4_console.py)")
     ap.add_argument("--from", dest="start", help="UTC HH:MM:SS")
     ap.add_argument("--to", dest="end", help="UTC HH:MM:SS, exclusive")
     ap.add_argument("--call", default="KB2SLO", help="our call")
@@ -180,6 +198,8 @@ def main():
     args = ap.parse_args()
 
     events = load(args.log)
+    if args.console:
+        events = merge(events, load_console(args.console))
     t0 = day_time(events, args.start) if args.start else 0
     t1 = day_time(events, args.end) if args.end else float("inf")
     events = [e for e in events if t0 <= e.get("t", 0) < t1]

@@ -23,6 +23,8 @@ size_t event_json(const event_t *e, char *out, size_t cap)
         return porta_event_json_radio(out, cap, e->seq, &e->u.radio);
     case PORTA_EVT_ACTIVITY:
         return porta_event_json_activity(out, cap, e->seq, &e->u.activity);
+    case PORTA_EVT_UNDECODED:
+        return porta_event_json_undecoded(out, cap, e->seq, &e->u.undecoded);
     }
     return 0;
 }
@@ -134,6 +136,7 @@ void event_state_note(event_state_t *s, const event_t *e, uint32_t now_ms)
     case PORTA_EVT_LOG:
     case PORTA_EVT_SWEEP:
     case PORTA_EVT_ACTIVITY:
+    case PORTA_EVT_UNDECODED:
         break;
     }
 }

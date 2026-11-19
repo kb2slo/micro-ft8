@@ -37,7 +37,7 @@ takes something, nothing ends its send, and `httpd` serves no one else.
 
 `overnight.sh` is a practical worst case for hours: two app pages left open and reloaded every 5 minutes,
 `slow_client.py` for a minute every 10, `probe.py` every 2 s and `heap.py` every 5 s. The probe also keeps
-every log line in the ring, the sidekick's (`SK ...`) and the main board's (slot timing, audio lost), and
+every log line in the ring, the sidekick's (`SK ...`) and the main board's (audio lost, stalls; each slot's timing is on its console, `tools/p4_console.py`), and
 notes any events it missed (`GAP`). Nothing is written to the station. Leave the radio decoding a busy band.
 
     CHROME=/usr/bin/google-chrome tools/sidekick_load/overnight.sh http://192.168.50.128 10 /tmp/overnight

@@ -4208,7 +4208,7 @@ var ACTIVITY_STRIP_MIN = 0.2;
 var CLOCK_CUE_MIN_SIGNALS = 8, CLOCK_CUE_SLOTS = 2;
 // act: the slot being received (noteActivity()); tallies: the newest received slots, oldest
 // first, {si, sig, dec, paused}; decodes: si -> decodes heard for it; paused: si -> true when the
-// main board did not decode it (PAUSED).
+// main board did not decode it (an UNDECODED event, d 9: transmitting, busy or paused).
 var band = { act: { si: 0, bm: 0, lv: [], mk: [] }, tallies: [], decodes: {}, paused: {} };
 
 // Folds one ACTIVITY event into `act`: a later slot starts over, an earlier one is dropped. Each
@@ -4289,7 +4289,7 @@ function activityLabel(act, now, period) {
 // The clock cue: '' or the bar's text when the newest CLOCK_CUE_SLOTS received slots each heard
 // CLOCK_CUE_MIN_SIGNALS or more and decoded a quarter of them or fewer. Signals heard is what
 // tells a clock from an empty band, an unplugged antenna or no audio, which also decode nothing
-// (ROADMAP I15). A slot the main board did not decode (PAUSED) breaks the run.
+// (ROADMAP I15). A slot the main board did not decode (d 9) breaks the run.
 // Why this slot is not decoding, for the slot bar (webapp.md, The slot bar's receive cues), from the main board's
 // live status: no audio and why, the decoder not starting, an overloaded HL2. '' when none applies; the clock cue
 // is the next thing to check. Radio-specific reasons come from the radio's own fields: the HL2's transport state
@@ -4338,16 +4338,18 @@ function tallySlot(tallies, act, period, decodes, paused) {
   return tallies.slice(-4);
 }
 
-// Folds one event into `st` (the shape of `band`): an FT8 decode counts toward its slot, PAUSED or SKIP
-// marks one the main board did not decode, and an ACTIVITY event from a later slot closes the one before it
-// (tallySlot()). Activity is FT8's slots: an FT4 decode (sl 75) counts toward none, and SKIP/FT4 is not
-// matched. SKIP is a slot deaf by overlap, such as one an FT4 transmission fell in, which still heard
-// signals: counted as a failed decode, an FT4 QSO cued "Clock?" every slot (2026-11-08).
+// Folds one event into `st` (the shape of `band`): an FT8 decode counts toward its slot, an UNDECODED
+// event (d 9) marks one the main board did not decode, and an ACTIVITY event from a later slot closes the
+// one before it (tallySlot()). Activity is FT8's slots: an FT4 decode or UNDECODED (sl 75) counts toward
+// none. Not decoded is not a failed decode: a slot deaf by overlap, such as one an FT4 transmission fell
+// in, still heard signals, and counted as failed an FT4 QSO cued "Clock?" every slot (2026-11-08); so does
+// a slot whose decode found the decoder still busy (why 2), which the PAUSED and SKIP lines read before
+// did not cover.
 function noteBandEvent(st, e, period) {
   if (e.d === 1 && e.si && e.sl !== 75) {
     st.decodes[e.si] = (st.decodes[e.si] || 0) + 1;
-  } else if (e.d === 0 && /^(PAUSED|SKIP) \d+/.test(e.x || '')) {
-    st.paused[e.x.split(' ')[1]] = true;
+  } else if (e.d === 9 && e.si && e.sl !== 75) {
+    st.paused[e.si] = true;
   } else if (e.d === 8) {
     if ((e.si | 0) > st.act.si && st.act.si) {
       st.tallies = tallySlot(st.tallies, st.act, period, st.decodes, st.paused);
@@ -5744,7 +5746,7 @@ function applyEvent(e) {
     lastTxHudEventMs = Date.now();
     noteTxHud(swrTrack, txHud);
     if (txHud.active) PskrLive.noteTx();
-  } else if (e.d === 8 || e.d === 0) {
+  } else if (e.d === 8 || e.d === 9) {
     noteBandEvent(band, e, SLOT_MS);
   } else if (e.d === 7) {
     // The radio told the main board its state changed (AI2;): a knob turn, a mode or split change,

@@ -1263,6 +1263,18 @@ void porta_emit_activity(uint32_t slot_idx, uint8_t block_ms, uint8_t first,
   enqueue(buf, len);
 }
 
+void porta_emit_undecoded(uint32_t slot_idx, uint8_t slot_len_ds, uint8_t why) {
+  if (!s_running) return;
+  porta_undecoded_event_t u = {};
+  u.epoch_secs = host_epoch_secs();
+  u.slot_idx = slot_idx;
+  u.slot_len_ds = slot_len_ds;
+  u.why = why;
+  uint8_t buf[PORTA_PROTO_MAX_FRAME];
+  const size_t len = porta_proto_encode_undecoded(&u, buf, sizeof(buf));
+  enqueue(buf, len);
+}
+
 void porta_emit_sweep(uint8_t kind, uint8_t range_index, uint32_t freq_hz, int swr_hundredths,
                       uint8_t reason) {
   if (!s_running) return;

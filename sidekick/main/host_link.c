@@ -1845,6 +1845,9 @@ static void porta_rx_task(void *arg)
             } else if (porta_proto_parse_activity(&frame, &e.u.activity)) {
                 e.kind = PORTA_EVT_ACTIVITY;
                 ring_push(&e);
+            } else if (porta_proto_parse_undecoded(&frame, &e.u.undecoded)) {
+                e.kind = PORTA_EVT_UNDECODED;
+                ring_push(&e);
             } else if (porta_proto_parse_sweep_event(&frame, &e.u.sweep)) {
                 e.kind = PORTA_EVT_SWEEP;
                 ring_push(&e);

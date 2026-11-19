@@ -120,7 +120,11 @@ extern "C" {
 // QMX's Tune %). An older host NAKs it as unknown. Both ends are flashed together.
 // v20 (2026-11-17): QUEUE_ENTRY carries the entry's mode, dial and TX offset. A v19 peer's shorter
 // frame is refused. Both ends are flashed together.
-#define PORTA_PROTO_VERSION 20u
+// v21 (2026-11-19): the UNDECODED event, a slot of the station's channel the main board did not decode
+// and why. The per-slot log lines (SLOT, BDRY, SKIP, BUSY, PAUSED) go to the main board's console
+// instead of Port A, so they take no places in the sidekick's event ring. A v20 sidekick drops the
+// new event unparsed. Both ends are flashed together.
+#define PORTA_PROTO_VERSION 21u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -265,6 +269,7 @@ typedef enum {
     PORTA_EVT_SWEEP       = 0x07,  // SWR sweep progress: a point, a skipped band, done, aborted
     PORTA_EVT_RADIO_STATE = 0x08,  // the radio's own report of its state changed (IF; pushed by AI2;)
     PORTA_EVT_ACTIVITY    = 0x09,  // band activity, one level per block, about a second's worth
+    PORTA_EVT_UNDECODED   = 0x0A,  // a slot of the station's channel that was not decoded, and why
 } porta_event_subtype_t;
 
 #define PORTA_EVENT_TEXT_MAX 64  // matches RX_TEXT_MAX on the host
@@ -437,6 +442,26 @@ typedef struct {
 size_t porta_proto_encode_activity(const porta_activity_event_t *a, uint8_t *out, size_t out_cap);
 // False if malformed, empty, or more than PORTA_ACTIVITY_LEVELS_MAX levels.
 bool porta_proto_parse_activity(const porta_frame_t *f, porta_activity_event_t *out);
+
+// UNDECODED (docs/architecture/decode.md, Deaf by overlap): slot `slot_idx` of the station's channel,
+// `slot_len_ds` long (150 FT8, 75 FT4), was not decoded, for `why`. Sent at the slot's trigger, in place
+// of a decode; the page's clock cue reads it (docs/architecture/webapp.md, The clock cue), since a slot
+// that heard signals and was not decoded is no sign of a clock off.
+typedef enum {
+    PORTA_UNDECODED_TX     = 1,  // our transmission overlapped it (SKIP)
+    PORTA_UNDECODED_BUSY   = 2,  // the decode before it still held the other waterfall (BUSY)
+    PORTA_UNDECODED_PAUSED = 3,  // decoding is off (PAUSED)
+} porta_undecoded_why_t;
+
+typedef struct {
+    uint32_t epoch_secs;
+    uint32_t slot_idx;
+    uint8_t  slot_len_ds;
+    uint8_t  why;  // porta_undecoded_why_t
+} porta_undecoded_event_t;
+
+size_t porta_proto_encode_undecoded(const porta_undecoded_event_t *u, uint8_t *out, size_t out_cap);
+bool porta_proto_parse_undecoded(const porta_frame_t *f, porta_undecoded_event_t *out);
 
 // SWEEP (docs/architecture/radio.md, The SWR sweep). One event per measured point, plus one each for a band the radio does not
 // have, the end of a sweep, and an abort. `kind` and `reason` are wire values, below.
@@ -1018,6 +1043,8 @@ size_t porta_event_json_radio(char *out, size_t cap, uint32_t seq,
                               const porta_radio_state_event_t *ev);
 size_t porta_event_json_activity(char *out, size_t cap, uint32_t seq,
                                  const porta_activity_event_t *ev);
+size_t porta_event_json_undecoded(char *out, size_t cap, uint32_t seq,
+                                  const porta_undecoded_event_t *ev);
 
 #ifdef __cplusplus
 }

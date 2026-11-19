@@ -55,6 +55,7 @@ typedef struct {
         porta_sweep_event_t         sweep;
         porta_radio_state_event_t   radio;
         porta_activity_event_t      activity;
+        porta_undecoded_event_t     undecoded;
     } u;
 } event_t;
 
@@ -77,7 +78,7 @@ typedef struct {
 void event_state_init(event_state_t *s);
 
 // Notes one event, already given its seq. `now_ms` is any monotonic millisecond clock. Logs,
-// sweep progress and band activity are not state and are ignored.
+// sweep progress, band activity and undecoded slots are not state and are ignored.
 void event_state_note(event_state_t *s, const event_t *e, uint32_t now_ms);
 
 // The kept event with the lowest seq in (after, before), so a caller walks the state in the order

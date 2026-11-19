@@ -296,11 +296,16 @@ static int trigger_blocks(const Ft8Channel* ch)
     return decode_trigger_blocks(ch->chan->mode->protocol_id == FTX_PROTOCOL_FT4, ch->slot_idx, ch->beside_other);
 }
 
-static void log_slot_event(const Ft8Channel* ch, const char* what, int64_t slot_idx)
+// A slot not decoded, once it is marked applied (the TX trigger reads the mark, and a console line is
+// milliseconds at 115200): a line on the console, which tools/p4_console.py records, and for the station's
+// channel the UNDECODED event the page's clock cue reads. Not a Port A log line: one per slot took the
+// sidekick's event ring from decodes (docs/architecture/decode.md, Slot lines).
+static void slot_undecoded(const Ft8Channel* ch, const char* what, int64_t slot_idx, ft8_slot_undecoded_t why)
 {
-    char buf[40];
-    snprintf(buf, sizeof(buf), "%s%s %lld", what, ch->suffix, (long long)slot_idx);
-    debug_log_line(buf);
+    ESP_LOGI(ch->tag, "%s%s %lld", what, ch->suffix, (long long)slot_idx);
+    if (ch->chan->station && ch->cfg->on_undecoded) {
+        ch->cfg->on_undecoded(ch->cfg->ctx, slot_idx, (int)ch->slot_ms, why);
+    }
 }
 
 static void channel_block(Ft8Channel* ch, int64_t queued)
@@ -372,17 +377,16 @@ static void channel_block(Ft8Channel* ch, int64_t queued)
         // clock set or step cuts the slot short; a drop misdates the queue.
         ch->slot_clean = now_idx == ch->slot_idx + 1 && lost <= mon.block_size && drop == 0;
         // g is blocks captured after the decode reset: about 14 is a full guard.
-        // Port A log, not the console UART: the sidekick prints it.
+        // The console, not Port A: a line a slot took the sidekick's event ring from decodes
+        // (docs/architecture/decode.md, Slot lines).
         {
-            char buf[64];
             // fe: the receive front end's time since the last boundary (ingest task).
             const unsigned frontend_us =
                 (chan->station && cfg->take_frontend_us) ? (unsigned)cfg->take_frontend_us(cfg->ctx) : 0;
             // fe is the source's, once: on the station's channel.
-            snprintf(buf, sizeof(buf), "BDRY%s %lld g%d lost%lld drop%u mon%lld fe%u", ch->suffix,
+            ESP_LOGI(ch->tag, "BDRY%s %lld g%d lost%lld drop%u mon%lld fe%u", ch->suffix,
                      (long long)ch->slot_idx, ch->slot_blocks, (long long)lost, drop,
                      (long long)ch->slot_monitor_us, chan->station ? frontend_us : 0u);
-            debug_log_line(buf);
         }
         if (chan->station) {
             const uint32_t gap_us = s_ingest_gap_max_us.exchange(0, std::memory_order_relaxed);
@@ -421,15 +425,15 @@ static void channel_block(Ft8Channel* ch, int64_t queued)
         // tx_active; an FT4 one ends at 5.6 s into its period, before its own trigger,
         // so it names its period (tx_ft4_period_idx) and the FT8 slot it falls in.
         if (decode_tx_state_get_tx_active() || decode_tx_state_get_was_txing() || is_tx_slot(ch)) {
-            log_slot_event(ch, "SKIP", ch->slot_idx);
             mark_applied(ch, ch->slot_idx);
+            slot_undecoded(ch, "SKIP", ch->slot_idx, FT8_SLOT_UNDECODED_TX);
             clear_tx_slot(ch);
         } else if (decode_tx_state_get_decode_enabled() &&
                    ch->decoding[1 - ch->filling].load(std::memory_order_acquire)) {
             // The decode task still has the other waterfall, from a slot ago: a decode a whole slot
             // long. Capture cannot hand this one over without a waterfall to fill, so it is not decoded.
-            log_slot_event(ch, "BUSY", ch->slot_idx);
             mark_applied(ch, ch->slot_idx);
+            slot_undecoded(ch, "BUSY", ch->slot_idx, FT8_SLOT_UNDECODED_BUSY);
         } else if (decode_tx_state_get_decode_enabled()) {
             // Hand this waterfall to the decode task, and fill the other from here on.
             const int w = ch->filling;
@@ -457,8 +461,8 @@ static void channel_block(Ft8Channel* ch, int64_t queued)
             ch->filling = 1 - w;
             mon.wf.mag = s_channel_buffers[chan->channel].mag[ch->filling];
         } else {
-            log_slot_event(ch, "PAUSED", ch->slot_idx);
             mark_applied(ch, ch->slot_idx);
+            slot_undecoded(ch, "PAUSED", ch->slot_idx, FT8_SLOT_UNDECODED_PAUSED);
         }
         monitor_reset(&mon);
         mon.wf.num_blocks = 0;

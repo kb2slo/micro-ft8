@@ -668,6 +668,39 @@ static void test_activity_event()
     }
 }
 
+// UNDECODED: a slot of the station's channel not decoded, and why, for the page's clock cue.
+static void test_undecoded_event()
+{
+    porta_decoder_t d;
+    porta_decoder_init(&d);
+    uint8_t buf[PORTA_PROTO_MAX_FRAME];
+
+    porta_undecoded_event_t in = {};
+    in.epoch_secs = 1789012345u;
+    in.slot_idx = 119267489u;
+    in.slot_len_ds = 150;
+    in.why = PORTA_UNDECODED_BUSY;
+    size_t n = porta_proto_encode_undecoded(&in, buf, sizeof(buf));
+    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1, "undecoded event decodes");
+    if (got.size() == 1) {
+        porta_undecoded_event_t out;
+        check(porta_proto_parse_undecoded(&got[0], &out) && out.epoch_secs == 1789012345u &&
+                  out.slot_idx == 119267489u && out.slot_len_ds == 150 && out.why == PORTA_UNDECODED_BUSY,
+              "undecoded event round-trips");
+        porta_activity_event_t act;
+        porta_usb_status_event_t usb;
+        check(!porta_proto_parse_activity(&got[0], &act) && !porta_proto_parse_usb_status(&got[0], &usb),
+              "an undecoded event is no other event");
+        char json[128];
+        check(porta_event_json_undecoded(json, sizeof(json), 9, &out) > 0 &&
+                  std::string(json) == "{\"s\":9,\"t\":1789012345,\"d\":9,\"si\":119267489,\"sl\":150,\"why\":2}",
+              "undecoded event JSON row");
+        got[0].len = (uint8_t)(got[0].len - 1);
+        check(!porta_proto_parse_undecoded(&got[0], &out), "a short undecoded event is refused");
+    }
+}
+
 static void test_tx_hud_event()
 {
     porta_decoder_t d;
@@ -1971,6 +2004,7 @@ int main()
     test_usb_status_event();
     test_radio_state_event();
     test_activity_event();
+    test_undecoded_event();
     test_sweep_event();
     test_tx_hud_event();
     test_action_set_clock();
