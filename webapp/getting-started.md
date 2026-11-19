@@ -22,7 +22,7 @@ pages: 1
 
 # Getting started
 
-![Join the WiFi](qr:WIFI:T:nopass;S:micro-ft8.local;;) ![Open the app](qr:http://192.168.4.1/app.html)
+![Open the app](qr:http://192.168.4.1/app.html)
 
 Micro-FT8 is a headless FT8 station for your QMX. The *main board* (M5Stack Unit PoE-P4) decodes, transmits, sequences each QSO and keeps the log. The *sidekick* (AtomS3 Lite, the small cube on the short cable) runs its own WiFi network and serves the app to your phone's browser, so there is nothing to install. The queue and the sequencer are on the station, so a locked phone does not drop a QSO. Building your own? Flash both boards first: [Downloads](https://micro-ft8.kalikstein.com/downloads).
 
@@ -36,7 +36,7 @@ You need the main board and sidekick on their Grove cable, your QMX (validated o
 
 ## 2. Open the app
 
-- Join the phone to the WiFi network `micro-ft8.local` (open, no password, unless you set your own in **Settings**), open [`http://192.168.4.1`](http://192.168.4.1/) and tap **Operate in AP mode**, or scan the two codes at the top in order. Bookmark the app.
+- Join the phone to the WiFi network `micro-ft8.local` and four characters (open, unless you set a password in **Settings**), open [`http://192.168.4.1`](http://192.168.4.1/) and tap **Operate in AP mode**, or scan the code at the top. Bookmark the app.
 - Cellular internet comes and goes meanwhile. Android may warn that the network has no internet: stay connected.
 
 ## 3. Pair your phone

@@ -59,12 +59,14 @@ const char* wifi_prov_ssid(void);
 // True while the provisioning AP is up.
 bool wifi_prov_ap_active(void);
 
-// The AP's saved name (the default `micro-ft8.local` unless the operator set
-// one) and whether it has a WPA2 password. The password itself is never
+// The AP's saved name (the default unless the operator set one) and whether it has a WPA2 password. The password itself is never
 // readable: no route returns it. Both are valid in station mode too, where
 // they say what the AP will be the next time it comes up. Row rgg2.
 const char *wifi_prov_ap_ssid(void);
 bool wifi_prov_ap_secured(void);
+// The name the AP takes when the operator has set none: `micro-ft8.local` and
+// this unit's MAC suffix (ap_name.h). The app quotes it where a reset brings it back.
+const char *wifi_prov_ap_default_ssid(void);
 
 // Seconds the sidekick button has been held toward the AP reset, 0 when it is
 // not held. The events reply carries it so the page can show a card while the
@@ -76,7 +78,7 @@ int wifi_prov_ap_reset_hold(void);
 #define WIFI_PROV_AP_RESET_HOLD_SECS 10
 void wifi_prov_set_ap_reset_hold(int secs);
 
-// Erases the saved AP name and password (back to `micro-ft8.local`, open) and
+// Erases the saved AP name and password (back to the default name, open) and
 // restarts. Does not return. For the sidekick button's long hold: the way back
 // in when the password is forgotten, which needs no WiFi.
 void wifi_prov_ap_reset_and_restart(void);

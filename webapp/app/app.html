@@ -971,7 +971,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 
         <div class="hd sep">Sidekick's own network</div>
         <p class=setnote>The network the sidekick raises when it has no WiFi to join. A password keeps phones that are only looking for internet from joining it. Saving restarts it, and a phone on it must rejoin. Whatever you name it, the app is at micro-ft8.local or 192.168.4.1.</p>
-        <div class=setrow><label class=fld><span>Name</span><input id=apSsid data-select=off:name enterkeyhint=done maxlength=32 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false placeholder=micro-ft8.local></label></div>
+        <div class=setrow><label class=fld><span>Name</span><input id=apSsid data-select=off:name enterkeyhint=done maxlength=32 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false placeholder="micro-ft8.local and four characters"></label></div>
         <div class=setrow><label class=fld><span>Password</span><input id=apPass data-select=off:secret enterkeyhint=done maxlength=63 autocomplete=off autocorrect=off autocapitalize=off spellcheck=false></label></div>
         <div class=setbtns>
           <button id=apSave type=button class=btn-primary disabled>Save</button>
@@ -2625,10 +2625,16 @@ function updateNetInfo(cfg) {
 
 // The AP's saved name fills the field once, so a poll never overwrites what the
 // operator is typing. The password is never sent back; whether one is set is.
-var apSecured = false, apLoaded = false;
+// The default name ends in this unit's MAC suffix (sk_ap_default), so it is the sidekick's to say,
+// and the field's placeholder and the cards that say which network to join quote it from there.
+var apSecured = false, apLoaded = false, apDefaultName = '';
 function updateApInfo(cfg) {
   if (cfg.sk_ap_ssid === undefined) return;
   apSecured = cfg.sk_ap_secured === '1';
+  if (cfg.sk_ap_default && cfg.sk_ap_default !== apDefaultName) {
+    apDefaultName = cfg.sk_ap_default;
+    document.getElementById('apSsid').placeholder = apDefaultName;
+  }
   var pass = document.getElementById('apPass');
   pass.placeholder = apSecured ? 'set (hidden)' : 'empty = open';
   if (!apLoaded) {
@@ -3400,12 +3406,12 @@ async function apSubmit(ssid, pass) {
     msg.textContent = 'The password must be 8 to 63 characters, or empty for an open network.';
     return;
   }
-  var name = ssid || 'micro-ft8.local';
+  var name = ssid ? '\u201C' + ssid + '\u201D' : apDefaultQuoted();
   var stationMode = document.getElementById('netMode').textContent.indexOf('Station') === 0;
   var ask = stationMode
     ? 'This is only saved. The sidekick\u2019s own network uses it the next time it starts; nothing restarts now.'
-    : 'The sidekick will restart now and its WiFi will drop. On your phone, open Settings \u203A WiFi and join \u201C' +
-      name + '\u201D' + (pass ? ' with the password \u201C' + pass + '\u201D' : ' (it will be open, no password)') +
+    : 'The sidekick will restart now and its WiFi will drop. On your phone, open Settings \u203A WiFi and join ' +
+      name + (pass ? ' with the password \u201C' + pass + '\u201D' : ' (it will be open, no password)') +
       '. This page then reconnects by itself. Your phone may keep the old network saved; forget it if it rejoins that one.' +
       (!pass && apSecured ? ' This removes the password.' : '');
   if (!(await resetCardConfirm(stationMode ? 'Save the network name?' : 'Restart the sidekick\u2019s WiFi?', ask,
@@ -3440,12 +3446,12 @@ async function apSubmit(ssid, pass) {
   msg.textContent = '';
   waitForSetupPage({
     title: 'Restarting the sidekick\u2019s WiFi',
-    hint: 'The sidekick is restarting. On your phone, open Settings \u203A WiFi and join \u201C' + name + '\u201D' +
+    hint: 'The sidekick is restarting. On your phone, open Settings \u203A WiFi and join ' + name +
       (pass ? ' with the password \u201C' + pass + '\u201D' : '') + '. This page reopens by itself once you are connected.',
     // Reload in place, not a new address: the pairing token belongs to this origin and the rename
     // keeps it, so only this origin comes back paired.
     reload: true,
-    giveUp: 'Join \u201C' + name + '\u201D in your phone\u2019s WiFi settings, then reload this page.'
+    giveUp: 'Join ' + name + ' in your phone\u2019s WiFi settings, then reload this page.'
   });
 }
 
@@ -5772,15 +5778,20 @@ function applyEvent(e) {
 // pairing press never shows it; at the last second it becomes the same wait-and-reload card a Save uses.
 // Letting go early closes it. It only opens over an idle page, never over another card.
 var holdCardOpen = false;  // the total comes from the sidekick (`hold_of`), not from here
+// The default network, quoted, for a card that says which network to join.
+function apDefaultQuoted() {
+  return apDefaultName ? '\u201C' + apDefaultName + '\u201D'
+                       : 'the network whose name starts \u201Cmicro-ft8.local\u201D';
+}
 function startHoldReset() {
   holdCardOpen = false;
   document.getElementById('resetWaitCancel').hidden = true;
   waitForSetupPage({
     title: 'Resetting the sidekick\u2019s WiFi',
     hint: 'The sidekick is restarting with its default WiFi name and no password. On your phone, open ' +
-      'Settings \u203A WiFi and join \u201Cmicro-ft8.local\u201D. This page reopens by itself once you are connected.',
+      'Settings \u203A WiFi and join ' + apDefaultQuoted() + '. This page reopens by itself once you are connected.',
     reload: true,
-    giveUp: 'Join \u201Cmicro-ft8.local\u201D in your phone\u2019s WiFi settings, then reload this page.'
+    giveUp: 'Join ' + apDefaultQuoted() + ' in your phone\u2019s WiFi settings, then reload this page.'
   });
 }
 function updateResetHold(hold, of) {
