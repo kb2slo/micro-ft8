@@ -19,6 +19,7 @@
 #include "hl2_transport.h"
 #include "porta.h"
 #include "porta_proto.h"
+#include "swr_trip.h"
 #include "porta_host.h"
 #include "qmx_transport.h"
 #include "queue_event.h"
@@ -488,6 +489,11 @@ void porta_p4_radio_push_tick(void) {
                            (uint32_t)want_dial_hz());
 }
 
+// Tune the P4 stopped on high SWR (swr_tune_over()): why, for the TX HUD, and until when it is shown.
+static char s_tune_stop_reason[PORTA_TX_HUD_REASON_MAX + 1];
+static uint32_t s_tune_stop_until_ms = 0;
+static constexpr uint32_t kTuneStopShownMs = 5000;  // Tune has no slot to show it for the rest of, as a trip does
+
 // Phone Operate panel TX HUD.
 // B72: poll PC;/SW; so power/SWR are real (this board has no on-device
 // banner, so the Port A tick owns the poll).
@@ -497,6 +503,10 @@ void porta_p4_tx_hud_tick(void) {
 
     // A transmission the radio's SWR protection stopped stays on the banner for the rest of its slot.
     const char *abort_reason = tx_scheduler_hud_abort_reason();
+    if (!abort_reason && !s_tune && s_tune_stop_reason[0] &&
+        (int32_t)(s_tune_stop_until_ms - (uint32_t)(esp_timer_get_time() / 1000)) > 0) {
+        abort_reason = s_tune_stop_reason;
+    }
     const char *not_keyed = tx_scheduler_hud_not_keyed_reason();
     const bool active = tx_scheduler_hud_active() || s_tune || abort_reason || not_keyed;
     if (!active && !s_last_active) {
@@ -547,6 +557,18 @@ void porta_p4_tx_hud_tick(void) {
     }
     float power_w = -1.f, swr = -1.f;
     (void)radio_control_get_tx_power_swr(&power_w, &swr);
+    if (s_tune && swr_tune_over(swr)) {
+        // The radio's protection did not stop Tune into a bad antenna (radio.md, SWR protection trips on a QMX).
+        s_tune = false;
+        radio_control_set_tune(false, 0, 0);
+        snprintf(s_tune_stop_reason, sizeof(s_tune_stop_reason), "Tune: SWR %.*f over %.1f", swr < 10.f ? 2 : 1,
+                 (double)swr, (double)kSwrTuneLimit);
+        s_tune_stop_until_ms = now_ms + kTuneStopShownMs;
+        ESP_LOGW(TAG, "CAT tune: stopped at SWR %.2f, over %.1f", (double)swr, (double)kSwrTuneLimit);
+        debug_log_line(std::string("Tune stopped: ") + s_tune_stop_reason);
+        porta_emit_tx_hud(true, true, false, tx_text, power_w, swr, -1, offset_hz, s_tune_stop_reason);
+        return;
+    }
 
     porta_emit_tx_hud(true, false, false, tx_text, power_w, swr, -1, offset_hz, "");
 }
@@ -939,6 +961,7 @@ const char *porta_host_tune(bool on) {
     }
     if (on) {
         tx_scheduler_swr_operator_start(true);
+        s_tune_stop_reason[0] = '\0';  // a new Tune is not the one stopped
     }
     s_tune = on;
     if (radio_control_ready()) {

@@ -43,6 +43,14 @@ int main()
     expect(swr_trip_operator_start(locked), "and the operator's start clears the lock");
     expect(swr_trip_on_trip(locked) == SwrTripAction::Retry, "and the count starts again");
 
+    // Tune: stopped above the limit, never on no reading.
+    expect(!swr_tune_over(-1.f), "no reading yet does not stop Tune");
+    expect(!swr_tune_over(1.4f), "a matched antenna does not stop Tune");
+    expect(!swr_tune_over(kSwrTuneLimit), "SWR at the limit does not stop Tune");
+    expect(swr_tune_over(3.01f), "SWR over the limit stops Tune");
+    expect(swr_tune_over(9.98f), "the antenna off (SWR 9.98, 2026-11-02) stops Tune");
+    expect(kSwrTuneLimit == 3.0f, "the limit is the QMX's default SWR threshold");
+
     if (g_fails) {
         fprintf(stderr, "%d failure(s)\n", g_fails);
         return 1;
