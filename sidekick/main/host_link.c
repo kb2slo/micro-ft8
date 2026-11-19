@@ -227,14 +227,16 @@ static void send_event_row(httpd_req_t *req, batch_t *b, const event_t *e, bool 
     *first = false;
 }
 
-static esp_err_t send_events_tail(httpd_req_t *req, batch_t *b, uint32_t head)
+// `lost` (/api/events only): events after the client's `since` are gone from the ring, so this
+// reply does not carry everything since then; the page reads /api/state instead.
+static esp_err_t send_events_tail(httpd_req_t *req, batch_t *b, uint32_t head, bool lost)
 {
     // `hold`: seconds the sidekick button has been held toward the AP reset (0
     // when not), `hold_of`: the seconds that complete it. It rides here because this is the one reply the page reads
     // every second.
-    char tail[80];
-    snprintf(tail, sizeof(tail), "],\"seq\":%" PRIu32 ",\"hold\":%d,\"hold_of\":%d}", head,
-             wifi_prov_ap_reset_hold(), WIFI_PROV_AP_RESET_HOLD_SECS);
+    char tail[96];
+    snprintf(tail, sizeof(tail), "],\"seq\":%" PRIu32 "%s,\"hold\":%d,\"hold_of\":%d}", head,
+             lost ? ",\"lost\":1" : "", wifi_prov_ap_reset_hold(), WIFI_PROV_AP_RESET_HOLD_SECS);
     batch_add(req, b, tail);
     batch_flush(req, b);
     return httpd_resp_send_chunk(req, NULL, 0);
@@ -267,25 +269,18 @@ static esp_err_t get_events(httpd_req_t *req)
 
     xSemaphoreTake(s_lock, portMAX_DELAY);
     head = s_next_seq;
-    // Oldest still in the ring. A client that has been away longer than the
-    // ring simply resumes from here -- gaps are visible as a jump in seq rather
-    // than silently filled with stale rows.
-    uint32_t ring_oldest = (head > RING_LEN) ? (head - RING_LEN) : 0;
-    // since==0 is a fresh client asking for everything, not a gap -- only
-    // count it when a *returning* client's cursor has fallen behind what the
-    // ring still has. A busy slot plus a backgrounded phone tab is enough to
-    // do this in well under a minute; see this counter's own comment.
-    if (since > 0 && since < ring_oldest) {
+    // A client whose cursor has left the ring (a busy slot and a backgrounded phone tab do it in
+    // well under a minute) is told so, and reads /api/state rather than resuming partway.
+    uint32_t from;
+    bool lost = event_ring_from(since, head, RING_LEN, &from);
+    if (lost) {
         s_ring_gap_events++;
-    }
-    uint32_t from = ring_oldest;
-    if (since > from) {
-        from = since;
     }
     for (uint32_t s = from; s < head; ++s) {
         event_t e = s_ring[s % RING_LEN];
         if (e.seq != s) {
-            continue;   // overwritten while we walked; skip rather than lie
+            lost = true;   // overwritten while we walked: skipped, and said so
+            continue;
         }
         xSemaphoreGive(s_lock);
         send_event_row(req, b, &e, &first);
@@ -293,7 +288,7 @@ static esp_err_t get_events(httpd_req_t *req)
     }
     xSemaphoreGive(s_lock);
 
-    return send_events_tail(req, b, head);
+    return send_events_tail(req, b, head, lost);
 }
 
 // GET /api/state?slots=<n>
@@ -333,7 +328,7 @@ static esp_err_t get_state(httpd_req_t *req)
     }
     xSemaphoreGive(s_lock);
 
-    return send_events_tail(req, b, head);
+    return send_events_tail(req, b, head, false);
 }
 
 // Last reply the host sent to an action, so the browser learns whether its

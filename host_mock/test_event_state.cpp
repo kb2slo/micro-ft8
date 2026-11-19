@@ -4,7 +4,8 @@
 // Pins what a reloading page is shown: only the newest slots it asks for, every live queue entry
 // and no removed or stale one, the last of each single event, all in the order they happened and
 // none at or past the poll cursor the reply hands back. Also pins that a TX HUD's not_keyed
-// reaches the browser row, which a field-by-field copy in host_link.c once dropped.
+// reaches the browser row, which a field-by-field copy in host_link.c once dropped, and where a
+// GET /api/events?since= reply starts, saying so when the client fell behind the ring.
 
 #include "event_state.h"
 
@@ -245,8 +246,22 @@ static void test_json_carries_not_keyed()
           "a decode renders as a decode row");
 }
 
+// GET /api/events?since=: where a reply starts, and whether it says the client fell behind.
+static void test_ring_from()
+{
+    uint32_t from = 99;
+    check(!event_ring_from(0, 1, 128, &from) && from == 1, "an empty ring: a fresh client starts at 1");
+    check(!event_ring_from(0, 500, 128, &from) && from == 372, "a fresh client gets the whole ring, not lost");
+    check(!event_ring_from(40, 100, 128, &from) && from == 40, "a ring not yet full: resumes at since");
+    check(!event_ring_from(372, 500, 128, &from) && from == 372, "since at the oldest held: nothing missed");
+    check(event_ring_from(371, 500, 128, &from) && from == 372, "since one older than the ring: lost");
+    check(event_ring_from(5, 500, 128, &from) && from == 372, "since long gone: lost, from the oldest");
+    check(!event_ring_from(500, 500, 128, &from) && from == 500, "caught up: nothing to send, not lost");
+}
+
 int main()
 {
+    test_ring_from();
     test_newest_slots();
     test_full_slots_fit();
     test_queue();

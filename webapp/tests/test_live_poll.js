@@ -3,6 +3,7 @@
 // runs every 5 s, whether or not the last one answered. Runs app.html's own two functions with a fetch that
 // never answers until its signal aborts: while one is out, the next call asks nothing; at the timeout it is
 // given up, and the next call asks again. Whether a given browser really rejects on abort is not seen here.
+// Also pins the resync: a reply saying the page fell behind the sidekick's ring is replaced by /api/state.
 'use strict';
 const vm = require('vm');
 const fs = require('fs');
@@ -120,9 +121,37 @@ async function oneAtATime(fn, url, timeoutMs, flag, answer) {
   assert.strictEqual(p.urls.length, 3);
 }
 
+// A reply saying the page fell behind the ring (`lost`) is not drawn from: the same poll reads
+// /api/state, clears what the page held, applies the snapshot and follows on from its seq.
+async function resyncWhenLost() {
+  const p = page();
+  const applied = [];
+  let resets = 0;
+  p.applyEvent = (e) => applied.push(e.s);
+  p.resetLiveState = () => { resets++; };
+  p.answers.push({ events: [{ s: 900, d: 1 }], seq: 901, lost: 1, hold: 0, hold_of: 10 });
+  p.answers.push({ events: [{ s: 880, d: 3 }, { s: 899, d: 1 }], seq: 901, hold: 0, hold_of: 10 });
+  p.pollEvents();
+  await settle();
+  assert.deepStrictEqual(p.urls, ['/api/events?since=5', '/api/state?slots=8'], 'lost: the same poll reads /api/state');
+  assert.strictEqual(resets, 1, 'lost: what the page held is cleared');
+  assert.deepStrictEqual(applied, [880, 899], 'lost: only the snapshot is applied, not the partial reply');
+  assert.strictEqual(p.evSeq, 901, 'lost: later polls follow from the snapshot');
+  assert.strictEqual(p.evPolling, false);
+  assert.strictEqual(p.pendingTimers(), 0);
+  // A reply that is not lost is applied as it is.
+  p.answers.push({ events: [{ s: 901, d: 1 }], seq: 902, hold: 0, hold_of: 10 });
+  p.pollEvents();
+  await settle();
+  assert.deepStrictEqual(p.urls.slice(2), ['/api/events?since=901']);
+  assert.strictEqual(resets, 1, 'not lost: nothing cleared');
+  assert.deepStrictEqual(applied.slice(2), [901]);
+}
+
 (async () => {
   await oneAtATime('pollEvents', '/api/events?since=5', EVENTS_MS, 'evPolling',
                    { events: [], seq: 5, hold: 0, hold_of: 10 });
   await oneAtATime('pollLiveStatus', '/api/config', STATUS_MS, 'cfgPolling', { ok: true });
+  await resyncWhenLost();
   console.log('test_live_poll: ok');
 })().catch((e) => { console.error(e); process.exit(1); });

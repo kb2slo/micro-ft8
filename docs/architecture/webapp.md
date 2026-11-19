@@ -46,7 +46,7 @@ Operate keeps its status on top and its controls at the bottom, and only the dec
 
 ### The live polls
 
-The page follows the station by polling the sidekick (`tick()`, once a second): `/api/state` on its first poll and `/api/events?since=` after it ([sidekick.md](sidekick.md), **Port A**), and `/api/config` every 5 s (`pollLiveStatus()`).
+The page follows the station by polling the sidekick (`tick()`, once a second): `/api/state` on its first poll and `/api/events?since=` after it, and `/api/state` again in the same poll when a reply says it fell behind the sidekick's ring (`lost`; [sidekick.md](sidekick.md), **Port A**), and `/api/config` every 5 s (`pollLiveStatus()`).
 
 * **Polls never overlap** (`pollEvents()`, `pollLiveStatus()`; `webapp/tests/test_live_poll.js`). A poll still out when the next is due is not sent again, and one is given up after 10 s, so a stalled network leaves one request a page, not one more a second: overnight on 2026-11-18 a page had four events reads with one `since` out at once, and the requests that piled up took the sidekick's heap to 660 bytes ([sidekick.md](sidekick.md), **Tasks and cores**). 10 s, not less: a slow answer cut short is asked again from the same `since`, its backlog with it, in the middle of the stall; overnight 0.7% of events reads took over 5 s and 0.1% over 10 s. A config read waits up to 5 s on the main board, so its 10 s is the same as a log read's (`logFetchJson()`).
 

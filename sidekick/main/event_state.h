@@ -87,6 +87,13 @@ void event_state_note(event_state_t *s, const event_t *e, uint32_t now_ms);
 bool event_state_next(const event_state_t *s, uint32_t after, uint32_t before, unsigned slots,
                       uint32_t now_ms, event_t *out);
 
+// Where a GET /api/events?since= reply starts, in a ring of `ring_len` events whose next seq is
+// `head`: `since`, or the oldest event the ring still holds when `since` is older. True when it is
+// older: the client fell behind and missed events, so the reply says so (`lost`) and the page
+// reads /api/state instead of drawing from a partial feed. `since` 0 is a client asking for
+// everything, which is not behind.
+bool event_ring_from(uint32_t since, uint32_t head, uint32_t ring_len, uint32_t *from);
+
 #ifdef __cplusplus
 }
 #endif

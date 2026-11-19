@@ -5842,6 +5842,14 @@ async function pollEvents() {
     var r = await fetch(fresh ? '/api/state?slots=' + DECODE_SLOTS_MAX : '/api/events?since=' + evSeq,
                         { cache: 'no-store', signal: ac.signal });
     var j = await r.json();
+    // `lost`: this page fell behind the sidekick's ring (a stall, a backgrounded tab), so the reply
+    // is missing events. Read the station as it is now instead, as a page that has just loaded does,
+    // under the same timeout (docs/architecture/sidekick.md, Port A).
+    if (!fresh && j.lost) {
+      fresh = true;
+      r = await fetch('/api/state?slots=' + DECODE_SLOTS_MAX, { cache: 'no-store', signal: ac.signal });
+      j = await r.json();
+    }
     if (fresh) resetLiveState();
     var gotEvents = j.events && j.events.length;
     if (gotEvents) {
