@@ -5816,7 +5816,7 @@ function applyEvent(e) {
   } else if (e.d === 4) {
     if (e.active && !(txHud && txHud.active)) {
       txKeyedAt = Date.now();
-      if (txLogsQso(e.x)) kickLogRefresh();
+      if (txLogsQso(e.x)) kickLogRefresh(e.t ? e.t * 1000 : 0);  // the station's time, when it logged it
     }
     txHud = { active: !!e.active, aborted: !!e.aborted, wrblk: !!e.wrblk, nk: !!e.nk,
              pw: e.pw, swr: e.swr, batt: e.batt, hz: e.hz, reason: e.reason || '', x: e.x };
@@ -7205,7 +7205,8 @@ function txLogsQso(x) {
   return /\s(RR73|RRR|73)$/.test(String(x || '').trim());
 }
 var LOG_KICK_MS = [500, 2000];
-function kickLogRefresh() {
+// loggedMs: when the station logged the QSO (the TX event's time), 0 when not known.
+function kickLogRefresh(loggedMs) {
   LOG_KICK_MS.forEach(function (ms) {
     setTimeout(function () { refreshLogHead(); refreshOpLog(); }, ms);
   });
@@ -7213,8 +7214,10 @@ function kickLogRefresh() {
   // sending by itself on, the QSO goes up whichever tab is.
   setTimeout(function () {
     var live = qrzLoad(QRZ_KEY_STORE).live;
+    // A page that slept sees the QSO late, maybe after a run since has read it: then nothing waits.
+    if (qrzQsoSeen(loggedMs, qrz.readAt)) { renderQrzRow(); return; }
     if (live) qrz.waiting += 1;  // the row says so until a run has taken it (qrzRowModel())
-    if (currentView === 'log' || live) qrzRun(false, false);
+    if (currentView === 'log' || live) qrzRun(false, false, true);
   }, QRZ_AFTER_QSO_MS);
 }
 
@@ -7235,8 +7238,16 @@ var QRZ_AFTER_QSO_MS = 6000;
 var QRZ_CALL_TIMEOUT_MS = 20000;
 var QRZ_SEND_TIMEOUT_MS = 90000;  // a batch is up to 10 inserts, one after another (worker.js, QRZ_MAX_INSERTS)
 // waiting: QSOs logged with sending by itself on that no run has taken yet; dueAt: when the run waiting out
-// the gap starts, 0 for none; again: a QSO logged while a run was under way, which the run may have missed.
-var qrz = { phase: 'idle', sending: 0, result: null, keyLine: { state: 'none' }, timer: 0, waiting: 0, dueAt: 0, again: false };
+// the gap starts, 0 for none; again: a QSO logged while a run was under way, which the run may have missed;
+// readAt: when the last run started reading the log, 0 for none.
+var qrz = { phase: 'idle', sending: 0, result: null, keyLine: { state: 'none' }, timer: 0, waiting: 0, dueAt: 0, again: false, readAt: 0 };
+// Whether a run has already read a QSO the station logged at loggedMs: one that started reading after
+// it, by more than the phone's and the station's clocks may differ. False when the time is not known.
+// Pure, so webapp/tests/test_qrz_row.js runs it.
+var QRZ_CLOCK_MARGIN_MS = 10000;
+function qrzQsoSeen(loggedMs, readAtMs) {
+  return loggedMs > 0 && readAtMs > loggedMs + QRZ_CLOCK_MARGIN_MS;
+}
 
 // What the QRZ row reads, whether it is amber, the button it shows and what a tap does:
 // 'setup' opens the key on Settings, 'send' sends, 'look' looks again. Pure, so
@@ -7359,9 +7370,10 @@ async function qrzReadRows(sinceDay) {
 // One run: a look, or with `send` a look and then the sending of everything QRZ lacks. With the
 // switch on, a look also sends the QSOs logged from the day it was turned on. `asked` is the
 // operator's tap, which does not wait out the gap between runs the app starts itself (QrzSync.mayRun()).
-async function qrzRun(send, asked) {
+// logged: started by a QSO just logged, which a run already under way may have read the log too early for.
+async function qrzRun(send, asked, logged) {
   var cred = qrzLoad(QRZ_KEY_STORE);
-  if (cred.key && qrz.phase !== 'idle' && cred.live && !asked) qrz.again = true;
+  if (cred.key && qrz.phase !== 'idle' && cred.live && logged) qrz.again = true;
   if (!cred.key || qrz.phase !== 'idle') { renderQrzRow(); return; }
   var state = qrzLoad(QRZ_STATE_STORE);
   // With nothing to show yet, the first look does not wait out the gap either: the row would otherwise
@@ -7378,6 +7390,7 @@ async function qrzRun(send, asked) {
     return;
   }
   qrz.phase = send ? 'sending' : 'looking';
+  qrz.readAt = Date.now();
   qrz.sending = send && qrz.result ? qrz.result.left || 0 : 0;
   renderQrzRow();
   var r = await QrzSync.run({
