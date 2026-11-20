@@ -538,6 +538,7 @@ static size_t sidekick_facts_json(char *out, size_t cap)
         // the app says "Main board not connected" from this, not from a timeout (webapp.md, The radio bar).
         { "host_linked", linked ? "1" : "0" },
         { "sk_ap_ssid", wifi_prov_ap_ssid() },
+        { "sk_ap_default", wifi_prov_ap_default_ssid() },
         { "sk_ap_secured", wifi_prov_ap_secured() ? "1" : "0" },
     };
     static char esc[PORTA_CONFIG_VALUE_MAX * 6 + 1];  // the main-board worker only (config replies)

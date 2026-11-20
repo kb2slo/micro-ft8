@@ -17,6 +17,7 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 
+#include "ap_name.h"
 #include "host_link.h"
 #include "http_worker.h"
 #include "mdns.h"
@@ -39,7 +40,8 @@ static const char *TAG = "wifi_prov";
 // network through the portal's own WiFi form.
 #define NVS_KEY_FORCE_AP "force_ap"
 // The AP's own name and WPA2 password (row rgg2). Absent keys mean the defaults:
-// the SSID `micro-ft8.local` and an open network.
+// the SSID `micro-ft8.local` and this unit's MAC suffix (ap_name.h), and an
+// open network.
 #define NVS_KEY_AP_SSID "ap_ssid"
 #define NVS_KEY_AP_PASS "ap_pass"
 
@@ -222,13 +224,15 @@ static bool creds_erase(void)
 
 static void ap_default_ssid(char *out, size_t out_len)
 {
-    // Operator-requested 2026-09-20: the SSID itself hints at the URL to
-    // visit (WIFI_PROV_MDNS_HOST, the same hostname mDNS already answers to)
-    // rather than a name with no connection to what to do next. No MAC
-    // suffix -- operator call 2026-09-20, overriding this file's own earlier
-    // multi-device-disambiguation concern; two sidekicks in range of each
-    // other would show identical SSIDs with this change.
-    snprintf(out, out_len, WIFI_PROV_MDNS_HOST ".local");
+    // The name says the address to open (WIFI_PROV_MDNS_HOST, the host name
+    // mDNS answers to), and the MAC suffix keeps two sidekicks in range from
+    // reading as one network, which a phone joins and roams between unseen
+    // (ap_name.h). The AP's own MAC, so the suffix matches its BSSID.
+    uint8_t mac[6] = {0};
+    if (esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP) != ESP_OK) {
+        ESP_LOGW(TAG, "AP MAC unreadable -- the default name ends 0000");
+    }
+    ap_name_default(mac, out, out_len);
 }
 
 // Fills s_ap_ssid / s_ap_pass from NVS, falling back to the open default. A
@@ -1249,6 +1253,14 @@ bool wifi_prov_ap_active(void) { return s_ap_active; }
 int wifi_prov_ap_reset_hold(void) { return s_ap_reset_hold; }
 void wifi_prov_set_ap_reset_hold(int secs) { s_ap_reset_hold = secs; }
 const char *wifi_prov_ap_ssid(void) { return s_ap_ssid; }
+const char *wifi_prov_ap_default_ssid(void)
+{
+    static char def[SSID_MAX + 1];
+    if (def[0] == '\0') {
+        ap_default_ssid(def, sizeof(def));
+    }
+    return def;
+}
 bool wifi_prov_ap_secured(void) { return s_ap_pass[0] != '\0'; }
 
 const char *wifi_prov_network_name(void)
