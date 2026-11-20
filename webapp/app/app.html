@@ -358,10 +358,6 @@ button{touch-action:manipulation}
 #opDecodes{padding-bottom:.5rem}
 /* The Decodes bar stays at the top of the one scrolling area. */
 #dvBar{position:sticky;top:0;z-index:2;background:Canvas;display:flex;flex-wrap:nowrap;gap:.25rem;align-items:center;padding:.45rem 1rem .45rem;border-bottom:1px solid color-mix(in srgb, GrayText 20%, transparent)}
-#dvBar .dvlabel{margin-right:.25rem;font-size:.65rem;color:GrayText;text-transform:uppercase;letter-spacing:.03em;font-weight:700}
-/* Below 360 px the bar's worst case (Strongest, Filters · 2, the mode chip, a three-digit count) runs
-   over, up to 22 px at 320; the label gives way, the controls do not (webapp.md, Decode sort and filter). */
-@media (max-width:359px){#dvBar .dvlabel{display:none}}
 #dvBar button{font-size:.75rem;padding:.25rem .5rem;width:auto;flex:none;margin:0;border-radius:999px;border:1px solid GrayText;background:ButtonFace;color:ButtonText}
 #dvBar button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:Canvas;font-weight:700}
 /* Sort and Filter open a panel that drops from the Decodes bar, its caret at the pill that opened it
@@ -660,8 +656,8 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
   <!-- ================= OPERATE ================= -->
   <section id=view-operate>
     <div id=opDecodes>
-      <div id=dvBar>
-        <span class=dvlabel>Decodes</span>
+      <!-- Shown once a slot is listed (decodeBarShown()); unlabelled, since it sits on the decodes it sorts. -->
+      <div id=dvBar aria-label=Decodes role=toolbar hidden>
         <button id=dvSort type=button aria-pressed=false aria-haspopup=dialog>Sort</button>
         <button id=dvFilter type=button aria-pressed=false aria-haspopup=dialog>Filter</button>
         <button id=dvMode type=button aria-pressed=false hidden aria-label="Mode">All</button>
@@ -2309,6 +2305,7 @@ if (window.ResizeObserver) {
   dockResize.observe(document.getElementById('opDock'));
   dockResize.observe(document.getElementById('opTop'));
   dockResize.observe(document.getElementById('tabbar'));
+  dockResize.observe(document.getElementById('dvBar'));  // hidden at load; measured when it first shows
 }
 window.addEventListener('resize', layoutDock);
 layoutDock();
@@ -5129,6 +5126,12 @@ function decodeSlotModeShown(slot) {
   return decodeView.mode === 'all' || !decodeModeChipOn() || slotMode(slot) === decodeView.mode;
 }
 
+// The bar shows once any decode is listed, counting rows a filter or the mode chip hides: shown only
+// while rows are visible, a filter that hid them all would take away the control that turns it off.
+function decodeBarShown(slots) {
+  return slots.some(function (slot) { return slot.length > 0; });
+}
+
 function decodeIsPark(d) {
   return /^CQ (POTA|SOTA)\b/.test(String(d.x || '').trim().toUpperCase());
 }
@@ -5585,6 +5588,7 @@ function renderDecodesNow() {
   var total = hidden;
   shownSlots.forEach(function (e) { total += e.shown.length; });
   document.getElementById('dvHidden').textContent = total ? (total - hidden) + '/' + total : '';
+  document.getElementById('dvBar').hidden = !decodeBarShown(decodeSlots);
   rows.innerHTML = shownSlots.map(function (entry, i) {
     var slot = entry.slot;
     var divider = i > 0 ? '<div class=dslotdiv></div>' : '';

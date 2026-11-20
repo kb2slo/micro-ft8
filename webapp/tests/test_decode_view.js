@@ -3,7 +3,7 @@
 // test_decode_batching.js does. Within a slot; filters combine; a message to us stays on top and
 // is never hidden; a decode with no grid sorts last under Nearest and Farthest; Hide worked drops
 // what the Worked flag marks; the Filter pill's label names what is on, and the sheet's Apply sets
-// exactly what is ticked.
+// exactly what is ticked; the bar shows once a decode is listed, even if every row is filtered out.
 'use strict';
 const vm = require('vm');
 const fs = require('fs');
@@ -34,7 +34,7 @@ function extractFunction(text, name) {
 const sandbox = {};
 vm.createContext(sandbox);
 vm.runInContext("var DV_FILTERS = ['reply', 'park', 'worked'];\n" +
-  ['decodeIsPark', 'isReplyableDecode', 'decodePassesView', 'decodeViewOf', 'decodeFilterLabel', 'decodeViewWithFilters']
+  ['decodeIsPark', 'isReplyableDecode', 'decodePassesView', 'decodeViewOf', 'decodeFilterLabel', 'decodeViewWithFilters', 'decodeBarShown']
   .map((n) => extractFunction(src, n)).join('\n'), sandbox);
 assert(src.includes("var DV_FILTERS = ['reply', 'park', 'worked'];"), 'DV_FILTERS changed: update this test');
 
@@ -91,6 +91,14 @@ eq(JSON.parse(JSON.stringify(applied)),
   { sort: 'snr', reply: false, park: true, worked: true, mode: 'FT8' }, 'Apply sets what is ticked, keeps sort and mode');
 eq(before.reply, true, 'the view Apply started from is untouched');
 eq(sandbox.decodeViewWithFilters(before, {}).reply, false, 'nothing ticked: every filter off');
+// The bar shows once a decode is listed, whatever the filters hide, so a filter that hides every row
+// cannot take away the control that turns it off.
+assert.strictEqual(sandbox.decodeBarShown([]), false, 'no slots yet: no bar');
+assert.strictEqual(sandbox.decodeBarShown([[]]), false, 'an empty batch: no bar');
+assert.strictEqual(sandbox.decodeBarShown([[], slot]), true, 'a decode listed: the bar');
+const allHidden = sandbox.decodeViewOf([slot[3]], view({ reply: true, park: true }), distKmOf);
+eq(allHidden.length, 0, 'these filters hide every row of this slot');
+assert.strictEqual(sandbox.decodeBarShown([[slot[3]]]), true, 'and the bar still shows');
 assert.strictEqual(sandbox.decodeIsPark({ x: 'cq pota k1abc fn42' }), true);
 assert.strictEqual(sandbox.decodeIsPark({ x: 'CQ POTAX K1ABC' }), false, 'a word boundary, not a prefix');
 assert.strictEqual(sandbox.decodeIsPark({ x: 'CQ DX K1ABC' }), false);
