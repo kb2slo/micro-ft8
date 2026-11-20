@@ -4270,6 +4270,11 @@ var ACTIVITY_COUNT_CAP = 30;
 var ACTIVITY_LABEL_FROM_MS = 800, ACTIVITY_LABEL_TO = 0.7;
 // The QMX's own noise reads 1 or 2 with the antenna off (2026-10-27): that and less is Quiet.
 var ACTIVITY_QUIET_MAX = 2;
+// The weakest signal the count sees, in the SNR the decode rows show (dB in 2500 Hz): a bin counts at
+// FT8_ACTIVITY_THRESHOLD_CODES, 10 dB, over its block's median, and 10 dB in a 6.25 Hz bin is about
+// -16 dB in 2500 Hz (ft8_block_activity.h; test_band_activity.js holds the two together). Said on the
+// label, since most of a weak band's decodes are under it and the count then reads well below them.
+var ACTIVITY_MIN_SNR_DB = -16;
 // A strip cell held less of the slot than this is noise, not drawn: noise lights a cell and its
 // neighbours a few percent of blocks, a decoded station 56% or more.
 var ACTIVITY_STRIP_MIN = 0.2;
@@ -4346,15 +4351,16 @@ function activityCount(act, period) {
   return v[Math.floor(v.length / 2)];
 }
 
-// The slot bar's text while we receive: "≈N signals", or Quiet. '' until there is a count, or
+// The slot bar's text while we receive: "≈N at ≥ -16 dB", or Quiet. '' until there is a count, or
 // when `act` is not the slot the bar shows.
 function activityLabel(act, now, period) {
   if (act.si !== Math.floor(now / period)) return '';
   var n = activityCount(act, period);
   if (n === null) return '';
   if (n <= ACTIVITY_QUIET_MAX) return 'Quiet';
-  if (n >= ACTIVITY_COUNT_CAP) return '≈' + ACTIVITY_COUNT_CAP + '+ signals';
-  return '≈' + n + ' signals';
+  var floor = ' at \u2265 ' + ACTIVITY_MIN_SNR_DB + ' dB';
+  if (n >= ACTIVITY_COUNT_CAP) return '≈' + ACTIVITY_COUNT_CAP + '+' + floor;
+  return '≈' + n + floor;
 }
 
 // The clock cue: '' or the bar's text when the newest CLOCK_CUE_SLOTS received slots each heard
