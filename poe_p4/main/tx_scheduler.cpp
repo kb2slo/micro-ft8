@@ -321,7 +321,7 @@ static TxStart tx_start(int skip_tones, std::string &skip_reason) {
         return TxStart::Skipped;
     }
 
-    autoseq_on_tx_starting();
+    autoseq_on_tx_starting(s_pending_tx.offset_hz);
 
     s_tx_base_hz = tx_base_hz;
     s_tx_slot_start_ms = (now_ms / slot_period) * slot_period;
