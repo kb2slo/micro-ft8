@@ -88,6 +88,9 @@ const radio_control_ops_t* radio_control_qmx_get_ops(void) { return &g_fake_qmx;
 static int g_history_notes = 0;
 static uint32_t g_history_hz = 0;
 int64_t rtc_now_ms() { return 0; }
+// esp_timer's clock (host_mock/esp_timer.h), which the keyed state is timed on (radio_control_keyed()).
+static int64_t g_mono_ms = 0;
+int64_t mock_clock_get() { return g_mono_ms; }
 void dial_history_note(int64_t, uint32_t hz) { ++g_history_notes; g_history_hz = hz; }
 
 // The dial's history holds what the radio reports, not what was asked for (radio.md, The dial a decode was heard on).
@@ -209,8 +212,52 @@ static void held()
     expect(io && io->key() == ESP_OK && later && later->key() == ESP_OK && g_keyed == 2, "and a sweep keys, old pointer or new");
 }
 
+// What has the radio keyed, and since when, for the TX watchdog (tx_watchdog.h; radio.md, The TX watchdog). Timed
+// on esp_timer's clock, which a clock set does not move.
+static void keyed()
+{
+    radio_control_set_backend(RADIO_CONTROL_QMX);
+    int64_t since = -1;
+    expect(radio_control_keyed(&since) == RADIO_KEYED_NONE, "nothing keyed to begin with");
+
+    g_mono_ms = 5000;
+    expect(radio_control_begin_tx(14074000, 1500, 14074000) == ESP_OK, "a message keys");
+    g_mono_ms = 9000;
+    expect(radio_control_keyed(&since) == RADIO_KEYED_MESSAGE && since == 5000, "timed from its begin");
+    radio_control_end_tx();
+    expect(radio_control_keyed(nullptr) == RADIO_KEYED_NONE, "an end un-keys it");
+
+    g_mono_ms = 20000;
+    radio_control_set_tune(true, 14074000, 1500);
+    g_mono_ms = 21000;
+    radio_control_set_tune(true, 14074000, 1500);  // pressed again: the carrier never stopped
+    expect(radio_control_keyed(&since) == RADIO_KEYED_TUNE && since == 20000, "Tune timed from its first press");
+    radio_control_set_tune(false, 0, 0);
+    expect(radio_control_keyed(nullptr) == RADIO_KEYED_NONE, "Tune off un-keys it");
+
+    radio_control_set_tune(true, 14074000, 1500);
+    radio_control_end_tx();
+    expect(radio_control_keyed(nullptr) == RADIO_KEYED_NONE, "an end un-keys Tune too");
+
+    // The radio went away keyed: the stop still ends the timing, so the watchdog does not stop it every pass.
+    radio_control_begin_tx(14074000, 1500, 14074000);
+    radio_control_set_backend(RADIO_CONTROL_NONE);
+    expect(radio_control_end_tx() != ESP_OK && radio_control_keyed(nullptr) == RADIO_KEYED_NONE,
+           "an end with no radio to reach still un-keys");
+    expect(radio_control_begin_tx(14074000, 1500, 14074000) != ESP_OK &&
+               radio_control_keyed(nullptr) == RADIO_KEYED_NONE,
+           "a refused begin with no radio keys nothing");
+
+    radio_control_set_backend(RADIO_CONTROL_QMX);
+    radio_control_hold_tx(true);
+    expect(radio_control_set_tune(true, 14074000, 1500) != ESP_OK && radio_control_keyed(nullptr) == RADIO_KEYED_NONE,
+           "a Tune refused by the hold keys nothing");
+    radio_control_hold_tx(false);
+}
+
 int main()
 {
+    keyed();
     radio_control_set_backend(RADIO_CONTROL_QMX);
     expect(radio_control_ready() && radio_control_begin_tx(14074000, 1500, 14074000) == ESP_OK, "the QMX keys");
     radio_control_end_tx();

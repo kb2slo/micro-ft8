@@ -6,6 +6,7 @@
  */
 
 #include "autoseq.h"
+#include "tx_watchdog.h"
 #include <algorithm>
 #include <cstring>
 #include <cstdio>
@@ -553,6 +554,16 @@ void autoseq_tick(int64_t slot_idx, int slot_parity, int ms_to_boundary) {
 
     QsoContext* ctx = &s_queue[idx];
     bool finished = false;
+
+    // The TX watchdog (tx_watchdog.h): a QSO that has made its most transmissions ends outright, not parked, so
+    // nothing from that station revives it. Tries bound each step; this bounds the steps and reactivations.
+    if (ctx->state != AutoseqState::CALLING && tx_watchdog_qso_over(++ctx->tx_total)) {
+        ESP_LOGW(TAG, "Tick: %s made %d transmissions, the TX watchdog's most for a QSO: ended",
+                 ctx->dxcall.c_str(), ctx->tx_total);
+        remove_active_at(idx);
+        refresh_tx_msg_buffer();
+        return;
+    }
 
     // Count the try, then resend, or end the entry once its tries are used.
     switch (ctx->state) {

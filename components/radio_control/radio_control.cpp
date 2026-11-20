@@ -9,6 +9,7 @@
 #include "tx_timing.h"
 
 #include "esp_log.h"
+#include "esp_timer.h"
 
 #include <atomic>
 
@@ -19,6 +20,21 @@ static radio_control_backend_t s_backend = RADIO_CONTROL_QMX;
 static std::atomic<int> s_tx_retuned_hz{0};
 // radio_control_hold_tx(): set and cleared from the Port A task, read by whichever task would key.
 static std::atomic<bool> s_tx_held{false};
+// radio_control_keyed(): written where the radio is keyed and un-keyed, read by the main loop's watchdog.
+static std::atomic<int> s_keyed{RADIO_KEYED_NONE};
+static std::atomic<int64_t> s_keyed_since_ms{0};
+
+static void note_keyed(radio_keyed_t key) {
+    if (key == RADIO_KEYED_NONE) {
+        s_keyed.store(RADIO_KEYED_NONE);
+        return;
+    }
+    // A Tune pressed again, or a begin after a begin, keeps the first key's time: the carrier never stopped.
+    if (s_keyed.load() != key) {
+        s_keyed_since_ms.store(esp_timer_get_time() / 1000);
+        s_keyed.store(key);
+    }
+}
 
 static const radio_control_capabilities_t k_capabilities_none = {};
 
@@ -115,6 +131,7 @@ esp_err_t radio_control_begin_tx(int tx_dial_hz, int tx_base_hz, int rx_dial_hz)
     if (!ops || !ops->begin_tx) return ESP_ERR_INVALID_STATE;
     // Set before the radio is told, so a failed begin is still undone by the end_tx() its caller sends.
     s_tx_retuned_hz.store(tx_dial_hz != rx_dial_hz ? tx_dial_hz : 0);
+    note_keyed(RADIO_KEYED_MESSAGE);
     return ops->begin_tx(tx_dial_hz, tx_base_hz, rx_dial_hz);
 }
 
@@ -125,6 +142,8 @@ esp_err_t radio_control_set_tone_hz(float tone_hz) {
 }
 
 esp_err_t radio_control_end_tx(void) {
+    // Asked to stop: no longer ours to time, whatever the radio answers (a backend with no end_tx included).
+    note_keyed(RADIO_KEYED_NONE);
     const radio_control_ops_t* ops = current_ops();
     if (!ops || !ops->end_tx) return ESP_ERR_INVALID_STATE;
     const esp_err_t err = ops->end_tx();
@@ -148,10 +167,18 @@ int radio_control_tone_lead_ms(void) {
 }
 
 esp_err_t radio_control_set_tune(bool enable, int freq_hz, int tone_hz) {
+    if (!enable) note_keyed(RADIO_KEYED_NONE);
     const radio_control_ops_t* ops = current_ops();
     if (!ops || !ops->set_tune) return ESP_ERR_INVALID_STATE;
     if (enable && s_tx_held.load()) return ESP_ERR_INVALID_STATE;
+    if (enable) note_keyed(RADIO_KEYED_TUNE);
     return ops->set_tune(enable, freq_hz, tone_hz);
+}
+
+radio_keyed_t radio_control_keyed(int64_t* since_ms) {
+    const radio_keyed_t key = (radio_keyed_t)s_keyed.load();
+    if (since_ms && key != RADIO_KEYED_NONE) *since_ms = s_keyed_since_ms.load();
+    return key;
 }
 
 esp_err_t radio_control_set_time(int hour, int minute, int second) {
