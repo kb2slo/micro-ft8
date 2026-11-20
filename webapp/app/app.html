@@ -533,9 +533,14 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 .navsub .glyph{font-weight:700;margin-right:.25rem}
 .navsub .glyph:empty{display:none}
 .navchev{flex:none;color:var(--accent);font-size:1.3rem;font-weight:700;line-height:1}
-/* The QRZ row on QSOs: a Settings menu row, with the page's one filled button when there is something to send. */
-#qrzRow{border-top:0;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
-.qrzact{flex:none;background:var(--accent);color:#fff;border-radius:999px;padding:.3rem .9rem;font-size:.85rem;font-weight:700}
+/* The QRZ row on QSOs: a Settings menu row, then Send as a link like Download ADI (sending is mostly by
+   itself, so not the page's main action) and the CQ row's gear, to the key on Settings. */
+#qrzLine{display:flex;align-items:center;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+#qrzLine.t-amber{background:color-mix(in srgb, var(--warn) 12%, Canvas)}
+#qrzRow{flex:1;min-width:0;border-top:0;background:transparent}
+#qrzSend{flex:none;border:0;background:transparent;font:inherit;font-size:1rem;padding:.5rem .4rem;min-height:44px}
+#qrzGear{flex:none;border:0;background:transparent;color:var(--accent);padding:0;margin-right:.5rem;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center}
+#qrzGear svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .navrow.t-amber{background:color-mix(in srgb, var(--warn) 12%, Canvas);box-shadow:inset 3px 0 0 var(--warn)}
 .navrow.t-amber .navico,.navrow.t-amber .navsub,.navrow.t-amber .navchev{color:var(--warn);border-color:var(--warn)}
 .navrow.t-red{background:color-mix(in srgb, var(--danger) 9%, Canvas);box-shadow:inset 3px 0 0 var(--danger)}
@@ -655,13 +660,20 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       <a id=logClearAll class="dlink dlink-danger" href=#>Clear all ADI files</a>
     </div>
     <!-- The operator's QRZ logbook against this log (docs/architecture/webapp.md, QRZ sync): what
-         qrzRowModel() says, and one tap for what it offers. -->
-    <button id=qrzRow type=button class=navrow>
-      <span class=navico aria-hidden=true><svg viewBox="0 0 24 24"><path d="M12 16V5M8 9l4-4 4 4"/><path d="M5 15v3a1 1 0 001 1h12a1 1 0 001-1v-3"/></svg></span>
-      <span class=navlines><span class=navmain>QRZ logbook</span><span class=navsub><span class=glyph aria-hidden=true></span><span id=qrzRowText class=navtext>Not set up</span></span></span>
-      <span id=qrzRowAct class=qrzact hidden>Send</span>
-      <span id=qrzRowChev class=navchev aria-hidden=true>&rsaquo;</span>
-    </button>
+         qrzRowModel() says, a tap to look again, a quiet Send when there is something to send, and
+         a gear to the key and the switch on Settings' Station page. Three buttons side by side, since
+         a button cannot hold another. -->
+    <div id=qrzLine>
+      <button id=qrzRow type=button class=navrow>
+        <span class=navico aria-hidden=true><svg viewBox="0 0 24 24"><path d="M12 16V5M8 9l4-4 4 4"/><path d="M5 15v3a1 1 0 001 1h12a1 1 0 001-1v-3"/></svg></span>
+        <span class=navlines><span class=navmain>QRZ logbook</span><span class=navsub><span class=glyph aria-hidden=true></span><span id=qrzRowText class=navtext>Not set up</span></span></span>
+        <span id=qrzRowChev class=navchev aria-hidden=true>&rsaquo;</span>
+      </button>
+      <button id=qrzSend type=button class=dlink hidden>Send</button>
+      <button id=qrzGear type=button aria-label="QRZ settings" hidden>
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 01-4 0v-.09A1.7 1.7 0 009 19.4a1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.7 1.7 0 004.6 15a1.7 1.7 0 00-1.55-1H3a2 2 0 010-4h.09A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06A1.7 1.7 0 009 4.6a1.7 1.7 0 001-1.55V3a2 2 0 014 0v.09A1.7 1.7 0 0015 4.6a1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06A1.7 1.7 0 0019.4 9a1.7 1.7 0 001.55 1H21a2 2 0 010 4h-.09a1.7 1.7 0 00-1.55 1z"/></svg>
+      </button>
+    </div>
     <div id=logFree hidden></div>
     <div id=logList></div>
     <div id=logMore hidden><button id=logMoreBtn type=button>Load older QSOs</button></div>
@@ -7276,12 +7288,12 @@ function qrzRowModel(s) {
   // A key for another callsign's logbook: every QSO here is logged under a call that is not its own.
   if (r.otherCall > 0 && r.held === 0 && r.left === 0) return amber('This key is ' + r.logbook + '\'s logbook', 'setup');
   // QSOs logged since the last run, waiting out the gap between runs: never "Up to date" while one waits.
-  // A tap sends them now, as a look does with sending by itself on.
+  // No Send: they go by themselves at the time said, and a tap on the row, a look, sends them sooner.
   if (s.live && s.waiting > 0) {
     return row(s.waiting + (s.waiting === 1 ? ' QSO waiting' : ' QSOs waiting') + (s.dueText ? ' \u00b7 sends at ' + s.dueText : ''),
-               'look', '', '', 'Send');
+               'look');
   }
-  if (r.left > 0) return row(r.left + ' to send', 'send', '', '', 'Send');
+  if (r.left > 0) return row(r.left + ' to send', 'look', '', '', 'Send');
   return row(s.live ? 'Up to date \u00b7 sends as you log' : 'Up to date', 'look', '', '\u2713');
 }
 
@@ -7313,11 +7325,12 @@ function renderQrzRow() {
   document.getElementById('qrzLive').value = cred.live ? '1' : '0';
   document.getElementById('qrzLive').disabled = !cred.key;
   var rowEl = document.getElementById('qrzRow');
+  document.getElementById('qrzLine').classList.toggle('t-amber', m.tone === 'amber');
   rowEl.classList.toggle('t-amber', m.tone === 'amber');
   rowEl.querySelector('.glyph').textContent = m.glyph;
   document.getElementById('qrzRowText').textContent = m.text;
-  document.getElementById('qrzRowAct').hidden = !m.act;
-  document.getElementById('qrzRowAct').textContent = m.act;
+  document.getElementById('qrzSend').hidden = !m.act;
+  document.getElementById('qrzGear').hidden = !cred.key;  // with no key the row itself opens the key
   document.getElementById('qrzRowChev').hidden = !m.chev;
   rowEl.dataset.tap = m.tap;
   var line = qrzKeyLineModel(qrz.keyLine);
@@ -7432,15 +7445,19 @@ document.getElementById('qrzRow').onclick = function () {
       showView('settings');
       document.getElementById('qrzKey').focus();
       break;
-    case 'send':
-      qrzRun(true, true);
-      break;
     case 'look':
       qrzRun(false, true);
       break;
     default:
       break;
   }
+};
+document.getElementById('qrzSend').onclick = function () { qrzRun(true, true); };
+// The key and the switch, on Settings' Station page: shown, not focused, so no keyboard opens.
+document.getElementById('qrzGear').onclick = function () {
+  showSetPage('station');
+  showView('settings');
+  document.getElementById('qrzKey').scrollIntoView({ block: 'center' });
 };
 
 // A key typed or cleared. QRZ is asked what logbook it opens, which also says whether it is a key at all.

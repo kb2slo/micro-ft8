@@ -48,20 +48,21 @@ assert.strictEqual(row(Object.assign({ phase: 'looking' }, looked({ left: 9 })))
 
 // What a look found: nothing to send, or how many, with the page's one button.
 assert.deepStrictEqual(row(looked({})), Object.assign({}, plain, { text: 'Up to date', tap: 'look', glyph: '✓' }));
-assert.deepStrictEqual(row(looked({ left: 55 })), Object.assign({}, plain, { text: '55 to send', tap: 'send', act: 'Send' }));
+assert.deepStrictEqual(row(looked({ left: 55 })), Object.assign({}, plain, { text: '55 to send', tap: 'look', act: 'Send' }),
+  'Send is its own control beside the row; a tap on the row looks again');
 assert.deepStrictEqual(row(looked({ left: 1 })).text, '1 to send');
 assert.deepStrictEqual(row(looked({ held: 0, left: 0 })).text, 'Up to date', 'an empty log is up to date');
 
 // With sending by itself on, an up-to-date row says so; anything older still shows its count and Send.
 assert.deepStrictEqual(row(Object.assign({ live: true }, looked({}))),
   Object.assign({}, plain, { text: 'Up to date \u00b7 sends as you log', tap: 'look', glyph: '\u2713' }));
-assert.deepStrictEqual(row(Object.assign({ live: true }, looked({ left: 55 }))), Object.assign({}, plain, { text: '55 to send', tap: 'send', act: 'Send' }));
+assert.deepStrictEqual(row(Object.assign({ live: true }, looked({ left: 55 }))), Object.assign({}, plain, { text: '55 to send', tap: 'look', act: 'Send' }));
 assert.strictEqual(row({ live: true, result: { ok: false, error: 'unreachable' } }).text, 'Cannot reach QRZ', 'a problem reads the same');
 
 // A QSO logged with sending by itself on, waiting out the gap between runs, is never shown as up to date
-// (bench, 2026-11-20): the row counts what waits and when it goes, and a tap sends it now.
+// (bench, 2026-11-20): the row counts what waits and when it goes, with no Send, since it goes by itself.
 const waiting = (n, extra) => row(Object.assign({ live: true, waiting: n, dueText: '9:08 AM' }, looked({}), extra || {}));
-assert.deepStrictEqual(waiting(1), Object.assign({}, plain, { text: '1 QSO waiting \u00b7 sends at 9:08 AM', tap: 'look', act: 'Send' }));
+assert.deepStrictEqual(waiting(1), Object.assign({}, plain, { text: '1 QSO waiting \u00b7 sends at 9:08 AM', tap: 'look' }));
 assert.strictEqual(waiting(3).text, '3 QSOs waiting \u00b7 sends at 9:08 AM');
 assert.strictEqual(waiting(1, { dueText: '' }).text, '1 QSO waiting', 'with no run waiting on the gap, no time is promised');
 assert.strictEqual(waiting(2, looked({ left: 55 })).text, '2 QSOs waiting \u00b7 sends at 9:08 AM', 'what waits is said before older QSOs');
@@ -106,7 +107,8 @@ assert.deepStrictEqual(line({ state: 'refused' }), { text: 'QRZ refused this key
 assert.deepStrictEqual(line({ state: 'unchecked' }), { text: 'Saved. Cannot reach QRZ to check it', warn: true });
 
 // The markup the models are drawn into, and the words that say where the key goes.
-for (const piece of ['<button id=qrzRow type=button class=navrow>', '<span class=navmain>QRZ logbook</span>', 'id=qrzRowText', 'id=qrzRowAct',
+for (const piece of ['<button id=qrzRow type=button class=navrow>', '<span class=navmain>QRZ logbook</span>', 'id=qrzRowText',
+  '<button id=qrzSend type=button class=dlink hidden>Send</button>', '<button id=qrzGear type=button aria-label="QRZ settings" hidden>',
   '<span>QRZ logbook key</span><input id=qrzKey', 'id=qrzKeyLine',
   'Kept in this browser only. It goes to QRZ through micro-ft8.kalikstein.com, which does not keep it.',
   '<span>Send new QSOs to QRZ</span>', '<select id=qrzLive class=onoff>',
@@ -118,6 +120,12 @@ for (const piece of ['<button id=qrzRow type=button class=navrow>', '<span class
 // The row sits in the QSOs tab, above the list; the key in the Station page.
 const log = src.slice(src.indexOf('<section id=view-log>'), src.indexOf('<section id=view-tools>'));
 assert.ok(log.indexOf('id=qrzRow') > 0 && log.indexOf('id=qrzRow') < log.indexOf('id=logList'), 'the row is above the list');
+// Send and the gear sit beside the row, not inside it: a button cannot hold another.
+const rowTag = log.slice(log.indexOf('<button id=qrzRow'), log.indexOf('</button>', log.indexOf('<button id=qrzRow')));
+assert.ok(!rowTag.includes('qrzSend') && !rowTag.includes('qrzGear') && log.indexOf('id=qrzGear') > log.indexOf('id=qrzSend'),
+  'the row, then Send, then the gear, each its own button');
+// Send is a link like Download ADI, not a filled button.
+assert.ok(!/#qrzSend\{[^}]*background:var\(--accent\)/.test(src), 'Send is not filled');
 const station = src.slice(src.indexOf('id=setp-station'), src.indexOf('id=setp-radio'));
 assert.ok(station.includes('id=qrzKey') && station.indexOf('id=qrzLive') > station.indexOf('id=qrzKey'), 'the key is on the Station page, the switch under it');
 console.log('ok');
