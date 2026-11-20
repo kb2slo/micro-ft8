@@ -31,7 +31,7 @@ function extractFunction(text, name) {
 
 const sb = {};
 vm.createContext(sb);
-vm.runInContext([/var TX_NO_RF_AFTER_MS = \d+;/.exec(src)[0], /var TUNE_SWR_STOP = .*;/.exec(src)[0], /var NO_MAIN_TITLE = .*;/.exec(src)[0], /var NO_MAIN_HINT = .*;/.exec(src)[0]].concat(['radioBarState', 'noteTxHud', 'utcDayLeft', 'txReadout']
+vm.runInContext([/var TX_NO_RF_AFTER_MS = \d+;/.exec(src)[0], /var TUNE_SWR_STOP = .*;/.exec(src)[0], /var NO_MAIN_TITLE = .*;/.exec(src)[0], /var NO_MAIN_HINT = .*;/.exec(src)[0], /var HELD_STOPS = .*;/.exec(src)[0]].concat(['radioBarState', 'noteTxHud', 'utcDayLeft', 'txReadout', 'noteHeldStop']
   .map((n) => extractFunction(src, n))).join('\n'), sb);
 
 const ctx = (o) => Object.assign({ tune: false, ourCq: false, band: '20m', freq: '14.074', radio: 'QMX',
@@ -211,6 +211,53 @@ feed(on, on, off);
 assert.strictEqual(t.count, 0, 'a clean transmission resets the count');
 feed(on, trip, off, { active: true, nk: true, reason: 'SWR protection' }, off);
 assert.strictEqual(t.count, 1, 'a skipped slot is not a transmission');
+
+// A stop the main board made mid-slot stays said after its slot, until the bar is tapped or the next
+// transmission starts (noteHeldStop()); radioBarState() says a held stop under a link or pairing problem.
+{
+  const watchdog = tx({ aborted: true, reason: 'keyed too long', x: '' });
+  const tuneSwr = tx({ aborted: true, reason: 'Tune: SWR 9.98 over 3.0', x: 'TUNE' });
+  // Feeds readings as renderRadioBar() does: each one's live state, then the held stop.
+  const run = (readings, fresh = true) => {
+    let held = null, prev = '';
+    const shown = readings.map((r) => {
+      if (r === 'tap') { held = null; return 'tap'; }
+      const live = bar(r.chip || 'ready', r.hud);
+      held = sb.noteHeldStop(held, live, prev, fresh);
+      prev = live.state;
+      return held ? bar(r.chip || 'ready', r.hud, { held }).state : live.state;
+    });
+    return { shown, held };
+  };
+  let r = run([{ hud: tx({ x: 'TUNE' }) }, { hud: watchdog }, { hud: watchdog }, { hud: null }, { hud: null }]);
+  assert.deepStrictEqual(r.shown, ['tune', 'aborted', 'aborted', 'aborted', 'aborted'],
+    'the watchdog\'s stop is still said after its slot');
+  assert.strictEqual(r.held.sub, 'keyed too long');
+  r = run([{ hud: tuneSwr }, { hud: null }]);
+  assert.deepStrictEqual(r.shown, ['tuneswr', 'tuneswr'], 'Tune stopped on high SWR is held too');
+  r = run([{ hud: watchdog }, { hud: null }, 'tap', { hud: null }]);
+  assert.deepStrictEqual(r.shown, ['aborted', 'aborted', 'tap', 'ready'], 'a tap clears it');
+  r = run([{ hud: watchdog }, 'tap', { hud: watchdog }, { hud: null }]);
+  assert.deepStrictEqual(r.shown, ['aborted', 'tap', 'aborted', 'ready'],
+    'a tap during its slot is not undone by the next reading of the same stop');
+  r = run([{ hud: watchdog }, { hud: null }, { hud: tx() }, { hud: null }]);
+  assert.deepStrictEqual(r.shown, ['aborted', 'aborted', 'tx', 'ready'], 'the next transmission clears it');
+  r = run([{ hud: watchdog }, { hud: null }, { hud: tx({ x: 'TUNE' }) }]);
+  assert.strictEqual(r.held, null, 'Tune clears it');
+  r = run([{ hud: tx({ aborted: true, reason: 'SWR protection' }) }, { hud: null }]);
+  assert.deepStrictEqual(r.shown, ['trip', 'ready'], 'a single SWR trip is over when its slot is');
+  r = run([{ hud: tx({ nk: true, reason: 'CAT not ready' }) }, { hud: null }]);
+  assert.deepStrictEqual(r.shown, ['notkeyed', 'ready'], 'not keyed is not held');
+  r = run([{ hud: watchdog }, { hud: null }], false);
+  assert.deepStrictEqual(r.shown, ['aborted', 'ready'], 'a stop replayed from an earlier visit\'s cache is not held');
+  r = run([{ hud: watchdog }, { hud: null }, { hud: watchdog }]);
+  assert.strictEqual(r.held.state, 'aborted', 'a second stop while one is held is still held');
+  const held = bar('ready', watchdog);
+  assert.strictEqual(bar('ready', null, { held, linkLost: true }).state, 'nolink', 'no contact outranks a held stop');
+  assert.strictEqual(bar('ready', null, { held, unpaired: true }).state, 'unpaired', 'so does not paired');
+  assert.strictEqual(bar('none', null, { held }).state, 'aborted', 'a held stop outranks a radio problem');
+  assert.strictEqual(bar('ready', tx(), { held }).state, 'tx', 'on the air outranks it');
+}
 
 assert.strictEqual(sb.utcDayLeft(Date.UTC(2026, 9, 25, 20, 48, 0)), '3h12m');
 assert.strictEqual(sb.utcDayLeft(Date.UTC(2026, 9, 25, 23, 59, 30)), '0h01m');

@@ -2782,7 +2782,8 @@ function fmtHzMHz(hz) { return (hz / 1e6).toFixed(4).replace(/0+$/, '').replace(
 // chip: radioChipState()'s answer. hud: the last TX HUD event, or null. ctx: {tune (Tune is on),
 // ourCq (txIsOurCq()), band, freq ("14.074"), radio ("QMX"), swrTrips (tripped transmissions in a
 // row, noteTxHud()), act (" · 3 refs · 0000Z 3h12m" or ''), wantMHz (the drift's reading),
-// linkLost (linkLost()), unpaired (!paired()), noMain (mainBoardAway())}. A firmware update has no state here: the page following one
+// linkLost (linkLost()), unpaired (!paired()), noMain (mainBoardAway()), held (noteHeldStop()'s stop, or
+// null)}. A firmware update has no state here: the page following one
 // shows its progress sheet over every tab, the bar included (webapp.md, Settings › Software update).
 // Returns {state, tone: 'red'|'amber'|'grey'|'quiet', main, sub, glyph, label, stop}; stop is the
 // Stop button's text, '' when there is nothing on the air to stop.
@@ -2845,6 +2846,11 @@ function radioBarState(chip, hud, ctx) {
     return { state: 'unpaired', tone: 'amber', main: where, sub: 'Not paired \u00b7 press the pairing button',
              glyph: '!', label: 'Pair \u203a', stop: '' };
   }
+  // A stop the main board made by itself mid-slot (TX aborted, the TX watchdog's included, or Tune
+  // ended on high SWR) stays said after the main board stops saying it at the slot's end, until the
+  // operator taps the bar or the next transmission starts (noteHeldStop()): said only for the rest
+  // of its slot, a stop could show for a second or not at all (bench, 2026-11-20).
+  if (ctx.held) return ctx.held;
   // Not on the air, but the last two transmissions tripped: the main board has ended the CQ and
   // the queue and stays stopped until the operator calls CQ, replies or tunes (radio.md, SWR
   // protection trips on a QMX), so the bar keeps saying so until the next transmission.
@@ -2907,6 +2913,22 @@ function noteTxHud(track, hud) {
   }
 }
 var swrTrack = { count: 0, cur: null };
+
+// The stops radioBarState() keeps saying after their slot (its ctx.held). A single SWR trip is not
+// one: its QSO tries again next slot, and its state is over when its slot is.
+var HELD_STOPS = { aborted: 1, tuneswr: 1 };
+// The bar's held stop after a new reading. held: the stop held now, or null. live: radioBarState()
+// without a held stop, from the station alone. prevLive: the live state before this one. fresh:
+// whether a TX HUD event has arrived on this page, so a stop replayed from the cache of an earlier
+// visit is never held. A stop is held as it starts, not while it lasts, so a tap that clears it
+// during its slot is not undone by the next reading. The next transmission or Tune clears it.
+function noteHeldStop(held, live, prevLive, fresh) {
+  if (live.state === 'tx' || live.state === 'tune') return null;
+  if (fresh && HELD_STOPS[live.state] && live.state !== prevLive) return live;
+  return held;
+}
+var heldStop = null;   // noteHeldStop()'s: the stop the bar says until the operator has seen it
+var radioBarLive = ''; // the state the bar last read from the station alone
 var txKeyedAt = 0; // when the TX HUD last went active: txReadout()'s keyedMs
 
 // Minutes to 0000Z as "3h12m", when a POTA activation's day starts over.
@@ -2954,14 +2976,19 @@ function renderRadioBar() {
   var rs = radioReadBack(cfg);
   var refs = parseActRefs(cfg);
   var hud = txHud && txHud.active ? txHud : null;
-  var st = radioBarState(chip, hud, {
+  var ctx = {
     tune: yn(cfg.tune) === 'yes', ourCq: txIsOurCq(),
     band: operatingBandName(cfg),
     freq: khz != null ? khzToMhzLabel(khz) : '', radio: radioNameOf(), swrTrips: swrTrack.count,
     act: refs.length ? ' · ' + refs.length + (refs.length === 1 ? ' ref' : ' refs') + ' · 0000Z ' + utcDayLeft(Date.now()) : '',
     wantMHz: rs ? fmtHzMHz(rs.hz) : '', linkLost: linkLost(), unpaired: !paired(), noMain: mainBoardAway(),
-    sweep: yn(cfg.swr_sweep) === 'yes'
-  });
+    sweep: yn(cfg.swr_sweep) === 'yes', held: null
+  };
+  var live = radioBarState(chip, hud, ctx);
+  heldStop = noteHeldStop(heldStop, live, radioBarLive, lastTxHudEventMs > 0);
+  radioBarLive = live.state;
+  ctx.held = heldStop;
+  var st = heldStop ? radioBarState(chip, hud, ctx) : live;
   radioBarShown = st.state;
   document.getElementById('tabUnpaired').hidden = paired();
   var bar = document.getElementById('opRadioBar');
@@ -4163,6 +4190,7 @@ document.getElementById('opRadioRetuneReady').onclick = function () {
 // The bar's chevron, body and label open and close the drawer; opening asks
 // the radio for its state. Stop is a separate button (rbStop, below).
 document.getElementById('rbToggle').onclick = function () {
+  heldStop = null;  // seen: the bar goes back to what the station says now (noteHeldStop())
   if (radioBarShown === 'sweep') { location.href = 'swr.html'; return; }  // the way back to a running sweep
   setDrawerOpen(!drawerOpen);
 };
