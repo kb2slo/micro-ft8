@@ -3570,7 +3570,8 @@ onTapOnce(document.getElementById('tokSave'), tokSave);
 document.getElementById('tokInput').value = MicroFT8Pairing.getToken();
 
 // Factory reset: native confirm()s, as Forget, AP mode and the retune prompt use. It resets the
-// main board's settings and this sidekick's app, saved WiFi and pairing; the QSO logs on the main
+// main board's settings and this sidekick's saved WiFi and pairing, and keeps the app, which the
+// sidekick's image carries (a bench push goes; docs/architecture/sidekick.md, Factory reset); the QSO logs on the main
 // board go only when the second prompt says so, since they cannot be recreated. The sidekick
 // asks the main board first and answers {ok:false, why} if it refuses (not linked, transmitting),
 // leaving both units as they were. On success it answers and then restarts, so a failed fetch
@@ -3582,8 +3583,8 @@ document.getElementById('netFactory').onclick = async function () {
     MicroFT8Pairing.needsReauth();
     return;
   }
-  if (!confirm('Factory reset? This erases the app, the saved WiFi and the pairing from the sidekick, ' +
-               'and resets the main board\u2019s station settings (callsign, grid, bands) to defaults.')) return;
+  if (!confirm('Factory reset? This erases the saved WiFi and the pairing from the sidekick, which keeps ' +
+               'the app, and resets the main board\u2019s station settings (callsign, grid, bands) to defaults.')) return;
   var logs = confirm('Also delete all QSO logs on the main board? OK deletes them for good; ' +
                      'Cancel keeps them.');
   openResetWait('Resetting the main board and the sidekick\u2026');
@@ -3611,7 +3612,9 @@ document.getElementById('netFactory').onclick = async function () {
   }
 };
 
-// After a factory reset the sidekick restarts as a new unit on its own network at 192.168.4.1.
+// After a factory reset the sidekick restarts as a new unit on its own network at 192.168.4.1, the app
+// still in it: this page goes to the app there, as getting-started.md's QR code does, not to the WiFi
+// form at "/", which made the app look erased (bench, 2026-11-20).
 // A phone already on that network (AP mode) reconnects by itself; one that was on the home WiFi
 // has to join the sidekick's network first. Either way, poll that address and go there as soon
 // as it answers, rather than leave the operator on a dead page. no-cors: only "something
@@ -3646,7 +3649,7 @@ function waitForSetupPage(opts) {
   var box = document.getElementById('resetWait');
   var text = document.getElementById('resetWaitText');
   var title = document.getElementById('resetWaitTitle');
-  var SETUP = opts.reload ? location.origin + '/' : 'http://192.168.4.1/';
+  var SETUP = opts.reload ? location.origin + '/' : 'http://192.168.4.1/app.html';
   var startedAt = Date.now();
   var GIVE_UP_MS = 90000;
   document.getElementById('netMsg').textContent = '';
@@ -3660,7 +3663,7 @@ function waitForSetupPage(opts) {
     if (Date.now() - startedAt > GIVE_UP_MS) {
       box.classList.add('done');
       title.textContent = 'The sidekick did not come back on its own';
-      text.textContent = opts.giveUp || 'Join its own network, then open http://192.168.4.1/ to set it up again.';
+      text.textContent = opts.giveUp || 'Join its own network, then open http://192.168.4.1/app.html.';
       return;
     }
     var ctl = new AbortController();
@@ -3670,13 +3673,13 @@ function waitForSetupPage(opts) {
     probe.then(function () {
       clearTimeout(t);
       title.textContent = 'Back up';
-      text.textContent = opts.reload ? 'Reopening the app\u2026' : 'Opening setup\u2026';
+      text.textContent = opts.reload ? 'Reopening the app\u2026' : 'Opening the app\u2026';
       if (opts.reload) location.reload(); else location.href = SETUP;
     }, function () {
       clearTimeout(t);
       text.textContent = opts.hint || ('Waiting for the sidekick to restart (' + secs + ' s). ' +
         'If your phone is on your home WiFi, join the sidekick\u2019s own network; ' +
-        'this page opens setup once it can reach it.');
+        'this page opens the app once it can reach it.');
       setTimeout(tick, 2000);
     });
   }
