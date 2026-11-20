@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Decode sort and filter (docs/architecture/webapp.md, Decode sort and filter): runs the real functions from app.html, as
 // test_decode_batching.js does. Within a slot; filters combine; a message to us stays on top and
-// is never hidden; a decode with no grid sorts last under Nearest and Farthest.
+// is never hidden; a decode with no grid sorts last under Nearest and Farthest; Hide worked drops
+// what the Worked flag marks; the Filter pill's label names what is on, and the sheet's Apply sets
+// exactly what is ticked.
 'use strict';
 const vm = require('vm');
 const fs = require('fs');
@@ -31,8 +33,10 @@ function extractFunction(text, name) {
 
 const sandbox = {};
 vm.createContext(sandbox);
-vm.runInContext(['decodeIsPark', 'isReplyableDecode', 'decodePassesView', 'decodeViewOf']
+vm.runInContext("var DV_FILTERS = ['reply', 'park', 'worked'];\n" +
+  ['decodeIsPark', 'isReplyableDecode', 'decodePassesView', 'decodeViewOf', 'decodeFilterLabel', 'decodeViewWithFilters']
   .map((n) => extractFunction(src, n)).join('\n'), sandbox);
+assert(src.includes("var DV_FILTERS = ['reply', 'park', 'worked'];"), 'DV_FILTERS changed: update this test');
 
 const km = { A: 4000, B: 800, C: 12000, D: null, ME: 100 };
 const distKmOf = (d) => km[d.call];
@@ -44,7 +48,7 @@ const slot = [
   { id: 6, call: 'A', cq: false, snr: 0, x: 'W2AAA W3BBB RR73' },
   { id: 5, call: 'D', cq: true, snr: -3, x: 'CQ SOTA N0DDD' },
 ];
-const view = (o) => Object.assign({ sort: 'default', reply: false, park: false }, o);
+const view = (o) => Object.assign({ sort: 'default', reply: false, park: false, worked: false }, o);
 const ids = (v) => sandbox.decodeViewOf(slot, v, distKmOf).map((d) => d.id);
 const eq = (got, want, msg) => assert.deepStrictEqual(got, want, msg);
 
@@ -62,6 +66,31 @@ eq(idsQ(view()), [1, 4, 2, 3, 6, 5], 'the queued station\'s row moves up under t
 eq(idsQ(view({ reply: true })), [1, 4, 2, 3, 6, 5], 'Replyable does not hide it');
 eq(idsQ(view({ park: true })), [1, 4, 3, 5], 'nor does POTA/SOTA');
 eq(idsQ(view({ sort: 'far' })), [1, 4, 2, 6, 3, 5], 'any sort: after the message to us');
+// Hide worked: the rows whose sender the Worked flag marks go, except the message to us and a
+// queued station's row; off, the flag hides nothing.
+const worked = (d) => d.id === 1 || d.id === 2 || d.id === 4;
+const idsW = (v, inv) => sandbox.decodeViewOf(slot, v, distKmOf, inv, worked).map((d) => d.id);
+eq(idsW(view()), [1, 2, 3, 4, 6, 5], 'Hide worked off: the flag hides nothing');
+eq(idsW(view({ worked: true })), [1, 3, 6, 5], 'Hide worked drops worked senders, never the message to us');
+eq(idsW(view({ worked: true }), involves), [1, 4, 3, 6, 5], 'nor a queued station\'s row');
+eq(idsW(view({ worked: true, reply: true })), [1, 3, 6, 5], 'it combines with Replyable');
+eq(idsW(view({ worked: true, sort: 'snr' })), [1, 3, 6, 5], 'and with a sort');
+eq(sandbox.decodeViewOf(slot, view({ worked: true }), distKmOf).map((d) => d.id), [1, 2, 3, 4, 6, 5],
+  'with no Worked lookup, nothing is worked');
+// The closed menu names what is on.
+assert.strictEqual(sandbox.decodeFilterLabel(view()), 'Filter');
+assert.strictEqual(sandbox.decodeFilterLabel(view({ worked: true })), 'Hide worked');
+assert.strictEqual(sandbox.decodeFilterLabel(view({ reply: true })), 'Replyable');
+assert.strictEqual(sandbox.decodeFilterLabel(view({ park: true })), 'POTA/SOTA');
+assert.strictEqual(sandbox.decodeFilterLabel(view({ reply: true, worked: true })), 'Filters · 2');
+// Apply: the filters become exactly what is ticked, sort and mode kept; the view it started from
+// is not changed, so Cancel (which never calls it) leaves the list as it was.
+const before = view({ sort: 'snr', mode: 'FT8', reply: true });
+const applied = sandbox.decodeViewWithFilters(before, { reply: false, park: true, worked: true });
+eq(JSON.parse(JSON.stringify(applied)),
+  { sort: 'snr', reply: false, park: true, worked: true, mode: 'FT8' }, 'Apply sets what is ticked, keeps sort and mode');
+eq(before.reply, true, 'the view Apply started from is untouched');
+eq(sandbox.decodeViewWithFilters(before, {}).reply, false, 'nothing ticked: every filter off');
 assert.strictEqual(sandbox.decodeIsPark({ x: 'cq pota k1abc fn42' }), true);
 assert.strictEqual(sandbox.decodeIsPark({ x: 'CQ POTAX K1ABC' }), false, 'a word boundary, not a prefix');
 assert.strictEqual(sandbox.decodeIsPark({ x: 'CQ DX K1ABC' }), false);

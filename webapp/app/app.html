@@ -357,11 +357,40 @@ button{touch-action:manipulation}
 /* ---- operate: decode stream ---- */
 #opDecodes{padding-bottom:.5rem}
 /* The Decodes bar stays at the top of the one scrolling area. */
-#dvBar{position:sticky;top:0;z-index:2;background:Canvas;display:flex;flex-wrap:nowrap;gap:.3rem;align-items:center;padding:.45rem 1rem .45rem;border-bottom:1px solid color-mix(in srgb, GrayText 20%, transparent)}
-#dvBar .dvlabel{font-size:.65rem;color:GrayText;text-transform:uppercase;letter-spacing:.03em;font-weight:700}
-#dvBar select,#dvBar button{font-size:.75rem;padding:.25rem .5rem;width:auto;flex:none;margin:0;border-radius:999px;border:1px solid GrayText;background:ButtonFace;color:ButtonText}
-#dvBar select{appearance:none;-webkit-appearance:none}
-#dvBar button[aria-pressed=true],#dvBar select.on{background:var(--accent);border-color:var(--accent);color:Canvas;font-weight:700}
+#dvBar{position:sticky;top:0;z-index:2;background:Canvas;display:flex;flex-wrap:nowrap;gap:.25rem;align-items:center;padding:.45rem 1rem .45rem;border-bottom:1px solid color-mix(in srgb, GrayText 20%, transparent)}
+#dvBar .dvlabel{margin-right:.25rem;font-size:.65rem;color:GrayText;text-transform:uppercase;letter-spacing:.03em;font-weight:700}
+/* Below 360 px the bar's worst case (Strongest, Filters · 2, the mode chip, a three-digit count) runs
+   over, up to 22 px at 320; the label gives way, the controls do not (webapp.md, Decode sort and filter). */
+@media (max-width:359px){#dvBar .dvlabel{display:none}}
+#dvBar button{font-size:.75rem;padding:.25rem .5rem;width:auto;flex:none;margin:0;border-radius:999px;border:1px solid GrayText;background:ButtonFace;color:ButtonText}
+#dvBar button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:Canvas;font-weight:700}
+/* Sort and Filter open a panel that drops from the Decodes bar, its caret at the pill that opened it
+   (placeDvPanel() sets --dvf-top, --dvf-left, --dvf-width and --dvf-caret). The sheet covers the screen,
+   clear over the bar so the open pill shows, dimmed below it; a tap on either does nothing, since the
+   panel is modal. A pick-any row is a checkbox, a rounded square; a pick-one row (Sort) a circle. Both are
+   outlined in the accent when off and filled when on. */
+.dvpanel{position:fixed;inset:0;z-index:20}
+.dvpback{position:absolute;left:0;right:0;bottom:0;top:var(--dvf-top,0);background:rgba(0,0,0,.4)}
+.dvpcard{position:absolute;top:calc(var(--dvf-top,0px) + .45rem);left:var(--dvf-left,0);width:var(--dvf-width,100%);max-height:calc(100% - var(--dvf-top,0px) - 1rem);overflow-y:auto;background:Canvas;color:CanvasText;border:1px solid color-mix(in srgb, GrayText 30%, transparent);border-radius:.75rem;padding:.8rem 1rem 1rem;box-shadow:0 8px 24px rgba(0,0,0,.3);box-sizing:border-box;
+  opacity:0;transform:translateY(-.5rem);transform-origin:var(--dvf-caret,50%) 0;transition:opacity .15s ease,transform .15s ease}
+.dvpanel.open .dvpcard{opacity:1;transform:none}
+/* The caret: a rotated square on the panel's top edge, under the pill. Outside the card's scroll box, so
+   it is a sibling, moved with the same variables. */
+.dvpcaret{position:absolute;top:calc(var(--dvf-top,0px) + .45rem - .4rem);left:calc(var(--dvf-left,0px) + var(--dvf-caret,50%) - .4rem);width:.8rem;height:.8rem;background:Canvas;border-left:1px solid color-mix(in srgb, GrayText 30%, transparent);border-top:1px solid color-mix(in srgb, GrayText 30%, transparent);transform:rotate(45deg);z-index:1;opacity:0;transition:opacity .15s ease}
+.dvpanel.open .dvpcaret{opacity:1}
+#dvBar button.open{box-shadow:0 0 0 2px Canvas,0 0 0 4px var(--accent)}
+@media (prefers-reduced-motion: reduce){.dvpcard,.dvpcaret{transition:none}}
+.dvpcard h2{font-size:1.05rem;margin:0 0 .4rem}
+.dvfopt{display:flex;align-items:center;gap:.8rem;width:100%;margin:0;padding:.65rem .1rem;border:0;border-top:1px solid color-mix(in srgb, GrayText 20%, transparent);border-radius:0;background:transparent;color:CanvasText;text-align:left;font-size:.95rem}
+.dvfbox{flex:none;width:1.35rem;height:1.35rem;box-sizing:border-box;border:2px solid var(--accent);border-radius:.35rem;display:flex;align-items:center;justify-content:center;font-size:.9rem;font-weight:700;line-height:1;color:Canvas}
+.dvfopt[aria-checked=true] .dvfbox{background:var(--accent)}
+.dvfopt[aria-checked=true] .dvfbox::before{content:'\2713'}
+.dvfbox.dvfradio{border-radius:50%}
+.dvfopt[aria-checked=true] .dvfradio{box-shadow:inset 0 0 0 3px Canvas}
+.dvfopt[aria-checked=true] .dvfradio::before{content:none}
+.dvftext small{display:block;font-size:.75rem;color:GrayText;margin-top:.1rem}
+.dvfbtns{display:flex;gap:.5rem;margin-top:.6rem}
+.dvfbtns button{flex:1}
 #dvHidden{font-size:.7rem;color:GrayText;margin-left:auto;white-space:nowrap}
 /* Sticky under the Decodes bar (--dvbar-h, layoutDock()), so the slot being read keeps its
    time and age in view; each sits in its .dslot box and lets go when that slot ends. */
@@ -633,14 +662,8 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <div id=opDecodes>
       <div id=dvBar>
         <span class=dvlabel>Decodes</span>
-        <select id=dvSort aria-label="Sort within each slot">
-          <option value=default>Sort</option>
-          <option value=snr>Strongest</option>
-          <option value=near>Nearest</option>
-          <option value=far>Farthest</option>
-        </select>
-        <button id=dvReply type=button aria-pressed=false>Replyable</button>
-        <button id=dvPark type=button aria-pressed=false>POTA/SOTA</button>
+        <button id=dvSort type=button aria-pressed=false aria-haspopup=dialog>Sort</button>
+        <button id=dvFilter type=button aria-pressed=false aria-haspopup=dialog>Filter</button>
         <button id=dvMode type=button aria-pressed=false hidden aria-label="Mode">All</button>
         <span id=dvHidden></span>
       </div>
@@ -1310,6 +1333,37 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <div id=askText></div>
     <button id=askOk type=button class=btn-primary></button>
     <button id=askNo type=button>Cancel</button>
+  </div>
+</div>
+
+<!-- The Decodes bar's Sort and Filter panels (openDvPanel()), each dropped from its pill. Sort is a menu: a
+     tap on a choice sets it, a tap anywhere else closes it unchanged. Filter waits for its buttons: ticks
+     are set on Apply, Cancel changes nothing, and a tap outside does nothing. -->
+<div id=dvSortSheet class=dvpanel role=dialog aria-modal=true aria-labelledby=dvSortTitle hidden>
+  <div class=dvpback></div>
+  <div class=dvpcaret></div>
+  <div class=dvpcard>
+    <h2 id=dvSortTitle>Sort decodes</h2>
+    <div role=radiogroup aria-labelledby=dvSortTitle>
+      <button type=button class=dvfopt data-key=default role=radio aria-checked=false><span class="dvfbox dvfradio"></span><span class=dvftext>Default<small>Calls to you, then CQs, strongest first</small></span></button>
+      <button type=button class=dvfopt data-key=snr role=radio aria-checked=false><span class="dvfbox dvfradio"></span><span class=dvftext>Strongest<small>By signal, strongest first</small></span></button>
+      <button type=button class=dvfopt data-key=near role=radio aria-checked=false><span class="dvfbox dvfradio"></span><span class=dvftext>Nearest<small>Closest to your grid first</small></span></button>
+      <button type=button class=dvfopt data-key=far role=radio aria-checked=false><span class="dvfbox dvfradio"></span><span class=dvftext>Farthest<small>Farthest first, for DX</small></span></button>
+    </div>
+  </div>
+</div>
+<div id=dvFilterSheet class=dvpanel role=dialog aria-modal=true aria-labelledby=dvFilterTitle hidden>
+  <div class=dvpback></div>
+  <div class=dvpcaret></div>
+  <div class=dvpcard>
+    <h2 id=dvFilterTitle>Filter decodes</h2>
+    <button type=button class=dvfopt data-key=reply role=checkbox aria-checked=false><span class=dvfbox></span><span class=dvftext>Replyable<small>CQs and closing 73s</small></span></button>
+    <button type=button class=dvfopt data-key=park role=checkbox aria-checked=false><span class=dvfbox></span><span class=dvftext>POTA/SOTA<small>CQ POTA and CQ SOTA only</small></span></button>
+    <button type=button class=dvfopt data-key=worked role=checkbox aria-checked=false><span class=dvfbox></span><span class=dvftext>Hide worked<small>Worked today, this band and mode</small></span></button>
+    <div class=dvfbtns>
+      <button type=button data-act=cancel>Cancel</button>
+      <button type=button data-act=apply class=btn-primary>Apply</button>
+    </div>
   </div>
 </div>
 
@@ -5064,7 +5118,7 @@ function isReplyableDecode(d) {
 // always on top and never filtered. `distKmOf(d)` answers the sender's distance in km, or null
 // when the grid is not known (such a decode fails a distance filter and sorts last under Nearest).
 var DV_KEY = 'microft8_decode_view_v1';
-var decodeView = { sort: 'default', reply: false, park: false, mode: 'all' };
+var decodeView = { sort: 'default', reply: false, park: false, worked: false, mode: 'all' };
 // The mode chip cycles both, FT8 only, FT4 only. It shows while FT4 is decoded beside FT8 (rx_ft4) or any
 // FT4 batch is listed; hidden, it filters nothing.
 var DV_MODES = ['all', 'FT8', 'FT4'];
@@ -5080,20 +5134,22 @@ function decodeIsPark(d) {
 }
 
 // involved: the decode concerns a station in our queue (queueInvolvement()), which no filter
-// hides, the same as a message to us.
-function decodePassesView(d, view, involved) {
+// hides, the same as a message to us. worked: its sender carries the Worked flag (dupeIndex()).
+function decodePassesView(d, view, involved, worked) {
   if (d.me || involved) return true;
   if (view.reply && !isReplyableDecode(d)) return false;
   if (view.park && !decodeIsPark(d)) return false;
+  if (view.worked && worked) return false;
   return true;
 }
 
 // involves(d): whether a decode concerns a station in our queue; optional. Those rows come right
-// after messages to us, in their own order, whatever the sort.
-function decodeViewOf(slot, view, distKmOf, involves) {
+// after messages to us, in their own order, whatever the sort. isWorked(d): whether its sender
+// shows the Worked flag; optional, for Hide worked.
+function decodeViewOf(slot, view, distKmOf, involves, isWorked) {
   var inv = function (d) { return !!(involves && involves(d)); };
   var items = slot.map(function (d, i) { return { d: d, i: i }; })
-    .filter(function (it) { return decodePassesView(it.d, view, inv(it.d)); });
+    .filter(function (it) { return decodePassesView(it.d, view, inv(it.d), !!(isWorked && isWorked(it.d))); });
   if (view.sort === 'snr' || view.sort === 'near' || view.sort === 'far') {
     var key = function (d) {
       if (view.sort === 'snr') return -d.snr;
@@ -5291,6 +5347,7 @@ function loadDecodeView() {
     if (v) {
       decodeView.reply = !!v.reply;
       decodeView.park = !!v.park;
+      decodeView.worked = !!v.worked;
       if (DV_MODES.indexOf(v.mode) >= 0) decodeView.mode = v.mode;
     }
   } catch (e) { /* the default view stands */ }
@@ -5299,30 +5356,124 @@ function saveDecodeView() {
   try { localStorage.setItem(DV_KEY, JSON.stringify(decodeView)); } catch (e) { /* applies live */ }
 }
 
+// The filters share one pill, since a pill each did not fit the bar on a phone (webapp.md, Decode sort
+// and filter). It opens a sheet whose ticks apply only on Apply; the pill's label names what is on.
+var DV_FILTERS = ['reply', 'park', 'worked'];
+function decodeFilterLabel(view) {
+  var on = DV_FILTERS.filter(function (k) { return view[k]; });
+  if (!on.length) return 'Filter';
+  if (on.length > 1) return 'Filters · ' + on.length;
+  return { reply: 'Replyable', park: 'POTA/SOTA', worked: 'Hide worked' }[on[0]];
+}
+// The view with its filters as ticked in the sheet (picked: {reply, park, worked}); sort and mode kept.
+function decodeViewWithFilters(view, picked) {
+  var v = Object.assign({}, view);
+  DV_FILTERS.forEach(function (k) { v[k] = !!picked[k]; });
+  return v;
+}
+function renderDecodeFilter(btn, view) {
+  btn.textContent = decodeFilterLabel(view);
+  btn.setAttribute('aria-pressed', DV_FILTERS.some(function (k) { return view[k]; }) ? 'true' : 'false');
+}
+
+var DV_SORT_LABELS = { default: 'Sort', snr: 'Strongest', near: 'Nearest', far: 'Farthest' };
+
+// A panel holds its choices in the rows' aria-checked; fill() and apply() move them between the rows and
+// decodeView. Sort is pick-one and a menu (menu: true): a tap on a row sets it and closes, a tap outside
+// closes unchanged. Filter is pick-any and waits for Apply or Cancel; a tap outside does nothing.
+var DV_PANELS = {
+  dvSort: {
+    sheet: 'dvSortSheet',
+    menu: true,
+    fill: function (rows) { rows.forEach(function (b) { b.setAttribute('aria-checked', decodeView.sort === b.dataset.key ? 'true' : 'false'); }); },
+    tap: function (rows, b) { rows.forEach(function (r) { r.setAttribute('aria-checked', r === b ? 'true' : 'false'); }); },
+    apply: function (rows) {
+      rows.forEach(function (b) { if (b.getAttribute('aria-checked') === 'true') decodeView.sort = b.dataset.key; });
+    },
+  },
+  dvFilter: {
+    sheet: 'dvFilterSheet',
+    fill: function (rows) { rows.forEach(function (b) { b.setAttribute('aria-checked', decodeView[b.dataset.key] ? 'true' : 'false'); }); },
+    tap: function (rows, b) { b.setAttribute('aria-checked', b.getAttribute('aria-checked') === 'true' ? 'false' : 'true'); },
+    apply: function (rows) {
+      var picked = {};
+      rows.forEach(function (b) { picked[b.dataset.key] = b.getAttribute('aria-checked') === 'true'; });
+      decodeView = decodeViewWithFilters(decodeView, picked);
+    },
+  },
+};
+var dvOpen = null;  // {pill, panel, sheet, back} while a panel is open
+function dvRows(sheet) { return Array.prototype.slice.call(sheet.querySelectorAll('.dvfopt')); }
+function openDvPanel(pillId) {
+  if (dvOpen) return;
+  var panel = DV_PANELS[pillId], sheet = document.getElementById(panel.sheet), pill = document.getElementById(pillId);
+  panel.fill(dvRows(sheet));
+  dvOpen = { pill: pill, panel: panel, sheet: sheet, back: document.activeElement };
+  sheet.hidden = false;
+  placeDvPanel();
+  pill.classList.add('open');
+  sheet.offsetWidth;  // lay it out closed first, so the drop animates
+  sheet.classList.add('open');
+  (sheet.querySelector('.dvfopt[aria-checked=true]') || sheet.querySelector('.dvfopt')).focus({ preventScroll: true });
+}
+// Under the Decodes bar, as wide as it, the caret at the open pill's middle. The bar's place moves with
+// the slot bar and the activation line, so this runs on open and on a resize or a rotation.
+function placeDvPanel() {
+  if (!dvOpen) return;
+  var bar = document.getElementById('dvBar').getBoundingClientRect();
+  var pill = dvOpen.pill.getBoundingClientRect();
+  var st = dvOpen.sheet.style;
+  st.setProperty('--dvf-top', Math.round(bar.bottom) + 'px');
+  st.setProperty('--dvf-left', Math.round(bar.left + 8) + 'px');
+  st.setProperty('--dvf-width', Math.round(bar.width - 16) + 'px');
+  st.setProperty('--dvf-caret', Math.round(pill.left + pill.width / 2 - bar.left - 8) + 'px');
+}
+window.addEventListener('resize', placeDvPanel);
+function closeDvPanel(apply) {
+  if (!dvOpen) return;
+  var o = dvOpen;
+  dvOpen = null;
+  if (apply) {
+    o.panel.apply(dvRows(o.sheet));
+    saveDecodeView(); renderDecodeControls(); renderDecodes();
+  }
+  o.sheet.hidden = true;
+  o.sheet.classList.remove('open');
+  o.pill.classList.remove('open');
+  if (o.back && o.back.focus && document.contains(o.back)) o.back.focus({ preventScroll: true });
+}
+Object.keys(DV_PANELS).forEach(function (pillId) {
+  var panel = DV_PANELS[pillId], sheet = document.getElementById(panel.sheet), rows = dvRows(sheet);
+  rows.forEach(function (b) {
+    b.onclick = function () { panel.tap(rows, b); if (panel.menu) closeDvPanel(true); };
+  });
+  if (panel.menu) {
+    // The sheet itself is the clear layer over the bar and the dimmed area below it.
+    sheet.addEventListener('click', function (ev) {
+      if (ev.target === sheet || ev.target.classList.contains('dvpback')) closeDvPanel(false);
+    });
+  } else {
+    sheet.querySelector('[data-act=apply]').onclick = function () { closeDvPanel(true); };
+    sheet.querySelector('[data-act=cancel]').onclick = function () { closeDvPanel(false); };
+  }
+  document.getElementById(pillId).onclick = function () { openDvPanel(pillId); };
+});
+document.addEventListener('keydown', function (ev) {
+  if (ev.key === 'Escape' && dvOpen) { ev.preventDefault(); closeDvPanel(false); }
+});
+
 function renderDecodeControls() {
   var sort = document.getElementById('dvSort');
-  sort.value = decodeView.sort;
-  sort.classList.toggle('on', decodeView.sort !== 'default');
-  document.getElementById('dvReply').setAttribute('aria-pressed', decodeView.reply ? 'true' : 'false');
-  document.getElementById('dvPark').setAttribute('aria-pressed', decodeView.park ? 'true' : 'false');
-  // The bar is one row that never wraps: with the mode chip it drops its "Decodes" label to fit a 375 pt
-  // phone (webapp.md, Decode sort and filter), and the chip's both-modes state reads "All".
+  sort.textContent = DV_SORT_LABELS[decodeView.sort] || 'Sort';
+  sort.setAttribute('aria-pressed', decodeView.sort !== 'default' ? 'true' : 'false');
+  renderDecodeFilter(document.getElementById('dvFilter'), decodeView);
+  // The bar is one row that never wraps (webapp.md, Decode sort and filter); the chip's both-modes
+  // state reads "All".
   var mode = document.getElementById('dvMode');
-  var modeOn = decodeModeChipOn();
-  mode.hidden = !modeOn;
-  document.querySelector('#dvBar .dvlabel').hidden = modeOn;
+  mode.hidden = !decodeModeChipOn();
   mode.textContent = decodeView.mode === 'all' ? 'All' : decodeView.mode;
   mode.setAttribute('aria-pressed', decodeView.mode !== 'all' ? 'true' : 'false');
 }
-document.getElementById('dvSort').onchange = function () {
-  decodeView.sort = this.value; saveDecodeView(); renderDecodeControls(); renderDecodes();
-};
-document.getElementById('dvReply').onclick = function () {
-  decodeView.reply = !decodeView.reply; saveDecodeView(); renderDecodeControls(); renderDecodes();
-};
-document.getElementById('dvPark').onclick = function () {
-  decodeView.park = !decodeView.park; saveDecodeView(); renderDecodeControls(); renderDecodes();
-};
 document.getElementById('dvMode').onclick = function () {
   decodeView.mode = DV_MODES[(DV_MODES.indexOf(decodeView.mode) + 1) % DV_MODES.length];
   saveDecodeView(); renderDecodeControls(); renderDecodes();
@@ -5425,7 +5576,9 @@ function renderDecodesNow() {
     return false;
   }).map(function (slot) {
     var involves = function (d) { var v = queueInvolvementAt(d.x, qcalls, myCall, slot.ts); return !!v && v.kind !== 'you'; };
-    var shown = decodeViewOf(slot, decodeView, decodeDistKm, involves);
+    var band = slotBandName(slot), mode = slotMode(slot);
+    var worked = function (d) { var c = extractSenderCall(d.x); return !!c && !!dupes[dupeKey(c, band, mode)]; };
+    var shown = decodeViewOf(slot, decodeView, decodeDistKm, involves, worked);
     hidden += slot.length - shown.length;
     return { slot: slot, shown: shown };
   }).filter(function (s) { return s.shown.length > 0; });
