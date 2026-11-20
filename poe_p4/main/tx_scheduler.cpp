@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -753,8 +754,20 @@ static void radio_lost_tick(void) {
         std::vector<QsoContext> active;
         autoseq_get_active_contexts(active);
         if (!active.empty()) {
-            ESP_LOGW(TAG, "Radio lost: CQ ended and %d queued QSO(s) cancelled", (int)active.size());
-            debug_log_line("Radio lost: CQ ended and queued QSOs cancelled");
+            // The CQ is a queue entry too (CALLING), so it is said apart from the QSOs.
+            bool cq = false;
+            int qsos = 0;
+            for (const QsoContext& c : active) {
+                if (c.state == AutoseqState::CALLING) {
+                    cq = true;
+                } else {
+                    qsos++;
+                }
+            }
+            char line[64];
+            snprintf(line, sizeof line, "Radio lost: %s%d queued QSO(s) cancelled", cq ? "CQ ended, " : "", qsos);
+            ESP_LOGW(TAG, "%s", line);
+            debug_log_line(line);
         }
         stop_station();
         s_pending_tx_valid = false;
