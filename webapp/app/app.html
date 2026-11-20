@@ -7222,7 +7222,7 @@ var QRZ_KEY_STORE = 'microft8_qrz_key_v1';      // { key, book: the logbook's ca
 var QRZ_STATE_STORE = 'microft8_qrz_state_v1';  // { budget, clean: the last day a run left nothing unsent }
 var QRZ_AFTER_QSO_MS = 6000;
 var QRZ_CALL_TIMEOUT_MS = 20000;
-var QRZ_SEND_TIMEOUT_MS = 90000;  // a batch is up to 50 inserts, one after another
+var QRZ_SEND_TIMEOUT_MS = 90000;  // a batch is up to 10 inserts, one after another (worker.js, QRZ_MAX_INSERTS)
 var qrz = { phase: 'idle', sending: 0, result: null, keyLine: { state: 'none' }, timer: 0 };
 
 // What the QRZ row reads, whether it is amber, the button it shows and what a tap does:

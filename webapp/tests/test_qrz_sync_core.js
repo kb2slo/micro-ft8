@@ -193,8 +193,8 @@ function station(rows, held, opts) {
   const many = Array.from({ length: 120 }, (_, i) => row('20261117', '10:00', 'W' + (1000 + i)));
   s = station(many, []);
   r = plain(await Q.run(s.deps));
-  assert.deepStrictEqual([r.sent, r.calls, s.inserted.length], [120, 5, 120], 'status, one page, three batches of at most 50');
-  assert.deepStrictEqual(s.asked.slice(2).map((a) => a[1].records.length), [50, 50, 20]);
+  assert.deepStrictEqual([r.sent, r.calls, s.inserted.length], [120, 14, 120], 'status, one page, twelve batches of at most 10');
+  assert.deepStrictEqual(s.asked.slice(2).map((a) => a[1].records.length), Array(12).fill(10));
 
   // A duplicate is not a failure; a refusal is reported with its row, and the day is not settled.
   s = station(rows, held, { insert: () => ({ ok: true, results: [{ result: 'duplicate' }, { result: 'refused', reason: 'bad band' }] }) });
@@ -249,7 +249,7 @@ function station(rows, held, opts) {
   // The run stops at its call allowance instead of going over it.
   s = station(many, []);
   r = plain(await Q.run(Object.assign(s.deps, { maxCalls: 3 })));
-  assert.deepStrictEqual([r.ok, r.error, r.calls, r.sent, s.asked.length], [false, 'budget', 3, 50, 3]);
+  assert.deepStrictEqual([r.ok, r.error, r.calls, r.sent, s.asked.length], [false, 'budget', 3, 10, 3]);
   s = station(rows, held);
   r = plain(await Q.run(Object.assign(s.deps, { maxCalls: 0 })));
   assert.deepStrictEqual([r.ok, r.error, s.asked.length], [false, 'budget', 0]);
