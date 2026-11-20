@@ -39,7 +39,7 @@ After its first flash over USB, the main board takes a new image from the sideki
 
 ### Ethernet
 
-Used only when Station's radio is the HL2 (`radio=HL2`, stored as 6), receive only so far ([hl2.md](hl2.md)). Settings › Radio switches between the QMX and the HL2 live ([radio.md](radio.md), **How it works**). Ethernet comes up the first time the HL2 is chosen and stays up; the USB host, the first time the QMX is. While the HL2 is chosen, the QMX's audio does not feed decode and nothing is under CAT control.
+Used only when Station's radio is the HL2 (`radio=HL2`, stored as 6), receive only so far ([hl2.md](hl2.md)). Settings › Radio switches between the QMX and the HL2 live ([radio.md](radio.md), **How it works**). Ethernet comes up the first time the HL2 is chosen and stays up, started on the HL2's own task rather than the main loop, since installing the driver and resetting the PHY take seconds and the main loop answers the sidekick (on the main loop a choice of the HL2 held it 1.9 s and timed out, 2026-11-20); the USB host, the first time the QMX is. While the HL2 is chosen, the QMX's audio does not feed decode and nothing is under CAT control.
 
 * **The PHY:** an IP101 at address 1, reset on GPIO 51, MDC 31, MDIO 52, RMII on ESP-IDF's ESP32-P4 defaults (the 50 MHz clock in on GPIO 50; TX_EN 49, TXD0 34, TXD1 35, CRS_DV 28, RXD0 29, RXD1 30).
 * **Our address** is static link-local from our MAC, as the HL2 derives its own: no DHCP client, no server, no conflict probe ([hl2.md](hl2.md), **The link**, which says why). If it equals the HL2's, the P4 does not stream and says why.
