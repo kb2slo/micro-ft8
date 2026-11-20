@@ -175,8 +175,8 @@ assert.deepStrictEqual(cued, [699, 700, 701, 702, 703, 704, 705, 706, 707, 708],
   'the cue shows for the ten bad-clock slots and no others');
 
 // An FT4 QSO beside FT8 (2026-11-08): each FT4 transmission makes the P4 skip the FT8 slot it falls in
-// (SKIP <slot>), which still heard signals. Not decoded is not a failed decode, so no cue; and FT4's own
-// decodes (sl 75, FT4 period numbers) count toward no FT8 slot.
+// (an UNDECODED event, d 9, why 1), which still heard signals. Not decoded is not a failed decode, so no
+// cue; and FT4's own decodes and skips (sl 75, FT4 period numbers) count toward no FT8 slot.
 {
   const heard = Array(90).fill(20);
   let s = { act: { si: 0, bm: 0, lv: [] }, tallies: [], decodes: {}, paused: {} };
@@ -185,15 +185,31 @@ assert.deepStrictEqual(cued, [699, 700, 701, 702, 703, 704, 705, 706, 707, 708],
     const si = SI + k;
     ev.push({ d: 8, si, bm: 160, lo: 0, hi: 0, v: heard, m: [] });
     ev.push({ d: 1, si: 2 * si + 1, sl: 75, x: 'CQ K8DXR EN90' });
-    ev.push({ d: 0, x: 'SKIP/FT4 ' + (2 * si + 1) });
-    ev.push({ d: 0, x: 'SKIP ' + si });
+    ev.push({ d: 9, si: 2 * si + 1, sl: 75, why: 1 });
+    ev.push({ d: 9, si, sl: 150, why: 1 });
   }
   ev.push({ d: 8, si: SI + 4, bm: 160, lo: 0, hi: 0, v: heard, m: [] });
   for (const e of ev) s = ctx.noteBandEvent(s, e, P);
   assert.strictEqual(s.tallies.length >= 2, true, 'the skipped slots are tallied');
-  assert.strictEqual(s.tallies.every((t) => t.paused), true, 'SKIP marks each as not decoded');
+  assert.strictEqual(s.tallies.every((t) => t.paused), true, 'UNDECODED marks each as not decoded');
   assert.strictEqual(ctx.clockCue(s.tallies), '', 'so an FT4 QSO shows no clock cue');
   assert.strictEqual(Object.keys(s.decodes).length, 0, 'and FT4 decodes count toward no FT8 slot');
+}
+
+// A slot the decoder was still busy for (why 2) heard signals and decoded nothing; it is no sign of the
+// clock either. An FT4 UNDECODED marks no FT8 slot, whatever its number.
+{
+  const heard = Array(90).fill(20);
+  let s = { act: { si: 0, bm: 0, lv: [] }, tallies: [], decodes: {}, paused: {} };
+  for (let k = 0; k < 3; k++) {
+    s = ctx.noteBandEvent(s, { d: 8, si: SI + k, bm: 160, lo: 0, hi: 0, v: heard, m: [] }, P);
+    s = ctx.noteBandEvent(s, { d: 9, si: SI + k, sl: 150, why: 2 }, P);
+  }
+  s = ctx.noteBandEvent(s, { d: 8, si: SI + 3, bm: 160, lo: 0, hi: 0, v: heard, m: [] }, P);
+  assert.strictEqual(s.tallies.every((t) => t.paused), true, 'a busy slot is marked not decoded');
+  assert.strictEqual(ctx.clockCue(s.tallies), '', 'so it shows no clock cue');
+  s = ctx.noteBandEvent(s, { d: 9, si: SI + 3, sl: 75, why: 1 }, P);
+  assert.strictEqual(!!s.paused[SI + 3], false, 'an FT4 slot not decoded marks no FT8 slot');
 }
 
 console.log('band activity OK');

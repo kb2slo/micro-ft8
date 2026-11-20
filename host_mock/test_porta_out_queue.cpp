@@ -46,8 +46,8 @@ static const unsigned kStatusFrames = 15;
 
 static void test_a_busy_slot_fits()
 {
-    expect_true(PORTA_OUT_QUEUE_LEN >= RX_MAX_DECODES + 1 + kStatusFrames,
-                "the queue holds a full slot's decodes, its SLOT line and the status beside them");
+    expect_true(PORTA_OUT_QUEUE_LEN >= RX_MAX_DECODES + kStatusFrames,
+                "the queue holds a full slot's decodes and the status beside them");
 
     static PortaOutQueue queue;
     porta_out_queue_init(&queue);
@@ -72,12 +72,8 @@ static void test_a_busy_slot_fits()
         expect_true(n > 0 && n <= PORTA_PROTO_MAX_FRAME, "a decode encodes into one frame");
         porta_out_queue_push(&queue, buf, n);
     }
-    const size_t n = porta_proto_encode_log(1760000000u, "SLOT 117333333 c256/256 m32 t2 dec315 left900 b2/100",
-                                            buf, sizeof(buf));
-    porta_out_queue_push(&queue, buf, n);
-
     expect_u(porta_out_queue_dropped(&queue), 0, "nothing is dropped");
-    expect_u(porta_out_queue_count(&queue), kStatusFrames + RX_MAX_DECODES + 1, "every frame is queued");
+    expect_u(porta_out_queue_count(&queue), kStatusFrames + RX_MAX_DECODES, "every frame is queued");
 
     for (unsigned i = 0; i < kStatusFrames; ++i) {
         porta_out_queue_pop(&queue);
@@ -96,13 +92,6 @@ static void test_a_busy_slot_fits()
         }
         porta_out_queue_pop(&queue);
     }
-    porta_frame_t frame;
-    char text[PORTA_EVENT_TEXT_MAX + 1];
-    uint32_t epoch = 0;
-    expect_true(reframe(porta_out_queue_front(&queue), &frame) &&
-                    porta_proto_parse_log(&frame, &epoch, text) && strncmp(text, "SLOT ", 5) == 0,
-                "the SLOT line follows the decodes");
-    porta_out_queue_pop(&queue);
     expect_true(porta_out_queue_front(&queue) == nullptr, "the queue is empty after the slot");
 }
 

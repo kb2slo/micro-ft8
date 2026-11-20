@@ -44,6 +44,15 @@ static_assert(FT8_ACTIVITY_BATCH_MAX <= PORTA_ACTIVITY_LEVELS_MAX,
 static_assert(FT8_ACTIVITY_CELLS == PORTA_ACTIVITY_CELLS && FT8_ACTIVITY_MASK_BYTES == PORTA_ACTIVITY_MASK_BYTES,
               "the pipeline's frequency mask is the event's");
 
+static_assert((int)FT8_SLOT_UNDECODED_TX == (int)PORTA_UNDECODED_TX &&
+                  (int)FT8_SLOT_UNDECODED_BUSY == (int)PORTA_UNDECODED_BUSY &&
+                  (int)FT8_SLOT_UNDECODED_PAUSED == (int)PORTA_UNDECODED_PAUSED,
+              "why a slot was not decoded: the pipeline's values are the event's");
+
+static void send_undecoded(void * /*ctx*/, int64_t slot_idx, int slot_ms, ft8_slot_undecoded_t why) {
+    porta_emit_undecoded((uint32_t)slot_idx, (uint8_t)(slot_ms / 100), (uint8_t)why);
+}
+
 static void send_activity(void * /*ctx*/, int64_t slot_idx, int block_ms, int first,
                           const uint8_t *levels, const uint8_t *masks, int n, int lo_hz, int hi_hz) {
     porta_emit_activity((uint32_t)slot_idx, (uint8_t)block_ms, (uint8_t)first, levels, masks,
@@ -111,6 +120,7 @@ static void decode_audio_task(void * /*arg*/) {
         .should_stop = hl2_decode_should_stop,
         .on_block_processed = nullptr,
         .on_activity = send_activity,
+        .on_undecoded = send_undecoded,
         .take_frontend_us = hl2_audio_take_frontend_us,
         .n_channels = 1,
         .channels = {station_channel},
@@ -122,6 +132,7 @@ static void decode_audio_task(void * /*arg*/) {
         .should_stop = qmx_decode_should_stop,
         .on_block_processed = nullptr,
         .on_activity = send_activity,
+        .on_undecoded = send_undecoded,
         .take_frontend_us = qmx_audio_take_frontend_us,
         .n_channels = 1,
         .channels = {station_channel},

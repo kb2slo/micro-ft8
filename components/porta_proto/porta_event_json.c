@@ -189,3 +189,16 @@ size_t porta_event_json_activity(char *out, size_t cap, uint32_t seq,
                            ev->lo_hz, ev->hi_hz, levels, masks);
     return finish(out, cap, n);
 }
+
+size_t porta_event_json_undecoded(char *out, size_t cap, uint32_t seq,
+                                  const porta_undecoded_event_t *ev)
+{
+    if (!ev) {
+        return 0;
+    }
+    const int n = snprintf(out, cap,
+                           "{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":9,"
+                           "\"si\":%" PRIu32 ",\"sl\":%u,\"why\":%u}",
+                           seq, ev->epoch_secs, ev->slot_idx, ev->slot_len_ds, ev->why);
+    return finish(out, cap, n);
+}

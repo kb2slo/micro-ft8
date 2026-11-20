@@ -505,6 +505,36 @@ bool porta_proto_parse_activity(const porta_frame_t *f, porta_activity_event_t *
     return true;
 }
 
+// subtype | epoch(4) | slot_idx(4) | slot_len_ds(1) | why(1)
+#define UNDECODED_LEN (EVENT_HEADER_LEN + 4u + 1u + 1u)
+
+size_t porta_proto_encode_undecoded(const porta_undecoded_event_t *u, uint8_t *out, size_t out_cap)
+{
+    if (!u) {
+        return 0;
+    }
+    uint8_t payload[UNDECODED_LEN];
+    payload[0] = PORTA_EVT_UNDECODED;
+    put_u32(&payload[1], u->epoch_secs);
+    put_u32(&payload[5], u->slot_idx);
+    payload[9] = u->slot_len_ds;
+    payload[10] = u->why;
+    return porta_proto_encode(PORTA_MSG_EVENT, payload, sizeof(payload), out, out_cap);
+}
+
+bool porta_proto_parse_undecoded(const porta_frame_t *f, porta_undecoded_event_t *out)
+{
+    if (!f || !out || f->type != PORTA_MSG_EVENT || f->len != UNDECODED_LEN ||
+        f->payload[0] != PORTA_EVT_UNDECODED) {
+        return false;
+    }
+    out->epoch_secs  = get_u32(&f->payload[1]);
+    out->slot_idx    = get_u32(&f->payload[5]);
+    out->slot_len_ds = f->payload[9];
+    out->why         = f->payload[10];
+    return true;
+}
+
 // subtype | epoch(4) | kind(1) | range_index(1) | freq_hz(4) | swr_c(2) | reason(1)
 #define SWEEP_EVENT_LEN (EVENT_HEADER_LEN + 1u + 1u + 4u + 2u + 1u)
 

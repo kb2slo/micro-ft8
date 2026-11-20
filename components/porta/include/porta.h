@@ -112,6 +112,10 @@ void porta_emit_activity(uint32_t slot_idx, uint8_t block_ms, uint8_t first,
                          const uint8_t* levels, const uint8_t* masks, uint8_t n,
                          uint16_t lo_hz, uint16_t hi_hz);
 
+// Slot `slot_idx` of the station's channel, `slot_len_ds` long, was not decoded, for `why`
+// (UNDECODED, porta_undecoded_why_t, see porta_proto.h).
+void porta_emit_undecoded(uint32_t slot_idx, uint8_t slot_len_ds, uint8_t why);
+
 // One SWR sweep progress event (docs/architecture/radio.md, The SWR sweep): `kind` and `reason` are porta_sweep_kind_t and
 // porta_sweep_reason_t wire values. `swr_hundredths` is -1 where there is no reading.
 void porta_emit_sweep(uint8_t kind, uint8_t range_index, uint32_t freq_hz, int swr_hundredths,

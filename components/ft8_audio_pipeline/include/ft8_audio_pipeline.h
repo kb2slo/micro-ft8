@@ -27,6 +27,17 @@ typedef void (*ft8_audio_activity_cb_t)(void* ctx, int64_t slot_idx, int block_m
                                         const uint8_t* levels, const uint8_t* masks, int n,
                                         int lo_hz, int hi_hz);
 
+// Why a slot was not decoded. main.cpp asserts these are porta_proto.h's porta_undecoded_why_t.
+typedef enum {
+    FT8_SLOT_UNDECODED_TX     = 1,  // our transmission overlapped it
+    FT8_SLOT_UNDECODED_BUSY   = 2,  // the decode before it still held the other waterfall
+    FT8_SLOT_UNDECODED_PAUSED = 3,  // decoding is off
+} ft8_slot_undecoded_t;
+
+// Slot `slot_idx` of the station's channel, `slot_ms` long, was not decoded, for `why`. Called on the
+// capture task at the slot's trigger; queue, do not block.
+typedef void (*ft8_audio_undecoded_cb_t)(void* ctx, int64_t slot_idx, int slot_ms, ft8_slot_undecoded_t why);
+
 // One channel the source carries (docs/roadmap/several-channels.md, A channel): which of the
 // RX_MAX_CHANNELS sets of buffers and decode state it uses, its mode, and the waterfall's subdivisions.
 // The buffers are sized at build time for FT8 at t2/f2; a channel that needs more is refused at start.
@@ -51,6 +62,7 @@ typedef struct {
     ft8_audio_should_stop_cb_t should_stop;
     ft8_audio_block_cb_t on_block_processed;
     ft8_audio_activity_cb_t on_activity;  // may be null
+    ft8_audio_undecoded_cb_t on_undecoded;  // may be null
     ft8_audio_take_frontend_us_cb_t take_frontend_us;  // may be null
     // The source's channels, 1..RX_MAX_CHANNELS, which read() fills in this order.
     int n_channels;

@@ -65,3 +65,12 @@ CONFIG_FREERTOS_RUN_TIME_STATS_USING_ESP_TIMER=y
 # The HL2's UDP socket (poe_p4/main/hl2_transport.cpp): it receives 383 packets/s for one receiver at 48 kHz, and
 # 1,263 for four. The default mailbox of 6 is about 16 ms of stream, so a short stall in the task drops packets.
 CONFIG_LWIP_UDP_RECVMBOX_SIZE=32
+
+# The console is PROG's USB-Serial-JTAG alone, not UART0 as well (docs/architecture/main_board.md, Two USB-C
+# ports). UART0's pins go nowhere on this board, and a UART write waits on its 128-byte FIFO at 115200 baud,
+# heard or not: about 87 us a byte on whichever task logs, the decode and capture tasks' slot lines included
+# (docs/architecture/decode.md, Slot lines). The USB console drops a write when no host is there, and after
+# 50 ms when a host is there but nothing reads (usb_serial_jtag_vfs.c, TX_FLUSH_TIMEOUT_US), so it costs a
+# task nothing unless something is recording it.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y

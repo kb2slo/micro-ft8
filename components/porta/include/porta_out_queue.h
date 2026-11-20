@@ -12,8 +12,8 @@ extern "C" {
 
 // Frames waiting for the Port A UART. Only the main loop sends them, every
 // 10 ms, so the queue must hold whatever arrives in between. The largest burst
-// is a slot's decode: RX_MAX_DECODES decodes and the SLOT line, queued at once
-// by the decode task. The 15 left over cover the main loop's once-a-second
+// is a slot's decode: RX_MAX_DECODES decodes, queued at once by the decode
+// task. The 16 left over cover the main loop's once-a-second
 // status landing in the same 10 ms: SLOT_STATE, TX_HUD and a QUEUE_ENTRY for
 // each of up to 13 active QSOs. host_mock's test_porta_out_queue.cpp holds
 // this to RX_MAX_DECODES.
