@@ -452,6 +452,22 @@ file_list.o: ../components/qso_log/file_list.cpp
 $(FILE_LIST_TARGET): $(FILE_LIST_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
+# The QSO store. Its whole build is this block, `all` and `clean` included.
+QSO_STORE_TARGET = host_test_qso_store
+QSO_STORE_SRC_OBJ = qso_store.o qso_store_fields.o qso_store_journal.o qso_store_query.o
+QSO_STORE_OBJ = $(QSO_STORE_SRC_OBJ) test_qso_store.o
+all: $(QSO_STORE_TARGET)
+$(QSO_STORE_SRC_OBJ): %.o: ../components/qso_store/%.cpp
+	$(CXX) $(CXXFLAGS) -I../components/qso_store/include -c $< -o $@
+test_qso_store.o: test_qso_store.cpp
+	$(CXX) $(CXXFLAGS) -I../components/qso_store/include -c $< -o $@
+$(QSO_STORE_TARGET): $(QSO_STORE_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+clean: qso_store_clean
+qso_store_clean:
+	rm -f $(QSO_STORE_OBJ) $(QSO_STORE_TARGET)
+.PHONY: qso_store_clean
+
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
