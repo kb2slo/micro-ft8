@@ -57,6 +57,18 @@ assert.deepStrictEqual(row(Object.assign({ live: true }, looked({}))),
 assert.deepStrictEqual(row(Object.assign({ live: true }, looked({ left: 55 }))), Object.assign({}, plain, { text: '55 to send', tap: 'send', act: 'Send' }));
 assert.strictEqual(row({ live: true, result: { ok: false, error: 'unreachable' } }).text, 'Cannot reach QRZ', 'a problem reads the same');
 
+// A QSO logged with sending by itself on, waiting out the gap between runs, is never shown as up to date
+// (bench, 2026-11-20): the row counts what waits and when it goes, and a tap sends it now.
+const waiting = (n, extra) => row(Object.assign({ live: true, waiting: n, dueText: '9:08 AM' }, looked({}), extra || {}));
+assert.deepStrictEqual(waiting(1), Object.assign({}, plain, { text: '1 QSO waiting \u00b7 sends at 9:08 AM', tap: 'look', act: 'Send' }));
+assert.strictEqual(waiting(3).text, '3 QSOs waiting \u00b7 sends at 9:08 AM');
+assert.strictEqual(waiting(1, { dueText: '' }).text, '1 QSO waiting', 'with no run waiting on the gap, no time is promised');
+assert.strictEqual(waiting(2, looked({ left: 55 })).text, '2 QSOs waiting \u00b7 sends at 9:08 AM', 'what waits is said before older QSOs');
+assert.strictEqual(waiting(1, { live: false }).text, 'Up to date', 'with sending by itself off, nothing waits');
+assert.strictEqual(waiting(0).text, 'Up to date \u00b7 sends as you log', 'once a run has taken it, up to date again');
+assert.strictEqual(waiting(1, { phase: 'sending', sending: 1 }).text, 'Sending 1\u2026', 'a run under way says so');
+assert.strictEqual(waiting(1, { result: { ok: false, error: 'unreachable' } }).text, 'Cannot reach QRZ', 'a problem outranks what waits');
+
 // A problem is amber, in words and a glyph as well as the tint, and says what a tap will do about it.
 const amber = (text, tap) => Object.assign({}, plain, { text, tap, tone: 'amber', glyph: '!', chev: tap === 'setup' });
 assert.deepStrictEqual(row({ result: { ok: false, error: 'auth' } }), amber('QRZ refused the key', 'setup'));

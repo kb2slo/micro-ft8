@@ -7205,7 +7205,11 @@ function kickLogRefresh() {
   });
   // The QRZ row counts the new QSO once it is in the file, when its tab is the one showing; with
   // sending by itself on, the QSO goes up whichever tab is.
-  setTimeout(function () { if (currentView === 'log' || qrzLoad(QRZ_KEY_STORE).live) qrzRun(false, false); }, QRZ_AFTER_QSO_MS);
+  setTimeout(function () {
+    var live = qrzLoad(QRZ_KEY_STORE).live;
+    if (live) qrz.waiting += 1;  // the row says so until a run has taken it (qrzRowModel())
+    if (currentView === 'log' || live) qrzRun(false, false);
+  }, QRZ_AFTER_QSO_MS);
 }
 
 // ===================== QRZ sync =====================
@@ -7224,7 +7228,9 @@ var QRZ_STATE_STORE = 'microft8_qrz_state_v1';  // { budget, clean: the last day
 var QRZ_AFTER_QSO_MS = 6000;
 var QRZ_CALL_TIMEOUT_MS = 20000;
 var QRZ_SEND_TIMEOUT_MS = 90000;  // a batch is up to 10 inserts, one after another (worker.js, QRZ_MAX_INSERTS)
-var qrz = { phase: 'idle', sending: 0, result: null, keyLine: { state: 'none' }, timer: 0 };
+// waiting: QSOs logged with sending by itself on that no run has taken yet; dueAt: when the run waiting out
+// the gap starts, 0 for none; again: a QSO logged while a run was under way, which the run may have missed.
+var qrz = { phase: 'idle', sending: 0, result: null, keyLine: { state: 'none' }, timer: 0, waiting: 0, dueAt: 0, again: false };
 
 // What the QRZ row reads, whether it is amber, the button it shows and what a tap does:
 // 'setup' opens the key on Settings, 'send' sends, 'look' looks again. Pure, so
@@ -7252,6 +7258,12 @@ function qrzRowModel(s) {
   }
   // A key for another callsign's logbook: every QSO here is logged under a call that is not its own.
   if (r.otherCall > 0 && r.held === 0 && r.left === 0) return amber('This key is ' + r.logbook + '\'s logbook', 'setup');
+  // QSOs logged since the last run, waiting out the gap between runs: never "Up to date" while one waits.
+  // A tap sends them now, as a look does with sending by itself on.
+  if (s.live && s.waiting > 0) {
+    return row(s.waiting + (s.waiting === 1 ? ' QSO waiting' : ' QSOs waiting') + (s.dueText ? ' \u00b7 sends at ' + s.dueText : ''),
+               'look', '', '', 'Send');
+  }
   if (r.left > 0) return row(r.left + ' to send', 'send', '', '', 'Send');
   return row(s.live ? 'Up to date \u00b7 sends as you log' : 'Up to date', 'look', '', '\u2713');
 }
@@ -7276,7 +7288,9 @@ function qrzSave(name, value) {
 
 function renderQrzRow() {
   var cred = qrzLoad(QRZ_KEY_STORE);
-  var m = qrzRowModel({ key: !!cred.key, live: !!cred.live, phase: qrz.phase, sending: qrz.sending, result: qrz.result });
+  var m = qrzRowModel({ key: !!cred.key, live: !!cred.live, phase: qrz.phase, sending: qrz.sending, result: qrz.result,
+                       waiting: qrz.waiting,
+                       dueText: qrz.dueAt ? new Date(qrz.dueAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '' });
   // Sending by itself has nobody watching the row: a problem then shows on the tab.
   document.getElementById('tabQrz').hidden = !(cred.live && m.tone === 'amber');
   document.getElementById('qrzLive').value = cred.live ? '1' : '0';
@@ -7341,6 +7355,7 @@ async function qrzReadRows(sinceDay) {
 // operator's tap, which does not wait out the gap between runs the app starts itself (QrzSync.mayRun()).
 async function qrzRun(send, asked) {
   var cred = qrzLoad(QRZ_KEY_STORE);
+  if (cred.key && qrz.phase !== 'idle' && cred.live && !asked) qrz.again = true;
   if (!cred.key || qrz.phase !== 'idle') { renderQrzRow(); return; }
   var state = qrzLoad(QRZ_STATE_STORE);
   // With nothing to show yet, the first look does not wait out the gap either: the row would otherwise
@@ -7350,7 +7365,8 @@ async function qrzRun(send, asked) {
     if (asked || !qrz.result) qrz.result = { ok: false, error: 'wait', waitMin: Math.max(1, Math.ceil(may.waitMs / 60000)) };
     // A QSO logged inside the gap is not left waiting for the next one: the run is made when the gap ends.
     if (cred.live && !asked && !qrz.timer) {
-      qrz.timer = setTimeout(function () { qrz.timer = 0; qrzRun(false, false); }, may.waitMs + 1000);
+      qrz.dueAt = Date.now() + may.waitMs + 1000;
+      qrz.timer = setTimeout(function () { qrz.timer = 0; qrz.dueAt = 0; qrzRun(false, false); }, may.waitMs + 1000);
     }
     renderQrzRow();
     return;
@@ -7380,6 +7396,13 @@ async function qrzRun(send, asked) {
   }
   qrz.result = r;
   qrz.phase = 'idle';
+  // The run read the log when it started, so a QSO logged during it is still waiting: run again for it.
+  if (qrz.again) {
+    qrz.again = false;
+    setTimeout(function () { qrzRun(false, false); }, 0);
+  } else {
+    qrz.waiting = 0;
+  }
   renderQrzRow();
 }
 
