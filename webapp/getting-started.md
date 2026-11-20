@@ -65,7 +65,7 @@ A new or reset station is set to `YOURCALL` in grid `CM97`. Set yours before you
 
 ## Your log
 
-One ADIF file per UTC day, kept on the main board. On **QSOs**, **Download ADI** saves a day and **Download full ADI** saves them all, for your logger, QRZ or LoTW.
+One ADIF file per UTC day, kept on the main board. On **QSOs**, **Download ADI** saves a day and **Download full ADI** saves them all, for your logger or LoTW. With a **QRZ logbook key** in Settings, **Send** uploads what QRZ lacks.
 
 ## Good to know
 

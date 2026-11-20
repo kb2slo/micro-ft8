@@ -533,6 +533,9 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 .navsub .glyph{font-weight:700;margin-right:.25rem}
 .navsub .glyph:empty{display:none}
 .navchev{flex:none;color:var(--accent);font-size:1.3rem;font-weight:700;line-height:1}
+/* The QRZ row on QSOs: a Settings menu row, with the page's one filled button when there is something to send. */
+#qrzRow{border-top:0;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+.qrzact{flex:none;background:var(--accent);color:#fff;border-radius:999px;padding:.3rem .9rem;font-size:.85rem;font-weight:700}
 .navrow.t-amber{background:color-mix(in srgb, var(--warn) 12%, Canvas);box-shadow:inset 3px 0 0 var(--warn)}
 .navrow.t-amber .navico,.navrow.t-amber .navsub,.navrow.t-amber .navchev{color:var(--warn);border-color:var(--warn)}
 .navrow.t-red{background:color-mix(in srgb, var(--danger) 9%, Canvas);box-shadow:inset 3px 0 0 var(--danger)}
@@ -651,6 +654,14 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       <a id=logDownloadAll class=dlink href=#>Download full ADI</a>
       <a id=logClearAll class="dlink dlink-danger" href=#>Clear all ADI files</a>
     </div>
+    <!-- The operator's QRZ logbook against this log (docs/architecture/webapp.md, QRZ sync): what
+         qrzRowModel() says, and one tap for what it offers. -->
+    <button id=qrzRow type=button class=navrow>
+      <span class=navico aria-hidden=true><svg viewBox="0 0 24 24"><path d="M12 16V5M8 9l4-4 4 4"/><path d="M5 15v3a1 1 0 001 1h12a1 1 0 001-1v-3"/></svg></span>
+      <span class=navlines><span class=navmain>QRZ logbook</span><span class=navsub><span class=glyph aria-hidden=true></span><span id=qrzRowText class=navtext>Not set up</span></span></span>
+      <span id=qrzRowAct class=qrzact hidden>Send</span>
+      <span id=qrzRowChev class=navchev aria-hidden=true>&rsaquo;</span>
+    </button>
     <div id=logFree hidden></div>
     <div id=logList></div>
     <div id=logMore hidden><button id=logMoreBtn type=button>Load older QSOs</button></div>
@@ -804,6 +815,21 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
             </select>
           </label>
         </div>
+
+        <!-- The key QRZ gives a logbook for its API, for the QRZ row on QSOs
+             (docs/architecture/webapp.md, QRZ sync). Kept in this browser, not on the station. -->
+        <div class=setrow><label class="fld stack"><span>QRZ logbook key</span><input id=qrzKey data-select=all autocomplete=off autocapitalize=characters spellcheck=false placeholder="XXXX-XXXX-XXXX-XXXX"></label></div>
+        <p id=qrzKeyLine class=setnote hidden></p>
+        <p class=setnote>Kept in this browser only. It goes to QRZ through micro-ft8.kalikstein.com, which does not keep it.</p>
+        <div class=setrow>
+          <label class=fld><span>Send new QSOs to QRZ</span>
+            <select id=qrzLive class=onoff>
+              <option value=0>Off</option>
+              <option value=1>On</option>
+            </select>
+          </label>
+        </div>
+        <p class=setnote>As they are logged, while this app is open, within about five minutes. QSOs logged before this was turned on wait for Send on the QSOs tab.</p>
 
         <!-- Typed references, offline (docs/roadmap/activator-mode.md): format-only (a slash means
              SOTA, otherwise POTA) -- no store, no nearby list, no map and no
@@ -1240,7 +1266,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
   </button>
   <button type=button data-view=log>
     <svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
-    QSOs
+    QSOs<span id=tabQrz class=tabdot aria-label="QRZ needs attention" hidden></span>
   </button>
   <button type=button data-view=tools>
     <svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
@@ -1322,6 +1348,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 <script src=callinfo.js></script>
 <script src=pskr_core.js></script>
 <script src=pskr_live.js></script>
+<script src=qrz_sync_core.js></script>
 <script src=geo_handoff.js></script>
 <script src=updates.js></script>
 <script>
@@ -1912,6 +1939,7 @@ function showView(name) {
   } else if (name === 'log') {
     refreshLogHead(); // whatever was logged while another tab was open, now rather than on the next poll
   }
+  if (name === 'log') qrzRun(false, false);
   if (name === 'tools' && !toolsLoadedOnce) {
     toolsLoadedOnce = true;
     fetchSpaceWx();
@@ -7146,7 +7174,250 @@ function kickLogRefresh() {
   LOG_KICK_MS.forEach(function (ms) {
     setTimeout(function () { refreshLogHead(); refreshOpLog(); }, ms);
   });
+  // The QRZ row counts the new QSO once it is in the file, when its tab is the one showing; with
+  // sending by itself on, the QSO goes up whichever tab is.
+  setTimeout(function () { if (currentView === 'log' || qrzLoad(QRZ_KEY_STORE).live) qrzRun(false, false); }, QRZ_AFTER_QSO_MS);
 }
+
+// ===================== QRZ sync =====================
+// The QRZ row on QSOs and the key on Settings' Station page (docs/architecture/webapp.md, QRZ sync).
+// The steps of a sync, the matching and the call budget are qrz_sync_core.js's; this is what the
+// operator sees and taps, and the calls a run makes: the station's log, and the relay on the release
+// host (docs/architecture/system.md, Third-party services), since QRZ's API cannot be read from a page.
+//
+// It looks by itself, and sends on a tap: a send is a write to the operator's logbook that we cannot
+// take back. With Settings' switch on it also sends, by itself, the QSOs logged from that day on, and
+// only those: whatever was logged before still waits for the tap.
+var QRZ_RELAY = 'https://micro-ft8.kalikstein.com';
+var QRZ_KEY_STORE = 'microft8_qrz_key_v1';      // { key, book: the logbook's callsign once QRZ has said,
+                                                //   live: the UTC day sending by itself was turned on }
+var QRZ_STATE_STORE = 'microft8_qrz_state_v1';  // { budget, clean: the last day a run left nothing unsent }
+var QRZ_AFTER_QSO_MS = 6000;
+var QRZ_CALL_TIMEOUT_MS = 20000;
+var QRZ_SEND_TIMEOUT_MS = 90000;  // a batch is up to 50 inserts, one after another
+var qrz = { phase: 'idle', sending: 0, result: null, keyLine: { state: 'none' }, timer: 0 };
+
+// What the QRZ row reads, whether it is amber, the button it shows and what a tap does:
+// 'setup' opens the key on Settings, 'send' sends, 'look' looks again. Pure, so
+// webapp/tests/test_qrz_row.js runs it.
+function qrzRowModel(s) {
+  var row = function (text, tap, tone, glyph, act) {
+    return { text: text, tap: tap || '', tone: tone || '', glyph: glyph || '', act: act || '', chev: tap === 'setup' };
+  };
+  var amber = function (text, tap) { return row(text, tap, 'amber', '!'); };
+  if (!s.key) return row('Not set up', 'setup');
+  if (s.phase === 'sending') return row('Sending ' + s.sending + '\u2026');
+  if (s.phase === 'looking') return row('Checking\u2026');
+  var r = s.result;
+  if (!r) return row('Not checked yet', 'look');
+  if (!r.ok) {
+    switch (r.error) {
+      case 'auth': return amber('QRZ refused the key', 'setup');
+      case 'unreachable': return amber('Cannot reach QRZ', 'look');
+      case 'station': return amber('No reply from the station', 'look');
+      case 'wait': return amber('Try again in ' + r.waitMin + ' min', 'look');
+      case 'too_many': return amber('Too many QSOs at QRZ to check', 'look');
+      case 'qrz': return amber('QRZ: ' + String(r.reason || 'refused').slice(0, 60), 'look');
+      default: return amber('Could not check', 'look');
+    }
+  }
+  // A key for another callsign's logbook: every QSO here is logged under a call that is not its own.
+  if (r.otherCall > 0 && r.held === 0 && r.left === 0) return amber('This key is ' + r.logbook + '\'s logbook', 'setup');
+  if (r.left > 0) return row(r.left + ' to send', 'send', '', '', 'Send');
+  return row(s.live ? 'Up to date \u00b7 sends as you log' : 'Up to date', 'look', '', '\u2713');
+}
+
+// The line under the key on Settings: what QRZ said of it. Pure, tested with qrzRowModel().
+function qrzKeyLineModel(s) {
+  switch (s.state) {
+    case 'checking': return { text: 'Checking\u2026', warn: false };
+    case 'ok': return { text: s.book + ' logbook' + (s.count != null ? ' \u00b7 ' + Number(s.count).toLocaleString('en-US') + ' QSOs' : ''), warn: false };
+    case 'refused': return { text: 'QRZ refused this key', warn: true };
+    case 'unchecked': return { text: 'Saved. Cannot reach QRZ to check it', warn: true };
+    default: return { text: '', warn: false };
+  }
+}
+
+function qrzLoad(name) {
+  try { return JSON.parse(localStorage.getItem(name) || 'null') || {}; } catch (e) { return {}; }
+}
+function qrzSave(name, value) {
+  try { localStorage.setItem(name, JSON.stringify(value)); } catch (e) { /* kept for this page only */ }
+}
+
+function renderQrzRow() {
+  var cred = qrzLoad(QRZ_KEY_STORE);
+  var m = qrzRowModel({ key: !!cred.key, live: !!cred.live, phase: qrz.phase, sending: qrz.sending, result: qrz.result });
+  // Sending by itself has nobody watching the row: a problem then shows on the tab.
+  document.getElementById('tabQrz').hidden = !(cred.live && m.tone === 'amber');
+  document.getElementById('qrzLive').value = cred.live ? '1' : '0';
+  document.getElementById('qrzLive').disabled = !cred.key;
+  var rowEl = document.getElementById('qrzRow');
+  rowEl.classList.toggle('t-amber', m.tone === 'amber');
+  rowEl.querySelector('.glyph').textContent = m.glyph;
+  document.getElementById('qrzRowText').textContent = m.text;
+  document.getElementById('qrzRowAct').hidden = !m.act;
+  document.getElementById('qrzRowAct').textContent = m.act;
+  document.getElementById('qrzRowChev').hidden = !m.chev;
+  rowEl.dataset.tap = m.tap;
+  var line = qrzKeyLineModel(qrz.keyLine);
+  var lineEl = document.getElementById('qrzKeyLine');
+  lineEl.hidden = !line.text;
+  lineEl.textContent = line.text;
+  lineEl.classList.toggle('warn', line.warn);
+}
+
+// One call to the relay. A string body goes as plain text, which keeps the post a simple request:
+// no preflight, so one Worker request a call.
+async function qrzRelay(path, body, timeoutMs) {
+  var ac = new AbortController();
+  var timer = setTimeout(function () { ac.abort(); }, timeoutMs || (path === '/qrz/insert' ? QRZ_SEND_TIMEOUT_MS : QRZ_CALL_TIMEOUT_MS));
+  try {
+    var r = await fetch(QRZ_RELAY + path, { method: 'POST', body: JSON.stringify(body), cache: 'no-store', signal: ac.signal });
+    return await r.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// The station's rows from the day files a run reads, each with its file's date. Its own walk of the
+// log, apart from the list's, so a sync neither waits on what the list has loaded nor moves it.
+async function qrzReadRows(sinceDay) {
+  var files = [];
+  for (var skip = 0; ;) {
+    var j = await logFetchJson('/api/log/files?skip=' + skip + '&take=30');
+    if (!j.ok) throw new Error(j.why || 'files failed');
+    var page = j.files || [];
+    files = files.concat(page);
+    skip += page.length;
+    if (page.length < 30) break;
+  }
+  var rows = [];
+  var days = QrzSync.daysToRead(files, sinceDay);
+  for (var d = 0; d < days.length; d++) {
+    for (var at = 0; ;) {
+      var e = await logFetchJson('/api/log/entries?file=' + encodeURIComponent(days[d]) + '&skip=' + at + '&take=' + LOG_ENTRY_FETCH);
+      if (!e.ok) throw new Error(e.why || 'entries failed');
+      var got = e.entries || [];
+      for (var k = 0; k < got.length; k++) rows.push(Object.assign({}, got[k], { date: days[d].slice(0, 8) }));
+      at += got.length;
+      if (!got.length) break;  // not "fewer than asked": a page can come back short with more to follow
+    }
+  }
+  return rows;
+}
+
+// One run: a look, or with `send` a look and then the sending of everything QRZ lacks. With the
+// switch on, a look also sends the QSOs logged from the day it was turned on. `asked` is the
+// operator's tap, which does not wait out the gap between runs the app starts itself (QrzSync.mayRun()).
+async function qrzRun(send, asked) {
+  var cred = qrzLoad(QRZ_KEY_STORE);
+  if (!cred.key || qrz.phase !== 'idle') { renderQrzRow(); return; }
+  var state = qrzLoad(QRZ_STATE_STORE);
+  // With nothing to show yet, the first look does not wait out the gap either: the row would otherwise
+  // sit on "Not checked yet" for five minutes after the key's own check, or after a reload.
+  var may = QrzSync.mayRun(state.budget, Date.now(), asked || !qrz.result);
+  if (!may.ok) {
+    if (asked || !qrz.result) qrz.result = { ok: false, error: 'wait', waitMin: Math.max(1, Math.ceil(may.waitMs / 60000)) };
+    // A QSO logged inside the gap is not left waiting for the next one: the run is made when the gap ends.
+    if (cred.live && !asked && !qrz.timer) {
+      qrz.timer = setTimeout(function () { qrz.timer = 0; qrzRun(false, false); }, may.waitMs + 1000);
+    }
+    renderQrzRow();
+    return;
+  }
+  qrz.phase = send ? 'sending' : 'looking';
+  qrz.sending = send && qrz.result ? qrz.result.left || 0 : 0;
+  renderQrzRow();
+  var r = await QrzSync.run({
+    key: cred.key, logbook: cred.book || '', version: appServed,
+    send: send || !!cred.live, sendFrom: send ? '' : cred.live || '',
+    maxCalls: QrzSync.callsLeft(state.budget, Date.now()),
+    relay: qrzRelay,
+    readRows: function () { return qrzReadRows(state.clean || ''); },
+    buildAdif: function (q) { return buildAdifRecord(q, q.date); }
+  });
+  state.budget = QrzSync.noteRun(state.budget, Date.now(), r.calls, r.ok);
+  if (r.ok && r.cleanThrough) state.clean = r.cleanThrough;
+  qrzSave(QRZ_STATE_STORE, state);
+  if (r.error === 'budget') {
+    var again = QrzSync.mayRun(state.budget, Date.now(), true);
+    r = { ok: false, error: 'wait', waitMin: Math.max(1, Math.ceil(again.waitMs / 60000)) };
+  } else {
+    r.left = r.ok ? r.unsent : 0;
+    r.otherCall = r.skipped.filter(function (x) { return x.why === 'callsign'; }).length;
+    if (r.ok && !cred.book && r.logbook) qrzSave(QRZ_KEY_STORE, Object.assign({}, cred, { book: r.logbook }));
+    if (send && r.refused.length) failMsg('QRZ refused ' + r.refused[0].row.call + ': ' + (r.refused[0].reason || 'no reason given'));
+  }
+  qrz.result = r;
+  qrz.phase = 'idle';
+  renderQrzRow();
+}
+
+document.getElementById('qrzRow').onclick = function () {
+  switch (this.dataset.tap) {
+    case 'setup':
+      showSetPage('station');
+      showView('settings');
+      document.getElementById('qrzKey').focus();
+      break;
+    case 'send':
+      qrzRun(true, true);
+      break;
+    case 'look':
+      qrzRun(false, true);
+      break;
+    default:
+      break;
+  }
+};
+
+// A key typed or cleared. QRZ is asked what logbook it opens, which also says whether it is a key at all.
+document.getElementById('qrzKey').value = qrzLoad(QRZ_KEY_STORE).key || '';
+if (qrzLoad(QRZ_KEY_STORE).book) qrz.keyLine = { state: 'ok', book: qrzLoad(QRZ_KEY_STORE).book };
+document.getElementById('qrzKey').onchange = async function () {
+  var key = this.value.trim();
+  qrz.result = null;
+  try { localStorage.removeItem(QRZ_STATE_STORE); } catch (e) { /* nothing kept to forget */ }
+  if (!key) {
+    try { localStorage.removeItem(QRZ_KEY_STORE); } catch (e) { /* as above */ }
+    qrz.keyLine = { state: 'none' };
+    renderQrzRow();
+    return;
+  }
+  qrzSave(QRZ_KEY_STORE, { key: key });
+  qrz.keyLine = { state: 'checking' };
+  renderQrzRow();
+  var reply = null;
+  try { reply = await qrzRelay('/qrz/status', { key: key, app: appServed || undefined }); } catch (e) { reply = null; }
+  if (qrzLoad(QRZ_KEY_STORE).key !== key) return;  // changed again while QRZ was asked
+  if (reply && reply.ok) {
+    qrzSave(QRZ_KEY_STORE, { key: key, book: reply.callsign });  // a new key starts with sending by itself off
+    qrz.keyLine = { state: 'ok', book: reply.callsign, count: reply.count };
+  } else if (reply && reply.error === 'auth') {
+    qrz.keyLine = { state: 'refused' };
+    qrz.result = { ok: false, error: 'auth' };
+  } else {
+    qrz.keyLine = { state: 'unchecked' };
+  }
+  var state = qrzLoad(QRZ_STATE_STORE);
+  state.budget = QrzSync.noteRun(state.budget, Date.now(), 1, !!(reply && reply.ok));
+  qrzSave(QRZ_STATE_STORE, state);
+  renderQrzRow();
+  if (reply && reply.ok) qrzRun(false, true);  // a key QRZ takes is looked with at once
+};
+
+// Sending by itself, from today on: the day is kept so that turning it on never sends what was logged before.
+document.getElementById('qrzLive').onchange = function () {
+  var cred = qrzLoad(QRZ_KEY_STORE);
+  if (!cred.key) { renderQrzRow(); return; }
+  if (this.value === '1') cred.live = utcDayFile().slice(0, 8);
+  else delete cred.live;
+  qrzSave(QRZ_KEY_STORE, cred);
+  renderQrzRow();
+  if (cred.live) qrzRun(false, true);
+};
+renderQrzRow();
 
 // ===================== boot =====================
 
