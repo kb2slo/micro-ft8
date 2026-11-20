@@ -6,8 +6,10 @@
 
 // Active: finds the HL2 by discovery, streams one receiver at 48 kHz on the station's dial, and logs the stream's
 // health every 15 s; its I/Q feeds decode (hl2_audio_*, below). The first activation brings up the EMAC and IP101 with a
-// link-local address, which then stay up. Inactive: sends stop and holds the stream off. Main loop only. False if
-// Ethernet could not start (logged); it is not retried until the P4 restarts.
+// link-local address, which then stay up; it starts them on the HL2's own task and returns at once, since they take
+// seconds. Inactive: sends stop and holds the stream off. Main loop only. False if the HL2 could not be started: its
+// task, or Ethernet on an earlier activation (each logged). An Ethernet that fails on this activation is logged by the
+// task and the HL2 stays off; it is not retried until the P4 restarts.
 bool hl2_transport_set_active(bool active);
 
 // The station's dial, in hertz: the receiver's NCO follows it, retuning a live stream, and the dial history notes

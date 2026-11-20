@@ -69,6 +69,10 @@ enum class Hl2State : int { Off, NoLink, Silent, Busy, Found, Streaming, Lost };
 static std::atomic<int> s_state{static_cast<int>(Hl2State::Off)};
 static std::atomic<int64_t> s_overload_until_us{0};  // the ADC clipped with the LNA at its floor until then
 
+// Ethernet could not start: a half-started EMAC is not installed twice, so the HL2 stays off until the P4
+// restarts. Set by the HL2 task, which starts Ethernet, and read by the main loop.
+static std::atomic<bool> s_failed{false};
+
 static void set_state(Hl2State st)
 {
     s_state.store(static_cast<int>(st));
@@ -451,6 +455,15 @@ static void stream(int sock, const sockaddr_in& hl2)
 
 static void hl2_task(void* /*arg*/)
 {
+    // Ethernet starts here rather than in hl2_transport_set_active(): installing the driver and resetting the
+    // PHY takes seconds, and that runs on the main loop, which answers the sidekick; choosing the HL2 there held
+    // it 1.9 s and the choice timed out (bench, 2026-11-20).
+    if (!start_ethernet()) {
+        debug_log_line("HL2 Ethernet could not start; no HL2 receive");
+        s_failed = true;
+        vTaskDelete(nullptr);
+        return;
+    }
     // The front end's design calls libm (soft double), so it runs here, before any stream, on this task's stack.
     if (iq_frontend_init(&s_frontend, &kHl2RxFrontendConfig) != IQ_FRONTEND_OK) {
         ESP_LOGE(TAG, "I/Q front end init failed: the HL2 cannot be decoded");
@@ -500,8 +513,7 @@ static void hl2_task(void* /*arg*/)
     vTaskDelete(nullptr);
 }
 
-static bool s_started = false;
-static bool s_failed = false;  // a half-started EMAC is not installed twice
+static bool s_started = false;  // main loop only
 
 bool hl2_transport_set_active(bool active)
 {
@@ -516,24 +528,21 @@ bool hl2_transport_set_active(bool active)
         return false;
     }
     if (!s_started) {
-        s_failed = true;  // until every step below has succeeded
         if (!s_events) {
             s_events = xEventGroupCreate();
         }
         if (!s_ring) {
             s_ring = xStreamBufferCreateStatic(kRingBytes, kFrameBytes, s_ring_storage, &s_ring_struct);
         }
-        if (!s_events || !s_ring || !start_ethernet()) {
-            debug_log_line("HL2 Ethernet could not start; no HL2 receive");
-            return false;
-        }
-        // Core 0, with the main loop; core 1 is decode's (docs/architecture/main_board.md, Tasks).
-        if (xTaskCreatePinnedToCore(hl2_task, "hl2_rx", 6144, nullptr, 5, nullptr, 0) != pdPASS) {
+        // Core 0, with the main loop; core 1 is decode's (docs/architecture/main_board.md, Tasks). The task starts
+        // Ethernet, off this loop (hl2_task()).
+        if (!s_events || !s_ring || xTaskCreatePinnedToCore(hl2_task, "hl2_rx", 6144, nullptr, 5, nullptr, 0) != pdPASS) {
             ESP_LOGE(TAG, "could not create the HL2 task");
+            debug_log_line("HL2 Ethernet could not start; no HL2 receive");
+            s_failed = true;
             return false;
         }
         s_started = true;
-        s_failed = false;
     }
     if (s_state.load() == static_cast<int>(Hl2State::Off)) {
         set_state((xEventGroupGetBits(s_events) & kLinkUp) ? Hl2State::Silent : Hl2State::NoLink);
