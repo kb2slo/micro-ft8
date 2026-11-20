@@ -31,6 +31,7 @@ function extractFunction(text, name) {
 const ctx = vm.createContext({});
 vm.runInContext(extractFunction(src, 'qrzRowModel'), ctx);
 vm.runInContext(extractFunction(src, 'qrzKeyLineModel'), ctx);
+vm.runInContext(/var QRZ_CLOCK_MARGIN_MS = \d+;/.exec(src)[0] + '\n' + extractFunction(src, 'qrzQsoSeen'), ctx);
 const row = (s) => JSON.parse(JSON.stringify(ctx.qrzRowModel(Object.assign({ key: true, live: false, phase: 'idle', sending: 0, result: null }, s))));
 const looked = (r) => ({ result: Object.assign({ ok: true, logbook: 'K1ABC', held: 92, left: 0, otherCall: 0 }, r) });
 const plain = { tone: '', glyph: '', act: '', chev: false };
@@ -68,6 +69,16 @@ assert.strictEqual(waiting(1, { live: false }).text, 'Up to date', 'with sending
 assert.strictEqual(waiting(0).text, 'Up to date \u00b7 sends as you log', 'once a run has taken it, up to date again');
 assert.strictEqual(waiting(1, { phase: 'sending', sending: 1 }).text, 'Sending 1\u2026', 'a run under way says so');
 assert.strictEqual(waiting(1, { result: { ok: false, error: 'unreachable' } }).text, 'Cannot reach QRZ', 'a problem outranks what waits');
+
+// A QSO's after-log check that runs late (the page slept) is not counted as waiting when a run since has
+// read the log (bench, 2026-11-20: "1 QSO waiting" for a QSO logged 15 min before the run that sent it).
+const T = Date.UTC(2026, 10, 20, 16, 4, 15);
+assert.strictEqual(ctx.qrzQsoSeen(T, T + 15 * 60000), true, 'read 15 min after it was logged');
+assert.strictEqual(ctx.qrzQsoSeen(T, T - 60000), false, 'a run that read before it was logged missed it');
+assert.strictEqual(ctx.qrzQsoSeen(T, T + 5000), false, 'within the clocks\' margin it still counts as waiting');
+assert.strictEqual(ctx.qrzQsoSeen(T, T + 11000), true, 'past the margin it is seen');
+assert.strictEqual(ctx.qrzQsoSeen(0, T), false, 'with no time from the station it counts as waiting');
+assert.strictEqual(ctx.qrzQsoSeen(T, 0), false, 'with no run yet it counts as waiting');
 
 // A problem is amber, in words and a glyph as well as the tint, and says what a tap will do about it.
 const amber = (text, tap) => Object.assign({}, plain, { text, tap, tone: 'amber', glyph: '!', chev: tap === 'setup' });

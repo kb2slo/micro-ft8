@@ -78,8 +78,8 @@ async function overlap() {
 }
 
 // The wiring, pinned on the source as test_decode_tap.js pins tryReply(): a transmission that turns active
-// with a message that logs a QSO starts a refresh, and so does opening the QSOs tab once it has loaded.
-assert(/if \(e\.active && !\(txHud && txHud\.active\)\) \{\s*txKeyedAt = Date\.now\(\);\s*if \(txLogsQso\(e\.x\)\) kickLogRefresh\(\);/.test(src),
+// with a message that logs a QSO starts a refresh, carrying the station's time for it (qrzQsoSeen()), and so does opening the QSOs tab once it has loaded.
+assert(/if \(e\.active && !\(txHud && txHud\.active\)\) \{\s*txKeyedAt = Date\.now\(\);\s*if \(txLogsQso\(e\.x\)\) kickLogRefresh\(e\.t \? e\.t \* 1000 : 0\);/.test(src),
   'a transmission that logs a QSO starts a refresh as it begins');
 assert(/\} else if \(name === 'log'\) \{\s*refreshLogHead\(\);/.test(src), 'opening the QSOs tab refreshes it');
 
