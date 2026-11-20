@@ -46,7 +46,7 @@ You need the main board and sidekick on their Grove cable, your QMX (validated o
 
 ## 4. Set up your station
 
-A new or reset station is set to `YOURCALL` in grid `CM97`. Set yours before you transmit.
+A new or reset station is set to `YOURCALL` in grid `CM97`, and will not transmit, not even Tune, until you set your callsign.
 
 - Tap **Settings**, then **Station**. Enter your **Call** and your **Grid**; each saves when you leave the field. **Set from GPS →** uses the phone's location, and needs internet.
 - Back in **Settings**, tap **Radio & bands** and turn on the **Bands** you want: once the QMX is connected, only its own bands are offered.

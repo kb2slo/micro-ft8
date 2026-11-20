@@ -15,6 +15,7 @@ int porta_p4_station_freq_hz(void);
 const char *porta_p4_sync_vfo(const char *reason);
 int porta_p4_station_offset_hz(void);
 int porta_p4_station_offset_src(void);  // 0=RANDOM, 1=CURSOR, 2=RX
+bool porta_p4_station_call_ok(void);  // a callsign we may transmit under (tx_call_ok(), tx_ready.h)
 int porta_p4_station_radio(void);  // Station's radio= (kStationRadioQmx, kStationRadioHl2)
 bool porta_p4_tune_active(void);  // Tune is keying the radio (it never sets tx_active)
 // The one stop control (Port A TX_CANCEL): the transmission, Tune, an amplifier prime and an SWR sweep. Main loop.
