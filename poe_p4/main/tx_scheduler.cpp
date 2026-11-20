@@ -247,6 +247,12 @@ static TxStart tx_start(int skip_tones, std::string &skip_reason) {
         skip_reason = kSwrReason;
         return TxStart::Skipped;
     }
+    if (!porta_p4_station_call_ok()) {
+        // The last guard: an entry queued before the call was cleared back to a placeholder
+        // (tx_ready.h). It stays armed and goes out once a real call is set.
+        skip_reason = "no callsign set";
+        return TxStart::Skipped;
+    }
     if (!rtc_is_set()) {
         // Until a browser sets the clock the slot phase is uptime's (docs/architecture/time.md),
         // so a transmission would land in no one's period. The entry stays armed and goes out

@@ -182,6 +182,10 @@ static void request_amp_band_prime() {
     if (!station_amp_prime_on_band_change(s_station)) {
         return;
     }
+    if (!porta_p4_station_call_ok()) {
+        ESP_LOGW(TAG, "amplifier band prime skipped: no callsign set");
+        return;
+    }
     if (s_tune || swr_sweep_busy() || amp_band_prime_busy()) {
         ESP_LOGW(TAG, "amplifier band prime skipped: another radio operation is active");
         return;
@@ -379,6 +383,11 @@ bool porta_p4_station_amp_swr_guard(void) {
 int porta_p4_station_tx_min_delay_ms(void) {
     ensure_seeded();
     return station_tx_min_delay_ms(s_station);
+}
+
+bool porta_p4_station_call_ok(void) {
+    ensure_seeded();
+    return tx_call_ok(s_station.call.c_str());
 }
 
 int porta_p4_station_offset_src(void) {
@@ -687,6 +696,9 @@ const char *porta_host_sweep_start(const porta_sweep_range_t *ranges, size_t cou
     if (!io) {
         return "this radio cannot sweep";
     }
+    if (!porta_p4_station_call_ok()) {
+        return "No callsign set";
+    }
     if (!radio_control_ready()) {
         return "CAT not ready";
     }
@@ -956,6 +968,9 @@ const char *porta_host_tune(bool on) {
     if (on && amp_band_prime_busy()) {
         return "amp band prime is running";
     }
+    if (on && !porta_p4_station_call_ok()) {
+        return "No callsign set";
+    }
     if (on && !radio_control_ready()) {
         return "CAT not ready";
     }
@@ -1037,7 +1052,7 @@ const char *porta_host_radio_read(void) {
 // queue entry with no radio is skipped slot after slot without using a try, so
 // it would key by itself when a radio was plugged in, however much later.
 static const char *tx_refusal(void) {
-    return tx_ready_refusal(radio_control_ready(), radio_select_audio_ready(), s_decode_failed);
+    return tx_ready_refusal(porta_p4_station_call_ok(), radio_control_ready(), radio_select_audio_ready(), s_decode_failed);
 }
 
 const char *porta_host_cq_call(void) {
