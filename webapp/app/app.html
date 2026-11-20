@@ -800,9 +800,10 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         <div class=setrow>
           <label class=fld><span>Offset src</span>
             <select id=offset_src>
+              <!-- Values are the firmware's (components/autoseq/include/tx_offset.h): 1 is the cursor, Offset Hz -->
               <option value=0>Random</option>
-              <option value=1>RX</option>
-              <option value=2>Fixed</option>
+              <option value=2>RX</option>
+              <option value=1>Fixed</option>
             </select>
           </label>
         </div>
