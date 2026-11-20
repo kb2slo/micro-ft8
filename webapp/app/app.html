@@ -777,6 +777,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         <p id=gridHint class=setnote>The CQ carries the first four characters.</p>
         <button id=gridLocateBtn type=button class="dlink setlink">Set from GPS &rarr;</button>
         <div class=setrow><label class=fld><span>Comment</span><input id=comment1 data-select=off:prose autocomplete=off></label></div>
+        <p id=commentHint class=setnote></p>
 
         <div class="hd sep">Calling CQ</div>
         <div class=setrow><div class=diagrow><span>Sends</span><span id=sheetSendsText>&mdash;</span></div></div>
@@ -2294,6 +2295,7 @@ function setForm(cfg) {
     el.value = String(cfg[k]);
   });
   syncAmpDetail();
+  updateCommentHint(cfg);  // after the loop: it reads the Comment field the loop just filled
 }
 
 // Settings › Amplifier shows its detail only while the switch is On.
@@ -2333,6 +2335,25 @@ function updateGridHint() {
   }
 }
 document.getElementById('grid').addEventListener('input', updateGridHint);
+
+// What a QSO's comment will read: /Radio and /Grid filled in as the main board fills them when it
+// logs (expand_comment_macros(), components/qso_log/adif_logger.cpp). /Radio is the first word of
+// the radio's band version, "QMX" before it is read (adif_radio_name()). Pure, so
+// webapp/tests/test_comment_hint.js runs it. '' when the comment has no macro to fill.
+function commentPreview(comment, model, grid) {
+  var c = String(comment || '');
+  if (c.indexOf('/Radio') < 0 && c.indexOf('/Grid') < 0) return '';
+  var radio = String(model || '').split(' ')[0] || 'QMX';
+  return c.split('/Radio').join(radio).split('/Grid').join(String(grid || ''));
+}
+function updateCommentHint(cfg) {
+  var c = cfg && cfg.grid !== undefined ? cfg : lastCfg;
+  var shown = commentPreview(document.getElementById('comment1').value, c.radio_model, c.grid);
+  var hint = document.getElementById('commentHint');
+  hint.hidden = !shown;
+  hint.textContent = shown ? 'Logged as: ' + shown : '';
+}
+document.getElementById('comment1').addEventListener('input', function () { updateCommentHint(); });
 
 // The Station page's fields with handlers of their own (webapp.md, Settings › Station): cq_mod,
 // grid, tries, offset and offset_src are not in the

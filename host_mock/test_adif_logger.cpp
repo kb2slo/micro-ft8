@@ -146,6 +146,14 @@ int main() {
         fprintf(stderr, "%d FAIL(s)\n", g_fails);
         return 1;
     }
+    // "/Radio" names the radio as it names itself: the first word of its band version, so a QMX+
+    // logs as one; "QMX" before the radio has been read.
+    expect_true(adif_radio_name("QMX 60-15m") == "QMX", "a QMX");
+    expect_true(adif_radio_name("QMX+ 160-6m") == "QMX+", "a QMX+");
+    expect_true(adif_radio_name("") == "QMX", "not read yet: the QMX, the radio that transmits");
+    expect_true(adif_radio_name(nullptr) == "QMX", "no model at all");
+    expect_true(adif_radio_name("QMX") == "QMX", "a model of one word");
+
     printf("PASS: adif_log_entry expands comment macros the same way on both boards\n");
     return 0;
 }

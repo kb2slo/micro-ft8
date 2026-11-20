@@ -28,6 +28,16 @@ std::string expand_comment_macros(const std::string& src, const std::string& rad
     return out;
 }
 
+}  // namespace
+
+std::string adif_radio_name(const char* model) {
+    std::string word;
+    for (const char* p = model ? model : ""; *p && *p != ' '; ++p) word += *p;
+    return word.empty() ? "QMX" : word;
+}
+
+namespace {
+
 // This app's own band names are lowercase, no unit ("20m"); POTA requires
 // BAND with a unit, upper-case (docs/architecture/logging.md, What POTA and SOTA require). ADIF's
 // own band enum is exactly the band name upper-cased plus the trailing unit

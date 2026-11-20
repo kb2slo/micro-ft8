@@ -39,11 +39,17 @@ struct AdifStationSnapshot {
     std::string band_name;      // this app's own band name, e.g. "20m" -- formatted to
                                  // the ADIF tag value ("20M") inside adif_log_entry()
     std::string raw_comment;    // Station's comment1, not yet macro-expanded
-    std::string radio_name;     // for the "/Radio" comment macro (radio_profile_name())
+    std::string radio_name;     // for the "/Radio" comment macro (adif_radio_name())
     std::string grid_for_macro; // for the "/Grid" comment macro (the station grid)
     std::string act_refs;       // Station's act_refs, e.g. "POTA:US-1234,SOTA:W7O/CC-001",
                                  // split into my_pota_ref/my_sota_ref inside adif_log_entry()
 };
+
+// The "/Radio" macro's value: the first word of the radio's band version, as the radio reports it
+// (radio_config_t::model, "QMX 60-15m", "QMX+ 160-6m"), so a QMX+ logs as one; "QMX" before the radio
+// has been read or for an empty model, since only the QMX transmits (row mg9c). webapp/app/app.html's
+// commentPreview() reads the same word for the line under Settings' Comment.
+std::string adif_radio_name(const char* model);
 
 // Expands "/Radio"/"/Grid" in the comment
 // and calls adif_log_qso() above. Returns the same as adif_log_qso().
