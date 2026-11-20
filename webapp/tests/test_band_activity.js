@@ -3,7 +3,7 @@
 // activityLabel() and the clock cue's functions, so ACTIVITY events (d 8) land in the right slot
 // and block, a later slot starts over, an earlier one is dropped, the frequency strip puts each
 // cell where the TX cursor would be for that frequency, as tall as the share of the slot it was
-// heard, the strip and the "≈N signals" label show only for the slot the bar is showing, and the
+// heard, the strip and the "≈N at ≥ -16 dB" label show only for the slot the bar is showing, and the
 // label and strip read the signals' span, not their edges.
 'use strict';
 const vm = require('vm');
@@ -37,6 +37,17 @@ for (const name of ['PASSBAND_HZ_MIN', 'PASSBAND_HZ_MAX', 'ACTIVITY_STRIP_MIN', 
   const m = new RegExp('\\b' + name + ' = ([0-9.]+)').exec(src);
   assert(m, name + ' not found in app.html');
   ctx[name] = Number(m[1]);
+}
+{
+  // The label's floor is the main board's threshold said as an SNR: FT8_ACTIVITY_THRESHOLD_CODES in the
+  // waterfall's 0.5 dB codes, in a 6.25 Hz bin, as dB in 2500 Hz, rounded.
+  const m = /\bACTIVITY_MIN_SNR_DB = (-?\d+);/.exec(src);
+  assert(m, 'ACTIVITY_MIN_SNR_DB not found in app.html');
+  ctx.ACTIVITY_MIN_SNR_DB = Number(m[1]);
+  const hdr = fs.readFileSync(path.join(__dirname, '..', '..', 'components', 'ft8_audio_pipeline', 'include', 'ft8_block_activity.h'), 'utf8');
+  const codes = Number(/#define FT8_ACTIVITY_THRESHOLD_CODES (\d+)/.exec(hdr)[1]);
+  assert.strictEqual(ctx.ACTIVITY_MIN_SNR_DB, Math.round(codes / 2 + 10 * Math.log10(6.25 / 2500)),
+    'the label names the threshold the main board counts at');
 }
 vm.createContext(ctx);
 vm.runInContext(['noteActivity', 'activityStrip', 'activityCount', 'activityLabel', 'clockCue', 'tallySlot', 'noteBandEvent'].map((n) => extractFunction(src, n)).join('\n'), ctx);
@@ -107,13 +118,13 @@ assert.strictEqual(lab([]), '', 'no label before any block');
 assert.strictEqual(lab([0, 0, 0, 0, 20]), '', 'no label from blocks before 0.8 s');
 const lv = [];
 lv[5] = 12; lv[6] = 14; lv[7] = 13; lv[8] = 40; lv[9] = 0;
-assert.strictEqual(lab(lv), '≈13 signals', 'the median, so one burst or gap does not move it');
+assert.strictEqual(lab(lv), '≈13 at \u2265 -16 dB', 'the median, so one burst or gap does not move it, at the floor it counts from');
 const quiet = []; quiet[10] = 1; quiet[11] = 2; quiet[12] = 0;
 assert.strictEqual(lab(quiet), 'Quiet', "the radio's own noise (1 or 2) reads Quiet");
 const three = []; three[10] = 3;
-assert.strictEqual(lab(three), '≈3 signals', 'three is a count');
+assert.strictEqual(lab(three), '≈3 at \u2265 -16 dB', 'three is a count');
 const busy = []; busy[10] = 31; busy[11] = 35; busy[12] = 30;
-assert.strictEqual(lab(busy), '≈' + ctx.ACTIVITY_COUNT_CAP + '+ signals', 'past the cap reads N+');
+assert.strictEqual(lab(busy), '≈' + ctx.ACTIVITY_COUNT_CAP + '+ at \u2265 -16 dB', 'past the cap reads N+');
 const tail = []; tail[90] = 25;
 assert.strictEqual(lab(tail), '', 'blocks after the signals end are not read');
 assert.strictEqual(lab(lv, SI - 1), '', 'no label for another slot');
