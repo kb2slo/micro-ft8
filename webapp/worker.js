@@ -143,7 +143,10 @@ export function qrzUserAgent(app) {
   return `Micro-FT8/${version} (relay ${QRZ_RELAY_REVISION}; https://micro-ft8.kalikstein.com)`;
 }
 const QRZ_PAGE = 250; // records asked of QRZ at a time, the page its documentation suggests
-const QRZ_MAX_INSERTS = 50; // QRZ takes one QSO a call, and the free plan allows 50 calls out a request
+// QRZ takes one QSO a call, so a request's CPU time grows with its batch: about 0.4 ms an insert, and a
+// batch of 50 took 20.7 ms against the free plan's 10 ms a request (Cloudflare's analytics, 2026-11-20;
+// it was let through, as an occasional overrun is, and a steady one is refused with error 1102).
+const QRZ_MAX_INSERTS = 10;
 const QRZ_MAX_BODY = 64 * 1024;
 const QRZ_MAX_RECORD = 2000;
 // Not QRZ's rule for a key, which it does not publish: enough to turn away what is plainly not one before

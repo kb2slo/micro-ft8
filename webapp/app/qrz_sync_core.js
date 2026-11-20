@@ -17,7 +17,7 @@ var QrzSync = (function () {
   var WINDOW_MIN = 30;
   // A QSO dated before this was logged with the clock unset. It is neither matched nor sent.
   var FIRST_YEAR = 2000;
-  var BATCH = 50;        // records one insert request carries: worker.js, QRZ_MAX_INSERTS
+  var BATCH = 10;        // records one insert request carries: worker.js, QRZ_MAX_INSERTS, which says why
   var MAX_PAGES = 40;    // of 250 records: where a pull gives up, 10,000 records in the days asked for
 
   // The relay is ours and its free plan has a daily limit (docs/architecture/system.md, Third-party

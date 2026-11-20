@@ -141,7 +141,7 @@ globalThis.fetch = async (url, init) => {
 
   // Refused before QRZ is asked.
   calls.length = 0;
-  const many = Array.from({ length: 51 }, () => '<call:4>AA1A<eor>');
+  const many = Array.from({ length: 11 }, () => '<call:4>AA1A<eor>');  // one over QRZ_MAX_INSERTS
   for (const [p, body, status, error] of [
     ['/qrz/status', '{not json', 400, 'bad_request'],
     ['/qrz/status', {}, 400, 'bad_key'],
