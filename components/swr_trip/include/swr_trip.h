@@ -47,3 +47,14 @@ inline bool swr_trip_operator_start(SwrTrip& t) {
     t.stopped = false;
     return was_stopped;
 }
+
+// Tune is stopped by the P4 above this SWR (docs/architecture/radio.md, SWR protection trips on a QMX): the
+// QMX's own Protection > SWR threshold at its default. The radio's protection did not stop Tune at SWR 9.98 on
+// 1_04_010 (2026-11-02), so the P4 reads the SWR Tune reports and ends it itself.
+constexpr float kSwrTuneLimit = 3.0f;
+
+// A Tune SWR reading (`swr` < 0: none yet): true when Tune must end. One reading is enough: SWR Tune's readings
+// stray by 0.3 at most (radio.md, QMX SWR Tune over CAT), and a carrier into a bad antenna should not run on.
+inline bool swr_tune_over(float swr) {
+    return swr > kSwrTuneLimit;
+}

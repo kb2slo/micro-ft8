@@ -2744,8 +2744,8 @@ function fmtHzMHz(hz) { return (hz / 1e6).toFixed(4).replace(/0+$/, '').replace(
 // ===================== Operate: the radio bar (webapp.md, The radio bar) =====================
 // One state at a time, highest first:
 //   1. on the air: Transmitting (or Tuning), red, with power and SWR, and Stop as its own target;
-//   2. a transmission that did not go: SWR protection tripped (once, or twice in a row), TX
-//      aborted for another reason, or Not keyed;
+//   2. a transmission that did not go: Tune stopped by the main board on high SWR, SWR protection tripped
+//      (once, or twice in a row), TX aborted for another reason, or Not keyed;
 //   3. a firmware update this page is following, no contact with the station (linkLost()), not paired, then a
 //      radio problem from radioChipState();
 //   4. ready.
@@ -2771,6 +2771,11 @@ function radioBarState(chip, hud, ctx) {
     if (chip === 'lost') bits.push('CAT lost');
     return { state: tuning ? 'tune' : 'tx', tone: 'red', main: where, sub: bits.join(' · '), glyph: '●',
              label: '', stop: tuning ? 'Stop Tune' : (ctx.ourCq ? 'Stop CQ' : 'Stop TX') };
+  }
+  if (on && hud.aborted && TUNE_SWR_STOP.test(hud.reason || '')) {
+    return { state: 'tuneswr', tone: 'red', main: 'Tune stopped: high SWR',
+             sub: hud.reason.replace(/^Tune: /, '') + ' \u00b7 check the antenna', glyph: '\u2715', label: 'Radio \u203a',
+             stop: '' };
   }
   if (on && /swr/i.test(hud.reason || '')) {
     if ((ctx.swrTrips | 0) >= 2 || hud.nk) {
@@ -2858,10 +2863,13 @@ function txReadout(hud, tuning, keyedMs, tunePct) {
 // transmission that ends without a trip resets it, a trip adds one, and the count is kept per
 // transmission, not per event (the HUD repeats every ~500 ms). hud is the new TX HUD event; track
 // is {count, cur: {tripped}|null}, changed in place.
+// The main board ended Tune on high SWR itself (radio.md, SWR protection trips on a QMX): the TX HUD reason
+// "Tune: SWR 9.98 over 3.0". Not a trip of the radio's protection, so it is not counted as one.
+var TUNE_SWR_STOP = /^Tune: SWR /;
 function noteTxHud(track, hud) {
   if (hud.active && !hud.nk) {
     if (!track.cur) track.cur = { tripped: false };
-    if (hud.aborted && /swr/i.test(hud.reason || '') && !track.cur.tripped) {
+    if (hud.aborted && /swr/i.test(hud.reason || '') && !TUNE_SWR_STOP.test(hud.reason) && !track.cur.tripped) {
       track.cur.tripped = true;
       track.count++;
     }

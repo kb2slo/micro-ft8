@@ -31,7 +31,7 @@ function extractFunction(text, name) {
 
 const sb = {};
 vm.createContext(sb);
-vm.runInContext([/var TX_NO_RF_AFTER_MS = \d+;/.exec(src)[0], /var NO_MAIN_TITLE = .*;/.exec(src)[0], /var NO_MAIN_HINT = .*;/.exec(src)[0]].concat(['radioBarState', 'noteTxHud', 'utcDayLeft', 'txReadout']
+vm.runInContext([/var TX_NO_RF_AFTER_MS = \d+;/.exec(src)[0], /var TUNE_SWR_STOP = .*;/.exec(src)[0], /var NO_MAIN_TITLE = .*;/.exec(src)[0], /var NO_MAIN_HINT = .*;/.exec(src)[0]].concat(['radioBarState', 'noteTxHud', 'utcDayLeft', 'txReadout']
   .map((n) => extractFunction(src, n))).join('\n'), sb);
 
 const ctx = (o) => Object.assign({ tune: false, ourCq: false, band: '20m', freq: '14.074', radio: 'QMX',
@@ -179,6 +179,19 @@ assert.strictEqual(bar('ready', tx({ nk: true, reason: 'SWR protection' })).stat
   'a slot skipped for SWR protection is the stopped state');
 assert.strictEqual(bar('ready', null, { swrTrips: 2 }).state, 'trip2', 'stopped stays said until the next transmission');
 assert.strictEqual(bar('ready', null, { swrTrips: 1 }).state, 'ready', 'one trip is over when its slot is');
+// Tune ended by the main board on high SWR: said as itself, with the reading, and not counted as a trip.
+s = bar('ready', tx({ aborted: true, reason: 'Tune: SWR 9.98 over 3.0', x: 'TUNE' }));
+assert.strictEqual(s.state, 'tuneswr');
+assert.strictEqual(s.tone, 'red');
+assert.strictEqual(s.main, 'Tune stopped: high SWR');
+assert.strictEqual(s.sub, 'SWR 9.98 over 3.0 \u00b7 check the antenna');
+assert.strictEqual(s.stop, '', 'nothing on the air to stop');
+{
+  const track = { count: 0, cur: null };
+  sb.noteTxHud(track, tx({ x: 'TUNE' }));
+  sb.noteTxHud(track, tx({ aborted: true, reason: 'Tune: SWR 9.98 over 3.0', x: 'TUNE' }));
+  assert.strictEqual(track.count, 0, "the main board's Tune stop is not a trip of the radio's protection");
+}
 s = bar('lost', tx({ nk: true, reason: 'CAT not ready' }));
 assert.strictEqual(s.state, 'notkeyed');
 assert.strictEqual(s.tone, 'amber');
