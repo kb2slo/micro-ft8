@@ -8,7 +8,6 @@ How things work now: `architecture/` (start at [architecture/system.md](architec
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| bd3a | <a id="bd3a"></a>The station listens to its channels, chosen as chips in the radio drawer | Epic [u8mc](roadmap/several-channels.md#bd3a); in 1.0 (maintainer, 2026-11-21: channels shown to the operator, FT4 on every band). Replaces `rx_ft4` with the channels listened to on each band, FT8's, FT4's or both; listening to FT4 alone puts the dial at FT4's, so FT4 works on 15 m and 10 m. The drawer shows a chip per channel, mode and frequency; the radio bar names them. With both, the slot bar is two half-width bars, FT8's and FT4's, each with its own timing and activity. **Done-when:** host tests hold each band's dial, channels and refusal, the chips' states and each slot bar's period, parity and activity, and FT8 alone decodes as today; an FT4 QSO from a CQ and one from a reply complete on 15 m and on 10 m and log as FT4; with both on, both slot bars show activity (field). |
 
 ## Backlog
 
@@ -49,7 +48,7 @@ Each epic is one row here and one file under `roadmap/`, read only when touching
 
 | ID | Epic | Why / constraint |
 | --- | --- | --- |
-| u8mc | <a id="u8mc"></a>Several channels at once | [roadmap/several-channels.md](roadmap/several-channels.md): receive, decode and transmit on 1–N channels, whatever the radio; FT8 and FT4 at once on one QMX first. Children: [bd3a](roadmap/several-channels.md#bd3a). |
+| u8mc | <a id="u8mc"></a>Several channels at once | [roadmap/several-channels.md](roadmap/several-channels.md): receive, decode and transmit on 1–N channels, whatever the radio; FT8 and FT4 at once on one QMX first. Children: none in the index; its **Later** slices wait in the file. |
 | knpp | <a id="knpp"></a>HL2 support | [roadmap/hl2-support.md](roadmap/hl2-support.md): the Hermes-Lite 2 as a second radio on the P4, receive then transmit, at home then in the park. Children: [nngr](roadmap/hl2-support.md#nngr), [abkw](roadmap/hl2-support.md#abkw), [kgyh](roadmap/hl2-support.md#kgyh). |
 | I18 | <a id="I18"></a>Activator mode: POTA and SOTA | [roadmap/activator-mode.md](roadmap/activator-mode.md): a whole activation run offline, its log accepted by pota.app and the SOTA database unedited, and what helps an activator pick a reference, check the grid and plan. Children: [rrsp](roadmap/activator-mode.md#rrsp), [w5nj](roadmap/activator-mode.md#w5nj). |
 | qxy5 | <a id="qxy5"></a>Smart queue ordering | [roadmap/smart-queue.md](roadmap/smart-queue.md): spend each transmission where it can be answered, by ordering and holding what is already queued, never adding a station. Children: [k4ag](roadmap/smart-queue.md#k4ag). |

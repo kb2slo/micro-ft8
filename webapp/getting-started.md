@@ -76,7 +76,7 @@ One ADIF file per UTC day, kept on the main board. On **QSOs**, **Download ADI**
 - *SWR sweep,* on **Tools**: the QMX's *Tune* power should be 25% or more; **Set it to 25%** on the page does it.
 - *Home WiFi instead* (2.4 GHz only): in **Settings**, tap **Network**, then **Join a network →**, pick it and tap **Save and join**; then use [`http://micro-ft8.local`](http://micro-ft8.local/), typing `http://` (Safari otherwise tries `https://` and fails). Away from that network, the sidekick's own comes back within a minute of power-up.
 - *Updates:* in **Settings**, **Software update**, then **Update** updates everything (needs internet; switch the radio off first). Flashing over USB, from the downloads page, erases the board: the sidekick starts again as a new unit.
-- *For now:* FT8 with one radio, a QMX (or a Hermes-Lite 2, receive only and experimental; never both). A CQ stops after its tries and each QSO message after its own, but you are still the control operator.
+- *For now:* FT8 and FT4 with one radio, a QMX (or a Hermes-Lite 2, receive only and experimental; never both). A CQ stops after its tries and each QSO message after its own, but you are still the control operator.
 
 ## Questions and feedback
 
