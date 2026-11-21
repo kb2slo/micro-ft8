@@ -208,6 +208,11 @@ button:disabled{opacity:.45}
 .slotfill{height:100%;width:0%;background:#3b82f6;transition:width .2s linear,background-color .2s linear}
 .slotfill.tx{background:#dc2626}
 .slotfill.halt,.slotfill.dead{background:#c98a10}
+/* RX muted: a channel the other one's transmission keeps us from hearing. Static grey stripes, no fill, so it
+   reads as neither counting (blue) nor sending (red). */
+.slotbar.muted{background:repeating-linear-gradient(135deg,#3a3a4a 0 6px,#26263a 6px 12px)}
+.slotbar.muted .slotfill{width:0!important;transition:none}
+.slottext.muted{color:#c8c8d4}
 .slottext.warn{color:#fbbf24}
 /* Dark edge so the text reads over the activity bars and the fill alike. */
 .slottext{text-shadow:0 0 2px #000,0 0 3px #000}
@@ -4829,31 +4834,72 @@ function drawActivity(bars, canvasId) {
 
 // The slot bars (webapp.md, Operate's pinned regions): one per channel listened to, FT8's then FT4's, each over its
 // own mode's slot, FT8's 15 s or FT4's 7.5 s, with its own parity; one before the first config, FT8's. A bar is armed
-// while the TX that goes next is in its mode (SLOT_STATE's md, its hz 0 with nothing armed), and on air while that
-// TX is keyed; Tune and a sweep, with no mode, key the first. Pure: webapp/tests/test_cq_row.js runs it.
-function slotBarsModel(cfg, state, onAir, now) {
+// while the TX that goes next is in its mode (SLOT_STATE's md, its hz 0 with nothing armed). While we are keyed,
+// txMode says whose bar is on air: 'FT8' or 'FT4' (txModeOf()); null when the mode is not known yet, as for the
+// moment a new CQ keys before its queue entry and SLOT_STATE arrive, and then no bar (bench, 2026-11-21: FT8's went
+// red for 0.8 s under an FT4 CQ); undefined for Tune and a sweep, which have no mode and key the armed bar or the
+// first. Every other bar is muted while one is on air, and to the end of each of its slots that transmission touched
+// (muteUntil, by mode: slotMuteUntil()): the radio is half-duplex, and the decoder skips each slot our transmission
+// overlaps (decode.md, Deaf by overlap), so an FT4 transmission costs the whole FT8 slot it falls in. Pure:
+// webapp/tests/test_cq_row.js runs it.
+function slotBarsModel(cfg, state, onAir, now, muteUntil, txMode) {
   var modes = listenedChannels(cfg).map(function (c) { return c.mode; });
   if (!modes.length) modes = ['FT8'];
   var armed = state && state.hz > 0 ? (state.md === 1 ? 'FT4' : 'FT8') : null;
   return modes.map(function (mode, i) {
     var period = mode === 'FT4' ? 7500 : SLOT_MS;
-    var mine = armed ? armed === mode : i === 0;
+    var mine = txMode ? txMode === mode : txMode === null ? false : armed ? armed === mode : i === 0;
+    var keyed = !!onAir && txMode !== null;
     return { mode: mode, period: period, frac: (now % period) / period, parity: Math.floor(now / period) % 2,
-             armed: armed === mode, onAir: !!onAir && mine };
+             armed: armed === mode, onAir: !!onAir && mine,
+             muted: !(onAir && mine) && (keyed || now < ((muteUntil && muteUntil[mode]) || 0)) };
   });
+}
+
+// Carries the mute forward: while a bar is on air, every other bar's mode is muted to the end of its slot then. Called
+// on each render, a transmission that runs into a second slot of the other mode extends it. keyedAt, when the TX has a
+// mode, caps "then" at where that transmission ends in its own slot (FT8 13.14 s, FT4 5.54 s: tx_timing.h), since the
+// page hears that it unkeyed up to 2 s late (bench, 2026-11-21: an FT8 reply muted a third FT4 period). Pure.
+function slotMuteUntil(bars, now, muteUntil, keyedAt) {
+  var out = Object.assign({}, muteUntil);
+  var air = bars.filter(function (b) { return b.onAir; })[0];
+  if (!air) return out;
+  var at = now;
+  if (keyedAt > 0) {
+    var s0 = Math.floor(keyedAt / air.period) * air.period;
+    at = Math.min(now, s0 + (air.mode === 'FT4' ? 5540 : 13140));
+  }
+  bars.forEach(function (b) {
+    if (b.onAir) return;
+    var end = (Math.floor(at / b.period) + 1) * b.period;
+    if (!(out[b.mode] >= end)) out[b.mode] = end;
+  });
+  return out;
+}
+var slotMuted = {}; // slotMuteUntil()'s last, by mode
+
+// The mode of the message we are sending, x the TX status's: its queue entry's (CQ for a CQ, else the call it is
+// sent to), or SLOT_STATE's armed mode; null when neither knows yet. Pure.
+function txModeOf(x, queue, state) {
+  var to = String(x || '').split(' ')[0].replace(/^<|>$/g, '');
+  for (var eid in queue) {
+    if (to && queue[eid].dxcall === to) return queue[eid].mode === 1 ? 'FT4' : 'FT8';
+  }
+  return state && state.hz > 0 ? (state.md === 1 ? 'FT4' : 'FT8') : null;
 }
 
 // The element ids of the first bar and the second.
 var SLOT_BAR_IDS = [
-  { chan: 'opSlotChan', tag: 'opParity', fill: 'opSlotBarFill', act: 'opSlotBarAct', cur: 'opSlotBarCursor', text: 'opSlotText' },
-  { chan: 'opSlotChan4', tag: 'opParity4', fill: 'opSlotBarFill4', act: 'opSlotBarAct4', cur: 'opSlotBarCursor4', text: 'opSlotText4' }
+  { chan: 'opSlotChan', bar: 'opSlotBar', tag: 'opParity', fill: 'opSlotBarFill', act: 'opSlotBarAct', cur: 'opSlotBarCursor', text: 'opSlotText' },
+  { chan: 'opSlotChan4', bar: 'opSlotBar4', tag: 'opParity4', fill: 'opSlotBarFill4', act: 'opSlotBarAct4', cur: 'opSlotBarCursor4', text: 'opSlotText4' }
 ];
 
 // Drives the slot bars (slotBarsModel()), one per channel listened to: each fills left-to-right over its own
 // channel's slot (fraction elapsed, not remaining), its E or O at its left, its band activity rising from its floor
 // while we receive. The bar of the TX that goes next carries the cursor at its offset, and while it transmits turns
 // red with the readout inside (txReadout()), amber when TX is halted or a keyed slot sends no RF. A receive cue
-// (rxCue(), clockCue()) is the first bar's.
+// (rxCue(), clockCue()) is the first bar's. While one bar transmits, and to the end of each slot of the other's it
+// touched, the other reads "RX muted" over grey stripes.
 function renderCountdown() {
   // No word from the main board: the radio bar says so, and the bar has nothing to say. With word but no audio,
   // the bar still counts the slot and says why (rxCue()).
@@ -4866,12 +4912,18 @@ function renderCountdown() {
   // An SWR sweep keys the radio with no TX status: the slot bar, on every tab, says so in the colours of
   // a transmission. A tap on its row goes to Operate (slotRowTap()), where the radio bar has Stop sweep
   // and opens the sweep page.
+  var modeless = !onAir || yn(lastCfg.tune) === 'yes' || txHud.x === 'TUNE';
   if (!onAir && yn(lastCfg.swr_sweep) === 'yes') {
     onAir = true;
     readout = { text: 'SWR sweep running', dead: false };
   }
   var cue = readout || onAir ? '' : rxCue(lastCfg, usbState) || (live ? clockCue(band.tallies) : '');
-  var bars = stale ? [{ mode: 'FT8', blank: true }] : slotBarsModel(lastCfg, slotState, onAir, now);
+  var bars = [{ mode: 'FT8', blank: true }];
+  if (!stale) {
+    var txMode = modeless ? undefined : txModeOf(txHud.x, queue, slotState);
+    bars = slotBarsModel(lastCfg, slotState, onAir, now, slotMuted, txMode);
+    slotMuted = slotMuteUntil(bars, now, slotMuted, txMode ? txKeyedAt : 0);
+  }
   var hz = slotState && slotState.hz;
   var cursorAt = typeof hz === 'number' && hz >= PASSBAND_HZ_MIN && hz <= PASSBAND_HZ_MAX
     ? (((hz - PASSBAND_HZ_MIN) / (PASSBAND_HZ_MAX - PASSBAND_HZ_MIN)) * 100).toFixed(2) + '%' : null;
@@ -4881,6 +4933,7 @@ function renderCountdown() {
     if (!bar) return;
     var fill = document.getElementById(ids.fill), cursor = document.getElementById(ids.cur);
     var tag = document.getElementById(ids.tag), text = document.getElementById(ids.text);
+    document.getElementById(ids.bar).classList.toggle('muted', !!bar.muted);
     if (bar.blank) {
       fill.style.width = '0%';
       fill.className = 'slotfill';
@@ -4893,12 +4946,13 @@ function renderCountdown() {
     }
     var act = bar.mode === 'FT4' ? band.act4 : band.act;
     var myCue = i === 0 ? cue : '';
-    text.textContent = bar.onAir ? (readout ? readout.text : '') : myCue || (live ? activityLabel(act, now, bar.period) : '');
-    text.className = 'slottext' + (myCue && !bar.onAir ? ' warn' : '');
+    text.textContent = bar.onAir ? (readout ? readout.text : '') : bar.muted ? 'RX muted' :
+      myCue || (live ? activityLabel(act, now, bar.period) : '');
+    text.className = 'slottext' + (bar.muted ? ' muted' : myCue && !bar.onAir ? ' warn' : '');
     fill.style.width = (bar.frac * 100).toFixed(1) + '%';
     fill.className = 'slotfill' + (bar.onAir && txHud && txHud.aborted ? ' halt' : bar.onAir && readout && readout.dead ? ' dead' :
                                    bar.onAir ? ' tx' : '');
-    drawActivity(bar.onAir || !live ? [] : activityStrip(act, now, bar.period), ids.act);
+    drawActivity(bar.onAir || bar.muted || !live ? [] : activityStrip(act, now, bar.period), ids.act);
     tag.textContent = bar.parity ? 'O' : 'E';
     tag.className = 'slotpar' + (bar.onAir && !(txHud && txHud.aborted) ? ' tx' : '');
     tag.setAttribute('aria-label', (bars.length > 1 ? bar.mode + ' ' : '') + (bar.parity ? 'Odd' : 'Even') +

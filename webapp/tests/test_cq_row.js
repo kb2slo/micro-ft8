@@ -23,7 +23,7 @@ vm.runInContext('var SLOT_MS = 15000; var QMX_FT4_BESIDE_MIN_HZ = -33000, QMX_FT
   ' var LISTEN_FT8 = 1, LISTEN_FT4 = 2, LISTEN_BOTH = 3;', ctx);
 ['bandFreq', 'currentFt4DialKhz', 'currentDockFreqKhz', 'listenMask', 'bandFt4Khz', 'bandBothFit', 'bandChannels',
  'operatingBandIdx', 'listenedChannels', 'cqChannels', 'cqChannelFor', 'cqCallBody', 'cqStatusText',
- 'slotBarsModel'].forEach(function (n) { vm.runInContext(extract(n), ctx); });
+ 'slotBarsModel', 'slotMuteUntil', 'txModeOf'].forEach(function (n) { vm.runInContext(extract(n), ctx); });
 const B20 = '5', B40 = '3';
 
 const plain = (v) => JSON.parse(JSON.stringify(v));
@@ -82,6 +82,39 @@ assert.deepStrictEqual(bars({ band_sel: B20, listen5: '3' }, { hz: 1500, md: 0 }
                        [['FT8', 15000, true, true], ['FT4', 7500, false, false]], 'an FT8 call: FT8 bar red');
 assert.deepStrictEqual(bars({ band_sel: B20, listen5: '3' }, { hz: 0, md: 0 }, true),
                        [['FT8', 15000, false, true], ['FT4', 7500, false, false]], 'Tune, with no mode: the first bar');
+const muted = (state, onAir) => plain(ctx.slotBarsModel({ band_sel: B20, listen5: '3' }, state, onAir, T))
+  .map((b) => b.muted);
+assert.deepStrictEqual(muted({ hz: 1500, md: 1 }, true), [true, false], 'FT4 keyed: FT8 RX muted');
+assert.deepStrictEqual(muted({ hz: 1500, md: 0 }, true), [false, true], 'FT8 keyed: FT4 RX muted');
+assert.deepStrictEqual(muted({ hz: 0, md: 0 }, true), [false, true], 'Tune keys the first: the second RX muted');
+assert.deepStrictEqual(muted({ hz: 1500, md: 1 }, false), [false, false], 'armed, not keyed: neither muted');
+assert.deepStrictEqual(plain(ctx.slotBarsModel({ band_sel: B20 }, { hz: 1500, md: 0 }, true, T)).map((b) => b.muted),
+                       [false], 'one channel: nothing to mute');
+// The mute lasts to the end of each slot of the other channel the transmission touched, as the decoder skips it.
+const BOTH = { band_sel: B20, listen5: '3' }, S0 = 1000 * 15000; // an FT8 slot's start, an FT4 period's too
+const run = (md, keyFrom, keyTo, at) => { // keyed from keyFrom to keyTo ms into the FT8 slot; muted at at?
+  let mu = {};
+  const mode = md ? 'FT4' : 'FT8';
+  for (let t = keyFrom; t < keyTo; t += 250) {
+    mu = ctx.slotMuteUntil(ctx.slotBarsModel(BOTH, { hz: 1500, md }, true, S0 + t, mu, mode), S0 + t, mu, S0 + keyFrom);
+  }
+  return plain(ctx.slotBarsModel(BOTH, { hz: 0, md: 0 }, false, S0 + at, mu)).map((b) => b.muted);
+};
+assert.deepStrictEqual(run(1, 500, 5600, 9000), [true, false], "an FT4 TX in the first half: FT8's slot stays muted");
+assert.deepStrictEqual(run(1, 500, 5600, 15100), [false, false], '... and counts again at the next FT8 slot');
+assert.deepStrictEqual(run(1, 8000, 13100, 14000), [true, false], 'an FT4 TX in the second half: FT8 muted to its end');
+assert.deepStrictEqual(run(0, 500, 13140, 14000), [false, true], "an FT8 TX: FT4's second period muted to its end");
+assert.deepStrictEqual(run(0, 500, 13140, 15100), [false, false], '... and counts again after it');
+// The page hears an FT8 transmission end up to 2 s late, past the FT4 period it ended in: that period's end still holds.
+assert.deepStrictEqual(run(0, 1500, 15400, 15500), [false, false], 'an FT8 TX heard ending late mutes no third period');
+// Whose bar: the queue entry the message goes to, then SLOT_STATE, else no bar while the mode is unknown.
+const Q = { 6: { dxcall: 'CQ', mode: 1 }, 7: { dxcall: 'WC9I', mode: 0 } };
+assert.strictEqual(ctx.txModeOf('CQ KB2SLO EM10', Q, null), 'FT4', "a CQ: the CQ entry's mode");
+assert.strictEqual(ctx.txModeOf('WC9I KB2SLO EM10', Q, { hz: 1500, md: 1 }), 'FT8', "a reply: its entry's, over SLOT_STATE");
+assert.strictEqual(ctx.txModeOf('K1ABC KB2SLO 73', Q, { hz: 1500, md: 1 }), 'FT4', 'no entry: SLOT_STATE');
+assert.strictEqual(ctx.txModeOf('CQ KB2SLO EM10', {}, { hz: 0, md: 0 }), null, 'a CQ keyed before its entry: unknown');
+assert.deepStrictEqual(plain(ctx.slotBarsModel(BOTH, { hz: 0, md: 0 }, true, T, {}, null)).map((b) => [b.onAir, b.muted]),
+                       [[false, false], [false, false]], 'mode unknown: no bar red, none muted');
 const two = plain(ctx.slotBarsModel({ band_sel: B20, listen5: '3' }, null, false, T));
 assert.strictEqual(two[0].frac.toFixed(3), (7600 / 15000).toFixed(3), "FT8's bar fills over 15 s");
 assert.strictEqual(two[1].frac.toFixed(3), (100 / 7500).toFixed(3), "FT4's over 7.5 s");
