@@ -17,27 +17,55 @@ inline uint32_t queue_mode_dial_hz(RxMode mode, uint32_t ft8_dial_hz, int32_t ft
     return (uint32_t)((int64_t)ft8_dial_hz + ft4_dial_offset_hz);
 }
 
-// What the main board knows when it asks: the FT8 dial it set for the band, the dial the radio last reported
-// (dial_history), and whether FT4 is decoded beside FT8 and how far its dial is from FT8's.
+// The station's listen<N> values, as station.h has them (kStationListen*), so this header needs no station.h.
+constexpr int kListenFt8 = 1;
+constexpr int kListenFt4 = 2;
+constexpr int kListenBoth = kListenFt8 | kListenFt4;
+
+// What a band's channels ask of the radio (docs/architecture/decode.md, Channels): the dial it is set to, the
+// channels heard there (kListen*), and FT4's dial minus that dial while FT4 is heard beside FT8.
+struct StationPlan {
+    uint32_t radio_dial_hz = 0;
+    int listen = kListenFt8;
+    int32_t ft4_offset_hz = 0;
+};
+
+// The plan for a band whose FT8 dial is `ft8_dial_hz` and FT4 dial `ft8_dial_hz + ft4_minus_ft8_hz`, listening to
+// `listen`. FT8 alone, or FT8 and FT4 where `both_fit` (the radio's window holds both: qmx_iq_channel_refusal()
+// on a QMX), keeps the dial at FT8's; FT4 alone puts it at FT4's, on any band. Both where they do not fit, a
+// choice made before the radio changed, is FT8 alone: CONFIG refuses to store it for the radio in use.
+inline StationPlan station_plan(uint32_t ft8_dial_hz, int32_t ft4_minus_ft8_hz, int listen, bool both_fit) {
+    StationPlan p;
+    p.radio_dial_hz = ft8_dial_hz;
+    if (listen == kListenFt4) {
+        p.radio_dial_hz = queue_mode_dial_hz(RxMode::FT4, ft8_dial_hz, ft4_minus_ft8_hz);
+        p.listen = kListenFt4;
+    } else if (listen == kListenBoth && both_fit) {
+        p.listen = kListenBoth;
+        p.ft4_offset_hz = ft4_minus_ft8_hz;
+    }
+    return p;
+}
+
+// What the main board knows when it asks: the band's plan, and the dial the radio last reported (dial_history).
 struct StationDials {
-    uint32_t set_ft8_dial_hz = 0;
+    StationPlan plan;
     uint32_t reported_dial_hz = 0;
-    bool ft4_decoded = false;
-    int32_t ft4_dial_offset_hz = 0;
 };
 
 // The radio is on the station's dial: it reports the dial the main board set. A dial moved by hand, or one the
 // radio refused, belongs to no channel, so nothing is listened to and nothing transmits until it is back.
 inline bool station_on_dial(const StationDials& d) {
-    return d.set_ft8_dial_hz != 0 && d.reported_dial_hz == d.set_ft8_dial_hz;
+    return d.plan.radio_dial_hz != 0 && d.reported_dial_hz == d.plan.radio_dial_hz;
 }
 
-// The station's channel in `mode`, if it listens to one: FT8's always, FT4's while it is decoded; none while the
-// radio is off the station's dial.
+// The station's channel in `mode`, if it listens to one: the plan's, at the radio's dial, or for FT4 beside FT8
+// at FT4's beside it; none while the radio is off the station's dial.
 inline bool station_channel(const StationDials& d, RxMode mode, RxChannel* out) {
     if (!station_on_dial(d)) return false;
-    if (mode == RxMode::FT4 && !d.ft4_decoded) return false;
-    if (out) *out = RxChannel{queue_mode_dial_hz(mode, d.set_ft8_dial_hz, d.ft4_dial_offset_hz), mode};
+    if (!(d.plan.listen & (mode == RxMode::FT4 ? kListenFt4 : kListenFt8))) return false;
+    const int32_t off = (mode == RxMode::FT4 && d.plan.listen == kListenBoth) ? d.plan.ft4_offset_hz : 0;
+    if (out) *out = RxChannel{(uint32_t)((int64_t)d.plan.radio_dial_hz + off), mode};
     return true;
 }
 
@@ -50,9 +78,10 @@ inline bool station_listens(const StationDials& d, RxChannel channel) {
 // The reason nothing may transmit while the radio is off the station's dial, in the radio bar's words, or
 // nullptr while it is on it. "Radio not on 14.074 MHz": the dial in MHz with its trailing zeros dropped.
 inline const char* station_off_dial_refusal(const StationDials& d, char* buf, size_t cap) {
-    if (d.set_ft8_dial_hz == 0 || station_on_dial(d)) return nullptr;
+    const uint32_t hz = d.plan.radio_dial_hz;
+    if (hz == 0 || station_on_dial(d)) return nullptr;
     char mhz[16];
-    snprintf(mhz, sizeof mhz, "%u.%06u", (unsigned)(d.set_ft8_dial_hz / 1000000), (unsigned)(d.set_ft8_dial_hz % 1000000));
+    snprintf(mhz, sizeof mhz, "%u.%06u", (unsigned)(hz / 1000000), (unsigned)(hz % 1000000));
     size_t n = 0;
     while (mhz[n]) ++n;
     while (n > 0 && mhz[n - 1] == '0') mhz[--n] = '\0';

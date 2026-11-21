@@ -23,9 +23,19 @@ constexpr int kStationAmpPttNone = 0;
 constexpr int kStationAmpPttGround = 1;  // TX PTT grounded: a Micro PA100+
 constexpr int kStationAmpPtt5v = 2;      // TX PTT +5V
 
+// Station.txt's listen<N>= values: the channels the station listens to on band N, as a set of modes
+// (docs/architecture/decode.md, Channels). Each channel's frequency is the band's dial for that mode, band<N>
+// and ft4band<N>. Unset, or anything else, reads as FT8 alone.
+constexpr int kStationListenFt8 = 1;
+constexpr int kStationListenFt4 = 2;
+constexpr int kStationListenBoth = kStationListenFt8 | kStationListenFt4;
+
 struct StationSettings {
     float band_freq[kStationBandCount];
     bool band_freq_set[kStationBandCount];
+    // Band N's FT4 dial in kHz, ft4band<N>=; unset, the band's standard FT4 dial (docs/architecture/decode.md, Channels).
+    float ft4_freq[kStationBandCount];
+    bool ft4_freq_set[kStationBandCount];
 
     int offset_hz;
     int band_sel;
@@ -45,7 +55,7 @@ struct StationSettings {
     bool amp_swr_guard = false;  // recover from the QMX's SWR-protection trips (architecture/radio.md)
     int amp_ptt = kStationAmpPttNone;  // kStationAmpPtt*: how the amp is keyed from the QMX's PTT jack
     bool amp_prime_on_band_change = false;  // brief QMX SWR Tune pulse after an explicit band change
-    bool rx_ft4 = false;  // also decode FT4 beside FT8 from the QMX's I/Q, listen only (docs/architecture/decode.md, FT4)
+    int listen[kStationBandCount];  // kStationListen* per band: which channels it listens to
     int tries;  // transmissions per QSO message, and a CQ's to start (autoseq.md, Tries)
     // "POTA:US-1234,SOTA:W7O/CC-001" -- the active activation's references,
     // entered in Settings > Station (architecture/webapp.md, "Activation").
@@ -71,7 +81,10 @@ void station_parse(const std::string& text, StationSettings* io);
 // Writes the same keys save_station_data() does.
 std::string station_serialize(const StationSettings& in);
 
-// True for Station.txt keys CONFIG may set (call, grid, band0…, …). Clock
+// The channels band `band` listens to (kStationListen*): FT8 alone unless set.
+int station_listen(const StationSettings& s, int band);
+
+// True for Station.txt keys CONFIG may set (call, grid, band0…, ft4band0…, listen0…, …). Clock
 // lines are not included — the clock is not persisted here.
 bool station_key_known(const char* name);
 
@@ -91,7 +104,8 @@ bool act_refs_prefer_sota(const std::string& act_refs);
 
 // True when a CONFIG write of this key needs the VFO already on the
 // operating band to take effect right now: band_sel itself (it picks the new
-// operating band), or that band's own frequency key, band<band_sel>. A
+// operating band), that band's own frequency keys, band<band_sel> and
+// ft4band<band_sel>, or its channels, listen<band_sel>, which can move the dial to FT4's. A
 // frequency written for a different band is a config edit that does not need
 // the radio to move.
 bool station_key_names_operating_band(const char* key, int band_sel);

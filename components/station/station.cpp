@@ -192,7 +192,6 @@ enum class StationKey {
     Amp,
     AmpSwrGuard,
     AmpPtt,
-    RxFt4,
     AmpPrimeOnBandChange,
     SkipTx1,
     ActiveBand,
@@ -217,7 +216,6 @@ StationKey key_from_name(const std::string& name)
     if (name == "amp") return StationKey::Amp;
     if (name == "amp_swr_guard") return StationKey::AmpSwrGuard;
     if (name == "amp_ptt") return StationKey::AmpPtt;
-    if (name == "rx_ft4") return StationKey::RxFt4;
     if (name == "amp_prime_on_band_change") return StationKey::AmpPrimeOnBandChange;
     if (name == "skiptx1") return StationKey::SkipTx1;
     if (name == "active_band") return StationKey::ActiveBand;
@@ -296,11 +294,6 @@ void apply_key(StationSettings* io, StationKey key, const std::string& value)
                 io->amp_ptt = (val == kStationAmpPttGround || val == kStationAmpPtt5v) ? val : kStationAmpPttNone;
             }
             break;
-        case StationKey::RxFt4:
-            if (sscanf(value.c_str(), "%d", &val) == 1) {
-                io->rx_ft4 = (val != 0);
-            }
-            break;
         case StationKey::AmpPrimeOnBandChange:
             if (sscanf(value.c_str(), "%d", &val) == 1) {
                 io->amp_prime_on_band_change = (val != 0);
@@ -350,6 +343,20 @@ void apply_line(StationSettings* io, const std::string& raw)
 
     int idx = -1;
     float fval = 0.0f;
+    int ival = 0;
+    if (sscanf(line.c_str(), "listen%d=%d", &idx, &ival) == 2) {
+        if (idx >= 0 && idx < kStationBandCount) {
+            io->listen[idx] = (ival >= kStationListenFt8 && ival <= kStationListenBoth) ? ival : kStationListenFt8;
+        }
+        return;
+    }
+    if (sscanf(line.c_str(), "ft4band%d=%f", &idx, &fval) == 2) {
+        if (idx >= 0 && idx < kStationBandCount) {
+            io->ft4_freq[idx] = fval;
+            io->ft4_freq_set[idx] = true;
+        }
+        return;
+    }
     if (sscanf(line.c_str(), "band%d=%f", &idx, &fval) == 2) {
         if (idx >= 0 && idx < kStationBandCount) {
             io->band_freq[idx] = fval;
@@ -392,6 +399,18 @@ void station_settings_init(StationSettings* out)
     *out = StationSettings{};
     out->gps_baud = 115200;
     out->radio = kStationRadioQmx;
+    for (int i = 0; i < kStationBandCount; ++i) {
+        out->listen[i] = kStationListenFt8;
+    }
+}
+
+int station_listen(const StationSettings& s, int band)
+{
+    if (band < 0 || band >= kStationBandCount) {
+        return kStationListenFt8;
+    }
+    const int v = s.listen[band];
+    return (v >= kStationListenFt8 && v <= kStationListenBoth) ? v : kStationListenFt8;
 }
 
 void station_parse(const std::string& text, StationSettings* io)
@@ -424,6 +443,24 @@ std::string station_serialize(const StationSettings& in)
         format_freq(in.band_freq[i], fbuf, sizeof(fbuf));
         put_str(out, key, fbuf);
     }
+    for (int i = 0; i < kStationBandCount; ++i) {
+        if (!in.ft4_freq_set[i]) {
+            continue;
+        }
+        char key[16];
+        snprintf(key, sizeof(key), "ft4band%d", i);
+        char fbuf[16];
+        format_freq(in.ft4_freq[i], fbuf, sizeof(fbuf));
+        put_str(out, key, fbuf);
+    }
+    for (int i = 0; i < kStationBandCount; ++i) {
+        if (station_listen(in, i) == kStationListenFt8) {
+            continue;  // the default, left unwritten as an unset band frequency is
+        }
+        char key[16];
+        snprintf(key, sizeof(key), "listen%d", i);
+        put_int(out, key, station_listen(in, i));
+    }
     put_int(out, "offset", in.offset_hz);
     put_int(out, "band_sel", in.band_sel);
     put_str(out, "cq_mod", in.cq_mod);
@@ -440,7 +477,6 @@ std::string station_serialize(const StationSettings& in)
     put_int(out, "tx_min_delay_ms", in.tx_min_delay_ms);
     put_int(out, "amp_swr_guard", in.amp_swr_guard ? 1 : 0);
     put_int(out, "amp_ptt", in.amp_ptt);
-    put_int(out, "rx_ft4", in.rx_ft4 ? 1 : 0);
     put_int(out, "amp_prime_on_band_change", in.amp_prime_on_band_change ? 1 : 0);
     put_str(out, "act_refs", in.act_refs);
     return out;
@@ -492,7 +528,8 @@ bool station_key_known(const char* name)
             return true;
     }
     int idx = 0;
-    if (sscanf(name, "band%d", &idx) == 1) {
+    if (sscanf(name, "band%d", &idx) == 1 || sscanf(name, "ft4band%d", &idx) == 1 ||
+        sscanf(name, "listen%d", &idx) == 1) {
         return idx >= 0 && idx < kStationBandCount;
     }
     return false;
@@ -507,7 +544,8 @@ bool station_key_names_operating_band(const char* key, int band_sel)
         return true;
     }
     int idx = -1;
-    return sscanf(key, "band%d", &idx) == 1 && idx == band_sel;
+    return (sscanf(key, "band%d", &idx) == 1 || sscanf(key, "ft4band%d", &idx) == 1 ||
+            sscanf(key, "listen%d", &idx) == 1) && idx == band_sel;
 }
 
 const char* station_vfo_refusal(const char* key, bool tx_active)

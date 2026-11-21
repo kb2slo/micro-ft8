@@ -126,14 +126,43 @@ int main()
         station_parse("amp_ptt=7\n", &s);
         expect_true(s.amp_ptt == kStationAmpPttNone, "an unknown amp_ptt reads as none");
         expect_true(station_key_known("amp_ptt"), "amp_ptt known to CONFIG");
-        expect_true(!s.rx_ft4, "FT4 beside FT8 is off by default");
-        station_parse("rx_ft4=1\n", &s);
-        expect_true(s.rx_ft4, "rx_ft4 parsed");
+        // The channels each band listens to (listen<N>): FT8 alone by default, and left unwritten then.
+        for (int b = 0; b < kStationBandCount; ++b) {
+            expect_true(station_listen(s, b) == kStationListenFt8, "FT8 alone on every band by default");
+        }
+        expect_true(station_serialize(s).find("listen") == std::string::npos, "the default is not written");
+        station_parse("listen5=3\nlisten7=2\n", &s);
+        expect_true(station_listen(s, 5) == kStationListenBoth, "listen5=3: FT8 and FT4 on 20 m");
+        expect_true(station_listen(s, 7) == kStationListenFt4, "listen7=2: FT4 alone on 15 m");
         StationSettings u;
         station_settings_init(&u);
         station_parse(station_serialize(s), &u);
-        expect_true(u.rx_ft4, "rx_ft4 round-trips");
-        expect_true(station_key_known("rx_ft4"), "rx_ft4 known to CONFIG");
+        expect_true(station_listen(u, 5) == kStationListenBoth && station_listen(u, 7) == kStationListenFt4,
+                    "listen<N> round-trips");
+        station_parse("listen5=0\nlisten7=9\nlisten12=2\n", &u);
+        expect_true(station_listen(u, 5) == kStationListenFt8 && station_listen(u, 7) == kStationListenFt8,
+                    "anything but 1, 2 or 3 reads as FT8 alone");
+        expect_true(station_listen(u, 12) == kStationListenFt8 && station_listen(u, -1) == kStationListenFt8,
+                    "a band out of range is FT8 alone");
+        expect_true(station_key_known("listen5") && !station_key_known("listen12") && !station_key_known("rx_ft4"),
+                    "listen<N> known to CONFIG for a band that exists; rx_ft4 is gone");
+        expect_true(station_key_names_operating_band("listen5", 5) && !station_key_names_operating_band("listen4", 5),
+                    "the operating band's channels can move its dial");
+        // FT4's own dial per band (ft4band<N>): unset by default, and left unwritten then.
+        StationSettings f;
+        station_settings_init(&f);
+        expect_true(!f.ft4_freq_set[5] && station_serialize(f).find("ft4band") == std::string::npos,
+                    "no FT4 dial is set by default");
+        station_parse("ft4band5=14083.5\n", &f);
+        expect_true(f.ft4_freq_set[5] && f.ft4_freq[5] > 14083.4f && f.ft4_freq[5] < 14083.6f, "ft4band5 parsed");
+        expect_true(!f.band_freq_set[5], "and not taken for FT8's band5");
+        StationSettings g;
+        station_settings_init(&g);
+        station_parse(station_serialize(f), &g);
+        expect_true(g.ft4_freq_set[5] && g.ft4_freq[5] > 14083.4f && g.ft4_freq[5] < 14083.6f, "ft4band<N> round-trips");
+        expect_true(station_key_known("ft4band7") && !station_key_known("ft4band12"), "ft4band<N> known to CONFIG");
+        expect_true(station_key_names_operating_band("ft4band5", 5) && !station_key_names_operating_band("ft4band4", 5),
+                    "the operating band's FT4 dial can move its dial");
         station_parse("amp_prime_on_band_change=0\n", &s);
         expect_true(!s.amp_prime_on_band_change, "amp prime turns off");
         expect_true(station_key_known("amp_prime_on_band_change"), "amp prime key known to CONFIG");

@@ -13,8 +13,10 @@
  *   on the CQ's channel.
  * - Recently worked is asked on the decode's channel: a station just worked on FT8 can start a QSO on FT4.
  * - An entry's QUEUE_ENTRY event carries its channel and its held TX offset (queue_event.h).
- * - The station's channels (station_channel.h): FT8's while the radio reports the station's dial, FT4's beside
- *   it while FT4 is decoded, none while the dial was moved by hand or refused, and the reason in the bar's words.
+ * - A band's plan (station_plan()): FT8 alone and FT8 with FT4 beside it keep FT8's dial, FT4 alone puts the dial
+ *   at FT4's on any band, 15 m and 10 m included, and both where they do not fit fall back to FT8 alone.
+ * - The station's channels (station_channel.h): the plan's, while the radio reports the plan's dial, none while
+ *   the dial was moved by hand or refused, and the reason in the bar's words.
  */
 #include <cstdio>
 #include <string>
@@ -235,20 +237,57 @@ static void test_queue_event_carries_channel() {
           "a gone entry's event is IDLE and nothing else");
 }
 
-static void test_station_channels() {
+static StationDials dials_on(uint32_t dial, int listen, int32_t ft4_offset) {
     StationDials d;
-    d.set_ft8_dial_hz = 14074000u;
-    d.reported_dial_hz = 14074000u;
-    d.ft4_dial_offset_hz = 6000;
+    d.plan.radio_dial_hz = dial;
+    d.plan.listen = listen;
+    d.plan.ft4_offset_hz = ft4_offset;
+    d.reported_dial_hz = dial;
+    return d;
+}
+
+static void test_station_plan() {
+    // 20 m: FT4's dial 6 kHz above FT8's, both in a QMX's window.
+    StationPlan p = station_plan(14074000u, 6000, kListenFt8, true);
+    check(p.radio_dial_hz == 14074000u && p.listen == kListenFt8 && p.ft4_offset_hz == 0, "FT8 alone: FT8's dial");
+    p = station_plan(14074000u, 6000, kListenBoth, true);
+    check(p.radio_dial_hz == 14074000u && p.listen == kListenBoth && p.ft4_offset_hz == 6000,
+          "both where they fit: FT8's dial, FT4 6 kHz beside it");
+    p = station_plan(14074000u, 6000, kListenFt4, true);
+    check(p.radio_dial_hz == 14080000u && p.listen == kListenFt4 && p.ft4_offset_hz == 0,
+          "FT4 alone: the dial at FT4's, no offset");
+    // 15 m and 10 m: 66 and 106 kHz apart, outside a QMX's window; FT4 alone still works there.
+    p = station_plan(21074000u, 66000, kListenFt4, false);
+    check(p.radio_dial_hz == 21140000u && p.listen == kListenFt4, "FT4 alone on 15 m: the dial at 21.140");
+    p = station_plan(28074000u, 106000, kListenFt4, false);
+    check(p.radio_dial_hz == 28180000u && p.listen == kListenFt4, "FT4 alone on 10 m: the dial at 28.180");
+    p = station_plan(21074000u, 66000, kListenBoth, false);
+    check(p.radio_dial_hz == 21074000u && p.listen == kListenFt8 && p.ft4_offset_hz == 0,
+          "both where they do not fit falls back to FT8 alone");
+    // 40 m: FT4 26.5 kHz below FT8.
+    p = station_plan(7074000u, -26500, kListenFt4, true);
+    check(p.radio_dial_hz == 7047500u, "FT4 alone on 40 m: the dial at 7.0475");
+    p = station_plan(0, 6000, kListenFt4, true);
+    check(p.radio_dial_hz == 0, "no dial set: none");
+}
+
+static void test_station_channels() {
+    StationDials d = dials_on(14074000u, kListenFt8, 0);
     RxChannel c;
     check(station_channel(d, RxMode::FT8, &c) && c == kFt8, "FT8's channel is the dial set");
-    check(!station_channel(d, RxMode::FT4, &c), "FT4's is not listened to while it is not decoded");
-    d.ft4_decoded = true;
-    check(station_channel(d, RxMode::FT4, &c) && c == kFt4, "and is FT8's plus FT4's offset while it is");
+    check(!station_channel(d, RxMode::FT4, &c), "FT4's is not listened to while FT8 is alone");
+    d = dials_on(14074000u, kListenBoth, 6000);
+    check(station_channel(d, RxMode::FT4, &c) && c == kFt4, "beside FT8, FT4's is FT8's dial plus its offset");
     check(station_listens(d, kFt8) && station_listens(d, kFt4), "both listened to");
     check(!station_listens(d, kFt8b), "a channel the station does not run is not");
     check(!station_listens(d, RxChannel{14080000u, RxMode::FT8}), "nor FT8 on FT4's dial");
+    d = dials_on(14080000u, kListenFt4, 0);
+    check(station_channel(d, RxMode::FT4, &c) && c == kFt4, "FT4 alone: its channel is the radio's dial");
+    check(!station_listens(d, kFt8), "and FT8's is not listened to");
+    d = dials_on(21140000u, kListenFt4, 0);
+    check(station_listens(d, RxChannel{21140000u, RxMode::FT4}), "FT4 alone on 15 m is a channel like any other");
     char buf[40];
+    d = dials_on(14074000u, kListenBoth, 6000);
     check(station_off_dial_refusal(d, buf, sizeof buf) == nullptr, "on its dial, nothing refuses");
 
     d.reported_dial_hz = 14074500u;  // the knob turned
@@ -256,10 +295,14 @@ static void test_station_channels() {
           "a dial moved by hand belongs to no channel");
     const char* why = station_off_dial_refusal(d, buf, sizeof buf);
     check(why && std::string(why) == "Radio not on 14.074 MHz", "and says why in the bar's words");
+    d = dials_on(14080000u, kListenFt4, 0);
+    d.reported_dial_hz = 14074000u;  // a radio that did not move to FT4's dial
+    why = station_off_dial_refusal(d, buf, sizeof buf);
+    check(why && std::string(why) == "Radio not on 14.08 MHz", "FT4 alone names FT4's dial");
     d.reported_dial_hz = 0;
     check(!station_on_dial(d), "a dial not yet reported is not the station's");
 
-    d.set_ft8_dial_hz = 0;
+    d = dials_on(0, kListenFt8, 0);
     check(!station_on_dial(d) && station_off_dial_refusal(d, buf, sizeof buf) == nullptr,
           "with no dial set there is no channel, and no dial to name");
 
@@ -271,8 +314,7 @@ static void test_station_channels() {
                  {3573000u, "Radio not on 3.573 MHz"}, {14000000u, "Radio not on 14 MHz"},
                  {10136000u, "Radio not on 10.136 MHz"}};
     for (const auto& t : dials) {
-        StationDials e;
-        e.set_ft8_dial_hz = t.hz;
+        StationDials e = dials_on(t.hz, kListenFt8, 0);
         e.reported_dial_hz = t.hz + 1;
         why = station_off_dial_refusal(e, buf, sizeof buf);
         check(why && std::string(why) == t.text, t.text);
@@ -282,6 +324,7 @@ static void test_station_channels() {
 }
 
 int main() {
+    test_station_plan();
     test_station_channels();
     test_queue_event_carries_channel();
     test_touch_ft4_queues_ft4();

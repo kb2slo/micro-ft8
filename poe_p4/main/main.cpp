@@ -59,30 +59,23 @@ static void send_activity(void * /*ctx*/, int64_t slot_idx, int block_ms, int fi
                         (uint8_t)n, (uint16_t)lo_hz, (uint16_t)hi_hz);
 }
 
-// Which channels the QMX's I/Q feeds (docs/architecture/decode.md, FT4): FT8, the station's, always; FT4
-// beside it while Station's rx_ft4 is on and its channel fits the radio's window on this band. The main
-// loop works it out each pass from the Station settings it owns, as FT4's dial against FT8's, or kNoFt4;
-// a run of the pipeline is built for one plan and ends when the plan changes.
-static constexpr int32_t kNoFt4 = INT32_MIN;
+// Which channels the radio feeds (docs/architecture/decode.md, Channels): the operating band's plan
+// (porta_p4_station_plan(), station_channel.h). FT8 alone, the station's channel in FT8; FT4 alone, the station's
+// channel in FT4 at FT4's dial, on either radio; or FT8 and FT4 beside it, from a QMX's I/Q, FT4's dial this far
+// from FT8's. The main loop works it out each pass; a run of the pipeline is built for one plan and ends when the
+// plan changes.
+static constexpr int32_t kNoFt4 = INT32_MIN;          // FT8 alone
+static constexpr int32_t kFt4Alone = INT32_MIN + 1;   // FT4 alone, as the station's channel
 static std::atomic<int32_t> s_rx_plan{kNoFt4};
 static int32_t s_run_plan = kNoFt4;  // decode_audio task only
 
 static void rx_plan_tick(void) {
-    static const char *s_refusal = nullptr;
+    const StationPlan p = porta_p4_station_plan();
     int32_t plan = kNoFt4;
-    const char *refusal = nullptr;
-    if (porta_p4_station_rx_ft4() && porta_p4_station_radio() == kStationRadioQmx) {
-        const int32_t offset = porta_p4_station_ft4_dial_offset_hz();
-        refusal = qmx_iq_channel_refusal(offset);
-        if (!refusal) plan = offset;
-    }
-    if (refusal != s_refusal) {
-        s_refusal = refusal;
-        if (refusal) {
-            char buf[64];
-            snprintf(buf, sizeof(buf), "FT4 not decoded: %s", refusal);
-            debug_log_line(buf);
-        }
+    if (p.listen == kListenFt4) {
+        plan = kFt4Alone;
+    } else if (p.listen == kListenBoth) {
+        plan = p.ft4_offset_hz;
     }
     s_rx_plan.store(plan);
 }
@@ -95,17 +88,17 @@ static bool qmx_decode_should_stop(void *ctx) {
 }
 
 static bool hl2_decode_should_stop(void *ctx) {
-    return hl2_audio_should_stop(ctx) || !radio_select_hl2_feeds_decode();
+    return hl2_audio_should_stop(ctx) || !radio_select_hl2_feeds_decode() || s_rx_plan.load() != s_run_plan;
 }
 
-// The one channel the P4 receives today (docs/roadmap/several-channels.md): the station's mode, at t2/f2.
+// The station's channel (docs/architecture/decode.md, Channels): the plan's first mode, at t2/f2.
 // The QMX's and the HL2's run on it in turn, never together.
 constexpr int kRxChannel = 0;
 constexpr int kRxTimeOsr = 2;
 constexpr int kRxFreqOsr = 2;
 
 static void decode_audio_task(void * /*arg*/) {
-    const ft8_audio_channel_config_t station_channel = {
+    ft8_audio_channel_config_t station_channel = {
         .channel = kRxChannel,
         .mode = g_protocol,
         .time_osr = kRxTimeOsr,
@@ -113,7 +106,7 @@ static void decode_audio_task(void * /*arg*/) {
         .dial_offset_hz = 0,
         .station = true,
     };
-    const ft8_audio_pipeline_config_t hl2_cfg = {
+    ft8_audio_pipeline_config_t hl2_cfg = {
         .tag = TAG,
         .ctx = nullptr,
         .read = hl2_audio_read_ft8_samples,
@@ -142,11 +135,16 @@ static void decode_audio_task(void * /*arg*/) {
     while (true) {
         const ft8_audio_pipeline_config_t *cfg = nullptr;
         while (!cfg) {
+            // The station's channel in the plan's mode: FT4's when it listens to FT4 alone (rx_plan_tick()).
+            s_run_plan = s_rx_plan.load();
+            g_protocol = s_run_plan == kFt4Alone ? &kProtocolFT4 : &kProtocolFT8;
+            station_channel.mode = g_protocol;
+            pipe_cfg.channels[0] = station_channel;
+            hl2_cfg.channels[0] = station_channel;
             if (radio_select_qmx_feeds_decode() && qmx_audio_ready()) {
-                // FT8, and FT4 beside it if the plan has it (rx_plan_tick()).
-                s_run_plan = s_rx_plan.load();
+                // FT4 beside FT8 if the plan has it.
                 pipe_cfg.n_channels = 1;
-                if (s_run_plan != kNoFt4) {
+                if (s_run_plan != kNoFt4 && s_run_plan != kFt4Alone) {
                     pipe_cfg.channels[1] = {
                         .channel = kRxChannel + 1,
                         .mode = &kProtocolFT4,
@@ -160,10 +158,10 @@ static void decode_audio_task(void * /*arg*/) {
                     ESP_LOGI(TAG, "FT4 beside FT8, its dial %+ld Hz from FT8's", (long)s_run_plan);
                 }
                 cfg = &pipe_cfg;
-                ESP_LOGI(TAG, "QMX UAC streaming; starting decode pipeline");
+                ESP_LOGI(TAG, "QMX UAC streaming; starting decode pipeline in %s", g_protocol->name);
             } else if (radio_select_hl2_feeds_decode() && hl2_audio_ready()) {
                 cfg = &hl2_cfg;
-                ESP_LOGI(TAG, "HL2 streaming; starting decode pipeline");
+                ESP_LOGI(TAG, "HL2 streaming; starting decode pipeline in %s", g_protocol->name);
             } else {
                 vTaskDelay(pdMS_TO_TICKS(200));
             }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // A logged QSO reaches the QSOs list at once (docs/architecture/webapp.md, Screens: QSOs): runs the real
-// functions from app.html, as test_decode_mode.js does. Which of our transmissions log a QSO; a refresh
+// functions from app.html, as test_cq_row.js does. Which of our transmissions log a QSO; a refresh
 // asked for while one runs is run again after it, not dropped; and the wiring that starts one when such
 // a transmission begins or the QSOs tab opens.
 'use strict';
