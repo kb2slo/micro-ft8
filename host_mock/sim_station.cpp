@@ -412,6 +412,20 @@ static std::string handle(const std::string& method, const std::string& url,
         return "{\"ok\":true}";
     }
     if (method == "POST" && path == "/api/cq") {
+        // "<mode> <dial_hz>", as the sidekick takes it. The simulated station listens to FT8 alone, on its
+        // dial, and refuses any other channel in the main board's words (porta_host_cq_call()).
+        uint8_t mode = 0;
+        uint32_t dial_hz = 0;
+        if (!porta_proto_parse_cq_body(body.c_str(), &mode, &dial_hz)) {
+            *status = 400;
+            return "{\"ok\":false,\"why\":\"body is <FT8|FT4> <dial_hz>\"}";
+        }
+        if (mode != PORTA_QUEUE_MODE_FT8) {
+            return "{\"ok\":false,\"why\":\"FT4 is not decoded\"}";
+        }
+        if (dial_hz != g_scenario.dial_hz) {
+            return "{\"ok\":false,\"why\":\"not a channel the station listens to\"}";
+        }
         if (!scenario_call_cq(g_scenario)) {
             return "{\"ok\":false,\"why\":\"a CQ is already queued\"}";
         }

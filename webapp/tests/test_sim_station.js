@@ -130,11 +130,18 @@ async function checkCqRoutes() {
   };
   const token = (await get('/api/pairing-token')).token;
   let pass = true;
-  pass = ok((await post('/api/cq', undefined, token)).body.ok === true, 'Call CQ') && pass;
+  // Call CQ names its channel, "<mode> <dial_hz>"; the simulated station listens to FT8 on 14.074 MHz.
+  pass = ok((await post('/api/cq', undefined, token)).status === 400, 'Call CQ with no channel is refused') && pass;
+  pass = ok((await post('/api/cq', 'FT4 14080000', token)).body.why === 'FT4 is not decoded',
+            'an FT4 CQ on a station not decoding FT4 is refused') && pass;
+  pass = ok((await post('/api/cq', 'FT8 7074000', token)).body.why === 'not a channel the station listens to',
+            'a CQ on another dial is refused') && pass;
+  pass = ok((await post('/api/cq', 'FT8 14074000', token)).body.ok === true, 'Call CQ') && pass;
   let cq = await cqRow();
   pass = ok(cq && cq.st === 0 && cq.tl === 6 && cq.cu === 0, 'a CQ row with the default 6 tries') && pass;
+  pass = ok(cq && cq.md === 0 && cq.fq === 14074000, 'on FT8 at 14.074 MHz') && pass;
   if (!cq) return false;
-  const again = await post('/api/cq', undefined, token);
+  const again = await post('/api/cq', 'FT8 14074000', token);
   pass = ok(again.body.ok === false, 'a second Call CQ is refused') && pass;
 
   pass = ok((await post('/api/queue/tries', cq.eid + ' 12', token)).body.ok === true, 'tries to 12') && pass;

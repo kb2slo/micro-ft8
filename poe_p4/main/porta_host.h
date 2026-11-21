@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "station_channel.h"
+
 // P4-only helpers owned by porta_host.cpp (station seed + Operate ticks).
 
 void porta_p4_station_boot(void);
@@ -24,6 +26,9 @@ bool porta_p4_station_amp_swr_guard(void);  // handle the QMX's SWR-protection t
 bool porta_p4_station_rx_ft4(void);  // Station's rx_ft4: also decode FT4 beside FT8, listen only
 // FT4's dial minus FT8's on the Station band, in Hz (band<N>, else its default, against FT4's default dial). Main loop.
 int32_t porta_p4_station_ft4_dial_offset_hz(void);
+// The station's dials now: the FT8 dial set for the band, the one the radio reports, and FT4's beside it
+// (station_channel.h). Main loop.
+StationDials porta_p4_station_dials(void);
 // A transmission is due: prime the amplifier first when its band was never primed (set at boot or while CAT
 // was down; docs/architecture/radio.md, Prime an RF-sensing amplifier). True while that prime runs.
 bool porta_p4_amp_prime_before_tx(void);

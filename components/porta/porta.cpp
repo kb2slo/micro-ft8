@@ -44,7 +44,7 @@ const char* porta_host_connect(void);
 const char* porta_host_tune(bool on);
 // Call CQ, and change a queued entry's tries or the CQ's parity
 // (docs/architecture/autoseq.md, Tries).
-const char* porta_host_cq_call(void);
+const char* porta_host_cq_call(uint32_t dial_hz, uint8_t mode);
 const char* porta_host_radio_read(void);
 // Set the radio's PTT outputs for an amplifier: 1 TX PTT grounded, 2 TX PTT +5V.
 const char* porta_host_radio_set_ptt(uint8_t keying);
@@ -867,11 +867,13 @@ void handle_action(const porta_frame_t& f) {
     return;
   }
   case PORTA_ACT_CQ_CALL: {
-    if (!porta_proto_parse_cq_call(&f)) {
+    uint8_t mode = 0;
+    uint32_t dial_hz = 0;
+    if (!porta_proto_parse_cq_call(&f, &mode, &dial_hz)) {
       enqueue(buf, porta_proto_encode_nak(verb, "malformed", buf, sizeof(buf)));
       return;
     }
-    const char* why = porta_host_cq_call();
+    const char* why = porta_host_cq_call(dial_hz, mode);
     if (why) {
       enqueue(buf, porta_proto_encode_nak(verb, why, buf, sizeof(buf)));
     } else {
@@ -1206,12 +1208,13 @@ void porta_emit_queue_entry(const porta_queue_entry_event_t* entry) {
   enqueue(buf, n);
 }
 
-void porta_emit_slot_state(uint8_t slot_parity, uint16_t resolved_offset_hz) {
+void porta_emit_slot_state(uint8_t slot_parity, uint16_t resolved_offset_hz, uint8_t mode) {
   if (!s_running) return;
   porta_slot_state_event_t s = {};
   s.epoch_secs = host_epoch_secs();
   s.slot_parity = slot_parity;
   s.resolved_offset_hz = resolved_offset_hz;
+  s.mode = mode;
   uint8_t buf[PORTA_PROTO_MAX_FRAME];
   const size_t n = porta_proto_encode_slot_state(&s, buf, sizeof(buf));
   enqueue(buf, n);

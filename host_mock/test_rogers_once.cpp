@@ -19,13 +19,13 @@
 static int s_log_count = 0;
 static bool s_log_fails = false;
 
-static bool adif_cb(const std::string&, const std::string&, int, int, RxMode) {
+static bool adif_cb(const std::string&, const std::string&, int, int, RxChannel) {
     if (s_log_fails) return false;
     ++s_log_count;
     return true;
 }
 
-static bool always_recent(const std::string&, RxMode) {
+static bool always_recent(const std::string&, RxChannel) {
     return true;
 }
 
@@ -78,7 +78,7 @@ static void reset() {
 
 // One CQ that ends after it is sent: the CQ these tests open a QSO with.
 static void one_cq() {
-    autoseq_call_cq(0);
+    autoseq_call_cq(RxChannel{}, 0);
     autoseq_set_entry_tries(autoseq_cq_entry_id(), 1);
 }
 

@@ -1,6 +1,7 @@
 #include "porta_proto.h"
 
 #include <string.h>
+#include <stdlib.h>
 
 enum {
     ST_IDLE = 0,   // hunting for the sync byte
@@ -356,7 +357,7 @@ bool porta_proto_parse_queue_entry(const porta_frame_t *f, porta_queue_entry_eve
 }
 
 // subtype | epoch(4) | slot_parity | resolved_offset_hz(2)
-#define SLOT_STATE_LEN (EVENT_HEADER_LEN + 1u + 2u)
+#define SLOT_STATE_LEN (EVENT_HEADER_LEN + 1u + 2u + 1u)
 
 size_t porta_proto_encode_slot_state(const porta_slot_state_event_t *s,
                                      uint8_t *out, size_t out_cap)
@@ -369,6 +370,7 @@ size_t porta_proto_encode_slot_state(const porta_slot_state_event_t *s,
     put_u32(&payload[1], s->epoch_secs);
     payload[5] = s->slot_parity;
     put_u16(&payload[6], s->resolved_offset_hz);
+    payload[8] = s->mode;
     return porta_proto_encode(PORTA_MSG_EVENT, payload, sizeof(payload), out, out_cap);
 }
 
@@ -381,6 +383,7 @@ bool porta_proto_parse_slot_state(const porta_frame_t *f, porta_slot_state_event
     out->epoch_secs        = get_u32(&f->payload[1]);
     out->slot_parity       = f->payload[5];
     out->resolved_offset_hz = get_u16(&f->payload[6]);
+    out->mode              = f->payload[8];
     return true;
 }
 
@@ -847,15 +850,58 @@ bool porta_proto_parse_fw_reply(const porta_frame_t *f, uint8_t *type_out, porta
     return true;
 }
 
-size_t porta_proto_encode_cq_call(uint8_t *out, size_t out_cap)
+size_t porta_proto_encode_cq_call(uint8_t mode, uint32_t dial_hz, uint8_t *out, size_t out_cap)
 {
-    const uint8_t payload[1] = {PORTA_ACT_CQ_CALL};
-    return porta_proto_encode(PORTA_MSG_ACTION, payload, 1, out, out_cap);
+    if (mode != PORTA_QUEUE_MODE_FT8 && mode != PORTA_QUEUE_MODE_FT4) {
+        return 0;
+    }
+    uint8_t payload[6] = {PORTA_ACT_CQ_CALL, mode};
+    put_u32(&payload[2], dial_hz);
+    return porta_proto_encode(PORTA_MSG_ACTION, payload, sizeof(payload), out, out_cap);
 }
 
-bool porta_proto_parse_cq_call(const porta_frame_t *f)
+bool porta_proto_parse_cq_call(const porta_frame_t *f, uint8_t *mode_out, uint32_t *dial_hz_out)
 {
-    return f && f->type == PORTA_MSG_ACTION && f->len == 1 && f->payload[0] == PORTA_ACT_CQ_CALL;
+    if (!f || f->type != PORTA_MSG_ACTION || f->len != 6 || f->payload[0] != PORTA_ACT_CQ_CALL) {
+        return false;
+    }
+    const uint8_t mode = f->payload[1];
+    if (mode != PORTA_QUEUE_MODE_FT8 && mode != PORTA_QUEUE_MODE_FT4) {
+        return false;
+    }
+    if (mode_out) {
+        *mode_out = mode;
+    }
+    if (dial_hz_out) {
+        *dial_hz_out = get_u32(&f->payload[2]);
+    }
+    return true;
+}
+
+// The channel a Call CQ body names, "<mode> <dial_hz>": FT8 or FT4, then the channel's dial in Hz, as a
+// queue entry names its channel. False for anything else.
+bool porta_proto_parse_cq_body(const char *body, uint8_t *mode_out, uint32_t *dial_hz_out)
+{
+    uint8_t mode;
+    if (strncmp(body, "FT8 ", 4) == 0) {
+        mode = PORTA_QUEUE_MODE_FT8;
+    } else if (strncmp(body, "FT4 ", 4) == 0) {
+        mode = PORTA_QUEUE_MODE_FT4;
+    } else {
+        return false;
+    }
+    const char *digits = body + 4;
+    if (*digits < '0' || *digits > '9') {
+        return false;
+    }
+    char *end = NULL;
+    const unsigned long long hz = strtoull(digits, &end, 10);
+    if (*end != '\0' || hz == 0 || hz > 0xFFFFFFFFull) {
+        return false;
+    }
+    *mode_out = mode;
+    *dial_hz_out = (uint32_t)hz;
+    return true;
 }
 
 size_t porta_proto_encode_radio_read(uint8_t *out, size_t out_cap)

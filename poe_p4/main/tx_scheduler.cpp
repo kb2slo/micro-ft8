@@ -26,6 +26,7 @@
 #include "tx_offset.h"
 #include "tx_timing.h"
 #include "swr_sweep.h"
+#include "station_channel.h"
 #include "swr_trip.h"
 #include "tx_watchdog.h"
 
@@ -150,17 +151,17 @@ void tx_scheduler_rearm(void) {
     }
 }
 
-bool tx_scheduler_call_cq(void) {
+bool tx_scheduler_call_cq(RxChannel channel) {
     tx_scheduler_swr_operator_start(false);
     const int64_t now_ms = rtc_now_ms();
-    const int slot_period = kProtocolFT8.slot_time_ms;  // the CQ is FT8's
+    const int slot_period = proto_of(channel.mode)->slot_time_ms;  // the CQ's channel's mode's slots
     const int64_t slot_idx = now_ms / slot_period;
     const int slot_ms = (int)(now_ms % slot_period);
     // The slot under way can still be keyed inside the trigger's window
     // (check_slot_boundary()), unless the trigger refuses it.
     const bool keyable = slot_ms < (slot_period * 4 / 15) && !decode_tx_state_get_tx_active() &&
                          now_ms >= s_tx_cancel_until_ms && now_ms >= s_tx_skip_until_ms;
-    if (!autoseq_call_cq(autoseq_cq_parity((int)(slot_idx & 1), keyable))) {
+    if (!autoseq_call_cq(channel, autoseq_cq_parity(channel, (int)(slot_idx & 1), keyable))) {
         return false;
     }
     tx_scheduler_rearm();
@@ -179,7 +180,7 @@ void tx_scheduler_cancel(void) {
     {
         // The rest of the slot it landed in: the transmission's own, or the armed entry's.
         const ProtocolConfig *p = decode_tx_state_get_tx_active() ? s_tx_proto
-                                  : s_pending_tx_valid               ? proto_of(s_pending_tx.mode)
+                                  : s_pending_tx_valid               ? proto_of(s_pending_tx.channel.mode)
                                                                      : &kProtocolFT8;
         const int64_t now_ms = rtc_now_ms();
         s_tx_cancel_until_ms = (now_ms / p->slot_time_ms + 1) * p->slot_time_ms;
@@ -266,7 +267,7 @@ static TxStart tx_start(int skip_tones, std::string &skip_reason) {
     }
 
     const int64_t now_ms = rtc_now_ms();
-    const ProtocolConfig *proto = proto_of(s_pending_tx.mode);
+    const ProtocolConfig *proto = proto_of(s_pending_tx.channel.mode);
     const int slot_period = proto->slot_time_ms;
     s_tx_slot_idx = now_ms / slot_period;
 
@@ -663,7 +664,7 @@ static void tx_tick(void) {
 static void check_slot_boundary(void) {
     const int64_t now_ms = rtc_now_ms();
     // The armed entry's own slots: FT4's 7.5 s periods for an FT4 one, FT8's otherwise.
-    const ProtocolConfig *proto = (s_qso_xmit && s_pending_tx_valid) ? proto_of(s_pending_tx.mode) : &kProtocolFT8;
+    const ProtocolConfig *proto = (s_qso_xmit && s_pending_tx_valid) ? proto_of(s_pending_tx.channel.mode) : &kProtocolFT8;
     const bool ft4 = proto->protocol_id == FTX_PROTOCOL_FT4;
     const int slot_period = proto->slot_time_ms;
     const int64_t slot_idx = now_ms / slot_period;
@@ -781,9 +782,65 @@ static void radio_lost_tick(void) {
     s_was_ready = ready;
 }
 
+// An entry on a channel the station no longer listens to has nothing to go out on (docs/architecture/autoseq.md,
+// The queue): the radio's dial was moved by hand or refused, or FT4 stopped being decoded. It ends as the row's
+// x ends it: the CQ removed, a QSO parked, so its station's next decode revives it once the channel is back.
+// Not while the station itself moves the dial (a transmission, an amplifier prime, an SWR sweep), and only once
+// it has held for kChannelGoneMs, so the moment between setting a dial and the radio reporting it ends nothing.
+static constexpr int64_t kChannelGoneMs = 2000;
+
+static void channel_gone_tick(void) {
+    static int64_t s_gone_since_ms = 0;
+    if (!radio_control_ready() || decode_tx_state_get_tx_active() || amp_band_prime_busy() || swr_sweep_busy()) {
+        s_gone_since_ms = 0;
+        return;
+    }
+    // Every main-loop pass: the non-allocating accessors, and the ids gone collected before any is dropped.
+    const StationDials dials = porta_p4_station_dials();
+    uint16_t gone[AUTOSEQ_MAX_QUEUE];
+    int n_gone = 0;
+    bool cq = false;
+    int qsos = 0;
+    const int n = autoseq_active_count();
+    for (int i = 0; i < n && n_gone < AUTOSEQ_MAX_QUEUE; ++i) {
+        QsoContext c;
+        if (!autoseq_get_active_context(i, &c) || station_listens(dials, c.channel)) continue;
+        gone[n_gone++] = c.entry_id;
+        if (c.state == AutoseqState::CALLING) {
+            cq = true;
+        } else {
+            qsos++;
+        }
+    }
+    const int64_t now_ms = esp_timer_get_time() / 1000;
+    if (n_gone == 0) {
+        s_gone_since_ms = 0;
+        return;
+    }
+    if (s_gone_since_ms == 0) {
+        s_gone_since_ms = now_ms;
+    }
+    if (now_ms - s_gone_since_ms < kChannelGoneMs) {
+        return;
+    }
+    s_gone_since_ms = 0;
+    for (int i = 0; i < n_gone; ++i) {
+        autoseq_drop_by_entry_id(gone[i]);
+    }
+    char why[40];
+    const char *off = station_off_dial_refusal(dials, why, sizeof why);
+    char line[96];
+    snprintf(line, sizeof line, "%s: %s%d queued QSO(s) parked", off ? off : "Channel no longer listened to",
+             cq ? "CQ ended, " : "", qsos);
+    ESP_LOGW(TAG, "%s", line);
+    debug_log_line(line);
+    tx_scheduler_rearm();
+}
+
 void tx_scheduler_tick(void) {
     tx_watchdog_tick();
     radio_lost_tick();
+    channel_gone_tick();
     swr_lock_tick();
     check_slot_boundary();
     tx_tick();
@@ -791,6 +848,10 @@ void tx_scheduler_tick(void) {
 
 bool tx_scheduler_hud_active(void) {
     return decode_tx_state_get_tx_active();
+}
+
+RxMode tx_scheduler_armed_mode(void) {
+    return s_pending_tx_valid ? s_pending_tx.channel.mode : RxMode::FT8;
 }
 
 bool tx_scheduler_hud_snapshot(const char **text_out, int *offset_hz_out) {

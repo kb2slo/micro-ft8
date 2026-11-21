@@ -329,7 +329,7 @@ body:not(.on-operate) #opDock{display:none}
 #cqStatusLine{display:block;font-size:.75rem;color:GrayText;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #opCqRow .cqctl{flex:none;display:flex;align-items:center;gap:.35rem}
 #cqCallBtn{font-size:.85rem;padding:.35rem .8rem;white-space:nowrap;min-height:40px}
-#cqParityBtn{font-size:.75rem;padding:.25rem .5rem;white-space:nowrap;min-height:36px}
+#cqParityBtn,#cqModeBtn{font-size:.75rem;padding:.25rem .5rem;white-space:nowrap;min-height:36px}
 #cqTriesBtn{white-space:nowrap;min-height:36px}
 #cqSettingsBtn{flex:none;border:0;background:transparent;color:var(--accent);padding:0;min-width:40px;min-height:40px;display:flex;align-items:center;justify-content:center}
 #cqSettingsBtn svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -1203,6 +1203,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
           <span id=cqStatusLine>Not calling</span>
         </div>
         <div class=cqctl>
+          <button id=cqModeBtn type=button disabled hidden>FT8 &#x21c4;</button>
           <button id=cqCallBtn type=button disabled>Call CQ</button>
           <button id=cqParityBtn type=button disabled hidden>Even</button>
           <button id=cqTriesBtn type=button class=qtries disabled hidden></button>
@@ -4240,7 +4241,7 @@ function enableWrites(on) {
   document.getElementById('opRadioUse').disabled = !on;
   document.getElementById('opTune').disabled = !on;
   document.getElementById('rbStop').disabled = !on;
-  ['cqCallBtn', 'cqParityBtn', 'cqTriesBtn', 'cqCancelBtn',
+  ['cqModeBtn', 'cqCallBtn', 'cqParityBtn', 'cqTriesBtn', 'cqCancelBtn',
    'triesDown', 'triesUp', 'triesDefault', 'triesEnd'].forEach(function (id) {
     document.getElementById(id).disabled = !on;
   });
@@ -4548,6 +4549,12 @@ function drawActivity(bars) {
 // plus a small cursor dot at the current TX offset. While we receive, the
 // band activity strip (activityStrip()) rises from its floor. The parity of the
 // slot now is the E or O tag at its left, not the bar's colour.
+// The slot bar counts the slots of the TX that goes next (SLOT_STATE's md, the armed TX's mode): FT4's
+// 7.5 s periods while an FT4 entry is armed, a CQ or a reply, FT8's 15 s slots otherwise.
+function slotBarPeriodMs(state) {
+  return state && state.md === 1 ? 7500 : SLOT_MS;
+}
+
 function renderCountdown() {
   var fill = document.getElementById('opSlotBarFill');
   var cursor = document.getElementById('opSlotBarCursor');
@@ -4565,7 +4572,7 @@ function renderCountdown() {
     tag.className = '';
     return;
   }
-  var p = SLOT_MS;
+  var p = slotBarPeriodMs(slotState);
   var now = Date.now();
   var intoSlot = now % p;
   var parity = Math.floor(now / p) % 2;
@@ -4582,11 +4589,12 @@ function renderCountdown() {
   }
   var cue = readout || onAir ? '' : rxCue(lastCfg, usbState) || (live ? clockCue(band.tallies) : '');
   var slotText = document.getElementById('opSlotText');
-  slotText.textContent = readout ? readout.text : onAir ? '' : cue || (live ? activityLabel(band.act, now, p) : '');
+  slotText.textContent = readout ? readout.text : onAir ? '' : cue || (live ? activityLabel(band.act, now, SLOT_MS) : '');
   slotText.className = cue ? 'warn' : '';
   fill.style.width = (frac * 100).toFixed(1) + '%';
   fill.className = onAir && txHud && txHud.aborted ? 'halt' : readout && readout.dead ? 'dead' : (onAir ? 'tx' : '');
-  drawActivity(onAir || !live ? [] : activityStrip(band.act, now, p));
+  // The strip is FT8's channel's activity over its 15 s slot, so it is drawn only while the bar counts those.
+  drawActivity(onAir || !live || p !== SLOT_MS ? [] : activityStrip(band.act, now, p));
   tag.textContent = parity ? 'O' : 'E';
   tag.className = onAir && !(txHud && txHud.aborted) ? 'tx' : '';
   tag.setAttribute('aria-label', (parity ? 'Odd' : 'Even') + ' slot');
@@ -4628,11 +4636,40 @@ function triesLabel(q) {
 }
 
 // Every live QSO outranks a CQ (autoseq.md), so a real QSO entry's presence
-// is exactly "Waits for the queue" and its absence is exactly "Calling".
-function cqStatusText(cq) {
+// is exactly "Waits for the queue" and its absence is exactly "Calling". While
+// FT4 is listened to beside FT8, the line names the CQ's mode, and an FT4 CQ's
+// 7.5 s periods are "periods", an FT8 one's 15 s slots "slots".
+function cqStatusText(cq, queueNow, ft4Listened) {
   if (!cq) return 'Not calling';
-  var hasQso = Object.keys(queue).some(function (id) { return queue[id].dxcall !== 'CQ'; });
-  return (hasQso ? 'Waits for the queue · ' : 'Calling · ') + (cq.parity ? 'odd' : 'even') + ' slots';
+  var hasQso = Object.keys(queueNow).some(function (id) { return queueNow[id].dxcall !== 'CQ'; });
+  var ft4 = cq.mode === 1;
+  return (hasQso ? 'Waits for the queue · ' : 'Calling · ') + (ft4Listened || ft4 ? (ft4 ? 'FT4 · ' : 'FT8 · ') : '') +
+         (cq.parity ? 'odd' : 'even') + (ft4 ? ' periods' : ' slots');
+}
+
+// The channels Call CQ can call on (autoseq.md, The queue): FT8's at the band's dial, and FT4's at the band's
+// FT4 dial while it is decoded beside FT8 (rx_ft4). A channel is its mode and its dial in Hz, as the main
+// board names it; it refuses one it does not listen to. Empty before the first config.
+function cqChannels(cfg) {
+  var ft8 = currentDockFreqKhz(cfg);
+  if (ft8 === null || !(ft8 > 0)) return [];
+  var out = [{ mode: 'FT8', dial_hz: Math.round(ft8 * 1000) }];
+  var ft4 = currentFt4DialKhz(cfg);
+  if (String(cfg.rx_ft4) === '1' && ft4) out.push({ mode: 'FT4', dial_hz: Math.round(ft4 * 1000) });
+  return out;
+}
+
+// The channel the CQ row calls on: the one the operator last chose with the mode button, while it is
+// listened to, else FT8's. Null before the first config.
+function cqChannelFor(cfg, mode) {
+  var chans = cqChannels(cfg);
+  for (var i = 0; i < chans.length; i++) if (chans[i].mode === mode) return chans[i];
+  return chans.length ? chans[0] : null;
+}
+
+// POST /api/cq's body: "<mode> <dial_hz>" (porta_proto_parse_cq_body(), porta_proto.h).
+function cqCallBody(chan) {
+  return chan.mode + ' ' + chan.dial_hz;
 }
 
 function renderCqRow() {
@@ -4641,6 +4678,12 @@ function renderCqRow() {
   document.getElementById('cqSendsText').textContent = cqSendsText();
   document.getElementById('sheetSendsText').textContent = cqSendsText();
   document.getElementById('cqCallBtn').hidden = !!cq;
+  // The mode button chooses the channel before a CQ is queued, and only while there are two to choose from;
+  // a queued CQ keeps its channel: end it and call again to change it.
+  var chans = cqChannels(lastCfg);
+  var modeBtn = document.getElementById('cqModeBtn');
+  modeBtn.hidden = !!cq || chans.length < 2;
+  if (chans.length > 1) modeBtn.innerHTML = cqChannelFor(lastCfg, cqMode).mode + ' &#x21c4;';
   ['cqParityBtn', 'cqTriesBtn', 'cqCancelBtn'].forEach(function (b) {
     document.getElementById(b).hidden = !cq;
   });
@@ -4650,15 +4693,26 @@ function renderCqRow() {
     triesBtn.textContent = triesLabel(cq);
     triesBtn.classList.toggle('custom', !!cq.custom);
   }
-  document.getElementById('cqStatusLine').textContent = cqStatusText(cq);
+  document.getElementById('cqStatusLine').textContent = cqStatusText(cq, queue, chans.length > 1);
 }
 
 // One tap keys the transmitter, as Reply does: Call CQ is the explicit action.
 // The main board picks the parity (an active QSO's, or the slot it can still
 // key) and the tries (the Tries setting); both show on the row once queued.
 document.getElementById('cqCallBtn').onclick = function () {
-  radioPost('/api/cq', undefined, 'Calling CQ…')
+  var chan = cqChannelFor(lastCfg, cqMode);
+  if (!chan) { failMsg('No band yet'); return; }
+  radioPost('/api/cq', cqCallBody(chan), 'Calling CQ' + (cqChannels(lastCfg).length > 1 ? ' in ' + chan.mode : '') + '…')
     .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
+};
+// The mode the CQ row calls in, FT8 or FT4, remembered on this phone.
+var CQ_MODE_KEY = 'microft8_cq_mode_v1';
+var cqMode = 'FT8';
+try { if (localStorage.getItem(CQ_MODE_KEY) === 'FT4') cqMode = 'FT4'; } catch (e) {}
+document.getElementById('cqModeBtn').onclick = function () {
+  cqMode = cqChannelFor(lastCfg, cqMode).mode === 'FT4' ? 'FT8' : 'FT4';
+  try { localStorage.setItem(CQ_MODE_KEY, cqMode); } catch (e) {}
+  renderCqRow();
 };
 // A tap moves the queued CQ to the other period, for a strong station nearby.
 document.getElementById('cqParityBtn').onclick = function () {
@@ -6005,7 +6059,7 @@ function applyEvent(e) {
                        since: queue[e.eid] && queue[e.eid].dxcall === e.x ? queue[e.eid].since : Date.now() };
     }
   } else if (e.d === 3) {
-    slotState = { sp: e.sp, hz: e.hz };
+    slotState = { sp: e.sp, hz: e.hz, md: e.md | 0 };
   } else if (e.d === 4) {
     if (e.active && !(txHud && txHud.active)) {
       txKeyedAt = Date.now();

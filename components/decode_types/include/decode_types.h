@@ -5,8 +5,18 @@
 // Decode-result data types shared by autoseq and the decode pipeline. Plain
 // data, no dependency beyond the standard headers.
 
-// The mode a decode was heard in, and so the mode a QSO from it runs in (docs/architecture/autoseq.md, The queue).
+// A decode's mode.
 enum class RxMode : uint8_t { FT8 = 0, FT4 = 1 };
+
+// The channel a decode was heard on, and so the channel a QSO from it runs on (docs/architecture/autoseq.md,
+// The queue): its dial, the RF frequency in Hz its audio offsets count from, and its mode. Two channels are one
+// only when both match; band is derived from the dial. A dial of 0 is unknown.
+struct RxChannel {
+    uint32_t dial_hz = 0;
+    RxMode mode = RxMode::FT8;
+};
+inline bool operator==(const RxChannel& a, const RxChannel& b) { return a.dial_hz == b.dial_hz && a.mode == b.mode; }
+inline bool operator!=(const RxChannel& a, const RxChannel& b) { return !(a == b); }
 
 // A lightweight RX line format you can fill from your decoder
 struct UiRxLine {
@@ -20,7 +30,7 @@ struct UiRxLine {
     bool is_cq = false;
     bool is_to_me = false;
     bool is_recent_qso = false;
-    RxMode mode = RxMode::FT8;
+    RxChannel channel;
 };
 
 // Plain-C RX entry used for zero-heap decode/display pipeline.

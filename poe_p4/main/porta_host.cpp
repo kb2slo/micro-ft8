@@ -13,6 +13,9 @@
 #include "decode_sync.h"
 #include "debug_log.h"
 #include "decode_tx_state.h"
+#include "dial_history.h"
+#include "qmx_iq_channel.h"
+#include "station_channel.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "file_list.h"
@@ -311,15 +314,14 @@ const char *porta_p4_sync_vfo(const char *reason) {
 }
 
 static bool log_adif_entry(const std::string &dxcall, const std::string &dxgrid, int rst_sent,
-                           int rst_rcvd, RxMode mode) {
+                           int rst_rcvd, RxChannel channel) {
     ensure_seeded();
     AdifStationSnapshot station;
     station.call = s_station.call;
     station.my_gridsquare = grid_ft8_4(s_station.grid);
-    station.mode = mode == RxMode::FT4 ? "FT4" : "FT8";
-    // The QSO's own dial, as WSJT-X logs it: FT4's beside FT8 is FT8's plus the band's FT4 offset.
-    station.freq_mhz = adif_freq_mhz(
-        queue_mode_dial_hz(mode, (uint32_t)station_freq_hz(), porta_p4_station_ft4_dial_offset_hz()));
+    station.mode = channel.mode == RxMode::FT4 ? "FT4" : "FT8";
+    // The QSO's own dial, its channel's, as WSJT-X logs it: FT4's beside FT8 is FT8's plus the band's FT4 offset.
+    station.freq_mhz = adif_freq_mhz(channel.dial_hz);
     {
         const int idx = s_station.band_sel;
         station.band_name = (idx >= 0 && idx < kStationBandCount) ? kBandNames[idx] : "";
@@ -337,8 +339,25 @@ static bool log_adif_entry(const std::string &dxcall, const std::string &dxgrid,
     return adif_log_entry(dxcall, dxgrid, rst_sent, rst_rcvd, station, &s_adif_logger_dedupe);
 }
 
+StationDials porta_p4_station_dials(void) {
+    ensure_seeded();
+    StationDials d;
+    d.set_ft8_dial_hz = (uint32_t)station_freq_hz();
+    d.reported_dial_hz = dial_history_at(rtc_now_ms());
+    d.ft4_dial_offset_hz = porta_p4_station_ft4_dial_offset_hz();
+    // FT4 is decoded beside FT8 on the QMX while rx_ft4 is on and its channel fits the window (main.cpp, rx_plan_tick()).
+    d.ft4_decoded = s_station.rx_ft4 && s_station.radio == kStationRadioQmx &&
+                    qmx_iq_channel_refusal(d.ft4_dial_offset_hz) == nullptr;
+    return d;
+}
+
+static bool station_listens_now(RxChannel channel) {
+    return station_listens(porta_p4_station_dials(), channel);
+}
+
 void porta_p4_adif_register(void) {
     autoseq_set_adif_callback(log_adif_entry);
+    decode_pipeline_set_channel_listened(station_listens_now);
     autoseq_set_recent_qso_callback(decode_pipeline_recently_logged);
     autoseq_set_heard_grid_callback(decode_pipeline_heard_grid);
     ESP_LOGI(TAG, "ADIF archive callback registered");
@@ -419,11 +438,10 @@ void porta_p4_companion_status_tick(void) {
     int armed_offset_hz = 0;
     const bool armed = tx_scheduler_hud_snapshot(nullptr, &armed_offset_hz);
     porta_emit_slot_state((uint8_t)(tx_scheduler_target_parity() & 1),
-                          (uint16_t)(armed ? armed_offset_hz : 0));
+                          (uint16_t)(armed ? armed_offset_hz : 0),
+                          tx_scheduler_armed_mode() == RxMode::FT4 ? PORTA_QUEUE_MODE_FT4 : PORTA_QUEUE_MODE_FT8);
 
     uint16_t current_ids[AUTOSEQ_MAX_QUEUE];
-    const uint32_t ft8_dial_hz = (uint32_t)porta_p4_station_freq_hz();
-    const int32_t ft4_dial_offset_hz = porta_p4_station_ft4_dial_offset_hz();
     const int n = autoseq_active_count();
     int filled = 0;
     for (int i = 0; i < n && filled < AUTOSEQ_MAX_QUEUE; ++i) {
@@ -432,7 +450,7 @@ void porta_p4_companion_status_tick(void) {
             continue;
         }
         current_ids[filled++] = ctx.entry_id;
-        const porta_queue_entry_event_t q = queue_entry_event(ctx, ft8_dial_hz, ft4_dial_offset_hz);
+        const porta_queue_entry_event_t q = queue_entry_event(ctx);
         porta_emit_queue_entry(&q);
     }
     for (int i = 0; i < s_last_active_count; ++i) {
@@ -1054,11 +1072,17 @@ const char *porta_host_radio_read(void) {
 // Call CQ and a reply are refused unless the radio is ready (tx_ready.h): a
 // queue entry with no radio is skipped slot after slot without using a try, so
 // it would key by itself when a radio was plugged in, however much later.
+// Then the radio must be on the station's dial: one moved by hand belongs to no channel (station_channel.h).
 static const char *tx_refusal(void) {
-    return tx_ready_refusal(porta_p4_station_call_ok(), radio_control_ready(), radio_select_audio_ready(), s_decode_failed);
+    if (const char *why = tx_ready_refusal(porta_p4_station_call_ok(), radio_control_ready(),
+                                           radio_select_audio_ready(), s_decode_failed)) {
+        return why;
+    }
+    static char s_off_dial[40];
+    return station_off_dial_refusal(porta_p4_station_dials(), s_off_dial, sizeof s_off_dial);
 }
 
-const char *porta_host_cq_call(void) {
+const char *porta_host_cq_call(uint32_t dial_hz, uint8_t mode) {
     if (porta_link_test_active()) {
         return "link test";
     }
@@ -1066,10 +1090,18 @@ const char *porta_host_cq_call(void) {
     if (const char *why = tx_refusal()) {
         return why;
     }
+    const RxMode rx_mode = mode == PORTA_QUEUE_MODE_FT4 ? RxMode::FT4 : RxMode::FT8;
+    RxChannel channel;
+    if (!station_channel(porta_p4_station_dials(), rx_mode, &channel)) {
+        return "FT4 is not decoded";  // FT8's is listened to whenever the radio is on the station's dial
+    }
+    if (channel.dial_hz != dial_hz) {
+        return "not a channel the station listens to";  // a page behind a band change
+    }
     if (autoseq_cq_entry_id() != 0) {
         return "a CQ is already queued";
     }
-    if (!tx_scheduler_call_cq()) {
+    if (!tx_scheduler_call_cq(channel)) {
         return "TX queue full";
     }
     return nullptr;

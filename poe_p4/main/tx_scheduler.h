@@ -1,5 +1,7 @@
 #pragma once
 
+#include "decode_types.h"
+
 #include <stdint.h>
 
 #include "autoseq.h"
@@ -16,9 +18,9 @@ void arm_pending_tx(const AutoseqTxEntry &pending);
 // parity, an entry's tries). Leaves a TX on the air alone.
 void tx_scheduler_rearm(void);
 
-// Call CQ on the slot it can still key, or the next (autoseq_cq_parity()).
-// False if a CQ is already queued or the queue is full.
-bool tx_scheduler_call_cq(void);
+// Call CQ on `channel`, on the slot of its mode it can still key, or the next
+// (autoseq_cq_parity()). False if a CQ is already queued or the queue is full.
+bool tx_scheduler_call_cq(RxChannel channel);
 
 // Call every main-loop tick: slot boundary + per-tone CAT TA.
 void tx_scheduler_tick(void);
@@ -42,3 +44,5 @@ const char *tx_scheduler_hud_not_keyed_reason(void);
 // armed/in-flight message text + on-air offset (power/SWR filled by the caller).
 bool tx_scheduler_hud_active(void);
 bool tx_scheduler_hud_snapshot(const char **text_out, int *offset_hz_out);
+// The mode the armed TX goes out in, whose slots the phone's slot bar counts; FT8 when nothing is armed.
+RxMode tx_scheduler_armed_mode(void);

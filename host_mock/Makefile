@@ -65,7 +65,7 @@ APP_PUSH_TARGET = host_test_app_push
 PORTA_FW_RX_TARGET = host_test_porta_fw_rx
 RECENT_QSO_TARGET = host_test_recent_qso
 QUEUE_HEAD_TARGET = host_test_queue_head
-MODE_ENTRIES_TARGET = host_test_mode_entries
+CHANNEL_ENTRIES_TARGET = host_test_channel_entries
 ROGERS_ONCE_TARGET = host_test_rogers_once
 DIAL_HISTORY_TARGET = host_test_dial_history
 ADIF_LOGGER_TARGET = host_test_adif_logger
@@ -102,7 +102,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARG
      $(FILE_LIST_TARGET) \
      $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
      $(WEB_PAGE_TARGET) $(EVENT_STATE_TARGET) $(FW_POLICY_TARGET) $(AP_NAME_TARGET) $(APP_PACK_TARGET) $(APP_PUSH_TARGET) $(PORTA_FW_RX_TARGET) \
-     $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(MODE_ENTRIES_TARGET) $(ROGERS_ONCE_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
+     $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(CHANNEL_ENTRIES_TARGET) $(ROGERS_ONCE_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
      $(CAT_REPLY_PARSER_TARGET) $(AMP_BAND_PRIME_TARGET) $(SWR_SWEEP_TARGET) $(SWR_TRIP_TARGET) $(TX_WATCHDOG_TARGET) $(TX_READY_TARGET) $(TX_OFFSET_TARGET) $(QMX_IQ_LINK_TARGET) $(QMX_MENU_READ_TARGET) $(QMX_MENU_WRITE_TARGET) $(QMX_IQ_CHANNEL_TARGET) \
      $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(BLOCK_ACTIVITY_TARGET) $(CORE_BUSY_TARGET) \
      $(DECODE_RETRY_TARGET) $(DECODE_BUDGET_TARGET) $(DECODE_SYNC_TARGET) $(DECODE_SNR_TARGET) \
@@ -117,7 +117,7 @@ porta_event_json.o: ../components/porta_proto/porta_event_json.c
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 SIM_OBJ = sim_station.o scenario.o host_mocks.o json_parser.o \
-          ../components/autoseq/autoseq.o porta_event_json.o swr_sweep.o heard_grid.o
+          ../components/autoseq/autoseq.o porta_proto.o porta_event_json.o swr_sweep.o heard_grid.o
 $(SIM_TARGET): $(SIM_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
@@ -142,7 +142,7 @@ $(RECENT_QSO_TARGET): $(RECENT_QSO_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 QUEUE_HEAD_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_queue_head.o
-MODE_ENTRIES_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_mode_entries.o
+CHANNEL_ENTRIES_OBJ = ../components/autoseq/autoseq.o host_mocks.o test_channel_entries.o
 HEARD_GRID_OBJ = ../components/autoseq/autoseq.o heard_grid.o decode_fields.o host_mocks.o test_heard_grid.o
 heard_grid.o: ../components/decode_pipeline/heard_grid.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
@@ -336,7 +336,7 @@ $(DECODE_SNR_TARGET): $(DECODE_SNR_OBJ)
 $(QUEUE_HEAD_TARGET): $(QUEUE_HEAD_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
-$(MODE_ENTRIES_TARGET): $(MODE_ENTRIES_OBJ)
+$(CHANNEL_ENTRIES_TARGET): $(CHANNEL_ENTRIES_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 ADIF_OBJ = adif.o test_adif_merge.o

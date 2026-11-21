@@ -40,7 +40,12 @@ bool find_decode_for_reply(uint32_t decode_id, UiRxLine* out);
 // True if dxcall_norm was logged within the ADIF dedupe window (10 min) on the radio's band in this mode. Each
 // board registers it with autoseq_set_recent_qso_callback(), which consults it
 // only before starting a new QSO.
-bool decode_pipeline_recently_logged(const std::string& dxcall_norm, RxMode mode);
+bool decode_pipeline_recently_logged(const std::string& dxcall_norm, RxChannel channel);
+
+// Decodes addressed to us reach autoseq only on a channel `fn` says the station listens to now
+// (station_listens(), station_channel.h), so none starts or advances a QSO while the radio is off the
+// station's dial. Unset, every channel is listened to.
+void decode_pipeline_set_channel_listened(bool (*fn)(RxChannel channel));
 
 // True while a station slot in the last two minutes showed the clock on its slots (decode_sync_phase_good()):
 // a browser clock set may then move it only by whole slots (clock_set_decide(), docs/architecture/time.md).

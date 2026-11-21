@@ -14,8 +14,6 @@ static Scenario* s_current = nullptr;
 
 static const uint32_t kEpochBase = 1700000000u;
 static const uint32_t kDialHz = 14074000u;
-// 20 m's FT4 dial, 14.080 MHz, beside FT8's (porta_p4_station_ft4_dial_offset_hz() on the board).
-static const int32_t kFt4DialOffsetHz = 6000;
 
 static void push_raw(Scenario& s, const char* row)
 {
@@ -93,7 +91,7 @@ static std::string time_on_for(int period)
 }
 
 static bool on_adif(const std::string& dxcall, const std::string& dxgrid,
-                    int rst_sent, int rst_rcvd, RxMode)
+                    int rst_sent, int rst_rcvd, RxChannel)
 {
     if (!s_current) {
         return true;
@@ -126,11 +124,18 @@ static bool on_heard_grid(const std::string& dxcall_norm, std::string* grid_out)
     return heard_grid_lookup(dxcall_norm.c_str(), mock_clock_get(), grid_out);
 }
 
-static void apply_period_slot(UiRxLine& rx, int slot_parity)
+// The station's FT8 channel, the one a scenario's decodes are heard on and its CQ is called on.
+static RxChannel scenario_channel(const Scenario& s)
+{
+    return RxChannel{s.dial_hz ? s.dial_hz : kDialHz, RxMode::FT8};
+}
+
+static void apply_period_slot(const Scenario& s, UiRxLine& rx, int slot_parity)
 {
     if (rx.slot_id == 0 && slot_parity != 0) {
         rx.slot_id = slot_parity;
     }
+    rx.channel = scenario_channel(s);
 }
 
 static void fail_period(Scenario& s, const char* what, const std::string& expect,
@@ -191,7 +196,7 @@ void scenario_emit_status(Scenario& s)
             continue;
         }
         ids.push_back(ctx.entry_id);
-        porta_queue_entry_event_t q = queue_entry_event(ctx, s.dial_hz ? s.dial_hz : kDialHz, kFt4DialOffsetHz);
+        porta_queue_entry_event_t q = queue_entry_event(ctx);
         q.epoch_secs = s.epoch_secs;
         n = porta_event_json_queue(row, sizeof(row), s.next_seq, &q);
         if (n > 0) {
@@ -263,7 +268,7 @@ bool scenario_call_cq(Scenario& s)
     s_current = &s;
     stamp(s);
     // The next period to run is the slot it can still key.
-    const bool ok = autoseq_call_cq(autoseq_cq_parity(s.period & 1, true));
+    const bool ok = autoseq_call_cq(scenario_channel(s), autoseq_cq_parity(scenario_channel(s), s.period & 1, true));
     scenario_emit_status(s);
     return ok;
 }
@@ -430,7 +435,7 @@ bool scenario_step(Scenario& s)
     TestPeriod& tp = s.data.periods[p];
     if (tp.has_cq_call) {
         const int parity = tp.cq_call.parity >= 0 ? tp.cq_call.parity : s.my_tx_parity;
-        const bool ok = autoseq_call_cq(parity);
+        const bool ok = autoseq_call_cq(scenario_channel(s), parity);
         if (ok && tp.cq_call.tries > 0) {
             autoseq_set_entry_tries(autoseq_cq_entry_id(), tp.cq_call.tries);
         }
@@ -445,7 +450,7 @@ bool scenario_step(Scenario& s)
     std::vector<UiRxLine> to_me;
     for (const UiRxLine& src : tp.messages) {
         UiRxLine rx = src;
-        apply_period_slot(rx, slot_parity);
+        apply_period_slot(s, rx, slot_parity);
         printf("[Period %d] RX: %s %s %s  snr=%d slot=%d\n",
                p, rx.field1.c_str(), rx.field2.c_str(), rx.field3.c_str(),
                rx.snr, rx.slot_id);
@@ -463,7 +468,7 @@ bool scenario_step(Scenario& s)
         const int idx = tp.touch_event.message_index;
         if (idx >= 0 && idx < (int)tp.messages.size()) {
             UiRxLine rx = tp.messages[idx];
-            apply_period_slot(rx, slot_parity);
+            apply_period_slot(s, rx, slot_parity);
             printf("[Period %d @ %.1fs] Touch: message %d (%s)\n",
                    p, tp.touch_event.time_offset, idx, rx.text.c_str());
             autoseq_on_touch(rx);

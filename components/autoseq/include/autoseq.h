@@ -105,10 +105,10 @@ struct QsoContext {
     // (tx_offset.h, autoseq_hold_tx_offset()). A fresh entry starts on the
     // offset its station last heard from us (autoseq_remembered_tx_offset()).
     int tx_offset_hz = 0;
-    int slot_id = 0;        // TX slot (0=even, 1=odd), in its own mode's slots
-    // The mode it runs in: a decode continues the entry for its call in its own mode only, so an FT8 QSO and
-    // an FT4 QSO with one station are two entries. The CQ is FT8's.
-    RxMode mode = RxMode::FT8;
+    int slot_id = 0;        // TX slot (0=even, 1=odd), in its own channel's mode's slots
+    // The channel it runs on, its dial and mode: a decode continues the entry for its call on its own channel
+    // only, so an FT8 QSO and an FT4 QSO with one station are two entries. The CQ's is the one it was called on.
+    RxChannel channel;
 };
 
 // TX entry for scheduling
@@ -121,13 +121,13 @@ struct AutoseqTxEntry {
     int repeat_counter = AUTOSEQ_TRIES;  // tries left, this one included
     bool is_signoff = false; // True for TX4/TX5 (priority scheduling)
     uint16_t entry_id = 0;   // QsoContext::entry_id of the queue[0] this came from
-    RxMode mode = RxMode::FT8;  // the mode it goes out in: its slots, waveform and channel
+    RxChannel channel;  // the channel it goes out on: its mode's slots and waveform, from its dial
 };
 
 // ADIF logging callback type
 using AdifLogCallback = std::function<bool(const std::string& dxcall,
                                             const std::string& dxgrid,
-                                            int rst_sent, int rst_rcvd, RxMode mode)>;
+                                            int rst_sent, int rst_rcvd, RxChannel channel)>;
 
 // ============== Public API ==============
 // Not locked: every call, and every callback, runs on the board's main loop
@@ -153,16 +153,21 @@ bool autoseq_drop_by_entry_id(uint16_t entry_id);
 // Returns true if a rotation occurred.
 bool autoseq_rotate_same_parity();
 
-// Call CQ: queue the CQ entry on slot_parity (0 even, 1 odd) with the station
-// default's tries. It stays queued, below every QSO, until its tries are used
-// or it is dropped. False if a CQ is already queued (it is left as it is) or
-// there is no room.
-bool autoseq_call_cq(int slot_parity);
+// Call CQ on `channel`: queue the CQ entry on slot_parity (0 even, 1 odd), in
+// that channel's mode's slots, with the station default's tries. It stays
+// queued, below every QSO, until its tries are used or it is dropped. False if
+// a CQ is already queued, on any channel (it is left as it is), or there is no
+// room.
+bool autoseq_call_cq(RxChannel channel, int slot_parity);
 
-// The parity Call CQ picks: an active QSO's if there is one, so the CQ keeps
-// the period the station is already using; otherwise the slot that is under
-// way when it can still be keyed, or the next one.
-int autoseq_cq_parity(int current_slot_parity, bool current_slot_keyable);
+// The parity Call CQ on `channel` picks: an active QSO's on that channel if
+// there is one, so the CQ keeps the period the station is already using there;
+// otherwise the slot of that channel's mode that is under way when it can
+// still be keyed, or the next one.
+int autoseq_cq_parity(RxChannel channel, int current_slot_parity, bool current_slot_keyable);
+
+// The queued CQ's channel; false if no CQ is queued.
+bool autoseq_cq_channel(RxChannel* out);
 
 // The queued CQ's entry_id, 0 if none.
 uint16_t autoseq_cq_entry_id();
@@ -255,11 +260,11 @@ void autoseq_mark_sent(int64_t slot_idx);
 // fresh entry for a station that heard it starts there (autoseq_remembered_tx_offset()).
 void autoseq_on_tx_starting(int offset_hz = 0);
 
-// The TX offset a fresh entry for `dxcall` in `mode` starts on (QsoContext::tx_offset_hz), 0 for none: the
-// offset last transmitted to that station, within AUTOSEQ_INACTIVE_EXPIRY_MS; else, when the station is
-// `calling_us` in FT8, the offset our CQ last went out on, within the same time (docs/architecture/autoseq.md,
-// TX offset). Read at `now_ms`, esp_timer's clock.
-int autoseq_remembered_tx_offset(const std::string& dxcall, RxMode mode, bool calling_us, int64_t now_ms);
+// The TX offset a fresh entry for `dxcall` on `channel` starts on (QsoContext::tx_offset_hz), 0 for none: the
+// offset last transmitted to that station on that channel, within AUTOSEQ_INACTIVE_EXPIRY_MS; else, when the
+// station is `calling_us`, the offset our CQ on that channel last went out on, within the same time
+// (docs/architecture/autoseq.md, TX offset). Read at `now_ms`, esp_timer's clock.
+int autoseq_remembered_tx_offset(const std::string& dxcall, RxChannel channel, bool calling_us, int64_t now_ms);
 
 // Get display strings for active QSOs
 void autoseq_get_qso_states(std::vector<std::string>& out);
@@ -289,9 +294,9 @@ void autoseq_set_adif_callback(AdifLogCallback cb);
 // never filtered: a QSO is logged when we send RR73, so the station's 73 or a
 // resent R+report arrives after it is "recent" and must still reach its
 // entry. A touch is not filtered either. dxcall_norm is upper case with <>
-// stripped; mode is the decode's, and a board answers for its band in that mode,
-// as POTA counts a contact. Null (the default) filters nothing.
-using AutoseqRecentQsoCallback = bool (*)(const std::string& dxcall_norm, RxMode mode);
+// stripped; channel is the decode's, and a board answers for the band of its
+// dial in its mode, as POTA counts a contact. Null (the default) filters nothing.
+using AutoseqRecentQsoCallback = bool (*)(const std::string& dxcall_norm, RxChannel channel);
 void autoseq_set_recent_qso_callback(AutoseqRecentQsoCallback cb);
 
 // "What grid did this call last send?" -- consulted only when a QSO is logged

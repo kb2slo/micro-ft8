@@ -94,8 +94,8 @@ size_t porta_event_json_slot(char *out, size_t cap, uint32_t seq,
     }
     const int n = snprintf(out, cap,
                            "{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":3,"
-                           "\"sp\":%u,\"hz\":%u}",
-                           seq, ev->epoch_secs, ev->slot_parity, ev->resolved_offset_hz);
+                           "\"sp\":%u,\"hz\":%u,\"md\":%u}",
+                           seq, ev->epoch_secs, ev->slot_parity, ev->resolved_offset_hz, ev->mode);
     return finish(out, cap, n);
 }
 
