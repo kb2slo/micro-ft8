@@ -84,6 +84,19 @@ assert.strictEqual(at(40).h, 0.5, 'one on in half the blocks, half height');
 assert.ok(!at(95), 'nothing from before the span');
 assert.ok(Math.abs(at(40).x1 - at(40).x0 - 28.125 / 2800) < 1e-9, 'a cell is 28.125 Hz wide');
 assert.ok(at(70), 'a cell on a quarter of the slot is drawn');
+// Each channel keeps its own record, routed by the event's md (noteBandEvent()): an FT4 period's index is about twice an
+// FT8 slot's, so one record for both made every FT8 event look older after FT4 (bench, 2026-11-21).
+{
+  const st = { act: { si: 0, bm: 0, lv: [], mk: [] }, act4: { si: 0, bm: 0, lv: [], mk: [] }, tallies: [], decodes: {}, paused: {} };
+  const e8 = Object.assign({ d: 8, md: 0 }, ev(119685300, 0, [1], [mask(10)]));
+  const e4 = Object.assign({ d: 8, md: 1 }, ev(239370600, 0, [2], [mask(20)]));
+  ctx.noteBandEvent(st, e4, 15000);
+  ctx.noteBandEvent(st, e8, 15000);
+  assert.strictEqual(st.act4.si, 239370600, "FT4's activity in its own record");
+  assert.strictEqual(st.act.si, 119685300, "FT8's in its own, though its index is smaller");
+  ctx.noteBandEvent(st, Object.assign({ d: 8, md: 0 }, ev(119685301, 0, [1], [mask(10)])), 15000);
+  assert.strictEqual(st.act4.si, 239370600, 'an FT8 event leaves the FT4 record alone');
+}
 const hop = ctx.noteActivity({ si: 0, bm: 0, lv: [], mk: [] },
   ev(SI, 5, [1, 1, 1, 1], [mask(30), mask(31), mask(30), mask(31)]));
 bars = ctx.activityStrip(hop, t0 + 5000, P);

@@ -1247,12 +1247,13 @@ void porta_emit_radio_state(uint32_t freq_hz, bool tx, uint8_t mode, bool split,
   enqueue(buf, n);
 }
 
-void porta_emit_activity(uint32_t slot_idx, uint8_t block_ms, uint8_t first,
+void porta_emit_activity(uint8_t mode, uint32_t slot_idx, uint8_t block_ms, uint8_t first,
                          const uint8_t* levels, const uint8_t* masks, uint8_t n,
                          uint16_t lo_hz, uint16_t hi_hz) {
   if (!s_running || !levels || !masks || n == 0) return;
   porta_activity_event_t a = {};
   a.epoch_secs = host_epoch_secs();
+  a.mode = mode;
   a.slot_idx = slot_idx;
   a.block_ms = block_ms;
   a.first = first;

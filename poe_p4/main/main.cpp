@@ -53,10 +53,10 @@ static void send_undecoded(void * /*ctx*/, int64_t slot_idx, int slot_ms, ft8_sl
     porta_emit_undecoded((uint32_t)slot_idx, (uint8_t)(slot_ms / 100), (uint8_t)why);
 }
 
-static void send_activity(void * /*ctx*/, int64_t slot_idx, int block_ms, int first,
+static void send_activity(void * /*ctx*/, int ft4, int64_t slot_idx, int block_ms, int first,
                           const uint8_t *levels, const uint8_t *masks, int n, int lo_hz, int hi_hz) {
-    porta_emit_activity((uint32_t)slot_idx, (uint8_t)block_ms, (uint8_t)first, levels, masks,
-                        (uint8_t)n, (uint16_t)lo_hz, (uint16_t)hi_hz);
+    porta_emit_activity((uint8_t)(ft4 ? 1 : 0), (uint32_t)slot_idx, (uint8_t)block_ms, (uint8_t)first, levels,
+                        masks, (uint8_t)n, (uint16_t)lo_hz, (uint16_t)hi_hz);
 }
 
 // Which channels the radio feeds (docs/architecture/decode.md, Channels): the operating band's plan
