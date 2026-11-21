@@ -23,7 +23,8 @@ typedef uint32_t (*ft8_audio_take_frontend_us_cb_t)(void* ctx);
 // One batch of band activity (ft8_block_activity.h): `n` blocks of `block_ms` each, the first at
 // position `first` in slot `slot_idx`; per block a level and a mask of FT8_ACTIVITY_CELLS cells
 // spanning lo_hz..hi_hz. Called on the capture task; queue, do not block.
-typedef void (*ft8_audio_activity_cb_t)(void* ctx, int64_t slot_idx, int block_ms, int first,
+// `ft4`: the channel's mode, 1 for FT4, whose slot_idx counts 7.5 s periods; block_ms is a step's length.
+typedef void (*ft8_audio_activity_cb_t)(void* ctx, int ft4, int64_t slot_idx, int block_ms, int first,
                                         const uint8_t* levels, const uint8_t* masks, int n,
                                         int lo_hz, int hi_hz);
 

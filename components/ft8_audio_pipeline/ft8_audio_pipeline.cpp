@@ -114,6 +114,11 @@ struct Ft8Channel {
     bool slot_from_boundary;
     ft8_activity_batch_t activity;
     ft8_activity_batch_t activity_out;
+    // FT4's activity goes in steps of FT8_ACTIVITY_FT4_PER blocks (ft8_activity_merge_add()), so with FT8's it does
+    // not fill the sidekick's event ring; activity_ms is a step's length, block_ms times activity_per.
+    ft8_activity_merge_t activity_merge;
+    int activity_per;
+    int activity_ms;
     // The waterfall's span: bins are tone-spacing wide, from min_bin up to max_bin.
     int activity_lo_hz;
     int activity_hi_hz;
@@ -244,7 +249,10 @@ static bool channel_start(Ft8Channel* ch, const ft8_audio_pipeline_config_t* cfg
     const int t1 = decode_trigger_blocks(ft4, 1, ch->beside_other);
     ch->target_blocks = (t0 > t1 ? t0 : t1) + 1;
     ch->block_ms = (int)lroundf(chan->mode->symbol_period * 1000.0f);
-    ft8_activity_batch_init(&ch->activity, ch->block_ms);
+    ch->activity_per = ft4 ? FT8_ACTIVITY_FT4_PER : 1;
+    ch->activity_ms = ch->block_ms * ch->activity_per;
+    memset(&ch->activity_merge, 0, sizeof(ch->activity_merge));
+    ft8_activity_batch_init(&ch->activity, ch->activity_ms);
     ch->activity_lo_hz = (int)lroundf(ch->mon.min_bin / ch->mon.symbol_period);
     ch->activity_hi_hz = (int)lroundf(ch->mon.max_bin / ch->mon.symbol_period);
     return true;
@@ -252,8 +260,9 @@ static bool channel_start(Ft8Channel* ch, const ft8_audio_pipeline_config_t* cfg
 
 static void send_activity(const Ft8Channel* ch, const ft8_activity_batch_t& b)
 {
-    ch->cfg->on_activity(ch->cfg->ctx, b.slot_idx, ch->block_ms, b.first, b.level, &b.mask[0][0], b.n,
-                         ch->activity_lo_hz, ch->activity_hi_hz);
+    ch->cfg->on_activity(ch->cfg->ctx, ch->chan->mode->protocol_id == FTX_PROTOCOL_FT4 ? 1 : 0, b.slot_idx,
+                         ch->activity_ms, b.first, b.level, &b.mask[0][0], b.n, ch->activity_lo_hz,
+                         ch->activity_hi_hz);
 }
 
 // A full block is in ch->block: AGC, waterfall, activity, then the slot boundary or the decode trigger.
@@ -336,8 +345,8 @@ static void channel_block(Ft8Channel* ch, int64_t queued)
         const int64_t monitor_t0 = esp_timer_get_time();
         monitor_process(&mon, block);
         ch->slot_monitor_us += esp_timer_get_time() - monitor_t0;
-        // The slot bar shows the station's channel.
-        if (cfg->on_activity && chan->station && !decode_tx_state_get_tx_active() &&
+        // The slot bar shows every channel, a bar each (docs/architecture/webapp.md, Operate's pinned regions).
+        if (cfg->on_activity && !decode_tx_state_get_tx_active() &&
             !decode_tx_state_get_was_txing()) {
             activity_level = ft8_block_activity(
                 mon.wf.mag + (mon.wf.num_blocks - 1) * mon.wf.block_stride,
@@ -359,10 +368,13 @@ static void channel_block(Ft8Channel* ch, int64_t queued)
     // Date the block by its audio, not by when it is processed.
     const int64_t block_now_ms = rtc_now_ms();
     int64_t now_idx = ft8_block_slot_idx(block_now_ms, queued, (int)ch->slot_ms, FT8_SAMPLE_RATE);
-    if (activity_level >= 0) {
-        const int pos = ft8_block_pos(block_now_ms, queued, (int)ch->slot_ms, ch->block_ms, FT8_SAMPLE_RATE);
-        if (ft8_activity_batch_add(&ch->activity, now_idx, pos, (uint8_t)activity_level,
-                                   activity_mask, &ch->activity_out)) {
+    uint8_t step_level = 0;
+    uint8_t step_mask[FT8_ACTIVITY_MASK_BYTES];
+    if (activity_level >= 0 &&
+        ft8_activity_merge_add(&ch->activity_merge, ch->activity_per, now_idx, (uint8_t)activity_level,
+                               activity_mask, &step_level, step_mask)) {
+        const int pos = ft8_block_pos(block_now_ms, queued, (int)ch->slot_ms, ch->activity_ms, FT8_SAMPLE_RATE);
+        if (ft8_activity_batch_add(&ch->activity, now_idx, pos, step_level, step_mask, &ch->activity_out)) {
             send_activity(ch, ch->activity_out);
         }
     }
@@ -414,7 +426,7 @@ static void channel_block(Ft8Channel* ch, int64_t queued)
         ESP_LOGD(ch->tag, "Triggering decode at slot %lld blocks=%d wf=%d",
                  (long long)ch->slot_idx, ch->slot_blocks, mon.wf.num_blocks);
         // The slot's last blocks close its activity at the trigger, as its decodes follow.
-        if (cfg->on_activity && chan->station && ft8_activity_batch_take(&ch->activity, &ch->activity_out)) {
+        if (cfg->on_activity && ft8_activity_batch_take(&ch->activity, &ch->activity_out)) {
             send_activity(ch, ch->activity_out);
         }
         // tx_slot_idx outlives was_txing. The slot loop clears that

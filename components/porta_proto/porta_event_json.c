@@ -183,9 +183,9 @@ size_t porta_event_json_activity(char *out, size_t cap, uint32_t seq,
     }
     const int n = snprintf(out, cap,
                            "{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":8,"
-                           "\"si\":%" PRIu32 ",\"bm\":%u,\"b\":%u,\"lo\":%u,\"hi\":%u,"
+                           "\"md\":%u,\"si\":%" PRIu32 ",\"bm\":%u,\"b\":%u,\"lo\":%u,\"hi\":%u,"
                            "\"v\":[%s],\"m\":[%s]}",
-                           seq, ev->epoch_secs, ev->slot_idx, ev->block_ms, ev->first,
+                           seq, ev->epoch_secs, ev->mode, ev->slot_idx, ev->block_ms, ev->first,
                            ev->lo_hz, ev->hi_hz, levels, masks);
     return finish(out, cap, n);
 }

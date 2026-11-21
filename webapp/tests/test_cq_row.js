@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The CQ row's channel (docs/architecture/webapp.md, The CQ row): app.html's own cqChannels(), cqChannelFor(),
-// cqCallBody(), cqStatusText() and slotBarPeriodMs(). Call CQ names a channel, its mode and dial in Hz, as the
+// cqCallBody(), cqStatusText() and slotBarsModel(). Call CQ names a channel, its mode and dial in Hz, as the
 // main board does (porta_proto_parse_cq_body()); it calls on the channels listened to (listenedChannels()); the
 // status line names the mode while there are two, and an FT4 CQ's periods; the slot bar counts the armed TX's
 // mode's slots.
@@ -23,7 +23,7 @@ vm.runInContext('var SLOT_MS = 15000; var QMX_FT4_BESIDE_MIN_HZ = -33000, QMX_FT
   ' var LISTEN_FT8 = 1, LISTEN_FT4 = 2, LISTEN_BOTH = 3;', ctx);
 ['bandFreq', 'currentFt4DialKhz', 'currentDockFreqKhz', 'listenMask', 'bandFt4Khz', 'bandBothFit', 'bandChannels',
  'operatingBandIdx', 'listenedChannels', 'cqChannels', 'cqChannelFor', 'cqCallBody', 'cqStatusText',
- 'slotBarPeriodMs'].forEach(function (n) { vm.runInContext(extract(n), ctx); });
+ 'slotBarsModel'].forEach(function (n) { vm.runInContext(extract(n), ctx); });
 const B20 = '5', B40 = '3';
 
 const plain = (v) => JSON.parse(JSON.stringify(v));
@@ -65,9 +65,27 @@ assert.strictEqual(ctx.cqStatusText(cq4, { 1: cq4, 2: { dxcall: 'K1ABC' } }, tru
                    'Waits for the queue · FT4 · odd periods', 'a QSO goes first');
 
 // The slot bar's period.
-assert.strictEqual(ctx.slotBarPeriodMs(null), 15000, 'nothing heard: FT8 slots');
-assert.strictEqual(ctx.slotBarPeriodMs({ sp: 0, hz: 0, md: 0 }), 15000);
-assert.strictEqual(ctx.slotBarPeriodMs({ sp: 1, hz: 1500, md: 1 }), 7500, "an armed FT4 TX: FT4's periods");
+// The slot bars: one per channel listened to, each on its own mode's slot, the armed TX's on its own channel's.
+const T = 1795276807600;  // 7.6 s into an FT8 slot, 0.1 s into an FT4 period
+const bars = (cfg, state, onAir) => plain(ctx.slotBarsModel(cfg, state, onAir, T)).map((b) =>
+  [b.mode, b.period, b.armed, b.onAir]);
+assert.deepStrictEqual(bars({}, null, false), [['FT8', 15000, false, false]], 'before any config: one FT8 bar');
+assert.deepStrictEqual(bars({ band_sel: B20 }, null, false), [['FT8', 15000, false, false]], 'FT8 alone: one bar');
+assert.deepStrictEqual(bars({ band_sel: B20, listen5: '2' }, null, false), [['FT4', 7500, false, false]],
+                       "FT4 alone: one bar on FT4's 7.5 s");
+assert.deepStrictEqual(bars({ band_sel: B20, listen5: '3' }, { hz: 0, md: 0 }, false),
+                       [['FT8', 15000, false, false], ['FT4', 7500, false, false]], 'both: two bars, FT8 then FT4');
+assert.deepStrictEqual(bars({ band_sel: B20, listen5: '3' }, { hz: 1500, md: 1 }, true),
+                       [['FT8', 15000, false, false], ['FT4', 7500, true, true]],
+                       "an FT4 call keyed beside FT8: FT4's bar red, FT8's not");
+assert.deepStrictEqual(bars({ band_sel: B20, listen5: '3' }, { hz: 1500, md: 0 }, true),
+                       [['FT8', 15000, true, true], ['FT4', 7500, false, false]], 'an FT8 call: FT8 bar red');
+assert.deepStrictEqual(bars({ band_sel: B20, listen5: '3' }, { hz: 0, md: 0 }, true),
+                       [['FT8', 15000, false, true], ['FT4', 7500, false, false]], 'Tune, with no mode: the first bar');
+const two = plain(ctx.slotBarsModel({ band_sel: B20, listen5: '3' }, null, false, T));
+assert.strictEqual(two[0].frac.toFixed(3), (7600 / 15000).toFixed(3), "FT8's bar fills over 15 s");
+assert.strictEqual(two[1].frac.toFixed(3), (100 / 7500).toFixed(3), "FT4's over 7.5 s");
+assert.strictEqual(two[1].parity, Math.floor(T / 7500) % 2, "FT4's parity counts its own periods");
 
 // The mode button sits before Call CQ in the row.
 const row = src.indexOf('<div id=opCqRow>');

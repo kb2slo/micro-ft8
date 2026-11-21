@@ -188,9 +188,11 @@ button:disabled{opacity:.45}
 /* Read by a screen reader, not drawn. */
 .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 /* E or O: the parity of the slot now. The bar's colour no longer carries it. */
-#opParity{flex:none;width:1.5rem;height:1.5rem;border-radius:.35rem;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;background:var(--accent);color:Canvas}
-#opParity.tx{background:var(--danger)}
-#opParity:empty{background:color-mix(in srgb, GrayText 30%, transparent)}
+.slotchan{flex:1;min-width:0;display:flex;align-items:center;gap:.4rem}
+.slotchan[hidden]{display:none}
+.slotpar{flex:none;width:1.5rem;height:1.5rem;border-radius:.35rem;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;background:var(--accent);color:Canvas}
+.slotpar.tx{background:var(--danger)}
+.slotpar:empty{background:color-mix(in srgb, GrayText 30%, transparent)}
 #opActLine{margin-top:.35rem;font-family:ui-monospace,monospace;font-size:.72rem;display:flex;flex-wrap:wrap;gap:.15rem .9rem}
 #opActLine .ref{font-weight:700}
 #opActLine .cnt{color:GrayText}
@@ -201,17 +203,17 @@ button:disabled{opacity:.45}
    offset frequency) ---- */
 /* 18 px always, keyed or not, so the row never changes height; while we transmit the
    readout sits inside it (txReadout(), docs/architecture/webapp.md, Operate's pinned regions). */
-#opSlotBar{position:relative;flex:1;height:18px;border-radius:5px;overflow:hidden;background:#141428}
-#opSlotText{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:ui-monospace,monospace;font-size:.7rem;font-weight:700;color:#fff;white-space:nowrap;pointer-events:none}
-#opSlotBarFill{height:100%;width:0%;background:#3b82f6;transition:width .2s linear,background-color .2s linear}
-#opSlotBarFill.tx{background:#dc2626}
-#opSlotBarFill.halt,#opSlotBarFill.dead{background:#c98a10}
-#opSlotText.warn{color:#fbbf24}
+.slotbar{position:relative;flex:1;min-width:0;height:18px;border-radius:5px;overflow:hidden;background:#141428}
+.slottext{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:ui-monospace,monospace;font-size:.7rem;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;pointer-events:none}
+.slotfill{height:100%;width:0%;background:#3b82f6;transition:width .2s linear,background-color .2s linear}
+.slotfill.tx{background:#dc2626}
+.slotfill.halt,.slotfill.dead{background:#c98a10}
+.slottext.warn{color:#fbbf24}
 /* Dark edge so the text reads over the activity bars and the fill alike. */
-#opSlotText{text-shadow:0 0 2px #000,0 0 3px #000}
-#opSlotBarAct{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.slottext{text-shadow:0 0 2px #000,0 0 3px #000}
+.slotact{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 /* Cyan, not the strip's white: the cursor is our offset, the strip's ticks are other stations. */
-#opSlotBarCursor{position:absolute;top:0;width:3px;height:100%;border-radius:1px;background:#22d3ee;transition:left .2s linear}
+.slotcur{position:absolute;top:0;width:3px;height:100%;border-radius:1px;background:#22d3ee;transition:left .2s linear}
 .pill{display:inline-block;font-size:.7rem;font-weight:700;padding:.15rem .5rem;border-radius:999px}
 /* Glyph, not just a color, on purpose (operator feedback: colorblind-hostile
    to signal state with a plain colored dot). Shape carries the meaning --
@@ -652,12 +654,24 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
        parity and the bar's text and then what the tap does. -->
   <div class=slotrow id=opSlotRow role=button tabindex=0>
     <span class=vh>Go to Operate.</span>
-    <span id=opParity aria-label="Slot parity"></span>
-    <div id=opSlotBar>
-      <div id=opSlotBarFill></div>
-      <canvas id=opSlotBarAct aria-hidden=true></canvas>
-      <div id=opSlotBarCursor hidden></div>
-      <span id=opSlotText></span>
+    <!-- A bar per channel listened to (slotBarsModel()): FT8's, and FT4's beside it at half the width each. -->
+    <div class=slotchan id=opSlotChan>
+      <span id=opParity class=slotpar aria-label="Slot parity"></span>
+      <div id=opSlotBar class=slotbar>
+        <div id=opSlotBarFill class=slotfill></div>
+        <canvas id=opSlotBarAct class=slotact aria-hidden=true></canvas>
+        <div id=opSlotBarCursor class=slotcur hidden></div>
+        <span id=opSlotText class=slottext></span>
+      </div>
+    </div>
+    <div class=slotchan id=opSlotChan4 hidden>
+      <span id=opParity4 class=slotpar aria-label="FT4 period parity"></span>
+      <div id=opSlotBar4 class=slotbar>
+        <div id=opSlotBarFill4 class=slotfill></div>
+        <canvas id=opSlotBarAct4 class=slotact aria-hidden=true></canvas>
+        <div id=opSlotBarCursor4 class=slotcur hidden></div>
+        <span id=opSlotText4 class=slottext></span>
+      </div>
     </div>
   </div>
   <div id=opActLine hidden></div>
@@ -4571,10 +4585,13 @@ var CLOCK_CUE_MIN_SIGNALS = 8, CLOCK_CUE_SLOTS = 2;
 // act: the slot being received (noteActivity()); tallies: the newest received slots, oldest
 // first, {si, sig, dec, paused}; decodes: si -> decodes heard for it; paused: si -> true when the
 // main board did not decode it (an UNDECODED event, d 9: transmitting, busy or paused).
-var band = { act: { si: 0, bm: 0, lv: [], mk: [] }, tallies: [], decodes: {}, paused: {} };
+// act is FT8's channel's activity, act4 FT4's (ACTIVITY's md); the clock cue tallies FT8's slots alone.
+var band = { act: { si: 0, bm: 0, lv: [], mk: [] }, act4: { si: 0, bm: 0, lv: [], mk: [] }, tallies: [], decodes: {}, paused: {} };
 
 // Folds one ACTIVITY event into `act`: a later slot starts over, an earlier one is dropped. Each
 // block's mask (hex, wire byte order) is kept as its bytes; lo..hi is the span its cells cover.
+// A new slot starts a new record. FT8's and FT4's channels each keep their own (noteBandEvent()), since an FT4
+// period's index counts 7.5 s and is about twice an FT8 slot's.
 function noteActivity(act, e) {
   var si = e.si | 0, v = e.v || [], m = e.m || [];
   if (si < act.si) return act;
@@ -4713,6 +4730,8 @@ function noteBandEvent(st, e, period) {
     st.decodes[e.si] = (st.decodes[e.si] || 0) + 1;
   } else if (e.d === 9 && e.si && e.sl !== 75) {
     st.paused[e.si] = true;
+  } else if (e.d === 8 && e.md === 1) {
+    st.act4 = noteActivity(st.act4 || { si: 0, bm: 0, lv: [], mk: [] }, e);  // FT4's channel: its own record
   } else if (e.d === 8) {
     if ((e.si | 0) > st.act.si && st.act.si) {
       st.tallies = tallySlot(st.tallies, st.act, period, st.decodes, st.paused);
@@ -4726,8 +4745,8 @@ function noteBandEvent(st, e, period) {
   return st;
 }
 
-function drawActivity(bars) {
-  var c = document.getElementById('opSlotBarAct');
+function drawActivity(bars, canvasId) {
+  var c = document.getElementById(canvasId || 'opSlotBarAct');
   var dpr = window.devicePixelRatio || 1;
   var w = Math.round(c.clientWidth * dpr), h = Math.round(c.clientHeight * dpr);
   if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
@@ -4741,40 +4760,39 @@ function drawActivity(bars) {
   }
 }
 
-// Drives #opSlotBar: fills left-to-right over the slot period (fraction
-// elapsed, not remaining), red while we transmit with the readout inside
-// (txReadout()), amber when TX is halted or a keyed slot sends no RF,
-// plus a small cursor dot at the current TX offset. While we receive, the
-// band activity strip (activityStrip()) rises from its floor. The parity of the
-// slot now is the E or O tag at its left, not the bar's colour.
-// The slot bar counts the slots of the TX that goes next (SLOT_STATE's md, the armed TX's mode): FT4's
-// 7.5 s periods while an FT4 entry is armed, a CQ or a reply, FT8's 15 s slots otherwise.
-function slotBarPeriodMs(state) {
-  return state && state.md === 1 ? 7500 : SLOT_MS;
+// The slot bars (webapp.md, Operate's pinned regions): one per channel listened to, FT8's then FT4's, each over its
+// own mode's slot, FT8's 15 s or FT4's 7.5 s, with its own parity; one before the first config, FT8's. A bar is armed
+// while the TX that goes next is in its mode (SLOT_STATE's md, its hz 0 with nothing armed), and on air while that
+// TX is keyed; Tune and a sweep, with no mode, key the first. Pure: webapp/tests/test_cq_row.js runs it.
+function slotBarsModel(cfg, state, onAir, now) {
+  var modes = listenedChannels(cfg).map(function (c) { return c.mode; });
+  if (!modes.length) modes = ['FT8'];
+  var armed = state && state.hz > 0 ? (state.md === 1 ? 'FT4' : 'FT8') : null;
+  return modes.map(function (mode, i) {
+    var period = mode === 'FT4' ? 7500 : SLOT_MS;
+    var mine = armed ? armed === mode : i === 0;
+    return { mode: mode, period: period, frac: (now % period) / period, parity: Math.floor(now / period) % 2,
+             armed: armed === mode, onAir: !!onAir && mine };
+  });
 }
 
+// The element ids of the first bar and the second.
+var SLOT_BAR_IDS = [
+  { chan: 'opSlotChan', tag: 'opParity', fill: 'opSlotBarFill', act: 'opSlotBarAct', cur: 'opSlotBarCursor', text: 'opSlotText' },
+  { chan: 'opSlotChan4', tag: 'opParity4', fill: 'opSlotBarFill4', act: 'opSlotBarAct4', cur: 'opSlotBarCursor4', text: 'opSlotText4' }
+];
+
+// Drives the slot bars (slotBarsModel()), one per channel listened to: each fills left-to-right over its own
+// channel's slot (fraction elapsed, not remaining), its E or O at its left, its band activity rising from its floor
+// while we receive. The bar of the TX that goes next carries the cursor at its offset, and while it transmits turns
+// red with the readout inside (txReadout()), amber when TX is halted or a keyed slot sends no RF. A receive cue
+// (rxCue(), clockCue()) is the first bar's.
 function renderCountdown() {
-  var fill = document.getElementById('opSlotBarFill');
-  var cursor = document.getElementById('opSlotBarCursor');
-  var tag = document.getElementById('opParity');
   // No word from the main board: the radio bar says so, and the bar has nothing to say. With word but no audio,
   // the bar still counts the slot and says why (rxCue()).
   var live = radioLive();
-  if (!live && (!lastConfigOkMs || Date.now() - lastConfigOkMs > STALE_AFTER_MS)) {
-    fill.style.width = '0%';
-    fill.className = '';
-    cursor.hidden = true;
-    drawActivity([]);
-    document.getElementById('opSlotText').textContent = '';
-    tag.textContent = '';
-    tag.className = '';
-    return;
-  }
-  var p = slotBarPeriodMs(slotState);
   var now = Date.now();
-  var intoSlot = now % p;
-  var parity = Math.floor(now / p) % 2;
-  var frac = intoSlot / p;
+  var stale = !live && (!lastConfigOkMs || now - lastConfigOkMs > STALE_AFTER_MS);
   var onAir = txHud && txHud.active && !txHud.nk;
   var readout = onAir && !txHud.aborted
     ? txReadout(txHud, yn(lastCfg.tune) === 'yes' || txHud.x === 'TUNE', now - txKeyedAt, lastCfg.radio_tune_pct) : null;
@@ -4786,23 +4804,43 @@ function renderCountdown() {
     readout = { text: 'SWR sweep running', dead: false };
   }
   var cue = readout || onAir ? '' : rxCue(lastCfg, usbState) || (live ? clockCue(band.tallies) : '');
-  var slotText = document.getElementById('opSlotText');
-  slotText.textContent = readout ? readout.text : onAir ? '' : cue || (live ? activityLabel(band.act, now, SLOT_MS) : '');
-  slotText.className = cue ? 'warn' : '';
-  fill.style.width = (frac * 100).toFixed(1) + '%';
-  fill.className = onAir && txHud && txHud.aborted ? 'halt' : readout && readout.dead ? 'dead' : (onAir ? 'tx' : '');
-  // The strip is FT8's channel's activity over its 15 s slot, so it is drawn only while the bar counts those.
-  drawActivity(onAir || !live || p !== SLOT_MS ? [] : activityStrip(band.act, now, p));
-  tag.textContent = parity ? 'O' : 'E';
-  tag.className = onAir && !(txHud && txHud.aborted) ? 'tx' : '';
-  tag.setAttribute('aria-label', (parity ? 'Odd' : 'Even') + ' slot');
+  var bars = stale ? [{ mode: 'FT8', blank: true }] : slotBarsModel(lastCfg, slotState, onAir, now);
   var hz = slotState && slotState.hz;
-  if (typeof hz === 'number' && hz >= PASSBAND_HZ_MIN && hz <= PASSBAND_HZ_MAX) {
-    cursor.hidden = false;
-    cursor.style.left = (((hz - PASSBAND_HZ_MIN) / (PASSBAND_HZ_MAX - PASSBAND_HZ_MIN)) * 100).toFixed(2) + '%';
-  } else {
-    cursor.hidden = true;
-  }
+  var cursorAt = typeof hz === 'number' && hz >= PASSBAND_HZ_MIN && hz <= PASSBAND_HZ_MAX
+    ? (((hz - PASSBAND_HZ_MIN) / (PASSBAND_HZ_MAX - PASSBAND_HZ_MIN)) * 100).toFixed(2) + '%' : null;
+  SLOT_BAR_IDS.forEach(function (ids, i) {
+    var bar = bars[i];
+    document.getElementById(ids.chan).hidden = !bar;
+    if (!bar) return;
+    var fill = document.getElementById(ids.fill), cursor = document.getElementById(ids.cur);
+    var tag = document.getElementById(ids.tag), text = document.getElementById(ids.text);
+    if (bar.blank) {
+      fill.style.width = '0%';
+      fill.className = 'slotfill';
+      cursor.hidden = true;
+      drawActivity([], ids.act);
+      text.textContent = '';
+      tag.textContent = '';
+      tag.className = 'slotpar';
+      return;
+    }
+    var act = bar.mode === 'FT4' ? band.act4 : band.act;
+    var myCue = i === 0 ? cue : '';
+    text.textContent = bar.onAir ? (readout ? readout.text : '') : myCue || (live ? activityLabel(act, now, bar.period) : '');
+    text.className = 'slottext' + (myCue && !bar.onAir ? ' warn' : '');
+    fill.style.width = (bar.frac * 100).toFixed(1) + '%';
+    fill.className = 'slotfill' + (bar.onAir && txHud && txHud.aborted ? ' halt' : bar.onAir && readout && readout.dead ? ' dead' :
+                                   bar.onAir ? ' tx' : '');
+    drawActivity(bar.onAir || !live ? [] : activityStrip(act, now, bar.period), ids.act);
+    tag.textContent = bar.parity ? 'O' : 'E';
+    tag.className = 'slotpar' + (bar.onAir && !(txHud && txHud.aborted) ? ' tx' : '');
+    tag.setAttribute('aria-label', (bars.length > 1 ? bar.mode + ' ' : '') + (bar.parity ? 'Odd' : 'Even') +
+                     (bar.mode === 'FT4' ? ' period' : ' slot'));
+    // The cursor is our TX offset: on the bar of the TX that goes next, or the first with nothing of a mode armed.
+    var showCur = cursorAt && (bar.armed || (bars.every(function (b) { return !b.armed; }) && i === 0));
+    cursor.hidden = !showCur;
+    if (showCur) cursor.style.left = cursorAt;
+  });
 }
 setInterval(renderCountdown, 250);
 

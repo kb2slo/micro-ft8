@@ -455,9 +455,9 @@ bool porta_proto_parse_radio_state(const porta_frame_t *f, porta_radio_state_eve
     return true;
 }
 
-// subtype | epoch(4) | slot_idx(4) | block_ms(1) | first(1) | n(1) | lo_hz(2) | hi_hz(2)
+// subtype | epoch(4) | slot_idx(4) | block_ms(1) | first(1) | n(1) | lo_hz(2) | hi_hz(2) | mode(1)
 // | n x (level(1) | mask(PORTA_ACTIVITY_MASK_BYTES))
-#define ACTIVITY_HEADER_LEN (EVENT_HEADER_LEN + 4u + 1u + 1u + 1u + 2u + 2u)
+#define ACTIVITY_HEADER_LEN (EVENT_HEADER_LEN + 4u + 1u + 1u + 1u + 2u + 2u + 1u)
 #define ACTIVITY_BLOCK_LEN (1u + PORTA_ACTIVITY_MASK_BYTES)
 
 size_t porta_proto_encode_activity(const porta_activity_event_t *a, uint8_t *out, size_t out_cap)
@@ -474,6 +474,7 @@ size_t porta_proto_encode_activity(const porta_activity_event_t *a, uint8_t *out
     payload[11] = a->n;
     put_u16(&payload[12], a->lo_hz);
     put_u16(&payload[14], a->hi_hz);
+    payload[16] = a->mode;
     for (uint8_t i = 0; i < a->n; ++i) {
         uint8_t *blk = &payload[ACTIVITY_HEADER_LEN + i * ACTIVITY_BLOCK_LEN];
         blk[0] = a->level[i];
@@ -500,6 +501,7 @@ bool porta_proto_parse_activity(const porta_frame_t *f, porta_activity_event_t *
     out->n          = n;
     out->lo_hz      = get_u16(&f->payload[12]);
     out->hi_hz      = get_u16(&f->payload[14]);
+    out->mode       = f->payload[16];
     for (uint8_t i = 0; i < n; ++i) {
         const uint8_t *blk = &f->payload[ACTIVITY_HEADER_LEN + i * ACTIVITY_BLOCK_LEN];
         out->level[i] = blk[0];

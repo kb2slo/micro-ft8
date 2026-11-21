@@ -125,8 +125,9 @@ extern "C" {
 // instead of Port A, so they take no places in the sidekick's event ring. A v20 sidekick drops the
 // new event unparsed. Both ends are flashed together.
 // v22 (2026-11-20): CQ_CALL names the channel to call on, its mode and dial
-// (docs/architecture/autoseq.md, The queue), and SLOT_STATE carries the armed TX's mode. A v21 peer's
-// verb-only CQ_CALL and shorter SLOT_STATE are refused. Both ends are flashed together.
+// (docs/architecture/autoseq.md, The queue), SLOT_STATE carries the armed TX's mode, and ACTIVITY its
+// channel's mode, every channel now sending it. A v21 peer's verb-only CQ_CALL and shorter SLOT_STATE
+// and ACTIVITY are refused. Both ends are flashed together.
 #define PORTA_PROTO_VERSION 22u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
@@ -433,8 +434,10 @@ bool porta_proto_parse_radio_state(const porta_frame_t *f, porta_radio_state_eve
 #define PORTA_ACTIVITY_CELLS 96u       // FT8_ACTIVITY_CELLS, asserted with it
 #define PORTA_ACTIVITY_MASK_BYTES (PORTA_ACTIVITY_CELLS / 8u)
 
+// `mode` names the channel (PORTA_QUEUE_MODE_*), whose slots slot_idx counts: FT4's are 7.5 s periods.
 typedef struct {
     uint32_t epoch_secs;
+    uint8_t  mode;
     uint32_t slot_idx;
     uint8_t  block_ms;
     uint8_t  first;

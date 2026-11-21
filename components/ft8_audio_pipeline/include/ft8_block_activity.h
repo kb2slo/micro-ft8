@@ -65,6 +65,25 @@ bool ft8_activity_batch_add(ft8_activity_batch_t *b, int64_t slot_idx, int pos, 
 // blocks too. False when nothing is open.
 bool ft8_activity_batch_take(ft8_activity_batch_t *b, ft8_activity_batch_t *done);
 
+// FT4's activity in steps of FT8_ACTIVITY_FT4_PER blocks, 144 ms of its 48 ms ones, so it sends a
+// batch about as often as FT8 does (two channels' activity shares the sidekick's event ring;
+// docs/architecture/decode.md, Band activity): a step's level is the highest of its blocks', its
+// mask their union.
+#define FT8_ACTIVITY_FT4_PER 3
+typedef struct {
+    int64_t slot_idx;
+    uint8_t n;
+    uint8_t level;
+    uint8_t mask[FT8_ACTIVITY_MASK_BYTES];
+} ft8_activity_merge_t;
+
+// Folds one block of slot `slot_idx` into `m`. True when `per` blocks of one slot are in: `level_out`
+// and `mask_out` then hold the step, and `m` starts over. A block of another slot drops the part
+// step held, so a step never spans a boundary. `per` of 1 passes every block straight through.
+bool ft8_activity_merge_add(ft8_activity_merge_t *m, int per, int64_t slot_idx, uint8_t level,
+                            const uint8_t mask[FT8_ACTIVITY_MASK_BYTES], uint8_t *level_out,
+                            uint8_t mask_out[FT8_ACTIVITY_MASK_BYTES]);
+
 #ifdef __cplusplus
 }
 #endif

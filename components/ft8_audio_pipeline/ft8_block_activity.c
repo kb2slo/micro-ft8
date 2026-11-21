@@ -82,3 +82,32 @@ bool ft8_activity_batch_add(ft8_activity_batch_t *b, int64_t slot_idx, int pos, 
     }
     return handed;
 }
+
+bool ft8_activity_merge_add(ft8_activity_merge_t *m, int per, int64_t slot_idx, uint8_t level,
+                            const uint8_t mask[FT8_ACTIVITY_MASK_BYTES], uint8_t *level_out,
+                            uint8_t mask_out[FT8_ACTIVITY_MASK_BYTES])
+{
+    if (m->n > 0 && slot_idx != m->slot_idx) {
+        m->n = 0;  // the part step of the slot before is dropped
+    }
+    if (m->n == 0) {
+        m->slot_idx = slot_idx;
+        m->level = 0;
+        memset(m->mask, 0, FT8_ACTIVITY_MASK_BYTES);
+    }
+    if (level > m->level) {
+        m->level = level;
+    }
+    if (mask) {
+        for (int i = 0; i < FT8_ACTIVITY_MASK_BYTES; ++i) {
+            m->mask[i] |= mask[i];
+        }
+    }
+    if (++m->n < (per < 1 ? 1 : per)) {
+        return false;
+    }
+    *level_out = m->level;
+    memcpy(mask_out, m->mask, FT8_ACTIVITY_MASK_BYTES);
+    m->n = 0;
+    return true;
+}

@@ -598,6 +598,7 @@ static void test_activity_event()
 
     porta_activity_event_t in = {};
     in.epoch_secs = 1789012345u;
+    in.mode = PORTA_QUEUE_MODE_FT4;
     in.slot_idx = 119267489u;
     in.block_ms = 160;
     in.first = 77;
@@ -616,8 +617,8 @@ static void test_activity_event()
         check(porta_proto_parse_activity(&got[0], &out), "activity event parses");
         check(out.epoch_secs == 1789012345u && out.slot_idx == 119267489u &&
                   out.block_ms == 160 && out.first == 77 && out.n == 3 &&
-                  out.lo_hz == 200 && out.hi_hz == 2900,
-              "activity header round-trips");
+                  out.lo_hz == 200 && out.hi_hz == 2900 && out.mode == PORTA_QUEUE_MODE_FT4,
+              "activity header round-trips, its channel's mode with it");
         check(std::memcmp(out.level, in.level, 3) == 0, "activity levels round-trip");
         check(std::memcmp(out.mask, in.mask, 3 * PORTA_ACTIVITY_MASK_BYTES) == 0,
               "activity masks round-trip");
@@ -626,7 +627,7 @@ static void test_activity_event()
               "an activity event is not a radio_state event");
         char json[256];
         check(porta_event_json_activity(json, sizeof(json), 9, &out) > 0 &&
-                  std::string(json) == "{\"s\":9,\"t\":1789012345,\"d\":8,\"si\":119267489,"
+                  std::string(json) == "{\"s\":9,\"t\":1789012345,\"d\":8,\"md\":1,\"si\":119267489,"
                                        "\"bm\":160,\"b\":77,\"lo\":200,\"hi\":2900,\"v\":[0,40,80],"
                                        "\"m\":[\"000102030405060708090a0b\",\"101112131415161718191a1b\","
                                        "\"202122232425262728292a2b\"]}",

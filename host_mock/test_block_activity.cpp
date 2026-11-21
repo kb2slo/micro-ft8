@@ -180,12 +180,34 @@ static void test_batch()
     }
 }
 
+// FT4's activity merged three blocks to a step (ft8_activity_merge_add()): the highest level, the union of masks,
+// none spanning a slot boundary, and a per of 1 passing each block straight through.
+static void test_merge()
+{
+    ft8_activity_merge_t m;
+    memset(&m, 0, sizeof(m));
+    uint8_t lv = 0, out[FT8_ACTIVITY_MASK_BYTES];
+    uint8_t a[FT8_ACTIVITY_MASK_BYTES] = {0x01}, bm[FT8_ACTIVITY_MASK_BYTES] = {0x04}, c[FT8_ACTIVITY_MASK_BYTES] = {0, 0x80};
+    check(!ft8_activity_merge_add(&m, 3, 10, 2, a, &lv, out), "one block of three: no step yet");
+    check(!ft8_activity_merge_add(&m, 3, 10, 5, bm, &lv, out), "two of three: no step yet");
+    check(ft8_activity_merge_add(&m, 3, 10, 1, c, &lv, out), "the third block makes a step");
+    check(lv == 5, "the step's level is its highest block's");
+    check(out[0] == 0x05 && out[1] == 0x80, "its mask is the union of its blocks'");
+    check(!ft8_activity_merge_add(&m, 3, 10, 9, a, &lv, out), "a new step starts empty");
+    check(!ft8_activity_merge_add(&m, 3, 11, 1, nullptr, &lv, out), "a block of the next slot drops the part step");
+    check(!ft8_activity_merge_add(&m, 3, 11, 1, nullptr, &lv, out), "and counts from one again");
+    check(ft8_activity_merge_add(&m, 3, 11, 2, bm, &lv, out) && lv == 2 && out[0] == 0x04,
+          "so the step holds only that slot's blocks: level 2, not the 9 dropped");
+    check(ft8_activity_merge_add(&m, 1, 12, 7, a, &lv, out) && lv == 7 && out[0] == 0x01, "per 1: every block is a step");
+}
+
 int main()
 {
     test_level();
     test_mask();
     test_pos();
     test_batch();
+    test_merge();
     if (g_fails) {
         fprintf(stderr, "%d failure(s)\n", g_fails);
         return 1;
