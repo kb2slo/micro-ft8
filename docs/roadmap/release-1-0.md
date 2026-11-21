@@ -27,7 +27,7 @@ Rows other epics and the index own; 1.0 is not cut until each has shipped. Each 
 * **Field checks:** no [TEST_PLAN.md](../TEST_PLAN.md) Pending row on a path 1.0 claims (row [swsu](../ROADMAP.md#swsu)).
 * **Wanted, not gating:** [qauk](../ROADMAP.md#qauk), [kkap](../ROADMAP.md#kkap).
 
-**Not in 1.0:** HL2 transmit and the park ([abkw](hl2-support.md#abkw), [kgyh](hl2-support.md#kgyh)); epic [I18](activator-mode.md) ([rrsp](activator-mode.md#rrsp) included); epic [qxy5](smart-queue.md) past [k4ag](smart-queue.md#k4ag); epic [u8mc](several-channels.md) past [bd3a](several-channels.md#bd3a) (more than two channels, the CQ on any channel, each channel's timing in the slot bar, a CQ on each of two channels); [nxyk](ideas.md#nxyk), [syb2](ideas.md#syb2).
+**Not in 1.0:** HL2 transmit and the park ([abkw](hl2-support.md#abkw), [kgyh](hl2-support.md#kgyh)); epic [I18](activator-mode.md) ([rrsp](activator-mode.md#rrsp) included); epic [qxy5](smart-queue.md) past [k4ag](smart-queue.md#k4ag); epic [u8mc](several-channels.md) past [bd3a](several-channels.md#bd3a) (more than two channels, the CQ on any channel, a CQ on each of two channels); [nxyk](ideas.md#nxyk), [syb2](ideas.md#syb2).
 
 ## Decided
 
