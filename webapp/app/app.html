@@ -2465,10 +2465,12 @@ layoutDock();
 // band has, pressed while it is listened to. A tap writes listen<band>; dropping a channel ends what runs on it,
 // after a band change's confirmation, and the main board moves the dial when FT4 alone is chosen or left.
 var listenNote = '';
-var listenNoteBand = -1;  // the band the note was written for: another band's chips start without it
+// The band and radio the note was written for: another band's chips, or another radio's, start without it (bench,
+// 2026-11-21: an HL2 tap's "hears one at a time" stayed on after switching back to the QMX, where both fit).
+var listenNoteFor = '';
 function renderListenChips(cfg) {
   var idx = operatingBandIdx(cfg);
-  if (idx !== listenNoteBand) listenNote = '';
+  if (idx + '/' + cfg.radio !== listenNoteFor) listenNote = '';
   var box = document.getElementById('opListenChips');
   box.innerHTML = '';
   bandChannels(cfg, idx).forEach(function (c) {
@@ -2516,7 +2518,7 @@ document.getElementById('opListenChips').onclick = function (ev) {
   if (idx < 0) return;
   var tap = listenChipTap(lastCfg, idx, btn.dataset.mode);
   listenNote = tap.note;
-  listenNoteBand = idx;
+  listenNoteFor = idx + '/' + lastCfg.radio;
   if (tap.mask === listenMask(lastCfg, idx) && bandChannels(lastCfg, idx).length) { renderListenChips(lastCfg); return; }
   var change = listenChangeEnds(lastCfg, tap.mask);
   var go = change.ends.length ? askConfirm({ title: 'Change channels?', text: [endsSentence(change.ends)], ok: 'Change channels' })
