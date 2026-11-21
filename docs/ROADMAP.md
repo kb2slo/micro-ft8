@@ -8,7 +8,7 @@ How things work now: `architecture/` (start at [architecture/system.md](architec
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| bdy4 | <a id="bdy4"></a>FT4 CQ on a QMX, beside FT8 | Epic [u8mc](roadmap/several-channels.md#bdy4); in 1.0 (operator, 2026-11-09). FT4 is reply-only: Call CQ always calls in FT8. The CQ row chooses FT8 or FT4, one CQ at a time, in FT4's periods and parity, its mode kept in its queue entry, which now carries it on Port A. **Done-when:** host tests hold the CQ's mode, parity and tries in FT4's periods, and that an FT8 CQ is unchanged; an FT4 CQ on 20 m and one on 40 m are answered and the QSOs logged as FT4 (field). |
+| bdy4 | <a id="bdy4"></a>FT4 CQ on a QMX, beside FT8 | Epic [u8mc](roadmap/several-channels.md#bdy4); in 1.0 (operator, 2026-11-09). FT4 is reply-only: Call CQ always calls in FT8. The CQ row chooses FT8 or FT4, one CQ at a time, in FT4's periods and parity. Every queue entry keeps its channel, its dial frequency and mode, and Port A names it; a dial moved by hand stops transmitting (the epic's entry). **Done-when:** host tests hold the CQ's channel, parity and tries in FT4's periods, entries matched by channel, a hand-moved dial ending the CQ and parking QSOs, and that an FT8 CQ is unchanged; an FT4 CQ on 20 m and one on 40 m are answered and the QSOs logged as FT4 (field). |
 
 ## Backlog
 
