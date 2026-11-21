@@ -24,10 +24,10 @@ function constLine(name) {
 }
 const ctx = vm.createContext({});
 vm.runInContext(fs.readFileSync(path.join(root, 'webapp', 'app', 'bands.js'), 'utf8'), ctx);
-vm.runInContext([constLine('QMX_FT4_BESIDE_MIN_HZ'), constLine('QMX_FT4_BESIDE_MAX_HZ'),
+vm.runInContext([src.match(/function fmtHzMHz\(hz\) \{[^\n]*\}/)[0], constLine('QMX_FT4_BESIDE_MIN_HZ'), constLine('QMX_FT4_BESIDE_MAX_HZ'),
                  'var LISTEN_FT8 = 1, LISTEN_FT4 = 2, LISTEN_BOTH = 3;'].join('\n'), ctx);
 ['bandFreq', 'khzToMhzLabel', 'listenMask', 'bandFt4Khz', 'bandBothFit', 'bandChannels', 'operatingBandIdx', 'listenedChannels',
- 'listenChipTap', 'listenedLabel'].forEach(function (n) { vm.runInContext(extract(n), ctx); });
+ 'listenChipTap', 'listenedLabel', 'radioBarSplit', 'vfoLine'].forEach(function (n) { vm.runInContext(extract(n), ctx); });
 const plain = (v) => JSON.parse(JSON.stringify(v));
 const B = { m40: 3, m20: 5, m15: 7, m10: 9 };
 
@@ -91,6 +91,24 @@ assert.strictEqual(ctx.listenedLabel({ band_sel: '5' }), 'FT8 14.074 MHz');
 assert.strictEqual(ctx.listenedLabel({ band_sel: '5', listen5: '3' }), 'FT8 14.074 · FT4 14.080');
 assert.strictEqual(ctx.listenedLabel({ band_sel: '3', listen3: '3' }), 'FT8 7.074 · FT4 7.0475');
 assert.strictEqual(ctx.listenedLabel({}), '', 'no config yet');
+
+// The radio bar's first line, split while two channels are listened to.
+assert.deepStrictEqual(plain(ctx.radioBarSplit('20m \u00b7 FT8 14.074 \u00b7 FT4 14.080', '20m', { band_sel: '5', listen5: '3' })),
+                       { band: '20m', lines: ['FT8 14.074', 'FT4 14.080'] }, 'both: the band, then a line a channel');
+assert.strictEqual(ctx.radioBarSplit('20m \u00b7 FT8 14.074 MHz', '20m', { band_sel: '5' }), null, 'one channel: one line');
+assert.strictEqual(ctx.radioBarSplit('SWR protection tripped', '20m', { band_sel: '5', listen5: '3' }), null,
+                   "a state's own line is left whole");
+
+// The VFO line: the radio's dial, and where each channel listened to sits from it.
+assert.strictEqual(ctx.vfoLine({ band_sel: '5', listen5: '3' }, null), null, 'nothing reported yet: no line');
+assert.deepStrictEqual(plain(ctx.vfoLine({ band_sel: '5', listen5: '3' }, { hz: 14074000 })),
+                       { vfo: '14.074', notes: ['FT4 is heard 6 kHz above it'] }, 'both on 20 m: FT4 6 kHz above the VFO');
+assert.deepStrictEqual(plain(ctx.vfoLine({ band_sel: '3', listen3: '3' }, { hz: 7074000 })),
+                       { vfo: '7.074', notes: ['FT4 is heard 26.5 kHz below it'] }, "40 m: FT4 below FT8's dial");
+assert.deepStrictEqual(plain(ctx.vfoLine({ band_sel: '5', listen5: '2' }, { hz: 14080000 })),
+                       { vfo: '14.08', notes: [] }, 'FT4 alone: its dial is the VFO, nothing to explain');
+assert.deepStrictEqual(plain(ctx.vfoLine({ band_sel: '5' }, { hz: 0, want: 14074000 })).vfo, '14.074',
+                       'before the radio reports, the dial the main board set');
 
 // The chips sit under the band grid, above the frequency row.
 const grid = src.indexOf('<div id=opBandGrid');

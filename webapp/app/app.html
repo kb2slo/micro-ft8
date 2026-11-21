@@ -240,6 +240,10 @@ button:disabled{opacity:.45}
 #rbChevron::before{content:"\2303"}
 #rbLines{flex:1;min-width:0;display:block}
 #rbMain{display:block;font-family:ui-monospace,monospace;font-weight:700;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Two channels: the band at its size, the channels stacked beside it in a smaller font (radioBarSplit()). */
+#rbMain.split{display:flex;align-items:center;gap:.5rem;text-overflow:clip}
+#rbMain .rbchans{display:flex;flex-direction:column;font-size:.72rem;line-height:1.15;min-width:0}
+#rbMain .rbchans span{overflow:hidden;text-overflow:ellipsis}
 #rbSub{display:block;font-size:.75rem;color:GrayText;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #rbSub .glyph{font-weight:700;margin-right:.25rem}
 #rbLabel{flex:none;font-size:.85rem;font-weight:700;color:var(--accent)}
@@ -275,6 +279,8 @@ button:disabled{opacity:.45}
 .lsnchip span{display:block;font-size:.75rem}
 .lsnchip.on{background:var(--accent);border-color:var(--accent);color:Canvas}
 #opListenNote{margin:.4rem 0 0;min-height:1em}
+#opVfoLine{margin:.5rem 0 0}
+#opVfoLine b{font-family:ui-monospace,monospace}
 #opFreqRow button{flex:none;min-width:44px;min-height:44px;font-size:1rem;padding:.2rem .6rem}
 #opFreqInput,#opFt4FreqInput{flex:1;min-width:0;margin-top:0;min-height:44px;text-align:center;font-family:ui-monospace,monospace;font-weight:700;font-size:1.05rem}
 #opDrawerStatus{display:flex;align-items:center;gap:.7rem;margin-top:.55rem;color:GrayText;font-size:.75rem}
@@ -394,6 +400,11 @@ button{touch-action:manipulation}
 .dvfopt[aria-checked=true] .dvfbox{background:var(--accent)}
 .dvfopt[aria-checked=true] .dvfbox::before{content:'\2713'}
 .dvfbox.dvfradio{border-radius:50%}
+#dvFilterMode{display:flex;margin:.6rem 0 .2rem;border:1px solid var(--accent);border-radius:.6rem;overflow:hidden}
+#dvFilterMode[hidden]{display:none}
+#dvFilterMode .dvfseg{flex:1;justify-content:center;min-height:44px;padding:.4rem;border:0;border-left:1px solid var(--accent);font-weight:600;color:var(--accent)}
+#dvFilterMode .dvfseg:first-child{border-left:0}
+#dvFilterMode .dvfseg[aria-checked=true]{background:var(--accent);color:Canvas}
 .dvfopt[aria-checked=true] .dvfradio{box-shadow:inset 0 0 0 3px Canvas}
 .dvfopt[aria-checked=true] .dvfradio::before{content:none}
 .dvftext small{display:block;font-size:.75rem;color:GrayText;margin-top:.1rem}
@@ -1296,6 +1307,8 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
             <button id=opFt4FreqUp type=button disabled aria-label="FT4 up 1 kHz">+</button>
             <button id=opFt4FreqSet type=button disabled>Set</button>
           </div>
+          <!-- The radio's own dial, which a channel need not be on (vfoLine()). -->
+          <p id=opVfoLine class=setnote></p>
           <div id=opDrawerStatus>
             <span><span id=dotCat class=dot></span>CAT</span>
             <span><span id=dotAudio class=dot></span>Audio</span>
@@ -1387,6 +1400,12 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
     <button type=button class=dvfopt data-key=reply role=checkbox aria-checked=false><span class=dvfbox></span><span class=dvftext>Replyable<small>CQs and closing 73s</small></span></button>
     <button type=button class=dvfopt data-key=park role=checkbox aria-checked=false><span class=dvfbox></span><span class=dvftext>POTA/SOTA<small>CQ POTA and CQ SOTA only</small></span></button>
     <button type=button class=dvfopt data-key=worked role=checkbox aria-checked=false><span class=dvfbox></span><span class=dvftext>Hide worked<small>Worked today, this band and mode</small></span></button>
+    <!-- Shown only while both channels are listened to (decodeModeFilterOn()): one row of three, pick one. -->
+    <div id=dvFilterMode role=radiogroup aria-label=Mode hidden>
+      <button type=button class="dvfopt dvfseg" data-mode=all role=radio aria-checked=true>Both</button>
+      <button type=button class="dvfopt dvfseg" data-mode=FT8 role=radio aria-checked=false>FT8</button>
+      <button type=button class="dvfopt dvfseg" data-mode=FT4 role=radio aria-checked=false>FT4</button>
+    </div>
     <div class=dvfbtns>
       <button type=button data-act=cancel>Cancel</button>
       <button type=button data-act=apply class=btn-primary>Apply</button>
@@ -2335,6 +2354,29 @@ function listenChipTap(cfg, idx, mode) {
            ' kHz apart, and the radio hears one at a time: ' + mode + ' replaces ' + other.mode + ', and the dial moves to ' +
            khzToMhzLabel(mine.khz) + ' MHz.' };
 }
+// The radio bar's first line in two parts while two channels are listened to and it names them, so FT4's frequency
+// is not cut off on a phone (bench, 2026-11-21): the band, and the channels as lines of their own, stacked in a
+// smaller font. Null for one channel, or a line that is not the band's (a state of its own, such as a trip).
+function radioBarSplit(main, bandName, cfg) {
+  var chans = listenedChannels(cfg);
+  if (chans.length < 2 || main !== (bandName || '\u2014') + ' \u00b7 ' + listenedLabel(cfg)) return null;
+  return { band: bandName, lines: chans.map(function (c) { return c.mode + ' ' + khzToMhzLabel(c.khz); }) };
+}
+
+// The drawer's VFO line (webapp.md, Band and frequency): the radio's own dial, as it reports it (else as the main
+// board set it), and how far each channel listened to sits from it, since a channel need not be at the VFO (FT4
+// beside FT8 is heard 6 kHz above it on 20 m). { vfo, notes } for the page to draw; null before the radio reports.
+function vfoLine(cfg, rs) {
+  var hz = rs ? (rs.hz || rs.want) : 0;
+  if (!(hz > 0)) return null;
+  var notes = listenedChannels(cfg).filter(function (c) { return Math.abs(c.dial_hz - hz) >= 50; })
+    .map(function (c) {
+      var d = (c.dial_hz - hz) / 1000;
+      return c.mode + ' is heard ' + (Math.round(Math.abs(d) * 10) / 10) + ' kHz ' + (d > 0 ? 'above' : 'below') + ' it';
+    });
+  return { vfo: fmtHzMHz(hz), notes: notes };
+}
+
 // What the radio bar names at rest: the band, then each channel listened to with its frequency.
 function listenedLabel(cfg) {
   var chans = listenedChannels(cfg);
@@ -3277,7 +3319,19 @@ function renderRadioBar() {
   document.getElementById('tabUnpaired').hidden = paired();
   var bar = document.getElementById('opRadioBar');
   bar.className = 't-' + st.tone + (drawerOpen ? ' open' : '');
-  document.getElementById('rbMain').textContent = st.main;
+  var mainEl = document.getElementById('rbMain');
+  var split = radioBarSplit(st.main, operatingBandName(lastCfg), lastCfg);
+  mainEl.className = split ? 'split' : '';
+  mainEl.textContent = split ? '' : st.main;
+  if (split) {
+    var b = document.createElement('span');
+    b.textContent = split.band;
+    var lines = document.createElement('span');
+    lines.className = 'rbchans';
+    split.lines.forEach(function (t) { var l = document.createElement('span'); l.textContent = t; lines.appendChild(l); });
+    mainEl.appendChild(b);
+    mainEl.appendChild(lines);
+  }
   bar.querySelector('#rbSub .glyph').textContent = st.glyph;
   document.getElementById('rbSubText').textContent = st.sub;
   var label = document.getElementById('rbLabel');
@@ -3331,14 +3385,27 @@ function renderRadioDrawer(cfg, st) {
     }
     if (st === 'drift') note = 'The radio is not where Micro-FT8 put it: a knob was turned, or another program changed it.';
   }
-  // Ready says it in one line, so the drawer stays short; a problem state lists the rows.
+  // Ready says it in one line, so the drawer stays short; a problem state lists the rows. Its frequency is the VFO
+  // line's, under the frequency rows (vfoLine()).
   var summary = '';
   if (st === 'ready') {
-    summary = rows.map(function (r) { return r[0] === 'USB' ? r[1] : r[0] === 'Radio firmware' ? 'FW ' + r[1] : r[1]; })
+    summary = rows.filter(function (r) { return r[0] !== 'Radio reports'; })
+      .map(function (r) { return r[0] === 'USB' ? r[1] : r[0] === 'Radio firmware' ? 'FW ' + r[1] : r[1]; })
       .filter(function (t) { return t && t !== '\u2014'; }).join(' \u00b7 ');
     rows = [];
   }
   document.getElementById('opRadioSummary').textContent = summary;
+  var vfo = (st === 'ready' || st === 'drift') ? vfoLine(cfg, radioReadBack(cfg)) : null;
+  var vfoEl = document.getElementById('opVfoLine');
+  vfoEl.hidden = !vfo;
+  vfoEl.textContent = '';
+  if (vfo) {
+    vfoEl.appendChild(document.createTextNode('VFO '));
+    var vb = document.createElement('b');
+    vb.textContent = vfo.vfo + ' MHz';
+    vfoEl.appendChild(vb);
+    vfoEl.appendChild(document.createTextNode(vfo.notes.length ? ' \u00b7 the radio\u2019s dial; ' + vfo.notes.join(', ') : ' \u00b7 the radio\u2019s dial'));
+  }
   var dl = document.getElementById('opRadioRows');
   dl.innerHTML = rows.map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('');
   document.getElementById('opRadioNote').textContent = note;
@@ -4872,15 +4939,16 @@ function triesLabel(q) {
 }
 
 // Every live QSO outranks a CQ (autoseq.md), so a real QSO entry's presence
-// is exactly "Waits for the queue" and its absence is exactly "Calling". While
-// FT4 is listened to beside FT8, the line names the CQ's mode, and an FT4 CQ's
-// 7.5 s periods are "periods", an FT8 one's 15 s slots "slots".
-function cqStatusText(cq, queueNow, ft4Listened) {
+// is exactly "Waits for the queue" and its absence is exactly "Calling". An FT4
+// CQ's 7.5 s periods are "periods", an FT8 one's 15 s slots "slots". The mode is
+// not named: beside the CQ's own buttons it cut the line off on a phone (bench,
+// 2026-11-21), and the mode button said it before calling and the CQ's slot bar
+// says it while calling (renderCountdown()).
+function cqStatusText(cq, queueNow) {
   if (!cq) return 'Not calling';
   var hasQso = Object.keys(queueNow).some(function (id) { return queueNow[id].dxcall !== 'CQ'; });
   var ft4 = cq.mode === 1;
-  return (hasQso ? 'Waits for the queue · ' : 'Calling · ') + (ft4Listened || ft4 ? (ft4 ? 'FT4 · ' : 'FT8 · ') : '') +
-         (cq.parity ? 'odd' : 'even') + (ft4 ? ' periods' : ' slots');
+  return (hasQso ? 'Waits for the queue · ' : 'Calling · ') + (cq.parity ? 'odd' : 'even') + (ft4 ? ' periods' : ' slots');
 }
 
 // The channels Call CQ can call on (autoseq.md, The queue): the ones listened to (listenedChannels()). A channel is
@@ -4924,7 +4992,7 @@ function renderCqRow() {
     triesBtn.textContent = triesLabel(cq);
     triesBtn.classList.toggle('custom', !!cq.custom);
   }
-  document.getElementById('cqStatusLine').textContent = cqStatusText(cq, queue, chans.length > 1);
+  document.getElementById('cqStatusLine').textContent = cqStatusText(cq, queue);
 }
 
 // One tap keys the transmitter, as Reply does: Call CQ is the explicit action.
@@ -5400,7 +5468,17 @@ function isReplyableDecode(d) {
 // always on top and never filtered. `distKmOf(d)` answers the sender's distance in km, or null
 // when the grid is not known (such a decode fails a distance filter and sorts last under Nearest).
 var DV_KEY = 'microft8_decode_view_v1';
-var decodeView = { sort: 'default', reply: false, park: false, worked: false };
+var decodeView = { sort: 'default', reply: false, park: false, worked: false, mode: 'all' };
+// The mode filter (webapp.md, Decode sort and filter): Both, FT8 only or FT4 only, offered and in force only while both
+// channels are listened to; with one, it filters nothing.
+var DV_MODES = ['all', 'FT8', 'FT4'];
+function decodeModeFilterOn(cfg) {
+  return listenedChannels(cfg).length > 1;
+}
+// The view decodes are drawn with: the saved one, its mode filter set aside while one channel is listened to.
+function decodeViewInForce(view, cfg) {
+  return decodeModeFilterOn(cfg) ? view : Object.assign({}, view, { mode: 'all' });
+}
 
 // The bar shows once any decode is listed, counting rows a filter hides: shown only
 // while rows are visible, a filter that hid them all would take away the control that turns it off.
@@ -5414,8 +5492,11 @@ function decodeIsPark(d) {
 
 // involved: the decode concerns a station in our queue (queueInvolvement()), which no filter
 // hides, the same as a message to us. worked: its sender carries the Worked flag (dupeIndex()).
-function decodePassesView(d, view, involved, worked) {
+// mode: the decode's slot's, FT8 or FT4; a mode filter hides the other mode's batches but a message to us or about a
+// station in our queue, as every filter does.
+function decodePassesView(d, view, involved, worked, mode) {
   if (d.me || involved) return true;
+  if (view.mode && view.mode !== 'all' && mode && mode !== view.mode) return false;
   if (view.reply && !isReplyableDecode(d)) return false;
   if (view.park && !decodeIsPark(d)) return false;
   if (view.worked && worked) return false;
@@ -5425,10 +5506,10 @@ function decodePassesView(d, view, involved, worked) {
 // involves(d): whether a decode concerns a station in our queue; optional. Those rows come right
 // after messages to us, in their own order, whatever the sort. isWorked(d): whether its sender
 // shows the Worked flag; optional, for Hide worked.
-function decodeViewOf(slot, view, distKmOf, involves, isWorked) {
+function decodeViewOf(slot, view, distKmOf, involves, isWorked, mode) {
   var inv = function (d) { return !!(involves && involves(d)); };
   var items = slot.map(function (d, i) { return { d: d, i: i }; })
-    .filter(function (it) { return decodePassesView(it.d, view, inv(it.d), !!(isWorked && isWorked(it.d))); });
+    .filter(function (it) { return decodePassesView(it.d, view, inv(it.d), !!(isWorked && isWorked(it.d)), mode); });
   if (view.sort === 'snr' || view.sort === 'near' || view.sort === 'far') {
     var key = function (d) {
       if (view.sort === 'snr') return -d.snr;
@@ -5627,6 +5708,7 @@ function loadDecodeView() {
       decodeView.reply = !!v.reply;
       decodeView.park = !!v.park;
       decodeView.worked = !!v.worked;
+      if (DV_MODES.indexOf(v.mode) >= 0) decodeView.mode = v.mode;
     }
   } catch (e) { /* the default view stands */ }
 }
@@ -5637,21 +5719,30 @@ function saveDecodeView() {
 // The filters share one pill, since a pill each did not fit the bar on a phone (webapp.md, Decode sort
 // and filter). It opens a sheet whose ticks apply only on Apply; the pill's label names what is on.
 var DV_FILTERS = ['reply', 'park', 'worked'];
-function decodeFilterLabel(view) {
+// The filters on in `view`, its mode filter counting as one when it is not Both (decodeViewInForce() has already set it
+// aside while one channel is listened to).
+function decodeFiltersOn(view) {
   var on = DV_FILTERS.filter(function (k) { return view[k]; });
+  if (view.mode && view.mode !== 'all') on.push('mode');
+  return on;
+}
+function decodeFilterLabel(view) {
+  var on = decodeFiltersOn(view);
   if (!on.length) return 'Filter';
   if (on.length > 1) return 'Filters · ' + on.length;
-  return { reply: 'Replyable', park: 'POTA/SOTA', worked: 'Hide worked' }[on[0]];
+  return on[0] === 'mode' ? view.mode + ' only' : { reply: 'Replyable', park: 'POTA/SOTA', worked: 'Hide worked' }[on[0]];
 }
-// The view with its filters as ticked in the sheet (picked: {reply, park, worked}); sort and mode kept.
+// The view with its filters as picked in the sheet (picked: {reply, park, worked, mode}); sort kept, and the mode kept
+// when the sheet did not offer it.
 function decodeViewWithFilters(view, picked) {
   var v = Object.assign({}, view);
   DV_FILTERS.forEach(function (k) { v[k] = !!picked[k]; });
+  if (DV_MODES.indexOf(picked.mode) >= 0) v.mode = picked.mode;
   return v;
 }
 function renderDecodeFilter(btn, view) {
   btn.textContent = decodeFilterLabel(view);
-  btn.setAttribute('aria-pressed', DV_FILTERS.some(function (k) { return view[k]; }) ? 'true' : 'false');
+  btn.setAttribute('aria-pressed', decodeFiltersOn(view).length ? 'true' : 'false');
 }
 
 var DV_SORT_LABELS = { default: 'Sort', snr: 'Strongest', near: 'Nearest', far: 'Farthest' };
@@ -5671,11 +5762,27 @@ var DV_PANELS = {
   },
   dvFilter: {
     sheet: 'dvFilterSheet',
-    fill: function (rows) { rows.forEach(function (b) { b.setAttribute('aria-checked', decodeView[b.dataset.key] ? 'true' : 'false'); }); },
-    tap: function (rows, b) { b.setAttribute('aria-checked', b.getAttribute('aria-checked') === 'true' ? 'false' : 'true'); },
+    // The mode rows are a radio group inside the pick-any sheet, there only while both channels are listened to.
+    fill: function (rows) {
+      document.getElementById('dvFilterMode').hidden = !decodeModeFilterOn(lastCfg);
+      rows.forEach(function (b) {
+        var on = b.dataset.mode ? decodeView.mode === b.dataset.mode : !!decodeView[b.dataset.key];
+        b.setAttribute('aria-checked', on ? 'true' : 'false');
+      });
+    },
+    tap: function (rows, b) {
+      if (b.dataset.mode) {
+        rows.forEach(function (r) { if (r.dataset.mode) r.setAttribute('aria-checked', r === b ? 'true' : 'false'); });
+        return;
+      }
+      b.setAttribute('aria-checked', b.getAttribute('aria-checked') === 'true' ? 'false' : 'true');
+    },
     apply: function (rows) {
       var picked = {};
-      rows.forEach(function (b) { picked[b.dataset.key] = b.getAttribute('aria-checked') === 'true'; });
+      rows.forEach(function (b) {
+        if (!b.dataset.mode) picked[b.dataset.key] = b.getAttribute('aria-checked') === 'true';
+        else if (decodeModeFilterOn(lastCfg) && b.getAttribute('aria-checked') === 'true') picked.mode = b.dataset.mode;
+      });
       decodeView = decodeViewWithFilters(decodeView, picked);
     },
   },
@@ -5744,7 +5851,7 @@ function renderDecodeControls() {
   var sort = document.getElementById('dvSort');
   sort.textContent = DV_SORT_LABELS[decodeView.sort] || 'Sort';
   sort.setAttribute('aria-pressed', decodeView.sort !== 'default' ? 'true' : 'false');
-  renderDecodeFilter(document.getElementById('dvFilter'), decodeView);
+  renderDecodeFilter(document.getElementById('dvFilter'), decodeViewInForce(decodeView, lastCfg));
 }
 
 // ===================== Operate: activation progress (webapp.md, Activation progress) =====================
@@ -5838,11 +5945,12 @@ function renderDecodesNow() {
   var dupes = dupeIndex(opLog.rows, actRefs);
   var qcalls = showQueueMarks ? queuedCalls() : [], myCall = lastCfg.call;
   renderDecodeControls();
+  var viewNow = decodeViewInForce(decodeView, lastCfg);
   var shownSlots = decodeSlots.map(function (slot) {
     var involves = function (d) { var v = queueInvolvementAt(d.x, qcalls, myCall, slot.ts); return !!v && v.kind !== 'you'; };
     var band = slotBandName(slot), mode = slotMode(slot);
     var worked = function (d) { var c = extractSenderCall(d.x); return !!c && !!dupes[dupeKey(c, band, mode)]; };
-    var shown = decodeViewOf(slot, decodeView, decodeDistKm, involves, worked);
+    var shown = decodeViewOf(slot, viewNow, decodeDistKm, involves, worked, mode);
     hidden += slot.length - shown.length;
     return { slot: slot, shown: shown };
   }).filter(function (s) { return s.shown.length > 0; });

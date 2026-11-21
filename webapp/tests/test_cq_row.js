@@ -59,10 +59,10 @@ const cq8 = { dxcall: 'CQ', parity: 0, mode: 0 };
 const cq4 = { dxcall: 'CQ', parity: 1, mode: 1 };
 assert.strictEqual(ctx.cqStatusText(null, {}, true), 'Not calling');
 assert.strictEqual(ctx.cqStatusText(cq8, { 1: cq8 }, false), 'Calling · even slots', 'FT8 alone: as before');
-assert.strictEqual(ctx.cqStatusText(cq8, { 1: cq8 }, true), 'Calling · FT8 · even slots', 'beside FT4: names FT8');
-assert.strictEqual(ctx.cqStatusText(cq4, { 1: cq4 }, true), 'Calling · FT4 · odd periods', "FT4's periods");
+assert.strictEqual(ctx.cqStatusText(cq8, { 1: cq8 }), 'Calling · even slots', 'beside FT4 too: no mode, which cut it off');
+assert.strictEqual(ctx.cqStatusText(cq4, { 1: cq4 }), 'Calling · odd periods', "FT4's periods");
 assert.strictEqual(ctx.cqStatusText(cq4, { 1: cq4, 2: { dxcall: 'K1ABC' } }, true),
-                   'Waits for the queue · FT4 · odd periods', 'a QSO goes first');
+                   'Waits for the queue · odd periods', 'a QSO goes first');
 
 // The slot bar's period.
 // The slot bars: one per channel listened to, each on its own mode's slot, the armed TX's on its own channel's.

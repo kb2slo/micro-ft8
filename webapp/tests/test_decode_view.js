@@ -33,8 +33,11 @@ function extractFunction(text, name) {
 
 const sandbox = {};
 vm.createContext(sandbox);
-vm.runInContext("var DV_FILTERS = ['reply', 'park', 'worked'];\n" +
-  ['decodeIsPark', 'isReplyableDecode', 'decodePassesView', 'decodeViewOf', 'decodeFilterLabel', 'decodeViewWithFilters', 'decodeBarShown']
+vm.runInContext("var DV_FILTERS = ['reply', 'park', 'worked'];\nvar DV_MODES = ['all', 'FT8', 'FT4'];\n" +
+  // listenedChannels() stands in for the drawer's channels: the test sets `listening` to what it needs.
+  "var listening = [];\nfunction listenedChannels(cfg) { return listening; }\n" +
+  ['decodeIsPark', 'isReplyableDecode', 'decodePassesView', 'decodeViewOf', 'decodeFiltersOn', 'decodeFilterLabel',
+   'decodeViewWithFilters', 'decodeBarShown', 'decodeModeFilterOn', 'decodeViewInForce']
   .map((n) => extractFunction(src, n)).join('\n'), sandbox);
 assert(src.includes("var DV_FILTERS = ['reply', 'park', 'worked'];"), 'DV_FILTERS changed: update this test');
 
@@ -102,4 +105,28 @@ assert.strictEqual(sandbox.decodeBarShown([[slot[3]]]), true, 'and the bar still
 assert.strictEqual(sandbox.decodeIsPark({ x: 'cq pota k1abc fn42' }), true);
 assert.strictEqual(sandbox.decodeIsPark({ x: 'CQ POTAX K1ABC' }), false, 'a word boundary, not a prefix');
 assert.strictEqual(sandbox.decodeIsPark({ x: 'CQ DX K1ABC' }), false);
+// The mode filter: FT8 only or FT4 only hides the other mode's batches, but never a message to us or about our queue.
+const both = [{ mode: 'FT8' }, { mode: 'FT4' }];
+const idsM = (v, mode, inv) => sandbox.decodeViewOf(slot, v, distKmOf, inv, null, mode).map((d) => d.id);
+eq(idsM(view({ mode: 'FT4' }), 'FT4'), [1, 2, 3, 4, 6, 5], 'FT4 only: an FT4 batch is all shown');
+eq(idsM(view({ mode: 'FT4' }), 'FT8'), [1], 'FT4 only: an FT8 batch keeps only the message to us');
+eq(idsM(view({ mode: 'FT4' }), 'FT8', (d) => d.id === 4), [1, 4], '... and a row about our queue');
+eq(idsM(view({ mode: 'all' }), 'FT8'), [1, 2, 3, 4, 6, 5], 'Both: nothing hidden');
+eq(idsM(view({ mode: 'FT8', reply: true }), 'FT8'), [1, 2, 3, 6, 5], 'with another filter, both apply');
+// In force only while both channels are listened to.
+sandbox.listening = both;
+assert.strictEqual(sandbox.decodeViewInForce(view({ mode: 'FT4' }), {}).mode, 'FT4', 'both listened to: in force');
+sandbox.listening = [{ mode: 'FT8' }];
+assert.strictEqual(sandbox.decodeViewInForce(view({ mode: 'FT4' }), {}).mode, 'all', 'one channel: set aside');
+assert.strictEqual(sandbox.decodeModeFilterOn({}), false, 'and not offered');
+// The pill's label, and the sheet's pick.
+assert.strictEqual(sandbox.decodeFilterLabel(view({ mode: 'FT4' })), 'FT4 only');
+assert.strictEqual(sandbox.decodeFilterLabel(view({ mode: 'FT8', worked: true })), 'Filters · 2');
+assert.strictEqual(sandbox.decodeFilterLabel(view({ mode: 'all' })), 'Filter');
+eq(sandbox.decodeViewWithFilters(view({ mode: 'FT4' }), { reply: true }).mode, 'FT4', 'a sheet without the mode rows keeps it');
+eq(sandbox.decodeViewWithFilters(view({ mode: 'FT4' }), { mode: 'all' }).mode, 'all', 'a pick of Both clears it');
+// The mode rows sit in the Filter sheet, after the filters, and are hidden until both channels are listened to.
+const fs4 = src.indexOf('<div id=dvFilterMode role=radiogroup aria-label=Mode hidden>');
+assert(fs4 > src.indexOf('data-key=worked') && fs4 < src.indexOf('<div class=dvfbtns>', fs4), 'the mode row, in the Filter sheet');
+assert.strictEqual((src.slice(fs4, src.indexOf('</div>', fs4)).match(/class="dvfopt dvfseg"/g) || []).length, 3, 'one row of three segments');
 console.log('PASS: decode sort and filter');
