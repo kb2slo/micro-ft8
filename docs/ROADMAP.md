@@ -8,6 +8,7 @@ How things work now: `architecture/` (start at [architecture/system.md](architec
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
+| bd3a | <a id="bd3a"></a>The station listens to its channels, chosen as chips in the radio drawer | Epic [u8mc](roadmap/several-channels.md#bd3a); in 1.0 (maintainer, 2026-11-21: channels shown to the operator, FT4 on every band). Replaces `rx_ft4` with the channels listened to on each band, FT8's, FT4's or both; listening to FT4 alone puts the dial at FT4's, so FT4 works on 15 m and 10 m. The drawer shows a chip per channel, mode and frequency; the radio bar names them. **Done-when:** host tests hold each band's dial, channels and refusal and the chips' states, and FT8 alone decodes as today; an FT4 QSO from a CQ and one from a reply complete on 15 m and on 10 m and log as FT4 (field). |
 | bdy4 | <a id="bdy4"></a>FT4 CQ on a QMX, beside FT8 | Epic [u8mc](roadmap/several-channels.md#bdy4); in 1.0 (operator, 2026-11-09). FT4 is reply-only: Call CQ always calls in FT8. The CQ row chooses FT8 or FT4, one CQ at a time, in FT4's periods and parity. Every queue entry keeps its channel, its dial frequency and mode, and Port A names it; a dial moved by hand stops transmitting (the epic's entry). **Done-when:** host tests hold the CQ's channel, parity and tries in FT4's periods, entries matched by channel, a hand-moved dial ending the CQ and parking QSOs, and that an FT8 CQ is unchanged; an FT4 CQ on 20 m and one on 40 m are answered and the QSOs logged as FT4 (field). |
 
 ## Backlog
@@ -49,7 +50,7 @@ Each epic is one row here and one file under `roadmap/`, read only when touching
 
 | ID | Epic | Why / constraint |
 | --- | --- | --- |
-| u8mc | <a id="u8mc"></a>Several channels at once | [roadmap/several-channels.md](roadmap/several-channels.md): receive, decode and transmit on 1–N channels, whatever the radio; FT8 and FT4 at once on one QMX first. Children: [bdy4](roadmap/several-channels.md#bdy4), [bd3a](roadmap/several-channels.md#bd3a), [zjy9](roadmap/several-channels.md#zjy9). |
+| u8mc | <a id="u8mc"></a>Several channels at once | [roadmap/several-channels.md](roadmap/several-channels.md): receive, decode and transmit on 1–N channels, whatever the radio; FT8 and FT4 at once on one QMX first. Children: [bdy4](roadmap/several-channels.md#bdy4), [bd3a](roadmap/several-channels.md#bd3a). |
 | knpp | <a id="knpp"></a>HL2 support | [roadmap/hl2-support.md](roadmap/hl2-support.md): the Hermes-Lite 2 as a second radio on the P4, receive then transmit, at home then in the park. Children: [nngr](roadmap/hl2-support.md#nngr), [abkw](roadmap/hl2-support.md#abkw), [kgyh](roadmap/hl2-support.md#kgyh). |
 | I18 | <a id="I18"></a>Activator mode: POTA and SOTA | [roadmap/activator-mode.md](roadmap/activator-mode.md): a whole activation run offline, its log accepted by pota.app and the SOTA database unedited, and what helps an activator pick a reference, check the grid and plan. Children: [rrsp](roadmap/activator-mode.md#rrsp), [w5nj](roadmap/activator-mode.md#w5nj). |
 | qxy5 | <a id="qxy5"></a>Smart queue ordering | [roadmap/smart-queue.md](roadmap/smart-queue.md): spend each transmission where it can be answered, by ordering and holding what is already queued, never adding a station. Children: [k4ag](roadmap/smart-queue.md#k4ag). |
