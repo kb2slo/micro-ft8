@@ -70,7 +70,7 @@ void porta_emit_queue_entry(const porta_queue_entry_event_t* q);
 // in porta_proto.h. Emitted periodically (main.cpp), not on change: one
 // mechanism serves both "keep the browser current" and "give a freshly
 // loaded browser today's state" without a separate getter or diff logic.
-void porta_emit_slot_state(uint8_t slot_parity, uint16_t resolved_offset_hz);
+void porta_emit_slot_state(uint8_t slot_parity, uint16_t resolved_offset_hz, uint8_t mode);
 
 // Mirrors the on-device TX HUD banner (tx_hud_banner.h's TxHudBannerInput):
 // same raw fields, emitted periodically while the banner is visible

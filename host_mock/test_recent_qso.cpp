@@ -22,13 +22,13 @@
 static std::set<std::string> s_logged;
 static int s_log_count = 0;
 
-static bool adif_cb(const std::string& dxcall, const std::string&, int, int, RxMode) {
+static bool adif_cb(const std::string& dxcall, const std::string&, int, int, RxChannel) {
     s_logged.insert(dxcall);
     ++s_log_count;
     return true;
 }
 
-static bool recent_cb(const std::string& dxcall_norm, RxMode = RxMode::FT8) {
+static bool recent_cb(const std::string& dxcall_norm, RxChannel = RxChannel{}) {
     return s_logged.count(dxcall_norm) != 0;
 }
 
@@ -81,7 +81,7 @@ static void reset() {
 
 // One CQ that ends after it is sent: the CQ these tests open a QSO with.
 static void one_cq() {
-    autoseq_call_cq(0);
+    autoseq_call_cq(RxChannel{}, 0);
     autoseq_set_entry_tries(autoseq_cq_entry_id(), 1);
 }
 

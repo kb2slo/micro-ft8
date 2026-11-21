@@ -37,7 +37,7 @@ static void test_key_caps()
     expect(tx_watchdog_key_over(TxWatchdogKey::Tune, 0, kTxWatchdogTuneMs + 1), "Tune past 30 s is stopped");
 }
 
-static bool adif_cb(const std::string&, const std::string&, int, int, RxMode) { return true; }
+static bool adif_cb(const std::string&, const std::string&, int, int, RxChannel) { return true; }
 
 static UiRxLine to_me(const char* dx, const char* f3)
 {
@@ -80,7 +80,7 @@ static void reset()
 static void test_qso_that_keeps_reviving_ends_at_the_cap()
 {
     reset();
-    autoseq_call_cq(0);
+    autoseq_call_cq(RxChannel{}, 0);
     autoseq_set_entry_tries(autoseq_cq_entry_id(), 1);
     expect(transmit() == "CQ KB2SLO FN30", "the CQ");
     decode(to_me("K1ABC", "FN42"));
@@ -103,7 +103,7 @@ static void test_qso_that_keeps_reviving_ends_at_the_cap()
 static void test_cq_is_bounded_by_its_tries_not_the_cap()
 {
     reset();
-    autoseq_call_cq(0);
+    autoseq_call_cq(RxChannel{}, 0);
     autoseq_set_entry_tries(autoseq_cq_entry_id(), 60);
     int sent = 0;
     while (!transmit().empty() && sent < 100) ++sent;

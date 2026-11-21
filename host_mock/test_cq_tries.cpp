@@ -28,7 +28,7 @@ static void check(bool ok, const char* what)
     }
 }
 
-static bool adif_cb(const std::string&, const std::string&, int, int, RxMode) { return true; }
+static bool adif_cb(const std::string&, const std::string&, int, int, RxChannel) { return true; }
 
 static UiRxLine to_me(const char* dx, const char* f3)
 {
@@ -79,7 +79,7 @@ static const char* const kCq = "CQ KB2SLO FN30";
 static void test_cq_of_4_sends_4_and_ends()
 {
     reset(4);
-    check(autoseq_call_cq(0), "Call CQ queues a CQ");
+    check(autoseq_call_cq(RxChannel{}, 0), "Call CQ queues a CQ");
     QsoContext cq;
     check(find("CQ", &cq) && cq.try_limit == 4 && cq.tries_sent == 0 && cq.slot_id == 0,
           "with the default's 4 tries, on the parity asked for");
@@ -96,10 +96,10 @@ static void test_cq_of_4_sends_4_and_ends()
 static void test_second_call_keeps_the_queued_cq()
 {
     reset(6);
-    autoseq_call_cq(1);
+    autoseq_call_cq(RxChannel{}, 1);
     const uint16_t id = autoseq_cq_entry_id();
     transmit();
-    check(!autoseq_call_cq(0), "a second Call CQ is refused");
+    check(!autoseq_call_cq(RxChannel{}, 0), "a second Call CQ is refused");
     QsoContext cq;
     check(find("CQ", &cq) && cq.entry_id == id && cq.tries_sent == 1 && cq.slot_id == 1,
           "the queued CQ keeps its count and parity");
@@ -109,7 +109,7 @@ static void test_second_call_keeps_the_queued_cq()
 static void test_answer_gives_no_try_back()
 {
     reset(3);
-    autoseq_call_cq(0);
+    autoseq_call_cq(RxChannel{}, 0);
     check(transmit() == kCq, "CQ 1 of 3");
     decode(to_me("K1ABC", "FN42"));
     check(transmit() == "K1ABC KB2SLO -8", "the answer is worked first");
@@ -126,7 +126,7 @@ static void test_answer_gives_no_try_back()
 static void test_drop_ends_the_cq_and_leaves_qsos()
 {
     reset(6);
-    autoseq_call_cq(0);
+    autoseq_call_cq(RxChannel{}, 0);
     decode(to_me("K1ABC", "FN42"));
     check(autoseq_active_count() == 2, "a QSO and the CQ");
     check(autoseq_drop_by_entry_id(autoseq_cq_entry_id()), "x on the CQ row");
@@ -163,7 +163,7 @@ static void test_own_count_survives_the_default()
 static void test_cq_count_changes_in_place()
 {
     reset(6);
-    autoseq_call_cq(0);
+    autoseq_call_cq(RxChannel{}, 0);
     const uint16_t id = autoseq_cq_entry_id();
     check(autoseq_set_entry_tries(id, 99) == AutoseqTriesResult::Ok, "a CQ runs to 99");
     check(autoseq_set_entry_tries(id, 100) == AutoseqTriesResult::OutOfRange, "not 100");
@@ -212,7 +212,7 @@ static void test_lowering_ends_now_off_the_air()
     check(find("K1ABC", &k) && k.state == AutoseqState::ROGERS, "parked, so a late R-report finds it");
 
     reset(6);
-    autoseq_call_cq(0);
+    autoseq_call_cq(RxChannel{}, 0);
     transmit();
     transmit();
     transmit();
@@ -224,7 +224,7 @@ static void test_lowering_ends_now_off_the_air()
 static void test_lowering_on_the_air_ends_after_the_try()
 {
     reset(6);
-    autoseq_call_cq(0);
+    autoseq_call_cq(RxChannel{}, 0);
     transmit();
     AutoseqTxEntry pending;
     autoseq_fetch_pending_tx(pending);
@@ -237,7 +237,7 @@ static void test_lowering_on_the_air_ends_after_the_try()
 
     // A cancelled TX is not counted and has no tick: the entry is off the air.
     reset(6);
-    autoseq_call_cq(0);
+    autoseq_call_cq(RxChannel{}, 0);
     transmit();
     autoseq_fetch_pending_tx(pending);
     autoseq_on_tx_starting();
@@ -312,17 +312,17 @@ static void test_opening_call_stops_at_4()
 static void test_call_cq_parity()
 {
     reset(6);
-    check(autoseq_cq_parity(0, true) == 0, "idle: the slot under way, while it can be keyed");
-    check(autoseq_cq_parity(0, false) == 1, "otherwise the next");
-    check(autoseq_cq_parity(1, false) == 0, "either way round");
+    check(autoseq_cq_parity(RxChannel{}, 0, true) == 0, "idle: the slot under way, while it can be keyed");
+    check(autoseq_cq_parity(RxChannel{}, 0, false) == 1, "otherwise the next");
+    check(autoseq_cq_parity(RxChannel{}, 1, false) == 0, "either way round");
     decode(to_me("K1ABC", "FN42"));  // heard on odd, we send on even
-    check(autoseq_cq_parity(1, true) == 0, "an active QSO's parity wins");
+    check(autoseq_cq_parity(RxChannel{}, 1, true) == 0, "an active QSO's parity wins");
 }
 
 static void test_flip_cq_parity()
 {
     reset(6);
-    autoseq_call_cq(0);
+    autoseq_call_cq(RxChannel{}, 0);
     const uint16_t id = autoseq_cq_entry_id();
     check(autoseq_set_cq_parity(id, 1) == AutoseqParityResult::Ok, "flip the CQ");
     QsoContext cq;

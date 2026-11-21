@@ -124,7 +124,10 @@ extern "C" {
 // and why. The per-slot log lines (SLOT, BDRY, SKIP, BUSY, PAUSED) go to the main board's console
 // instead of Port A, so they take no places in the sidekick's event ring. A v20 sidekick drops the
 // new event unparsed. Both ends are flashed together.
-#define PORTA_PROTO_VERSION 21u
+// v22 (2026-11-20): CQ_CALL names the channel to call on, its mode and dial
+// (docs/architecture/autoseq.md, The queue), and SLOT_STATE carries the armed TX's mode. A v21 peer's
+// verb-only CQ_CALL and shorter SLOT_STATE are refused. Both ends are flashed together.
+#define PORTA_PROTO_VERSION 22u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -365,12 +368,15 @@ size_t porta_proto_encode_queue_entry(const porta_queue_entry_event_t *q,
 bool porta_proto_parse_queue_entry(const porta_frame_t *f, porta_queue_entry_event_t *out);
 
 // SLOT_STATE is global scalars, not any one queue entry's: `slot_parity` is
-// the armed TX's slot parity (0=even, 1=odd), and `resolved_offset_hz` is the
-// offset that armed TX resolved to, 0 when nothing is armed.
+// the armed TX's slot parity (0=even, 1=odd), `resolved_offset_hz` is the
+// offset that armed TX resolved to, 0 when nothing is armed, and `mode` is the
+// mode it goes out in (PORTA_QUEUE_MODE_*), whose slots the slot bar counts;
+// FT8 when nothing is armed.
 typedef struct {
     uint32_t epoch_secs;
     uint8_t  slot_parity;
     uint16_t resolved_offset_hz;
+    uint8_t  mode;
 } porta_slot_state_event_t;
 
 size_t porta_proto_encode_slot_state(const porta_slot_state_event_t *s,
@@ -600,11 +606,15 @@ bool porta_proto_parse_connect(const porta_frame_t *f);
 size_t porta_proto_encode_tune(bool on, uint8_t *out, size_t out_cap);
 bool porta_proto_parse_tune(const porta_frame_t *f, bool *on_out);
 
-// Call CQ: verb only. The host picks the parity (an active QSO's, or the slot
-// it can still key) and the tries (the station default), because it holds the
-// slot clock and the setting.
-size_t porta_proto_encode_cq_call(uint8_t *out, size_t out_cap);
-bool porta_proto_parse_cq_call(const porta_frame_t *f);
+// Call CQ on a channel: verb + u8 mode (PORTA_QUEUE_MODE_*) + u32 dial in Hz, the channel's as
+// QUEUE_ENTRY names it. The host refuses a channel it does not listen to, and picks the parity (an
+// active QSO's on that channel, or the slot it can still key) and the tries (the station default),
+// because it holds the slot clock and the setting. A mode other than FT8 or FT4 does not parse.
+size_t porta_proto_encode_cq_call(uint8_t mode, uint32_t dial_hz, uint8_t *out, size_t out_cap);
+bool porta_proto_parse_cq_call(const porta_frame_t *f, uint8_t *mode_out, uint32_t *dial_hz_out);
+// The body of the sidekick's POST /api/cq, "<mode> <dial_hz>": FT8 or FT4, a space, then the channel's
+// dial in Hz, 1 to 4294967295. False for anything else, leaving the outputs alone.
+bool porta_proto_parse_cq_body(const char *body, uint8_t *mode_out, uint32_t *dial_hz_out);
 size_t porta_proto_encode_radio_read(uint8_t *out, size_t out_cap);
 bool porta_proto_parse_radio_read(const porta_frame_t *f);
 // Set the radio's PTT outputs: verb + u8 keying, 1 TX PTT grounded or 2 TX PTT +5V; anything else

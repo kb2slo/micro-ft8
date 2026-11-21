@@ -63,12 +63,19 @@ AdifLoggerDedupe s_adif_logger_dedupe;
 static_assert(AUTOSEQ_INACTIVE_EXPIRY_MS == kAdifLoggerDedupeWindowMs,
               "parked-entry expiry must match the recently-worked window");
 
-// The window is per call, band and mode (adif_logger_dedupe_key()); the band is the radio's dial's now.
-bool decode_pipeline_recently_logged(const std::string& dxcall_norm, RxMode mode) {
+// The window is per call, band and mode (adif_logger_dedupe_key()); the band is the channel's dial's.
+bool decode_pipeline_recently_logged(const std::string& dxcall_norm, RxChannel channel) {
   const int64_t now_ms = rtc_now_ms();
-  const std::string key = adif_logger_dedupe_key(dxcall_norm, adif_band_for_hz(dial_history_at(now_ms)),
-                                                 mode == RxMode::FT4 ? "FT4" : "FT8");
+  const std::string key = adif_logger_dedupe_key(dxcall_norm, adif_band_for_hz(channel.dial_hz),
+                                                 channel.mode == RxMode::FT4 ? "FT4" : "FT8");
   return adif_logger_dedupe_is_duplicate(&s_adif_logger_dedupe, key, now_ms);
+}
+
+// Whether the station listens to a channel now (decode_pipeline_set_channel_listened()); null listens to all.
+static bool (*s_channel_listened)(RxChannel channel) = nullptr;
+
+void decode_pipeline_set_channel_listened(bool (*fn)(RxChannel channel)) {
+  s_channel_listened = fn;
 }
 
 // ---- Heard grids (heard_grid.h). Main loop only, so not locked:
@@ -112,7 +119,7 @@ static RxMode rx_mode_of(const ProtocolConfig* mode) {
 
 // Assigns the next id, remembers enough of `e` to reconstruct a UiRxLine for
 // a later reply, and returns the id for porta_emit_decode() to carry.
-static uint32_t remember_decode_for_reply(const RxDecodeEntry& e, RxMode mode) {
+static uint32_t remember_decode_for_reply(const RxDecodeEntry& e, RxChannel channel) {
   uint32_t id = s_next_decode_id++;
   if (s_next_decode_id == 0) {
     s_next_decode_id = 1;  // skip the sentinel on wrap
@@ -130,7 +137,7 @@ static uint32_t remember_decode_for_reply(const RxDecodeEntry& e, RxMode mode) {
   slot.rx.is_cq       = e.is_cq;
   slot.rx.is_to_me    = e.is_to_me;
   slot.rx.is_recent_qso = e.is_recent_qso;
-  slot.rx.mode = mode;
+  slot.rx.channel = channel;
   return id;
 }
 
@@ -627,10 +634,13 @@ static void apply_slot_result(DecodeSlotResult& r) {
   qsort(r.dec, r.count, sizeof(DecodeMsg), dec_sort_cmp);
 
   // ---- Autoseq: build small to_me vector at boundary (only to_me entries) ----
-  // The station's channel, and FT4's beside it: each decode addressed to us goes to autoseq in its mode
-  // (docs/architecture/autoseq.md, The queue). Not while transmitting, as ever.
+  // Each decode addressed to us goes to autoseq on its channel, the dial it was heard on and its mode, while
+  // the station listens to that channel (docs/architecture/autoseq.md, The queue): not while the radio is off
+  // the station's dial. Not while transmitting, as ever.
   const RxMode rx_mode = rx_mode_of(r.mode);
-  if ((r.station || rx_mode == RxMode::FT4) && !decode_tx_state_get_was_txing()) {
+  const RxChannel rx_channel{dial_history_at(now_ms) + (uint32_t)r.dial_offset_hz, rx_mode};
+  const bool listened = s_channel_listened ? s_channel_listened(rx_channel) : true;
+  if (listened && !decode_tx_state_get_was_txing()) {
     std::vector<UiRxLine> to_me_auto;
     for (int i = 0; i < r.count; ++i) {
       if (!r.dec[i].is_to_me) break;  // sorted, so once we pass to_me we're done
@@ -648,7 +658,7 @@ static void apply_slot_result(DecodeSlotResult& r) {
       rx.slot_id = r.dec[i].slot_id;
       rx.is_cq = r.dec[i].is_cq;
       rx.is_to_me = true;
-      rx.mode = rx_mode;
+      rx.channel = rx_channel;
       to_me_auto.push_back(std::move(rx));
     }
 
@@ -673,7 +683,7 @@ static void apply_slot_result(DecodeSlotResult& r) {
         (int64_t)(r.mode->total_symbols * r.mode->symbol_period * 500.0f);
     for (int i = 0; i < r.count; ++i) {
       const RxDecodeEntry& e = r.dec[i];
-      uint32_t decode_id = remember_decode_for_reply(e, rx_mode);
+      uint32_t decode_id = remember_decode_for_reply(e, rx_channel);
       const int64_t mid_ms =
           emit_slot_idx * emit_slot_ms + (int64_t)(e.time_s * 1000.0f) + half_signal_ms;
       porta_emit_decode(decode_id, e.text, e.snr, e.offset_hz, e.time_s,

@@ -137,7 +137,7 @@ static void test_expires_four_hours_after_last_heard() {
 static std::string s_logged_grid;
 static int s_log_count = 0;
 
-static bool adif_cb(const std::string&, const std::string& grid, int, int, RxMode) {
+static bool adif_cb(const std::string&, const std::string& grid, int, int, RxChannel) {
     s_logged_grid = grid;
     ++s_log_count;
     return true;
@@ -228,7 +228,7 @@ static void test_tail_ended_qso_logs_the_heard_grid() {
 static void test_qso_grid_wins() {
     reset();
     decode(msg("CQ", "K1ABC", "FN42"));
-    autoseq_call_cq(0);
+    autoseq_call_cq(RxChannel{}, 0);
     autoseq_set_entry_tries(autoseq_cq_entry_id(), 1);
     transmit();
     decode(msg("KB2SLO", "K1ABC", "FN43"));  // answers our CQ from a new square

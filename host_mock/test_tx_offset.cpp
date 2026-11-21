@@ -28,7 +28,7 @@ static void check(bool ok, const char* what)
     }
 }
 
-static bool adif_cb(const std::string&, const std::string&, int, int, RxMode) { return true; }
+static bool adif_cb(const std::string&, const std::string&, int, int, RxChannel) { return true; }
 
 static UiRxLine to_me(const char* dx, const char* f3)
 {
@@ -177,7 +177,7 @@ static void test_two_qsos_hold_their_own()
 static void test_a_cq_rolls_every_time()
 {
     reset();
-    autoseq_call_cq(0);
+    autoseq_call_cq(RxChannel{}, 0);
     check(arm(1) == 501, "a CQ rolls");
     send();
     check(arm(2) == 502, "and rolls again for the next one");
@@ -194,7 +194,7 @@ static void test_a_cq_rolls_every_time()
 static void test_a_caller_to_our_cq_is_answered_on_the_cqs_offset()
 {
     reset();
-    autoseq_call_cq(0);
+    autoseq_call_cq(RxChannel{}, 0);
     const int cq = arm(1685);
     check(cq == 2185, "the CQ rolls");
     send(cq);
@@ -206,7 +206,7 @@ static void test_a_caller_to_our_cq_is_answered_on_the_cqs_offset()
 
     // A station we tap ourselves never heard our CQ: its QSO rolls its own.
     reset();
-    autoseq_call_cq(0);
+    autoseq_call_cq(RxChannel{}, 0);
     send(arm(1685));
     autoseq_on_touch(cq_from("N0CALL"));
     check(arm(300) == 800, "a station we call rolls its own, our CQ's notwithstanding");
@@ -236,7 +236,7 @@ static void test_the_memory_lasts_ten_minutes()
     autoseq_on_touch(cq_from("W9KXI"));
     send(arm(1416));
     send(1916);
-    autoseq_call_cq(0);
+    autoseq_call_cq(RxChannel{}, 0);
     send(arm(1685));
     mock_clock_advance(AUTOSEQ_INACTIVE_EXPIRY_MS);
     decode(to_me("W9KXI", "-04"));

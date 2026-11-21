@@ -1107,13 +1107,24 @@ static esp_err_t post_swr_start(httpd_req_t *req)
     return wait_action_reply(req, PORTA_ACT_SWEEP_START);
 }
 
-// POST /api/cq  no body: Call CQ. The main board picks the parity and the
-// tries (docs/architecture/autoseq.md, Tries). Token required: this keys the
-// transmitter.
+// POST /api/cq  body: "<mode> <dial_hz>", the channel to call on (porta_proto_parse_cq_body(),
+// porta_proto.h). The main board refuses a channel it does not listen to, and picks the parity and
+// the tries (docs/architecture/autoseq.md, Tries). Token required: this keys the transmitter.
 static esp_err_t post_cq(httpd_req_t *req)
 {
+    char body[24] = {0};
+    const int received = httpd_req_recv(req, body, sizeof(body) - 1);
+    if (received > 0) {
+        body[received] = '\0';
+    }
+    uint8_t mode = 0;
+    uint32_t dial_hz = 0;
+    if (received <= 0 || !porta_proto_parse_cq_body(body, &mode, &dial_hz)) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "body is <FT8|FT4> <dial_hz>");
+        return ESP_FAIL;
+    }
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
-    const size_t n = porta_proto_encode_cq_call(frame, sizeof(frame));
+    const size_t n = porta_proto_encode_cq_call(mode, dial_hz, frame, sizeof(frame));
     reply_reset();
     if (!porta_send(frame, n)) {
         httpd_resp_set_type(req, "application/json");

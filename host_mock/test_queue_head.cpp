@@ -27,7 +27,7 @@ static void check(bool ok, const char* what) {
     }
 }
 
-static bool adif_cb(const std::string&, const std::string&, int, int, RxMode) { return true; }
+static bool adif_cb(const std::string&, const std::string&, int, int, RxChannel) { return true; }
 
 static UiRxLine to_me(const char* dx, const char* f3) {
     UiRxLine m;
@@ -138,7 +138,7 @@ static void test_reactivation_by_unclassified_message_can_transmit() {
 
     decode(to_me("W1AW", ""));
     check(transmit() == "W1AW KB2SLO 73", "reactivated entry sends its 73");
-    autoseq_call_cq(0);
+    autoseq_call_cq(RxChannel{}, 0);
     check(transmit() == "CQ KB2SLO FN30", "and a CQ is not blocked");
 }
 
@@ -180,7 +180,7 @@ static void test_transmitting_id_names_the_on_air_entry() {
 // instead.
 static void test_head_refresh_picks_up_a_modifier_change() {
     reset();
-    autoseq_call_cq(0);
+    autoseq_call_cq(RxChannel{}, 0);
     AutoseqTxEntry pending;
     check(autoseq_fetch_pending_tx(pending), "CQ queued");
     check(pending.text == "CQ KB2SLO FN30", "plain CQ text before the switch");

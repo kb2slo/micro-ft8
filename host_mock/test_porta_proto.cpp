@@ -483,6 +483,7 @@ static void test_slot_state_event()
     in.epoch_secs = 1789012345u;
     in.slot_parity = 1;
     in.resolved_offset_hz = 1834;
+    in.mode = PORTA_QUEUE_MODE_FT4;
 
     size_t n = porta_proto_encode_slot_state(&in, buf, sizeof(buf));
     auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
@@ -492,6 +493,7 @@ static void test_slot_state_event()
         check(porta_proto_parse_slot_state(&got[0], &out), "slot_state event parses");
         check(out.slot_parity == 1, "slot_parity round-trips");
         check(out.resolved_offset_hz == 1834, "resolved_offset_hz round-trips");
+        check(out.mode == PORTA_QUEUE_MODE_FT4, "the armed TX's mode round-trips");
 
         porta_queue_entry_event_t qe;
         check(!porta_proto_parse_queue_entry(&got[0], &qe),
@@ -867,10 +869,10 @@ static void test_action_radio_read()
     check(got.size() == 1 && got[0].len == 1, "radio_read is the verb alone");
     if (got.size() == 1) {
         check(porta_proto_parse_radio_read(&got[0]), "radio_read parses");
-        check(!porta_proto_parse_cq_call(&got[0]), "radio_read is not cq_call");
+        check(!porta_proto_parse_cq_call(&got[0], nullptr, nullptr), "radio_read is not cq_call");
     }
     porta_decoder_init(&d);
-    n = porta_proto_encode_cq_call(buf, sizeof(buf));
+    n = porta_proto_encode_cq_call(PORTA_QUEUE_MODE_FT8, 14074000u, buf, sizeof(buf));
     got = run(&d, std::vector<uint8_t>(buf, buf + n));
     if (got.size() == 1) {
         check(!porta_proto_parse_radio_read(&got[0]), "cq_call is not radio_read");
@@ -1109,12 +1111,43 @@ static void test_action_cq_tries_parity()
     porta_decoder_init(&d);
     uint8_t buf[PORTA_PROTO_MAX_FRAME];
 
-    size_t n = porta_proto_encode_cq_call(buf, sizeof(buf));
+    // Call CQ names its channel: verb + u8 mode + u32 dial.
+    size_t n = porta_proto_encode_cq_call(PORTA_QUEUE_MODE_FT4, 14080000u, buf, sizeof(buf));
     auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
-    check(got.size() == 1 && got[0].len == 1, "cq_call is the verb alone");
+    check(got.size() == 1 && got[0].len == 6, "cq_call is verb + u8 mode + u32 dial");
     if (got.size() == 1) {
-        check(porta_proto_parse_cq_call(&got[0]), "cq_call parses");
+        uint8_t mode = 9;
+        uint32_t dial = 0;
+        check(porta_proto_parse_cq_call(&got[0], &mode, &dial) && mode == PORTA_QUEUE_MODE_FT4 && dial == 14080000u,
+              "cq_call round-trips its channel");
         check(!porta_proto_parse_tx_cancel(&got[0]), "cq_call is not tx_cancel");
+        porta_frame_t bad = got[0];
+        bad.payload[1] = 2;
+        check(!porta_proto_parse_cq_call(&bad, nullptr, nullptr), "a mode other than FT8 or FT4 does not parse");
+        bad = got[0];
+        bad.len = 1;
+        check(!porta_proto_parse_cq_call(&bad, nullptr, nullptr), "the old verb-only frame does not parse");
+    }
+    check(porta_proto_encode_cq_call(7, 14074000u, buf, sizeof(buf)) == 0, "an unknown mode does not encode");
+
+    // The sidekick's POST /api/cq body, "<mode> <dial_hz>".
+    {
+        uint8_t mode = 9;
+        uint32_t dial = 0;
+        check(porta_proto_parse_cq_body("FT8 14074000", &mode, &dial) && mode == PORTA_QUEUE_MODE_FT8 &&
+                  dial == 14074000u,
+              "an FT8 body parses");
+        check(porta_proto_parse_cq_body("FT4 7047500", &mode, &dial) && mode == PORTA_QUEUE_MODE_FT4 &&
+                  dial == 7047500u,
+              "an FT4 body parses");
+        mode = 9;
+        dial = 1;
+        const char* bad[] = {"", "FT8", "FT8 ", "FT4 0", "FT8 -5", "FT8 14074000x", "ft8 14074000", "JT65 14076000",
+                             "FT8 4294967296", "FT8  14074000"};
+        for (const char* b : bad) {
+            check(!porta_proto_parse_cq_body(b, &mode, &dial), b);
+        }
+        check(mode == 9 && dial == 1, "a refused body leaves the outputs alone");
     }
 
     // The two share a shape, so each must refuse the other's verb.
@@ -1129,7 +1162,7 @@ static void test_action_cq_tries_parity()
               "queue_tries round-trips");
         check(!porta_proto_parse_queue_parity(&got[0], nullptr, nullptr),
               "queue_tries is not queue_parity");
-        check(!porta_proto_parse_cq_call(&got[0]), "queue_tries is not cq_call");
+        check(!porta_proto_parse_cq_call(&got[0], nullptr, nullptr), "queue_tries is not cq_call");
     }
 
     porta_decoder_init(&d);
@@ -1603,8 +1636,9 @@ static void test_event_json()
     slot.epoch_secs = 1700000002;
     slot.slot_parity = 1;
     slot.resolved_offset_hz = 1500;
+    slot.mode = PORTA_QUEUE_MODE_FT4;
     check(porta_event_json_slot(row, sizeof(row), 5, &slot) > 0, "slot row encodes");
-    check_row(row, "{\"s\":5,\"t\":1700000002,\"d\":3,\"sp\":1,\"hz\":1500}", "slot row");
+    check_row(row, "{\"s\":5,\"t\":1700000002,\"d\":3,\"sp\":1,\"hz\":1500,\"md\":1}", "slot row");
 
     porta_tx_hud_event_t hud;
     std::memset(&hud, 0, sizeof(hud));
