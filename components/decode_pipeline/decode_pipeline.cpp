@@ -268,11 +268,11 @@ static bool take_slot_result(int c, DecodeSlotResult* out) {
 bool decode_pipeline_result_pending(bool ft4) {
   xSemaphoreTake(result_mutex(), portMAX_DELAY);
   bool pending = false;
-  // The channel whose decodes gate this transmission: the station's for FT8, FT4's beside it for FT4.
+  // The channel whose decodes gate this transmission: the one in its mode, the station's or FT4's beside it.
   for (int c = 0; c < RX_MAX_CHANNELS; ++c) {
     if (!s_result_pending[c]) continue;
     const DecodeSlotResult* r = s_result[c];
-    pending = pending || (ft4 ? (!r->station && rx_mode_of(r->mode) == RxMode::FT4) : r->station);
+    pending = pending || ((rx_mode_of(r->mode) == RxMode::FT4) == ft4);
   }
   xSemaphoreGive(result_mutex());
   return pending;
@@ -453,14 +453,14 @@ static decode_helper_t* decode_helper() {
   return helper;
 }
 
-// The station's slot is published: mark it applied for the TX gate, then clear the in-progress flag, in
-// that order (decode_tx_state.h). The FT4 channel beside it marks its own period for FT4's gate; any other
+// A slot is published: an FT4 one, the station's or beside it, marks its period for FT4's gate; the station's
+// marks it applied for the TX gate, then clears the in-progress flag, in that order (decode_tx_state.h). Any other
 // channel's slots touch neither.
 static void mark_station_slot_done(const ft8_slot_t* slot) {
+  if (rx_mode_of(slot->mode) == RxMode::FT4 && slot->slot_idx > decode_tx_state_get_ft4_applied_period_idx()) {
+    decode_tx_state_set_ft4_applied_period_idx(slot->slot_idx);
+  }
   if (!slot->station) {
-    if (rx_mode_of(slot->mode) == RxMode::FT4 && slot->slot_idx > decode_tx_state_get_ft4_applied_period_idx()) {
-      decode_tx_state_set_ft4_applied_period_idx(slot->slot_idx);
-    }
     return;
   }
   if (slot->slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
@@ -491,10 +491,12 @@ void decode_slot(const ft8_slot_t* slot) {
   const int64_t slot_idx = slot->slot_idx;
   int slot_id = (int)(slot_idx & 1);
 
-  // Aged by the station's slots: another channel counts its own, shorter, periods.
+  // Aged once each 15 s, by the station's slots: FT8's, or every other one of FT4's when it listens to FT4
+  // alone, so a hashed call lives as long in either.
   static int64_t s_last_aged_slot = -1;
-  if (slot->station && slot_idx != s_last_aged_slot) {
-    s_last_aged_slot = slot_idx;
+  const int64_t aged_slot = slot_idx * slot->mode->slot_time_ms / kProtocolFT8.slot_time_ms;
+  if (slot->station && aged_slot != s_last_aged_slot) {
+    s_last_aged_slot = aged_slot;
     hashtable_age_all();
   }
 
@@ -559,10 +561,11 @@ void decode_slot(const ft8_slot_t* slot) {
   {
     float times_s[DEC_MAX];
     for (int i = 0; i < dc.count; ++i) times_s[i] = dc.dec[i].time_s;
-    // The station's channel steps the clock; one source, so two modes cannot step it twice a slot.
-    const int delta_ms =
-        slot->station ? decode_sync_step_ms(times_s, dc.count, slot->capture_clean ? 1 : 0) : 0;
-    if (slot->station && decode_sync_phase_good(times_s, dc.count, slot->capture_clean ? 1 : 0)) {
+    // The station's channel in FT8 steps the clock; one source, so two modes cannot step it twice a slot. Listening
+    // to FT4 alone, decodes do not step it: decode_sync's slot snapping is FT8's 15 s (docs/architecture/time.md).
+    const bool steers = slot->station && rx_mode_of(slot->mode) == RxMode::FT8;
+    const int delta_ms = steers ? decode_sync_step_ms(times_s, dc.count, slot->capture_clean ? 1 : 0) : 0;
+    if (steers && decode_sync_phase_good(times_s, dc.count, slot->capture_clean ? 1 : 0)) {
       s_phase_good_uptime_s = (int32_t)(esp_timer_get_time() / 1000000);
     }
     if (delta_ms != 0) {

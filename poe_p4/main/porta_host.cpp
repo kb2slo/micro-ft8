@@ -147,12 +147,46 @@ static void load_station_from_storage(void) {
              s_station.grid.c_str());
 }
 
-static int station_freq_hz(void) {
+// The operating band's FT8 dial, its bandN= frequency.
+static int station_ft8_dial_hz(void) {
     const int idx = s_station.band_sel;
     if (idx < 0 || idx >= kStationBandCount || !s_station.band_freq_set[idx]) {
         return 0;
     }
     return (int)(s_station.band_freq[idx] * 1000.0f + 0.5f);
+}
+
+// Band `idx`'s FT4 dial minus its FT8 dial in `st`: its ft4band<N>, else FT4's default dial, against its band<N>, else
+// FT8's default.
+static int32_t band_ft4_minus_ft8_hz(const StationSettings &st, int idx) {
+    if (idx < 0 || idx >= kStationBandCount) {
+        return 0;
+    }
+    const double ft8_khz = st.band_freq_set[idx] ? st.band_freq[idx] : kFt8DefaultKhz[idx];
+    const double ft4_khz = st.ft4_freq_set[idx] ? st.ft4_freq[idx] : kFt4DefaultKhz[idx];
+    return (int32_t)lround((ft4_khz - ft8_khz) * 1000.0);
+}
+
+static int32_t station_ft4_minus_ft8_hz(void) {
+    return band_ft4_minus_ft8_hz(s_station, s_station.band_sel);
+}
+
+// The radio's window holds FT8 and FT4 on this band: a QMX's I/Q while FT4's channel fits it (qmx_iq_channel.h).
+// An HL2 receives one channel today (docs/architecture/hl2.md).
+static bool station_both_fit(int radio, int32_t ft4_minus_ft8_hz) {
+    return radio == kStationRadioQmx && qmx_iq_channel_refusal(ft4_minus_ft8_hz) == nullptr;
+}
+
+// The operating band's plan: the radio's dial and the channels heard there (station_channel.h).
+static StationPlan station_current_plan(void) {
+    return station_plan((uint32_t)station_ft8_dial_hz(), station_ft4_minus_ft8_hz(),
+                        station_listen(s_station, s_station.band_sel),
+                        station_both_fit(s_station.radio, station_ft4_minus_ft8_hz()));
+}
+
+// Where the station puts the radio's dial: FT8's, or FT4's while the band listens to FT4 alone.
+static int station_freq_hz(void) {
+    return (int)station_current_plan().radio_dial_hz;
 }
 
 static void amp_band_prime_event(const amp_band_prime_event_t *event, void * /*user*/) {
@@ -342,12 +376,8 @@ static bool log_adif_entry(const std::string &dxcall, const std::string &dxgrid,
 StationDials porta_p4_station_dials(void) {
     ensure_seeded();
     StationDials d;
-    d.set_ft8_dial_hz = (uint32_t)station_freq_hz();
+    d.plan = station_current_plan();
     d.reported_dial_hz = dial_history_at(rtc_now_ms());
-    d.ft4_dial_offset_hz = porta_p4_station_ft4_dial_offset_hz();
-    // FT4 is decoded beside FT8 on the QMX while rx_ft4 is on and its channel fits the window (main.cpp, rx_plan_tick()).
-    d.ft4_decoded = s_station.rx_ft4 && s_station.radio == kStationRadioQmx &&
-                    qmx_iq_channel_refusal(d.ft4_dial_offset_hz) == nullptr;
     return d;
 }
 
@@ -382,19 +412,14 @@ bool porta_p4_tune_active(void) {
     return s_tune;
 }
 
-bool porta_p4_station_rx_ft4(void) {
+StationPlan porta_p4_station_plan(void) {
     ensure_seeded();
-    return s_station.rx_ft4;
+    return station_current_plan();
 }
 
 int32_t porta_p4_station_ft4_dial_offset_hz(void) {
     ensure_seeded();
-    const int idx = s_station.band_sel;
-    if (idx < 0 || idx >= kStationBandCount) {
-        return 0;
-    }
-    const double ft8_khz = s_station.band_freq_set[idx] ? s_station.band_freq[idx] : kFt8DefaultKhz[idx];
-    return (int32_t)lround((kFt4DefaultKhz[idx] - ft8_khz) * 1000.0);
+    return station_current_plan().ft4_offset_hz;
 }
 
 bool porta_p4_station_amp_swr_guard(void) {
@@ -777,10 +802,8 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
     const int idx = s_station.band_sel;
     const char *band_name =
         (idx >= 0 && idx < kStationBandCount) ? kBandNames[idx] : "?";
-    const int freq_khz =
-        (idx >= 0 && idx < kStationBandCount && s_station.band_freq_set[idx])
-            ? (int)(s_station.band_freq[idx] + 0.5f)
-            : 0;
+    // Where the radio's dial is: FT8's, or FT4's while the band listens to FT4 alone.
+    const int freq_khz = (station_freq_hz() + 500) / 1000;
 
     char live[320];
     snprintf(live, sizeof(live),
@@ -889,6 +912,40 @@ const char *porta_host_config_set(const char *key, const char *value) {
         }
     }
 
+    int listen_band = -1;
+    if (sscanf(key, "listen%d", &listen_band) == 1) {
+        char *end = nullptr;
+        const long v = strtol(value, &end, 10);
+        if (end == value || *end != '\0' || v < kStationListenFt8 || v > kStationListenBoth) {
+            return "listen is 1 (FT8), 2 (FT4) or 3 (both)";
+        }
+    }
+    // Refused, not dropped: the drawer must not show channels the station is not hearing
+    // (docs/architecture/decode.md, Channels). Both cannot be turned on where they do not fit, and a frequency
+    // write cannot move a band's two channels apart. A write to a pair already apart is let through, so a band tap's
+    // two standard dials, written one line at a time, land whatever order the lines come in.
+    {
+        int band = -1;
+        const bool listen_key = sscanf(key, "listen%d", &band) == 1;
+        if (listen_key || sscanf(key, "band%d", &band) == 1 || sscanf(key, "ft4band%d", &band) == 1) {
+            StationSettings after = s_station;
+            station_parse(std::string(key) + "=" + value + "\n", &after);
+            const int32_t apart_hz = band_ft4_minus_ft8_hz(after, band);
+            const bool fit_before = station_both_fit(s_station.radio, band_ft4_minus_ft8_hz(s_station, band));
+            if (band >= 0 && band < kStationBandCount && station_listen(after, band) == kStationListenBoth &&
+                !station_both_fit(after.radio, apart_hz) && (listen_key || fit_before)) {
+                if (after.radio != kStationRadioQmx) {
+                    return "the HL2 hears one channel at a time";
+                }
+                static char s_why[112];
+                snprintf(s_why, sizeof s_why,
+                         "FT4's dial would be %+.1f kHz from FT8's on %s; a QMX hears both from -33 to +6 kHz",
+                         apart_hz / 1000.0, kBandNames[band]);
+                return s_why;
+            }
+        }
+    }
+
     if (station_key_names_operating_band(key, s_station.band_sel)) {
         if (s_tune) {
             return "Tune is on";
@@ -947,7 +1004,7 @@ const char *porta_host_config_set(const char *key, const char *value) {
     }
 
     if (strcmp(key, "band_sel") == 0 || strcmp(key, "active_bands") == 0 ||
-        strncmp(key, "band", 4) == 0) {
+        strncmp(key, "band", 4) == 0 || strncmp(key, "ft4band", 7) == 0 || strncmp(key, "listen", 6) == 0) {
         const char *why = sync_vfo("porta config");
         // A write that names the band actually being operated
         // needs the VFO to have moved to mean what it says. Other band-ish

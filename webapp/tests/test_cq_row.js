@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The CQ row's channel (docs/architecture/webapp.md, The CQ row): app.html's own cqChannels(), cqChannelFor(),
 // cqCallBody(), cqStatusText() and slotBarPeriodMs(). Call CQ names a channel, its mode and dial in Hz, as the
-// main board does (porta_proto_parse_cq_body()); FT4's is offered only while FT4 is decoded beside FT8; the
+// main board does (porta_proto_parse_cq_body()); it calls on the channels listened to (listenedChannels()); the
 // status line names the mode while there are two, and an FT4 CQ's periods; the slot bar counts the armed TX's
 // mode's slots.
 'use strict';
@@ -19,8 +19,10 @@ function extract(name) {
 const ctx = vm.createContext({});
 // The real band table, and bandFreq(), which reads a bandN override from CONFIG.
 vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'app', 'bands.js'), 'utf8'), ctx);
-vm.runInContext('var SLOT_MS = 15000;', ctx);
-['bandFreq', 'currentFt4DialKhz', 'currentDockFreqKhz', 'cqChannels', 'cqChannelFor', 'cqCallBody', 'cqStatusText',
+vm.runInContext('var SLOT_MS = 15000; var QMX_FT4_BESIDE_MIN_HZ = -33000, QMX_FT4_BESIDE_MAX_HZ = 6000;' +
+  ' var LISTEN_FT8 = 1, LISTEN_FT4 = 2, LISTEN_BOTH = 3;', ctx);
+['bandFreq', 'currentFt4DialKhz', 'currentDockFreqKhz', 'listenMask', 'bandFt4Khz', 'bandBothFit', 'bandChannels',
+ 'operatingBandIdx', 'listenedChannels', 'cqChannels', 'cqChannelFor', 'cqCallBody', 'cqStatusText',
  'slotBarPeriodMs'].forEach(function (n) { vm.runInContext(extract(n), ctx); });
 const B20 = '5', B40 = '3';
 
@@ -28,22 +30,24 @@ const plain = (v) => JSON.parse(JSON.stringify(v));
 
 // Channels.
 assert.deepStrictEqual(plain(ctx.cqChannels({})), [], 'no config yet: nothing to call on');
-assert.deepStrictEqual(plain(ctx.cqChannels({ band_sel: B20, rx_ft4: '0' })), [{ mode: 'FT8', dial_hz: 14074000 }],
+assert.deepStrictEqual(plain(ctx.cqChannels({ band_sel: B20, listen5: '1' })), [{ mode: 'FT8', dial_hz: 14074000 }],
                        'FT8 alone while FT4 is not decoded');
-assert.deepStrictEqual(plain(ctx.cqChannels({ band_sel: B20, rx_ft4: '1' })),
+assert.deepStrictEqual(plain(ctx.cqChannels({ band_sel: B20, listen5: '3' })),
                        [{ mode: 'FT8', dial_hz: 14074000 }, { mode: 'FT4', dial_hz: 14080000 }],
                        'FT8 and FT4 at their dials while FT4 is decoded');
-assert.deepStrictEqual(plain(ctx.cqChannels({ band_sel: B40, rx_ft4: '1' })),
+assert.deepStrictEqual(plain(ctx.cqChannels({ band_sel: B40, listen3: '3' })),
                        [{ mode: 'FT8', dial_hz: 7074000 }, { mode: 'FT4', dial_hz: 7047500 }],
                        "40 m's FT4 dial, below FT8's, in whole Hz");
-assert.deepStrictEqual(plain(ctx.cqChannels({ band_sel: B20, band5: '14075.5', rx_ft4: '0' })),
+assert.deepStrictEqual(plain(ctx.cqChannels({ band_sel: B20, band5: '14075.5', listen5: '1' })),
                        [{ mode: 'FT8', dial_hz: 14075500 }], "a band's own dial, as the main board sets it");
 
 // The chosen mode falls back to FT8 when FT4 is not listened to.
-const both = { band_sel: B20, rx_ft4: '1' };
+const both = { band_sel: B20, listen5: '3' };
 assert.strictEqual(ctx.cqChannelFor(both, 'FT4').mode, 'FT4');
-assert.strictEqual(ctx.cqChannelFor({ band_sel: B20, rx_ft4: '0' }, 'FT4').mode, 'FT8',
-                   'a remembered FT4 calls in FT8 once FT4 is not decoded');
+assert.strictEqual(ctx.cqChannelFor({ band_sel: B20, listen5: '1' }, 'FT4').mode, 'FT8',
+                   'a remembered FT4 calls in FT8 once FT4 is not listened to');
+assert.deepStrictEqual(plain(ctx.cqChannelFor({ band_sel: '7', listen7: '2' }, 'FT8')), { mode: 'FT4', dial_hz: 21140000 },
+                       'FT4 alone on 15 m: the CQ calls in FT4 at 21.140 MHz');
 assert.strictEqual(ctx.cqChannelFor({}, 'FT8'), null, 'no channel before the first config');
 
 // The body the sidekick takes.

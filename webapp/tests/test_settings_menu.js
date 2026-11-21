@@ -34,7 +34,7 @@ const ctx = {};
 vm.createContext(ctx);
 vm.runInContext(extractFunction(src, 'settingsMenuModel'), ctx);
 const model = (over) => ctx.settingsMenuModel(Object.assign({
-  call: 'KB2SLO', grid: 'EM10cg', cq: 'CQ POTA', radio: 'QMX', bands: ['40m', '20m'], rxFt4: false, amp: true, ampPtt: 0, ampBad: false,
+  call: 'KB2SLO', grid: 'EM10cg', cq: 'CQ POTA', radio: 'QMX', bands: ['40m', '20m'], amp: true, ampPtt: 0, ampBad: false,
   txDelay: '50', netMode: 'station', netName: 'home', netIp: '192.168.1.20', paired: true,
   updateAvailable: false, fwChecked: true, fwNoNet: false, appStale: false, units: 'km', theme: 'system',
 }, over || {}));
@@ -54,7 +54,6 @@ assert.strictEqual(m.diag, undefined, 'Diagnostics keeps its fixed line');
 // Station and radio.
 assert.deepStrictEqual(row(model({ call: '' }).station), ['No call set', 'amber', '!']);
 assert.strictEqual(model({ grid: '' }).station.text, 'KB2SLO · CQ POTA');
-assert.strictEqual(model({ rxFt4: true }).radio.text, 'QMX · 40m 20m · FT4 too');
 assert.strictEqual(model({ bands: [] }).radio.text, 'QMX · no bands');
 assert.strictEqual(model({ radio: '' }).radio.text, '40m 20m');
 

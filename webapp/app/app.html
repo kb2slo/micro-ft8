@@ -262,9 +262,19 @@ button:disabled{opacity:.45}
 #opRadioNote{margin:0 0 .4rem}
 #opRadioProblem .row{gap:.5rem;flex-wrap:wrap}
 #opRadioProblem .row button{margin-top:0;min-height:44px}
-#opFreqRow{display:flex;gap:.4rem;align-items:center;margin-top:.5rem}
+#opFreqRow,#opFt4FreqRow{display:flex;gap:.4rem;align-items:center;margin-top:.5rem}
+#opFreqRow[hidden],#opFt4FreqRow[hidden]{display:none}
+.frqrow .frqmode{flex:none;width:2.2rem;font-size:.75rem;font-weight:700;color:GrayText}
+#opListen{margin-top:.6rem}
+#opListen .lsnlbl{display:block;font-size:.75rem;color:GrayText;margin-bottom:.3rem}
+#opListenChips{display:flex;gap:.5rem;flex-wrap:wrap}
+.lsnchip{min-width:7rem;min-height:48px;text-align:left;padding:.3rem .7rem;border-radius:.6rem;border:2px solid GrayText;background:ButtonFace;color:ButtonText;font:inherit}
+.lsnchip b{display:block;font-size:.9rem}
+.lsnchip span{display:block;font-size:.75rem}
+.lsnchip.on{background:var(--accent);border-color:var(--accent);color:Canvas}
+#opListenNote{margin:.4rem 0 0;min-height:1em}
 #opFreqRow button{flex:none;min-width:44px;min-height:44px;font-size:1rem;padding:.2rem .6rem}
-#opFreqInput{flex:1;min-width:0;margin-top:0;min-height:44px;text-align:center;font-family:ui-monospace,monospace;font-weight:700;font-size:1.05rem}
+#opFreqInput,#opFt4FreqInput{flex:1;min-width:0;margin-top:0;min-height:44px;text-align:center;font-family:ui-monospace,monospace;font-weight:700;font-size:1.05rem}
 #opDrawerStatus{display:flex;align-items:center;gap:.7rem;margin-top:.55rem;color:GrayText;font-size:.75rem}
 #opDrawerStatus .stationlink{margin-left:auto;font-size:.85rem;font-weight:700}
 #opRadioMore{margin-top:.45rem;color:GrayText}
@@ -660,7 +670,6 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       <div id=dvBar aria-label=Decodes role=toolbar hidden>
         <button id=dvSort type=button aria-pressed=false aria-haspopup=dialog>Sort</button>
         <button id=dvFilter type=button aria-pressed=false aria-haspopup=dialog>Filter</button>
-        <button id=dvMode type=button aria-pressed=false hidden aria-label="Mode">All</button>
         <span id=dvHidden></span>
       </div>
       <div id=opDecodeRows></div>
@@ -918,16 +927,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         <div id=bandList class=bandgrid></div>
         <p id=bandRadioNote class=setnote hidden></p>
 
-        <div class="hd sep">Modes</div>
-        <div class=setrow>
-          <label class=fld><span>Also decode FT4</span>
-            <select id=rx_ft4 class=onoff>
-              <option value=0>Off</option>
-              <option value=1>On</option>
-            </select>
-          </label>
-        </div>
-        <p class=setnote>QMX only. On: FT4 decodes at the same time as FT8, from the same radio, as its own batch in Operate, and a tap on an FT4 decode replies on FT4. Calling CQ is FT8 only. Not on 15 m or 10 m, where FT4 is outside the QMX's receive window.</p>
+        <p class=setnote>FT8 and FT4 are chosen per band from Operate's radio bar too, under Listening to.</p>
       </div>
     </div>
 
@@ -1260,11 +1260,27 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
             </div>
           </div>
           <div id=opBandGrid class=bandgrid></div>
-          <div id=opFreqRow>
-            <button id=opFreqDown type=button disabled aria-label="Down 1 kHz">&minus;</button>
-            <input id=opFreqInput inputmode=decimal data-select=all autocomplete=off enterkeyhint=done aria-label="Frequency, MHz or kHz" placeholder="MHz or kHz">
-            <button id=opFreqUp type=button disabled aria-label="Up 1 kHz">+</button>
+          <!-- The channels this band listens to (webapp.md, Band and frequency): a chip each, mode and frequency. -->
+          <div id=opListen>
+            <span class=lsnlbl>Listening to</span>
+            <div id=opListenChips role=group aria-label="Listening to"></div>
+            <p id=opListenNote class=setnote></p>
+          </div>
+          <!-- A frequency row per channel listened to (webapp.md, Band and frequency): FT8's dial, band<N>, and FT4's,
+               ft4band<N>. One set of handlers serves both (FREQ_ROWS). -->
+          <div id=opFreqRow class=frqrow>
+            <span class=frqmode>FT8</span>
+            <button id=opFreqDown type=button disabled aria-label="FT8 down 1 kHz">&minus;</button>
+            <input id=opFreqInput inputmode=decimal data-select=all autocomplete=off enterkeyhint=done aria-label="FT8 frequency, MHz or kHz" placeholder="MHz or kHz">
+            <button id=opFreqUp type=button disabled aria-label="FT8 up 1 kHz">+</button>
             <button id=opFreqSet type=button disabled>Set</button>
+          </div>
+          <div id=opFt4FreqRow class=frqrow hidden>
+            <span class=frqmode>FT4</span>
+            <button id=opFt4FreqDown type=button disabled aria-label="FT4 down 1 kHz">&minus;</button>
+            <input id=opFt4FreqInput inputmode=decimal data-select=all autocomplete=off enterkeyhint=done aria-label="FT4 frequency, MHz or kHz" placeholder="MHz or kHz">
+            <button id=opFt4FreqUp type=button disabled aria-label="FT4 up 1 kHz">+</button>
+            <button id=opFt4FreqSet type=button disabled>Set</button>
           </div>
           <div id=opDrawerStatus>
             <span><span id=dotCat class=dot></span>CAT</span>
@@ -1424,7 +1440,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 var FIELDS = [
   'call','comment1',
   'radio','skiptx1','amp','tx_min_delay_ms','amp_ptt','amp_swr_guard',
-  'amp_prime_on_band_change','rx_ft4'
+  'amp_prime_on_band_change'
 ];
 // The CQ's modifier (autoseq.md, The CQ's modifier): the word between CQ and the call, '' for a
 // plain CQ. These are the ones Type offers by name; Other takes any that cqModOk() accepts.
@@ -2080,7 +2096,7 @@ document.querySelectorAll('#view-settings .setback').forEach(function (b) {
 
 // What each menu row says under its name, and its tone: what the page holds now, or what it
 // wants. Pure, so webapp/tests/test_settings_menu.js runs it. s: call, grid, cq (the CQ's prefix, or 'Free text'), radio (its name), bands
-// (names), rxFt4, amp (the amplifier switch), ampPtt (0 not checked, 1 grounded, 2 +5V), ampBad (the PTT check found a band
+// (names), amp (the amplifier switch), ampPtt (0 not checked, 1 grounded, 2 +5V), ampBad (the PTT check found a band
 // wrong), txDelay, netMode ('station' | 'ap' | other), netName, netIp, paired, noMain (mainBoardAway()), updateAvailable
 // (the station's one Update is offered), fwChecked (a manifest was read), fwNoNet (it could not be),
 // appStale, units ('km' | 'mi'), theme.
@@ -2092,7 +2108,7 @@ function settingsMenuModel(s) {
   m.station = noMain ? noMain : s.call ? row([s.call, (s.grid || '').slice(0, 4).toUpperCase(), s.cq].filter(function (x) { return x; }).join(' · '))
                      : row('No call set', 'amber', '!');
   var bands = s.bands && s.bands.length ? s.bands.join(' ') : 'no bands';
-  m.radio = noMain || row((s.radio ? s.radio + ' · ' : '') + bands + (s.rxFt4 ? ' · FT4 too' : ''));
+  m.radio = noMain || row((s.radio ? s.radio + ' · ' : '') + bands);
   var keyed = s.ampPtt === 1 ? 'TX PTT grounded' : s.ampPtt === 2 ? 'TX PTT +5V' : '';
   if (noMain) m.amp = noMain;
   else if (!s.amp) m.amp = row('Off');
@@ -2126,7 +2142,6 @@ function renderSettingsMenu() {
     cq: cfg.cq_mod ? 'CQ ' + cfg.cq_mod : 'CQ',
     radio: (function (sel) { var o = sel.options[sel.selectedIndex]; return o ? o.textContent.replace(/\s*\(.*$/, '') : ''; })(document.getElementById('radio')),
     bands: BANDS.filter(function (b) { return active.any ? !!active.want[b.n] : true; }).map(function (b) { return b.name; }),
-    rxFt4: document.getElementById('rx_ft4').value === '1',
     amp: document.getElementById('amp').value === '1',
     ampPtt: parseInt(document.getElementById('amp_ptt').value, 10) || 0,
     ampBad: !amp.hidden && amp.classList.contains('warn'),
@@ -2240,6 +2255,80 @@ function currentDockFreqKhz(cfg) {
   return parseFloat(bandFreq(cfg, idx) || band.ft8);
 }
 
+// ===================== The channels listened to (webapp.md, Band and frequency; decode.md, Channels) =====================
+// Each band listens to FT8's channel, FT4's, or both: Station's listen<N>, 1, 2 or 3, FT8 alone when unset. A
+// channel's frequency is the band's dial for its mode: FT8's (bandN, else its default), FT4's from BANDS. Both are
+// heard only where the radio's window holds them: a QMX's I/Q, FT4's dial from 33 kHz below FT8's to 6 kHz above it
+// (qmx_iq_channel.h: the channel's centre 13.5 kHz plus the offset, 1.5 kHz either side, inside 21 kHz of the LO).
+// Mirrors station_plan() (station_channel.h); webapp/tests/test_channels.js holds both to the same cases.
+var QMX_FT4_BESIDE_MIN_HZ = -33000;
+var QMX_FT4_BESIDE_MAX_HZ = 6000;
+var LISTEN_FT8 = 1, LISTEN_FT4 = 2, LISTEN_BOTH = 3;
+function listenMask(cfg, idx) {
+  var v = parseInt(cfg['listen' + idx], 10);
+  return v >= LISTEN_FT8 && v <= LISTEN_BOTH ? v : LISTEN_FT8;
+}
+// Whether FT8 and FT4 can be heard together on band idx with the radio in use.
+// Band idx's FT4 dial in kHz: its ft4band<N>, else BANDS' standard.
+function bandFt4Khz(cfg, idx) {
+  var band = BANDS[idx];
+  if (!band) return null;
+  var v = cfg['ft4band' + idx];
+  return (v !== undefined && v !== null && v !== '') ? parseFloat(v) : band.ft4;
+}
+function bandBothFit(cfg, idx) {
+  var band = BANDS[idx];
+  if (!band || String(cfg.radio || '2') !== '2') return false;  // a QMX; an HL2 hears one channel today
+  var ft8 = parseFloat(bandFreq(cfg, idx) || band.ft8);
+  var apart = Math.round((bandFt4Khz(cfg, idx) - ft8) * 1000);
+  return apart >= QMX_FT4_BESIDE_MIN_HZ && apart <= QMX_FT4_BESIDE_MAX_HZ;
+}
+// Band idx's two channels, each { mode, khz, dial_hz, on }: on as the station hears them, so both where they do
+// not fit is FT8 alone, as the main board plans it. [] for a band not known.
+function bandChannels(cfg, idx) {
+  var band = BANDS[idx];
+  if (!band) return [];
+  var ft8 = parseFloat(bandFreq(cfg, idx) || band.ft8);
+  var mask = listenMask(cfg, idx);
+  if (mask === LISTEN_BOTH && !bandBothFit(cfg, idx)) mask = LISTEN_FT8;
+  var ft4 = bandFt4Khz(cfg, idx);
+  return [{ mode: 'FT8', khz: ft8, dial_hz: Math.round(ft8 * 1000), on: !!(mask & LISTEN_FT8) },
+          { mode: 'FT4', khz: ft4, dial_hz: Math.round(ft4 * 1000), on: !!(mask & LISTEN_FT4) }];
+}
+function operatingBandIdx(cfg) {
+  var idx = (cfg.band_sel !== undefined && cfg.band_sel !== null) ? parseInt(cfg.band_sel, 10) : NaN;
+  return BANDS[idx] ? idx : -1;
+}
+// The operating band's channels listened to now.
+function listenedChannels(cfg) {
+  return bandChannels(cfg, operatingBandIdx(cfg)).filter(function (c) { return c.on; });
+}
+// A tap on band idx's `mode` chip: { mask, note }. Where both fit, a chip toggles and one always stays on; where
+// they do not, the other chip switches to it and the dial moves, and the note says why.
+function listenChipTap(cfg, idx, mode) {
+  var band = BANDS[idx];
+  var chans = bandChannels(cfg, idx);
+  var bit = mode === 'FT4' ? LISTEN_FT4 : LISTEN_FT8;
+  var mask = (chans[0] && chans[0].on ? LISTEN_FT8 : 0) | (chans[1] && chans[1].on ? LISTEN_FT4 : 0);
+  if (mask & bit) {
+    if (mask === bit) return { mask: mask, note: 'The station listens to at least one channel.' };
+    return { mask: mask & ~bit, note: '' };
+  }
+  if (bandBothFit(cfg, idx)) return { mask: mask | bit, note: '' };
+  var other = chans[mode === 'FT4' ? 0 : 1];
+  var mine = chans[mode === 'FT4' ? 1 : 0];
+  return { mask: bit, note: 'On ' + band.name + ' FT8 and FT4 are ' + Math.round(Math.abs(chans[1].khz - chans[0].khz)) +
+           ' kHz apart, and the radio hears one at a time: ' + mode + ' replaces ' + other.mode + ', and the dial moves to ' +
+           khzToMhzLabel(mine.khz) + ' MHz.' };
+}
+// What the radio bar names at rest: the band, then each channel listened to with its frequency.
+function listenedLabel(cfg) {
+  var chans = listenedChannels(cfg);
+  if (!chans.length) return '';
+  return chans.map(function (c) { return c.mode + ' ' + khzToMhzLabel(c.khz); }).join(' \u00b7 ') +
+         (chans.length === 1 ? ' MHz' : '');
+}
+
 // Stations store tenths of a kHz, so MHz needs at most 4 decimals -- trims
 // exactly one trailing zero rather than a generic regex so a whole-kHz value
 // still reads "14.074" (3 decimals), not "14.07".
@@ -2311,6 +2400,78 @@ if (window.ResizeObserver) {
 window.addEventListener('resize', layoutDock);
 layoutDock();
 
+// The channel chips (webapp.md, Band and frequency): rebuilt from the config each time, a chip per channel the
+// band has, pressed while it is listened to. A tap writes listen<band>; dropping a channel ends what runs on it,
+// after a band change's confirmation, and the main board moves the dial when FT4 alone is chosen or left.
+var listenNote = '';
+var listenNoteBand = -1;  // the band the note was written for: another band's chips start without it
+function renderListenChips(cfg) {
+  var idx = operatingBandIdx(cfg);
+  if (idx !== listenNoteBand) listenNote = '';
+  var box = document.getElementById('opListenChips');
+  box.innerHTML = '';
+  bandChannels(cfg, idx).forEach(function (c) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'lsnchip' + (c.on ? ' on' : '');
+    btn.setAttribute('aria-pressed', c.on ? 'true' : 'false');
+    btn.dataset.mode = c.mode;
+    btn.disabled = !writesEnabled;
+    var b = document.createElement('b');
+    b.textContent = c.mode;
+    var f = document.createElement('span');
+    f.textContent = khzToMhzLabel(c.khz) + ' MHz';
+    btn.appendChild(b);
+    btn.appendChild(f);
+    box.appendChild(btn);
+  });
+  var chans = listenedChannels(cfg);
+  document.getElementById('opListenNote').textContent = listenNote ||
+    (idx < 0 ? '' : chans.length > 1 ? 'Both fit in the radio\u2019s window on ' + BANDS[idx].name + '.' :
+      bandBothFit(cfg, idx) ? 'Tap the other to listen to both.' : 'On ' + BANDS[idx].name + ' the radio hears one channel at a time.');
+  syncFreqInput(cfg);
+}
+// The queue entries and transmission a change of channels ends: those on a channel it stops listening to.
+function listenChangeEnds(cfg, mask) {
+  var idx = operatingBandIdx(cfg);
+  var before = listenedChannels(cfg);
+  var after = bandChannels(Object.assign({}, cfg, (function () { var o = {}; o['listen' + idx] = String(mask); return o; })()), idx)
+    .filter(function (c) { return c.on; });
+  var dropped = before.filter(function (c) {
+    return !after.some(function (a) { return a.mode === c.mode && a.dial_hz === c.dial_hz; });
+  });
+  var onDropped = function (q) {
+    return dropped.some(function (c) { return (q.mode === 1 ? 'FT4' : 'FT8') === c.mode; });
+  };
+  var ids = Object.keys(queue).filter(function (id) { return onDropped(queue[id]); });
+  var calls = ids.filter(function (id) { return queue[id].dxcall !== 'CQ'; }).map(function (id) { return queue[id].dxcall; });
+  var cq = ids.some(function (id) { return queue[id].dxcall === 'CQ'; });
+  return { ids: ids, ends: endsClauses(calls, dropped.length > 0 && !!(txHud && txHud.active && !txHud.aborted), cq) };
+}
+document.getElementById('opListenChips').onclick = function (ev) {
+  var btn = ev.target.closest('.lsnchip');
+  if (!btn || btn.disabled) return;
+  var idx = operatingBandIdx(lastCfg);
+  if (idx < 0) return;
+  var tap = listenChipTap(lastCfg, idx, btn.dataset.mode);
+  listenNote = tap.note;
+  listenNoteBand = idx;
+  if (tap.mask === listenMask(lastCfg, idx) && bandChannels(lastCfg, idx).length) { renderListenChips(lastCfg); return; }
+  var change = listenChangeEnds(lastCfg, tap.mask);
+  var go = change.ends.length ? askConfirm({ title: 'Change channels?', text: [endsSentence(change.ends)], ok: 'Change channels' })
+    : Promise.resolve(true);
+  go.then(function (yes) {
+    if (!yes) { listenNote = ''; renderListenChips(lastCfg); return; }
+    // A cancel also blocks a TX armed for this slot, so it is sent only for a transmission on the air.
+    var txOn = !!(txHud && txHud.active && !txHud.aborted);
+    var stops = change.ids.map(function (id) { return authPostQuiet('/api/queue/cancel', id); });
+    if (txOn && change.ends.length) stops.push(authPostQuiet('/api/tx/cancel'));
+    return Promise.all(stops).then(function () {
+      return putConfigLine('listen' + idx + '=' + tap.mask, 'Changing channels…', true);
+    });
+  }).catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
+};
+
 // A band is two taps: open the drawer, tap the band. The drawer closes once
 // the change goes ahead; a declined confirmation leaves it open.
 document.getElementById('opBandGrid').onclick = function (ev) {
@@ -2319,16 +2480,38 @@ document.getElementById('opBandGrid').onclick = function (ev) {
   changeBand(btn.dataset.i).then(function (went) { if (went) setDrawerOpen(false); });
 };
 
-// The drawer's frequency field shows the operating frequency, except while the
-// operator is editing it: a poll never overwrites a value being typed.
-var freqDirty = false;
-function syncFreqInput(cfg) {
-  var input = document.getElementById('opFreqInput');
-  if (freqDirty || document.activeElement === input) return;
-  var khz = currentDockFreqKhz(cfg);
-  input.value = khz != null ? khzToMhzLabel(khz) : '';
+// The drawer's frequency rows, one per channel listened to: FT8's sets band<N>, FT4's ft4band<N>. Each field shows
+// its channel's frequency, except while the operator is editing it: a poll never overwrites a value being typed.
+var FREQ_ROWS = {
+  FT8: { row: 'opFreqRow', input: 'opFreqInput', down: 'opFreqDown', up: 'opFreqUp', set: 'opFreqSet', key: 'band',
+         dirty: false, applied: null },
+  FT4: { row: 'opFt4FreqRow', input: 'opFt4FreqInput', down: 'opFt4FreqDown', up: 'opFt4FreqUp', set: 'opFt4FreqSet',
+         key: 'ft4band', dirty: false, applied: null }
+};
+var FREQ_MODES = ['FT8', 'FT4'];
+// The frequency of the operating band's channel in `mode`, in kHz, listened to or not; null with no band.
+function channelKhz(cfg, mode) {
+  var c = bandChannels(cfg, operatingBandIdx(cfg)).filter(function (ch) { return ch.mode === mode; })[0];
+  return c ? c.khz : null;
 }
-document.getElementById('opFreqInput').addEventListener('input', function () { freqDirty = true; });
+function syncFreqInput(cfg) {
+  var on = listenedChannels(cfg).map(function (c) { return c.mode; });
+  FREQ_MODES.forEach(function (mode) {
+    var r = FREQ_ROWS[mode];
+    // A row while its channel is listened to; FT8's before the first config, as before.
+    document.getElementById(r.row).hidden = on.length ? on.indexOf(mode) < 0 : mode !== 'FT8';
+    var input = document.getElementById(r.input);
+    if (r.dirty || document.activeElement === input) return;
+    var khz = channelKhz(cfg, mode);
+    input.value = khz != null ? khzToMhzLabel(khz) : '';
+  });
+}
+FREQ_MODES.forEach(function (mode) {
+  document.getElementById(FREQ_ROWS[mode].input).addEventListener('input', function () { FREQ_ROWS[mode].dirty = true; });
+});
+function clearFreqDirty() {
+  FREQ_MODES.forEach(function (mode) { FREQ_ROWS[mode].dirty = false; });
+}
 
 function setForm(cfg) {
   // Rebuilding while the operator has a control open would yank it out from
@@ -2874,7 +3057,8 @@ function fmtHzMHz(hz) { return (hz / 1e6).toFixed(4).replace(/0+$/, '').replace(
 // Returns {state, tone: 'red'|'amber'|'grey'|'quiet', main, sub, glyph, label, stop}; stop is the
 // Stop button's text, '' when there is nothing on the air to stop.
 function radioBarState(chip, hud, ctx) {
-  var where = (ctx.band || '—') + ' · ' + (ctx.freq ? ctx.freq + ' MHz' : '—');
+  // The band, then each channel listened to with its frequency (listenedLabel()); the frequency alone without them.
+  var where = (ctx.band || '—') + ' · ' + (ctx.chans || (ctx.freq ? ctx.freq + ' MHz' : '—'));
   var radio = ctx.radio || 'Radio';
   var on = hud && hud.active;
   if (on && !hud.aborted && !hud.nk) {
@@ -3047,7 +3231,7 @@ function setDrawerOpen(open) {
   drawer.inert = !open;
   document.getElementById('rbToggle').setAttribute('aria-expanded', open ? 'true' : 'false');
   if (open) {
-    freqDirty = false;
+    clearFreqDirty();
     syncFreqInput(lastCfg);
     readRadioBack();
   }
@@ -3065,7 +3249,7 @@ function renderRadioBar() {
   var ctx = {
     tune: yn(cfg.tune) === 'yes', ourCq: txIsOurCq(),
     band: operatingBandName(cfg),
-    freq: khz != null ? khzToMhzLabel(khz) : '', radio: radioNameOf(), swrTrips: swrTrack.count,
+    freq: khz != null ? khzToMhzLabel(khz) : '', chans: listenedLabel(cfg), radio: radioNameOf(), swrTrips: swrTrack.count,
     act: refs.length ? ' · ' + refs.length + (refs.length === 1 ? ' ref' : ' refs') + ' · 0000Z ' + utcDayLeft(Date.now()) : '',
     wantMHz: rs ? fmtHzMHz(rs.hz) : '', linkLost: linkLost(), unpaired: !paired(), noMain: mainBoardAway(),
     sweep: yn(cfg.swr_sweep) === 'yes', held: null
@@ -3317,6 +3501,7 @@ function applyOperateLive(cfg) {
   renderRadioSettings(cfg);
   updateLogFree(cfg);
   syncDockBandGrid(cfg);
+  renderListenChips(cfg);
   syncFreqInput(cfg);
   // "bad" (not just "unknown") only once we've had at least one real answer
   // from the main board this session -- otherwise a cold boot reading the localStorage
@@ -3899,12 +4084,14 @@ async function changeBand(idx) {
   var band = BANDS[parseInt(idx, 10)];
   if (!band) return false;
   var std = band.ft8;
-  if (String(band.i) === String(lastCfg.band_sel) && currentDockFreqKhz(lastCfg) === std) return true;
+  if (String(band.i) === String(lastCfg.band_sel) && currentDockFreqKhz(lastCfg) === std &&
+      bandFt4Khz(lastCfg, band.i) === band.ft4) return true;
   if (!(await confirmRetune('Change band'))) return false;
-  freqDirty = false;
-  var key = 'band' + band.i;
+  clearFreqDirty();
+  // Both channels back to the band's standard dials, FT4's first so the band's channels never sit apart.
   endQueueAndTx().then(function () {
-    return putConfigLine(key + '=' + std + '\nband_sel=' + band.i, 'Changing band…', true);
+    return putConfigLine('ft4band' + band.i + '=' + band.ft4 + '\nband' + band.i + '=' + std + '\nband_sel=' + band.i,
+                         'Changing band…', true);
   }).catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
   return true;
 }
@@ -3921,12 +4108,12 @@ async function changeBand(idx) {
 // is sent: a cancel also blocks a TX armed for this slot.
 // Resolves false when the operator declined the confirmation, so a typed value
 // stays in the open editor.
-async function setOperatingBandFreq(khz) {
+async function setOperatingBandFreq(khz, mode) {
   var idx = parseInt(lastCfg.band_sel, 10);
   if (isNaN(idx)) return false;
   var stopping = retuneEnds().length > 0;
   if (!(await confirmRetune('Change frequency'))) return false;
-  var key = 'band' + idx;
+  var key = FREQ_ROWS[mode || 'FT8'].key + idx;
   (stopping ? endQueueAndTx() : Promise.resolve()).then(function () {
     return putConfigLine(key + '=' + khz, 'Setting frequency…', true);
   }).then(refreshFreqInput)
@@ -3937,7 +4124,7 @@ async function setOperatingBandFreq(khz) {
 // The − and + buttons leave the drawer open, so the field shows what landed
 // once the write does.
 function refreshFreqInput() {
-  freqDirty = false;
+  clearFreqDirty();
   syncFreqInput(lastCfg);
 }
 
@@ -3947,7 +4134,7 @@ function refreshFreqInput() {
 // band_sel lands on it: the sidekick applies them in order, and a single
 // round trip leaves no gap for a stale read between two writes. Resolves false
 // when declined, so the typed value stays in the open editor.
-async function switchToBandWithFreq(band, khz) {
+async function switchToBandWithFreq(band, khz, mode) {
   var ends = retuneEnds();
   var yes = await askConfirm({
     title: 'Change band to ' + band.name + '?',
@@ -3955,7 +4142,7 @@ async function switchToBandWithFreq(band, khz) {
     ok: 'Change band',
   });
   if (!yes) return false;
-  var key = 'band' + band.i;
+  var key = FREQ_ROWS[mode || 'FT8'].key + band.i;
   endQueueAndTx().then(function () {
     return putConfigLine(key + '=' + khz + '\nband_sel=' + band.i, 'Changing band…', true);
   }).catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
@@ -3973,9 +4160,11 @@ document.getElementById('opStationBtn').onclick = openStationPage;
 function refuseDockFreq(why) {
   alert(why);
 }
-function applyDockFreqInput() {
-  var raw = document.getElementById('opFreqInput').value;
-  freqAppliedValue = raw;
+function applyDockFreqInput(mode) {
+  mode = mode || 'FT8';
+  var r = FREQ_ROWS[mode];
+  var raw = document.getElementById(r.input).value;
+  r.applied = raw;
   // A text field (Fields): only a plain number, so "14,074" is refused rather than read as 14.
   var v = /^\s*\d+(\.\d+)?\s*$/.test(raw || '') ? parseFloat(raw) : NaN;
   if (!raw || !isFinite(v) || v <= 0) {
@@ -3995,49 +4184,55 @@ function applyDockFreqInput() {
     return;
   }
   var curIdx = parseInt(lastCfg.band_sel, 10);
-  ((band.i === curIdx) ? setOperatingBandFreq(khz) : switchToBandWithFreq(band, khz)).then(function (went) {
+  ((band.i === curIdx) ? setOperatingBandFreq(khz, mode) : switchToBandWithFreq(band, khz, mode)).then(function (went) {
     if (!went) return;
-    freqDirty = false;
-    document.getElementById('opFreqInput').blur();
+    r.dirty = false;
+    document.getElementById(r.input).blur();
     setDrawerOpen(false);
   });
 }
-document.getElementById('opFreqSet').onclick = applyDockFreqInput;
-document.getElementById('opFreqInput').onkeydown = function (ev) {
-  if (ev.key === 'Enter') {
-    ev.preventDefault();
-    applyDockFreqInput();
-  } else if (ev.key === 'Escape') {
-    refreshFreqInput();
-    this.blur();
-  }
-};
+FREQ_MODES.forEach(function (mode) {
+  var r = FREQ_ROWS[mode];
+  document.getElementById(r.set).onclick = function () { applyDockFreqInput(mode); };
+  document.getElementById(r.input).onkeydown = function (ev) {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      applyDockFreqInput(mode);
+    } else if (ev.key === 'Escape') {
+      refreshFreqInput();
+      this.blur();
+    }
+  };
+});
 
 // The phone keyboard's ✓ / Done acts like Set (operator request 2026-09-28).
 // On iOS it sends no key event: it only closes the keyboard, so the input
 // commits its edit (change) with no tap before it. Any tap -- Set, ✕, ±1, a
 // decode -- reaches the page first, so a change right after a tap is left to
-// that tap's own handler. freqAppliedValue stops a second apply when the
+// that tap's own handler. A row's `applied` stops a second apply when the
 // confirmation or refusal dialog that Set or Enter opened takes the focus.
 var lastTapMs = 0;
-var freqAppliedValue = null;
-document.getElementById('opFreqInput').addEventListener('focus', function () { freqAppliedValue = null; });
 ['pointerdown', 'touchstart'].forEach(function (type) {
   document.addEventListener(type, function () { lastTapMs = Date.now(); }, { capture: true, passive: true });
 });
-document.getElementById('opFreqInput').onchange = function () {
-  if (!drawerOpen || !freqDirty) return;
-  if (Date.now() - lastTapMs < 600) return;
-  if (this.value === freqAppliedValue) return;
-  applyDockFreqInput();
-};
-function nudgeDockFreq(deltaKhz) {
-  var khz = currentDockFreqKhz(lastCfg);
+function nudgeDockFreq(deltaKhz, mode) {
+  var khz = channelKhz(lastCfg, mode || 'FT8');
   if (khz == null) return;
-  setOperatingBandFreq(Math.round((khz + deltaKhz) * 10) / 10);
+  setOperatingBandFreq(Math.round((khz + deltaKhz) * 10) / 10, mode);
 }
-document.getElementById('opFreqDown').onclick = function () { nudgeDockFreq(-1); };
-document.getElementById('opFreqUp').onclick = function () { nudgeDockFreq(1); };
+FREQ_MODES.forEach(function (mode) {
+  var r = FREQ_ROWS[mode];
+  var input = document.getElementById(r.input);
+  input.addEventListener('focus', function () { r.applied = null; });
+  input.onchange = function () {
+    if (!drawerOpen || !r.dirty) return;
+    if (Date.now() - lastTapMs < 600) return;
+    if (this.value === r.applied) return;
+    applyDockFreqInput(mode);
+  };
+  document.getElementById(r.down).onclick = function () { nudgeDockFreq(-1, mode); };
+  document.getElementById(r.up).onclick = function () { nudgeDockFreq(1, mode); };
+});
 
 // Only a failure is reported, as a toast.
 async function loadConfig() {
@@ -4245,10 +4440,11 @@ function enableWrites(on) {
    'triesDown', 'triesUp', 'triesDefault', 'triesEnd'].forEach(function (id) {
     document.getElementById(id).disabled = !on;
   });
-  document.getElementById('opFreqSet').disabled = !on;
-  document.getElementById('opFreqDown').disabled = !on;
-  document.getElementById('opFreqUp').disabled = !on;
+  FREQ_MODES.forEach(function (mode) {
+    ['set', 'down', 'up'].forEach(function (k) { document.getElementById(FREQ_ROWS[mode][k]).disabled = !on; });
+  });
   document.querySelectorAll('#opBandGrid .bandbtn').forEach(function (b) { b.disabled = !on; });
+  document.querySelectorAll('#opListenChips .lsnchip').forEach(function (b) { b.disabled = !on; });
   document.getElementById('netForget').disabled = !on;
   document.getElementById('netModeSwitch').disabled = !on;
   document.getElementById('netFactory').disabled = !on;
@@ -4271,7 +4467,9 @@ document.getElementById('opRadioUse').onclick = function () {
   var band = bandForKhz(khz);
   if (!band) { failMsg(khzToMhzLabel(khz) + ' MHz is outside every amateur band.'); return; }
   var curIdx = parseInt(lastCfg.band_sel, 10);
-  if (band.i === curIdx) setOperatingBandFreq(khz); else switchToBandWithFreq(band, khz);
+  // The radio's dial is FT8's channel's, or FT4's while the band listens to FT4 alone.
+  var mode = listenedChannels(lastCfg).some(function (c) { return c.mode === 'FT8'; }) ? 'FT8' : 'FT4';
+  if (band.i === curIdx) setOperatingBandFreq(khz, mode); else switchToBandWithFreq(band, khz, mode);
 };
 document.getElementById('opRadioRetuneReady').onclick = function () {
   document.getElementById('opRadioRetune').onclick();
@@ -4647,20 +4845,15 @@ function cqStatusText(cq, queueNow, ft4Listened) {
          (cq.parity ? 'odd' : 'even') + (ft4 ? ' periods' : ' slots');
 }
 
-// The channels Call CQ can call on (autoseq.md, The queue): FT8's at the band's dial, and FT4's at the band's
-// FT4 dial while it is decoded beside FT8 (rx_ft4). A channel is its mode and its dial in Hz, as the main
-// board names it; it refuses one it does not listen to. Empty before the first config.
+// The channels Call CQ can call on (autoseq.md, The queue): the ones listened to (listenedChannels()). A channel is
+// its mode and its dial in Hz, as the main board names it; it refuses one it does not listen to. Empty before the
+// first config.
 function cqChannels(cfg) {
-  var ft8 = currentDockFreqKhz(cfg);
-  if (ft8 === null || !(ft8 > 0)) return [];
-  var out = [{ mode: 'FT8', dial_hz: Math.round(ft8 * 1000) }];
-  var ft4 = currentFt4DialKhz(cfg);
-  if (String(cfg.rx_ft4) === '1' && ft4) out.push({ mode: 'FT4', dial_hz: Math.round(ft4 * 1000) });
-  return out;
+  return listenedChannels(cfg).map(function (c) { return { mode: c.mode, dial_hz: c.dial_hz }; });
 }
 
 // The channel the CQ row calls on: the one the operator last chose with the mode button, while it is
-// listened to, else FT8's. Null before the first config.
+// listened to, else the first listened to. Null before the first config.
 function cqChannelFor(cfg, mode) {
   var chans = cqChannels(cfg);
   for (var i = 0; i < chans.length; i++) if (chans[i].mode === mode) return chans[i];
@@ -4946,7 +5139,7 @@ function renderQueue() {
     var q = queue[id];
     return '<div class="qrow' + (flashCalls[q.dxcall] ? ' flash' : '') + '">' +
       '<span class="call callink" data-call="' + esc(q.dxcall) + '">' + esc(q.dxcall) + '</span>' +
-      '<span class=qmode>' + (q.mode === 1 ? 'FT4' : 'FT8') + '</span>' +
+      (listenedChannels(lastCfg).length > 1 ? '<span class=qmode>' + (q.mode === 1 ? 'FT4' : 'FT8') + '</span>' : '') +
       '<button type=button class="qtries' + (q.custom ? ' custom' : '') + '" data-id="' + id + '"' +
       (writesEnabled ? '' : ' disabled') + '>' + esc(triesLabel(q)) + '</button>' +
       '<span class=qcue>' + (showQueueMarks ? esc(queueLastHeard(q.dxcall, nowMs)) : '') + '</span>' +
@@ -5169,18 +5362,9 @@ function isReplyableDecode(d) {
 // always on top and never filtered. `distKmOf(d)` answers the sender's distance in km, or null
 // when the grid is not known (such a decode fails a distance filter and sorts last under Nearest).
 var DV_KEY = 'microft8_decode_view_v1';
-var decodeView = { sort: 'default', reply: false, park: false, worked: false, mode: 'all' };
-// The mode chip cycles both, FT8 only, FT4 only. It shows while FT4 is decoded beside FT8 (rx_ft4) or any
-// FT4 batch is listed; hidden, it filters nothing.
-var DV_MODES = ['all', 'FT8', 'FT4'];
-function decodeModeChipOn() {
-  return String(lastCfg.rx_ft4) === '1' || decodeSlots.some(function (s) { return slotMode(s) === 'FT4'; });
-}
-function decodeSlotModeShown(slot) {
-  return decodeView.mode === 'all' || !decodeModeChipOn() || slotMode(slot) === decodeView.mode;
-}
+var decodeView = { sort: 'default', reply: false, park: false, worked: false };
 
-// The bar shows once any decode is listed, counting rows a filter or the mode chip hides: shown only
+// The bar shows once any decode is listed, counting rows a filter hides: shown only
 // while rows are visible, a filter that hid them all would take away the control that turns it off.
 function decodeBarShown(slots) {
   return slots.some(function (slot) { return slot.length > 0; });
@@ -5405,7 +5589,6 @@ function loadDecodeView() {
       decodeView.reply = !!v.reply;
       decodeView.park = !!v.park;
       decodeView.worked = !!v.worked;
-      if (DV_MODES.indexOf(v.mode) >= 0) decodeView.mode = v.mode;
     }
   } catch (e) { /* the default view stands */ }
 }
@@ -5524,17 +5707,7 @@ function renderDecodeControls() {
   sort.textContent = DV_SORT_LABELS[decodeView.sort] || 'Sort';
   sort.setAttribute('aria-pressed', decodeView.sort !== 'default' ? 'true' : 'false');
   renderDecodeFilter(document.getElementById('dvFilter'), decodeView);
-  // The bar is one row that never wraps (webapp.md, Decode sort and filter); the chip's both-modes
-  // state reads "All".
-  var mode = document.getElementById('dvMode');
-  mode.hidden = !decodeModeChipOn();
-  mode.textContent = decodeView.mode === 'all' ? 'All' : decodeView.mode;
-  mode.setAttribute('aria-pressed', decodeView.mode !== 'all' ? 'true' : 'false');
 }
-document.getElementById('dvMode').onclick = function () {
-  decodeView.mode = DV_MODES[(DV_MODES.indexOf(decodeView.mode) + 1) % DV_MODES.length];
-  saveDecodeView(); renderDecodeControls(); renderDecodes();
-};
 
 // ===================== Operate: activation progress (webapp.md, Activation progress) =====================
 // Only while the station has references: each one's count of today's QSOs (opLog.rows, today's UTC
@@ -5626,12 +5799,8 @@ function renderDecodesNow() {
   var actRefs = parseActRefs(lastCfg);
   var dupes = dupeIndex(opLog.rows, actRefs);
   var qcalls = showQueueMarks ? queuedCalls() : [], myCall = lastCfg.call;
-  renderDecodeControls();  // the mode chip appears with the first FT4 batch
-  var shownSlots = decodeSlots.filter(function (slot) {
-    if (decodeSlotModeShown(slot)) return true;
-    hidden += slot.length;  // a batch of the other mode counts as filtered, like any row
-    return false;
-  }).map(function (slot) {
+  renderDecodeControls();
+  var shownSlots = decodeSlots.map(function (slot) {
     var involves = function (d) { var v = queueInvolvementAt(d.x, qcalls, myCall, slot.ts); return !!v && v.kind !== 'you'; };
     var band = slotBandName(slot), mode = slotMode(slot);
     var worked = function (d) { var c = extractSenderCall(d.x); return !!c && !!dupes[dupeKey(c, band, mode)]; };
@@ -5930,9 +6099,16 @@ function replyFrequencyMismatch(decodeId) {
   var who = (decode && extractSenderCall(decode.x)) || 'This station';
   // The decode's own frequency from a v2 host, else its slot's label.
   var heard = (decode && decode.fq) || (slot ? parseFloat(slot.freqKhz) : NaN);
-  // An FT4 decode beside FT8 was heard on FT4's dial, which is where its reply goes.
-  var now = (slot && slotMode(slot) === 'FT4' && currentFt4DialKhz(lastCfg)) ||
-    currentDockFreqKhz(lastCfg) || parseFloat(lastCfg.freq_khz);
+  // A reply goes out on the channel of the decode's mode, at that channel's frequency; a mode no longer listened
+  // to has none (webapp.md, Band and frequency).
+  var mode = slot ? slotMode(slot) : 'FT8';
+  var chans = listenedChannels(lastCfg);
+  var chan = chans.filter(function (c) { return c.mode === mode; })[0];
+  if (chans.length && !chan) {
+    return who + ' was heard on ' + mode + ', and the station is not listening to ' + mode +
+      ' now. Turn its chip on in the radio drawer to reply.';
+  }
+  var now = (chan && chan.khz) || currentDockFreqKhz(lastCfg) || parseFloat(lastCfg.freq_khz);
   if (!heard || !now || Math.abs(heard - now) < 0.05) return null;
   return who + ' was heard on ' + fmtSlotFreqMHz(heard) + ' MHz, and the radio is on ' +
     fmtSlotFreqMHz(now) + ' MHz now. Tune back to ' + fmtSlotFreqMHz(heard) + ' MHz to reply.';
