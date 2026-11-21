@@ -634,7 +634,7 @@ static int64_t s_clock_held_step_ms = 0;
 // A browser set is decided by clock_set_decide() (decode_sync.h; docs/architecture/time.md): it may have waited
 // in a stalled sidekick and carry an old time. Every set it does not apply says so in the log.
 const char *porta_host_set_clock(uint32_t epoch_secs, uint16_t millis) {
-    if (epoch_secs < 1700000000u) {
+    if (epoch_secs < PORTA_CLOCK_FLOOR_SECS) {
         return "implausible time";
     }
     const int64_t now_ms = rtc_now_ms();
