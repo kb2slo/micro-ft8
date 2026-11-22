@@ -31,6 +31,26 @@
     localStorage.removeItem(KEY);
   }
 
+  // The token is kept per address (localStorage is per origin), so a phone that paired at
+  // 192.168.4.1 to save the home WiFi would read Not paired at micro-ft8.local. The Saved page's
+  // link carries it there in its fragment, which no request sends (provision.html), and the page
+  // that opens takes it at once and clears it from the address, before anything reads the hash.
+  var CARRY_RE = /(?:^#|&)pair=([0-9a-f]{32})(?=&|$)/;
+
+  // `href` with this browser's token in its fragment; `href` unchanged when there is none.
+  function carryLink(href) {
+    var t = getToken();
+    return t ? String(href).split('#')[0] + '#pair=' + t : href;
+  }
+
+  function takeCarried() {
+    var m = CARRY_RE.exec(global.location.hash || '');
+    if (!m) return;
+    setToken(m[1]);
+    global.history.replaceState(null, '', global.location.pathname + global.location.search);
+  }
+  takeCarried();
+
   function setStatus(msg) {
     if (statusEl) statusEl.textContent = msg;
   }
@@ -107,6 +127,7 @@
     getToken: getToken,
     setToken: setToken,
     clearToken: clearToken,
+    carryLink: carryLink,
     authHeaders: authHeaders,
     authFetch: authFetch,
     boot: boot,
