@@ -197,5 +197,8 @@ provForm.addEventListener('submit', async function (e) {
   var page = new DOMParser().parseFromString(html, 'text/html');
   document.title = page.title;
   document.body.replaceWith(page.body);
+  // The link to the new address carries the pairing token, so the phone is paired there too.
+  var home = document.getElementById('homeLink');
+  if (home) home.href = MicroFT8Pairing.carryLink(home.href);
 });
 </script>
