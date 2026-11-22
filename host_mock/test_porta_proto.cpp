@@ -1647,7 +1647,7 @@ static void test_event_json()
     check(porta_event_json_queue(row, sizeof(row), 4, &q) > 0, "queue row encodes");
     check_row(row,
               "{\"s\":4,\"t\":1700000001,\"d\":2,\"eid\":2,\"st\":1,\"ts\":0,\"tl\":6,"
-              "\"p\":1,\"cu\":0,\"md\":1,\"fq\":14080000,\"off\":1916,\"x\":\"N6HAN\"}",
+              "\"p\":1,\"cu\":0,\"hd\":0,\"md\":1,\"fq\":14080000,\"off\":1916,\"x\":\"N6HAN\"}",
               "queue row");
 
     porta_slot_state_event_t slot;

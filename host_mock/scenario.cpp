@@ -456,10 +456,12 @@ bool scenario_step(Scenario& s)
                rx.snr, rx.slot_id);
         emit_decode(s, rx);
         heard_grid_note(rx.field2.c_str(), rx.field3.c_str(), true, mock_clock_get());
+        autoseq_note_heard(rx);
         if (rx.is_to_me) {
             to_me.push_back(rx);
         }
     }
+    autoseq_refresh_holds();
     if (!to_me.empty()) {
         autoseq_on_decodes(to_me);
     }
