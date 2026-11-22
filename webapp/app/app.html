@@ -1,10 +1,16 @@
 <!doctype html>
 <meta charset=utf-8>
-<meta name=viewport content='width=device-width,initial-scale=1,viewport-fit=cover'>
+<meta name=viewport content='width=device-width,initial-scale=1'>
 <title>Micro-FT8</title>
-<!-- Added to the Home Screen it opens full screen, with this icon and name (webapp.md, Home Screen). viewport-fit=cover
-     makes iOS report the safe areas (env(safe-area-inset-*)), which the top row, the tab bar and the full-screen
-     panels pad by; in a browser tab, on Android and on a home-button iPhone they are 0. -->
+<!-- Added to the Home Screen it opens full screen, with this icon and name (webapp.md, Home Screen). There, and only
+     there, the viewport asks for viewport-fit=cover, which makes iOS report the safe areas (env(safe-area-inset-*))
+     that the top row, the tab bar and the full-screen panels pad by. In a browser tab cover would run the page under
+     Safari's own toolbar and pad the tab bar by it, so a tab keeps the plain viewport and every inset is 0. -->
+<script>
+if (navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)) {
+  document.querySelector('meta[name=viewport]').content = 'width=device-width,initial-scale=1,viewport-fit=cover';
+}
+</script>
 <meta name=apple-mobile-web-app-capable content=yes>
 <meta name=mobile-web-app-capable content=yes>
 <meta name=apple-mobile-web-app-title content=Micro-FT8>
