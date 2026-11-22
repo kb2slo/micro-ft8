@@ -124,12 +124,12 @@ button:disabled{opacity:.45}
    (operator decision 2026-10-25). From the Home Screen the app has a header, the wordmark (#appHead). */
 .wrap{padding-top:calc(.4rem + env(safe-area-inset-top));padding-left:max(1rem, env(safe-area-inset-left));padding-right:max(1rem, env(safe-area-inset-right))}
 /* From the Home Screen (maintainer, 2026-11-22): the wordmark heads the page, on every tab, in the band under the
-   status bar, where iOS also blurs a little below the bar; --standalone-top keeps the wordmark clear of that blur
-   and is a bench guess, to be tuned from a screenshot. The header takes the top inset, so the column's own top
+   status bar, with --standalone-top between the bar and the wordmark. The header takes the top inset, so the column's own top
    padding goes back to a browser's. The wordmark's face is wordmark.css's (webapp/tools/make_wordmark.py), and the
    icon is drawn from this same markup (webapp/tools/make_icon.mjs). Inset like #opTop, so it lines up with the slot bar.
    Sticky, with its own background: iOS 26 blurs page content under the status bar, but a bar fixed or sticky at the
-   top has its colour carried up instead (untested on a phone, 2026-11-22: the in-flow header read blurred). */
+   top has its colour carried up instead: in flow, the wordmark read blurred; sticky, it reads sharp (iPhone,
+   maintainer, 2026-11-22). */
 :root{--standalone-top:8px}
 #appHead{display:none}
 .standalone #appHead{display:flex;flex:none;position:sticky;top:0;z-index:6;background:Canvas;align-items:baseline;width:100%;max-width:26rem;margin:0 auto;align-self:center;box-sizing:border-box;padding:calc(env(safe-area-inset-top) + var(--standalone-top)) calc(max(1rem, env(safe-area-inset-right)) + 1rem) .1rem calc(max(1rem, env(safe-area-inset-left)) + 1rem)}
