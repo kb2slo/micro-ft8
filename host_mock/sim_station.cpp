@@ -16,6 +16,7 @@
 
 #include "autoseq.h"
 #include "porta_proto.h"
+#include "station.h"
 #include "swr_sweep.h"
 
 #include <arpa/inet.h>
@@ -74,6 +75,13 @@ static void seed_config(const TestData& td)
     g_cfg["band_sel"] = "5";
     g_cfg["active_bands"] = "40 30 20 17 15 12 10";
     g_cfg["act_refs"] = "";
+    g_cfg["qrz_key"] = "";
+    g_cfg["qrz_book"] = "";
+    g_cfg["qrz_live"] = "";
+    g_cfg["dist_unit"] = "km";
+    g_cfg["cq_mode"] = "FT8";
+    g_cfg["show_bearing"] = "0";
+    g_cfg["queue_marks"] = "1";
     g_cfg["cat_ready"] = "1";
     g_cfg["audio_rx"] = "1";
     g_cfg["tune"] = "0";
@@ -95,14 +103,20 @@ static void seed_config(const TestData& td)
     g_log_file = day;
 }
 
-static std::string config_json()
+// The open read masks the QRZ key, as the main board does (station_mask_secret()); `key` names one
+// key, read whole, as the sidekick's token-guarded GET /api/qrz_key does.
+static std::string config_json(const char* key = nullptr)
 {
     std::string body = "{\"ok\":true";
     for (const auto& kv : g_cfg) {
+        if (key && kv.first != key) {
+            continue;
+        }
+        const bool mask = !key && station_key_secret(kv.first.c_str());
         body += ",\"";
         body += json_escape(kv.first);
         body += "\":\"";
-        body += json_escape(kv.second);
+        body += json_escape(mask ? station_mask_secret(kv.second) : kv.second);
         body += "\"";
     }
     body += "}";
@@ -372,6 +386,13 @@ static std::string handle(const std::string& method, const std::string& url,
     }
     if (method == "GET" && path == "/api/config") {
         return config_json();
+    }
+    if (method == "GET" && path == "/api/qrz_key") {
+        if (!token_ok()) {
+            *status = 401;
+            return "{\"ok\":false,\"why\":\"unauthorized\"}";
+        }
+        return config_json("qrz_key");
     }
     if (method == "PUT" && path == "/api/config") {
         apply_config_body(body);

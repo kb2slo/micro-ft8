@@ -12,9 +12,9 @@
   basemap/border/grid/terminator drawing are the same math this app already
   proved out in the Log tab, just no longer coupled to one fixed dataset.
 
-  Shares localStorage state with app.html (same origin): theme, distance
-  unit, and the opportunistic callsign->grid cache -- so a choice made in
-  Settings or a grid learned from a decode shows up here without this page
+  Shares localStorage state with app.html (same origin): theme and the
+  opportunistic callsign->grid cache -- so a choice made in Settings or a grid
+  learned from a decode shows up here without this page
   re-deriving any of it. Also PSKReporter's stored spots (pskr_live.js), which
   this page adds to while its layer is on.
 -->
@@ -223,14 +223,8 @@ function greatCircle(a, b) {
   var bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
   return { km: km, bearing: bearing };
 }
-var DIST_UNIT_KEY = 'microft8_dist_unit_v1';
+// The station's distance unit (dist_unit in the config, loadCfg()).
 var distUnit = 'km';
-function loadDistUnit() {
-  try {
-    var v = localStorage.getItem(DIST_UNIT_KEY);
-    if (v === 'km' || v === 'mi') distUnit = v;
-  } catch (e) { /* default stands */ }
-}
 function fmtKm(km) {
   var value = distUnit === 'mi' ? km * 0.621371 : km;
   return Math.round(value).toLocaleString() + ' ' + distUnit;
@@ -278,7 +272,6 @@ var themePref = 'system';
   } catch (e) { /* default stands */ }
   if (themePref !== 'system') document.documentElement.setAttribute('data-theme', themePref);
 })();
-loadDistUnit();
 
 var CALLSIGN_GRID_CACHE_KEY = 'microft8_callsign_grids_v1';
 function loadCallsignGridCache() {
@@ -345,7 +338,9 @@ async function loadCfg() {
     var cfg = await r.json();
     if (cfg.ok === false) return;
     lastCfg = cfg;
-  } catch (e) { /* own-grid marker and spot band-filter just stay unavailable */ }
+    if (cfg.dist_unit === 'km' || cfg.dist_unit === 'mi') distUnit = cfg.dist_unit;
+    CallInfo.setDistUnit(distUnit);
+  } catch (e) { /* own-grid marker, spot band-filter and the unit just stay unavailable or as they were */ }
 }
 
 // ===================== basemap (unchanged from the Log tab's own map --
@@ -1391,8 +1386,8 @@ function triggerPoiFetches(w, h) {
 // otherwise every QSO ever worked, every callsign ever decoded, and every
 // currently-active spot all shown at once. null means "All time" (no
 // filter, the previous unfiltered behaviour, and the default -- unfiltered
-// is the least surprising first view). Persisted the same way distUnit/
-// themePref are (localStorage, applies live even if it fails to persist).
+// is the least surprising first view). Persisted the same way themePref
+// is (localStorage, applies live even if it fails to persist).
 // A location with no known timestamp (a QSO whose ADIF time field failed to
 // parse, or a Decodes entry cached by a build before ts existed) is treated
 // as "outside every bounded window" rather than "always visible" -- the

@@ -397,6 +397,10 @@ void host_link_health(char *out, size_t cap)
              s_rx_dec.frames_ok, s_rx_dec.crc_errors);
 }
 
+// The key the CONFIG_GET under way asked for, "" for all of them, which wait_reply()'s retry resends.
+// Only the main-board worker sends one, one at a time (http_worker.h).
+static char s_config_get_key[PORTA_CONFIG_KEY_MAX + 1];
+
 // CONFIG_GET all: VALUE frames arrive before the ACK; gather into JSON here.
 #define CONFIG_JSON_MAX 3072
 static char s_config_json[CONFIG_JSON_MAX];
@@ -866,7 +870,9 @@ static esp_err_t wait_reply(httpd_req_t *req, uint8_t verb, bool message)
             lock_give();
             if (resend) {
                 uint8_t frame[PORTA_PROTO_MAX_FRAME];
-                const size_t n = porta_proto_encode_config_get("", frame, sizeof(frame));
+                // The key the request asked for: a retry of one key's read must not come back as
+                // the all-keys read, which carries the QRZ key masked.
+                const size_t n = porta_proto_encode_config_get(s_config_get_key, frame, sizeof(frame));
                 porta_send(frame, n);
             }
         } else {
@@ -1508,17 +1514,32 @@ bool host_link_fw_end(bool abort, int timeout_ms, porta_fw_reply_t *out)
 // GET /api/config — Station.txt surface as JSON, plus the sidekick's own
 // facts on every reply (send_config_reply()). Open read: call/grid are on
 // the air; WiFi secrets are not in this object.
-static esp_err_t get_config(httpd_req_t *req)
+static esp_err_t config_get_reply(httpd_req_t *req, const char *key)
 {
+    snprintf(s_config_get_key, sizeof(s_config_get_key), "%s", key);
     config_json_begin();
     reply_reset();
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
-    const size_t n = porta_proto_encode_config_get("", frame, sizeof(frame));
+    const size_t n = porta_proto_encode_config_get(key, frame, sizeof(frame));
     if (!porta_send(frame, n)) {
         gather_abandon();
         return send_config_reply(req, "host link busy");
     }
     return wait_message_reply(req, PORTA_MSG_CONFIG_GET);
+}
+
+static esp_err_t get_config(httpd_req_t *req)
+{
+    return config_get_reply(req, "");
+}
+
+// GET /api/qrz_key — the QRZ logbook key whole, which GET /api/config carries masked (the main
+// board masks it there: station_mask_secret()). Token required: the web app needs the key to reach
+// QRZ, and nobody else on the network should have it. The reply is the config shape, one key and
+// the sidekick's facts.
+static esp_err_t get_qrz_key(httpd_req_t *req)
+{
+    return config_get_reply(req, "qrz_key");
 }
 
 // PUT /api/config  body: one or more Station.txt lines (key=value\n).
@@ -2081,6 +2102,9 @@ void host_link_register_uris(httpd_handle_t server)
     static const httpd_uri_t config_get = {
         .uri = "/api/config", .method = HTTP_GET, .handler = get_config,
     };
+    static const httpd_uri_t qrz_key_get = {
+        .uri = "/api/qrz_key", .method = HTTP_GET, .handler = get_qrz_key,
+    };
     static const httpd_uri_t config_put = {
         .uri = "/api/config", .method = HTTP_PUT, .handler = put_config,
     };
@@ -2158,6 +2182,7 @@ void host_link_register_uris(httpd_handle_t server)
         { &tx_cancel, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
         { &config_get, PAIRING_OPEN, HTTP_WORKER_MAIN_BOARD },
         { &config_put, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
+        { &qrz_key_get, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
         { &radio_connect, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
         { &radio_tune, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
         { &radio_read, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },

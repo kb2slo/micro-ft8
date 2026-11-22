@@ -84,6 +84,8 @@ assert.strictEqual(ctx.qrzQsoSeen(T, 0), false, 'with no run yet it counts as wa
 // A problem is amber, in words and a glyph as well as the tint, and says what a tap will do about it.
 const amber = (text, tap) => Object.assign({}, plain, { text, tap, tone: 'amber', glyph: '!', chev: tap === 'setup' });
 assert.deepStrictEqual(row({ result: { ok: false, error: 'auth' } }), amber('QRZ refused the key', 'setup'));
+// The key is on the station, and only a paired browser may read it whole: the row takes it to Pairing.
+assert.deepStrictEqual(row({ result: { ok: false, error: 'pair' } }), amber('Pair this browser to reach QRZ', 'pair'));
 assert.deepStrictEqual(row({ result: { ok: false, error: 'unreachable' } }), amber('Cannot reach QRZ', 'look'));
 assert.deepStrictEqual(row({ result: { ok: false, error: 'station' } }), amber('No reply from the station', 'look'));
 assert.deepStrictEqual(row({ result: { ok: false, error: 'wait', waitMin: 4 } }), amber('Try again in 4 min', 'look'));
@@ -110,9 +112,9 @@ assert.deepStrictEqual(line({ state: 'unchecked' }), { text: 'Saved. Cannot reac
 for (const piece of ['<button id=qrzRow type=button class=navrow>', '<span class=navmain>QRZ logbook</span>', 'id=qrzRowText',
   '<button id=qrzSend type=button class=dlink hidden>Send</button>', '<button id=qrzGear type=button aria-label="QRZ settings" hidden>',
   '<span>QRZ logbook key</span><input id=qrzKey', 'id=qrzKeyLine',
-  'Kept in this browser only. It goes to QRZ through micro-ft8.kalikstein.com, which does not keep it.',
+  'Kept on the station, and shown here with all but its last four characters hidden. It goes to QRZ through micro-ft8.kalikstein.com, which does not keep it.',
   '<span>Send new QSOs to QRZ</span>', '<select id=qrzLive class=onoff>',
-  'As they are logged, while this app is open, within about five minutes. QSOs logged before this was turned on wait for Send on the QSOs tab.',
+  'As they are logged, while the app is open on a paired phone or computer, within about five minutes. QSOs logged before this was turned on wait for Send on the QSOs tab.',
   'id=tabQrz class=tabdot',
   '<script src=qrz_sync_core.js></script>']) {
   assert.ok(src.includes(piece), 'app.html holds: ' + piece);

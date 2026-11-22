@@ -63,6 +63,16 @@ struct StationSettings {
     // tokens dropped) by station_parse(); see normalize_act_refs() in
     // station.cpp.
     std::string act_refs;
+
+    // Kept for the web app, which acts on them; the main board stores and serves them so every
+    // phone, at every address, sees one station (docs/architecture/webapp.md, Settings that live on the station).
+    std::string qrz_key;   // the QRZ logbook's API key, "" for none; an open read masks it (station_mask_secret())
+    std::string qrz_book;  // the logbook's callsign, once QRZ has said, "" before
+    std::string qrz_live;  // the UTC day (YYYYMMDD) sending to QRZ by itself was turned on, "" for off
+    std::string dist_unit = "km";  // "km" or "mi"
+    std::string cq_mode = "FT8";   // the mode the CQ row calls in, "FT8" or "FT4"
+    bool show_bearing = false;     // decode rows show the bearing beside the distance
+    bool queue_marks = true;       // decodes about a queued station are marked and sorted next
 };
 
 void station_settings_init(StationSettings* out);
@@ -87,6 +97,21 @@ int station_listen(const StationSettings& s, int band);
 // True for Station.txt keys CONFIG may set (call, grid, band0…, ft4band0…, listen0…, …). Clock
 // lines are not included — the clock is not persisted here.
 bool station_key_known(const char* name);
+
+// The refusal for a CONFIG write of one of the web app's settings (qrz_key, qrz_book, qrz_live,
+// dist_unit, cq_mode, show_bearing, queue_marks) whose value station_parse() would not take, or
+// nullptr. nullptr too for any other key: those are checked where they are used.
+const char* station_pref_refusal(const char* key, const std::string& value);
+
+// True for a key whose value an open read must not carry whole: qrz_key.
+bool station_key_secret(const char* name);
+
+// A secret as an open read shows it: every character but the last 4 as 'x', or every one when it
+// is 8 characters or fewer, so a short value is not most of the way given away. "" stays "".
+std::string station_mask_secret(const std::string& value);
+
+// The settings with each secret masked, for the config read that is open to anyone on the network.
+StationSettings station_masked(const StationSettings& in);
 
 // A CQ modifier a standard message can carry: "" (a plain CQ), one to four
 // letters A-Z ("DX", "POTA", "HI"), or three digits ("123"). `mod` is already

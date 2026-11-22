@@ -318,6 +318,64 @@ int main()
         expect_true(!act_refs_prefer_sota(""), "no activation does not prefer SOTA");
     }
 
+    {
+        // The web app's settings kept on the station (docs/architecture/webapp.md, Settings that
+        // live on the station): defaults, a round trip, a bad value kept out, and the mask.
+        StationSettings s;
+        station_settings_init(&s);
+        expect_str(s.dist_unit, "km", "kilometres to start");
+        expect_str(s.cq_mode, "FT8", "the CQ row calls in FT8 to start");
+        expect_true(!s.show_bearing, "no bearing on decode rows to start");
+        expect_true(s.queue_marks, "queue marks on to start");
+        expect_str(s.qrz_key, "", "no QRZ key to start");
+
+        station_parse("qrz_key=ABCD-EFGH-IJKL-MNOP\nqrz_book=kb2slo\nqrz_live=20261122\n"
+                      "dist_unit=mi\ncq_mode=FT4\nshow_bearing=1\nqueue_marks=0\n", &s);
+        StationSettings back;
+        station_settings_init(&back);
+        station_parse(station_serialize(s), &back);
+        expect_str(back.qrz_key, "ABCD-EFGH-IJKL-MNOP", "the QRZ key round-trips whole");
+        expect_str(back.qrz_book, "KB2SLO", "the logbook's callsign, upper-cased");
+        expect_str(back.qrz_live, "20261122", "the day sending by itself was turned on");
+        expect_str(back.dist_unit, "mi", "miles");
+        expect_str(back.cq_mode, "FT4", "the CQ row calls in FT4");
+        expect_true(back.show_bearing, "bearing on");
+        expect_true(!back.queue_marks, "queue marks off");
+
+        station_parse("dist_unit=furlongs\ncq_mode=FT2\nqrz_live=yesterday\nqrz_key=a key\nshow_bearing=yes\n", &s);
+        expect_str(s.dist_unit, "mi", "a bad unit keeps the old");
+        expect_str(s.cq_mode, "FT4", "a bad mode keeps the old");
+        expect_str(s.qrz_live, "20261122", "a bad day keeps the old");
+        expect_str(s.qrz_key, "ABCD-EFGH-IJKL-MNOP", "a key with a space keeps the old");
+        expect_true(s.show_bearing, "a bad switch value keeps the old");
+        station_parse("qrz_key=\nqrz_book=\nqrz_live=\n", &s);
+        expect_str(s.qrz_key, "", "an empty key clears it");
+        expect_str(s.qrz_live, "", "an empty day turns sending by itself off");
+
+        expect_true(station_pref_refusal("dist_unit", "furlongs") != nullptr, "a bad unit is refused");
+        expect_true(station_pref_refusal("cq_mode", "FT2") != nullptr, "a bad mode is refused");
+        expect_true(station_pref_refusal("qrz_key", "a key") != nullptr, "a key with a space is refused");
+        expect_true(station_pref_refusal("qrz_live", "2026112") != nullptr, "a short day is refused");
+        expect_true(station_pref_refusal("qrz_key", "") == nullptr, "an empty key clears, not refused");
+        expect_true(station_pref_refusal("queue_marks", "0") == nullptr, "a switch is 0 or 1");
+        expect_true(station_pref_refusal("grid", "nonsense") == nullptr, "other keys are checked elsewhere");
+        expect_true(station_key_known("qrz_key") && station_key_known("cq_mode") && station_key_known("queue_marks"),
+                    "the new keys are settable");
+
+        expect_true(station_key_secret("qrz_key"), "the QRZ key is a secret");
+        expect_true(!station_key_secret("qrz_book"), "its logbook's callsign is not");
+        expect_str(station_mask_secret("ABCD-EFGH-IJKL-MNOP"), "xxxxxxxxxxxxxxxMNOP", "all but the last 4 as x");
+        expect_str(station_mask_secret("ABCDEFGH"), "xxxxxxxx", "8 characters or fewer: all of it");
+        expect_str(station_mask_secret(""), "", "no key, nothing to mask");
+        StationSettings k;
+        station_settings_init(&k);
+        k.qrz_key = "ABCD-EFGH-IJKL-MNOP";
+        const std::string open_text = station_serialize(station_masked(k));
+        expect_true(open_text.find("ABCD") == std::string::npos, "the open read never carries the key whole");
+        expect_true(open_text.find("qrz_key=xxxxxxxxxxxxxxxMNOP\n") != std::string::npos, "it carries the mask");
+        expect_str(k.qrz_key, "ABCD-EFGH-IJKL-MNOP", "masking leaves the station's own copy whole");
+    }
+
     // station_key_names_operating_band (docs/architecture/webapp.md, "The
     // dock"): does this CONFIG key need the VFO already on the operating band
     // to take effect right now.
