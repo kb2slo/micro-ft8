@@ -16,6 +16,7 @@ if (navigator.standalone === true || (window.matchMedia && matchMedia('(display-
 <meta name=mobile-web-app-capable content=yes>
 <meta name=apple-mobile-web-app-title content=Micro-FT8>
 <link rel=apple-touch-icon href=icon-180.png>
+<link rel=stylesheet href=wordmark.css>
 <!--
   Entry asset for the installed app (docs/architecture/webapp.md (Screens)). Three screens behind one
   bottom tab bar: Operate (default) collapses RX, TX and station status onto one screen; Log browses the day files over the async FILE_LIST/
@@ -119,14 +120,22 @@ button:disabled{opacity:.45}
    min-height:0 lets #viewport shrink instead of the page growing. */
 .wrap{width:100%;max-width:26rem;margin:0 auto;align-self:center;padding:0 1rem;box-sizing:border-box;display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
 
-/* No title row: Operate's slot bar is the top of the screen, and Settings is a tab
-   (operator decision 2026-10-25). */
+/* No title row in a browser tab: Operate's slot bar is the top of the screen, and Settings is a tab
+   (operator decision 2026-10-25). From the Home Screen the app has a header, the wordmark (#appHead). */
 .wrap{padding-top:calc(.4rem + env(safe-area-inset-top));padding-left:max(1rem, env(safe-area-inset-left));padding-right:max(1rem, env(safe-area-inset-right))}
-/* From the Home Screen, iOS blurs a band reaching a little below the status bar (2026-11-22): the slot bar sits
-   clear of it. --standalone-top is a bench guess, to be tuned from a screenshot. */
+/* From the Home Screen (maintainer, 2026-11-22): the wordmark heads the page, on every tab, in the band under the
+   status bar, where iOS also blurs a little below the bar; --standalone-top keeps the wordmark clear of that blur
+   and is a bench guess, to be tuned from a screenshot. The header takes the top inset, so the column's own top
+   padding goes back to a browser's. The wordmark's face is wordmark.css's (webapp/tools/make_wordmark.py), and the
+   icon is drawn from this same markup (webapp/tools/make_icon.mjs). Inset like #opTop, so it lines up with the slot bar. */
 :root{--standalone-top:8px}
-.standalone .wrap{padding-top:calc(.4rem + env(safe-area-inset-top) + var(--standalone-top))}
+#appHead{display:none}
+.standalone #appHead{display:flex;flex:none;align-items:baseline;width:100%;max-width:26rem;margin:0 auto;align-self:center;box-sizing:border-box;padding:calc(env(safe-area-inset-top) + var(--standalone-top)) calc(max(1rem, env(safe-area-inset-right)) + 1rem) .1rem calc(max(1rem, env(safe-area-inset-left)) + 1rem)}
+.standalone .wrap{padding-top:.4rem}
 .standalone #pskrListHead{padding-top:calc(.75rem + env(safe-area-inset-top) + var(--standalone-top))}
+.wordmark{font-family:'Micro-FT8 Wordmark','Inter',system-ui,sans-serif;font-size:1.3rem;line-height:1.2;letter-spacing:-.02em;white-space:nowrap;color:CanvasText;margin:0}
+.wordmark .wm-m{font-weight:500}
+.wordmark .wm-f{font-weight:800;color:var(--accent)}
 
 /* ---- tab track ---- */
 /* The page does not scroll. #viewport is a fixed strip, and each tab scrolls
@@ -680,6 +689,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
    time we select a callsign anywhere in the web app"), not defined here. */
 </style>
 
+<header id=appHead><h1 class=wordmark aria-label=Micro-FT8><span class=wm-m>micro-</span><span class=wm-f>FT8</span></h1></header>
 <div class=wrap>
 <div id=viewport>
 <!-- The pinned top, on every tab (webapp.md, Operate's pinned regions): the slot bar with the
