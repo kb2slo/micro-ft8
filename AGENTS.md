@@ -50,7 +50,7 @@ Do not mix a feature change with an unrelated fix in the same commit.
 
 Judge by **verifiability**, not size, and say which of the three applied:
 
-1. **You can prove it** — host test, dead-code proof (linker map plus `nm`, byte-identical binary), or the compiler. Fix it and prove it in the same commit.
+1. **You can prove it** — host test, dead-code proof (linker map plus `nm`, byte-identical binary), or the compiler. **What only shows between the page and the station — a control's write and what another browser then shows, a route's token, what an open read must not carry — is proved by a browser test** (`webapp/tests/browser/`, TEST_PLAN **Automated**: Browser), **beside the node test of the logic.** Fix it and prove it in the same commit.
 2. **Only someone with the hardware can prove it** — anything needing the radio. Fix it and add the bench check to [TEST_PLAN.md](docs/TEST_PLAN.md) **Pending** with the exact steps and expected results.
 3. **Neither can, yet** — an unreproducible hardware or timing bug. Prefer a change whose **worst case is no worse than current behaviour**, and ship the logging that makes the next occurrence diagnosable. Never let an unverified fix blend in with verified work: say plainly, in the commit and in chat, that it is unproven.
 
