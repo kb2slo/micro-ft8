@@ -7972,7 +7972,10 @@ var QRZ_SEND_TIMEOUT_MS = 90000;  // a batch is up to 10 inserts, one after anot
 // waiting: QSOs logged with sending by itself on that no run has taken yet; dueAt: when the run waiting out
 // the gap starts, 0 for none; again: a QSO logged while a run was under way, which the run may have missed;
 // readAt: when the last run started reading the log, 0 for none.
-var qrz = { phase: 'idle', sending: 0, result: null, keyLine: { state: 'none' }, timer: 0, waiting: 0, dueAt: 0, again: false, readAt: 0 };
+// queued: a run asked for while one was under way, { send }, made as asked when that one ends; the one under
+// way may have read the station's settings before they changed (the switch just turned on, a new key).
+var qrz = { phase: 'idle', sending: 0, result: null, keyLine: { state: 'none' }, timer: 0, waiting: 0, dueAt: 0, again: false, readAt: 0,
+            queued: null };
 // Whether a run has already read a QSO the station logged at loggedMs: one that started reading after
 // it, by more than the phone's and the station's clocks may differ. False when the time is not known.
 // Pure, so webapp/tests/test_qrz_row.js runs it.
@@ -8060,8 +8063,11 @@ function qrzState() {
 function qrzSaveState(st) {
   try { localStorage.setItem(QRZ_STATE_STORE, JSON.stringify(st)); } catch (e) { /* kept for this page only */ }
 }
-// Each config reply: a key set, changed or cleared from another browser shows here too.
+// Each config reply: a key set, changed or cleared from another browser shows here too. Not in the field
+// while a key typed here is being checked and saved (qrzKeyBusy): a reply from before it would wipe it.
 var qrzSeenKey = null;
+var qrzKeySeq = 0;   // the latest key typed here; an older one's check or save that ends later changes nothing
+var qrzKeyBusy = 0;
 function qrzConfigChanged() {
   var masked = lastCfg.qrz_key || '';
   if (masked !== qrzSeenKey) {
@@ -8070,7 +8076,7 @@ function qrzConfigChanged() {
     if (!first) qrz.result = null;
     qrz.keyLine = lastCfg.qrz_book ? { state: 'ok', book: lastCfg.qrz_book } : { state: 'none' };
     var field = document.getElementById('qrzKey');
-    if (document.activeElement !== field) field.value = masked;
+    if (document.activeElement !== field && !qrzKeyBusy) field.value = masked;
   }
   renderQrzRow();
 }
@@ -8146,7 +8152,10 @@ async function qrzReadRows(sinceDay) {
 // logged: started by a QSO just logged, which a run already under way may have read the log too early for.
 async function qrzRun(send, asked, logged) {
   var cred = qrzCred();
-  if (cred.key && qrz.phase !== 'idle' && cred.live && logged) qrz.again = true;
+  if (cred.key && qrz.phase !== 'idle') {
+    if (cred.live && logged) qrz.again = true;
+    if (asked) qrz.queued = { send: !!send || !!(qrz.queued && qrz.queued.send) };
+  }
   if (!cred.key || qrz.phase !== 'idle') { renderQrzRow(); return; }
   var state = qrzState();
   // With nothing to show yet, the first look does not wait out the gap either: the row would otherwise
@@ -8170,6 +8179,7 @@ async function qrzRun(send, asked, logged) {
   if (!whole.key) {
     qrz.phase = 'idle';
     qrz.result = { ok: false, error: whole.why };
+    qrz.queued = null;  // it would find no key either
     renderQrzRow();
     return;
   }
@@ -8197,8 +8207,15 @@ async function qrzRun(send, asked, logged) {
   }
   qrz.result = r;
   qrz.phase = 'idle';
-  // The run read the log when it started, so a QSO logged during it is still waiting: run again for it.
-  if (qrz.again) {
+  // A run asked for meanwhile is made now, as asked; it reads the log afresh, so it also takes what `again`
+  // would have.
+  if (qrz.queued) {
+    var next = qrz.queued;
+    qrz.queued = null;
+    qrz.again = false;
+    setTimeout(function () { qrzRun(next.send, true); }, 0);
+  } else if (qrz.again) {
+    // The run read the log when it started, so a QSO logged during it is still waiting: run again for it.
     qrz.again = false;
     setTimeout(function () { qrzRun(false, false); }, 0);
   } else {
@@ -8237,8 +8254,20 @@ document.getElementById('qrzGear').onclick = function () {
 // all, and the key goes to the station with it, sending by itself off: a new key starts with it off.
 // The field shows the station's key masked, so a change that leaves the mask as it was is no change.
 document.getElementById('qrzKey').onchange = async function () {
-  var key = this.value.trim();
+  var field = this;
+  var key = field.value.trim();
   if (key === (lastCfg.qrz_key || '')) return;
+  var seq = ++qrzKeySeq;
+  qrzKeyBusy++;
+  try {
+    await qrzKeyChange(key, seq);
+  } finally {
+    qrzKeyBusy--;
+  }
+  // The field then shows what the station holds: the new key masked, or the old one when the save failed.
+  if (seq === qrzKeySeq && document.activeElement !== field) field.value = lastCfg.qrz_key || '';
+};
+async function qrzKeyChange(key, seq) {
   qrz.result = null;
   if (!key) {
     qrz.keyLine = { state: 'none' };
@@ -8251,14 +8280,15 @@ document.getElementById('qrzKey').onchange = async function () {
   renderQrzRow();
   var reply = null;
   try { reply = await qrzRelay('/qrz/status', { key: key, app: appServed || undefined }); } catch (e) { reply = null; }
-  if (this.value.trim() !== key) return;  // changed again while QRZ was asked
+  if (seq !== qrzKeySeq) return;  // another key was typed while QRZ was asked
   var state = qrzState();
   state.budget = QrzSync.noteRun(state.budget, Date.now(), 1, !!(reply && reply.ok));
   var book = reply && reply.ok ? reply.callsign : '';
   var saved = await putConfigLine('qrz_key=' + key + '\nqrz_book=' + book + '\nqrz_live=', 'Saving the QRZ key…', false)
     .catch(function () { return false; });
+  if (seq !== qrzKeySeq) return;
   if (!saved) {
-    qrzSeenKey = null;  // puts the field back to what the station holds
+    qrzSeenKey = null;  // the line and row go back to what the station holds
     qrzConfigChanged();
     return;
   }
@@ -8275,7 +8305,7 @@ document.getElementById('qrzKey').onchange = async function () {
   }
   renderQrzRow();
   if (reply && reply.ok) qrzRun(false, true);  // a key QRZ takes is looked with at once
-};
+}
 
 // Sending by itself, from today on: the day is kept so that turning it on never sends what was logged before.
 document.getElementById('qrzLive').onchange = async function () {

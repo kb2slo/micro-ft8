@@ -42,7 +42,10 @@ run(async (st) => {
   check('theme is not sent to the station', (await st.station()).theme === undefined);
 
   // A second browser shows the station's, and keeps its own theme.
-  const B = await st.browser('B', { relay });
+  // B's config reads and relay are slow, as a busy main board and QRZ can be, so a run started by opening the
+  // QSOs tab is still under way when the switch asks for one (CI, 2026-11-22: that run was dropped, and
+  // sending by itself never sent, leaving "1 to send").
+  const B = await st.browser('B', { relay, slowConfig: 1500, relayDelay: 1500 });
   await B.settings('device');
   check('B shows mi, bearing on, marks off', (await B.inputValue('#dist_unit')) === 'mi'
     && (await B.isChecked('#show_bearing')) && !(await B.isChecked('#show_queue_marks')));

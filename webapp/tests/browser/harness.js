@@ -96,7 +96,8 @@ async function start(opts) {
   }
 
   // A browser of its own (its own storage, so its own pairing), on app.html. paired false: it never
-  // gets the token. relay(path, body) answers the QRZ relay's /qrz/* calls; every call is in .relayCalls.
+  // gets the token. relay(path, body) answers the QRZ relay's /qrz/* calls, each relayDelay ms late; every call
+// is in .relayCalls.
   async function browser(name, bopts) {
     bopts = bopts || {};
     const ctx = await b.newContext();
@@ -106,9 +107,18 @@ async function start(opts) {
       if (!p.startsWith('/qrz/') || !bopts.relay) return route.fulfill({ status: 404, body: '' });
       const body = JSON.parse(route.request().postData() || '{}');
       relayCalls.push({ path: p, body });
+      if (bopts.relayDelay) await sleep(bopts.relayDelay);  // a relay as slow as QRZ can be, so runs overlap
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify(await bopts.relay(p, body)) });
     });
     if (bopts.paired === false) await ctx.route(origin + '/api/pairing-token', (r) => r.fulfill({ status: 404, body: '' }));
+    // slowConfig: ms each GET /api/config waits before it reaches the station, as on a busy main board, so a
+    // read already on its way can be overtaken by a write and the read after it.
+    if (bopts.slowConfig) {
+      await ctx.route(origin + '/api/config', async (r) => {
+        if (r.request().method() === 'GET') await sleep(bopts.slowConfig);
+        return r.continue();
+      });
+    }
     const configReads = [];
     ctx.on('response', async (r) => {
       if (new URL(r.url()).pathname === '/api/config' && r.request().method() === 'GET') {
