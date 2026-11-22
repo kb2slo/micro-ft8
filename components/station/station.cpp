@@ -199,6 +199,13 @@ enum class StationKey {
     Tries,
     TxMinDelay,
     ActRefs,
+    QrzKey,
+    QrzBook,
+    QrzLive,
+    DistUnit,
+    CqMode,
+    ShowBearing,
+    QueueMarks,
     Unknown,
 };
 
@@ -223,7 +230,51 @@ StationKey key_from_name(const std::string& name)
     if (name == "tries") return StationKey::Tries;
     if (name == "tx_min_delay_ms") return StationKey::TxMinDelay;
     if (name == "act_refs") return StationKey::ActRefs;
+    if (name == "qrz_key") return StationKey::QrzKey;
+    if (name == "qrz_book") return StationKey::QrzBook;
+    if (name == "qrz_live") return StationKey::QrzLive;
+    if (name == "dist_unit") return StationKey::DistUnit;
+    if (name == "cq_mode") return StationKey::CqMode;
+    if (name == "show_bearing") return StationKey::ShowBearing;
+    if (name == "queue_marks") return StationKey::QueueMarks;
     return StationKey::Unknown;
+}
+
+bool all_chars(const std::string& s, const char* extra)
+{
+    for (char c : s) {
+        const unsigned char u = static_cast<unsigned char>(c);
+        if (!std::isalnum(u) && !strchr(extra, c)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The checks station_pref_refusal() reports and apply_key() keeps the old value on: the value as
+// it is stored (trimmed), or why it is not one.
+const char* pref_check(StationKey key, const std::string& v)
+{
+    switch (key) {
+        case StationKey::QrzKey:
+            return v.size() <= 64 && all_chars(v, "-") ? nullptr : "a QRZ key is letters, digits and dashes";
+        case StationKey::QrzBook:
+            return v.size() <= 16 && all_chars(v, "/") ? nullptr : "a QRZ logbook is a callsign";
+        case StationKey::QrzLive: {
+            bool day = v.size() == 8;
+            for (char c : v) day = day && c >= '0' && c <= '9';
+            return v.empty() || day ? nullptr : "the QRZ sending day is YYYYMMDD";
+        }
+        case StationKey::DistUnit:
+            return v == "km" || v == "mi" ? nullptr : "units are km or mi";
+        case StationKey::CqMode:
+            return v == "FT8" || v == "FT4" ? nullptr : "the CQ mode is FT8 or FT4";
+        case StationKey::ShowBearing:
+        case StationKey::QueueMarks:
+            return v == "0" || v == "1" ? nullptr : "the switch is 0 or 1";
+        default:
+            return nullptr;
+    }
 }
 
 void apply_key(StationSettings* io, StationKey key, const std::string& value)
@@ -326,6 +377,28 @@ void apply_key(StationSettings* io, StationKey key, const std::string& value)
         case StationKey::ActRefs:
             io->act_refs = normalize_act_refs(value);
             break;
+        case StationKey::QrzKey:
+        case StationKey::QrzBook:
+        case StationKey::QrzLive:
+        case StationKey::DistUnit:
+        case StationKey::CqMode:
+        case StationKey::ShowBearing:
+        case StationKey::QueueMarks: {
+            // A bad value keeps the old; the main board refuses it before it gets here
+            // (station_pref_refusal()).
+            const std::string v = trim_copy(value);
+            if (pref_check(key, v)) {
+                break;
+            }
+            if (key == StationKey::QrzKey) io->qrz_key = v;
+            if (key == StationKey::QrzBook) io->qrz_book = trim_upper_copy(v);
+            if (key == StationKey::QrzLive) io->qrz_live = v;
+            if (key == StationKey::DistUnit) io->dist_unit = v;
+            if (key == StationKey::CqMode) io->cq_mode = v;
+            if (key == StationKey::ShowBearing) io->show_bearing = (v == "1");
+            if (key == StationKey::QueueMarks) io->queue_marks = (v == "1");
+            break;
+        }
         case StationKey::Unknown:
             break;
     }
@@ -479,6 +552,42 @@ std::string station_serialize(const StationSettings& in)
     put_int(out, "amp_ptt", in.amp_ptt);
     put_int(out, "amp_prime_on_band_change", in.amp_prime_on_band_change ? 1 : 0);
     put_str(out, "act_refs", in.act_refs);
+    put_str(out, "qrz_key", in.qrz_key);
+    put_str(out, "qrz_book", in.qrz_book);
+    put_str(out, "qrz_live", in.qrz_live);
+    put_str(out, "dist_unit", in.dist_unit);
+    put_str(out, "cq_mode", in.cq_mode);
+    put_int(out, "show_bearing", in.show_bearing ? 1 : 0);
+    put_int(out, "queue_marks", in.queue_marks ? 1 : 0);
+    return out;
+}
+
+const char* station_pref_refusal(const char* key, const std::string& value)
+{
+    if (!key) {
+        return nullptr;
+    }
+    return pref_check(key_from_name(key), trim_copy(value));
+}
+
+bool station_key_secret(const char* name)
+{
+    return name && strcmp(name, "qrz_key") == 0;
+}
+
+std::string station_mask_secret(const std::string& value)
+{
+    std::string out(value.size(), 'x');
+    if (value.size() > 8) {
+        out.replace(value.size() - 4, 4, value.substr(value.size() - 4));
+    }
+    return out;
+}
+
+StationSettings station_masked(const StationSettings& in)
+{
+    StationSettings out = in;
+    out.qrz_key = station_mask_secret(in.qrz_key);
     return out;
 }
 

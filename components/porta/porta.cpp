@@ -36,7 +36,9 @@ void porta_host_update_hold(bool on);
 void porta_host_stop_for_restart(void);
 // Snapshot Station.txt-shaped lines into out (NUL-terminated). Returns bytes
 // written excluding NUL, or 0 on failure. Used for CONFIG_GET all / one.
-size_t porta_host_config_snapshot(char* out, size_t out_cap);
+// mask_secrets: the station's secrets (the QRZ key) as an open read shows them. Set for the all-keys
+// read the sidekick serves to anyone; clear for a read of one key, which it serves only with the token.
+size_t porta_host_config_snapshot(char* out, size_t out_cap, bool mask_secrets);
 // Apply one Station.txt key and persist. nullptr on success, else a short reason.
 const char* porta_host_config_set(const char* key, const char* value);
 // STATUS → 2 / → 4 equivalents for the companion.
@@ -989,7 +991,8 @@ void handle_config_get(const porta_frame_t& f) {
   // Static: the station snapshot can be ~1–2 KiB; keeping this on the
   // caller's stack blew the P4's default 3584-byte main task (B67 bench).
   static char snap[2048];
-  size_t n = porta_host_config_snapshot(snap, sizeof(snap));
+  const bool want_all = (key[0] == '\0');
+  size_t n = porta_host_config_snapshot(snap, sizeof(snap), want_all);
   if (n == 0) {
     uint8_t buf[PORTA_PROTO_MAX_FRAME];
     enqueue(buf, porta_proto_encode_nak(PORTA_MSG_CONFIG_GET, "empty config", buf, sizeof(buf)));
@@ -1011,7 +1014,6 @@ void handle_config_get(const porta_frame_t& f) {
     snap[n] = '\0';
   }
 
-  const bool want_all = (key[0] == '\0');
   bool found = false;
   size_t start = 0;
   while (start < n) {

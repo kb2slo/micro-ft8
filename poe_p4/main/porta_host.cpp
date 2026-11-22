@@ -791,13 +791,13 @@ const char *porta_host_sweep_start(const porta_sweep_range_t *ranges, size_t cou
     return "sweep refused";
 }
 
-size_t porta_host_config_snapshot(char *out, size_t out_cap) {
+size_t porta_host_config_snapshot(char *out, size_t out_cap, bool mask_secrets) {
     ensure_seeded();
     if (!out || out_cap < 2) {
         return 0;
     }
 
-    std::string text = station_serialize(s_station);
+    std::string text = station_serialize(mask_secrets ? station_masked(s_station) : s_station);
 
     const int idx = s_station.band_sel;
     const char *band_name =
@@ -908,6 +908,12 @@ const char *porta_host_config_set(const char *key, const char *value) {
         if (!station_cq_mod_ok(mod)) {
             return "CQ modifier is 1 to 4 letters, or 3 digits";
         }
+    }
+
+    // The web app's own settings: refused, not dropped as station_parse() would, so Settings never
+    // shows a value the station did not keep.
+    if (const char *why = station_pref_refusal(key, value)) {
+        return why;
     }
 
     if (strcmp(key, "tx_min_delay_ms") == 0) {
@@ -1029,7 +1035,9 @@ const char *porta_host_config_set(const char *key, const char *value) {
         }
     }
 
-    ESP_LOGI(TAG, "config %s=%s", key, value);
+    // The console is not the place for the QRZ key either (station_key_secret()).
+    ESP_LOGI(TAG, "config %s=%s", key,
+             station_key_secret(key) ? station_mask_secret(value).c_str() : value);
     return nullptr;
 }
 

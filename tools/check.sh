@@ -30,8 +30,8 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-CHECKS="web webapp host_mock sim tx_e2e decode_recall tools getting_started docs commits locks sidekick p4"
-HOST_CHECKS="web webapp host_mock sim tx_e2e decode_recall tools getting_started"
+CHECKS="web webapp host_mock sim browser tx_e2e decode_recall tools getting_started docs commits locks sidekick p4"
+HOST_CHECKS="web webapp host_mock sim browser tx_e2e decode_recall tools getting_started"
 LOG_DIR="build/check"
 JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
 IDF_VERSION="v5.5.5"  # AGENTS.md, Local IDF build / flash
@@ -46,6 +46,7 @@ triggers() {
     webapp)          echo 'webapp/*' ;;
     host_mock)       echo 'components/* host_mock/* sidekick/main/* webapp/tools/app_pack.py' ;;
     sim)             echo 'components/* host_mock/* sidekick/main/* webapp/tests/*' ;;
+    browser)         echo 'webapp/app/* webapp/tools/* webapp/tests/browser/* host_mock/sim_station.cpp host_mock/scenario.* host_mock/test_qso.json host_mock/Makefile components/station/* components/autoseq/* tools/serve_webapp_local.py sidekick/main/web/pairing.js' ;;
     tx_e2e)          echo 'components/* tests/tx_e2e/*' ;;
     decode_recall)   echo 'components/* tools/decode_recall/* tools/iq_convert/*' ;;
     tools)           echo 'tools/qmx_record.py tools/hl2_record.py tools/hl2_pcap.py tools/p4_console.py tools/decode_bench/score_events.py tools/make_manifest.py tools/build_version.py tools/dev_build.py tools/cut_release.py tools/test_*.py test_apps/decode_bench/tools/run_on_device.py test_apps/decode_bench/tools/test_run_on_device.py webapp/tools/sidekick.py webapp/tools/install_firmware.py webapp/tools/install_app.py webapp/tools/app_pack.py sidekick/main/app_push.c sidekick/main/app_serve.c components/porta_proto/include/porta_proto.h sidekick/partitions.csv' ;;
@@ -165,7 +166,7 @@ fi
 
 tools_for() {  # the commands a check cannot run without
   case "$1" in
-    web|getting_started) echo "node npm" ;;
+    web|getting_started|browser) echo "node npm" ;;
     webapp|sim)          echo "node" ;;
     sidekick)            echo "idf.py node npm" ;;
     p4)                  echo "idf.py" ;;
@@ -296,6 +297,30 @@ check_sim() {
     echo "===== $t ====="
     node "$t" || failed=1
   done
+  return "$failed"
+}
+
+# The web app as it ships, in headless Chrome against the station simulator: every
+# webapp/tests/browser/test_*.js (webapp/tests/browser/harness.js). Chrome is the one installed; without
+# it the check skips here and fails under CI, as the getting-started sheet does.
+check_browser() {
+  local t rc failed=0 ran=0
+  need_npm
+  need_submodule
+  python3 webapp/tools/build.py
+  make -C host_mock -j"$JOBS" sim_station
+  for t in webapp/tests/browser/test_*.js; do
+    echo "===== $t ====="
+    rc=0
+    node "$t" || rc=$?
+    if [ "$rc" = 3 ]; then
+      [ -n "${CI:-}" ] && { echo "${CI:+::error::}no Chrome on the runner"; return 1; }
+      skip "no Chrome found; set CHROME to its path"
+    fi
+    [ "$rc" = 0 ] || failed=1
+    ran=$((ran + 1))
+  done
+  echo "ran $ran browser tests"
   return "$failed"
 }
 

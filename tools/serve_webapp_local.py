@@ -189,7 +189,7 @@ def _start_sim(scale: str, scenario: Path) -> None:
 
 
 def main() -> None:
-    global SERVE_DIST, SIM
+    global SERVE_DIST, SIM, PORT, SIM_PORT
     import argparse
 
     ap = argparse.ArgumentParser(description="Local preview of webapp/.")
@@ -198,7 +198,11 @@ def main() -> None:
     ap.add_argument("--scale", default="1", help="with --sim, divide the 15s period by this (default 1, real time)")
     ap.add_argument("--scenario", default=str(ROOT.parent / "host_mock" / "test_qso.json"),
                     help="with --sim, the host_mock JSON scenario to play")
+    ap.add_argument("--port", type=int, default=PORT, help=f"the port to serve on (default {PORT})")
+    ap.add_argument("--sim-port", type=int, default=SIM_PORT, help=f"with --sim, sim_station's port (default {SIM_PORT})")
     args = ap.parse_args()
+    PORT = args.port
+    SIM_PORT = args.sim_port
     SERVE_DIST = args.dist
     SIM = args.sim
     if not ROOT.is_dir():

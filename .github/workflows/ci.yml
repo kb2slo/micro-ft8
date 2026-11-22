@@ -77,6 +77,9 @@ jobs:
       - name: Station simulator
         run: tools/check.sh --only sim
 
+      - name: Web app in Chrome against the simulator
+        run: tools/check.sh --only browser
+
       - name: TX e2e (CTest)
         run: tools/check.sh --only tx_e2e
 

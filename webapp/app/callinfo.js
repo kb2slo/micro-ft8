@@ -90,11 +90,11 @@ function greatCircle(a, b) {
   var bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
   return { km: km, bearing: bearing };
 }
+// The station's distance unit (dist_unit in the config), which the page that loads this sets.
 var distUnit = 'km';
-try {
-  var du = localStorage.getItem('microft8_dist_unit_v1');
-  if (du === 'km' || du === 'mi') distUnit = du;
-} catch (e) { /* default stands */ }
+function setDistUnit(u) {
+  if (u === 'km' || u === 'mi') distUnit = u;
+}
 function fmtKmBearing(km, bearingDeg) {
   var value = distUnit === 'mi' ? km * 0.621371 : km;
   var bearing = String(Math.round(bearingDeg)).padStart(3, '0') + '°';
@@ -658,5 +658,5 @@ if (document.readyState === 'loading') {
 // silently going without it until whatever happens to open the modal first.
 loadGeoData();
 
-window.CallInfo = { learnCq: learnCq, heardCqFor: heardCqFor, loadActiveSpots: loadActiveSpots, activeSpotFor: activeSpotFor, show: show, hide: hide, learnGrid: learnGrid, cachedGrid: cachedGrid, shortLocation: shortLocation, countryCode: countryCode, gridLink: gridLink, qrzUrl: qrzUrl };
+window.CallInfo = { setDistUnit: setDistUnit, learnCq: learnCq, heardCqFor: heardCqFor, loadActiveSpots: loadActiveSpots, activeSpotFor: activeSpotFor, show: show, hide: hide, learnGrid: learnGrid, cachedGrid: cachedGrid, shortLocation: shortLocation, countryCode: countryCode, gridLink: gridLink, qrzUrl: qrzUrl };
 })();

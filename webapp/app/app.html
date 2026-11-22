@@ -842,7 +842,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         <div class="hd sep">More</div>
         <button type=button class=navrow data-page=device>
           <span class=navico aria-hidden=true><svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></svg></span>
-          <span class=navlines><span class=navmain>This device</span><span class=navsub><span class=glyph aria-hidden=true></span><span class=navtext>Units, decode rows and theme</span></span></span>
+          <span class=navlines><span class=navmain>Display</span><span class=navsub><span class=glyph aria-hidden=true></span><span class=navtext>Units, decode rows and theme</span></span></span>
           <span class=navchev aria-hidden=true>&rsaquo;</span>
         </button>
         <button type=button class=navrow data-page=diag>
@@ -922,10 +922,10 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         </div>
 
         <!-- The key QRZ gives a logbook for its API, for the QRZ row on QSOs
-             (docs/architecture/webapp.md, QRZ sync). Kept in this browser, not on the station. -->
+             (docs/architecture/webapp.md, QRZ sync). Kept on the station; shown masked (qrzConfigChanged()). -->
         <div class=setrow><label class="fld stack"><span>QRZ logbook key</span><input id=qrzKey data-select=all autocomplete=off autocapitalize=characters spellcheck=false placeholder="XXXX-XXXX-XXXX-XXXX"></label></div>
         <p id=qrzKeyLine class=setnote hidden></p>
-        <p class=setnote>Kept in this browser only. It goes to QRZ through micro-ft8.kalikstein.com, which does not keep it.</p>
+        <p class=setnote>Kept on the station, and shown here with all but its last four characters hidden. It goes to QRZ through micro-ft8.kalikstein.com, which does not keep it.</p>
         <div class=setrow>
           <label class=fld><span>Send new QSOs to QRZ</span>
             <select id=qrzLive class=onoff>
@@ -934,7 +934,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
             </select>
           </label>
         </div>
-        <p class=setnote>As they are logged, while this app is open, within about five minutes. QSOs logged before this was turned on wait for Send on the QSOs tab.</p>
+        <p class=setnote>As they are logged, while the app is open on a paired phone or computer, within about five minutes. QSOs logged before this was turned on wait for Send on the QSOs tab.</p>
 
         <!-- Typed references, offline (docs/roadmap/activator-mode.md): format-only (a slash means
              SOTA, otherwise POTA) -- no store, no nearby list, no map and no
@@ -1142,11 +1142,10 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
       </div>
     </div>
 
-    <!-- ---- This device ---- -->
+    <!-- ---- Display: the station's display settings, and this browser's theme ---- -->
     <div id=setp-device class="setpage sub" data-page=device hidden>
-      <div class=sethead><button type=button class=setback>&lsaquo; Settings</button><h2 tabindex=-1>This device</h2><span></span></div>
+      <div class=sethead><button type=button class=setback>&lsaquo; Settings</button><h2 tabindex=-1>Display</h2><span></span></div>
       <div class=setbody>
-        <p class="setnote lead">Local to this browser -- not saved to the main board.</p>
         <div class=hd>Decodes</div>
         <div class=setrow>
           <label class=fld><span>Distance units</span>
@@ -1162,6 +1161,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         <div class=setrow>
           <label class=fld><span>Mark decodes about stations in the queue</span><input type=checkbox class=sw id=show_queue_marks></label>
         </div>
+        <p class=setnote>Saved on the station, so every phone shows the same.</p>
 
         <div class="hd sep">Appearance</div>
         <div class=setrow>
@@ -1173,6 +1173,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
             </select>
           </label>
         </div>
+        <p class=setnote>Kept in this browser only.</p>
       </div>
     </div>
 
@@ -4402,6 +4403,8 @@ async function loadConfig() {
     lastCfgAt = lastConfigOkMs;
     saveStateCache();
     PskrLive.sync();
+    applyStationPrefs(cfg);
+    qrzConfigChanged();
     setForm(cfg);
     applyOperateLive(cfg);
     setMainBoardLive(true);
@@ -4453,6 +4456,8 @@ async function pollLiveStatus() {
     lastCfgAt = lastConfigOkMs;
     saveStateCache();
     PskrLive.sync();
+    applyStationPrefs(cfg);
+    qrzConfigChanged();
     applyOperateLive(cfg);
     setMainBoardLive(true);
   } catch (e) { /* next tick */ } finally {
@@ -5130,14 +5135,13 @@ document.getElementById('cqCallBtn').onclick = function () {
   radioPost('/api/cq', cqCallBody(chan), 'Calling CQ' + (cqChannels(lastCfg).length > 1 ? ' in ' + chan.mode : '') + '…')
     .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); });
 };
-// The mode the CQ row calls in, FT8 or FT4, remembered on this phone.
-var CQ_MODE_KEY = 'microft8_cq_mode_v1';
+// The mode the CQ row calls in, FT8 or FT4: the station's (cq_mode in the config, applyStationPrefs()),
+// so every phone calls in the same one.
 var cqMode = 'FT8';
-try { if (localStorage.getItem(CQ_MODE_KEY) === 'FT4') cqMode = 'FT4'; } catch (e) {}
 document.getElementById('cqModeBtn').onclick = function () {
   cqMode = cqChannelFor(lastCfg, cqMode).mode === 'FT4' ? 'FT8' : 'FT4';
-  try { localStorage.setItem(CQ_MODE_KEY, cqMode); } catch (e) {}
   renderCqRow();
+  putStationPref('cq_mode=' + cqMode, 'Setting the CQ mode…');
 };
 // A tap moves the queued CQ to the other period, for a strong station nearby.
 document.getElementById('cqParityBtn').onclick = function () {
@@ -6799,52 +6803,65 @@ function greatCircle(a, b) {
   var bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
   return { km: km, bearing: bearing };
 }
-// Local-only preference (not a device CONFIG key, never sent over Port A):
-// which unit fmtDistBearing() below shows everywhere it's used. Operator-
-// requested -- either unit, not both, so every grid-distance display picks
-// up whatever was last chosen instead of each deciding independently.
-var DIST_UNIT_KEY = 'microft8_dist_unit_v1';
+// The station's display settings, kept on the main board so every browser shows the same
+// (webapp.md, Settings that live on the station): which unit fmtDistBearing() below shows
+// everywhere it is used, whether a decode row shows the bearing (off: the station's card has it),
+// and whether decodes about a queued station are marked, never filtered, sorted next and echoed on
+// the queue row (queueInvolvement()). Read from every config reply (applyStationPrefs()).
 var distUnit = 'km'; // 'km' or 'mi'
-function loadDistUnit() {
-  try {
-    var v = localStorage.getItem(DIST_UNIT_KEY);
-    if (v === 'km' || v === 'mi') distUnit = v;
-  } catch (e) { /* default stands */ }
-}
-// Off by default: a decode row shows the distance only, and the station's card has the bearing.
-var BEARING_KEY = 'microft8_show_bearing_v1';
 var showBearing = false;
-function loadShowBearing() {
-  try { showBearing = localStorage.getItem(BEARING_KEY) === '1'; } catch (e) { /* default stands */ }
+var showQueueMarks = true;
+// Takes the settings from a config reply, and redraws what they change; at boot (`quiet`), before
+// anything is drawn, it only takes them.
+function applyStationPrefs(cfg, quiet) {
+  var unit = cfg.dist_unit === 'mi' ? 'mi' : 'km';
+  var bearing = cfg.show_bearing === '1';
+  var marks = cfg.queue_marks !== '0';
+  var changed = unit !== distUnit || bearing !== showBearing || marks !== showQueueMarks;
+  distUnit = unit;
+  showBearing = bearing;
+  showQueueMarks = marks;
+  CallInfo.setDistUnit(distUnit);
+  document.getElementById('dist_unit').value = distUnit;
+  document.getElementById('show_bearing').checked = showBearing;
+  document.getElementById('show_queue_marks').checked = showQueueMarks;
+  if (cfg.cq_mode === 'FT8' || cfg.cq_mode === 'FT4') cqMode = cfg.cq_mode;
+  if (changed && !quiet) {
+    // Cheap, already-in-memory data; Log rows already on screen don't retroactively update.
+    renderDecodeControls();
+    renderDecodes();
+    renderQueue();
+  }
+}
+// Each shows at once, and is then written to the station. A write that does not land (refused, not
+// paired, no main board) puts back what the station last said, with the toast saying why.
+function putStationPref(line, busyMsg) {
+  putConfigLine(line, busyMsg, false)
+    .catch(function (e) { failMsg(String(e && e.message ? e.message : e)); return false; })
+    .then(function (ok) {
+      if (ok) return;
+      applyStationPrefs(lastCfg);
+      renderCqRow();
+    });
 }
 function setShowBearing(on) {
   showBearing = !!on;
-  try { localStorage.setItem(BEARING_KEY, showBearing ? '1' : '0'); } catch (e) { /* applies live even if not persisted */ }
   renderDecodes();
-}
-
-// On by default: decodes about a queued station are marked, never filtered, sorted next, and
-// echoed on the queue row (queueInvolvement()). Off, none of it.
-var QUEUE_MARKS_KEY = 'microft8_queue_marks_v1';
-var showQueueMarks = true;
-function loadShowQueueMarks() {
-  try { showQueueMarks = localStorage.getItem(QUEUE_MARKS_KEY) !== '0'; } catch (e) { /* default stands */ }
+  putStationPref('show_bearing=' + (showBearing ? '1' : '0'), 'Setting the bearing…');
 }
 function setShowQueueMarks(on) {
   showQueueMarks = !!on;
-  try { localStorage.setItem(QUEUE_MARKS_KEY, showQueueMarks ? '1' : '0'); } catch (e) { /* applies live even if not persisted */ }
   renderDecodes();
   renderQueue();
+  putStationPref('queue_marks=' + (showQueueMarks ? '1' : '0'), 'Setting queue marks…');
 }
-
 function setDistUnit(v) {
   if (v !== 'km' && v !== 'mi') return;
   distUnit = v;
-  try { localStorage.setItem(DIST_UNIT_KEY, v); } catch (e) { /* applies live even if not persisted */ }
-  // Cheap, already-in-memory data; Log rows already on screen don't
-  // retroactively update.
+  CallInfo.setDistUnit(distUnit);
   renderDecodeControls();
   renderDecodes();
+  putStationPref('dist_unit=' + v, 'Setting units…');
 }
 
 // 'system' (default) tracks the phone's own prefers-color-scheme via CSS
@@ -7923,7 +7940,7 @@ function kickLogRefresh(loggedMs) {
   // The QRZ row counts the new QSO once it is in the file, when its tab is the one showing; with
   // sending by itself on, the QSO goes up whichever tab is.
   setTimeout(function () {
-    var live = qrzLoad(QRZ_KEY_STORE).live;
+    var live = qrzCred().live;
     // A page that slept sees the QSO late, maybe after a run since has read it: then nothing waits.
     if (qrzQsoSeen(loggedMs, qrz.readAt)) { renderQrzRow(); return; }
     if (live) qrz.waiting += 1;  // the row says so until a run has taken it (qrzRowModel())
@@ -7940,17 +7957,25 @@ function kickLogRefresh(loggedMs) {
 // It looks by itself, and sends on a tap: a send is a write to the operator's logbook that we cannot
 // take back. With Settings' switch on it also sends, by itself, the QSOs logged from that day on, and
 // only those: whatever was logged before still waits for the tap.
+//
+// The key, its logbook's callsign and the day sending by itself was turned on are the station's
+// (qrz_key, qrz_book, qrz_live in the config), so every browser at every address syncs one logbook.
+// The config read open to anyone carries the key masked; the key itself comes from GET /api/qrz_key,
+// with the token, once per key, and is held by this page only (qrzKeyWhole()).
 var QRZ_RELAY = 'https://micro-ft8.kalikstein.com';
-var QRZ_KEY_STORE = 'microft8_qrz_key_v1';      // { key, book: the logbook's callsign once QRZ has said,
-                                                //   live: the UTC day sending by itself was turned on }
-var QRZ_STATE_STORE = 'microft8_qrz_state_v1';  // { budget, clean: the last day a run left nothing unsent }
+// { budget, clean: the last day a run left nothing unsent, for: the masked key that day is for }. Per
+// browser: the budget is this page's spending of the relay's calls.
+var QRZ_STATE_STORE = 'microft8_qrz_state_v1';
 var QRZ_AFTER_QSO_MS = 6000;
 var QRZ_CALL_TIMEOUT_MS = 20000;
 var QRZ_SEND_TIMEOUT_MS = 90000;  // a batch is up to 10 inserts, one after another (worker.js, QRZ_MAX_INSERTS)
 // waiting: QSOs logged with sending by itself on that no run has taken yet; dueAt: when the run waiting out
 // the gap starts, 0 for none; again: a QSO logged while a run was under way, which the run may have missed;
 // readAt: when the last run started reading the log, 0 for none.
-var qrz = { phase: 'idle', sending: 0, result: null, keyLine: { state: 'none' }, timer: 0, waiting: 0, dueAt: 0, again: false, readAt: 0 };
+// queued: a run asked for while one was under way, { send }, made as asked when that one ends; the one under
+// way may have read the station's settings before they changed (the switch just turned on, a new key).
+var qrz = { phase: 'idle', sending: 0, result: null, keyLine: { state: 'none' }, timer: 0, waiting: 0, dueAt: 0, again: false, readAt: 0,
+            queued: null };
 // Whether a run has already read a QSO the station logged at loggedMs: one that started reading after
 // it, by more than the phone's and the station's clocks may differ. False when the time is not known.
 // Pure, so webapp/tests/test_qrz_row.js runs it.
@@ -7975,6 +8000,7 @@ function qrzRowModel(s) {
   if (!r.ok) {
     switch (r.error) {
       case 'auth': return amber('QRZ refused the key', 'setup');
+      case 'pair': return amber('Pair this browser to reach QRZ', 'pair');
       case 'unreachable': return amber('Cannot reach QRZ', 'look');
       case 'station': return amber('No reply from the station', 'look');
       case 'wait': return amber('Try again in ' + r.waitMin + ' min', 'look');
@@ -8006,15 +8032,57 @@ function qrzKeyLineModel(s) {
   }
 }
 
-function qrzLoad(name) {
-  try { return JSON.parse(localStorage.getItem(name) || 'null') || {}; } catch (e) { return {}; }
+// What the station holds: key is whether one is set (the config carries it masked).
+function qrzCred() {
+  return { key: !!lastCfg.qrz_key, book: lastCfg.qrz_book || '', live: lastCfg.qrz_live || '' };
 }
-function qrzSave(name, value) {
-  try { localStorage.setItem(name, JSON.stringify(value)); } catch (e) { /* kept for this page only */ }
+// The key whole, for the relay: { key } or { why: 'pair' | 'station' }.
+var qrzWhole = { masked: '', key: '' };
+async function qrzKeyWhole() {
+  var masked = lastCfg.qrz_key || '';
+  if (qrzWhole.key && qrzWhole.masked === masked) return { key: qrzWhole.key };
+  if (!MicroFT8Pairing.getToken()) return { why: 'pair' };
+  try {
+    var r = await MicroFT8Pairing.authFetch('/api/qrz_key', { cache: 'no-store' });
+    if (r.status == 401) { MicroFT8Pairing.needsReauth(); return { why: 'pair' }; }
+    var j = await r.json();
+    if (!r.ok || j.ok === false || !j.qrz_key) return { why: 'station' };
+    qrzWhole = { masked: masked, key: j.qrz_key };
+    return { key: j.qrz_key };
+  } catch (e) {
+    return { why: 'station' };
+  }
+}
+// This browser's run state, started again when the key is not the one it was kept for.
+function qrzState() {
+  var st = {};
+  try { st = JSON.parse(localStorage.getItem(QRZ_STATE_STORE) || 'null') || {}; } catch (e) { /* start afresh */ }
+  if (st.for !== (lastCfg.qrz_key || '')) st = { budget: st.budget, for: lastCfg.qrz_key || '' };
+  return st;
+}
+function qrzSaveState(st) {
+  try { localStorage.setItem(QRZ_STATE_STORE, JSON.stringify(st)); } catch (e) { /* kept for this page only */ }
+}
+// Each config reply: a key set, changed or cleared from another browser shows here too. Not in the field
+// while a key typed here is being checked and saved (qrzKeyBusy): a reply from before it would wipe it.
+var qrzSeenKey = null;
+var qrzKeySeq = 0;   // the latest key typed here; an older one's check or save that ends later changes nothing
+var qrzKeyBusy = 0;
+function qrzConfigChanged() {
+  var masked = lastCfg.qrz_key || '';
+  if (masked !== qrzSeenKey) {
+    var first = qrzSeenKey === null;
+    qrzSeenKey = masked;
+    if (!first) qrz.result = null;
+    qrz.keyLine = lastCfg.qrz_book ? { state: 'ok', book: lastCfg.qrz_book } : { state: 'none' };
+    var field = document.getElementById('qrzKey');
+    if (document.activeElement !== field && !qrzKeyBusy) field.value = masked;
+  }
+  renderQrzRow();
 }
 
 function renderQrzRow() {
-  var cred = qrzLoad(QRZ_KEY_STORE);
+  var cred = qrzCred();
   var m = qrzRowModel({ key: !!cred.key, live: !!cred.live, phase: qrz.phase, sending: qrz.sending, result: qrz.result,
                        waiting: qrz.waiting,
                        dueText: qrz.dueAt ? new Date(qrz.dueAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '' });
@@ -8083,10 +8151,13 @@ async function qrzReadRows(sinceDay) {
 // operator's tap, which does not wait out the gap between runs the app starts itself (QrzSync.mayRun()).
 // logged: started by a QSO just logged, which a run already under way may have read the log too early for.
 async function qrzRun(send, asked, logged) {
-  var cred = qrzLoad(QRZ_KEY_STORE);
-  if (cred.key && qrz.phase !== 'idle' && cred.live && logged) qrz.again = true;
+  var cred = qrzCred();
+  if (cred.key && qrz.phase !== 'idle') {
+    if (cred.live && logged) qrz.again = true;
+    if (asked) qrz.queued = { send: !!send || !!(qrz.queued && qrz.queued.send) };
+  }
   if (!cred.key || qrz.phase !== 'idle') { renderQrzRow(); return; }
-  var state = qrzLoad(QRZ_STATE_STORE);
+  var state = qrzState();
   // With nothing to show yet, the first look does not wait out the gap either: the row would otherwise
   // sit on "Not checked yet" for five minutes after the key's own check, or after a reload.
   var may = QrzSync.mayRun(state.budget, Date.now(), asked || !qrz.result);
@@ -8104,8 +8175,16 @@ async function qrzRun(send, asked, logged) {
   qrz.readAt = Date.now();
   qrz.sending = send && qrz.result ? qrz.result.left || 0 : 0;
   renderQrzRow();
+  var whole = await qrzKeyWhole();
+  if (!whole.key) {
+    qrz.phase = 'idle';
+    qrz.result = { ok: false, error: whole.why };
+    qrz.queued = null;  // it would find no key either
+    renderQrzRow();
+    return;
+  }
   var r = await QrzSync.run({
-    key: cred.key, logbook: cred.book || '', version: appServed,
+    key: whole.key, logbook: cred.book || '', version: appServed,
     send: send || !!cred.live, sendFrom: send ? '' : cred.live || '',
     maxCalls: QrzSync.callsLeft(state.budget, Date.now()),
     relay: qrzRelay,
@@ -8114,20 +8193,29 @@ async function qrzRun(send, asked, logged) {
   });
   state.budget = QrzSync.noteRun(state.budget, Date.now(), r.calls, r.ok);
   if (r.ok && r.cleanThrough) state.clean = r.cleanThrough;
-  qrzSave(QRZ_STATE_STORE, state);
+  qrzSaveState(state);
   if (r.error === 'budget') {
     var again = QrzSync.mayRun(state.budget, Date.now(), true);
     r = { ok: false, error: 'wait', waitMin: Math.max(1, Math.ceil(again.waitMs / 60000)) };
   } else {
     r.left = r.ok ? r.unsent : 0;
     r.otherCall = r.skipped.filter(function (x) { return x.why === 'callsign'; }).length;
-    if (r.ok && !cred.book && r.logbook) qrzSave(QRZ_KEY_STORE, Object.assign({}, cred, { book: r.logbook }));
+    if (r.ok && !cred.book && r.logbook) {
+      putConfigLine('qrz_book=' + r.logbook, 'Saving the QRZ logbook…', false).catch(function () { /* kept next run */ });
+    }
     if (send && r.refused.length) failMsg('QRZ refused ' + r.refused[0].row.call + ': ' + (r.refused[0].reason || 'no reason given'));
   }
   qrz.result = r;
   qrz.phase = 'idle';
-  // The run read the log when it started, so a QSO logged during it is still waiting: run again for it.
-  if (qrz.again) {
+  // A run asked for meanwhile is made now, as asked; it reads the log afresh, so it also takes what `again`
+  // would have.
+  if (qrz.queued) {
+    var next = qrz.queued;
+    qrz.queued = null;
+    qrz.again = false;
+    setTimeout(function () { qrzRun(next.send, true); }, 0);
+  } else if (qrz.again) {
+    // The run read the log when it started, so a QSO logged during it is still waiting: run again for it.
     qrz.again = false;
     setTimeout(function () { qrzRun(false, false); }, 0);
   } else {
@@ -8146,6 +8234,10 @@ document.getElementById('qrzRow').onclick = function () {
     case 'look':
       qrzRun(false, true);
       break;
+    case 'pair':
+      showSetPage('pairing');
+      showView('settings');
+      break;
     default:
       break;
   }
@@ -8158,27 +8250,52 @@ document.getElementById('qrzGear').onclick = function () {
   document.getElementById('qrzKey').scrollIntoView({ block: 'center' });
 };
 
-// A key typed or cleared. QRZ is asked what logbook it opens, which also says whether it is a key at all.
-document.getElementById('qrzKey').value = qrzLoad(QRZ_KEY_STORE).key || '';
-if (qrzLoad(QRZ_KEY_STORE).book) qrz.keyLine = { state: 'ok', book: qrzLoad(QRZ_KEY_STORE).book };
+// A key typed or cleared. QRZ is asked what logbook it opens, which also says whether it is a key at
+// all, and the key goes to the station with it, sending by itself off: a new key starts with it off.
+// The field shows the station's key masked, so a change that leaves the mask as it was is no change.
 document.getElementById('qrzKey').onchange = async function () {
-  var key = this.value.trim();
+  var field = this;
+  var key = field.value.trim();
+  if (key === (lastCfg.qrz_key || '')) return;
+  var seq = ++qrzKeySeq;
+  qrzKeyBusy++;
+  try {
+    await qrzKeyChange(key, seq);
+  } finally {
+    qrzKeyBusy--;
+  }
+  // The field then shows what the station holds: the new key masked, or the old one when the save failed.
+  if (seq === qrzKeySeq && document.activeElement !== field) field.value = lastCfg.qrz_key || '';
+};
+async function qrzKeyChange(key, seq) {
   qrz.result = null;
-  try { localStorage.removeItem(QRZ_STATE_STORE); } catch (e) { /* nothing kept to forget */ }
   if (!key) {
-    try { localStorage.removeItem(QRZ_KEY_STORE); } catch (e) { /* as above */ }
     qrz.keyLine = { state: 'none' };
     renderQrzRow();
+    await putConfigLine('qrz_key=\nqrz_book=\nqrz_live=', 'Clearing the QRZ key…', false).catch(function () {});
+    qrzConfigChanged();
     return;
   }
-  qrzSave(QRZ_KEY_STORE, { key: key });
   qrz.keyLine = { state: 'checking' };
   renderQrzRow();
   var reply = null;
   try { reply = await qrzRelay('/qrz/status', { key: key, app: appServed || undefined }); } catch (e) { reply = null; }
-  if (qrzLoad(QRZ_KEY_STORE).key !== key) return;  // changed again while QRZ was asked
+  if (seq !== qrzKeySeq) return;  // another key was typed while QRZ was asked
+  var state = qrzState();
+  state.budget = QrzSync.noteRun(state.budget, Date.now(), 1, !!(reply && reply.ok));
+  var book = reply && reply.ok ? reply.callsign : '';
+  var saved = await putConfigLine('qrz_key=' + key + '\nqrz_book=' + book + '\nqrz_live=', 'Saving the QRZ key…', false)
+    .catch(function () { return false; });
+  if (seq !== qrzKeySeq) return;
+  if (!saved) {
+    qrzSeenKey = null;  // the line and row go back to what the station holds
+    qrzConfigChanged();
+    return;
+  }
+  qrzWhole = { masked: lastCfg.qrz_key || '', key: key };
+  state.for = lastCfg.qrz_key || '';
+  qrzSaveState(state);
   if (reply && reply.ok) {
-    qrzSave(QRZ_KEY_STORE, { key: key, book: reply.callsign });  // a new key starts with sending by itself off
     qrz.keyLine = { state: 'ok', book: reply.callsign, count: reply.count };
   } else if (reply && reply.error === 'auth') {
     qrz.keyLine = { state: 'refused' };
@@ -8186,24 +8303,18 @@ document.getElementById('qrzKey').onchange = async function () {
   } else {
     qrz.keyLine = { state: 'unchecked' };
   }
-  var state = qrzLoad(QRZ_STATE_STORE);
-  state.budget = QrzSync.noteRun(state.budget, Date.now(), 1, !!(reply && reply.ok));
-  qrzSave(QRZ_STATE_STORE, state);
   renderQrzRow();
   if (reply && reply.ok) qrzRun(false, true);  // a key QRZ takes is looked with at once
-};
+}
 
 // Sending by itself, from today on: the day is kept so that turning it on never sends what was logged before.
-document.getElementById('qrzLive').onchange = function () {
-  var cred = qrzLoad(QRZ_KEY_STORE);
-  if (!cred.key) { renderQrzRow(); return; }
-  if (this.value === '1') cred.live = utcDayFile().slice(0, 8);
-  else delete cred.live;
-  qrzSave(QRZ_KEY_STORE, cred);
+document.getElementById('qrzLive').onchange = async function () {
+  if (!qrzCred().key) { renderQrzRow(); return; }
+  var day = this.value === '1' ? utcDayFile().slice(0, 8) : '';
+  var ok = await putConfigLine('qrz_live=' + day, 'Setting QRZ sending…', false).catch(function () { return false; });
   renderQrzRow();
-  if (cred.live) qrzRun(false, true);
+  if (ok && day) qrzRun(false, true);
 };
-renderQrzRow();
 
 // ===================== boot =====================
 
@@ -8314,13 +8425,9 @@ function loadStateCache() {
   } catch (e) { /* corrupt or unavailable -- boot normally, no seed */ }
 }
 loadStateCache();
-loadDistUnit();
+applyStationPrefs(lastCfg, true);
+qrzConfigChanged();
 renderDecodeControls();
-document.getElementById('dist_unit').value = distUnit;
-loadShowBearing();
-document.getElementById('show_bearing').checked = showBearing;
-loadShowQueueMarks();
-document.getElementById('show_queue_marks').checked = showQueueMarks;
 loadTheme();
 document.getElementById('theme_pref').value = themePref;
 if (Object.keys(lastCfg).length) {
