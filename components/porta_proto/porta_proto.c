@@ -645,6 +645,17 @@ bool porta_proto_parse_tx_hud(const porta_frame_t *f, porta_tx_hud_event_t *out)
 
 // --- ACTION payloads -----------------------------------------------------
 
+uint32_t porta_proto_dated_slot_idx(uint32_t epoch_secs, int64_t slot_idx, uint8_t slot_len_ds)
+{
+    if (epoch_secs == 0 || slot_idx <= 0 || slot_len_ds == 0) {
+        return 0;
+    }
+    if (slot_idx * (int64_t)slot_len_ds / 10 < (int64_t)PORTA_CLOCK_FLOOR_SECS || slot_idx > UINT32_MAX) {
+        return 0;
+    }
+    return (uint32_t)slot_idx;
+}
+
 size_t porta_proto_encode_set_clock(uint32_t epoch_secs, uint16_t millis,
                                     uint8_t *out, size_t out_cap)
 {

@@ -594,6 +594,16 @@ typedef enum {
 // will not decode until UTC is right.
 size_t porta_proto_encode_set_clock(uint32_t epoch_secs, uint16_t millis,
                                     uint8_t *out, size_t out_cap);
+
+// The earliest time a SET_CLOCK may carry: the host refuses one before it, since this is the one
+// path that sets the clock with no human looking (docs/architecture/time.md, Browser sync).
+#define PORTA_CLOCK_FLOOR_SECS 1700000000u
+
+// A slot index for an event, or 0 when it names no real time: the host's clock is unset now
+// (`epoch_secs` 0), or the slot was counted before it was set, so its start, slot_idx *
+// slot_len_ds * 100 ms, falls before PORTA_CLOCK_FLOOR_SECS. A set while a slot's decodes are
+// still going out would otherwise send that slot's uptime index, which reads as 1970.
+uint32_t porta_proto_dated_slot_idx(uint32_t epoch_secs, int64_t slot_idx, uint8_t slot_len_ds);
 bool porta_proto_parse_set_clock(const porta_frame_t *f, uint32_t *epoch_secs_out,
                                  uint16_t *millis_out);
 

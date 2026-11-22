@@ -4485,6 +4485,18 @@ async function autoSyncClock() {
   }
 }
 
+// The main board says its clock is unset: SLOT_STATE, sent each second, carries t 0 (time.md).
+// It restarted, or a set has not landed, so set it now rather than at the next 3-minute sync.
+// At most every CLOCK_UNSET_RETRY_MS: a set the main board refuses must not repeat every second.
+var clockUnsetSyncAt = 0;
+var CLOCK_UNSET_RETRY_MS = 10000;
+function clockUnsetSeen() {
+  if (Date.now() - clockUnsetSyncAt < CLOCK_UNSET_RETRY_MS) return;
+  clockUnsetSyncAt = Date.now();
+  clockNextSyncAfter = 0;
+  autoSyncClock();
+}
+
 // Resolves true/false so a caller can chain a follow-up action on success
 // only (rbStop's onclick, below) -- every existing caller before that one
 // just .catch()es the promise and ignores what it resolves to, so this is
@@ -6438,6 +6450,7 @@ function applyEvent(e) {
     }
   } else if (e.d === 3) {
     slotState = { sp: e.sp, hz: e.hz, md: e.md | 0 };
+    if (!e.t) clockUnsetSeen();
   } else if (e.d === 4) {
     if (e.active && !(txHud && txHud.active)) {
       txKeyedAt = Date.now();

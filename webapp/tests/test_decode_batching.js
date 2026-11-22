@@ -98,6 +98,9 @@ function freshSandbox() {
     band: {},
     noteBandEvent: function () {},
     SLOT_MS: 15000,
+    // Counts the times a slot event said the main board's clock is unset (time.md).
+    clockUnsets: 0,
+    clockUnsetSeen: function () { sandbox.clockUnsets++; },
   };
   vm.createContext(sandbox);
   vm.runInContext(extracted, sandbox, { filename: 'app.html (extracted)' });
@@ -423,6 +426,14 @@ check("a reload's /api/state reply replaces the cached slots, queue and TX HUD",
   assert.strictEqual(sb.decodeSlots.map((sl) => sl[0].x).join('|'), 'AG6AQ N6HAN -12|CQ N6HAN CM87');
   assert.strictEqual(Object.keys(sb.queue).length, 0, 'no cached queue entry survives');
   assert.strictEqual(sb.txHud, null, 'no cached transmission survives');
+});
+
+check('a slot event with no time asks for a clock set; one with a time does not', () => {
+  const sb = freshSandbox();
+  sb.applyEvent({ d: 3, sp: 0, hz: 0, t: 1795000000 });
+  assert.strictEqual(sb.clockUnsets, 0, 'a set clock asks nothing');
+  sb.applyEvent({ d: 3, sp: 1, hz: 0, t: 0 });
+  assert.strictEqual(sb.clockUnsets, 1, 't 0 is the main board saying its clock is unset');
 });
 
 if (failures > 0) {

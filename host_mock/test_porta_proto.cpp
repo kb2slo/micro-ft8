@@ -336,6 +336,24 @@ static void test_unset_clock_round_trips()
     }
 }
 
+// A slot's index goes out only when it names a real time: not on an unset clock, and not for a
+// slot counted on uptime before a set landed, which would read as 1970 (porta_proto.h).
+static void test_dated_slot_idx()
+{
+    const uint32_t now = 1795000000u;             // 2026-11, a set clock
+    const int64_t ft8 = now / 15, ft4 = (int64_t)now * 10 / 75;
+    check(porta_proto_dated_slot_idx(now, ft8, 150) == (uint32_t)ft8, "an FT8 slot on a set clock keeps its index");
+    check(porta_proto_dated_slot_idx(now, ft4, 75) == (uint32_t)ft4, "an FT4 period on a set clock keeps its index");
+    check(porta_proto_dated_slot_idx(0, ft8, 150) == 0, "an unset clock sends no index");
+    check(porta_proto_dated_slot_idx(now, 400, 150) == 0, "a slot counted on uptime, set since, sends no index");
+    check(porta_proto_dated_slot_idx(now, 400, 75) == 0, "an FT4 period counted on uptime sends no index");
+    const int64_t floor_idx = ((int64_t)PORTA_CLOCK_FLOOR_SECS + 14) / 15;  // the first slot starting at or after it
+    check(porta_proto_dated_slot_idx(now, floor_idx, 150) == (uint32_t)floor_idx, "a slot at the floor is dated");
+    check(porta_proto_dated_slot_idx(now, floor_idx - 1, 150) == 0, "a slot just before the floor is not");
+    check(porta_proto_dated_slot_idx(now, ft8, 0) == 0, "no slot length, no index");
+    check(porta_proto_dated_slot_idx(now, (int64_t)UINT32_MAX + 1, 150) == 0, "an index past 32 bits is not sent wrapped");
+}
+
 static void test_decode_event()
 {
     porta_decoder_t d;
@@ -2033,6 +2051,7 @@ int main()
     test_hello_rejects_wrong_shape();
     test_log_event();
     test_unset_clock_round_trips();
+    test_dated_slot_idx();
     test_decode_event();
     test_queue_entry_event();
     test_slot_state_event();
