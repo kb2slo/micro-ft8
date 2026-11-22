@@ -23,6 +23,13 @@ constexpr int AUTOSEQ_TRIES_MAX_CQ = 99;
 // window (kAdifLoggerDedupeWindowMs; decode_pipeline.cpp asserts it), so a
 // call is refused a new QSO for exactly as long as its parked entry lives.
 constexpr int64_t AUTOSEQ_INACTIVE_EXPIRY_MS = 10 * 60 * 1000LL;
+// The busy hold (docs/architecture/autoseq.md, The busy hold): a station heard continuing a QSO with
+// another call within this many of its channel's slots is busy, and an opening call to it waits.
+constexpr int AUTOSEQ_BUSY_SLOTS = 4;
+// A hold this long ends the entry, as if its last try were used.
+constexpr int64_t AUTOSEQ_HOLD_MAX_MS = 5 * 60 * 1000LL;
+// Stations whose newest move is kept for it; a full table drops the one heard longest ago.
+constexpr int AUTOSEQ_HEARD_CAPACITY = 64;
 
 // High-level auto-sequencer states
 // Order matters for priority sorting (higher = more advanced in QSO)
@@ -106,6 +113,10 @@ struct QsoContext {
     // offset its station last heard from us (autoseq_remembered_tx_offset()).
     int tx_offset_hz = 0;
     int slot_id = 0;        // TX slot (0=even, 1=odd), in its own channel's mode's slots
+    // An opening call whose station is working someone else (The busy hold): it transmits nothing and
+    // spends no tries. held_since_ms is when the hold began (esp_timer ms), 0 while not held.
+    bool held = false;
+    int64_t held_since_ms = 0;
     // The channel it runs on, its dial and mode: a decode continues the entry for its call on its own channel
     // only, so an FT8 QSO and an FT4 QSO with one station are two entries. The CQ's is the one it was called on.
     RxChannel channel;
@@ -192,6 +203,14 @@ AutoseqTouchResult autoseq_on_touch(const UiRxLine& msg, bool hold_queue_head);
 
 // Automatic response: process all decoded messages addressed to us
 void autoseq_on_decodes(const std::vector<UiRxLine>& to_me_messages);
+
+// The busy hold: note what one decode, any decode, says of its sender (busy_hold.h), on its channel.
+// Call for every decode of a slot, then autoseq_refresh_holds() once.
+void autoseq_note_heard(const UiRxLine& msg);
+
+// Hold each opening call whose station is busy, release the ones whose station is free, and end a hold
+// older than AUTOSEQ_HOLD_MAX_MS; then re-sort, so the head is what can be answered.
+void autoseq_refresh_holds();
 
 // TX retry tick - call AFTER TX completes to set up retry
 // This advances retry counter and sets next_tx for the next attempt
