@@ -31,3 +31,7 @@ const char* hl2_transport_state_name(void);
 
 // The ADC clipped with the LNA already at its floor, within the last 15 s: the slot bar's Overload cue. Any task.
 bool hl2_transport_overloaded(void);
+
+// The gateware version the HL2 last answered discovery with this boot (74.2 is 74 and 2), for the drawer, so a
+// report names it (docs/architecture/hl2.md, Gateware). False until an HL2 has answered. Any task.
+bool hl2_transport_gateware(unsigned* major, unsigned* minor);

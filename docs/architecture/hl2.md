@@ -34,7 +34,7 @@ This doc holds the rest: the codec's contract, the link, how receive is set up a
 
 ## Gateware
 
-The standard `hl2b5up_main`, **74.2** (`883a338`): four receivers and a transmitter. 74.3 changes only DHCP and address handling and exists only as a testing release in the repository (`74p3`, `f0247d4`), not on the Releases page. The receive-only variants (`cicrx` 10 receivers, `6rx` 6, `4000` 5) cannot transmit.
+The standard `hl2b5up_main`, **74.2** (`883a338`): four receivers and a transmitter. 74.3 changes only DHCP and address handling and exists only as a testing release in the repository (`74p3`, `f0247d4`), not on the Releases page. The receive-only variants (`cicrx` 10 receivers, `6rx` 6, `4000` 5) cannot transmit. The radio drawer shows the version the HL2 answered discovery with, so a report names it: `hl2_gw` in the config snapshot (`hl2_transport_gateware()`, `porta_host.cpp`), as **Gateware**, marked untested when it is not 74.2 (`hl2GatewareRow()`, `webapp/tests/test_hl2_gateware.js`).
 
 ## Facts
 

@@ -72,6 +72,7 @@ static std::atomic<int64_t> s_overload_until_us{0};  // the ADC clipped with the
 // Ethernet could not start: a half-started EMAC is not installed twice, so the HL2 stays off until the P4
 // restarts. Set by the HL2 task, which starts Ethernet, and read by the main loop.
 static std::atomic<bool> s_failed{false};
+static std::atomic<int> s_gateware{-1};  // major << 8 | minor, from the last discovery reply; -1 for none
 
 static void set_state(Hl2State st)
 {
@@ -501,6 +502,7 @@ static void hl2_task(void* /*arg*/)
             debug_log_line("HL2 address collides with this P4's; HL2 receive stopped this boot");
             break;
         }
+        s_gateware.store(reply.gateware_major << 8 | reply.gateware_minor);
         char line[128];
         snprintf(line, sizeof line, "HL2 found at %u.%u.%u.%u: gateware %u.%u, %u receivers, %.1f C", a[0], a[1],
                  a[2], a[3], reply.gateware_major, reply.gateware_minor, reply.receivers,
@@ -628,4 +630,13 @@ int hl2_audio_read_ft8_samples(void* /*ctx*/, float* const* outs, int n_channels
                                       static_cast<size_t>(max_samples));
     s_frontend_us.fetch_add(static_cast<uint32_t>(esp_timer_get_time() - t0), std::memory_order_relaxed);
     return n > 0 ? n : 0;
+}
+
+bool hl2_transport_gateware(unsigned* major, unsigned* minor)
+{
+    const int g = s_gateware.load();
+    if (g < 0) return false;
+    *major = static_cast<unsigned>(g >> 8);
+    *minor = static_cast<unsigned>(g & 0xff);
+    return true;
 }

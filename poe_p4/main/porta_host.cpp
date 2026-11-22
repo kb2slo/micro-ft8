@@ -816,6 +816,14 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap) {
              hl2_transport_state_name(), hl2_transport_overloaded() ? 1 : 0);
     text += live;
 
+    // The HL2's gateware, as its discovery reply gave it, while it is the radio (docs/architecture/hl2.md, Gateware).
+    unsigned gw_major = 0, gw_minor = 0;
+    if (strcmp(hl2_transport_state_name(), "off") != 0 && hl2_transport_gateware(&gw_major, &gw_minor)) {
+        char gw[24];
+        snprintf(gw, sizeof(gw), "hl2_gw=%u.%u\n", gw_major, gw_minor);
+        text += gw;
+    }
+
     // What the radio last said of itself (IF;), against what Micro-FT8 means it to be: both in
     // Hz, so the page can tell a knob turned from a band changed. Absent until a reply arrives.
     char fw[16];
