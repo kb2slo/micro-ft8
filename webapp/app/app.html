@@ -1,8 +1,10 @@
 <!doctype html>
 <meta charset=utf-8>
-<meta name=viewport content='width=device-width,initial-scale=1'>
+<meta name=viewport content='width=device-width,initial-scale=1,viewport-fit=cover'>
 <title>Micro-FT8</title>
-<!-- Added to the Home Screen it opens full screen, with this icon and name (webapp.md, Home Screen). -->
+<!-- Added to the Home Screen it opens full screen, with this icon and name (webapp.md, Home Screen). viewport-fit=cover
+     makes iOS report the safe areas (env(safe-area-inset-*)), which the top row, the tab bar and the full-screen
+     panels pad by; in a browser tab, on Android and on a home-button iPhone they are 0. -->
 <meta name=apple-mobile-web-app-capable content=yes>
 <meta name=mobile-web-app-capable content=yes>
 <meta name=apple-mobile-web-app-title content=Micro-FT8>
@@ -112,7 +114,7 @@ button:disabled{opacity:.45}
 
 /* No title row: Operate's slot bar is the top of the screen, and Settings is a tab
    (operator decision 2026-10-25). */
-.wrap{padding-top:.4rem}
+.wrap{padding-top:calc(.4rem + env(safe-area-inset-top));padding-left:max(1rem, env(safe-area-inset-left));padding-right:max(1rem, env(safe-area-inset-right))}
 
 /* ---- tab track ---- */
 /* The page does not scroll. #viewport is a fixed strip, and each tab scrolls
@@ -140,10 +142,10 @@ button:disabled{opacity:.45}
    destination you navigate to and back from, not a transient popover. */
 #pskrList{position:fixed;inset:0;z-index:12;background:Canvas;color:CanvasText;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .25s ease}
 #pskrList.open{transform:translateY(0)}
-#pskrListHead{flex:none;display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+#pskrListHead{flex:none;display:flex;align-items:center;gap:.5rem;padding:calc(.75rem + env(safe-area-inset-top)) 1rem .75rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
 #pskrListHead h2{flex:1;font-size:1.05rem;margin:0}
 #pskrListBack{border:0;background:transparent;color:var(--accent);font-size:.95rem;padding:.3rem .2rem .3rem 0}
-#pskrListBody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+#pskrListBody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:env(safe-area-inset-bottom)}
 
 /* Full-screen blocker while a factory-reset restart is awaited (waitForSetupPage()): the sidekick
    is going away, so nothing behind it can work. No close control; it ends in a redirect. */
@@ -176,7 +178,9 @@ button:disabled{opacity:.45}
 #fwCard button,#askCard button,#appCard button{margin-top:.5rem;width:100%}
 
 /* ---- tab bar ---- */
-#tabbar{position:fixed;left:0;right:0;bottom:0;display:flex;border-top:1px solid GrayText;background:Canvas}
+/* Padded by the safe areas, so its labels sit clear of the iPhone's home indicator when it opens from the Home
+   Screen; layoutDock() measures the padded height into --tabbar-h. */
+#tabbar{position:fixed;left:0;right:0;bottom:0;display:flex;border-top:1px solid GrayText;background:Canvas;padding:0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 #tabbar button{flex:1;border:0;border-radius:0;background:transparent;padding:.5rem 0 .6rem;font-size:.7rem;display:flex;flex-direction:column;align-items:center;gap:.15rem;color:GrayText}
 #tabbar button.on{color:CanvasText;font-weight:700}
 #tabbar svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -317,7 +321,7 @@ body.on-operate #opToast{bottom:calc(var(--tabbar-h,3.375rem) + var(--dock-h,0px
    current, and #view-operate is shortened by --dock-h, so the last decode is
    never hidden behind it. */
 #opDock{position:fixed;left:0;right:0;bottom:var(--tabbar-h,3.375rem);z-index:5;background:Canvas;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent);border-radius:14px 14px 0 0;box-shadow:0 -4px 14px rgba(0,0,0,.07)}
-#opDock .dockinner{max-width:26rem;margin:0 auto;padding:0 1rem;box-sizing:border-box}
+#opDock .dockinner{max-width:26rem;margin:0 auto;padding:0 max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left));box-sizing:border-box}
 body:not(.on-operate) #opDock{display:none}
 
 /* ---- operate: queue ---- */
