@@ -23,7 +23,7 @@ Rows other epics and the index own; 1.0 is not cut until each has shipped. Each 
 * **The settings format:** [mtd6](../ROADMAP.md#mtd6), so the first update after 1.0 is not a migration.
 * **First run:** the page setting an unset main board's clock at once ([time.md](../architecture/time.md), **Browser sync over Port A**), shipped 2026-11-21; [cg7h](../ROADMAP.md#cg7h).
 * **The sidekick serving the app without stalls** (operator, 2026-11-09): a stranger's first session must not read No contact. A wait on the main board no longer holds the whole server ([sidekick.md](../architecture/sidekick.md), **Tasks and cores**), and since 2026-11-19 a page that falls behind the event ring is resynced and the main board's per-slot lines stay off it ([sidekick.md](../architecture/sidekick.md), **Port A**).
-* **The HL2, receive only and labelled experimental:** [nngr](hl2-support.md#nngr) (epic [knpp](hl2-support.md)).
+* **The HL2, receive only and labelled experimental:** its gateware version in the drawer shipped 2026-11-21 ([hl2.md](../architecture/hl2.md), **Gateware**); the site pass labels it ([pn83](#pn83)).
 * **Field checks:** no [TEST_PLAN.md](../TEST_PLAN.md) Pending row on a path 1.0 claims (row [swsu](../ROADMAP.md#swsu)).
 * **Wanted, not gating:** [qauk](../ROADMAP.md#qauk), [kkap](../ROADMAP.md#kkap).
 

@@ -3099,6 +3099,15 @@ function fmtRadioFirmware(vn) {
   return m[1].replace(/_/g, '.') + (m[2] ? ' (' + m[2] + ')' : '');
 }
 
+// The HL2's gateware row for the drawer, or null: the version its discovery reply gave (hl2_gw), so a report
+// names it, marked when it is not the one Micro-FT8 is tested on (docs/architecture/hl2.md, Gateware).
+var HL2_TESTED_GATEWARE = '74.2';
+function hl2GatewareRow(cfg) {
+  if (String(cfg.radio) !== '6' || !cfg.hl2_gw) return null;
+  var v = String(cfg.hl2_gw);
+  return ['Gateware', v === HL2_TESTED_GATEWARE ? v : v + ' \u00b7 untested: Micro-FT8 is tested on ' + HL2_TESTED_GATEWARE];
+}
+
 function fmtHzMHz(hz) { return (hz / 1e6).toFixed(4).replace(/0+$/, '').replace(/\.$/, '.0'); }
 
 // ===================== Operate: the radio bar (webapp.md, The radio bar) =====================
@@ -3392,6 +3401,8 @@ function renderRadioDrawer(cfg, st) {
     }
     if (st === 'drift') note = 'The radio is not where Micro-FT8 put it: a knob was turned, or another program changed it.';
   }
+  var gw = st === 'unpaired' || st === 'nomain' || st === 'nolink' ? null : hl2GatewareRow(cfg);
+  if (gw) rows.push(gw);
   // Ready says it in one line, so the drawer stays short; a problem state lists the rows. Its frequency is the VFO
   // line's, under the frequency rows (vfoLine()).
   var summary = '';
