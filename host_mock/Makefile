@@ -84,6 +84,7 @@ QMX_IQ_CHANNEL_TARGET = host_test_qmx_iq_channel
 SLOT_DEFICIT_TARGET = host_test_slot_deficit
 SAMPLE_RING_TARGET = host_test_sample_ring
 BLOCK_ACTIVITY_TARGET = host_test_block_activity
+TX_SLOT_TARGET = host_test_tx_slot
 CORE_BUSY_TARGET = host_test_core_busy
 DECODE_RETRY_TARGET = host_test_decode_retry
 DECODE_BUDGET_TARGET = host_test_decode_budget
@@ -105,7 +106,7 @@ all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARG
      $(WEB_PAGE_TARGET) $(EVENT_STATE_TARGET) $(FW_POLICY_TARGET) $(AP_NAME_TARGET) $(APP_PACK_TARGET) $(APP_PUSH_TARGET) $(PORTA_FW_RX_TARGET) \
      $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(BUSY_HOLD_TARGET) $(CHANNEL_ENTRIES_TARGET) $(ROGERS_ONCE_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
      $(CAT_REPLY_PARSER_TARGET) $(AMP_BAND_PRIME_TARGET) $(SWR_SWEEP_TARGET) $(SWR_TRIP_TARGET) $(TX_WATCHDOG_TARGET) $(TX_READY_TARGET) $(TX_OFFSET_TARGET) $(QMX_IQ_LINK_TARGET) $(QMX_MENU_READ_TARGET) $(QMX_MENU_WRITE_TARGET) $(QMX_IQ_CHANNEL_TARGET) \
-     $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(BLOCK_ACTIVITY_TARGET) $(CORE_BUSY_TARGET) \
+     $(SLOT_DEFICIT_TARGET) $(SAMPLE_RING_TARGET) $(BLOCK_ACTIVITY_TARGET) $(TX_SLOT_TARGET) $(CORE_BUSY_TARGET) \
      $(DECODE_RETRY_TARGET) $(DECODE_BUDGET_TARGET) $(DECODE_SYNC_TARGET) $(DECODE_SNR_TARGET) \
      $(PORTA_OUT_QUEUE_TARGET) $(HEARD_GRID_TARGET) $(DECODE_FIELDS_TARGET) $(RTC_CORE_TARGET) \
      $(HL2_PROTO_TARGET) $(RADIO_CONTROL_TARGET) $(IQ_FRONTEND_TARGET) $(HL2_FRONTEND_TARGET) \
@@ -284,6 +285,18 @@ ft8_block_activity.o: ../components/ft8_audio_pipeline/ft8_block_activity.c
 test_block_activity.o: test_block_activity.cpp
 	$(CXX) $(CXXFLAGS) -I../components/ft8_audio_pipeline/include -c $< -o $@
 $(BLOCK_ACTIVITY_TARGET): $(BLOCK_ACTIVITY_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+TX_SLOT_OBJ = ft8_tx_slot.o decode_tx_state.o test_tx_slot.o
+TX_SLOT_INC = -I../components/ft8_audio_pipeline/include -I../components/decode_tx_state/include \
+              -I../components/radio_control/include
+ft8_tx_slot.o: ../components/ft8_audio_pipeline/ft8_tx_slot.cpp
+	$(CXX) $(CXXFLAGS) $(TX_SLOT_INC) -c $< -o $@
+decode_tx_state.o: ../components/decode_tx_state/decode_tx_state.cpp
+	$(CXX) $(CXXFLAGS) $(TX_SLOT_INC) -c $< -o $@
+test_tx_slot.o: test_tx_slot.cpp
+	$(CXX) $(CXXFLAGS) $(TX_SLOT_INC) -c $< -o $@
+$(TX_SLOT_TARGET): $(TX_SLOT_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 CORE_BUSY_OBJ = decode_core_busy.o test_core_busy.o
@@ -526,6 +539,7 @@ clean:
 	      $(DECODE_SYNC_OBJ) $(DECODE_SYNC_TARGET) \
 	      $(DECODE_SNR_OBJ) $(DECODE_SNR_TARGET) \
 	      $(BLOCK_ACTIVITY_OBJ) $(BLOCK_ACTIVITY_TARGET) \
+	      $(TX_SLOT_OBJ) $(TX_SLOT_TARGET) \
 	      $(ROGERS_ONCE_OBJ) $(ROGERS_ONCE_TARGET) \
 	      $(HEARD_GRID_OBJ) $(HEARD_GRID_TARGET) \
 	      $(DECODE_FIELDS_OBJ) $(DECODE_FIELDS_TARGET) \

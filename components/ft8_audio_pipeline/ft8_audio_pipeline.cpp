@@ -2,6 +2,7 @@
 #include "ft8_sample_ring.h"
 #include "ft8_slot_deficit.h"
 #include "ft8_block_activity.h"
+#include "ft8_tx_slot.h"
 #include "decode_tx_state.h"
 #include "debug_log.h"
 
@@ -265,37 +266,25 @@ static void send_activity(const Ft8Channel* ch, const ft8_activity_batch_t& b)
                          ch->activity_hi_hz);
 }
 
-// A full block is in ch->block: AGC, waterfall, activity, then the slot boundary or the decode trigger.
-// `queued` is the samples behind this block's last one, which dates the block by its audio.
-// Marks a slot of the station's channel applied for the TX gate (decode_tx_state.h); another channel's
-// slots are not the station's and touch nothing.
-// The FT4 channel beside FT8, which an FT4 transmission is timed and gated by (decode_tx_state.h).
-static bool is_ft4_beside(const Ft8Channel* ch)
+static bool is_ft4(const Ft8Channel* ch)
 {
-    return !ch->chan->station && ch->chan->mode->protocol_id == FTX_PROTOCOL_FT4;
+    return ch->chan->mode->protocol_id == FTX_PROTOCOL_FT4;
 }
 
-// The transmission index this channel's slot is skipped by: FT8's slot for the station, FT4's period beside it.
+// The transmission's slot, skipped and then cleared, and the applied marks for the TX gate (ft8_tx_slot.h).
 static bool is_tx_slot(const Ft8Channel* ch)
 {
-    if (ch->chan->station) return ch->slot_idx == decode_tx_state_get_tx_slot_idx();
-    return is_ft4_beside(ch) && ch->slot_idx == decode_tx_state_get_tx_ft4_period_idx();
+    return ft8_tx_slot_is_tx(is_ft4(ch), ch->chan->station, ch->slot_idx);
 }
 
 static void clear_tx_slot(const Ft8Channel* ch)
 {
-    if (!is_tx_slot(ch)) return;
-    if (ch->chan->station) decode_tx_state_set_tx_slot_idx(-1);
-    else decode_tx_state_set_tx_ft4_period_idx(-1);
+    ft8_tx_slot_clear(is_ft4(ch), ch->chan->station, ch->slot_idx);
 }
 
 static void mark_applied(const Ft8Channel* ch, int64_t slot_idx)
 {
-    if (ch->chan->station && slot_idx > decode_tx_state_get_decode_applied_slot_idx()) {
-        decode_tx_state_set_decode_applied_slot_idx(slot_idx);
-    } else if (is_ft4_beside(ch) && slot_idx > decode_tx_state_get_ft4_applied_period_idx()) {
-        decode_tx_state_set_ft4_applied_period_idx(slot_idx);
-    }
+    ft8_tx_slot_mark_applied(is_ft4(ch), ch->chan->station, slot_idx);
 }
 
 // Blocks this slot's decode starts after: its mode's, and for FT4's second period beside FT8 an earlier one
@@ -317,6 +306,8 @@ static void slot_undecoded(const Ft8Channel* ch, const char* what, int64_t slot_
     }
 }
 
+// A full block is in ch->block: AGC, waterfall, activity, then the slot boundary or the decode trigger.
+// `queued` is the samples behind this block's last one, which dates the block by its audio.
 static void channel_block(Ft8Channel* ch, int64_t queued)
 {
     const ft8_audio_pipeline_config_t* cfg = ch->cfg;
