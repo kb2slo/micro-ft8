@@ -14,7 +14,7 @@ if (navigator.standalone === true || (window.matchMedia && matchMedia('(display-
 </script>
 <meta name=apple-mobile-web-app-capable content=yes>
 <meta name=mobile-web-app-capable content=yes>
-<meta name=apple-mobile-web-app-title content=Micro-FT8>
+<meta name=apple-mobile-web-app-title content=micro-FT8>
 <link rel=apple-touch-icon href=icon-180.png>
 <link rel=stylesheet href=wordmark.css>
 <!--
@@ -127,10 +127,12 @@ button:disabled{opacity:.45}
    status bar, where iOS also blurs a little below the bar; --standalone-top keeps the wordmark clear of that blur
    and is a bench guess, to be tuned from a screenshot. The header takes the top inset, so the column's own top
    padding goes back to a browser's. The wordmark's face is wordmark.css's (webapp/tools/make_wordmark.py), and the
-   icon is drawn from this same markup (webapp/tools/make_icon.mjs). Inset like #opTop, so it lines up with the slot bar. */
+   icon is drawn from this same markup (webapp/tools/make_icon.mjs). Inset like #opTop, so it lines up with the slot bar.
+   Sticky, with its own background: iOS 26 blurs page content under the status bar, but a bar fixed or sticky at the
+   top has its colour carried up instead (untested on a phone, 2026-11-22: the in-flow header read blurred). */
 :root{--standalone-top:8px}
 #appHead{display:none}
-.standalone #appHead{display:flex;flex:none;align-items:baseline;width:100%;max-width:26rem;margin:0 auto;align-self:center;box-sizing:border-box;padding:calc(env(safe-area-inset-top) + var(--standalone-top)) calc(max(1rem, env(safe-area-inset-right)) + 1rem) .1rem calc(max(1rem, env(safe-area-inset-left)) + 1rem)}
+.standalone #appHead{display:flex;flex:none;position:sticky;top:0;z-index:6;background:Canvas;align-items:baseline;width:100%;max-width:26rem;margin:0 auto;align-self:center;box-sizing:border-box;padding:calc(env(safe-area-inset-top) + var(--standalone-top)) calc(max(1rem, env(safe-area-inset-right)) + 1rem) .1rem calc(max(1rem, env(safe-area-inset-left)) + 1rem)}
 .standalone .wrap{padding-top:.4rem}
 .standalone #pskrListHead{padding-top:calc(.75rem + env(safe-area-inset-top) + var(--standalone-top))}
 .wordmark{font-family:'Micro-FT8 Wordmark','Inter',system-ui,sans-serif;font-size:1.3rem;line-height:1.2;letter-spacing:-.02em;white-space:nowrap;color:CanvasText;margin:0}
@@ -689,7 +691,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
    time we select a callsign anywhere in the web app"), not defined here. */
 </style>
 
-<header id=appHead><h1 class=wordmark aria-label=Micro-FT8><span class=wm-m>micro-</span><span class=wm-f>FT8</span></h1></header>
+<header id=appHead><h1 class=wordmark aria-label=micro-FT8><span class=wm-m>micro-</span><span class=wm-f>FT8</span></h1></header>
 <div class=wrap>
 <div id=viewport>
 <!-- The pinned top, on every tab (webapp.md, Operate's pinned regions): the slot bar with the
