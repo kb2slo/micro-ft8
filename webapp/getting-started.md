@@ -36,7 +36,7 @@ You need the main board and sidekick on their Grove cable, your QMX (validated o
 
 ## 2. Open the app
 
-- Join the phone to the WiFi network `micro-ft8.local` and four characters (open, unless you set a password in **Settings**), open [`http://192.168.4.1`](http://192.168.4.1/) and tap **Operate in AP mode**, or scan the code at the top. Bookmark the app.
+- Join the phone to the WiFi network `micro-ft8.local` and four characters (open, unless you set a password in **Settings**), open [`http://192.168.4.1`](http://192.168.4.1/) and tap **Operate in AP mode**, or scan the code at the top. Add it to your Home Screen.
 - Cellular internet comes and goes meanwhile. Android may warn that the network has no internet: stay connected.
 
 ## 3. Pair your phone

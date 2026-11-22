@@ -2,6 +2,21 @@
 <meta charset=utf-8>
 <meta name=viewport content='width=device-width,initial-scale=1'>
 <title>Micro-FT8</title>
+<!-- Added to the Home Screen it opens full screen, with this icon and name (webapp.md, Home Screen). There, and only
+     there, the viewport asks for viewport-fit=cover, which makes iOS report the safe areas (env(safe-area-inset-*))
+     that the top row, the tab bar and the full-screen panels pad by. In a browser tab cover would run the page under
+     Safari's own toolbar and pad the tab bar by it, so a tab keeps the plain viewport and every inset is 0. -->
+<script>
+if (navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)) {
+  document.querySelector('meta[name=viewport]').content = 'width=device-width,initial-scale=1,viewport-fit=cover';
+  document.documentElement.classList.add('standalone');
+}
+</script>
+<meta name=apple-mobile-web-app-capable content=yes>
+<meta name=mobile-web-app-capable content=yes>
+<meta name=apple-mobile-web-app-title content=micro-FT8>
+<link rel=apple-touch-icon href=icon-180.png>
+<link rel=stylesheet href=wordmark.css>
 <!--
   Entry asset for the installed app (docs/architecture/webapp.md (Screens)). Three screens behind one
   bottom tab bar: Operate (default) collapses RX, TX and station status onto one screen; Log browses the day files over the async FILE_LIST/
@@ -105,9 +120,24 @@ button:disabled{opacity:.45}
    min-height:0 lets #viewport shrink instead of the page growing. */
 .wrap{width:100%;max-width:26rem;margin:0 auto;align-self:center;padding:0 1rem;box-sizing:border-box;display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
 
-/* No title row: Operate's slot bar is the top of the screen, and Settings is a tab
-   (operator decision 2026-10-25). */
-.wrap{padding-top:.4rem}
+/* No title row in a browser tab: Operate's slot bar is the top of the screen, and Settings is a tab
+   (operator decision 2026-10-25). From the Home Screen the app has a header, the wordmark (#appHead). */
+.wrap{padding-top:calc(.4rem + env(safe-area-inset-top));padding-left:max(1rem, env(safe-area-inset-left));padding-right:max(1rem, env(safe-area-inset-right))}
+/* From the Home Screen (maintainer, 2026-11-22): the wordmark heads the page, on every tab, in the band under the
+   status bar, with --standalone-top between the bar and the wordmark. The header takes the top inset, so the column's own top
+   padding goes back to a browser's. The wordmark's face is wordmark.css's (webapp/tools/make_wordmark.py), and the
+   icon is drawn from this same markup (webapp/tools/make_icon.mjs). Inset like #opTop, so it lines up with the slot bar.
+   Sticky, with its own background: iOS 26 blurs page content under the status bar, but a bar fixed or sticky at the
+   top has its colour carried up instead: in flow, the wordmark read blurred; sticky, it reads sharp (iPhone,
+   maintainer, 2026-11-22). */
+:root{--standalone-top:8px}
+#appHead{display:none}
+.standalone #appHead{display:flex;flex:none;position:sticky;top:0;z-index:6;background:Canvas;align-items:baseline;width:100%;max-width:26rem;margin:0 auto;align-self:center;box-sizing:border-box;padding:calc(env(safe-area-inset-top) + var(--standalone-top)) calc(max(1rem, env(safe-area-inset-right)) + 1rem) .1rem calc(max(1rem, env(safe-area-inset-left)) + 1rem)}
+.standalone .wrap{padding-top:.4rem}
+.standalone #pskrListHead{padding-top:calc(.75rem + env(safe-area-inset-top) + var(--standalone-top))}
+.wordmark{font-family:'Micro-FT8 Wordmark','Inter',system-ui,sans-serif;font-size:1.3rem;line-height:1.2;letter-spacing:-.02em;white-space:nowrap;color:CanvasText;margin:0}
+.wordmark .wm-m{font-weight:500}
+.wordmark .wm-f{font-weight:800;color:var(--accent)}
 
 /* ---- tab track ---- */
 /* The page does not scroll. #viewport is a fixed strip, and each tab scrolls
@@ -135,10 +165,10 @@ button:disabled{opacity:.45}
    destination you navigate to and back from, not a transient popover. */
 #pskrList{position:fixed;inset:0;z-index:12;background:Canvas;color:CanvasText;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .25s ease}
 #pskrList.open{transform:translateY(0)}
-#pskrListHead{flex:none;display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
+#pskrListHead{flex:none;display:flex;align-items:center;gap:.5rem;padding:calc(.75rem + env(safe-area-inset-top)) 1rem .75rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
 #pskrListHead h2{flex:1;font-size:1.05rem;margin:0}
 #pskrListBack{border:0;background:transparent;color:var(--accent);font-size:.95rem;padding:.3rem .2rem .3rem 0}
-#pskrListBody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+#pskrListBody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:env(safe-area-inset-bottom)}
 
 /* Full-screen blocker while a factory-reset restart is awaited (waitForSetupPage()): the sidekick
    is going away, so nothing behind it can work. No close control; it ends in a redirect. */
@@ -171,7 +201,9 @@ button:disabled{opacity:.45}
 #fwCard button,#askCard button,#appCard button{margin-top:.5rem;width:100%}
 
 /* ---- tab bar ---- */
-#tabbar{position:fixed;left:0;right:0;bottom:0;display:flex;border-top:1px solid GrayText;background:Canvas}
+/* Padded by the safe areas, so its labels sit clear of the iPhone's home indicator when it opens from the Home
+   Screen; layoutDock() measures the padded height into --tabbar-h. */
+#tabbar{position:fixed;left:0;right:0;bottom:0;display:flex;border-top:1px solid GrayText;background:Canvas;padding:0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 #tabbar button{flex:1;border:0;border-radius:0;background:transparent;padding:.5rem 0 .6rem;font-size:.7rem;display:flex;flex-direction:column;align-items:center;gap:.15rem;color:GrayText}
 #tabbar button.on{color:CanvasText;font-weight:700}
 #tabbar svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -312,7 +344,7 @@ body.on-operate #opToast{bottom:calc(var(--tabbar-h,3.375rem) + var(--dock-h,0px
    current, and #view-operate is shortened by --dock-h, so the last decode is
    never hidden behind it. */
 #opDock{position:fixed;left:0;right:0;bottom:var(--tabbar-h,3.375rem);z-index:5;background:Canvas;border-top:1px solid color-mix(in srgb, GrayText 30%, transparent);border-radius:14px 14px 0 0;box-shadow:0 -4px 14px rgba(0,0,0,.07)}
-#opDock .dockinner{max-width:26rem;margin:0 auto;padding:0 1rem;box-sizing:border-box}
+#opDock .dockinner{max-width:26rem;margin:0 auto;padding:0 max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left));box-sizing:border-box}
 body:not(.on-operate) #opDock{display:none}
 
 /* ---- operate: queue ---- */
@@ -659,6 +691,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
    time we select a callsign anywhere in the web app"), not defined here. */
 </style>
 
+<header id=appHead><h1 class=wordmark aria-label=micro-FT8><span class=wm-m>micro-</span><span class=wm-f>FT8</span></h1></header>
 <div class=wrap>
 <div id=viewport>
 <!-- The pinned top, on every tab (webapp.md, Operate's pinned regions): the slot bar with the
@@ -1527,6 +1560,20 @@ document.getElementById('opToastAction').onclick = function () {
   hideToast();
   if (act) act();
 };
+// A one-time hint on an iPhone that did not open the app from the Home Screen (webapp.md, Home Screen): no page
+// can add itself there on iOS, so it says how. navigator.standalone is iOS Safari's own, false only in a tab;
+// Got it keeps it from coming back on this phone, and any failure to store that just shows it again.
+var HOME_HINT_KEY = 'microft8_home_hint_done';
+function homeScreenHintDue(standalone, done) { return standalone === false && !done; }
+(function () {
+  var done = false;
+  try { done = localStorage.getItem(HOME_HINT_KEY) === '1'; } catch (e) { /* show it */ }
+  if (!homeScreenHintDue(navigator.standalone, done)) return;
+  showToast('Add to Home Screen: tap Share, then Add to Home Screen.', 'Got it', function () {
+    try { localStorage.setItem(HOME_HINT_KEY, '1'); } catch (e) { /* shown again next time */ }
+  }, 20000);
+})();
+
 // "Changing band…" -> "Changing band", for "<action> ok." / "<action> failed: …".
 function actionName(busyMsg) { return busyMsg.replace(/(\.\.\.|…)$/, ''); }
 
