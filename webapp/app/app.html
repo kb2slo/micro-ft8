@@ -9,6 +9,7 @@
 <script>
 if (navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches)) {
   document.querySelector('meta[name=viewport]').content = 'width=device-width,initial-scale=1,viewport-fit=cover';
+  document.documentElement.classList.add('standalone');
 }
 </script>
 <meta name=apple-mobile-web-app-capable content=yes>
@@ -121,6 +122,11 @@ button:disabled{opacity:.45}
 /* No title row: Operate's slot bar is the top of the screen, and Settings is a tab
    (operator decision 2026-10-25). */
 .wrap{padding-top:calc(.4rem + env(safe-area-inset-top));padding-left:max(1rem, env(safe-area-inset-left));padding-right:max(1rem, env(safe-area-inset-right))}
+/* From the Home Screen, iOS blurs a band reaching a little below the status bar (2026-11-22): the slot bar sits
+   clear of it. --standalone-top is a bench guess, to be tuned from a screenshot. */
+:root{--standalone-top:8px}
+.standalone .wrap{padding-top:calc(.4rem + env(safe-area-inset-top) + var(--standalone-top))}
+.standalone #pskrListHead{padding-top:calc(.75rem + env(safe-area-inset-top) + var(--standalone-top))}
 
 /* ---- tab track ---- */
 /* The page does not scroll. #viewport is a fixed strip, and each tab scrolls
