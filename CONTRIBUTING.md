@@ -35,7 +35,7 @@ git config core.hooksPath .githooks
 The checks need Python 3, Node, `make`, a C/C++
 compiler, CMake and Chrome (the browser check and the getting-started sheet's PDF), and on their first run network access to GitHub: the decode recall check clones its
 busy corpus ([`tools/decode_recall/README.md`](tools/decode_recall/README.md)). `tools/check.sh` refuses to run a check whose tool is missing, rather than call it a pass. The firmware needs
-ESP-IDF v5.5.5, installed for both boards (`./install.sh esp32p4,esp32s3`): source its `export.sh`, then
+ESP-IDF v5.5.6, installed for both boards (`./install.sh esp32p4,esp32s3`): source its `export.sh`, then
 [poe_p4/README.md](poe_p4/README.md) and [sidekick/README.md](sidekick/README.md) say how to build and
 flash each board. The sidekick's image carries the web app, so its build runs the web build and needs Node
 and, once per clone, the web build's packages:

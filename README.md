@@ -74,7 +74,7 @@ tools/check.sh
 
 `tools/check.sh` runs every check CI runs: the host tests, the web app's build and tests, decode recall
 and the docs. `tools/check.sh --changed` runs only the checks your change can affect. The firmware needs
-ESP-IDF v5.5.5; without `idf.py` on the PATH the two firmware builds report **SKIP**. The sidekick's image
+ESP-IDF v5.5.6; without `idf.py` on the PATH the two firmware builds report **SKIP**. The sidekick's image
 carries the web app, so its build runs the web app's too ([CONTRIBUTING.md](CONTRIBUTING.md), **Setup**).
 Building and flashing each board: [poe_p4/README.md](poe_p4/README.md) and
 [sidekick/README.md](sidekick/README.md).

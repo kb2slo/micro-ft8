@@ -34,7 +34,7 @@ CHECKS="web webapp host_mock sim browser tx_e2e decode_recall tools getting_star
 HOST_CHECKS="web webapp host_mock sim browser tx_e2e decode_recall tools getting_started"
 LOG_DIR="build/check"
 JOBS="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"
-IDF_VERSION="v5.5.5"  # AGENTS.md, Local IDF build / flash
+IDF_VERSION="v5.5.6"  # AGENTS.md, Local IDF build / flash
 
 # What a changed path can affect, as case patterns (a * also crosses /). A
 # changed .md file counts only for a pattern that names it. A tracked path no
