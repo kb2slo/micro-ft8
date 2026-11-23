@@ -14,6 +14,8 @@ var PskrReport = (function () {
   var MAX_HELD = 200;               // spots one post carries: pskr_report.js, MAX_SPOTS
   var MAX_AGE_S = 55 * 60;          // PSKReporter drops a report older than about an hour
   var MIN_GAP_MS = 60 * 1000;       // between two posts of one page, whatever it is told
+  var WINDOW_MS = 5 * 60 * 1000;    // the station's window (pskr_report.js, WINDOW_MS): after a post with
+                                    // nothing new, the next waits one, as after a send
   var FIRST_MS = 30 * 1000;         // the most a first post waits, spread so pages do not post together
   var JITTER_MS = 20 * 1000;        // added to each wait, for the same reason
   var BACKOFF_MS = [1, 2, 4, 8, 15].map(function (m) { return m * 60 * 1000; });
@@ -112,8 +114,11 @@ var PskrReport = (function () {
           nextAt = after + retry + jitter(JITTER_MS);
         } else {
           // Sent, already reported, refused or lost on the way to PSKReporter: none of it is posted again.
+          // Already reported names no wait, and posting again a minute later would cost a request a minute
+          // on a band where everyone heard was reported within the hour: it waits a window, as a send does.
           drop(spots);
-          nextAt = after + Math.max(retry, MIN_GAP_MS) + jitter(JITTER_MS);
+          var nothingNew = reply.ok && !reply.sent && retry === 0;
+          nextAt = after + Math.max(nothingNew ? WINDOW_MS : retry, MIN_GAP_MS) + jitter(JITTER_MS);
         }
         last = { at: after, sent: reply.ok ? (reply.sent | 0) : 0, wait: !!(reply.ok && !reply.sent && retry > 0),
                  error: reply.ok ? '' : String(reply.error || 'refused') };
@@ -153,7 +158,7 @@ var PskrReport = (function () {
   }
 
   return {
-    MAX_HELD: MAX_HELD, MAX_AGE_S: MAX_AGE_S, MIN_GAP_MS: MIN_GAP_MS, FIRST_MS: FIRST_MS, BACKOFF_MS: BACKOFF_MS,
+    MAX_HELD: MAX_HELD, MAX_AGE_S: MAX_AGE_S, MIN_GAP_MS: MIN_GAP_MS, WINDOW_MS: WINDOW_MS, FIRST_MS: FIRST_MS, BACKOFF_MS: BACKOFF_MS,
     spotOf: spotOf, create: create, statusLine: statusLine
   };
 })();

@@ -94,7 +94,8 @@ const spot = (c, t, more) => Object.assign({ c, g: 'FN42', f: 14075500, s: -10, 
     assert.strictEqual(r.held(), 0);
   }
 
-  // Every spot already reported: dropped, and the page does not post again for at least a minute.
+  // Every spot already reported: dropped, and the page waits a window before it posts again, as after a
+  // send, rather than a request a minute on a band whose senders were all reported within the hour.
   {
     const { r, clock, posts } = page(() => Promise.resolve({ ok: true, sent: 0, retry_in: 0 }));
     r.note(spot('K1ABC'));
@@ -103,11 +104,11 @@ const spot = (c, t, more) => Object.assign({ c, g: 'FN42', f: 14075500, s: -10, 
     assert.strictEqual(r.held(), 0);
     assert.strictEqual(R.statusLine(on, r.last(), r.held(), clock.ms), 'Up to date, just now.');
     r.note(spot('W1AW', T0 + 30));
-    clock.ms += 30 * 1000;
-    assert.strictEqual(r.tick(on), null, 'a page posts at most once a minute');
-    clock.ms += R.MIN_GAP_MS;
+    clock.ms += 2 * R.MIN_GAP_MS;
+    assert.strictEqual(r.tick(on), null, 'not a minute later');
+    clock.ms += R.WINDOW_MS;
     await r.tick(on);
-    assert.strictEqual(posts.length, 2);
+    assert.strictEqual(posts.length, 2, 'a window later');
   }
 
   // The site unreachable: kept, and the page backs off. PSKReporter unreachable: dropped.
