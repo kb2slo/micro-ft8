@@ -190,15 +190,10 @@ struct DecodeSlotResult {
   DecodeMsg dec[DEC_MAX];
   bool standard[DEC_MAX];
 };
-// Each channel's copy, and the main loop's one in decode_pipeline_apply(), are allocated on first
-// use from the heap, about 7 KB each (docs/architecture/memory.md lists them).
-static DecodeSlotResult* s_result[RX_MAX_CHANNELS] = {};  // guarded by result_mutex()
-static bool s_result_pending[RX_MAX_CHANNELS] = {};        // guarded by result_mutex()
-
-static DecodeSlotResult* alloc_slot_result() {
-  return static_cast<DecodeSlotResult*>(
-      heap_caps_malloc(sizeof(DecodeSlotResult), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-}
+// Each channel's copy, and the main loop's one in decode_pipeline_apply(), are static, in PSRAM on the
+// P4, 4,680 bytes each (docs/architecture/memory.md lists them): the CPU copies them once a slot.
+static DECODE_PSRAM_BSS DecodeSlotResult s_result[RX_MAX_CHANNELS];  // guarded by result_mutex()
+static bool s_result_pending[RX_MAX_CHANNELS] = {};                  // guarded by result_mutex()
 
 // A wait this long is 25 main-loop passes: the loop was stalled, not busy.
 constexpr int64_t kLateApplyMs = 250;
@@ -214,14 +209,7 @@ static void publish_slot_result(const ft8_slot_t* slot, const DecodeChannel& dc)
   const int c = slot->channel;
   int64_t dropped_slot = -1;
   xSemaphoreTake(result_mutex(), portMAX_DELAY);
-  if (!s_result[c]) s_result[c] = alloc_slot_result();
-  DecodeSlotResult* r = s_result[c];
-  if (!r) {
-    xSemaphoreGive(result_mutex());
-    ESP_LOGE(TAG, "DECODE slot %lld lost: no RAM for the hand-off", (long long)slot->slot_idx);
-    debug_log_line("DECODE slot lost: no RAM for the hand-off");
-    return;
-  }
+  DecodeSlotResult* r = &s_result[c];
   if (s_result_pending[c]) dropped_slot = r->slot_idx;
   r->channel = c;
   r->mode = slot->mode;
@@ -244,11 +232,12 @@ static void publish_slot_result(const ft8_slot_t* slot, const DecodeChannel& dc)
 
 // Main loop.
 // Copies every field of DecodeSlotResult but the unused tails of its arrays: a field added there and not
-// here reads the heap's leftovers on the main loop (an8x's station and dial offset did, 2026-11-07).
+// here reads an earlier slot's value on the main loop, or zero (an8x's station and dial offset read the
+// heap's leftovers, 2026-11-07).
 static bool take_slot_result(int c, DecodeSlotResult* out) {
   xSemaphoreTake(result_mutex(), portMAX_DELAY);
-  const DecodeSlotResult* r = s_result[c];
-  const bool pending = s_result_pending[c] && r;
+  const DecodeSlotResult* r = &s_result[c];
+  const bool pending = s_result_pending[c];
   if (pending) {
     out->channel = r->channel;
     out->mode = r->mode;
@@ -271,7 +260,7 @@ bool decode_pipeline_result_pending(bool ft4) {
   // The channel whose decodes gate this transmission: the one in its mode, the station's or FT4's beside it.
   for (int c = 0; c < RX_MAX_CHANNELS; ++c) {
     if (!s_result_pending[c]) continue;
-    const DecodeSlotResult* r = s_result[c];
+    const DecodeSlotResult* r = &s_result[c];
     pending = pending || ((rx_mode_of(r->mode) == RxMode::FT4) == ft4);
   }
   xSemaphoreGive(result_mutex());
@@ -714,21 +703,9 @@ static void apply_slot_result(DecodeSlotResult& r) {
 }
 
 void decode_pipeline_apply(void) {
-  static DecodeSlotResult* rp = nullptr;  // the main loop's copy, one for every channel; too big for its stack
-  if (!rp) {
-    // Nothing yet: allocate with the first result, any channel's.
-    xSemaphoreTake(result_mutex(), portMAX_DELAY);
-    bool any = false;
-    for (int c = 0; c < RX_MAX_CHANNELS; ++c) any = any || s_result_pending[c];
-    xSemaphoreGive(result_mutex());
-    if (!any) return;
-    rp = alloc_slot_result();
-    if (!rp) {
-      ESP_LOGE(TAG, "DECODE apply: no RAM for the main loop's copy");
-      return;
-    }
-  }
+  // The main loop's copy, one for every channel; too big for its stack.
+  static DECODE_PSRAM_BSS DecodeSlotResult result;
   for (int c = 0; c < RX_MAX_CHANNELS; ++c) {
-    if (take_slot_result(c, rp)) apply_slot_result(*rp);
+    if (take_slot_result(c, &result)) apply_slot_result(result);
   }
 }
