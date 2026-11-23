@@ -4,7 +4,7 @@ An hour and a quarter of operating FT4 on 20 m, with a few FT8 replies in the sa
 `/api/events` stream, as Operate saw it, recorded while the operator worked the band. It is the evidence for the
 roadmap's key-up item ([several-channels.md](../../../../docs/roadmap/several-channels.md), **Open**), the queue
 items ([smart-queue.md](../../../../docs/roadmap/smart-queue.md), **Later** and **Open**), the offset a QSO holds
-([autoseq.md](../../../../docs/architecture/autoseq.md), **TX offset**) and idea [yn23](../../../../docs/roadmap/ideas.md#yn23), and for
+([autoseq.md](../../../../docs/architecture/autoseq.md), **TX offset**) and the report we send (**`snr_tx`**, there), and for
 [decode.md](../../../../docs/architecture/decode.md)'s **On the air, 20 m while operating**.
 
 ## The station and the recording
@@ -42,7 +42,7 @@ Its output for 20 m is `score.txt`.
   seconds); 13 were under 75 ms. Two of the three decodes
   that ran past a boundary (FT4 −96 ms, FT8 −55 ms) ended in the second a transmission started; the third (FT4
   −38 ms) did not. The 2026-11-07 hour had neither.
-* **The report we send** is not the reply's SNR when the operator tapped the station first (it is latched from
+* **The report we send** is not the reply's SNR when the operator tapped the station first (it was then latched from
   the tapped decode, [autoseq.md](../../../../docs/architecture/autoseq.md)): of 22 reports we sent, 13 differ
   from the reply they answered, by up to 12 dB (KF0KBL R-1 to a reply at +11; N6UA R+0 to +9; D2UY R+3 to +10).
 * **The offset moves every transmission,** within a QSO too: D2UY's three R-reports went out at 2317, 702 and

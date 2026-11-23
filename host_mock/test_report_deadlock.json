@@ -66,14 +66,14 @@
         }
       ],
       "expect": {
-        "tx": "N6HAN AG6AQ R-10"
+        "tx": "N6HAN AG6AQ R-7"
       }
     },
     {
       "comment": "Period 6 (even): we send TX3 (R+report). FIX: should be ROGER_REPORT.",
       "messages": [],
       "expect": {
-        "tx": "N6HAN AG6AQ R-10"
+        "tx": "N6HAN AG6AQ R-7"
       }
     },
     {
@@ -89,7 +89,7 @@
       ],
       "expect": {
         "tx": "N6HAN AG6AQ 73",
-        "log": "N6HAN CM87 rst_sent=-10 rst_rcvd=-7"
+        "log": "N6HAN CM87 rst_sent=-7 rst_rcvd=-7"
       }
     },
     {

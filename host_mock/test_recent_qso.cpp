@@ -140,7 +140,7 @@ static void test_late_rr73_reactivates_parked_signoff() {
     check(transmit() == "W1AW KB2SLO FN30", "TX1 to W1AW");
 
     decode(to_me("W1AW", "-12"));
-    check(transmit() == "W1AW KB2SLO R-5", "R-report to W1AW");
+    check(transmit() == "W1AW KB2SLO R-8", "R-report to W1AW, from the reply's SNR");
 
     decode(to_me("W1AW", "RR73"));
     check(transmit() == "W1AW KB2SLO 73", "73 logs and parks");

@@ -138,7 +138,7 @@ static std::string normalize_call_token(const std::string& s);
 // Returns true if we've exchanged reports with DX — meaning we sent TX2/TX3
 // (a report or R+report) so the metadata (snr_tx) is what we actually transmitted.
 // REPLYING (sent TX1 = grid only) is safe to evict: no reports exchanged yet,
-// and if DX retries with TX2, a fresh context gets correct snr_tx from msg.snr.
+// and if DX retries with TX2, a fresh context takes snr_tx from that decode.
 static bool has_exchanged(const QsoContext* ctx) {
     if (!ctx) return false;
     if (ctx->dxcall.empty() || ctx->dxcall == "CQ") return false;
@@ -1082,24 +1082,34 @@ static void log_qso_if_needed(QsoContext* ctx) {
              ctx->snr_rx);
 }
 
+static bool apply_table(QsoContext* ctx, const UiRxLine& msg, bool override);
+
+// Applies DX's message, then takes the report we send from it whenever our
+// next message carries one (TX2 or TX3), as WSJT-X re-takes its report from
+// each FT8/FT4 message the QSO partner sends. The report logged is then the
+// one we last sent: a message that moves us to RR73 or 73 leaves it alone.
 static bool generate_response(QsoContext* ctx, const UiRxLine& msg, bool override) {
+    const bool changed = apply_table(ctx, msg, override);
+    if (ctx->rcvd_msg_type != TxMsgType::TX_NONE &&
+        (ctx->next_tx == TxMsgType::TX2 || ctx->next_tx == TxMsgType::TX3)) {
+        ctx->snr_tx = msg.snr;
+    }
+    return changed;
+}
+
+static bool apply_table(QsoContext* ctx, const UiRxLine& msg, bool override) {
     // Get DX callsign from field2 (the sender), normalize to handle <> wrapped hashed calls
     std::string dxcall = normalize_call_token(msg.field2);
     if (dxcall.empty()) dxcall = normalize_call_token(msg.field1);
 
     TxMsgType rcvd = parse_rcvd_msg(ctx, msg);
 
-    ESP_LOGI(TAG, "generate_response: override=%d rcvd=%s state=%s",
+    ESP_LOGI(TAG, "apply_table: override=%d rcvd=%s state=%s",
              override, tx_name(rcvd), state_name(ctx->state));
 
     if (rcvd == TxMsgType::TX_NONE) {
-        ESP_LOGW(TAG, "generate_response: rcvd=TX_NONE, returning false");
+        ESP_LOGW(TAG, "apply_table: rcvd=TX_NONE, returning false");
         return false;
-    }
-
-    // Latch rst_sent once at first TX1/TX2 evidence; preserve for full QSO.
-    if ((rcvd == TxMsgType::TX1 || rcvd == TxMsgType::TX2) && ctx->snr_tx == -99) {
-        ctx->snr_tx = msg.snr;
     }
 
     if (override) {
@@ -1330,10 +1340,11 @@ static void on_decode(const UiRxLine& msg) {
 
     // No matching context (active or inactive) for this DX.
     // Reject messages that would produce wrong metadata if a fresh context
-    // were created. TX3 (R+report) skips the snr_tx latch — that's the
-    // reincarnation bug. Signoff messages (RR73/73) are also rejected.
-    // TX1 (grid) and TX2 (report) are allowed — they set
-    // snr_tx correctly via msg.snr in generate_response().
+    // were created. TX3 (R+report) moves a fresh entry to RR73, which takes
+    // no report, so snr_tx would stay -99 — that's the reincarnation bug.
+    // Signoff messages (RR73/73) are also rejected. TX1 (grid) and TX2
+    // (report) are allowed — our answer carries a report, so
+    // generate_response() takes snr_tx from the decode.
     std::string f3 = msg.field3;
     for (auto& ch : f3) ch = toupper((unsigned char)ch);
     if (f3 == "RR73" || f3 == "RRR" || f3 == "73") {

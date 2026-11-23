@@ -53,4 +53,3 @@ Each epic is one row here and one file under `roadmap/`, read only when touching
 ## Next groom
 
 * **Not reached 2026-11-13:** the Epics pass for [knpp](roadmap/hl2-support.md), [qxy5](roadmap/smart-queue.md) and [I18](roadmap/activator-mode.md) (the groom was on 1.0: OTA updates, since closed, [u8mc](roadmap/several-channels.md) and [eu2t](roadmap/release-1-0.md) were read); their children were not traced against the tree as the Backlog and Ideas rows were.
-* **Not checked:** [yn23](roadmap/ideas.md#yn23) against WSJT-X's source, which decides whether it is a defect.
