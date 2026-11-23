@@ -137,14 +137,23 @@ const QRZ_API = "https://logbook.qrz.com/api";
 // QRZ asks every application for an identifiable User-Agent, "ApplicationName/version" (its Logbook API
 // page). The version is the web app's own, which the app sends with each call, so that QRZ, and we, can
 // tell which release a problem came from; `relay` is this file's revision, raised by hand when what it
-// sends QRZ changes. The app's word for its version is a caller's: only a plain version string is put in
-// a header, and anything else reads as 0.
+// sends QRZ changes. A version appVersion() does not take reads as 0.
 const QRZ_RELAY_REVISION = 1;
-const QRZ_APP_VERSION_FORM = /^[0-9A-Za-z][0-9A-Za-z._-]{0,31}$/;
 
 export function qrzUserAgent(app) {
-  const version = typeof app === "string" && QRZ_APP_VERSION_FORM.test(app) ? app : "0";
-  return `${APP_NAME}/${version} (relay ${QRZ_RELAY_REVISION}; https://micro-ft8.kalikstein.com)`;
+  return `${APP_NAME}/${appVersion(app) || "0"} (relay ${QRZ_RELAY_REVISION}; https://micro-ft8.kalikstein.com)`;
+}
+
+// The app's version as the page reports it (the config's `sk_app`), or "". The page's word for it is a
+// caller's, so only a plain version string is passed on. Every shape a build reports is one
+// (docs/RELEASE_PROCESS.md, An image carries its version): `0.1.0+0c5ccec`, `b1322+0c5ccec`,
+// `0c5ccec-dirty`. A bench push names itself by its version, a space and when it was built; only the
+// version is kept.
+const APP_VERSION_FORM = /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,31}$/;
+
+export function appVersion(app) {
+  const version = typeof app === "string" ? app.trim().split(/\s+/)[0] : "";
+  return APP_VERSION_FORM.test(version) ? version : "";
 }
 const QRZ_PAGE = 250; // records asked of QRZ at a time, the page its documentation suggests
 // QRZ takes one QSO a call, so a request's CPU time grows with its batch: about 0.4 ms an insert, and a

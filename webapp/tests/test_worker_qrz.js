@@ -67,7 +67,15 @@ globalThis.fetch = async (url, init) => {
   // The app's version is named to QRZ when it is a plain version, and is never a way to write a header.
   assert.strictEqual(mod.qrzUserAgent('0.2.0'), 'micro-FT8/0.2.0 (relay 1; https://micro-ft8.kalikstein.com)');
   assert.strictEqual(mod.qrzUserAgent('20261119-07a08db0'), 'micro-FT8/20261119-07a08db0 (relay 1; https://micro-ft8.kalikstein.com)');
-  for (const bad of [undefined, null, 7, '', ' 1.0', '1.0\r\nX-Injected: 1', '1.0 (fake)', 'x'.repeat(33), '-1', '1/2', 'é1']) {
+  // Every shape a build reports (docs/RELEASE_PROCESS.md): a release's and a dev build's carry a +, and a
+  // bench push adds when it was built, which is dropped.
+  for (const [app, version] of [['0.1.0+0c5ccec', '0.1.0+0c5ccec'], ['b1322+0c5ccec', 'b1322+0c5ccec'],
+    ['0c5ccec-dirty', '0c5ccec-dirty'], ['37f14119-dirty 2026-11-23 14:57:39', '37f14119-dirty'],
+    [' 1.0', '1.0'], ['1.0\r\nX-Injected: 1', '1.0']]) {
+    assert.strictEqual(mod.appVersion(app), version, JSON.stringify(app));
+    assert.strictEqual(mod.qrzUserAgent(app), `micro-FT8/${version} (relay 1; https://micro-ft8.kalikstein.com)`);
+  }
+  for (const bad of [undefined, null, 7, '', 'x'.repeat(33), '-1', '1/2', 'é1', '+1']) {
     assert.strictEqual(mod.qrzUserAgent(bad), 'micro-FT8/0 (relay 1; https://micro-ft8.kalikstein.com)', JSON.stringify(bad));
   }
   assert.ok(mod.qrzUserAgent('x'.repeat(32)).length <= 128, 'within QRZ\'s 128 characters');
