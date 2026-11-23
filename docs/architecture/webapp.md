@@ -285,6 +285,133 @@ The app is pinned from its local address, `http://micro-ft8.local/app.html` (or 
 * **A one-time hint** on an iPhone in a Safari tab (`navigator.standalone` false; `homeScreenHintDue()`, `webapp/tests/test_home_hint.js`): a toast, "Add to Home Screen: tap Share, then Add to Home Screen.", for 20 s, whose **Got it** keeps it from coming back on that phone (`localStorage`). Left to time out, it shows again at the next load.
 * **The Home Screen app keeps its own storage on iOS,** apart from Safari's, so it is paired once more, with a press of the button, the first time it opens.
 
+### Decisions a reference app would make differently
+
+Surveyed 2026-09-14: WSJT-X, FT8CN, iFTx and the standalone touchscreen builds.
+
+| Not imported | Why |
+| --- | --- |
+| Waterfall panel | A frequency strip in the slot bar is imported (operator decision 2026-10-27, **The slot bar's activity trace**): it shows where stations are and whether our offset sits among them, without a control. A full waterfall, frequency across and slots scrolling down, is not: its control job in every reference app is picking the TX offset, and `resolve_tx_offset()` already does that without asking (Random rolls 500–2500 Hz, once for a QSO and again at every arm of an unanswered CQ, which decorrelates us from the stale gaps every operator taps; [autoseq.md](autoseq.md), **TX offset**). The ACTIVITY masks it would draw from already reach the page. Reopen if field operation shows repeated collisions that rolling does not avoid. |
+| Mode control (Listen / Call / Exchange) | Autoseq's priority queue already sequences: every live QSO outranks a CQ, so the operator calls CQ and replies take priority. A mode control would add an error state that does not exist. |
+| A single "current QSO" panel | The queue holds up to `AUTOSEQ_MAX_QUEUE` (30) concurrent QSOs, active and inactive ([autoseq.md](autoseq.md)); one panel would misrepresent it. The queue is a first-class region, and at 30 rows it simply scrolls. |
+| A view per feature | Too much for a phone, and mid-QSO tab-switching runs against a 15-second clock. |
+| Modifier-key interactions | There are no modifiers on a phone. |
+
+Borrowed deliberately: FT8CN's lesson that the operator must see **which slot a tap lands in** (the countdown sits beside the tap target); iFTx's **worked-before colouring** on CQ rows; and WSJT-X's two information needs, "everything on the band" and "what concerns me", kept as **emphasis within one stream**, not two panes.
+
+### Why not, on Operate
+
+* **An activation screen, tab or mode.** An activation is the station having references (**Settings › Station**); a mode would add an error state for no gain, as the mode control above would.
+* **Band on a one-row dock or behind a swipe.** A band chip, or a band row that swipes past six bands, hides band behind a second gesture. Band is two taps, bar then drawer (**Band and frequency**), because the radio drawer took the pull-up shape: open, a pull-up dock leaves about two decode rows, so it is opened only to change band or frequency.
+* **CQ controls in the dock or a CQ settings sheet of its own.** The CQ's status belongs with the queue it waits on (**The CQ row**), and a sheet of its own would split one set of settings (**Settings › Station**).
+* **A Connect button.** Autodetect and the P4's sync on CAT open do its job (**The radio bar**); a manual retune is in the radio drawer.
+* **A Save button for Operate's controls.** Mid-QSO a control takes effect when touched, and batching several keys into one save was how a refused `band_sel` once dropped every later key.
+* **A dialog confirming a reply.** It needs a tap to dismiss on a 15 s clock and covers the decodes; the tapped row is where the operator is already looking (**Decode rows and tap to reply**).
+* **A high-SWR warning of the page's own.** The QMX's SWR protection and the main board act on high SWR ([radio.md](radio.md), **SWR protection trips on a QMX**), and the radio bar says when either stopped a transmission or Tune (**The radio bar**); a warning from the browser's own reading adds nothing to that. The slot bar shows the SWR reading while we transmit.
+
+## A non-secure origin
+
+`http://micro-ft8.local` is not a secure context, and that is a design choice, not an oversight: the alternative is a certificate for a name that resolves on one LAN. Measured 2026-09-21 in Chromium (Safari gates these APIs on secure contexts the same way); the last row follows from the spec rather than a measurement:
+
+| API | Here |
+| --- | --- |
+| `localStorage`, IndexedDB, `fetch` to HTTPS | work |
+| Cache API, Service Worker | **absent** |
+| `navigator.geolocation` | property present, **call refused** (feature detection lies) |
+| Web Serial, Web Bluetooth, Web Push | absent |
+
+**So "cache it in the browser for offline" does not exist on this origin.** Anything that must work offline is in the sidekick's firmware image, which serves it ([sidekick.md](sidekick.md), **Web root**), or it is not available offline.
+
+**Grid from the phone's location** therefore needs a real secure context: `webapp/geo.html` on the release host (HTTPS). The app does a **top-level navigation** there, the page calls `navigator.geolocation`, and it redirects back with the grid. An HTTPS iframe does not work: secure-context checks walk the whole ancestor chain. Reached from Settings › Station's **Set from GPS** and the map's locate button; both confirm before overwriting an existing grid. The sidekick is not a party to the exchange. Leaving needs internet, which the phone often lacks on the sidekick's AP ([system.md](system.md), **Connectivity**), and a navigation that cannot load strands the operator on Safari's spinner or error page with nothing of ours running. So both leave only after a 4-second `no-store` fetch reaches the host (`geo_handoff.js`), and otherwise stay and say there is no internet. **Not yet built: row [rrsp](../roadmap/activator-mode.md#rrsp)** — a service worker on the release host that makes `geo.html` work with no network; with it, that check would refuse a hand-off that works, so the row replaces it.
+
+## Tools
+
+What the operator consults *instead of* looking at the radio. **The test for a Tools card: if it expands an existing row, it is not a Tools card** — a worked-before flag, a DXCC name or a QRZ bio stays on its row. Cards are questions the operator asks, not vendors we integrate.
+
+**Every card declares a tier and degrades visibly:**
+
+* **Offline-derived** — computed from data the app already has; works on a summit with cellular off.
+* **Online-optional** — offline-derived, enriched when reachable; complete without the enrichment.
+* **Online-required** — meaningless without the internet, and says so when it cannot reach its source.
+
+**A card never shows a stale value as a current one.** A four-hour-old K-index shown as now is worse than an empty card, because the operator makes a band decision on it: stale data carries its age or is not shown.
+
+**Sources** are called directly when they send CORS, and a Worker route is added only when they do not ([system.md](system.md), **Third-party services**). Payload size is part of the choice: a phone on cellular must not pay for a large file to show one number.
+
+* **Space weather** (`app.html`): NOAA SWPC's small current-value endpoints (10.7 cm flux, X-ray flare class, solar wind speed and Bz/Bt, the R/S/G scales) and the planetary K-index, whose `a_running` supplies the A-index. Not hamqsl.com: no CORS and no JSON, and its per-band verdict is an undocumented formula (row [B80](../ROADMAP.md#B80) replaces this card with it, through a Worker). Not NOAA's aurora file (922 KB) or sunspot history (no small endpoint).
+* **POTA and SOTA** (`map.html`): `api.pota.app` activator spots and `api-db2.sota.org.uk/api/spots/{n}/all/all`, both CORS-open. SOTA's API terms restrict AI-authored clients without prior approval; the operator chose to build against it anyway (2026-09-21).
+* **Not in Tools:** self-spotting to POTA/SOTA — an authenticated outward write is a different risk class from a read-only card.
+
+### Who hears me
+
+Stations that reported hearing our call, from PSKReporter's live MQTT feed. Online-required. **The map is the main view** (operator, 2026-10-08): a PSKReporter layer on `map.html` (**The map**, below). Tools has a card with a status, a count, **Open list** and **Show on map** (`map.html?layer=psk`, which opens with the layer on). Filling the gaps below is **not yet built: row [I37](../ROADMAP.md#I37)**.
+
+* **Three files.**
+  - `pskr_core.js` holds the logic: packets, spots, gaps. Host-tested by `webapp/tests/test_pskr_core.js`.
+  - `pskr_live.js` is the listener `app.html` and `map.html` share: the socket, reconnects and the stored copy. Tested with a fake socket and clock by `webapp/tests/test_pskr_live.js`.
+  - Each page names the call, says when it wants to listen, and draws.
+* **The browser subscribes to our own call only:** `wss://mqtt.pskreporter.info:1886`, topic `pskr/filter/v2/+/+/<CALL>/#`, never the whole feed (operator, 2026-10-07). WebSockets are not subject to CORS, so no Worker route is involved.
+  - The feed writes a `/` in a call as `.` (`F5OYA/P` is `F5OYA.P`, seen 2026-10-08).
+  - A spot whose sender is not our call is dropped even when the topic matched.
+* **A hand-written MQTT 3.1.1 client.** It connects, subscribes at QoS 0, receives, and pings every 30 s.
+  - It connects as `micro-FT8-<call>-<random>` (`clientIdFor()`, `pskr_core.js`), the client id the feed's terms ask for: the program's name, then a callsign ([system.md](system.md), **Third-party services**).
+  - The broker drops a client that is silent for about 90 s (keepalive 60).
+  - A socket that has heard nothing for 75 s is treated as gone. That is how a phone that locked notices on waking.
+  - A refused or dropped connection backs off from 15 s to 5 minutes.
+* **When it listens:**
+  - For 15 minutes after any transmission `app.html` saw (a TX HUD event on the air), on whichever page is open.
+  - While Tools or the list is on screen, or while the map's layer is on.
+  - Why 15 minutes: a transmission's spots reached the feed up to 561 s after it (median 92 s; 2026-10-07, 20 m FT8). The map sees no TX events, so a transmission made while only the map is open is not recorded. A transmission drew a median of 1 spot (75th percentile 3, 90th 5, 99th 15, most 77; 642 transmissions).
+* **The feed keeps no history.** It publishes at QoS 0, so even a persistent session holds nothing for a client that is away (measured 2026-10-07). A spot that arrives while no page is listening is lost.
+* **One stored copy, both pages.** `localStorage` key `microft8_pskr_v1` holds one call's newest 5,000 spots for 24 hours, plus the listening and transmitting ranges.
+  - A page loads it on start and saves it every couple of seconds while listening, and on leaving.
+  - Two tabs open at once each take the other's new spots when it saves (the `storage` event).
+  - A different call in Settings starts fresh. A per-phone convenience, never the record.
+* **Gaps are shown, not hidden.** Where a spot of ours could have arrived (a transmission through 15 minutes after it) and no page was subscribed for a minute or more, an italic **Not listening 14:10–14:25z** row sits in the list. A quiet stretch never reads as nobody hearing us.
+* **The summary** (the Tools card and the list) covers the last hour: how many distinct stations, the bands they heard us on, and the farthest of them with its distance. The farthest call is tappable.
+* **The list** is a full-screen sub-page over Tools (`#pskrList`, the callsign card's slide-up, full-screen). Its rows are built only while it is open.
+  - **One row per receiver and band:** its newest report (SNR, age) and how many it sent (×3). One row per report would let a single far station fill the top of a distance sort. The row names the modes it heard us in beside the band, newest first, "20m FT4+FT8", from each report's mode (`md`), so an FT4 transmission's spots read apart from FT8's; its SNR and age are the newest report's, the first mode named.
+  - **Filter by band** (chips for the bands in the stored spots, and All).
+  - **Sort by Time** (newest first), **Distance** (farthest first) or **dB** (loudest first). A row with no grid or no SNR sorts last. The field sorted by is shown in bold.
+  - **Not listening** rows show only in the Time sort, since they are about time.
+  - Up to 200 rows. The band and sort are kept on the phone (`microft8_pskr_list_v1`).
+* **Tapping a receiver,** in the list or on the map, opens its call card, after adding the receiver's grid from the spot to the shared callsign-grid cache (`learnGrid()`, `callinfo.js`).
+* **Every call card shows what PSKReporter has of that station hearing us** (`callinfo.js`, `opts.heardUs`, from `PskrCore.heardBy()`): a **PSKReporter: heard you** section, a line per band with its newest SNR, age and report count. It appears only when there are such reports, on any card: a decode, a QSO, a map pin. A station with no cached grid gets the locator from its report.
+
+## The SWR sweep
+
+`swr.html`, reached from Tools ([radio.md](radio.md), **The SWR sweep on the main board**): tune an antenna in the field. The bands ticked are swept by the main board through the QMX, one short carrier per point; the page plots what comes back. The CAT sequence and what the radio refuses: [radio.md](radio.md) (**QMX SWR Tune over CAT**); the wire: [sidekick.md](sidekick.md) (**Port A**, v4).
+
+* **The plan is the page's.** `bands.js` (shared with `app.html`) gives the band edges; `swr_core.js` turns the ticked bands into `(lo, hi, step)` ranges, about 10 to 20 points a band (the step table is there), **Fine** halves every step. The ranges go to `POST /api/swr/start`. The host's three numbers (800 ms a point, 200 points, 12 ranges) are read from `swr_sweep.h` by `webapp/tests/test_swr_core.js`, so the estimate and the refusal cannot drift from the firmware. 2 m is left out: its edges do not fit the wire's 16-bit kHz.
+* **Bands default to `active_bands`.** The ticked boxes open as Settings has them (`defaultBands()`), and only bands a QMX could have are offered.
+* **Tune power** (`renderTuneNote()`, `SwrCore.tuneNote()`): the radio's Tune % in a field of its own between the bands and **Run**, shown once the radio has reported it, and set from there (`setTunePct()`; `radio_settings.js`, shared with Settings › Radio & bands). Below 25% (`TUNE_PCT_FOR_SWEEP`) the note warns that the reading is biased high and noisy, and **Set it to 25%** sets it in one tap. A refused value stays in the field, marked, so **Run** refuses it rather than sweeping at the old one (**Fields**). Each run's plot is labelled with the Tune % it ran at.
+* **A sweep outlives the page.** It runs in the main board, so the page keeps the run in progress as it goes (`microft8_swr_run_v1`, `SwrCore.resumable()`), and when it is opened again it rejoins the run where it left off and catches up from the station's events; a run that ended while the page was closed is read back, or ended there. A sweep started on another device reads "A sweep started on another device is running. Stop ends it.", with **Stop** and no plot. In the app, Operate's radio bar says a sweep runs, with **Stop sweep**, and the slot bar says it on every tab (**The radio bar**; maintainer, 2026-11-16).
+* **The estimate and the countdown.** "About 1:14 (93 points)" before a run; while it runs the page counts the points still to do at the rate measured so far (the estimate until two have arrived), and a band the radio reports it lacks leaves the count.
+* **One plot** (`plotModel()`, drawn as SVG): frequency across the swept bands only, each as wide as its span with a floor so a 50 kHz band is not a sliver, a vertical line at every band boundary; SWR from 1 to 6 with a dashed line at 2. **No point is drawn where there is no measurement, and the line breaks there.** A reading above 6 sits on the top edge as a red triangle. A band the radio does not have is labelled **not swept**, so a missing band never reads as a pass. Each band's minimum is named, and a table under the plot gives each band's lowest SWR, where, and the share of points at or below 2.
+* **The previous run** is kept in `localStorage` (`microft8_swr_prev_v1`, readings only) and drawn faintly behind the next: run, adjust the wire, run again. A per-phone convenience, never the record.
+* **Landscape is recommended, not required.** A page cannot force an orientation (iOS Safari has no `screen.orientation.lock()`), so in portrait a line says "Rotate your phone for a wider plot" and the plot draws at the width it has. Rotating re-lays out the readings already held; it never restarts a sweep (tested).
+* **Starting asks first** when it would end something: the host refuses over a queued CQ or QSO, a transmission or Tune, and the page then asks in the words of a band change ("A sweep ends your QSO with K9ABC, your CQ. Receive is also interrupted while it runs. Continue?"), ends them through the existing endpoints (`/api/tx/cancel`, `/api/queue/cancel`, `/api/radio/tune`) and starts again. **Stop** is `/api/tx/cancel`.
+* **Events are polled**, so a phone that sleeps through a sweep misses points; they are shown as missing, never as zero. The page polls every 400 ms while a sweep runs.
+* **Run against a simulator:** `python3 tools/serve_webapp_local.py --sim` serves the page with `sim_station` behind it, which runs the real sweep against a fake QMX that reads like a 40 m end-fed half-wave (bands 40 to 10 m; 160, 80, 60 and 6 m refused).
+
+## The map
+
+`map.html`, reached from Tools: a full-screen map with independent layers (QSOs, decodes, POTA/SOTA spots) over a bundled basemap. **Only QSOs is on when the map opens**; every other layer starts off, and a layer that starts off fetches nothing until it is tapped on (operator decision 2026-10-08).
+
+* **The PSKReporter layer** (**Who hears me**, above) puts one pink diamond on each receiver's newest spot within the "Over the last" window, with a path from our grid. While the layer is on, the page listens too. The note counts the stations and says when PSKReporter is unreachable.
+
+* **A vector basemap, not tiles.** Natural Earth 110m files (land, countries, lakes, US states, places; public domain) are bundled in `webapp/app/` and served by the sidekick, so the map works offline. Tiles cannot be cached on this origin, so a tile map would be blank exactly where the radio must work; and what the map shows (grid squares, station pins, great-circle paths) gains nothing from roads or imagery. Coordinates are rounded to 2 decimal places (~1 km), which keeps the files small in the app's 800 KB (**The 800 KB budget**).
+* **Hand-rolled canvas, no framework.** Equirectangular projection with **one scale for both axes, cropping rather than distorting**: the base scale is `max(w/360, h/180)`, so the view always fills the canvas, like CSS `background-size: cover`, and never zooms out past it. Pan by drag, zoom by pinch (anchored at the midpoint) or wheel; longitude wraps at the antimeridian. Great-circle paths use spherical interpolation and split where they cross the antimeridian.
+
+## Experiments
+
+`webapp/experiments/` is a section of the public site, not of the app: it is served by the site at `/experiments/` (**Serving the site**) and is not in the sidekick's image. It holds measurements as they ran ([docs/README.md](../README.md), **The site describes what ships, and what we measured**).
+
+* **Layout.** `experiments/index.html` lists the experiments as plain HTML, one `<li>` each (title, one line on what it measures, a link), so adding an experiment is one block there and a sibling folder. Each `<li>` names its experiment's `runs/index.json`, and the listing fills the latest run's date from it, so a new run needs no edit to the listing. Each experiment is a folder with its own `index.html`, which explains the experiment once and draws one run at a time from `runs/<run-id>/` with a run picker (`?run=<id>`, the newest by default). `experiments.css` and `charts.js` are shared by the pages; an experiment's own drawing is its folder's script. **Power draw** (`power/`) has one run and draws nothing: its numbers are in its page, and its `runs/index.json` is written by hand, there so the listing can date it.
+* **A run is data, built by a tool.** A run's folder holds what its page draws, aggregated (the four-band run is about 100 KB; keep a run under about 300 KB), and the tool that writes it also rewrites `runs/index.json` from every run's folder. A new run is: run the tool, commit what it wrote. For **four bands at once**: `tools/decode_bench/sample_jt9.py` decodes one slot in eight of an HL2 recording with `jt9`, one JSON line per slot, and `tools/decode_bench/build_four_band_run.py` builds the run from the recording's manifests, those decodes, the station's grid square (distances are computed there, haversine, not in the page), the one-band survey corpus it is compared with, and `score_ab.py`'s summaries of the scored windows, the LNA A/B and every stream's bands (read through `tools/decode_bench/score_table.py`, which also prints the corpus README's tables); each one's docstring holds the command that built run 2026-11-05. Re-running the build on a run already committed refreshes it, as for a run first published while still recording.
+* **Hand-drawn SVG, no framework,** as the map is: no library, no CDN, nothing to build, so the pages are served from the sources as they are. The map's basemap is a copy of the app's Natural Earth land at `/data/ne_110m_land.json`: the site serves no `/app/`, so a page of the site that needs the app's data keeps its own copy (**Serving the site**). Every chart has hover, tap and keyboard (arrow keys over a focused chart) tooltips; a chart with more than one series has a legend, and the bands keep one colour each everywhere. Light and dark follow the system setting, as the app's pages do.
+* **Paths are relative** to the page, so the platform's trailing-slash redirect (`/experiments/four-band` to `/experiments/four-band/`, Static Assets' default `auto-trailing-slash`, which a local `python3 -m http.server` does too) is what makes them resolve.
+
 ## Build
 
 `webapp/app/` holds the hand-edited sources; what ships is their build, `webapp/dist/app/` and the pack beside it, produced by `webapp/tools/build.py`. **The sidekick's build runs it and embeds the pack** (`python3 webapp/tools/build.py --version <the image's> --pack <file>`, from `sidekick/main/CMakeLists.txt` on every build; [sidekick.md](sidekick.md), **Web root**), so the app a sidekick serves is the one built with its firmware, and building the sidekick needs Node and `npm ci --prefix webapp/tools`. With `MICROFT8_APP_PACK` naming a pack already built, `--pack` copies that file and builds nothing, refusing one that is not stamped with `--version`'s: CI's sidekick job sets it, since ESP-IDF's container has no Node, after building the pack on the runner from the same checkout. CI's Host tests run the build too, so what is tested is what ships. At the bench, `python3 webapp/tools/install_app.py` runs the build and pushes its pack onto a sidekick, which serves it in its image's place until its firmware next changes ([sidekick.md](sidekick.md), **The bench push**): the way to try an app edit on a phone without building firmware. None of the output or the pack is committed.
