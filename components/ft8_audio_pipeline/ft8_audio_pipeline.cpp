@@ -12,7 +12,6 @@
 #include <cstring>
 #include <new>
 
-#include "esp_heap_caps.h"
 #include "esp_memory_utils.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -45,11 +44,13 @@ static constexpr unsigned kIngestRingSamples = 16384;
 // 93 blocks x 2 x 2 x 433 bins of waterfall (FT4 needs less: 156 x 2 x 2 x 131 = 81,744) and nfft
 // 1920. Two waterfalls in turn: capture writes one while decode reads and subtracts from the other
 // (docs/architecture/decode.md, Channels). One set per channel, static, in PSRAM (docs/architecture/memory.md): the CPU copies into the
-// ring, so no DMA reaches it. A channel that needs more is refused at start, never moved to the heap.
-// Only the P4 links this component.
+// ring, so no DMA reaches it. A channel that needs more is refused at start, never moved to the heap,
+// so a run of the pipeline takes nothing from the heap for a channel. Only the P4 links this component.
 static constexpr int kChannelNfftMax = 1920;
 static constexpr size_t kChannelWaterfallBytes = 161076;
 static constexpr int kWaterfalls = 2;
+// The most blocks a slot has: FT4's 7.5 s of 48 ms symbols (FT8: 93).
+static constexpr int kChannelBlocksMax = 156;
 struct ChannelBuffers {
     WF_ELEM_T mag[kWaterfalls][kChannelWaterfallBytes / sizeof(WF_ELEM_T)];
     alignas(16) uint8_t fft_work[MONITOR_FFT_WORK_BYTES(kChannelNfftMax)];
@@ -58,6 +59,9 @@ struct ChannelBuffers {
     kiss_fft_scalar timedata[kChannelNfftMax];
     kiss_fft_cpx freqdata[kChannelNfftMax / 2 + 1];
     float ring[kIngestRingSamples];
+    // The block being filled: a symbol's samples, nfft / freq_osr, so never more than nfft.
+    float block[kChannelNfftMax];
+    float block_gain[kWaterfalls][kChannelBlocksMax];
 };
 static DECODE_PSRAM_BSS ChannelBuffers s_channel_buffers[RX_MAX_CHANNELS];
 
@@ -85,10 +89,10 @@ struct Ft8Channel {
     char suffix[8];
     monitor_config_t mon_cfg;
     monitor_t mon;      // capture's: its wf.mag is the waterfall being filled, mag[filling]
-    float* block;       // the block being filled, heap
+    float* block;       // the block being filled, in the channel's ChannelBuffers
     int block_fill;
     // The AGC gain applied to each waterfall block, one array per waterfall: the decode SNR divides it
-    // back out (decode.md, SNR). Heap.
+    // back out (decode.md, SNR). In the channel's ChannelBuffers.
     float* block_gain[kWaterfalls];
     int filling;        // the waterfall capture writes
     // Per waterfall: the monitor as it stood at the decode trigger, which the decode task reads, and
@@ -124,17 +128,6 @@ struct Ft8Channel {
     int activity_lo_hz;
     int activity_hi_hz;
 };
-
-static void channel_free(Ft8Channel* ch)
-{
-    free(ch->block);
-    ch->block = nullptr;
-    for (int w = 0; w < kWaterfalls; ++w) {
-        free(ch->block_gain[w]);
-        ch->block_gain[w] = nullptr;
-    }
-    monitor_free(&ch->mon);
-}
 
 // ---- The decode task: decodes each finished slot off the capture task (docs/architecture/main_board.md,
 // Tasks). One for every channel, created on first use and kept, so a radio's restart does not churn it. ----
@@ -229,18 +222,16 @@ static bool channel_start(Ft8Channel* ch, const ft8_audio_pipeline_config_t* cfg
              ch->mon.nfft, ch->mon.wf.freq_osr, ch->mon.wf.max_blocks * ch->mon.wf.block_stride);
     monitor_reset(&ch->mon);
 
-    ch->block = (float*)heap_caps_malloc(sizeof(float) * ch->mon.block_size, MALLOC_CAP_DEFAULT);
-    bool gains = true;
-    for (int w = 0; w < kWaterfalls; ++w) {
-        ch->block_gain[w] = (float*)heap_caps_malloc(sizeof(float) * ch->mon.wf.max_blocks, MALLOC_CAP_DEFAULT);
-        gains = gains && ch->block_gain[w];
-    }
-    ch->filling = 0;
-    if (!ch->block || !gains) {
-        ESP_LOGE(tag, "pipeline buffer allocation failed");
-        channel_free(ch);
+    if (ch->mon.block_size > kChannelNfftMax || ch->mon.wf.max_blocks > kChannelBlocksMax) {
+        ESP_LOGE(tag, "channel %d %s refused: a block of %d samples and %d blocks a slot, its buffers hold %d and %d",
+                 chan->channel, chan->mode->name, ch->mon.block_size, ch->mon.wf.max_blocks, kChannelNfftMax,
+                 kChannelBlocksMax);
+        monitor_free(&ch->mon);
         return false;
     }
+    ch->block = buffers->block;
+    for (int w = 0; w < kWaterfalls; ++w) ch->block_gain[w] = buffers->block_gain[w];
+    ch->filling = 0;
 
     ft8_sample_ring_init(&ch->ring, buffers->ring, kIngestRingSamples);
     ch->slot_ms = chan->mode->slot_time_ms;
@@ -478,6 +469,8 @@ static void channel_block(Ft8Channel* ch, int64_t queued)
 // burst. Static: one ingest task runs at a time.
 static constexpr int kIngestBlock = 512;
 static DECODE_PSRAM_BSS float s_ingest_tmp[RX_MAX_CHANNELS][kIngestBlock];
+// One read from a channel's ring, on the capture task. Static: one run of the pipeline at a time.
+static DECODE_PSRAM_BSS float s_drain_tmp[kIngestBlock];
 
 struct AudioIngest {
     const ft8_audio_pipeline_config_t *cfg;
@@ -552,17 +545,10 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
         if (cfg->channels[started].station) station = started;
     }
     if (started < n_channels) {
-        for (int c = 0; c < started; ++c) channel_free(&ch[c]);
+        for (int c = 0; c < started; ++c) monitor_free(&ch[c].mon);
         return false;
     }
-
-    float* temp_dec = (float*)heap_caps_malloc(sizeof(float) * kIngestBlock, MALLOC_CAP_DEFAULT);
     log_heap("AUDIO_PIPE_AFTER_SAMPLE_BUFFERS");
-    if (!temp_dec) {
-        ESP_LOGE(tag, "pipeline buffer allocation failed");
-        for (int c = 0; c < n_channels; ++c) channel_free(&ch[c]);
-        return false;
-    }
 
     // Start on the station channel's boundary, which is every other channel's too: an FT4 period is half
     // an FT8 slot.
@@ -587,8 +573,7 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
     if (xTaskCreatePinnedToCore(audio_ingest_task, "audio_ingest", 6144, &ingest, 5,
                                 nullptr, 0) != pdPASS) {
         ESP_LOGE(tag, "audio ingest task create failed");
-        free(temp_dec);
-        for (int c = 0; c < n_channels; ++c) channel_free(&ch[c]);
+        for (int c = 0; c < n_channels; ++c) monitor_free(&ch[c].mon);
         return false;
     }
     ESP_LOGI(tag, "audio ingest %d channel(s), ring=%u samples in %s, fft frame in %s", n_channels,
@@ -600,7 +585,7 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
     while (!cfg->should_stop(cfg->ctx)) {
         bool any = false;
         for (int c = 0; c < n_channels; ++c) {
-            any = channel_drain(&ch[c], temp_dec, cfg->should_stop, cfg->ctx) || any;
+            any = channel_drain(&ch[c], s_drain_tmp, cfg->should_stop, cfg->ctx) || any;
         }
         if (!any) {
             // One tick, 10 ms at the P4's 100 Hz. pdMS_TO_TICKS(1) is 0 there: a
@@ -620,7 +605,6 @@ bool ft8_audio_pipeline_run(const ft8_audio_pipeline_config_t* cfg)
             while (ch[c].decoding[w].load(std::memory_order_acquire)) vTaskDelay(pdMS_TO_TICKS(10));
         }
     }
-    free(temp_dec);
-    for (int c = 0; c < n_channels; ++c) channel_free(&ch[c]);
+    for (int c = 0; c < n_channels; ++c) monitor_free(&ch[c].mon);
     return true;
 }
