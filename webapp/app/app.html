@@ -1,7 +1,7 @@
 <!doctype html>
 <meta charset=utf-8>
 <meta name=viewport content='width=device-width,initial-scale=1'>
-<title>Micro-FT8</title>
+<title>micro-FT8</title>
 <!-- Added to the Home Screen it opens full screen, with this icon and name (webapp.md, Home Screen). There, and only
      there, the viewport asks for viewport-fit=cover, which makes iOS report the safe areas (env(safe-area-inset-*))
      that the top row, the tab bar and the full-screen panels pad by. In a browser tab cover would run the page under
@@ -135,7 +135,7 @@ button:disabled{opacity:.45}
 .standalone #appHead{display:flex;flex:none;position:sticky;top:0;z-index:6;background:Canvas;align-items:baseline;width:100%;max-width:26rem;margin:0 auto;align-self:center;box-sizing:border-box;padding:calc(env(safe-area-inset-top) + var(--standalone-top)) calc(max(1rem, env(safe-area-inset-right)) + 1rem) .1rem calc(max(1rem, env(safe-area-inset-left)) + 1rem)}
 .standalone .wrap{padding-top:.4rem}
 .standalone #pskrListHead{padding-top:calc(.75rem + env(safe-area-inset-top) + var(--standalone-top))}
-.wordmark{font-family:'Micro-FT8 Wordmark','Inter',system-ui,sans-serif;font-size:1.3rem;line-height:1.2;letter-spacing:-.02em;white-space:nowrap;color:CanvasText;margin:0}
+.wordmark{font-family:'micro-FT8 Wordmark','Inter',system-ui,sans-serif;font-size:1.3rem;line-height:1.2;letter-spacing:-.02em;white-space:nowrap;color:CanvasText;margin:0}
 .wordmark .wm-m{font-weight:500}
 .wordmark .wm-f{font-weight:800;color:var(--accent)}
 
@@ -1515,6 +1515,9 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 <script src=updates.js></script>
 <script>
 // BANDS and BAND_EDGES_KHZ live in bands.js (shared with swr.html).
+// The app's name in what the app says, one spelling everywhere (docs/README.md, The app's name). The
+// pages' <title>s and the wordmark are written out in their HTML.
+var APP_NAME = 'micro-FT8';
 // The fields that autosave one key each on change, by the loop below. cq_mod, grid,
 // offset, offset_src, tries and act_refs have handlers of their own (webapp.md, Settings ›
 // Station): a format check, a stepper, a list.
@@ -3157,12 +3160,12 @@ function fmtRadioFirmware(vn) {
 }
 
 // The HL2's gateware row for the drawer, or null: the version its discovery reply gave (hl2_gw), so a report
-// names it, marked when it is not the one Micro-FT8 is tested on (docs/architecture/hl2.md, Gateware).
+// names it, marked when it is not the one micro-FT8 is tested on (docs/architecture/hl2.md, Gateware).
 var HL2_TESTED_GATEWARE = '74.2';
 function hl2GatewareRow(cfg) {
   if (String(cfg.radio) !== '6' || !cfg.hl2_gw) return null;
   var v = String(cfg.hl2_gw);
-  return ['Gateware', v === HL2_TESTED_GATEWARE ? v : v + ' \u00b7 untested: Micro-FT8 is tested on ' + HL2_TESTED_GATEWARE];
+  return ['Gateware', v === HL2_TESTED_GATEWARE ? v : v + ' \u00b7 untested: ' + APP_NAME + ' is tested on ' + HL2_TESTED_GATEWARE];
 }
 
 function fmtHzMHz(hz) { return (hz / 1e6).toFixed(4).replace(/0+$/, '').replace(/\.$/, '.0'); }
@@ -3432,7 +3435,7 @@ function renderRadioDrawer(cfg, st) {
     note = 'Plug the radio into the main board’s USB-C port. A charge-only cable shows nothing.';
   } else if (st === 'unknown') {
     rows.push(['USB device', dev]);
-    note = 'Not a radio Micro-FT8 knows. It supports the QMX.';
+    note = 'Not a radio ' + APP_NAME + ' knows. It supports the QMX.';
   } else if (st === 'found') {
     rows.push(['USB', dev || 'seen'], ['CAT', cat ? 'up' : 'waiting'], ['Audio in', audio ? 'up' : 'waiting'],
               ['VFO', 'set once CAT is up']);
@@ -3452,11 +3455,11 @@ function renderRadioDrawer(cfg, st) {
     if (rs) {
       rows.push(['Radio reports', (st === 'ready' ? 'on ' : '') + fmtHzMHz(rs.hz) + ' MHz · ' + (MD_NAMES[rs.mode] || 'mode ' + rs.mode) +
                  (rs.split ? ' · split' : '') + (rs.tx ? ' · transmitting' : '')]);
-      if (rs.want && st !== 'ready') rows.push(['Micro-FT8 set', fmtHzMHz(rs.want) + ' MHz · Digi']);
+      if (rs.want && st !== 'ready') rows.push([APP_NAME + ' set', fmtHzMHz(rs.want) + ' MHz · Digi']);
     } else {
       rows.push(['Radio reports', '—']);
     }
-    if (st === 'drift') note = 'The radio is not where Micro-FT8 put it: a knob was turned, or another program changed it.';
+    if (st === 'drift') note = 'The radio is not where ' + APP_NAME + ' put it: a knob was turned, or another program changed it.';
   }
   var gw = st === 'unpaired' || st === 'nomain' || st === 'nolink' ? null : hl2GatewareRow(cfg);
   if (gw) rows.push(gw);

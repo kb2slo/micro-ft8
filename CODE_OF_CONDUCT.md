@@ -1,6 +1,6 @@
 # Code of conduct
 
-Micro-FT8 follows the [Contributor Covenant, version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).
+micro-FT8 follows the [Contributor Covenant, version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).
 It applies in issues, pull requests, reviews and every other project space, and to anyone acting for the
 project elsewhere.
 

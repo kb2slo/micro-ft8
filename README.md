@@ -1,4 +1,4 @@
-# Micro-FT8
+# micro-FT8
 
 [![CI](https://github.com/kb2slo/micro-ft8/actions/workflows/ci.yml/badge.svg)](https://github.com/kb2slo/micro-ft8/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -6,7 +6,7 @@
 
 **A headless FT8 station for the QRP Labs QMX that keeps working when you put your phone away.**
 
-Micro-FT8 is firmware for two small ESP32 boards that sit beside the radio. The main board decodes,
+micro-FT8 is firmware for two small ESP32 boards that sit beside the radio. The main board decodes,
 calls CQ, works the stations that answer and keeps the log. A sidekick runs its own WiFi network and
 serves a web app, so any phone, tablet or laptop browser is the remote. There is nothing to install,
 and nothing in the field needs internet.
@@ -104,14 +104,14 @@ Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md). C and C+
 ## Acknowledgements
 
 - **[Mini-FT8](https://github.com/wcheng95/Mini-FT8)**, by Wei Cheng AG6AQ, with Zhenxing N6HAN.
-  Micro-FT8 began as a fork of Mini-FT8, which ran on the M5Stack Cardputer ADV. The sequencer, ADIF
+  micro-FT8 began as a fork of Mini-FT8, which ran on the M5Stack Cardputer ADV. The sequencer, ADIF
   logging and ft8_lib integration here grew from that code. Mini-FT8 was itself inspired by
   [DX FT8](https://github.com/WB2CBA/DX-FT8-FT8-MULTIBAND-TABLET-TRANSCEIVER) (Barb WB2CBA, Charley
   W5BAA and Paul G8KIG).
 - **[ft8_lib](https://github.com/kgoba/ft8_lib)**, by Karlis Goba, encodes and decodes every message, with
   non-standard callsign support from Shawn Rutledge.
 - **[WSJT-X](https://wsjt.sourceforge.io/wsjtx.html)**, by Joe Taylor K1JT and the WSJT Development Group,
-  is the on-air standard Micro-FT8 follows. Its source was the reference for message sequencing and the
+  is the on-air standard micro-FT8 follows. Its source was the reference for message sequencing and the
   signal-report scale.
 - **[esp-usb](https://github.com/espressif/esp-usb)**, by Espressif Systems, is the P4's USB host stack. Its
   `usb` component is vendored in `components/usb` (Apache-2.0), unmodified.

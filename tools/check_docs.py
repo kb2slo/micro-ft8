@@ -15,7 +15,10 @@ outside fenced code blocks, and fails on:
     (tools/roadmap_rows.sh dangling). Citations REV already had are counted, not failed;
   - an ESP-IDF version (a vX.Y.Z on a line that names IDF) that CI does not build with, so README.md,
     CONTRIBUTING.md and AGENTS.md cannot keep an old version after a toolchain bump. Plan docs
-    (docs/roadmap/) are skipped, since a plan may cite the version it was written against.
+    (docs/roadmap/) are skipped, since a plan may cite the version it was written against;
+  - the app's name spelled any way but "micro-FT8", or "micro-ft8" where it is a slug (docs/README.md,
+    The app's name), in any text file of ours, not only a doc: a capital M, a space for the hyphen, or
+    the mode in mixed case. The code identifier MicroFT8 is not the name.
 
 A gitignored path passes (a build output need not exist yet), and so does a path inside a
 submodule that is not checked out. #anchors and web links are not checked. Plan docs get the link check
@@ -49,6 +52,11 @@ LINE_SUFFIX = re.compile(r'^(.*?):\d+(?:-\d+)?$')
 IDF_LINE = re.compile(r'idf', re.IGNORECASE)
 VERSION = re.compile(r'\bv(\d+\.\d+\.\d+)\b')
 CI_IDF = re.compile(r'^\s*esp_idf_version:\s*v(\S+)', re.MULTILINE)
+# The app's name, misspelled: "micro" with either case, a hyphen or a space, then FT8 in any case, but
+# not the name (micro-FT8) or the slug (micro-ft8: the domain, micro-ft8.local, the repo, a directory).
+# Written in parts, so this line is not a match itself.
+NAME_RIGHT = 'micro-FT8'
+NAME_WRONG = re.compile(r'(?<![\w-])(?!micro-(?:FT8|ft8)(?![\w]))[Mm]' + r'icro[- ][Ff][Tt]8(?!\w)')
 
 
 def git(*args):
@@ -68,6 +76,8 @@ class Repo:
         untracked = git('ls-files', '-z', '--others', '--exclude-standard').split('\0')
         self.top = {p.split('/', 1)[0] for p in tracked if '/' in p}
         self.docs = sorted({p for p in tracked + untracked if ours(p)})
+        self.files = sorted({p for p in tracked + untracked if p and not p.startswith(
+            ('components/M5', 'components/usb/')) and '/vendor/' not in p})
         self.submodules = [line.split('\t', 1)[1] for line in git('ls-files', '-s').splitlines()
                            if line.startswith('160000 ')]
 
@@ -95,6 +105,21 @@ class Repo:
         # A directory pattern (`build/`) matches only a path written as a directory.
         ignored = self.ignored(gone + [p + '/' for p in gone])
         return [p for p in gone if p not in ignored and p + '/' not in ignored]
+
+
+def misnamed(repo):
+    """(path, line, the spelling) for each place the app's name is misspelled, in our text files."""
+    out = []
+    for path in repo.files:
+        try:
+            with open(os.path.join(ROOT, path), encoding='utf-8') as f:
+                lines = f.read().splitlines()
+        except (UnicodeDecodeError, IsADirectoryError, FileNotFoundError):
+            continue  # not text, or a submodule
+        for n, line in enumerate(lines, 1):
+            for m in NAME_WRONG.finditer(line):
+                out.append((path, n, m.group(0)))
+    return out
 
 
 def references(text):
@@ -224,7 +249,10 @@ def main():
     for doc, n, kind, target, path in broken:
         what = f'link {target!r}' if kind == 'link' else f'path `{target}`'
         print(f'{doc}:{n}: {what} does not exist ({path})')
-    failures = len(broken) + found.count(None) + stale_idf + bad_frag
+    names = misnamed(repo)
+    for path, n, spelled in names:
+        print(f'{path}:{n}: the app is {NAME_RIGHT}, not {spelled!r} (docs/README.md, The app\'s name)')
+    failures = len(broken) + found.count(None) + stale_idf + bad_frag + len(names)
     print(f'{len(repo.docs)} docs, {len(refs)} references checked, {failures} broken')
     if failures:
         print('Fix the path, or drop the reference if the thing is gone. A file in another '

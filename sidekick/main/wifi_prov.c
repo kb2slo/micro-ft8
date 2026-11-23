@@ -23,6 +23,7 @@
 #include "mdns.h"
 #include "pairing_http.h"
 #include "pairing_http_cap.h"
+#include "app_name.h"
 #include "porta_proto.h"
 #include "fw_update.h"
 #include "web_page.h"
@@ -907,7 +908,7 @@ static void mdns_bring_up(void)
     }
     started = true;
     mdns_hostname_set(WIFI_PROV_MDNS_HOST);
-    mdns_instance_name_set("Micro-FT8");
+    mdns_instance_name_set(MICROFT8_APP_NAME);
     // Advertising the service as well as the hostname is what makes the device
     // show up in network browsers, not just resolve when you already know the
     // name.

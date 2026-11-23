@@ -43,3 +43,9 @@ Each document answers one question. Put content where its question is answered.
 **The site describes what ships, and what we measured.** Nothing unbuilt or upstream-only goes on it. Its **Experiments** section (`/experiments/`) holds bench and on-air measurements as they ran, each dated, linked to its corpus and method, and labelled an experiment, not a feature: a result there claims nothing about what the radio does until it ships. Amateur radio is for tinkerers, so anyone using the app is its audience (operator decision 2026-11-05).
 
 **Docs point at what exists.** `tools/check_docs.py` (part of `tools/check.sh`) fails on a relative link or a repo path in `code` that no longer resolves, and on a row ID that newly dangles. A file in another repo is written as a link to it.
+
+## The app's name
+
+**micro-FT8**: a lowercase m, the mode in capitals, as the wordmark is, at the start of a sentence too. FT8 is a mode's name and is written in capitals everywhere it is used; the lowercase m makes it a name of its own (maintainer, 2026-11-23). **micro-ft8** is the slug, where the name is an address or an identifier: the domain, `micro-ft8.local`, the repo, a directory, the Worker. `MicroFT8` is a code identifier (`MicroFT8Pairing`, `X-MicroFT8-Token`), not the name.
+
+What the station says to others names it from one constant in each language that sends it: `MICROFT8_APP_NAME` (`components/porta_proto/include/app_name.h`, both boards: the mDNS instance name, the default QSO comment, the boot lines), `APP_NAME` in `webapp/worker.js` (what the Worker sends: QRZ's User-Agent) and `APP_NAME` in `webapp/app/app.html` (what the app says). Pages' `<title>`s, the wordmark and prose write it out. `tools/check_docs.py` fails on any other spelling in a text file of ours.

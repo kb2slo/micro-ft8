@@ -207,7 +207,7 @@ function page(meta, body, stamp, extraCss = '') {
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(meta.title || 'Getting started — Micro-FT8')}</title>
+<title>${escapeHtml(meta.title || 'Getting started — micro-FT8')}</title>
 <meta name="description" content="${escapeHtml(meta.description || '')}">
 <!-- Generated from webapp/getting-started.md by webapp/tools/getting_started.mjs (${escapeHtml(stamp)}).
      Edit the Markdown, not this file. -->
@@ -216,9 +216,9 @@ ${extraCss}${readFileSync(CSS, 'utf8')}
 @page { @bottom-right { content: ${cssString(footer)}; } }
 </style>
 <main>
-  <p class="eyebrow"><a href="https://micro-ft8.kalikstein.com/">Micro-FT8</a> · Getting started</p>
+  <p class="eyebrow"><a href="https://micro-ft8.kalikstein.com/">micro-FT8</a> · Getting started</p>
 ${body}  <footer>
-    <a href="/">← Announcing Micro-FT8</a> · <a href="downloads.html">Downloads</a>
+    <a href="/">← Announcing micro-FT8</a> · <a href="downloads.html">Downloads</a>
   </footer>
 </main>
 </html>

@@ -9,6 +9,7 @@
 #include "freertos/task.h"
 
 #include "amp_band_prime.h"
+#include "app_name.h"
 #include "autoseq.h"
 #include "callsign_hashtable.h"
 #include "decode_pipeline.h"
@@ -181,7 +182,7 @@ static void decode_audio_task(void * /*arg*/) {
 }
 
 extern "C" void app_main(void) {
-    ESP_LOGI(TAG, "Micro-FT8 PoE-P4 (Phase 3: porta/companion) booted");
+    ESP_LOGI(TAG, MICROFT8_APP_NAME " PoE-P4 (Phase 3: porta/companion) booted");
 
     const esp_err_t storage_err = storage_service_init();
     if (storage_err != ESP_OK) {

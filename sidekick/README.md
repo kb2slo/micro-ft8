@@ -1,6 +1,6 @@
 # sidekick
 
-M5Stack AtomS3 Lite (ESP32-S3FN8) firmware for the Micro-FT8 companion link.
+M5Stack AtomS3 Lite (ESP32-S3FN8) firmware for the micro-FT8 companion link.
 
 Why this board, and its hardware facts: [`sidekick.md`](../docs/architecture/sidekick.md) (**Hardware**). A sidekick never needs to be a USB host, so the AtomS3 Lite's device-only USB-C ([`system.md`](../docs/architecture/system.md), **Why not**) does not matter here.
 How it works and why: [`docs/architecture/sidekick.md`](../docs/architecture/sidekick.md). Planned work: [`docs/ROADMAP.md`](../docs/ROADMAP.md). Do not duplicate the plan here.

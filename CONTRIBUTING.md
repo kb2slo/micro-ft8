@@ -1,6 +1,6 @@
 # Contributing
 
-Micro-FT8 is a headless FT8 station: a [PoE-P4](docs/architecture/main_board.md) main board drives a QMX,
+micro-FT8 is a headless FT8 station: a [PoE-P4](docs/architecture/main_board.md) main board drives a QMX,
 and an AtomS3 Lite sidekick serves the web app you operate it from. How the pieces fit:
 [docs/architecture/system.md](docs/architecture/system.md).
 

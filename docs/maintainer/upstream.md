@@ -4,7 +4,7 @@ Four watches, different cadences. Network fail → skip (any of them); do not in
 
 ## `ft8_lib` pin — every maintainer session
 
-Scoped to the submodule pin ([architecture/ft8_lib.md](../architecture/ft8_lib.md)) only. General Micro-FT8 firmware drift is the separate watch below, not this one. The pin has **two** parents and both need watching. `kb2slo/ft8_lib` is forked from Karlis; GitHub **Sync fork** stays off, since our `master` carries commits his does not.
+Scoped to the submodule pin ([architecture/ft8_lib.md](../architecture/ft8_lib.md)) only. General micro-FT8 firmware drift is the separate watch below, not this one. The pin has **two** parents and both need watching. `kb2slo/ft8_lib` is forked from Karlis; GitHub **Sync fork** stays off, since our `master` carries commits his does not.
 
 **Karlis** — protocol upstream:
 
@@ -15,7 +15,7 @@ git -C components/ft8_lib/vendor merge-base --is-ancestor <kgoba-sha> HEAD
 
 If the submodule is missing, skip. If Karlis’s SHA **is** an ancestor of the pin, we already have him. If it is **not**, he moved.
 
-**Wei** — the other parent. Do **not** watch `wcheng95/ft8_lib`: that repo is stale at `bb3d94d` (2026-03) and already fully absorbed into the pin. His protocol fixes land in Micro-FT8’s *in-tree* [`components/ft8_lib/ft8/`](https://github.com/wcheng95/Mini-FT8/tree/main/components/ft8_lib/ft8) instead, and reach us only by hand — his tree has no submodule, so merging `upstream/main` cannot move our pin:
+**Wei** — the other parent. Do **not** watch `wcheng95/ft8_lib`: that repo is stale at `bb3d94d` (2026-03) and already fully absorbed into the pin. His protocol fixes land in Mini-FT8’s *in-tree* [`components/ft8_lib/ft8/`](https://github.com/wcheng95/Mini-FT8/tree/main/components/ft8_lib/ft8) instead, and reach us only by hand — his tree has no submodule, so merging `upstream/main` cannot move our pin:
 
 ```bash
 git fetch https://github.com/wcheng95/Mini-FT8.git main

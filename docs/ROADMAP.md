@@ -1,6 +1,6 @@
-# Micro-FT8 roadmap
+# micro-FT8 roadmap
 
-Living plan for Micro-FT8. How it is kept: [maintainer/roadmap.md](maintainer/roadmap.md). The rest of `docs/`: [README.md](README.md).
+Living plan for micro-FT8. How it is kept: [maintainer/roadmap.md](maintainer/roadmap.md). The rest of `docs/`: [README.md](README.md).
 
 How things work now: `architecture/` (start at [architecture/system.md](architecture/system.md)). An epic's detail is in its file under [roadmap/](roadmap/); unscheduled ideas are in [roadmap/ideas.md](roadmap/ideas.md), rejected ones in [roadmap/declined.md](roadmap/declined.md).
 

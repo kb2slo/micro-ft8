@@ -61,19 +61,19 @@ globalThis.fetch = async (url, init) => {
     'BOOK_NAME=K1ABC Logbook&RESULT=OK&COUNT=1302&OWNER=K1ABC&START_DATE=2026-05-28'];
   assert.deepStrictEqual(await ask('/qrz/status', { key: KEY }),
     { ok: true, callsign: 'K1ABC', count: 1302, confirmed: 874, dxcc_count: 46, start_date: '2026-05-28', http: 200 });
-  assert.deepStrictEqual(calls[0], { url: 'https://logbook.qrz.com/api', agent: 'Micro-FT8/0 (relay 1; https://micro-ft8.kalikstein.com)',
+  assert.deepStrictEqual(calls[0], { url: 'https://logbook.qrz.com/api', agent: 'micro-FT8/0 (relay 1; https://micro-ft8.kalikstein.com)',
     method: 'POST', form: { KEY: KEY, ACTION: 'STATUS' } }, 'one call to QRZ, as this application');
 
   // The app's version is named to QRZ when it is a plain version, and is never a way to write a header.
-  assert.strictEqual(mod.qrzUserAgent('0.2.0'), 'Micro-FT8/0.2.0 (relay 1; https://micro-ft8.kalikstein.com)');
-  assert.strictEqual(mod.qrzUserAgent('20261119-07a08db0'), 'Micro-FT8/20261119-07a08db0 (relay 1; https://micro-ft8.kalikstein.com)');
+  assert.strictEqual(mod.qrzUserAgent('0.2.0'), 'micro-FT8/0.2.0 (relay 1; https://micro-ft8.kalikstein.com)');
+  assert.strictEqual(mod.qrzUserAgent('20261119-07a08db0'), 'micro-FT8/20261119-07a08db0 (relay 1; https://micro-ft8.kalikstein.com)');
   for (const bad of [undefined, null, 7, '', ' 1.0', '1.0\r\nX-Injected: 1', '1.0 (fake)', 'x'.repeat(33), '-1', '1/2', 'é1']) {
-    assert.strictEqual(mod.qrzUserAgent(bad), 'Micro-FT8/0 (relay 1; https://micro-ft8.kalikstein.com)', JSON.stringify(bad));
+    assert.strictEqual(mod.qrzUserAgent(bad), 'micro-FT8/0 (relay 1; https://micro-ft8.kalikstein.com)', JSON.stringify(bad));
   }
   assert.ok(mod.qrzUserAgent('x'.repeat(32)).length <= 128, 'within QRZ\'s 128 characters');
   answers = ['RESULT=OK&COUNT=1&CALLSIGN=K1ABC'];
   await ask('/qrz/status', { key: KEY, app: '0.2.0' });
-  assert.strictEqual(calls[calls.length - 1].agent, 'Micro-FT8/0.2.0 (relay 1; https://micro-ft8.kalikstein.com)');
+  assert.strictEqual(calls[calls.length - 1].agent, 'micro-FT8/0.2.0 (relay 1; https://micro-ft8.kalikstein.com)');
   assert.deepStrictEqual(calls[calls.length - 1].form, { KEY: KEY, ACTION: 'STATUS' }, 'and is no part of what QRZ is asked');
 
   // A key QRZ refuses.

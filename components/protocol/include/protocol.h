@@ -4,7 +4,7 @@
 #include "ft8/constants.h"
 
 // ---------------------------------------------------------------------------
-// Runtime protocol configuration for Micro-FT8.
+// Runtime protocol configuration for micro-FT8.
 //
 // A ProtocolConfig is one mode's constants. g_protocol is the station's mode,
 // the one its own channel receives: FT8, and nothing reassigns it. FT4 is

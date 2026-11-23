@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cut a versioned Micro-FT8 release.
+"""Cut a versioned micro-FT8 release.
 
 Creates and pushes an annotated `v<version>` tag. CI does the rest: the
 firmware jobs build on the tag and the release job publishes both boards'
@@ -234,7 +234,7 @@ def main() -> int:
             return 1
 
     try:
-        run("git", "tag", "-a", tag, "-m", f"Micro-FT8 {version}")
+        run("git", "tag", "-a", tag, "-m", f"micro-FT8 {version}")
         run("git", "push", REMOTE, tag)
     except Abort as exc:
         print(f"error: {exc}", file=sys.stderr)

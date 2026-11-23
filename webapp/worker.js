@@ -13,6 +13,10 @@
 //
 // A path with no file never lands here: Static Assets answers it with 404.html
 // (wrangler.jsonc, not_found_handling). The last return is a backstop only.
+// The app's name, as everything this sends names it: QRZ's User-Agent. One spelling everywhere,
+// "micro-FT8" (docs/README.md, The app's name).
+export const APP_NAME = "micro-FT8";
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -140,7 +144,7 @@ const QRZ_APP_VERSION_FORM = /^[0-9A-Za-z][0-9A-Za-z._-]{0,31}$/;
 
 export function qrzUserAgent(app) {
   const version = typeof app === "string" && QRZ_APP_VERSION_FORM.test(app) ? app : "0";
-  return `Micro-FT8/${version} (relay ${QRZ_RELAY_REVISION}; https://micro-ft8.kalikstein.com)`;
+  return `${APP_NAME}/${version} (relay ${QRZ_RELAY_REVISION}; https://micro-ft8.kalikstein.com)`;
 }
 const QRZ_PAGE = 250; // records asked of QRZ at a time, the page its documentation suggests
 // QRZ takes one QSO a call, so a request's CPU time grows with its batch: about 0.4 ms an insert, and a
