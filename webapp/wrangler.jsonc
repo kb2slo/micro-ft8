@@ -8,7 +8,7 @@
     // Only these run worker.js; every other request is served as a static
     // file, with its headers from _headers (docs/architecture/webapp.md,
     // Serving the site), and costs no Worker request.
-    "run_worker_first": ["/download/*", "/qrz/*"],
+    "run_worker_first": ["/download/*", "/qrz/*", "/pskr/*"],
     // A path with no file gets 404.html, status 404, still without the Worker.
     "not_found_handling": "404-page"
   },
@@ -24,6 +24,29 @@
     {
       "binding": "DOWNLOAD_COUNTS",
       "dataset": "micro_ft8_downloads"
+    },
+    // One data point per post /pskr/report takes (worker.js, countPskr()):
+    // docs/architecture/system.md, Third-party services.
+    {
+      "binding": "PSKR_REPORTS",
+      "dataset": "micro_ft8_pskr_reports"
+    }
+  ],
+  // One gate per receiving station, deciding what of its pages' reports go to
+  // PSKReporter (pskr_report.js, PskrGate). SQLite-backed, the kind the free
+  // plan has.
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "PSKR_GATE",
+        "class_name": "PskrGate"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["PskrGate"]
     }
   ],
   "routes": [

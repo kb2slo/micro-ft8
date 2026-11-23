@@ -73,6 +73,7 @@ struct StationSettings {
     std::string cq_mode = "FT8";   // the mode the CQ row calls in, "FT8" or "FT4"
     bool show_bearing = false;     // decode rows show the bearing beside the distance
     bool queue_marks = true;       // decodes about a queued station are marked and sorted next
+    bool pskr_report = false;      // the web app reports what the station hears to PSKReporter
 };
 
 void station_settings_init(StationSettings* out);
@@ -99,7 +100,7 @@ int station_listen(const StationSettings& s, int band);
 bool station_key_known(const char* name);
 
 // The refusal for a CONFIG write of one of the web app's settings (qrz_key, qrz_book, qrz_live,
-// dist_unit, cq_mode, show_bearing, queue_marks) whose value station_parse() would not take, or
+// dist_unit, cq_mode, show_bearing, queue_marks, pskr_report) whose value station_parse() would not take, or
 // nullptr. nullptr too for any other key: those are checked where they are used.
 const char* station_pref_refusal(const char* key, const std::string& value);
 

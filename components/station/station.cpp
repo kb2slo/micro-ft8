@@ -206,6 +206,7 @@ enum class StationKey {
     CqMode,
     ShowBearing,
     QueueMarks,
+    PskrReport,
     Unknown,
 };
 
@@ -237,6 +238,7 @@ StationKey key_from_name(const std::string& name)
     if (name == "cq_mode") return StationKey::CqMode;
     if (name == "show_bearing") return StationKey::ShowBearing;
     if (name == "queue_marks") return StationKey::QueueMarks;
+    if (name == "pskr_report") return StationKey::PskrReport;
     return StationKey::Unknown;
 }
 
@@ -271,6 +273,7 @@ const char* pref_check(StationKey key, const std::string& v)
             return v == "FT8" || v == "FT4" ? nullptr : "the CQ mode is FT8 or FT4";
         case StationKey::ShowBearing:
         case StationKey::QueueMarks:
+        case StationKey::PskrReport:
             return v == "0" || v == "1" ? nullptr : "the switch is 0 or 1";
         default:
             return nullptr;
@@ -383,7 +386,8 @@ void apply_key(StationSettings* io, StationKey key, const std::string& value)
         case StationKey::DistUnit:
         case StationKey::CqMode:
         case StationKey::ShowBearing:
-        case StationKey::QueueMarks: {
+        case StationKey::QueueMarks:
+        case StationKey::PskrReport: {
             // A bad value keeps the old; the main board refuses it before it gets here
             // (station_pref_refusal()).
             const std::string v = trim_copy(value);
@@ -397,6 +401,7 @@ void apply_key(StationSettings* io, StationKey key, const std::string& value)
             if (key == StationKey::CqMode) io->cq_mode = v;
             if (key == StationKey::ShowBearing) io->show_bearing = (v == "1");
             if (key == StationKey::QueueMarks) io->queue_marks = (v == "1");
+            if (key == StationKey::PskrReport) io->pskr_report = (v == "1");
             break;
         }
         case StationKey::Unknown:
@@ -559,6 +564,7 @@ std::string station_serialize(const StationSettings& in)
     put_str(out, "cq_mode", in.cq_mode);
     put_int(out, "show_bearing", in.show_bearing ? 1 : 0);
     put_int(out, "queue_marks", in.queue_marks ? 1 : 0);
+    put_int(out, "pskr_report", in.pskr_report ? 1 : 0);
     return out;
 }
 

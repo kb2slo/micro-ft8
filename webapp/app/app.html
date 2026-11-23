@@ -945,6 +945,20 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
         </div>
         <p class=setnote>As they are logged, while the app is open on a paired phone or computer, within about five minutes. QSOs logged before this was turned on wait for Send on the QSOs tab.</p>
 
+        <!-- Spots of what the station decodes (docs/architecture/webapp.md, Spotting): pskr_report_core.js
+             holds and posts them; pskrTick() runs it. -->
+        <div class="hd sep">PSKReporter</div>
+        <div class=setrow>
+          <label class=fld><span>Report what this station hears</span>
+            <select id=pskr_report class=onoff>
+              <option value=0>Off</option>
+              <option value=1>On</option>
+            </select>
+          </label>
+        </div>
+        <p id=pskrReportLine class=setnote hidden></p>
+        <p class=setnote>Spots the stations decoded here on pskreporter.info, under this station's call and grid, while the app is open on a phone or computer. They go through micro-ft8.kalikstein.com.</p>
+
         <!-- Typed references, offline (docs/roadmap/activator-mode.md): format-only (a slash means
              SOTA, otherwise POTA) -- no store, no nearby list, no map and no
              verified/unverified badge, since nothing to check against exists
@@ -1512,6 +1526,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 <script src=pskr_core.js></script>
 <script src=pskr_live.js></script>
 <script src=qrz_sync_core.js></script>
+<script src=pskr_report_core.js></script>
 <script src=geo_handoff.js></script>
 <script src=updates.js></script>
 <script>
@@ -1522,7 +1537,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 var FIELDS = [
   'call','comment1',
   'radio','skiptx1','amp','tx_min_delay_ms','amp_ptt','amp_swr_guard',
-  'amp_prime_on_band_change'
+  'amp_prime_on_band_change', 'pskr_report'
 ];
 // The CQ's modifier (autoseq.md, The CQ's modifier): the word between CQ and the call, '' for a
 // plain CQ. These are the ones Type offers by name; Other takes any that cqModOk() accepts.
@@ -6630,6 +6645,8 @@ function applyEvent(e) {
     // A CQ POTA/SOTA is an activation whether or not it is spotted (callinfo.js, learnCq()).
     if (typeof CallInfo !== 'undefined') CallInfo.learnCq(e.x, e.fq ? e.fq / 1000 : 0, (e.sl || 0) === 75 ? 'FT4' : 'FT8',
                                           e.t ? e.t * 1000 : Date.now());
+    // Held only while reporting is on (pskrTick(); webapp.md, Spotting).
+    if (typeof pskrReporter !== 'undefined') pskrReporter.note(PskrReport.spotOf(e, extractSenderCall));
   } else if (e.d === 2) {
     if (e.st === QUEUE_STATE_IDLE) {
       delete queue[e.eid]; // IDLE is the removal signal (docs/architecture/webapp.md (Screens))
@@ -8435,6 +8452,43 @@ document.getElementById('qrzLive').onchange = async function () {
   renderQrzRow();
   if (ok && day) qrzRun(false, true);
 };
+
+// ===================== Spotting =====================
+// docs/architecture/webapp.md (Spotting): what this page decodes goes to PSKReporter through the site's
+// /pskr/report route while the station's switch is on (Station's pskr_report). Every page open on the
+// station posts; the route makes them one report. pskr_report_core.js holds the spots and the timing.
+var PSKR_POST_TIMEOUT_MS = 15000;
+var pskrReporter = PskrReport.create({
+  now: Date.now,
+  random: Math.random,
+  online: function () { return navigator.onLine !== false; },
+  post: async function (body) {
+    var ac = new AbortController();
+    var timer = setTimeout(function () { ac.abort(); }, PSKR_POST_TIMEOUT_MS);
+    try {
+      var r = await fetch(QRZ_RELAY + '/pskr/report', { method: 'POST', body: JSON.stringify(body), cache: 'no-store', signal: ac.signal });
+      return await r.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+});
+function pskrStation() {
+  return { on: lastCfg.pskr_report === '1', call: lastCfg.call || '', grid: lastCfg.grid || '', app: appServed };
+}
+function pskrTick() {
+  var station = pskrStation();
+  var post = pskrReporter.tick(station);
+  renderPskrReportLine(station);
+  if (post) post.then(function () { renderPskrReportLine(pskrStation()); });
+}
+function renderPskrReportLine(station) {
+  var el = document.getElementById('pskrReportLine');
+  var text = PskrReport.statusLine(station, pskrReporter.last(), pskrReporter.held(), Date.now());
+  el.textContent = text;
+  el.hidden = !text;
+}
+setInterval(pskrTick, 10000);
 
 // ===================== boot =====================
 

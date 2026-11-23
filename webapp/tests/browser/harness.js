@@ -96,15 +96,15 @@ async function start(opts) {
   }
 
   // A browser of its own (its own storage, so its own pairing), on app.html. paired false: it never
-  // gets the token. relay(path, body) answers the QRZ relay's /qrz/* calls, each relayDelay ms late; every call
-// is in .relayCalls.
+  // gets the token. relay(path, body) answers the site's /qrz/* and /pskr/* calls, each relayDelay ms late;
+  // every call is in .relayCalls.
   async function browser(name, bopts) {
     bopts = bopts || {};
     const ctx = await b.newContext();
     const relayCalls = [];
     await ctx.route('https://micro-ft8.kalikstein.com/**', async (route) => {
       const p = new URL(route.request().url()).pathname;
-      if (!p.startsWith('/qrz/') || !bopts.relay) return route.fulfill({ status: 404, body: '' });
+      if (!/^\/(qrz|pskr)\//.test(p) || !bopts.relay) return route.fulfill({ status: 404, body: '' });
       const body = JSON.parse(route.request().postData() || '{}');
       relayCalls.push({ path: p, body });
       if (bopts.relayDelay) await sleep(bopts.relayDelay);  // a relay as slow as QRZ can be, so runs overlap

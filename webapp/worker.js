@@ -1,4 +1,9 @@
-// The site's two dynamic routes. Everything else is a static file that
+import { checkReport, encodeMessage, domainOf, bandOf, MAX_BODY as PSKR_MAX_BODY, PskrGate } from "./pskr_report.js";
+
+// The Durable Object class wrangler.jsonc binds as PSKR_GATE: it must be exported from the entry.
+export { PskrGate };
+
+// The site's three dynamic routes. Everything else is a static file that
 // Workers Static Assets serves without running this, with its headers from
 // _headers (docs/architecture/webapp.md, Serving the site): wrangler.jsonc's
 // run_worker_first names exactly these paths.
@@ -11,11 +16,13 @@
 // /qrz/* relays three calls to QRZ's Logbook API for the web app, which
 // cannot read that API's replies itself (serveQrz(), below).
 //
+// /pskr/report sends what a station heard to PSKReporter (servePskr(), below; pskr_report.js).
+//
 // A path with no file never lands here: Static Assets answers it with 404.html
 // (wrangler.jsonc, not_found_handling). The last return is a backstop only.
 
-// The app's name, as everything this sends names it: QRZ's User-Agent. One spelling everywhere,
-// "micro-FT8" (docs/README.md, The app's name).
+// The app's name, as everything this sends names it: QRZ's User-Agent and the software PSKReporter
+// lists (pskrSoftware()). One spelling everywhere, "micro-FT8" (docs/README.md, The app's name).
 // Not exported: the runtime takes each named export of this module for an entrypoint, and refuses one
 // that is not a function or a class ("Incorrect type for map entry", wrangler dev, 2026-11-23).
 const APP_NAME = "micro-FT8";
@@ -28,6 +35,9 @@ export default {
     }
     if (url.pathname.startsWith("/qrz/")) {
       return serveQrz(request, url);
+    }
+    if (url.pathname === "/pskr/report") {
+      return servePskr(request, env);
     }
     return new Response("Not found", {
       status: 404,
@@ -339,4 +349,130 @@ async function qrzInsert(ask) {
     }
   }
   return { ok: true, results };
+}
+
+// ---------------------------------------------------------------------------
+// /pskr/report: what a station heard, to PSKReporter
+// (docs/architecture/system.md, Third-party services; pskr_report.js).
+//
+// A page posts { call, grid, app, spots } as JSON in plain text, a simple request like /qrz/'s. The
+// station's gate says what of it may go; that goes to PSKReporter in one IPFIX message over TCP, which
+// a page cannot open. The reply says how many went and, as `retry_in`, the milliseconds before the
+// station's next message may: a page whose post was too soon keeps its spots and posts them then.
+//
+// Each post is counted (countPskr()): the station's call, its grid's square, the app's version, the
+// bands and modes in the post, what came of it, and how many spots it offered and sent. All of it is
+// what PSKReporter shows the world once the report goes, and it is how we see who reports and what the
+// route costs of the plan's daily requests.
+// ---------------------------------------------------------------------------
+
+const PSKR_HOST = "report.pskreporter.info";
+const PSKR_PORT = 4739;
+const PSKR_CONNECT_MS = 5000;
+
+async function servePskr(request, env) {
+  if (request.method !== "POST") return pskrJson({ ok: false, error: "method" }, 405);
+  let body;
+  try {
+    const text = await request.text();
+    if (text.length > PSKR_MAX_BODY) return pskrJson({ ok: false, error: "too_large" }, 413);
+    body = JSON.parse(text);
+  } catch (e) {
+    return pskrJson({ ok: false, error: "bad_request" }, 400);
+  }
+  const checked = checkReport(body, Math.floor(Date.now() / 1000));
+  if (!checked.ok) return pskrJson(checked, 400);
+  const report = checked.report;
+  const offered = Array.isArray(body.spots) ? body.spots.length : 0;
+  if (!env.PSKR_GATE) return pskrJson({ ok: false, error: "unavailable" }, 503);
+  if (report.spots.length === 0) {
+    countPskr(env, report, report.spots, "empty", offered, 0);
+    return pskrJson({ ok: true, sent: 0, retry_in: 0 });
+  }
+
+  let decision;
+  try {
+    const stub = env.PSKR_GATE.get(env.PSKR_GATE.idFromName(report.call));
+    const r = await stub.fetch("https://gate/", { method: "POST", body: JSON.stringify({ spots: report.spots }) });
+    decision = await r.json();
+  } catch (e) {
+    countPskr(env, report, report.spots, "gate_failed", offered, 0);
+    return pskrJson({ ok: false, error: "unavailable" }, 503);
+  }
+  if (decision.action !== "send") {
+    countPskr(env, report, report.spots, decision.action, offered, 0);
+    return pskrJson({ ok: true, sent: 0, retry_in: decision.retryMs || 0 });
+  }
+
+  const message = encodeMessage({
+    call: report.call, grid: report.grid, software: pskrSoftware(report.app), spots: decision.spots,
+    seq: decision.seq, domain: domainOf(report.call), exportS: Math.floor(Date.now() / 1000),
+  });
+  try {
+    await pskrSend(env, message);
+  } catch (e) {
+    // The gate counts these sent: they are lost, as a UDP report would be, and the page is told to
+    // move on rather than send them twice.
+    countPskr(env, report, decision.spots, "send_failed", offered, 0);
+    return pskrJson({ ok: false, error: "unreachable", retry_in: decision.retryMs });
+  }
+  countPskr(env, report, decision.spots, "sent", offered, decision.spots.length);
+  return pskrJson({ ok: true, sent: decision.spots.length, retry_in: decision.retryMs });
+}
+
+// What PSKReporter's statistics list the station under: one name, so every build counts together,
+// and the build's own version beside it (docs/architecture/system.md, Third-party services).
+export function pskrSoftware(app) {
+  const version = appVersion(app);
+  return version ? `${APP_NAME} ${version}` : APP_NAME;
+}
+
+// One message on its own connection, closed once written. `env.PSKR_CONNECT` stands in for
+// cloudflare:sockets' connect() in a test, which runs under node.
+async function pskrSend(env, bytes) {
+  const connect = env.PSKR_CONNECT || (await import("cloudflare:sockets")).connect;
+  const socket = connect({ hostname: PSKR_HOST, port: PSKR_PORT });
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error("timeout")), PSKR_CONNECT_MS);
+  });
+  try {
+    await Promise.race([socket.opened, timeout]);
+    const writer = socket.writable.getWriter();
+    await Promise.race([writer.write(bytes), timeout]);
+    await Promise.race([writer.close(), timeout]);
+  } finally {
+    clearTimeout(timer);
+    try {
+      await socket.close();
+    } catch (e) {
+      // Already closed.
+    }
+  }
+}
+
+// One Analytics Engine data point per post. A count never fails a report.
+function countPskr(env, report, spots, outcome, offered, sent) {
+  const bands = [...new Set(spots.map((s) => bandOf(s.f)))].sort().join(" ");
+  const modes = [...new Set(spots.map((s) => s.m))].sort().join(" ");
+  try {
+    env.PSKR_REPORTS.writeDataPoint({
+      blobs: [report.call, report.grid.slice(0, 4), appVersion(report.app), bands, modes, outcome],
+      doubles: [offered, sent],
+      indexes: [report.call],
+    });
+  } catch (e) {
+    // Uncounted.
+  }
+}
+
+function pskrJson(body, status) {
+  return new Response(JSON.stringify(body), {
+    status: status || 200,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "access-control-allow-origin": "*",
+      "cache-control": "no-store",
+    },
+  });
 }
