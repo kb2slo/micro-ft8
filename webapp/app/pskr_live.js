@@ -79,7 +79,7 @@ var PskrLive = (function () {
     s.ws = ws;
     setStatus('connecting');
     ws.onopen = function () {
-      ws.send(PskrCore.connectPacket('mft8-' + Math.random().toString(16).slice(2, 12)));
+      ws.send(PskrCore.connectPacket(PskrCore.clientIdFor(call, Math.random().toString(16).slice(2, 10))));
     };
     ws.onmessage = function (ev) {
       var packets, now = Date.now(), spots = [];

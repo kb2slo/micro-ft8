@@ -1508,6 +1508,7 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 <script src=radio_settings.js></script>
 <script src=fields.js></script>
 <script src=callinfo.js></script>
+<script src=app_name.js></script>
 <script src=pskr_core.js></script>
 <script src=pskr_live.js></script>
 <script src=qrz_sync_core.js></script>
@@ -1515,9 +1516,6 @@ button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:point
 <script src=updates.js></script>
 <script>
 // BANDS and BAND_EDGES_KHZ live in bands.js (shared with swr.html).
-// The app's name in what the app says, one spelling everywhere (docs/README.md, The app's name). The
-// pages' <title>s and the wordmark are written out in their HTML.
-var APP_NAME = 'micro-FT8';
 // The fields that autosave one key each on change, by the loop below. cq_mod, grid,
 // offset, offset_src, tries and act_refs have handlers of their own (webapp.md, Settings ›
 // Station): a format check, a stepper, a list.

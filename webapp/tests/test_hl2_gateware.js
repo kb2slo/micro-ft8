@@ -22,8 +22,8 @@ function extractFunction(text, name) {
 }
 const tested = /var HL2_TESTED_GATEWARE = [^;]*;/.exec(src);
 assert(tested, 'HL2_TESTED_GATEWARE not found in app.html');
-const appName = /var APP_NAME = [^;]*;/.exec(src);
-assert(appName, 'APP_NAME not found in app.html');
+const appName = /var APP_NAME = [^;]*;/.exec(fs.readFileSync(path.join(__dirname, '../app/app_name.js'), 'utf8'));
+assert(appName, 'APP_NAME not found in app_name.js');
 
 const sb = {};
 vm.createContext(sb);
