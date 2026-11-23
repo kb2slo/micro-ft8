@@ -56,6 +56,13 @@ var PskrCore = (function () {
     return concat([new Uint8Array([first].concat(len)), body]);
   }
   // Protocol "MQTT" level 4 (3.1.1), clean session, no will, no credentials.
+  // The feed's terms ask each connection for an id of its own that starts with the program's name and
+  // names a callsign, such as my-program-M0LTE-3f9a2c1b, and refuse one holding + or #
+  // (mqtt.pskreporter.info, Terms of use).
+  function clientIdFor(call, random) {
+    return (APP_NAME + '-' + call + '-' + random).replace(/[+#]/g, '');
+  }
+
   function connectPacket(clientId) {
     var head = new Uint8Array([0, 4, 77, 81, 84, 84, 4, 2, KEEPALIVE_S >> 8, KEEPALIVE_S & 255]);
     return packet(0x10, concat([head, utf8(clientId)]));
@@ -279,7 +286,7 @@ var PskrCore = (function () {
     URL: URL, PING_MS: PING_MS, DEAD_MS: DEAD_MS, LAG_MS: LAG_MS, KEEP_MS: KEEP_MS, MAX_SPOTS: MAX_SPOTS,
     MIN_GAP_MS: MIN_GAP_MS, TX_MERGE_MS: TX_MERGE_MS,
     CONNACK: CONNACK, PUBLISH: PUBLISH, SUBACK: SUBACK, PINGRESP: PINGRESP, PINGREQ: PINGREQ, DISCONNECT: DISCONNECT,
-    topicFor: topicFor, connectPacket: connectPacket, subscribePacket: subscribePacket,
+    topicFor: topicFor, clientIdFor: clientIdFor, connectPacket: connectPacket, subscribePacket: subscribePacket,
     newReader: newReader, readPackets: readPackets, publishOf: publishOf,
     spotOf: spotOf, spotKey: spotKey,
     newState: newState, restore: restore, addSpots: addSpots, noteTx: noteTx, listenStart: listenStart,

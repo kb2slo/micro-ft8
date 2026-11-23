@@ -49,7 +49,7 @@ const ctx = vm.createContext({
   document: { visibilityState: 'visible', addEventListener: (t, f) => { docListeners[t] = f; } },
   window: { addEventListener: (t, f) => { winListeners[t] = f; } }
 });
-for (const f of ['pskr_core.js', 'pskr_live.js']) {
+for (const f of ['app_name.js', 'pskr_core.js', 'pskr_live.js']) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'app', f), 'utf8'), ctx);
 }
 const P = vm.runInContext('PskrCore', ctx);
@@ -94,6 +94,8 @@ same([ws.url, ws.proto], [P.URL, 'mqtt'], 'want: the feed, MQTT subprotocol');
 same(L.status(), 'connecting', 'want: connecting');
 ws.open();
 same(ws.sent[0][0], 0x10, 'open: CONNECT first');
+same(/micro-FT8-KB2SLO-[0-9a-f]{8}$/.test(Buffer.from(ws.sent[0]).toString('latin1')), true,
+  'the id the feed asks for: the program, our call, something random (mqtt.pskreporter.info, Terms of use)');
 ws.deliver(CONNACK);
 same(ws.sent[1], Array.from(P.subscribePacket(1, P.topicFor('KB2SLO'))), 'CONNACK: SUBSCRIBE to our call');
 ws.deliver(SUBACK);
