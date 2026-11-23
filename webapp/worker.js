@@ -13,9 +13,12 @@
 //
 // A path with no file never lands here: Static Assets answers it with 404.html
 // (wrangler.jsonc, not_found_handling). The last return is a backstop only.
+
 // The app's name, as everything this sends names it: QRZ's User-Agent. One spelling everywhere,
 // "micro-FT8" (docs/README.md, The app's name).
-export const APP_NAME = "micro-FT8";
+// Not exported: the runtime takes each named export of this module for an entrypoint, and refuses one
+// that is not a function or a class ("Incorrect type for map entry", wrangler dev, 2026-11-23).
+const APP_NAME = "micro-FT8";
 
 export default {
   async fetch(request, env) {
