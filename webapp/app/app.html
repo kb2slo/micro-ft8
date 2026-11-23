@@ -5380,11 +5380,22 @@ function noteSentTx(list, e, ctx) {
 }
 
 // The lines shown: those as recent as the oldest decode slot kept, so the list stays one stretch of
-// time; with fewer than max decode slots kept (a quiet band, a CQ no one answers), the newest max.
-function sentShown(sent, slots, max) {
-  if (slots.length < max) return sent.slice(-max);
-  var oldest = Math.min.apply(null, slots.map(function (s) { return s.ts; }));
-  return sent.filter(function (s) { return s.ts >= oldest; });
+// time. With fewer than max decode slots kept (a quiet band, a CQ no one answers) there is room for
+// the newest max, and a line with no decode slot that old shows while its slot ended within
+// SENT_RECENT_MS: three CQs every other FT8 slot span 90 s. Past that, with no decodes around it,
+// it is no part of what the list shows now (a phone back from sleep, a station left idle).
+var SENT_RECENT_MS = 2 * 60 * 1000;
+function sentShown(sent, slots, max, nowMs) {
+  var oldest = slots.length ? Math.min.apply(null, slots.map(function (s) { return s.ts; })) : Infinity;
+  var from = slots.length < max ? Math.min(oldest, nowMs - SENT_RECENT_MS) : oldest;
+  var shown = sent.filter(function (s) { return s.ts >= from; });
+  return slots.length < max ? shown.slice(-max) : shown;
+}
+
+// A line that ages out goes with no event to redraw for, as on a station gone quiet: tick() asks.
+var sentDrawn = 0;
+function expireSentLines() {
+  if (sentShown(sentTx, decodeSlots, DECODE_SLOTS_MAX, Date.now()).length !== sentDrawn) renderDecodes();
 }
 
 // What a line says: the label, with the mode while two channels are listened to; a note under it for
@@ -6233,7 +6244,9 @@ function renderDecodesNow() {
   document.getElementById('dvBar').hidden = !decodeBarShown(decodeSlots);
   // What we sent, among them by time (webapp.md, What we sent): no filter hides it, and it takes no tap.
   var bothModes = decodeModeFilterOn(lastCfg);
-  rows.innerHTML = decodeListOrder(shownSlots, sentShown(sentTx, decodeSlots, DECODE_SLOTS_MAX)).map(function (entry, i) {
+  var sents = sentShown(sentTx, decodeSlots, DECODE_SLOTS_MAX, nowMs);
+  sentDrawn = sents.length;
+  rows.innerHTML = decodeListOrder(shownSlots, sents).map(function (entry, i) {
     var divider = i > 0 ? '<div class=dslotdiv></div>' : '';
     if (entry.sent) return '<div class="dslot dsent">' + divider + sentLineHtml(entry.sent, bothModes) + '</div>';
     var slot = entry.slot;
@@ -8660,6 +8673,7 @@ function tick() {
   refreshVisibleAgo();
   updateLinkFreshness();
   expireStaleTxHud();
+  expireSentLines();
   renderRadioBar();
   updateDecodeRate();
   setTimeout(tick, 1000);

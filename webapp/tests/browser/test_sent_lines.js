@@ -3,7 +3,8 @@
 // simulated station: as the scenario's QSO runs, each page shows our transmissions as lines among the decode
 // slots, from the station's own TX HUD events, Sending while on the air and Sent once ended; our answer to
 // N6HAN's CQ sits above the slot that decoded the CQ (the simulator sends it in that slot, decodeListOrder());
-// and a reload keeps the lines, which the station does not replay. node webapp/tests/test_sent_lines.js holds the rules; this holds the wiring.
+// a reload keeps the lines, which the station does not replay; and a line from long before, with no decode
+// slots kept, is not drawn. node webapp/tests/test_sent_lines.js holds the rules; this holds the wiring.
 //
 // At real time (--scale 1): a line is its slot by the station's time on the event, and the simulator stamps
 // events with the wall clock, so a faster run puts several of its periods' transmissions in one slot, which a
@@ -57,4 +58,15 @@ run(async (st) => {
     return l.some((x) => /^sent:(Sent|Sending):/.test(x)) ? l : null;
   }, 10000);
   check('after a reload the lines are still there', !!kept, await listed(A));
+
+  // A station gone quiet keeps no decode slots: a line from long before is not drawn with none around it.
+  const quiet = await B.evaluate(() => {
+    const line = (x, agoMs) => ({ x: x, hz: 1000, md: 'FT8', ts: Date.now() - agoMs, lenMs: 15000, st: 'sent', reason: '' });
+    decodeSlots = [];
+    sentTx = [line('CQ OLD EM10', 600000), line('CQ NEW EM10', 15000)];
+    renderDecodes(true);
+    return Array.from(document.querySelectorAll('#opDecodeRows .senttxt')).map((el) => el.textContent);
+  });
+  check('with no decode slots kept, a recent line shows and one from ten minutes ago does not',
+    quiet.join() === 'CQ NEW EM10', quiet);
 }, { scale: 1 });
