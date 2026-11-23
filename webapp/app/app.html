@@ -487,6 +487,15 @@ button{touch-action:manipulation}
 .drow .txt.c-cq{color:var(--good-hot)}
 .drow .me{font-size:.65rem;font-weight:700;color:var(--accent);border:1px solid var(--accent-border);border-radius:.3rem;padding:0 .3rem;margin-left:.3rem;white-space:nowrap}
 .dslotdiv{border-top:2px dashed color-mix(in srgb, GrayText 45%, transparent);margin:.35rem 1rem}
+/* What we sent (webapp.md, What we sent): one line in the transmit colour, a note under one that did not go out whole. */
+.sentline{display:flex;align-items:baseline;gap:.55rem;padding:.4rem 1rem .4rem calc(1rem - 3px);border-left:3px solid var(--danger);background:color-mix(in srgb, var(--danger) 7%, Canvas)}
+.sentline .sentlbl{font-size:.72rem;font-weight:700;color:var(--danger);white-space:nowrap;min-width:4.6em}
+.sentline .senttxt{flex:1;min-width:0;font-size:1.05rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sentline .senttime{font-family:ui-monospace,monospace;font-size:.68rem;color:GrayText;white-space:nowrap}
+.sentline.s-notkeyed{border-left-color:var(--warn);background:color-mix(in srgb, var(--warn) 9%, Canvas)}
+.sentline.s-notkeyed .sentlbl{color:var(--warn)}
+.sentnote{font-size:.72rem;color:var(--danger);padding:0 1rem .4rem calc(1rem - 3px);border-left:3px solid var(--danger);background:color-mix(in srgb, var(--danger) 7%, Canvas)}
+.sentnote.s-notkeyed{color:var(--warn);border-left-color:var(--warn);background:color-mix(in srgb, var(--warn) 9%, Canvas)}
 
 /* ---- log ---- */
 #logList{padding-bottom:.5rem}
@@ -5279,7 +5288,9 @@ function expireStaleTxHud() {
   if (txHud && txHud.active && (Date.now() - lastTxHudEventMs) > TX_HUD_STALE_MS) {
     txHud.active = false;
     noteTxHud(swrTrack, txHud);
+    sentTx = noteSentTx(sentTx, { active: false }, {});  // no time on it: counted as sent
     renderRadioBar();
+    renderDecodes();
   }
 }
 
@@ -5291,6 +5302,108 @@ function txIsOurCq() {
   if (!txHud || !txHud.active) return false;
   var x = String(txHud.x || '').trim().toUpperCase();
   return x.indexOf('CQ ') === 0;
+}
+
+// ===================== Operate: what we sent, in the decodes =====================
+// Each transmission is a line among the decode slots (webapp.md, What we sent). The page keeps them
+// itself, from the TX HUD events: the sidekick has no record of them, and /api/state replays only the
+// last one. Newest last: {x, hz, md ('FT8'|'FT4'), ts (its slot's end, as a decode slot's), lenMs,
+// st: 'on'|'sent'|'stopped'|'notkeyed', reason, endMs (how far into its slot a stopped one ended)}.
+var sentTx = [];
+var SENT_TX_MAX = 6;
+// How far into its slot a full transmission is still on the air: FT8's tones end past 12.6 s and FT4's
+// about 5 s in (radio.md, TX timing on a QMX). One that ended sooner was stopped, an operator's Stop
+// included, which ends the event with no reason. The station's time is in whole seconds.
+var SENT_FULL_MS = { FT8: 11000, FT4: 3500 };
+
+// Folds one TX HUD event into the list. ctx: {prevActive (the HUD before it), mode (the TX's, from
+// txModeOf()), tune, nowMs}. A transmission is placed in its slot by its first event's time (t) plus
+// half a second: t is whole seconds rounded down, so an FT4 period that starts on the half second read
+// its first events in the period before, a second line for every transmission (bench, 2026-11-23), and a
+// transmission never starts before its period does. Later events with its text, up to a second past its
+// period's end, are the same one: the repeats while keyed, an abort or a skip shown to the period's end,
+// and the event /api/state replays. With the clock unset (t 0), the rising edge starts one, at the
+// page's time. Tune is not a transmission of a message.
+function noteSentTx(list, e, ctx) {
+  var out = list.slice();
+  var n = out.length, last = n ? out[n - 1] : null;
+  var tMs = e.t ? e.t * 1000 : 0;
+  if (!e.active) {
+    // With no time on it, the HUD went stale (expireStaleTxHud()): counted as sent, but lapsed, since a
+    // poll held up for 3 s does that too (a log read as our 73 logs the QSO, bench 2026-11-23), and the
+    // transmission's next event then reopens it.
+    if (last && (last.st === 'on' || last.lapsed)) {
+      var inMs = tMs - (last.ts - last.lenMs);
+      out[n - 1] = Object.assign({}, last, !tMs ? { st: 'sent', lapsed: true }
+        : inMs < SENT_FULL_MS[last.md] ? { st: 'stopped', endMs: Math.max(0, inMs), lapsed: false }
+        : { st: 'sent', lapsed: false });
+    }
+    return out;
+  }
+  if (ctx.tune || !e.x || e.x === 'TUNE') return out;
+  var md = ctx.mode === 'FT4' ? 'FT4' : 'FT8', lenMs = md === 'FT4' ? 7500 : 15000;
+  var ts = (Math.floor((tMs ? tMs + 500 : ctx.nowMs) / lenMs) + 1) * lenMs;
+  var st = e.nk ? 'notkeyed' : e.aborted ? 'stopped' : 'on';
+  var same = last && (tMs ? last.ts === ts || (last.x === e.x && tMs + 500 < last.ts + 1000) : ctx.prevActive);
+  if (same) {
+    var cur = last.lapsed ? Object.assign({}, last, { st: 'on', lapsed: false }) : last;
+    // The mode comes from the queue entry the transmission sends, and a CQ just called can key before its
+    // entry reaches the page, its mode then read from the slot state: an FT4 CQ read as FT8, and Stopped
+    // 5 s into its slot (bench, 2026-11-23). Each event asks again, and the line moves to its period.
+    if (md !== cur.md && cur.t0) {
+      cur = Object.assign({}, cur, { md: md, lenMs: lenMs, ts: (Math.floor(cur.t0 / lenMs) + 1) * lenMs });
+    }
+    if (st !== 'on' && cur.st === 'on') cur = Object.assign({}, cur, { st: st, reason: e.reason || '' });
+    out[n - 1] = cur;
+    return out;
+  }
+  if (last && (last.st === 'on' || last.lapsed)) out[n - 1] = Object.assign({}, last, { st: 'sent', lapsed: false });
+  out.push({ x: e.x, hz: e.hz | 0, md: md, ts: ts, lenMs: lenMs, st: st, reason: st === 'on' ? '' : (e.reason || ''),
+             t0: tMs ? tMs + 500 : ctx.nowMs });
+  return out.slice(-SENT_TX_MAX);
+}
+
+// The lines shown: those as recent as the oldest decode slot kept, so the list stays one stretch of
+// time; with fewer than max decode slots kept (a quiet band, a CQ no one answers), the newest max.
+function sentShown(sent, slots, max) {
+  if (slots.length < max) return sent.slice(-max);
+  var oldest = Math.min.apply(null, slots.map(function (s) { return s.ts; }));
+  return sent.filter(function (s) { return s.ts >= oldest; });
+}
+
+// What a line says: the label, with the mode while two channels are listened to; a note under it for
+// one that did not go out whole; and its slot's start, as WSJT-X's UTC column has it.
+function sentLineModel(s, both) {
+  var word = { on: 'Sending', sent: 'Sent', stopped: 'Stopped', notkeyed: 'Not sent' }[s.st] || 'Sent';
+  var note = s.st === 'notkeyed' ? 'Not counted: ' + (s.reason || 'could not key')
+    : s.st === 'stopped' ? (s.reason || 'Ended ' + Math.round((s.endMs || 0) / 1000) + ' s in') : '';
+  return { label: word + (both ? ' ' + s.md : ''), note: note, time: fmtUtcSecs(s.ts - s.lenMs) };
+}
+
+// "14:02:45z", or "14:02:52.5z" for an FT4 period that starts on the half second.
+function fmtUtcSecs(ms) {
+  var d = new Date(ms), pad = function (v) { return String(v).padStart(2, '0'); };
+  var tenth = Math.round(d.getUTCMilliseconds() / 100);
+  return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds()) +
+    (tenth ? '.' + tenth : '') + 'z';
+}
+
+// The decode slots shown and the lines of what we sent, in one list, newest first by their slots' ends.
+// A station never decodes in a slot it sends in (decode.md, Deaf by overlap), so the two share an end
+// only where the period that decoded a call also answers it, as the simulator runs: the line, the
+// answer, goes above. Slot entries come back as they are, a line as {sent}.
+function decodeListOrder(slotEntries, sents) {
+  var items = sents.map(function (s, k) { return { ts: s.ts, k: k, item: { sent: s } }; })
+    .concat(slotEntries.map(function (e, k) { return { ts: e.slot.ts, k: sents.length + k, item: e }; }));
+  items.sort(function (a, b) { return (b.ts - a.ts) || (a.k - b.k); });
+  return items.map(function (it) { return it.item; });
+}
+
+function sentLineHtml(s, both) {
+  var m = sentLineModel(s, both);
+  return '<div class="sentline s-' + s.st + '"><span class=sentlbl>' + esc(m.label) + '</span>' +
+    '<span class=senttxt>' + esc(s.x) + '</span><span class=senttime>' + m.time + '</span></div>' +
+    (m.note ? '<div class="sentnote s-' + s.st + '">' + esc(m.note) + '</div>' : '');
 }
 
 // ===================== Operate: queue =====================
@@ -6102,9 +6215,12 @@ function renderDecodesNow() {
   shownSlots.forEach(function (e) { total += e.shown.length; });
   document.getElementById('dvHidden').textContent = total ? (total - hidden) + '/' + total : '';
   document.getElementById('dvBar').hidden = !decodeBarShown(decodeSlots);
-  rows.innerHTML = shownSlots.map(function (entry, i) {
-    var slot = entry.slot;
+  // What we sent, among them by time (webapp.md, What we sent): no filter hides it, and it takes no tap.
+  var bothModes = decodeModeFilterOn(lastCfg);
+  rows.innerHTML = decodeListOrder(shownSlots, sentShown(sentTx, decodeSlots, DECODE_SLOTS_MAX)).map(function (entry, i) {
     var divider = i > 0 ? '<div class=dslotdiv></div>' : '';
+    if (entry.sent) return '<div class="dslot dsent">' + divider + sentLineHtml(entry.sent, bothModes) + '</div>';
+    var slot = entry.slot;
     var slotBand = slotBandName(slot), slotModeName = slotMode(slot);
     // One line: band and frequency left, the slot's time and age right.
     var freqMHz = fmtSlotFreqMHz(slot.freqKhz);
@@ -6528,6 +6644,8 @@ function applyEvent(e) {
     slotState = { sp: e.sp, hz: e.hz, md: e.md | 0 };
     if (!e.t) clockUnsetSeen();
   } else if (e.d === 4) {
+    sentTx = noteSentTx(sentTx, e, { prevActive: !!(txHud && txHud.active), mode: txModeOf(e.x, queue, slotState),
+                                     tune: yn(lastCfg.tune) === 'yes', nowMs: Date.now() });
     if (e.active && !(txHud && txHud.active)) {
       txKeyedAt = Date.now();
       if (txLogsQso(e.x)) kickLogRefresh(e.t ? e.t * 1000 : 0);  // the station's time, when it logged it
@@ -6618,6 +6736,7 @@ function resetLiveState() {
   queueOrder = [];
   slotState = null;
   txHud = null;
+  // sentTx stays: the station keeps no record of what we sent, so the page's is the only one.
 }
 
 // One poll at a time, given up after LIVE_POLL_TIMEOUT_MS. tick() calls this every second whether
@@ -8385,7 +8504,7 @@ function saveStateCache() {
       decodeSlots: decodeSlots.map(function (slot) {
         return { ts: slot.ts, lenMs: slot.lenMs, band: slot.band, freqKhz: slot.freqKhz, rows: slot };
       }),
-      slotState: slotState, txHud: txHud
+      slotState: slotState, txHud: txHud, sentTx: sentTx
     }));
   } catch (e) { /* private browsing, quota, or unavailable -- no seed next time */ }
 }
@@ -8422,6 +8541,7 @@ function loadStateCache() {
     }
     if (s.slotState) slotState = s.slotState;
     if (s.txHud) txHud = s.txHud;
+    if (Array.isArray(s.sentTx)) sentTx = s.sentTx;
   } catch (e) { /* corrupt or unavailable -- boot normally, no seed */ }
 }
 loadStateCache();

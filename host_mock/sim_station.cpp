@@ -9,7 +9,8 @@
  *   ./sim_station [--scale N] [--port N] scenario.json
  *
  * --scale divides the 15 s period. 1 is real time. The page's own clock
- * is not replaced: slot indexes come from the wall clock.
+ * is not replaced: slot indexes come from the wall clock. At --scale 1 a
+ * period starts on the wall clock's 15 s grid, so a period is that slot.
  */
 
 #include "scenario.h"
@@ -646,6 +647,15 @@ int main(int argc, char** argv)
 
     using clock = std::chrono::steady_clock;
     auto next_step = clock::now();
+    if (scale == 1) {
+        // At real time a period is a slot, so it starts on the wall clock's 15 s grid, as a station's do: a
+        // transmission's TX HUD events then carry times inside its own slot, which the page reads it by
+        // (webapp/tests/browser/test_sent_lines.js). Faster, a period is not a slot anyway.
+        const int64_t wall_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                    std::chrono::system_clock::now().time_since_epoch())
+                                    .count();
+        next_step += std::chrono::milliseconds(15000 - wall_ms % 15000);
+    }
     auto next_beat = next_step + std::chrono::seconds(1);
     bool script_done = false;
 
