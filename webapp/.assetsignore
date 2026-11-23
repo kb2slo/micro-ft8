@@ -7,6 +7,7 @@ app
 dist
 wrangler.jsonc
 worker.js
+pskr_report.js
 .assetsignore
 .wrangler
 # Build scripts and their tests run before the deploy; no page loads them.

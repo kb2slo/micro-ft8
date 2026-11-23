@@ -327,10 +327,11 @@ int main()
         expect_str(s.cq_mode, "FT8", "the CQ row calls in FT8 to start");
         expect_true(!s.show_bearing, "no bearing on decode rows to start");
         expect_true(s.queue_marks, "queue marks on to start");
+        expect_true(!s.pskr_report, "no reporting to PSKReporter until the operator turns it on");
         expect_str(s.qrz_key, "", "no QRZ key to start");
 
         station_parse("qrz_key=ABCD-EFGH-IJKL-MNOP\nqrz_book=kb2slo\nqrz_live=20261122\n"
-                      "dist_unit=mi\ncq_mode=FT4\nshow_bearing=1\nqueue_marks=0\n", &s);
+                      "dist_unit=mi\ncq_mode=FT4\nshow_bearing=1\nqueue_marks=0\npskr_report=1\n", &s);
         StationSettings back;
         station_settings_init(&back);
         station_parse(station_serialize(s), &back);
@@ -341,6 +342,7 @@ int main()
         expect_str(back.cq_mode, "FT4", "the CQ row calls in FT4");
         expect_true(back.show_bearing, "bearing on");
         expect_true(!back.queue_marks, "queue marks off");
+        expect_true(back.pskr_report, "reporting to PSKReporter on");
 
         station_parse("dist_unit=furlongs\ncq_mode=FT2\nqrz_live=yesterday\nqrz_key=a key\nshow_bearing=yes\n", &s);
         expect_str(s.dist_unit, "mi", "a bad unit keeps the old");
@@ -358,6 +360,8 @@ int main()
         expect_true(station_pref_refusal("qrz_live", "2026112") != nullptr, "a short day is refused");
         expect_true(station_pref_refusal("qrz_key", "") == nullptr, "an empty key clears, not refused");
         expect_true(station_pref_refusal("queue_marks", "0") == nullptr, "a switch is 0 or 1");
+        expect_true(station_pref_refusal("pskr_report", "yes") != nullptr, "the PSKReporter switch is 0 or 1");
+        expect_true(station_key_known("pskr_report"), "the PSKReporter switch is a station key");
         expect_true(station_pref_refusal("grid", "nonsense") == nullptr, "other keys are checked elsewhere");
         expect_true(station_key_known("qrz_key") && station_key_known("cq_mode") && station_key_known("queue_marks"),
                     "the new keys are settable");

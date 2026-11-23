@@ -83,6 +83,7 @@ static void seed_config(const TestData& td)
     g_cfg["cq_mode"] = "FT8";
     g_cfg["show_bearing"] = "0";
     g_cfg["queue_marks"] = "1";
+    g_cfg["pskr_report"] = "0";
     g_cfg["cat_ready"] = "1";
     g_cfg["audio_rx"] = "1";
     g_cfg["tune"] = "0";
