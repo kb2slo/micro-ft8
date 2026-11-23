@@ -42,7 +42,7 @@
       }
     },
     {
-      "comment": "Period 3 (odd): DX sends TX2 (report)",
+      "comment": "Period 3 (odd): DX sends TX2 (report) at -12; our R-report is that reply's SNR, not the tapped CQ's -5, as in WSJT-X",
       "messages": [
         {
           "call_to": "${MY_CALLSIGN}",
@@ -53,14 +53,14 @@
         }
       ],
       "expect": {
-        "tx": "N6HAN AG6AQ R-5"
+        "tx": "N6HAN AG6AQ R-12"
       }
     },
     {
       "comment": "Period 4 (even): we send TX3 (R+report)",
       "messages": [],
       "expect": {
-        "tx": "N6HAN AG6AQ R-5"
+        "tx": "N6HAN AG6AQ R-12"
       }
     },
     {
@@ -76,7 +76,7 @@
       ],
       "expect": {
         "tx": "N6HAN AG6AQ 73",
-        "log": "N6HAN CM87 rst_sent=-5 rst_rcvd=-12"
+        "log": "N6HAN CM87 rst_sent=-12 rst_rcvd=-12"
       }
     },
     {

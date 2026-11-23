@@ -1,5 +1,5 @@
 {
-  "comment": "DX opens a QSO with a report, not a grid. The report we send is latched from that first SNR; a later report changes what we log as received and must not change what we send.",
+  "comment": "DX opens a QSO with a report, not a grid. Each report DX sends sets the report we send back to that decode's SNR, as in WSJT-X; RR73 takes no report, so we log the one we last sent.",
   "config": {
     "MY_CALLSIGN": "AG6AQ",
     "MY_GRID": "CM97",
@@ -16,7 +16,7 @@
       }
     },
     {
-      "comment": "Period 1 (odd): DX calls us with -14. New QSO goes straight to R-report. snr_tx latches the decode SNR, -8.",
+      "comment": "Period 1 (odd): DX calls us with -14. New QSO goes straight to R-report, with the decode's SNR, -8.",
       "messages": [
         {
           "call_to": "${MY_CALLSIGN}",
@@ -38,7 +38,7 @@
       }
     },
     {
-      "comment": "Period 3 (odd): DX repeats a report at -22. We stay on R-8.",
+      "comment": "Period 3 (odd): DX repeats a report, decoded at -22. Our R-report follows it.",
       "messages": [
         {
           "call_to": "${MY_CALLSIGN}",
@@ -49,18 +49,18 @@
         }
       ],
       "expect": {
-        "tx": "N6HAN AG6AQ R-8"
+        "tx": "N6HAN AG6AQ R-22"
       }
     },
     {
-      "comment": "Period 4 (even): still R-8",
+      "comment": "Period 4 (even): resend R-22",
       "messages": [],
       "expect": {
-        "tx": "N6HAN AG6AQ R-8"
+        "tx": "N6HAN AG6AQ R-22"
       }
     },
     {
-      "comment": "Period 5 (odd): DX sends RR73. Log rst_sent from the latch and rst_rcvd from the later report. No grid was ever copied.",
+      "comment": "Period 5 (odd): DX sends RR73. Log rst_sent as the R-22 we last sent, not the RR73's SNR, and rst_rcvd from the later report. No grid was ever copied.",
       "messages": [
         {
           "call_to": "${MY_CALLSIGN}",
@@ -72,7 +72,7 @@
       ],
       "expect": {
         "tx": "N6HAN AG6AQ 73",
-        "log": "N6HAN  rst_sent=-8 rst_rcvd=-22"
+        "log": "N6HAN  rst_sent=-22 rst_rcvd=-22"
       }
     },
     {
