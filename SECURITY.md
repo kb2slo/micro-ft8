@@ -1,6 +1,6 @@
 # Security
 
-Micro-FT8 keys a transmitter, so a flaw that lets someone on the network transmit, change settings or
+micro-FT8 keys a transmitter, so a flaw that lets someone on the network transmit, change settings or
 replace firmware without pairing matters more than it would in most hobby firmware.
 
 ## Reporting a vulnerability

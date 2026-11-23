@@ -18,6 +18,7 @@
 #include "http_worker.h"
 #include "net_health.h"
 #include "pairing_http.h"
+#include "app_name.h"
 #include "porta_proto.h"
 #include "wifi_prov.h"
 
@@ -207,7 +208,7 @@ static void heap_low_check(void)
 
 void app_main(void)
 {
-    ESP_LOGI(TAG, "Micro-FT8 sidekick booting (IDF %s)", esp_get_idf_version());
+    ESP_LOGI(TAG, MICROFT8_APP_NAME " sidekick booting (IDF %s)", esp_get_idf_version());
 
     // Beacon first, WiFi second. The PORTA companion link is what the main board
     // depends on; a sidekick that cannot reach WiFi is degraded, not broken,

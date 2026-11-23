@@ -26,7 +26,7 @@ flowchart TB
         worker["Worker routes<br/>for sources without CORS"]
     end
     subgraph phone["Phone or computer"]
-        app["Micro-FT8 web app<br/>served by the sidekick, runs here"]
+        app["micro-FT8 web app<br/>served by the sidekick, runs here"]
     end
     subgraph sk["Sidekick — no TLS, no CA bundle"]
         http["HTTP server<br/>control API, pairing token"]

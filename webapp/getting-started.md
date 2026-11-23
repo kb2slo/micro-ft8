@@ -1,6 +1,6 @@
 ---
-title: Getting started — Micro-FT8
-description: Set up a Micro-FT8 station with a QMX and make your first FT8 QSO, from a phone browser.
+title: Getting started — micro-FT8
+description: Set up a micro-FT8 station with a QMX and make your first FT8 QSO, from a phone browser.
 pages: 1
 ---
 
@@ -24,7 +24,7 @@ pages: 1
 
 ![Open the app](qr:http://192.168.4.1/app.html)
 
-Micro-FT8 is a headless FT8 station for your QMX. The *main board* (M5Stack Unit PoE-P4) decodes, transmits, sequences each QSO and keeps the log. The *sidekick* (AtomS3 Lite, the small cube on the short cable) runs its own WiFi network and serves the app to your phone's browser, so there is nothing to install. The queue and the sequencer are on the station, so a locked phone does not drop a QSO. Building your own? Flash both boards first: [Downloads](https://micro-ft8.kalikstein.com/downloads).
+micro-FT8 is a headless FT8 station for your QMX. The *main board* (M5Stack Unit PoE-P4) decodes, transmits, sequences each QSO and keeps the log. The *sidekick* (AtomS3 Lite, the small cube on the short cable) runs its own WiFi network and serves the app to your phone's browser, so there is nothing to install. The queue and the sequencer are on the station, so a locked phone does not drop a QSO. Building your own? Flash both boards first: [Downloads](https://micro-ft8.kalikstein.com/downloads).
 
 ## 1. Connect it
 

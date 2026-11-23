@@ -344,7 +344,7 @@ jobs:
             tail -n +2 "docs/releases/${NUMBER}.md"
             echo
             sed "s/@NUMBER@/${NUMBER}/g" <<'EOF'
-          Micro-FT8 @NUMBER@, a stable release. First install and recovery, in a browser: https://micro-ft8.kalikstein.com/downloads.html
+          micro-FT8 @NUMBER@, a stable release. First install and recovery, in a browser: https://micro-ft8.kalikstein.com/downloads.html
 
           **M5Stack Unit PoE-P4 (U213)** — `microft8-poe-p4-@NUMBER@.bin`: the headless main board. Flash at `0x0` over the USB-C port next to the RJ45 (labeled `USB-C PROG & OTG`).
 

@@ -273,7 +273,7 @@ int main() {
         rec("K1ABC", "FN42", "20260817", "153000", "N0CALL", "other-op");
 
     const std::string incoming = adi_file({k1, k2});
-    parsed = must_parse(incoming, "parse micro-ft8 incoming");
+    parsed = must_parse(incoming, "parse micro-FT8 incoming");
     expect_true(parsed.size() == 2, "two incoming records");
 
     std::string out;

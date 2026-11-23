@@ -8,6 +8,7 @@
 #include "adif_delete.h"
 #include "adif_logger.h"
 #include "amp_band_prime.h"
+#include "app_name.h"
 #include "autoseq.h"
 #include "decode_pipeline.h"
 #include "decode_sync.h"
@@ -102,7 +103,7 @@ static void station_seed_adv_defaults(void) {
     s_station.offset_src = 0;  // RANDOM
     s_station.radio = 2;       // QMX (also station_settings_init)
     s_station.gps_baud = 115200;
-    s_station.comment1 = "micro-ft8 /Radio";
+    s_station.comment1 = MICROFT8_APP_NAME " /Radio";
     s_station.active_bands = "80 40 30 20 17 15 12 10";
     s_station.tries = AUTOSEQ_TRIES;
     set_station_call();
@@ -824,7 +825,7 @@ size_t porta_host_config_snapshot(char *out, size_t out_cap, bool mask_secrets) 
         text += gw;
     }
 
-    // What the radio last said of itself (IF;), against what Micro-FT8 means it to be: both in
+    // What the radio last said of itself (IF;), against what micro-FT8 means it to be: both in
     // Hz, so the page can tell a knob turned from a band changed. Absent until a reply arrives.
     char fw[16];
     if (radio_control_get_version(fw, sizeof(fw))) {

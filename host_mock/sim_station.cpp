@@ -419,7 +419,7 @@ static std::string handle(const std::string& method, const std::string& url,
         return "{\"ok\":true}";
     }
     if (method == "POST" && (path == "/api/radio/read" || path == "/api/radio/connect")) {
-        // The simulated radio is always where Micro-FT8 put it.
+        // The simulated radio is always where micro-FT8 put it.
         g_cfg["radio_fw"] = "1_04_004";
         g_cfg["want_hz"] = "7074000";
         g_cfg["radio_hz"] = "7074000";
