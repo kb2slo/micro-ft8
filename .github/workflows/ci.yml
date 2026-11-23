@@ -188,10 +188,10 @@ jobs:
           npm ci --prefix webapp/tools
           python3 webapp/tools/build.py --version "${MICROFT8_VERSION:-${MICROFT8_GIT_SHA:0:7}}"
 
-      - name: Build sidekick with ESP-IDF 5.5.5
+      - name: Build sidekick with ESP-IDF 5.5.6
         uses: espressif/esp-idf-ci-action@v1
         with:
-          esp_idf_version: v5.5.5
+          esp_idf_version: v5.5.6
           # Sidekick retargeted C6 -> S3 with the AtomS3 Lite pivot (I3a).
           # sidekick/CMakeLists.txt pins IDF_TARGET too; keep the two agreeing.
           target: esp32s3
@@ -245,10 +245,10 @@ jobs:
 
       # Separate idf.py project from sidekick/ (poe_p4/CMakeLists.txt pins
       # esp32p4).
-      - name: Build poe_p4 with ESP-IDF 5.5.5
+      - name: Build poe_p4 with ESP-IDF 5.5.6
         uses: espressif/esp-idf-ci-action@v1
         with:
-          esp_idf_version: v5.5.5
+          esp_idf_version: v5.5.6
           target: esp32p4
           path: poe_p4
           extra_docker_args: -e MICROFT8_GIT_SHA=${{ env.MICROFT8_GIT_SHA }} -e MICROFT8_VERSION=${{ env.MICROFT8_VERSION }}

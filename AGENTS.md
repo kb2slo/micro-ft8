@@ -287,7 +287,7 @@ filing it somewhere the maintainer cannot see: write everything here as if it we
 
 ## Local IDF build / flash
 
-Iterate with a local build (**Build locally**, above). Clone with submodules first ([CONTRIBUTING.md](CONTRIBUTING.md), **Setup**). When they ask you to flash, after `source` of `esp-idf/export.sh` (v5.5.5):
+Iterate with a local build (**Build locally**, above). Clone with submodules first ([CONTRIBUTING.md](CONTRIBUTING.md), **Setup**). When they ask you to flash, after `source` of `esp-idf/export.sh` (v5.5.6):
 
 ```bash
 cd poe_p4
