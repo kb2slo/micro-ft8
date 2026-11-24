@@ -21,8 +21,7 @@ inline porta_queue_entry_event_t queue_entry_event(const QsoContext& ctx) {
     q.tries_sent = (uint8_t)ctx.tries_sent;
     q.try_limit = (uint8_t)ctx.try_limit;
     q.flags = (uint8_t)(((ctx.slot_id & 1) ? PORTA_QUEUE_ODD : 0) |
-                        (ctx.tries_custom ? PORTA_QUEUE_CUSTOM : 0) |
-                        (ctx.held ? PORTA_QUEUE_HELD : 0));
+                        (ctx.tries_custom ? PORTA_QUEUE_CUSTOM : 0));
     q.mode = ctx.channel.mode == RxMode::FT4 ? PORTA_QUEUE_MODE_FT4 : PORTA_QUEUE_MODE_FT8;
     q.dial_hz = ctx.channel.dial_hz;
     q.offset_hz = (uint16_t)(ctx.tx_offset_hz > 0 ? ctx.tx_offset_hz : 0);

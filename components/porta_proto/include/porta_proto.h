@@ -128,10 +128,7 @@ extern "C" {
 // (docs/architecture/autoseq.md, The queue), SLOT_STATE carries the armed TX's mode, and ACTIVITY its
 // channel's mode, every channel now sending it. A v21 peer's verb-only CQ_CALL and shorter SLOT_STATE
 // and ACTIVITY are refused. Both ends are flashed together.
-// v23 (2026-11-21): QUEUE_ENTRY's flags carry PORTA_QUEUE_HELD, an opening call waiting while its
-// station works someone else (docs/architecture/autoseq.md, The busy hold). Both ends are flashed
-// together.
-#define PORTA_PROTO_VERSION 23u
+#define PORTA_PROTO_VERSION 22u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -350,7 +347,6 @@ bool porta_proto_parse_decode(const porta_frame_t *f, porta_decode_event_t *out)
 
 #define PORTA_QUEUE_ODD    0x01u  // the entry transmits on odd slots
 #define PORTA_QUEUE_CUSTOM 0x02u  // its count is its own, not the station default
-#define PORTA_QUEUE_HELD   0x04u  // held: its station is working someone else, so it waits
 
 #define PORTA_QUEUE_MODE_FT8 0u
 #define PORTA_QUEUE_MODE_FT4 1u

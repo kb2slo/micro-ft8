@@ -18,7 +18,7 @@ Rows other epics and the index own; 1.0 is not cut until each has shipped. Each 
 
 * **OTA updates** ([updates.md](../architecture/updates.md)): built, epic closed 2026-11-15; its field checks closed by the maintainer's decision on 2026-11-20, from bench use. First in order, so testers make each board's one USB reflash (the main board's two-slot table, and the sidekick's of 2026-11-15) early and take everything after it over the air.
 * **FT8 and FT4 at once on a QMX, operated, epic [u8mc](several-channels.md):** receiving both shipped on 2026-11-07, FT4 replies beside FT8 on 2026-11-08 and on 40 m on 2026-11-09 ([autoseq.md](../architecture/autoseq.md), **The queue**) ([decode.md](../architecture/decode.md), **FT4**), and a QMX transmits FT4 off FT8's dial ([radio.md](../architecture/radio.md), **TX timing on a QMX**); queue entries carrying their mode on 2026-11-17; calling CQ in FT4, so the lead feature can start a QSO, not only answer one, with every queue entry on its channel, on 2026-11-21 ([autoseq.md](../architecture/autoseq.md), **The queue**); then the operator choosing the channels listened to, FT8's, FT4's or both, as chips with each channel's frequency, and FT4 on every band, on 2026-11-21 ([webapp.md](../architecture/webapp.md), **Band and frequency**). The feature 1.0 leads with.
-* **Autoseq:** shipped: an opening call waits while its station works someone else ([autoseq.md](../architecture/autoseq.md), **The busy hold**), 2026-11-21.
+* **Autoseq:** [k4ag](smart-queue.md#k4ag) (epic [qxy5](smart-queue.md)).
 * **Safety:** shipped: the TX watchdog ([radio.md](../architecture/radio.md), **The TX watchdog**) and the P4 stopping Tune on high SWR ([radio.md](../architecture/radio.md), **SWR protection trips on a QMX**).
 * **The settings format:** [mtd6](../ROADMAP.md#mtd6), so the first update after 1.0 is not a migration.
 * **First run:** the page setting an unset main board's clock at once ([time.md](../architecture/time.md), **Browser sync over Port A**), shipped 2026-11-21; pinning the app to the Home Screen with an icon, full screen, and a hint on iPhone ([webapp.md](../architecture/webapp.md), **Home Screen**), shipped 2026-11-21.
@@ -27,7 +27,7 @@ Rows other epics and the index own; 1.0 is not cut until each has shipped. Each 
 * **Field checks:** no [TEST_PLAN.md](../TEST_PLAN.md) Pending row on a path 1.0 claims (row [swsu](../ROADMAP.md#swsu)).
 * **Wanted, not gating:** [qauk](../ROADMAP.md#qauk), [kkap](../ROADMAP.md#kkap).
 
-**Not in 1.0:** HL2 transmit and the park ([abkw](hl2-support.md#abkw), [kgyh](hl2-support.md#kgyh)); epic [I18](activator-mode.md) ([rrsp](activator-mode.md#rrsp) included); epic [qxy5](smart-queue.md) past the busy hold; epic [u8mc](several-channels.md) past the channel chips (more than two channels, the CQ on any channel, a CQ on each of two channels); [nxyk](ideas.md#nxyk), [syb2](ideas.md#syb2).
+**Not in 1.0:** HL2 transmit and the park ([abkw](hl2-support.md#abkw), [kgyh](hl2-support.md#kgyh)); epic [I18](activator-mode.md) ([rrsp](activator-mode.md#rrsp) included); epic [qxy5](smart-queue.md) past [k4ag](smart-queue.md#k4ag); epic [u8mc](several-channels.md) past the channel chips (more than two channels, the CQ on any channel, a CQ on each of two channels); [nxyk](ideas.md#nxyk), [syb2](ideas.md#syb2).
 
 ## Decided
 

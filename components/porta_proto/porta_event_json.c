@@ -77,12 +77,12 @@ size_t porta_event_json_queue(char *out, size_t cap, uint32_t seq,
     json_escape(ev->dxcall, esc, sizeof(esc));
     const int n = snprintf(out, cap,
                            "{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":2,\"eid\":%u,"
-                           "\"st\":%u,\"ts\":%u,\"tl\":%u,\"p\":%u,\"cu\":%u,\"hd\":%u,"
+                           "\"st\":%u,\"ts\":%u,\"tl\":%u,\"p\":%u,\"cu\":%u,"
                            "\"md\":%u,\"fq\":%" PRIu32 ",\"off\":%u,\"x\":\"%s\"}",
                            seq, ev->epoch_secs, ev->entry_id, ev->state,
                            ev->tries_sent, ev->try_limit, (ev->flags & PORTA_QUEUE_ODD) ? 1u : 0u,
-                           (ev->flags & PORTA_QUEUE_CUSTOM) ? 1u : 0u, (ev->flags & PORTA_QUEUE_HELD) ? 1u : 0u,
-                           ev->mode, ev->dial_hz, ev->offset_hz, esc);
+                           (ev->flags & PORTA_QUEUE_CUSTOM) ? 1u : 0u, ev->mode, ev->dial_hz,
+                           ev->offset_hz, esc);
     return finish(out, cap, n);
 }
 

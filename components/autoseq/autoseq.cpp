@@ -6,7 +6,6 @@
  */
 
 #include "autoseq.h"
-#include "busy_hold.h"
 #include "tx_watchdog.h"
 #include <algorithm>
 #include <cstring>
@@ -88,20 +87,6 @@ static int s_cq_offset_hz = 0;
 static RxChannel s_cq_offset_channel;  // the channel the CQ that offset went out on was called on
 static int64_t s_cq_offset_at_ms = 0;
 static int s_last_tx_parity = -1;
-// The channel of the last transmission: with s_last_tx_parity, the period the station is using, which an
-// entry in the same step keeps over one on the other period (compare_ctx()).
-static RxChannel s_last_tx_channel;
-
-// The busy hold (busy_hold.h; docs/architecture/autoseq.md, The busy hold): each station's newest move that
-// says whether it is in a QSO with someone else, one row per station and channel.
-struct HeardStation {
-    std::string call;     // upper case, <> stripped; empty for a free row
-    RxChannel channel;
-    bool busy = false;
-    std::string partner;  // the call it is working, while busy
-    int64_t at_ms = 0;    // esp_timer ms
-};
-static HeardStation s_heard[AUTOSEQ_HEARD_CAPACITY];
 
 // ============== Forward declarations ==============
 
@@ -129,7 +114,6 @@ static bool is_dx_queue_marker(const std::string& dxcall);
 static bool purge_dxcall_for_touch(const std::string& dxcall, RxChannel channel, bool* blocked_live);
 static void reactivate(int inactive_idx);
 static void sort_and_clean();
-static void update_holds();
 static bool looks_like_grid(const std::string& s);
 static bool looks_like_report(const std::string& s, int& out);
 static void log_qso_if_needed(QsoContext* ctx);
@@ -218,8 +202,6 @@ void autoseq_init() {
     s_cq_offset_hz = 0;
     s_cq_offset_channel = RxChannel{};
     s_cq_offset_at_ms = 0;
-    s_last_tx_channel = RxChannel{};
-    for (HeardStation& h : s_heard) h = HeardStation{};
 }
 
 void autoseq_clear() {
@@ -416,8 +398,6 @@ static void force_active_behind_head(int idx) {
 }
 
 static void promote_touched(int idx, bool hold_queue_head) {
-    // A tap on a station working someone else queues it held, behind what can be answered.
-    if (idx >= 0 && idx < s_active_count && s_queue[idx].held) return;
     if (hold_queue_head) {
         force_active_behind_head(idx);
     } else {
@@ -737,7 +717,6 @@ void autoseq_mark_sent(int64_t slot_idx) {
 
     s_last_tx_slot_idx = slot_idx;
     s_last_tx_parity = s_queue[0].slot_id & 1;
-    s_last_tx_channel = s_queue[0].channel;
 
     // Logging now happens in autoseq_on_tx_starting() when TX4/TX5 is emitted
     ESP_LOGI(TAG, "TX sent on slot %lld", slot_idx);
@@ -949,9 +928,6 @@ static void refresh_tx_msg_buffer() {
     if (s_active_count == 0) return;
     QsoContext* ctx = &s_queue[0];
     if (ctx->state == AutoseqState::IDLE) return;
-    // Held sorts last within its stage, so a held head means every entry of the leading stage is held,
-    // and nothing goes out: the CQ behind it waits too, as WSJT-X's Wait and Call does.
-    if (ctx->held) return;
     if (ctx->state == AutoseqState::CALLING) {
         generate_cq_text_into(s_tx_msg_buffer);
         return;
@@ -1391,11 +1367,6 @@ static void on_decode(const UiRxLine& msg) {
 // Comparison for std::sort: IDLE at top (to be popped), CALLING at bottom
 // Only used on the active zone [0 .. s_active_count)
 // Returns true if left should come before right
-// Whether an entry transmits in the period of the last transmission (s_last_tx_parity, s_last_tx_channel).
-static bool on_period_in_use(const QsoContext& ctx) {
-    return s_last_tx_parity >= 0 && (ctx.slot_id & 1) == s_last_tx_parity && ctx.channel == s_last_tx_channel;
-}
-
 static bool compare_ctx(const QsoContext& left, const QsoContext& right) {
     // IDLE always sorts first (will be popped by sort_and_clean).
     if (left.state == AutoseqState::IDLE && right.state != AutoseqState::IDLE) return true;
@@ -1403,15 +1374,8 @@ static bool compare_ctx(const QsoContext& left, const QsoContext& right) {
 
     // Same state? Fewer tries sent gets priority — round-robin among
     // contacts so we probe for viable propagation paths rather than
-    // burning all tries on one potentially dead contact. Within the period
-    // the station is using first: two opening calls on opposite periods would
-    // otherwise take turns, keying every slot and missing each answer, which
-    // comes in the slot the other one transmits in.
+    // burning all tries on one potentially dead contact.
     if (left.state == right.state) {
-        // A held entry (The busy hold) waits behind the others of its stage.
-        if (left.held != right.held) return right.held;
-        const bool lp = on_period_in_use(left), rp = on_period_in_use(right);
-        if (lp != rp) return lp;
         return left.tries_sent < right.tries_sent;
     }
 
@@ -1559,87 +1523,7 @@ static void reactivate(int inactive_idx) {
              saved.dxcall.c_str(), s_active_count);
 }
 
-// ============== The busy hold ==============
-
-static int64_t slot_ms_of(RxChannel channel) {
-    return channel.mode == RxMode::FT4 ? 7500 : 15000;
-}
-
-static HeardStation* find_heard(const std::string& call, RxChannel channel) {
-    for (HeardStation& h : s_heard) {
-        if (!h.call.empty() && h.call == call && h.channel == channel) return &h;
-    }
-    return nullptr;
-}
-
-void autoseq_note_heard(const UiRxLine& msg) {
-    const std::string from = normalize_call_token(msg.field2);
-    std::string rest = msg.field3;
-    for (auto& ch : rest) ch = (char)toupper((unsigned char)ch);
-    const HeardKind kind = busy_hold_kind(normalize_call_token(msg.field1), from, rest, msg.is_cq,
-                                          normalize_call_token(s_my_call));
-    if (kind == HeardKind::None) return;
-    const int64_t now = mono_ms();
-    HeardStation* h = find_heard(from, msg.channel);
-    if (!h) {
-        h = &s_heard[0];
-        for (HeardStation& c : s_heard) {
-            if (c.call.empty()) { h = &c; break; }
-            if (c.at_ms < h->at_ms) h = &c;
-        }
-        h->call = from;
-        h->channel = msg.channel;
-    }
-    h->busy = kind == HeardKind::Busy;
-    h->partner = h->busy ? normalize_call_token(msg.field1) : std::string();
-    h->at_ms = now;
-}
-
-// An entry that has called a station not yet answering us: REPLYING, or REPORT when we open with the
-// report (autoseq_set_skip_tx1()) and nothing has come back from it.
-static bool is_opening(const QsoContext& ctx) {
-    return ctx.state == AutoseqState::REPLYING ||
-           (ctx.state == AutoseqState::REPORT && ctx.rcvd_msg_type == TxMsgType::TX_NONE);
-}
-
-static void update_holds() {
-    const int64_t now = mono_ms();
-    bool ended = false;
-    for (int i = 0; i < s_active_count; ++i) {
-        QsoContext& ctx = s_queue[i];
-        const HeardStation* h = is_opening(ctx) ? find_heard(normalize_call_token(ctx.dxcall), ctx.channel) : nullptr;
-        const bool busy = h && h->busy && now - h->at_ms < AUTOSEQ_BUSY_SLOTS * slot_ms_of(ctx.channel);
-        if (busy && !ctx.held) {
-            // On the air now: its tick counts that one; it is held from the next.
-            if (s_tx_entry_id != 0 && ctx.entry_id == s_tx_entry_id) continue;
-            ctx.held = true;
-            ctx.held_since_ms = now;
-            ESP_LOGI(TAG, "Entry %u (%s): held, working %s", (unsigned)ctx.entry_id, ctx.dxcall.c_str(),
-                     h->partner.c_str());
-        } else if (busy && now - ctx.held_since_ms >= AUTOSEQ_HOLD_MAX_MS) {
-            ESP_LOGI(TAG, "Entry %u (%s): held %lld s, ending", (unsigned)ctx.entry_id, ctx.dxcall.c_str(),
-                     (long long)((now - ctx.held_since_ms) / 1000));
-            ctx.held = false;
-            ctx.held_since_ms = 0;
-            ctx.tries_sent = ctx.try_limit;  // ends as if its last try were used (retire_used_up())
-            ended = true;
-        } else if (!busy && ctx.held) {
-            ESP_LOGI(TAG, "Entry %u (%s): released", (unsigned)ctx.entry_id, ctx.dxcall.c_str());
-            ctx.held = false;
-            ctx.held_since_ms = 0;
-        }
-    }
-    if (ended) retire_used_up();
-}
-
-void autoseq_refresh_holds() {
-    sort_and_clean();
-    refresh_tx_msg_buffer();
-}
-
 static void sort_and_clean() {
-    if (s_active_count == 0) return;
-    update_holds();
     if (s_active_count == 0) return;
 
     // Sort only the active zone
