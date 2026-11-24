@@ -1,10 +1,10 @@
 # Smart queue ordering (epic qxy5)
 
-Spend each transmission where it can be answered: order the queue, and hold entries back, so transmissions go where an answer is likely, without adding a station to the queue that a person did not choose. Rows: [k4ag](#k4ag) ([ROADMAP.md](../ROADMAP.md)). How the queue works now: [autoseq.md](../architecture/autoseq.md), **The queue**.
+Spend each transmission where it can be answered: order the queue, and hold entries back, so transmissions go where an answer is likely, without adding a station to the queue that a person did not choose. Rows: none in the index; the **Later** slices wait below. How the queue works now: [autoseq.md](../architecture/autoseq.md), **The queue**.
 
 ## Goal
 
-1. **Do not call a station that is working someone else.** Hold the entry and call the moment that station is free.
+1. **Do not call a station that is working someone else.** Hold the entry, let the rest of the queue go ahead of it, and call the moment that station is free.
 2. **Stop an opening call sooner.** Answers to repeated opening calls fall off fast (**Evidence**). Built: [autoseq.md](../architecture/autoseq.md), **Tries**.
 3. **Let the operator reorder the queue** by hand: pin, up and down, Next.
 4. **Choose among callers to our CQ, and among our own calls, by one rule the operator sets:** farthest, strongest, POTA or SOTA, and so on.
@@ -18,7 +18,7 @@ Spend each transmission where it can be answered: order the queue, and hold entr
 
 ## Decided
 
-* **Hold a station that is working someone else,** with its tries frozen. Opening calls only (REPLYING); later stages are not held, since the evidence says little about mid-QSO repeats.
+* **Hold a station that is working someone else,** with its tries frozen. Opening calls only (REPLYING); later stages are not held, since the evidence says little about mid-QSO repeats. **A held entry steps aside:** everything else that can transmit goes ahead of it, the CQ included.
 * **No hold for a station that has gone unheard:** the opening limit covers it.
 * **A pin outranks only our other unanswered calls,** never a station calling us or a QSO in progress. Manual moves are pin, up and down, and Next.
 * **One ladder,** easy to reorder, set on Settings › Station and stored on the main board.
@@ -56,7 +56,7 @@ Comparable programs (read from source 2026-10-27): WSJT-X 3.0's Wait and Call, W
 The active zone sorts by these keys, in order; the first is today's rule.
 
 1. **Stage:** IDLE first, then further along first, the CQ last.
-2. **Held entries last within their stage,** so `queue[0]` is an entry that can go.
+2. **A held entry behind every entry that can transmit, whatever its stage,** the CQ included, so `queue[0]` is one that can go and a hold never silences the station. Released, it sorts by its stage again.
 3. **A one-shot Next** ahead of everything but the transmission on the air, for one transmission.
 4. **Pins, within REPLYING only.** A station calling us is answered 65% of the time and leaves within a call or two; an opening call 9% at best.
 5. **Manual moves** within the stage.
@@ -69,6 +69,8 @@ The active zone sorts by these keys, in order; the first is today's rule.
 * **Busy:** within the last 4 slots, the station was decoded sending a message that continues a QSO with another call (a grid, a report, an R-report, a Field Day exchange, to a call that is not ours and not CQ).
 * **Free:** its newest such decode is a CQ (any modifier), an RR73, RRR or 73 to someone else, or a message to us. A caller to our CQ is free by definition.
 * **A held entry transmits nothing and spends no tries;** its tries resume where they were. **Release** is the first decode that makes the station free: one from an RR73, RRR or 73 lands in the slot before ours, so the entry goes out in the next slot.
+* **A held entry steps aside.** Other opening calls, a QSO in progress and the CQ all go ahead of it; the station sends nothing only when every entry is held.
+* **What we transmit in the held station's own period deafens us to it** ([decode.md](../architecture/decode.md), **Deaf by overlap**): its sign-off, the release, goes unheard, and the station then reads free only once 4 slots pass with no QSO message of its heard (**Open**).
 * **A hold ends after 5 minutes:** the entry ends as if its last try were used ([autoseq.md](../architecture/autoseq.md), **The slot cycle**).
 * **The data:** a per-call record of the station's last activity (slot, kind of message, to whom), filled from every decode as the heard-grid table is (`components/decode_pipeline/heard_grid.h`: 128 calls, 4 hours). One table or a sibling is an implementation choice. Today the engine sees only decodes addressed to us (`decode_pipeline_apply()`), so this is new input to it.
 * **The operator sees** the row say it is held and why ("Working W1XYZ · waiting"), from one new `QUEUE_ENTRY` flag. The phone's own cue stays ([webapp.md](../architecture/webapp.md), **Decode rows and tap to reply**: CQ again, Working, Done with, Called by).
@@ -93,12 +95,11 @@ The active zone sorts by these keys, in order; the first is today's rule.
 
 ## Children
 
-In order.
-
-* <a id="k4ag"></a>**k4ag: hold a station that is working someone else** (**The busy hold**). Epic [eu2t](release-1-0.md) needs it. **Done-when:** `host_mock` scenarios hold an entry while its station works another call, release it on RR73 and transmit in the next slot, end a hold at 5 minutes, never charge a try while held, and settle mixed parity; a held entry is seen waiting on Operate and goes out after its station's RR73 (field). **Lands in:** autoseq.md (**The queue**: the hold, its release and its limit); webapp.md (the held row's text); TEST_PLAN Pending.
+In order. None is next yet: the **Later** slices wait below, for the maintainer to pick.
 
 ### Later
 
+* <a id="k4ag"></a>**k4ag, a held call steps aside** (**The busy hold**). Done-when: `host_mock` scenarios hold an entry while its station works another call and, with it held, keep the CQ and a second opening call transmitting; release it on RR73 and transmit in the next slot, ahead of the CQ; end a hold at 5 minutes; never charge a try while held; settle mixed parity; on Operate a held row says it is waiting while the CQ keeps calling, and goes out after its station's RR73 (field). **Lands in:** autoseq.md (**The queue**: the hold, its release and its limit); webapp.md (the held row's text); TEST_PLAN Pending.
 * **Q4, the ladder and callers to our CQ** (**The ladder**). Done-when: host tests order two simultaneous callers by each rung; the order set on Settings › Station survives a reload and applies to the next sort.
 * **Q3, manual order** (**Moving entries by hand**). Done-when: host tests for pin, up, down and Next, refusals across stages included; on the phone each action moves the row and changes what transmits next (field).
 * **Q5, POTA and SOTA rungs** and park to park. Done-when: host tests mark a call from `CQ POTA` and order by the rungs, and P2P ranks the same whoever called. Whether the ladder follows the CQ type, as Field Day does, is settled then.
@@ -110,9 +111,11 @@ In order.
 ## Open
 
 * **A tap outranks a QSO in progress.** A new entry goes to the front ([autoseq.md](../architecture/autoseq.md), **The queue**), so every tap acts as **Next**, which **Decided** keeps as the one deliberate way past a QSO in progress. On 20 m FT4 (2026-11-10), a station tapped after KB3UJT had answered us took the next four periods while KB3UJT waited 75 s for our second R-report, and AA8TJ and WA2DX waited 8 and 5 minutes behind later taps. Does a tap join within its stage, leaving Next as the way to the front? Settle for **Q3**.
+* **A transmission in a held station's own period** (**The busy hold**): the CQ, or another entry, on the period that station sends in. Does it go anyway, the hold then ending when the station has gone 4 slots unheard and the call going out to a station that may still be busy, or does it wait for the release? Settle for [k4ag](#k4ag).
 
 ## Why not
 
+* **A held entry that keeps its stage's place:** last only within its stage, it still outranked the CQ, so a held head sent nothing and the CQ behind it waited, for up to five minutes. Built and taken out (#121, #138).
 * **Holding a station not heard for some slots:** 10–30% fewer transmissions for about 5% fewer QSOs; 4 opening tries already bound calls to a station that has gone.
 * **Setting a station aside after two CQs over our calls** (the panadapter's grey list, JTDX's counter): cut QSOs from 66.2 to 58.7 in the simulation. It exists for programs that choose stations on their own; here every opening call is a tap.
 * **A pin above every entry:** trades a station calling us for one that has not answered; Next covers "this one now".
