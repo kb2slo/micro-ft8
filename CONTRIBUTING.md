@@ -76,7 +76,8 @@ the gap takes `--allow-skip <check>`, and the result is still reported as not ve
 - A squash merge makes the pull request's title the commit's subject, or its one commit's subject
   when it has just one, and adds ` (#N)`. Keep that within 72 too; CI checks it.
 - The pull request template asks what the change is, how it was verified, which checks ran, the field
-  checks, the doc audits, and the one to three places most worth a reviewer's eyes. The maintainer
+  checks, the doc audits, the decisions it rests on and what it hands off, each with the doc or row that
+  now holds it, and the one to three places most worth a reviewer's eyes. The maintainer
   reviews and merges.
 - C and C++ follow [docs/STYLE.md](docs/STYLE.md). Where a fact or a doc goes:
   [docs/README.md](docs/README.md).

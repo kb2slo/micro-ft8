@@ -26,6 +26,8 @@
 - README:
 - Site:
 - Roadmap:
+- Decisions: each one this change rests on, and the doc it landed in, or none
+- Handed off: each item left for later, and the row or Pending entry that holds it, or none
 
 ## Worth your eyes
 
