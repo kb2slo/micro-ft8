@@ -10,6 +10,15 @@ commit for the tag to land on the wrong side of.
 
 Everything here is a precondition check -- see docs/RELEASE_PROCESS.md. The
 ones that need no git or network are host-tested: tools/test_cut_release.py.
+
+The maintainer approves each release's note at the cut, one of two ways:
+
+  cut_release.py 0.4.0                       at a terminal: prints the note and tags once the
+                                             version is typed
+  cut_release.py 0.4.0 --review              runs every check, prints the tag, the commit and the
+                                             note, and creates nothing
+  cut_release.py 0.4.0 --approved-at <sha>   cuts with no prompt, only if <sha> is the commit
+                                             checked out: the one a --review showed the maintainer
 """
 
 from __future__ import annotations
@@ -26,6 +35,7 @@ import dev_build  # noqa: E402
 import make_manifest  # noqa: E402
 
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
 REMOTE = "origin"
 BRANCH = "main"
 
@@ -120,15 +130,36 @@ def approve_note(version: str, note: str, changes: list[str], ask, is_tty: bool)
     reads one line. Refused when input is not a terminal, so no script or agent can answer, and
     approved only by typing the version: --yes never skips this."""
     if not is_tty:
-        raise Abort("the release note is approved at a terminal by the maintainer; this input is not one")
+        raise Abort("the release note is approved at a terminal by the maintainer; this input is not one "
+                    "(--review prints it for the maintainer, --approved-at cuts what they then approve)")
+    print_review(version, note, changes)
+    answer = ask(f"\napprove this note? type {version} to approve: ").strip()
+    if answer != version:
+        raise Abort("the release note was not approved")
+
+
+def print_review(version: str, note: str, changes: list[str]) -> None:
+    """What the maintainer approves: the note as written, and the commit subjects since the last
+    release beside it."""
     print(f"\n--- the note operators will read before they update to {version} ---")
     print(note.rstrip())
     print(f"\n--- what changed since the last release ({len(changes)} commits) ---")
     for subject in changes:
         print(f"  {subject}")
-    answer = ask(f"\napprove this note? type {version} to approve: ").strip()
-    if answer != version:
-        raise Abort("the release note was not approved")
+
+
+def require_approved_commit(approved: str, head: str) -> None:
+    """--approved-at: the commit the maintainer approved, from a --review, is the one about to be
+    tagged. The tree is clean and the note is in it, so the commit fixes the note too; if main moved
+    or the note changed since the review, the approval is for something else."""
+    approved = approved.strip().lower()
+    if not FULL_SHA.match(approved):
+        raise Abort("--approved-at takes the full 40-character commit a --review printed")
+    if approved != head:
+        raise Abort(
+            f"the commit approved ({approved[:7]}) is not the one checked out ({head[:7]}): "
+            "run --review again and ask the maintainer to approve that"
+        )
 
 
 def changes_since_last_release(tags: list[str]) -> list[str]:
@@ -186,6 +217,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("version", help="release version, e.g. 3.0.0")
     parser.add_argument("--yes", action="store_true", help="skip the confirmation")
+    how = parser.add_mutually_exclusive_group()
+    how.add_argument(
+        "--review", action="store_true",
+        help="run every check and print the tag, the commit and the note; create nothing",
+    )
+    how.add_argument(
+        "--approved-at", metavar="SHA",
+        help="cut with no prompt: the full commit a --review showed the maintainer, who approved it",
+    )
     parser.add_argument(
         "--skip-ci-check", action="store_true",
         help="do not require a green CI run on the commit being tagged",
@@ -202,6 +242,8 @@ def main() -> int:
         require_clean_tree()
         branch = require_on_branch()
         sha = require_up_to_date()
+        if args.approved_at:
+            require_approved_commit(args.approved_at, sha)
         require_tag_free(tag)
         require_newer(version, remote_tags())
         require_note(version)
@@ -216,19 +258,28 @@ def main() -> int:
 
     subject = run("git", "log", "-1", "--format=%s", sha)
     print(f"  tag     {tag}")
-    print(f"  commit  {sha[:7]}  {subject}")
+    print(f"  commit  {sha}  {subject}")
     print(f"  branch  {branch}")
     print(f"  CI      builds both boards and publishes {version} to GitHub and the stable channel")
 
     try:
         with open(os.path.join(make_manifest.NOTES_DIR, f"{version}.md"), encoding="utf-8") as f:
             note = f.read()
-        approve_note(version, note, changes_since_last_release(remote_tags()), input, sys.stdin.isatty())
+        changes = changes_since_last_release(remote_tags())
+        if args.review or args.approved_at:
+            print_review(version, note, changes)
+        else:
+            approve_note(version, note, changes, input, sys.stdin.isatty())
     except Abort as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    if not args.yes:
+    if args.review:
+        print(f"\nreviewed; nothing was created. Once the maintainer approves {version} at this commit:")
+        print(f"  python3 tools/cut_release.py {version} --approved-at {sha}")
+        return 0
+
+    if not args.yes and not args.approved_at:
         if input("\npush this tag? [y/N] ").strip().lower() not in ("y", "yes"):
             print("aborted")
             return 1

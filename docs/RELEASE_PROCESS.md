@@ -166,6 +166,14 @@ a commit CI has not run green.
 says so on stdout). Then it prints the tag and commit and asks before pushing;
 `--yes` skips the prompt.
 
+**An agent may cut a release, on the maintainer's word for that release** (maintainer, 2026-11-23), in two
+runs of the same script. `python3 tools/cut_release.py 3.0.0 --review` makes every check above, prints the
+tag, the commit and the note as the terminal prompt would, and creates nothing. `--approved-at <sha>`, the
+commit that review named, then cuts with no prompt, and refuses unless that commit is the one checked out.
+So what the maintainer saw is what is tagged: the tree must be clean and the note is in it, so the commit
+fixes the note too, and if `main` moves or the note changes the review is run again. What an agent may take
+as that word, and what it may not, is in [AGENTS.md](../AGENTS.md), **Chat gates**.
+
 **A stable tag goes only on a commit whose dev build was published,** so a release is code that could be
 installed as a dev build, and run at the bench, first. Published means both boards' OTA images are on the
 mirror under their dated names (`tools/dev_build.py`, which asks the mirror). The script refuses first, and
@@ -198,12 +206,14 @@ nothing.
 * **Approved by the maintainer, twice** (maintainer, 2026-11-15). An agent may draft a note, from
   `git log v<last>..main` and what an operator sees change; the maintainer approves its whole text in chat
   before it is committed ([AGENTS.md](../AGENTS.md), **Chat gates**), and it reaches `main` in a pull request
-  before the tag. Then `tools/cut_release.py` prints the note as operators will read it, with the commit
-  subjects since the last release beside it, and tags only once the maintainer types the version to approve
-  it (`approve_note()`). It refuses to ask when its input is not a terminal, so no script or agent can
-  answer, and `--yes` skips only the tag prompt after it. So a release cannot be cut unattended; releases
-  are cut by hand anyway. Typing the version does not prove the note was read: it is a deliberate act at the
-  maintainer's keyboard, after the content was reviewed in the pull request.
+  before the tag. Then, at the cut, `tools/cut_release.py` puts the note before the maintainer as
+  operators will read it, with the commit subjects since the last release beside it, one of two ways. At a
+  terminal it tags only once the maintainer types the version to approve it (`approve_note()`); it refuses
+  to ask when its input is not a terminal, so no script or agent can answer, and `--yes` skips only the tag
+  prompt after it. In chat, an agent shows `--review`'s output whole and cuts with `--approved-at` only on
+  the maintainer's word for that version (**Cutting a versioned release**, above). Either way a release
+  cannot be cut unattended. Typing the version, or saying it, does not prove the note was read: it is a
+  deliberate act by the maintainer, after the content was reviewed in the pull request.
 * **Required.** `tools/cut_release.py` refuses to tag a release with no note, or a malformed one, and
   `tools/make_manifest.py` refuses to write its manifest, which fails the tag's job before anything is
   published (`parse_note()`, host-tested by `tools/test_make_manifest.py` and `tools/test_cut_release.py`).

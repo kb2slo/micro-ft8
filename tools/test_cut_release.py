@@ -3,12 +3,14 @@
 
   python3 tools/test_cut_release.py
 """
+import builtins
 import contextlib
 import io
 import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cut_release as cr  # noqa: E402
@@ -73,6 +75,88 @@ class CutReleaseTest(unittest.TestCase):
         with self.assertRaisesRegex(cr.Abort, "at a terminal"):
             cr.approve_note("0.2.0", note, changes, lambda p: asked.append(p) or "0.2.0", False)
         self.assertEqual(asked, [])
+
+    def test_a_commit_approved_from_a_review_is_the_one_tagged(self):
+        head = "0c5ccec" + "a" * 33
+        cr.require_approved_commit(head, head)
+        cr.require_approved_commit("  " + head.upper() + "\n", head)
+        # Main moved, or the note was edited, since the review: the approval is for another commit.
+        with self.assertRaisesRegex(cr.Abort, "not the one checked out"):
+            cr.require_approved_commit("b" * 40, head)
+        # A short commit could name two, and nothing but a commit is taken.
+        for given in (head[:7], "", "0.2.0", "HEAD", head + "0"):
+            with self.assertRaisesRegex(cr.Abort, "full 40-character commit"):
+                cr.require_approved_commit(given, head)
+
+    def test_a_review_prints_the_note_and_the_commits_and_asks_nothing(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            cr.print_review("0.2.0", "# 0.2.0\n\n## New\n- A thing.\n", ["Add a thing (#7)", "Fix another (#8)"])
+        shown = out.getvalue()
+        for part in ("update to 0.2.0", "- A thing.", "(2 commits)", "Add a thing (#7)", "Fix another (#8)"):
+            self.assertIn(part, shown)
+
+    def cut(self, *argv, head="0c5ccec" + "a" * 33):
+        """main() with every git and network check stood in for: what it ran through git, its exit
+        code and what it printed. A prompt fails the test: these paths ask nothing."""
+        ran = []
+
+        def run(*args, check=True):
+            ran.append(args)
+            return "git@github.com:kb2slo/micro-ft8.git" if args[1] == "config" else "A subject"
+
+        def no_prompt(_prompt=""):
+            raise AssertionError("asked at a prompt")
+
+        with tempfile.TemporaryDirectory() as notes, contextlib.ExitStack() as stack:
+            with open(os.path.join(notes, "0.2.0.md"), "w", encoding="utf-8") as f:
+                f.write("# 0.2.0\n\n## New\n- A thing.\n")
+            patch = lambda target, value: stack.enter_context(mock.patch.object(*target, value))
+            for name in ("require_clean_tree", "require_tag_free", "require_newer", "require_note",
+                         "require_dev_build", "require_ci_green"):
+                patch((cr, name), lambda *a, **k: None)
+            patch((cr, "require_on_branch"), lambda: "main")
+            patch((cr, "require_up_to_date"), lambda: head)
+            patch((cr, "remote_tags"), lambda: ["v0.1.0"])
+            patch((cr, "changes_since_last_release"), lambda tags: ["Add a thing (#7)"])
+            patch((cr, "run"), run)
+            patch((cr.make_manifest, "NOTES_DIR"), notes)
+            patch((builtins, "input"), no_prompt)
+            patch((sys, "argv"), ["cut_release.py", *argv])
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = cr.main()
+        return ran, code, out.getvalue() + err.getvalue()
+
+    def test_a_review_shows_the_release_and_creates_nothing(self):
+        head = "0c5ccec" + "a" * 33
+        ran, code, shown = self.cut("0.2.0", "--review")
+        self.assertEqual(code, 0)
+        self.assertEqual([args for args in ran if args[1] in ("tag", "push")], [])
+        for part in ("v0.2.0", head, "- A thing.", "Add a thing (#7)", f"--approved-at {head}"):
+            self.assertIn(part, shown)
+
+    def test_the_approved_commit_is_tagged_and_pushed_without_a_prompt(self):
+        head = "0c5ccec" + "a" * 33
+        ran, code, shown = self.cut("0.2.0", "--approved-at", head)
+        self.assertEqual(code, 0, shown)
+        self.assertIn(("git", "tag", "-a", "v0.2.0", "-m", "micro-FT8 0.2.0"), ran)
+        self.assertIn(("git", "push", "origin", "v0.2.0"), ran)
+        self.assertIn("- A thing.", shown)
+
+    def test_another_commit_than_the_approved_one_is_not_tagged(self):
+        ran, code, shown = self.cut("0.2.0", "--approved-at", "b" * 40)
+        self.assertEqual(code, 1)
+        self.assertEqual(ran, [])
+        self.assertIn("not the one checked out", shown)
+
+    def test_without_either_the_note_is_still_approved_at_a_terminal(self):
+        # The test's input is no terminal: refused before the prompt, and nothing tagged.
+        with mock.patch.object(sys.stdin, "isatty", lambda: False):
+            ran, code, shown = self.cut("0.2.0")
+        self.assertEqual(code, 1)
+        self.assertEqual([args for args in ran if args[1] in ("tag", "push")], [])
+        self.assertIn("at a terminal", shown)
 
 
 if __name__ == "__main__":
