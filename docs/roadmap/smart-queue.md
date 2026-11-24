@@ -1,10 +1,10 @@
 # Smart queue ordering (epic qxy5)
 
-Spend each transmission where it can be answered: order the queue, and hold entries back, so transmissions go where an answer is likely, without adding a station to the queue that a person did not choose. Rows: none in the index; the **Later** slices wait below. How the queue works now: [autoseq.md](../architecture/autoseq.md), **The queue**.
+Spend each transmission where it can be answered: order the queue, and hold entries back, so transmissions go where an answer is likely, without adding a station to the queue that a person did not choose. Rows: [k4ag](#k4ag) ([ROADMAP.md](../ROADMAP.md)). How the queue works now: [autoseq.md](../architecture/autoseq.md), **The queue**.
 
 ## Goal
 
-1. **Do not call a station that is working someone else.** Built: [autoseq.md](../architecture/autoseq.md), **The busy hold**.
+1. **Do not call a station that is working someone else.** Hold the entry and call the moment that station is free.
 2. **Stop an opening call sooner.** Answers to repeated opening calls fall off fast (**Evidence**). Built: [autoseq.md](../architecture/autoseq.md), **Tries**.
 3. **Let the operator reorder the queue** by hand: pin, up and down, Next.
 4. **Choose among callers to our CQ, and among our own calls, by one rule the operator sets:** farthest, strongest, POTA or SOTA, and so on.
@@ -18,6 +18,7 @@ Spend each transmission where it can be answered: order the queue, and hold entr
 
 ## Decided
 
+* **Hold a station that is working someone else,** with its tries frozen. Opening calls only (REPLYING); later stages are not held, since the evidence says little about mid-QSO repeats.
 * **No hold for a station that has gone unheard:** the opening limit covers it.
 * **A pin outranks only our other unanswered calls,** never a station calling us or a QSO in progress. Manual moves are pin, up and down, and Next.
 * **One ladder,** easy to reorder, set on Settings › Station and stored on the main board.
@@ -55,13 +56,24 @@ Comparable programs (read from source 2026-10-27): WSJT-X 3.0's Wait and Call, W
 The active zone sorts by these keys, in order; the first is today's rule.
 
 1. **Stage:** IDLE first, then further along first, the CQ last.
-2. **Held entries last within their stage.** Built: [autoseq.md](../architecture/autoseq.md), **The queue**.
+2. **Held entries last within their stage,** so `queue[0]` is an entry that can go.
 3. **A one-shot Next** ahead of everything but the transmission on the air, for one transmission.
 4. **Pins, within REPLYING only.** A station calling us is answered 65% of the time and leaves within a call or two; an opening call 9% at best.
 5. **Manual moves** within the stage.
 6. **The ladder:** the first rung that tells two entries apart decides.
 
 `sort_and_clean()` still runs where it runs today, plus after an operator move. Every key is a field on `QsoContext`, so one comparison function stays the whole rule and `host_mock` can drive every case.
+
+### The busy hold
+
+* **Busy:** within the last 4 slots, the station was decoded sending a message that continues a QSO with another call (a grid, a report, an R-report, a Field Day exchange, to a call that is not ours and not CQ).
+* **Free:** its newest such decode is a CQ (any modifier), an RR73, RRR or 73 to someone else, or a message to us. A caller to our CQ is free by definition.
+* **A held entry transmits nothing and spends no tries;** its tries resume where they were. **Release** is the first decode that makes the station free: one from an RR73, RRR or 73 lands in the slot before ours, so the entry goes out in the next slot.
+* **A hold ends after 5 minutes:** the entry ends as if its last try were used ([autoseq.md](../architecture/autoseq.md), **The slot cycle**).
+* **The data:** a per-call record of the station's last activity (slot, kind of message, to whom), filled from every decode as the heard-grid table is (`components/decode_pipeline/heard_grid.h`: 128 calls, 4 hours). One table or a sibling is an implementation choice. Today the engine sees only decodes addressed to us (`decode_pipeline_apply()`), so this is new input to it.
+* **The operator sees** the row say it is held and why ("Working W1XYZ · waiting"), from one new `QUEUE_ENTRY` flag. The phone's own cue stays ([webapp.md](../architecture/webapp.md), **Decode rows and tap to reply**: CQ again, Working, Done with, Called by).
+* **Matches WSJT-X's Wait and Call** in effect, without its three-call limit: the entry's tries bound the calls after release.
+* **Mixed parity, test first:** two opening calls on opposite parities may alternate, keying every slot and missing each answer. A `host_mock` scenario checks it; if they alternate, the head's parity holds the period. `autoseq_rotate_same_parity()` has no caller today.
 
 ### Moving entries by hand
 
@@ -81,7 +93,9 @@ The active zone sorts by these keys, in order; the first is today's rule.
 
 ## Children
 
-In order. None is next yet: the **Later** slices wait below, for the maintainer to pick.
+In order.
+
+* <a id="k4ag"></a>**k4ag: hold a station that is working someone else** (**The busy hold**). Epic [eu2t](release-1-0.md) needs it. **Done-when:** `host_mock` scenarios hold an entry while its station works another call, release it on RR73 and transmit in the next slot, end a hold at 5 minutes, never charge a try while held, and settle mixed parity; a held entry is seen waiting on Operate and goes out after its station's RR73 (field). **Lands in:** autoseq.md (**The queue**: the hold, its release and its limit); webapp.md (the held row's text); TEST_PLAN Pending.
 
 ### Later
 

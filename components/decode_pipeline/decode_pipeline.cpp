@@ -632,20 +632,6 @@ static void apply_slot_result(DecodeSlotResult& r) {
   const RxMode rx_mode = rx_mode_of(r.mode);
   const RxChannel rx_channel{dial_history_at(now_ms) + (uint32_t)r.dial_offset_hz, rx_mode};
   const bool listened = s_channel_listened ? s_channel_listened(rx_channel) : true;
-  // Every decode tells the busy hold what its sender is doing (docs/architecture/autoseq.md, The busy hold),
-  // while the station listens to the channel, as for the decodes to us below.
-  if (listened && r.count > 0) {
-    for (int i = 0; i < r.count; ++i) {
-      UiRxLine rx;
-      rx.field1 = r.dec[i].field1;
-      rx.field2 = r.dec[i].field2;
-      rx.field3 = r.dec[i].field3;
-      rx.is_cq = r.dec[i].is_cq;
-      rx.channel = rx_channel;
-      autoseq_note_heard(rx);
-    }
-    autoseq_refresh_holds();
-  }
   if (listened && !decode_tx_state_get_was_txing()) {
     std::vector<UiRxLine> to_me_auto;
     for (int i = 0; i < r.count; ++i) {

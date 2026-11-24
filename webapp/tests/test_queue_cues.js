@@ -37,7 +37,7 @@ const varDecl = (name) => {
 const sb = {};
 vm.createContext(sb);
 vm.runInContext([varDecl('GRID_TOKEN_RE'), varDecl('NON_CALL_WORDS')].concat(
-  ['looksLikeCallsign', 'extractSenderCall', 'queueInvolvement', 'involvementLabel', 'queueHeldCue']
+  ['looksLikeCallsign', 'extractSenderCall', 'queueInvolvement', 'involvementLabel']
     .map((n) => extractFunction(src, n))).join('\n'), sb);
 
 const me = 'KB2SLO';
@@ -61,12 +61,5 @@ assert.strictEqual(inv('CQ W1XYZ FN42'), null);
 assert.strictEqual(inv('<K9ABC/P> W1XYZ RR73'), null, 'a compound form is another call');
 assert.strictEqual(sb.queueInvolvement('W1XYZ K9ABC -12', [], me), null, 'nothing queued');
 assert.strictEqual(sb.queueInvolvement('CQ K9ABC EN52', ['CQ'], me), null, 'the CQ entry is not a station');
-
-// A held entry (the main board's busy hold) names whom its station is working, from the newest decode
-// that says so; with none on the page, it still says it is waiting.
-sb.lastCfg = { call: me };
-sb.decodeSlots = [[{ x: 'CQ W2DEF FN20' }], [{ x: 'W1XYZ K9ABC R-07' }], [{ x: 'W3GHI K9ABC -12' }]];
-assert.strictEqual(sb.queueHeldCue('K9ABC'), 'Working W1XYZ \u00b7 waiting', 'the newest QSO it was heard in');
-assert.strictEqual(sb.queueHeldCue('N8ABC'), 'Waiting', 'nothing on the page names its QSO');
 
 console.log('PASS: queue cues');
