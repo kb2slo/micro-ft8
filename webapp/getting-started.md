@@ -37,7 +37,7 @@ You need the main board and sidekick on their Grove cable, your QMX (validated o
 ## 2. Open the app
 
 - Join the phone to the WiFi network `micro-ft8.local` and four characters (open, unless you set a password in **Settings**). Android may warn that it has no internet: stay connected.
-- In the phone's browser, type [`http://micro-ft8.local`](http://micro-ft8.local/) in full and tap **Operate in AP mode**, or scan the code at the top.
+- In the phone's browser, type [http://micro-ft8.local](http://micro-ft8.local/) in full and tap **Operate in AP mode**, or scan the code at the top.
 - *It must start with `http://`, not `https://`,* which the station does not have. A browser may change it by itself (Safari may): if the page does not open, type the address again, `http://` included. If the name is not found, as on some Android phones, open [`http://192.168.4.1`](http://192.168.4.1/) instead.
 - *Add the app to your Home Screen now, before you pair:* it then opens full screen with one tap, with no address to type. iPhone: in Safari, tap *Share*, then *Add to Home Screen*. Android: in Chrome, tap the three-dot menu, then *Add to Home screen*. From here on, open the app from that icon.
 
