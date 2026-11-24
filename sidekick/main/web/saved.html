@@ -11,11 +11,12 @@
 
 <body style='font-family:system-ui;margin:2rem'>
 <h2>Saved</h2>
-<p>The sidekick is restarting to join that network. This access point will
-disappear — reconnect your phone to your own WiFi.</p>
-<p>Once you are on that WiFi, open
-<a id=homeLink href="http://micro-ft8.local/app.html">http://micro-ft8.local/</a>.
-Tapping this link keeps your phone paired there.</p>
+<p>The sidekick is restarting to join that network, and this network will
+disappear. Reconnect your phone to your own WiFi, then tap Open the app.</p>
+<!-- One wording for a Safari tab and the Home Screen, where there is no address to type. The link
+     carries the pairing token (provision.html, carryLink()), so a phone that set up at 192.168.4.1
+     stays paired at micro-ft8.local. -->
+<p><a id=homeLink href="http://micro-ft8.local/app.html" style='display:inline-block;padding:.7rem 1.4rem;border-radius:.6rem;background:#1d4ed8;color:#fff;text-decoration:none;font-weight:600'>Open the app</a></p>
 
 <script src=/pairing.js></script>
 <script>MicroFT8Pairing.boot();</script>
