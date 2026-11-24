@@ -164,4 +164,4 @@ function run(body, opts) {
   })().catch((e) => { console.error(e); process.exit(2); });
 }
 
-module.exports = { run, check, until, sleep, TOKEN };
+module.exports = { run, check, until, sleep, TOKEN, findChrome };
