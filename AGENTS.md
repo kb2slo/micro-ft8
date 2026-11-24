@@ -282,6 +282,9 @@ through; it is never the only home of a decision. The pull request that acts on 
 and cites `#N`. Read issues freely; comment on, open or close one only when the person you work for says to in that
 turn, as for a push: an issue is public ([docs/maintainer/roadmap.md](docs/maintainer/roadmap.md), **Issues**).
 
+**A decision a pull request depends on lands in the docs in that pull request.** A draft epic or design in a PR
+body or chat is not a home: commit the epic file, or stop and ask the maintainer to.
+
 **How to apply:** when the maintainer states a preference worth keeping, put it in the right doc in the same
 turn and propose the commit. A contributor's preference about how this repo works is a pull request to that
 doc, which the maintainer accepts or not. If something genuinely should not be published, say so rather than
