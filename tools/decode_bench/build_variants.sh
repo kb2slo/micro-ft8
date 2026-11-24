@@ -4,7 +4,7 @@
 #   tools/decode_bench/build_variants.sh OUT_DIR
 #
 # Needs: git, make, a C compiler, python3, and jt9 (WSJT-X) on PATH.
-# Throwaway, like compare_decoders.py; B25 replaces both with the real harness.
+# Kept because decode.md's numbers trace to it; new recall work uses tools/decode_recall/report.py.
 #
 # Every variant is howard0su/ft8_lib at a pinned SHA, changed by one sed recipe, so
 # each number in docs/architecture/decode.md traces to an exact diff. The subtraction fix (sub_minus8)
