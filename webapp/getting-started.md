@@ -22,7 +22,7 @@ pages: 1
 
 # Getting started
 
-![Open the app](qr:http://192.168.4.1/app.html)
+![Open the app](qr:http://micro-ft8.local/app.html)
 
 micro-FT8 is a headless FT8 station for your QMX. The *main board* (M5Stack Unit PoE-P4) decodes, transmits, sequences each QSO and keeps the log. The *sidekick* (AtomS3 Lite, the small cube on the short cable) runs its own WiFi network and serves the app to your phone's browser, so there is nothing to install. The queue and the sequencer are on the station, so a locked phone does not drop a QSO. Building your own? Flash both boards first: [Downloads](https://micro-ft8.kalikstein.com/downloads).
 
@@ -36,12 +36,14 @@ You need the main board and sidekick on their Grove cable, your QMX (validated o
 
 ## 2. Open the app
 
-- Join the phone to the WiFi network `micro-ft8.local` and four characters (open, unless you set a password in **Settings**), open [`http://192.168.4.1`](http://192.168.4.1/) and tap **Operate in AP mode**, or scan the code at the top. Add it to your Home Screen.
-- Cellular internet comes and goes meanwhile. Android may warn that the network has no internet: stay connected.
+- Join the phone to the WiFi network `micro-ft8.local` and four characters (open, unless you set a password in **Settings**). Android may warn that it has no internet: stay connected.
+- In the phone's browser, type [`http://micro-ft8.local`](http://micro-ft8.local/) in full and tap **Operate in AP mode**, or scan the code at the top.
+- *It must start with `http://`, not `https://`,* which the station does not have. A browser may change it by itself (Safari may): if the page does not open, type the address again, `http://` included. If the name is not found, as on some Android phones, open [`http://192.168.4.1`](http://192.168.4.1/) instead.
+- *Add the app to your Home Screen now, before you pair:* it then opens full screen with one tap, with no address to type. iPhone: in Safari, tap *Share*, then *Add to Home Screen*. Android: in Chrome, tap the three-dot menu, then *Add to Home screen*. From here on, open the app from that icon.
 
 ## 3. Pair your phone
 
-- **Operate**'s bottom bar says **Not paired** until you press the pairing button, on top of the sidekick.
+- Open the app from its Home Screen icon. **Operate**'s bottom bar says **Not paired** until you press the pairing button, on top of the sidekick.
 - A paired browser can transmit and change settings; anyone on the network can watch. It also sets the station's clock from the phone, which FT8 needs (the main board has no clock), so open the app once after every power-up, with the phone's time set automatically.
 
 ## 4. Set up your station
@@ -55,6 +57,7 @@ A new or reset station is set to `YOURCALL` in grid `CM97`, and will not transmi
 
 - Tap **Operate**'s bottom bar: **CAT** and **Audio** show ✓ once the QMX is connected (– not known yet, ✕ down).
 - Tap a band there. The QMX tunes to its FT8 frequency, the top bar fills every 15 seconds, and decodes arrive after each slot.
+- *CAT or Audio not ✓:* switch the QMX off and on. *A busy band but no decodes:* reload the app, so it sets the clock again.
 
 ## Work some stations
 
@@ -67,16 +70,10 @@ A new or reset station is set to `YOURCALL` in grid `CM97`, and will not transmi
 
 One ADIF file per UTC day, kept on the main board. On **QSOs**, **Download ADI** saves a day and **Download full ADI** saves them all, for your logger or LoTW. With a **QRZ logbook key** in Settings, **Send** uploads what QRZ lacks.
 
-## Good to know
+## Home WiFi and updates
 
-- *CAT or Audio not ✓:* unplug the QMX's USB at the main board and plug it back in, or switch the QMX off and on. A restart of the main board while the QMX is connected can leave it unable to reconnect until you do.
-- *A busy band but no decodes:* reload the app, so it sets the clock again. Still none: check **Radio firmware** in the radio bar's drawer; before 1.04.010 it may lack IQ mode.
-- *Asked to pair again:* a new phone, a cleared browser or another address each take one press of the pairing button.
-- *Internet* is never needed to operate. When the phone has it, a tapped callsign shows QRZ details, and **Tools** adds space weather and, on its map, POTA and SOTA spots.
-- *SWR sweep,* on **Tools**: the QMX's *Tune* power should be 25% or more; **Set it to 25%** on the page does it.
-- *Home WiFi instead* (2.4 GHz only): in **Settings**, tap **Network**, then **Join a network →**, pick it and tap **Save and join**; then tap its link (it keeps you paired), or type [`http://micro-ft8.local`](http://micro-ft8.local/) in full. Away from that network, the sidekick's own comes back within a minute of power-up.
+- *Home WiFi* (2.4 GHz only): in **Settings**, tap **Network**, then **Join a network →**, pick it and tap **Save and join**. With the phone on that network too, the same address and Home Screen icon open the app, still paired. Away from that network, the sidekick's own comes back within a minute of power-up.
 - *Updates:* in **Settings**, **Software update**, then **Update** updates everything (needs internet; switch the radio off first). Flashing over USB, from the downloads page, erases the board: the sidekick starts again as a new unit.
-- *For now:* FT8 and FT4 with one radio, a QMX (or a Hermes-Lite 2, receive only and experimental; never both). A CQ stops after its tries and each QSO message after its own, but you are still the control operator.
 
 ## Questions and feedback
 
