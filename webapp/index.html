@@ -3,29 +3,89 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>micro-FT8 — KB2SLO</title>
-<meta name="description" content="micro-FT8: a 35-gram FT8 and FT4 station for the QMX, with its queue and auto-sequencer on the station, operated from any browser. Beta.">
+<meta name="description" content="micro-FT8: a 35-gram station for summits and parks that runs FT8 and FT4 at once on a QRP Labs QMX, operated over Wi-Fi from your phone. Nothing to install, no internet connectivity required. Beta.">
+<meta property="og:title" content="micro-FT8: FT8 and FT4 on a QMX, from your phone">
+<meta property="og:description" content="A 35-gram station that goes up the hill with a QRP Labs QMX and runs FT8 and FT4 at once. Your phone is the remote.">
+<meta property="og:image" content="https://micro-ft8.kalikstein.com/img/p4-sidekick-scale.jpeg">
+<meta property="og:url" content="https://micro-ft8.kalikstein.com/">
 <style>
   :root {
     --ink: #1a1f1c;
     --muted: #5a6560;
     --paper: #f3efe6;
+    --card: #fbf8f1;
     --band: #2f5d50;
+    --band-deep: #1f4238;
+    --on-band: #f3efe6;
+    --on-band-muted: #c3d3cc;
     --line: #d4cdc0;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --serif: "IBM Plex Serif", Georgia, serif;
   }
   * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
   body {
     margin: 0;
-    font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+    font-family: var(--sans);
     color: var(--ink);
-    background:
-      radial-gradient(1200px 600px at 10% -10%, #dfece6 0%, transparent 55%),
-      linear-gradient(180deg, #ebe4d6 0%, var(--paper) 40%, #e7e1d4 100%);
-    min-height: 100vh;
+    background: var(--paper);
+    line-height: 1.5;
   }
-  main {
-    max-width: 40rem;
-    margin: 0 auto;
-    padding: 3.5rem 1.25rem 3rem;
+  a { color: var(--band); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--band); outline-offset: 3px; }
+  img { max-width: 100%; height: auto; display: block; }
+  code { font-size: 0.92em; }
+  .wrap { max-width: 68rem; margin: 0 auto; padding: 0 1.25rem; }
+  .prose { max-width: 44rem; }
+
+  /* Top bar */
+  .top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1.5rem;
+    padding: 1.1rem 0;
+  }
+  .wordmark {
+    font-weight: 700;
+    font-size: 1.15rem;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    text-decoration: none;
+    margin-right: auto;
+  }
+  .chip {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--band);
+    border: 1px solid var(--band);
+    border-radius: 999px;
+    padding: 0.1rem 0.5rem;
+    margin-left: 0.4rem;
+    vertical-align: 0.15em;
+  }
+  .top nav { display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; font-size: 0.92rem; }
+  .top nav a { color: var(--ink); text-decoration: none; }
+  .top nav a:hover { text-decoration: underline; }
+
+  /* Hero */
+  .hero-bg {
+    background:
+      radial-gradient(1100px 560px at 8% -12%, #dfece6 0%, transparent 58%),
+      linear-gradient(180deg, #ebe4d6 0%, var(--paper) 100%);
+  }
+  .hero {
+    display: grid;
+    gap: 2.5rem;
+    padding: 2rem 0 3rem;
+    align-items: center;
+  }
+  @media (min-width: 880px) {
+    .hero { grid-template-columns: 1.25fr 0.75fr; gap: 3.5rem; padding: 3rem 0 4rem; }
   }
   .eyebrow {
     font-size: 0.8rem;
@@ -33,825 +93,636 @@
     letter-spacing: 0.1em;
     color: var(--band);
     font-weight: 600;
-    margin: 0 0 0.75rem;
+    margin: 0 0 0.9rem;
   }
+  h1, h2, h3 { font-family: var(--serif); font-weight: 600; letter-spacing: -0.015em; }
   h1 {
-    font-family: "IBM Plex Serif", Georgia, serif;
-    font-weight: 600;
-    font-size: clamp(2.2rem, 6vw, 3.2rem);
-    letter-spacing: -0.02em;
-    margin: 0 0 0.6rem;
-    line-height: 1.1;
-  }
-  .lead {
-    font-size: 1.15rem;
-    color: var(--muted);
-    margin: 0 0 1.25rem;
-    max-width: 36rem;
-    line-height: 1.45;
-  }
-  .byline {
-    font-size: 0.95rem;
-    color: var(--muted);
-    margin: 0 0 1.75rem;
-  }
-  .gallery {
-    display: grid;
-    gap: 0.85rem;
-    margin: 0 0 2.25rem;
-  }
-  .gallery.hardware {
-    max-width: 22rem;
-  }
-  .gallery.screens {
-    grid-template-columns: 1fr 1fr;
-  }
-  @media (min-width: 640px) {
-    .gallery.screens { grid-template-columns: repeat(3, 1fr); }
-  }
-  .gallery figure {
-    margin: 0;
-  }
-  .gallery img {
-    display: block;
-    width: 100%;
-    height: auto;
-    border-radius: 2px;
-    background: #ddd8cc;
-  }
-  .gallery.hardware img {
-    aspect-ratio: 3 / 4;
-    object-fit: cover;
-    object-position: center;
-  }
-  .gallery.screens img {
-    aspect-ratio: 9 / 19.5;
-    object-fit: cover;
-    object-position: top;
-    box-shadow: 0 1px 0 rgba(26, 31, 28, 0.06);
-    cursor: zoom-in;
-  }
-  .gallery.screens img.uncropped {
-    aspect-ratio: auto;
-    height: auto;
-  }
-  .video {
-    position: relative;
-    aspect-ratio: 16 / 9;
-    background: #1a1f1c;
-    border-radius: 2px;
-    overflow: hidden;
-  }
-  .video iframe {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    border: 0;
-  }
-  .gallery.screens button.shot {
-    display: block;
-    width: 100%;
-    padding: 0;
-    margin: 0;
-    border: none;
-    background: transparent;
-    cursor: zoom-in;
-    text-align: left;
-    font: inherit;
-    color: inherit;
-  }
-  .gallery.screens button.shot:focus-visible {
-    outline: 2px solid var(--band);
-    outline-offset: 2px;
-  }
-  .lightbox {
-    position: fixed;
-    inset: 0;
-    z-index: 40;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 1.25rem;
-    height: 100vh;
-    height: 100dvh;
-    background: rgba(26, 31, 28, 0.9);
-  }
-  .lightbox.open { display: flex; }
-  /* Fixed-height column: the image shrinks to fit, and the caption and
-     Prev/Next keep the same position from slide to slide. */
-  .lightbox-inner {
-    position: relative;
-    width: min(28rem, 100%);
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.75rem;
-  }
-  .lightbox-inner img {
-    display: block;
-    flex: 1 1 auto;
-    min-height: 0;
-    width: 100%;
-    object-fit: contain;
-    border-radius: 2px;
-  }
-  .lightbox-cap {
-    flex: none;
-    margin: 0;
-    color: #ebe4d6;
-    font-size: 0.9rem;
-    text-align: center;
-    line-height: 1.35;
-    min-height: 2.7em;
-  }
-  .lightbox-nav { flex: none; }
-  .lightbox-nav {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-  }
-  .lightbox-nav button {
-    font: inherit;
-    font-size: 0.9rem;
-    color: #ebe4d6;
-    background: transparent;
-    border: 1px solid rgba(235, 228, 214, 0.35);
-    border-radius: 2px;
-    padding: 0.35rem 0.75rem;
-    cursor: pointer;
-  }
-  .lightbox-nav button:hover {
-    border-color: #ebe4d6;
-  }
-  .lightbox-count {
-    color: rgba(235, 228, 214, 0.7);
-    font-size: 0.82rem;
-    min-width: 3.5rem;
-    text-align: center;
-  }
-  .lightbox-close {
-    position: absolute;
-    top: -0.25rem;
-    right: -0.25rem;
-    transform: translate(40%, -40%);
-    font: inherit;
-    font-size: 1.25rem;
-    line-height: 1;
-    color: #ebe4d6;
-    background: rgba(26, 31, 28, 0.9);
-    border: 1px solid rgba(235, 228, 214, 0.35);
-    border-radius: 2px;
-    width: 2rem;
-    height: 2rem;
-    cursor: pointer;
-  }
-  @media (max-width: 480px) {
-    .lightbox-close {
-      position: static;
-      transform: none;
-      align-self: flex-end;
-    }
-  }
-  .gallery figcaption {
-    font-size: 0.82rem;
-    color: var(--muted);
-    margin-top: 0.4rem;
-    line-height: 1.35;
-  }
-  section {
-    border-top: 1px solid var(--line);
-    padding-top: 1.4rem;
-    margin-top: 0.25rem;
+    font-size: clamp(2.15rem, 5.4vw, 3.6rem);
+    line-height: 1.07;
+    margin: 0 0 1.1rem;
+    text-wrap: balance;
   }
   h2 {
+    font-size: clamp(1.65rem, 3.4vw, 2.3rem);
+    line-height: 1.15;
+    margin: 0 0 0.9rem;
+    text-wrap: balance;
+  }
+  h3 { font-size: 1.12rem; line-height: 1.3; margin: 0 0 0.35rem; }
+  .lead { font-size: 1.18rem; color: var(--muted); margin: 0 0 1.6rem; max-width: 36rem; }
+  .lead strong { color: var(--ink); font-weight: 600; }
+  .cta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1rem; margin: 0 0 1.1rem; }
+  .cta {
+    display: inline-block;
+    padding: 0.7rem 1.25rem;
+    border-radius: 6px;
+    font-weight: 600;
+    text-decoration: none;
+    border: 1.5px solid var(--band);
+    background: var(--band);
+    color: var(--on-band);
+  }
+  .cta:hover { background: var(--band-deep); border-color: var(--band-deep); }
+  .cta.ghost { background: transparent; color: var(--band); }
+  .cta.ghost:hover { background: rgba(47, 93, 80, 0.08); }
+  .fine { font-size: 0.9rem; color: var(--muted); margin: 0; max-width: 36rem; }
+
+  /* Facts strip */
+  .facts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  @media (min-width: 760px) { .facts { grid-template-columns: repeat(4, 1fr); } }
+  .facts li { padding: 1.1rem 1rem 1.1rem 0; }
+  .facts b {
+    display: block;
+    font-family: var(--serif);
+    font-size: 1.9rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+  .facts span { font-size: 0.92rem; color: var(--muted); }
+
+  /* Sections */
+  section { padding: 4rem 0; }
+  section.tight { padding: 3rem 0; }
+  .kicker {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+    color: var(--band);
+    margin: 0 0 0.6rem;
+  }
+  .split { display: grid; gap: 2.25rem; align-items: center; }
+  @media (min-width: 880px) {
+    .split { grid-template-columns: 1fr 1fr; gap: 4rem; }
+    .split.narrow-media { grid-template-columns: 1.3fr 0.7fr; }
+    .split.narrow-media.flip { grid-template-columns: 0.7fr 1.3fr; }
+    .split.flip > :first-child { order: 2; }
+  }
+  .split p { margin: 0 0 1rem; }
+  .points { list-style: none; margin: 1.4rem 0 0; padding: 0; display: grid; gap: 1.1rem; }
+  .points li { padding-left: 1rem; border-left: 3px solid var(--band); }
+  .points p { margin: 0; color: var(--muted); }
+  .small { font-size: 0.9rem; color: var(--muted); }
+
+  .deep { background: var(--band-deep); color: var(--on-band); }
+  .deep .kicker { color: #9fd0bd; }
+  .deep p, .deep .small { color: var(--on-band-muted); }
+  .deep .lede { color: var(--on-band); }
+  .deep a { color: #bfe3d4; }
+  .deep .points li { border-left-color: #6fae97; }
+  .alt { background: var(--card); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .lede { font-size: 1.1rem; }
+
+  /* Screenshot and photo slots. A .todo slot is a placeholder for an image not yet captured. */
+  figure { margin: 0; }
+  figcaption { font-size: 0.88rem; color: var(--muted); margin-top: 0.7rem; }
+  .deep figcaption { color: var(--on-band-muted); }
+  .phone {
+    width: min(100%, 15rem);
+    margin-inline: auto;
+  }
+  .hero .phone { width: min(100%, 17.5rem); }
+  .wide img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 7px solid var(--ink);
+    border-radius: 26px;
+    background: #fff;
+  }
+  .phone img, .clip video {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 7px solid var(--ink);
+    border-radius: 30px;
+    background: #e9e3d6;
+  }
+  .phone .screen, .wide .screen {
+    border: 7px solid var(--ink);
+    background: #e9e3d6;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 1.1rem;
+    text-align: center;
+    color: var(--muted);
     font-size: 0.85rem;
+  }
+  .phone .screen { aspect-ratio: 9 / 19.5; border-radius: 30px; }
+  .wide .screen { aspect-ratio: 19.5 / 9; border-radius: 26px; }
+  .photo .screen {
+    aspect-ratio: 4 / 3;
+    border: 1px dashed #a79f90;
+    border-radius: 6px;
+    background: #e9e3d6;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 1.1rem;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  .sketch svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    color: var(--ink);
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+  .sketch .far { stroke: var(--muted); }
+  .sketch .acc { stroke: var(--band); }
+  .sketch text { font: 600 13px var(--sans); fill: var(--muted); }
+  .sketch text.acc { fill: var(--band); stroke: none; }
+  .screen .n {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+    color: var(--band);
+  }
+  .screen strong { color: var(--ink); font-size: 0.98rem; }
+  .photo-real img { border-radius: 6px; width: 100%; aspect-ratio: 4 / 5; object-fit: cover; }
+
+  /* Three steps: a row on a wide screen, a sideways scroll on a phone. */
+  .steps {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 62%;
+    gap: 1.25rem;
+    margin-top: 3rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 0.5rem;
+  }
+  .steps > * { scroll-snap-align: start; }
+  @media (min-width: 640px) {
+    .steps { grid-auto-flow: row; grid-template-columns: repeat(3, 1fr); overflow: visible; gap: 1.5rem; }
+  }
+  .steps .phone { width: min(100%, 14rem); }
+  .steps figcaption { text-align: center; }
+  .steps figcaption b { display: block; color: var(--ink); }
+
+  /* Cards */
+  .cards { display: grid; gap: 1rem; grid-template-columns: 1fr; margin-top: 1.75rem; }
+  @media (min-width: 640px) { .cards { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 960px) { .cards.three { grid-template-columns: repeat(3, 1fr); } }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 1.1rem 1.2rem;
+  }
+  .alt .card { background: var(--paper); }
+  .card p { margin: 0; color: var(--muted); font-size: 0.97rem; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 0.97rem; }
+  th, td { text-align: left; vertical-align: top; padding: 0.7rem 0.9rem 0.7rem 0; border-bottom: 1px solid var(--line); }
+  thead th {
+    font-size: 0.78rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--muted);
-    margin: 0 0 0.75rem;
-  }
-  p, li { line-height: 1.55; }
-  p { margin: 0 0 0.9rem; }
-  p:last-child { margin-bottom: 0; }
-  ol, ul { padding-left: 1.2rem; margin: 0.35rem 0 0; }
-  li { margin-bottom: 0.55rem; }
-  li:last-child { margin-bottom: 0; }
-  a { color: var(--band); }
-  code {
-    font-family: "IBM Plex Mono", ui-monospace, monospace;
-    font-size: 0.92em;
-  }
-  .note {
-    font-size: 0.95rem;
-    color: var(--muted);
-    border-left: 3px solid var(--band);
-    padding-left: 0.85rem;
-    margin: 1rem 0 0;
-  }
-  table.bom {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.95rem;
-    margin: 0.5rem 0 0.75rem;
-  }
-  table.bom th,
-  table.bom td {
-    text-align: left;
-    padding: 0.45rem 0.35rem;
-    border-bottom: 1px solid var(--line);
-    vertical-align: top;
-  }
-  table.bom th {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--muted);
     font-weight: 600;
   }
-  table.bom td.price {
-    white-space: nowrap;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
+  tbody th { font-weight: 600; width: 9.5rem; }
+  .price { text-align: right; white-space: nowrap; padding-right: 0; }
+  tr.total td { font-weight: 600; border-bottom: 0; }
+  /* Details list */
+  .details { display: grid; gap: 1.5rem 3rem; margin-top: 1.75rem; }
+  @media (min-width: 760px) { .details { grid-template-columns: 1fr 1fr; } }
+  .details p { margin: 0; color: var(--muted); }
+
+  /* Verified */
+  ul.checks { list-style: none; margin: 1.75rem 0 0; padding: 0; display: grid; gap: 0.75rem; font-size: 0.97rem; }
+  ul.checks li { padding-left: 1.6rem; position: relative; }
+  ul.checks li::before { content: "✓"; color: var(--band); position: absolute; left: 0; top: 0; font-weight: 700; }
+  @media (min-width: 880px) {
+    ul.checks.cols { display: block; columns: 2; column-gap: 3.5rem; }
+    ul.checks.cols li { break-inside: avoid; margin-bottom: 0.75rem; }
   }
-  table.bom tr.total td {
-    border-bottom: none;
-    padding-top: 0.65rem;
-    font-weight: 600;
-  }
-  .cta {
-    display: inline-block;
-    background: var(--band);
-    color: #f3efe6;
-    text-decoration: none;
-    font-weight: 600;
-    padding: 0.6rem 1.1rem;
-    border-radius: 2px;
-    margin: 0 0.75rem 0.5rem 0;
-  }
-  .cta:hover { background: #244a40; }
-  .cta-note { display: inline-block; }
-  .cta-row {
-    margin: 0 0 1.75rem;
-    font-size: 0.95rem;
-    color: var(--muted);
-  }
-  .cards {
-    display: grid;
-    gap: 0.85rem;
-    margin: 0 0 2.25rem;
-  }
-  @media (min-width: 640px) {
-    .cards { grid-template-columns: 1fr 1fr; }
-  }
-  .card {
-    background: rgba(255, 255, 255, 0.45);
-    border: 1px solid var(--line);
-    border-top: 3px solid var(--band);
-    border-radius: 2px;
-    padding: 0.95rem 1rem 1rem;
-  }
-  .card h3 {
-    font-family: "IBM Plex Serif", Georgia, serif;
-    font-size: 1.1rem;
-    line-height: 1.25;
-    margin: 0 0 0.45rem;
-  }
-  .card p {
-    font-size: 0.95rem;
-    margin: 0 0 0.6rem;
-  }
-  .card .proof {
-    font-size: 0.85rem;
-    color: var(--band);
-    margin: 0;
-  }
-  table.compare {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.92rem;
-    margin: 0.5rem 0 0.75rem;
-  }
-  table.compare th,
-  table.compare td {
-    text-align: left;
-    padding: 0.5rem 0.4rem;
-    border-bottom: 1px solid var(--line);
-    vertical-align: top;
-    line-height: 1.4;
-  }
-  table.compare thead th {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--muted);
-    font-weight: 600;
-  }
-  table.compare tbody th {
-    font-weight: 600;
-    width: 24%;
-  }
-  table.compare .us {
-    background: rgba(47, 93, 80, 0.08);
-  }
-  @media (max-width: 559px) {
-    table.compare thead { display: none; }
-    table.compare,
-    table.compare tbody,
-    table.compare tr,
-    table.compare th,
-    table.compare td { display: block; width: auto; }
-    table.compare tr {
-      border-bottom: 1px solid var(--line);
-      padding: 0.6rem 0;
-    }
-    table.compare th,
-    table.compare td {
-      border: none;
-      padding: 0.15rem 0.4rem;
-    }
-    table.compare tbody th { width: auto; padding-bottom: 0.3rem; }
-    table.compare td::before {
-      content: attr(data-label) ": ";
-      color: var(--muted);
-      font-size: 0.82rem;
-    }
-  }
-  ul.checks {
-    list-style: none;
-    padding-left: 0;
-  }
-  ul.checks li {
-    padding-left: 1.5rem;
-    position: relative;
-  }
-  ul.checks li::before {
-    position: absolute;
-    left: 0;
-    font-weight: 700;
-  }
-  ul.checks.yes li::before { content: "✓"; color: var(--band); }
-  ul.checks.no li::before { content: "–"; color: var(--muted); }
-  h3.sub {
-    font-size: 0.95rem;
-    margin: 1.1rem 0 0.35rem;
-  }
-  footer {
-    margin-top: 2.75rem;
-    padding-top: 1.25rem;
-    border-top: 1px solid var(--line);
-    color: var(--muted);
-    font-size: 0.9rem;
-    line-height: 1.5;
-  }
+
+  .trio { display: grid; gap: 2rem; }
+  @media (min-width: 760px) { .trio { grid-template-columns: repeat(3, 1fr); gap: 3rem; } }
+  .trio p { margin: 0; color: var(--muted); }
+
+  footer { border-top: 1px solid var(--line); padding: 2rem 0 3rem; font-size: 0.92rem; color: var(--muted); }
+  footer p { margin: 0 0 0.6rem; max-width: 46rem; }
 </style>
-<main>
-  <p class="eyebrow">micro-FT8 · FT8 and FT4 for the QMX · Beta</p>
-  <h1>A 35‑gram FT8 and FT4 station for the QMX, run from your phone’s browser.</h1>
-  <p class="lead">
-    micro-FT8 is a 35&nbsp;gram station that sits next to your QMX and does the
-    decoding, sequencing and logging. You operate it from a browser: pick who to
-    call, queue them, call CQ. Because the work is on the station, a locked screen
-    or a closed page does not drop a QSO in progress.
-  </p>
-  <p class="note">
-    <strong>One radio at a time.</strong> A station runs a QMX <em>or</em> a
-    Hermes-Lite&nbsp;2, whichever you pick in Settings › Radio &amp; bands, never both
-    at once. The <strong>QMX</strong> is the radio it is built for: full operation,
-    receive and transmit, is the target for a 1.0 release in December 2026. The
-    <strong>Hermes-Lite&nbsp;2</strong> is experimental and receive only for now.
-  </p>
-  <p class="cta-row">
-    <a class="cta" href="getting-started.html">Getting started</a>
-    <a class="cta" href="downloads.html">Downloads</a>
-    <span class="cta-note">Set up a station, or get the firmware for the PoE-P4 and
-      the Atom. Or <a href="#walkthrough">watch the walkthrough</a>, or see the
-      <a href="experiments/">experiments</a>.</span>
-  </p>
 
-  <div class="gallery hardware">
-    <figure>
-      <img
-        src="img/p4-sidekick-scale.jpeg"
-        alt="PoE-P4 and AtomS3 Lite on a scale reading 34.9 grams, with a US quarter for size"
-        width="480"
-        height="640">
-      <figcaption>
-        PoE-P4 + AtomS3&nbsp;Lite — the whole compute stack is
-        <strong>35&nbsp;grams</strong> (34.9&nbsp;g on the scale). Quarter for scale.
-      </figcaption>
-    </figure>
+<div class="hero-bg">
+  <div class="wrap">
+    <header class="top">
+      <a class="wordmark" href="./">micro-FT8<span class="chip">Beta</span></a>
+      <nav aria-label="Site">
+        <a href="getting-started.html">Getting started</a>
+        <a href="downloads.html">Downloads</a>
+        <a href="experiments/">Experiments</a>
+        <a href="https://github.com/kb2slo/micro-ft8">GitHub</a>
+      </nav>
+    </header>
+
+    <div class="hero">
+      <div>
+        <p class="eyebrow">For the QRP Labs QMX · summits, parks, or your couch</p>
+        <h1>Leave the radio at the antenna. Work FT8 and FT4 at once from your phone.</h1>
+        <p class="lead">
+          micro-FT8 is a <strong>35‑gram station</strong> that rides in the pack with your QMX
+          and does the decoding, calling and logging. Your phone is the remote: nothing to
+          install, no cable to it, no internet connectivity required.
+        </p>
+        <p class="cta-row">
+          <a class="cta" href="getting-started.html">Get started</a>
+          <a class="cta ghost" href="#parts">What you need</a>
+          <a href="#walkthrough">Watch it work</a>
+        </p>
+        <p class="fine">
+          Beta. It has completed FT8 and FT4 QSOs on the air with a QMX, and 1.0 is planned
+          for December 2026.
+        </p>
+      </div>
+      <figure class="phone">
+        <img src="img/ui-operate.jpeg" alt="Operate on a phone: an FT8 and an FT4 slot bar, a line for the report just sent in FT4, a decode addressed to KB2SLO marked ME, and two contacts in the queue, one FT4 and one FT8" width="804" height="1748">
+        <figcaption>Operate: FT8 and FT4 decoding together, two contacts in the queue.</figcaption>
+      </figure>
+    </div>
+
+    <ul class="facts">
+      <li><b>34.9 g</b><span>both boards, on the scale</span></li>
+      <li><b>0.9 W</b><span>about, <a href="experiments/power/">measured</a> over a session</span></li>
+      <li><b>$29</b><span>about, for <a href="#parts">two stock boards</a></span></li>
+      <li><b>2 modes</b><span>FT8 and FT4, heard together</span></li>
+    </ul>
   </div>
+</div>
 
-  <section id="beta">
-    <h2>This is a beta</h2>
-    <p>
-      micro-FT8 has completed FT8 and FT4 QSOs on the air with a QMX, and tagged
-      releases are out for testers. What it does today:
-    </p>
-    <ul>
-      <li>
-        <strong>A queue and an auto-sequencer, on the station.</strong> Tap a decode to
-        reply, queue several, or call CQ a set number of times. You choose who to work
-        and when to call; the sequencer carries each exchange through to the log, the
-        way WSJT-X does.
-      </li>
-      <li>
-        <strong>FT8 and FT4 together.</strong> On most bands a QMX decodes both at once,
-        and you can reply to a call or call CQ in either. The exceptions are 15&nbsp;m and
-        10&nbsp;m, where the two sit too far apart for the radio to hear both: choose FT4
-        there and it works on its own. Checked on the air on 20&nbsp;m, 40&nbsp;m and
-        15&nbsp;m.
-      </li>
-      <li>
-        <strong>POTA and SOTA activations.</strong> The log downloads as
-        <code>.adi</code> files you can upload straight to pota.app for activation
-        credit: one file per park, with a two-fer split into the files POTA asks for. Set
-        your park or summit in Settings and Operate counts the day’s QSOs toward the
-        activation and flags stations you have already worked. SOTA logs carry the summit
-        reference.
-      </li>
-      <li>
-        <strong>Easy to set up and use.</strong> Nothing to install: join the station’s
-        Wi‑Fi and open a page, on any phone, tablet or laptop. Setup fits on
-        <a href="getting-started.html">one printed sheet</a>.
-      </li>
-      <li>
-        <strong>The clock sets itself from your phone.</strong> Open the page and the
-        station takes the phone’s time: no GPS, no signal and no internet needed.
-      </li>
-      <li>
-        <strong>Light and low power.</strong> 35&nbsp;grams in two small boards, drawing
-        about 0.9&nbsp;W (<a href="experiments/power/">measured</a>). They run over USB‑C
-        from the same power bank as the radio, or straight from your phone’s USB‑C port.
-      </li>
-      <li>
-        <strong>Works with an amplifier.</strong> It checks and sets the QMX’s keying
-        outputs for each band and waits for the amplifier before sending RF. Tested with
-        a Micro&nbsp;PA‑100+.
-      </li>
-      <li>
-        <strong>See who hears you, and spot who you hear.</strong> Your spots from
-        PSKReporter, as a list or on the map, and, once you turn it on, the stations you
-        decode reported there under your call, as WSJT-X does. Both while the phone has
-        internet and the app is open.
-      </li>
-      <li>
-        <strong>Field tools.</strong> An SWR sweep for tuning an antenna, an offline map,
-        and logs in ADIF straight to your phone.
-      </li>
-      <li>
-        <strong>Updates over the air</strong> from Settings, on a Stable or a Dev channel.
-      </li>
-    </ul>
-    <p class="note">
-      Until 1.0, an update may reset your settings or your log, so download your log
-      first. Tell us what breaks: <a href="#contact">contact</a>.
-    </p>
-  </section>
-
-  <section id="walkthrough">
-    <h2>Watch it work</h2>
-    <p>
-      A walkthrough of micro-FT8 in use. It is hosted on YouTube, which loads its own
-      player (privacy-enhanced mode) when this page does;
-      <a href="https://youtu.be/40ImE_t9rfw">open it on YouTube</a> instead if you
-      would rather not.
-    </p>
-    <div class="video">
-      <iframe
-        src="https://www.youtube-nocookie.com/embed/40ImE_t9rfw"
-        title="micro-FT8 walkthrough"
-        loading="lazy"
-        allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-        referrerpolicy="strict-origin-when-cross-origin"
-        allowfullscreen></iframe>
-    </div>
-  </section>
-
-  <section>
-    <h2>Why micro-FT8</h2>
-    <div class="cards">
-      <div class="card">
-        <h3>The sequencer is on the station</h3>
-        <p>
-          Decoding, the queue and the auto-sequencer run on the station, not in the
-          page. A QSO you started finishes and logs even if the phone locks or the
-          browser closes.
+<section>
+  <div class="wrap">
+    <div class="split">
+      <div>
+        <p class="kicker">Untethered</p>
+        <h2>Your phone is the remote, not the decoder.</h2>
+        <p class="lede">
+          The radio and the boards stay wired together, and you are free to move anywhere
+          within Wi‑Fi range. Tap a station to answer it, and the station carries the
+          exchange through to the log, the way WSJT-X does.
         </p>
+        <ul class="points">
+          <li>
+            <h3>Your phone stays yours</h3>
+            <p>The decoding runs on the station, so you can use other apps, take a photo or
+              take a call without disturbing your decodes: no audio conflicts, and nothing
+              to keep on screen. If the phone locks or dies, the QSO in progress still
+              completes and logs.</p>
+          </li>
+          <li>
+            <h3>Nothing to install</h3>
+            <p>Join the station’s Wi‑Fi and open a page, on any phone, tablet or laptop.</p>
+          </li>
+          <li>
+            <h3>The GPS can stay home</h3>
+            <p>Time syncs automatically from your phone when you open the page. No internet
+              connectivity required.</p>
+          </li>
+        </ul>
       </div>
-      <div class="card">
-        <h3>Nothing on the summit needs a network</h3>
-        <p>
-          The Atom runs its own Wi‑Fi, so you don’t need a router, cell signal, or
-          app store. The map is served by the station, so it works offline. The clock
-          syncs from your browser, so the GPS can stay home. The app comes in the
-          Atom’s firmware, so even the first setup needs no network.
-        </p>
-        <p class="proof">
-          Join its network, open <code>micro-ft8.local</code> or <code>192.168.4.1</code>:
-          <a href="getting-started.html">Getting started</a>.
-        </p>
-      </div>
-      <div class="card">
-        <h3>35 grams, about $29</h3>
-        <p>
-          The station is two stock M5Stack parts with no screen and no keyboard.
-        </p>
-        <p class="proof">34.9&nbsp;g on the scale. Real FT8 and FT4 QSOs completed.</p>
-      </div>
-      <div class="card">
-        <h3>Your phone stays yours</h3>
-        <p>
-          The phone isn’t the station, so its battery, screen, and apps stay free for
-          navigation, spotting, or a call home. If the phone dies, the QSO in progress
-          still completes and logs, and any browser can pick the station back up.
-        </p>
-        <p class="proof">Any browser works: phone, tablet, or laptop.</p>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <h2>How it’s different</h2>
-    <p>
-      There are three common ways to run FT8 without a laptop. Each one makes a
-      different trade-off.
-    </p>
-    <table class="compare">
-      <thead>
-        <tr>
-          <th></th>
-          <th>Phone app + radio</th>
-          <th>Radio with built-in FT8</th>
-          <th class="us">micro-FT8 + radio</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <th>Where FT8 runs</th>
-          <td data-label="Phone app">On the phone</td>
-          <td data-label="Built-in">Inside the radio</td>
-          <td data-label="micro-FT8" class="us">On a small station beside the radio</td>
-        </tr>
-        <tr>
-          <th>When the phone sleeps</th>
-          <td data-label="Phone app">Depends on the phone letting the app run in the background</td>
-          <td data-label="Built-in">No phone involved</td>
-          <td data-label="micro-FT8" class="us">A QSO in progress completes and logs; the phone is a remote</td>
-        </tr>
-        <tr>
-          <th>Screen you operate on</th>
-          <td data-label="Phone app">The phone</td>
-          <td data-label="Built-in">The radio’s own screen</td>
-          <td data-label="micro-FT8" class="us">Any browser: phone, tablet, or laptop</td>
-        </tr>
-        <tr>
-          <th>Radios</th>
-          <td data-label="Phone app">Usually many</td>
-          <td data-label="Built-in">That radio only</td>
-          <td data-label="micro-FT8" class="us">QMX; or a Hermes-Lite&nbsp;2, experimental and receive only</td>
-        </tr>
-        <tr>
-          <th>What you add</th>
-          <td data-label="Phone app">A USB cable</td>
-          <td data-label="Built-in">A new radio</td>
-          <td data-label="micro-FT8" class="us">35&nbsp;g, about $29, about 0.9&nbsp;W</td>
-        </tr>
-      </tbody>
-    </table>
-    <p class="note">
-      If you want the most radio choices, use a phone app. If you want nothing extra
-      to carry, use a radio with built-in FT8. micro-FT8 is for when you want a full FT8
-      station for your QMX that weighs 35&nbsp;grams and needs no laptop.
-    </p>
-  </section>
-
-  <section>
-    <h2>How it runs</h2>
-    <p>
-      <strong>M5Stack Unit PoE-P4</strong> as the radio host, an
-      <strong>AtomS3&nbsp;Lite</strong> as the Wi‑Fi companion,
-      <strong>no keyboard and no screen</strong>. All of the compute fits in
-      <strong>35&nbsp;grams</strong>. Operate it from a phone, tablet, or laptop; a QSO in
-      progress does not need the page open. It has completed real FT8 and FT4 QSOs on the air.
-    </p>
-    <p class="note">
-      <strong>GPS is optional.</strong> Clock comes from the browser over the Atom link —
-      open the page, sync once, operate. No GNSS module required for time.
-    </p>
-    <p>
-      P4 USB-host FT8 wasn’t a leap of faith:
-      <a href="https://github.com/SteffenLav/qmx-panadapter">SteffenLav’s qmx-panadapter</a>
-      already ships FT8 on ESP32-P4 (M5Stack Tab5) with a live QMX. That work proved the silicon;
-      micro-FT8’s PoE-P4 build is the headless, browser-UI shape of the same idea.
-    </p>
-  </section>
-
-  <section>
-    <h2>Headless BOM (M5Stack)</h2>
-    <p>
-      The 35&nbsp;g compute stack is two catalogue parts plus the Grove cable that ships with the
-      PoE-P4. Radio and power are separate.
-    </p>
-    <table class="bom">
-      <thead>
-        <tr>
-          <th>Part</th>
-          <th>Role</th>
-          <th class="price">List</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>
-            <a href="https://shop.m5stack.com/products/unit-poe-with-esp32-p4">Unit PoE-P4</a>
-            (SKU&nbsp;U213)
-          </td>
-          <td>Radio host — USB to QMX, decode, CAT. Includes a 20&nbsp;cm Grove cable.</td>
-          <td class="price">$21.50</td>
-        </tr>
-        <tr>
-          <td>
-            <a href="https://shop.m5stack.com/products/atoms3-lite-esp32s3-dev-kit">AtomS3&nbsp;Lite</a>
-          </td>
-          <td>Wi‑Fi companion — serves the browser UI over the LAN.</td>
-          <td class="price">$7.50</td>
-        </tr>
-        <tr class="total">
-          <td colspan="2">M5Stack compute BOM (list, excl. shipping)</td>
-          <td class="price">~$29</td>
-        </tr>
-      </tbody>
-    </table>
-    <p class="note">
-      Prices from <a href="https://shop.m5stack.com/">shop.m5stack.com</a> (USD, checked
-      2026-09-18). Does <strong>not</strong> include the QMX, USB-C power bank/cables, or phone.
-    </p>
-  </section>
-
-  <section>
-    <h2>In the browser</h2>
-    <p>
-      Join the Atom’s own Wi‑Fi network directly (no router needed — a summit has
-      no camp router any more than it has cell service), or put it on your home
-      or camp network instead. Either way: no app-store install, just Safari or
-      Chrome on a phone, tablet, or laptop. Four tabs: <strong>Operate</strong> drives
-      the radio, <strong>QSOs</strong> is your log, <strong>Tools</strong> is everything
-      around operating: who is hearing you (from PSKReporter, on the map or as a list), space
-      weather, the map, and an SWR sweep for tuning an antenna; <strong>Settings</strong> is
-      the station, the radio and the network.
-    </p>
-    <p class="note">
-      <strong>The page can close.</strong> Open it again at any time; the queue, the
-      decodes and the log are where you left them.
-    </p>
-    <div class="gallery screens" id="screen-gallery">
-      <figure>
-        <button type="button" class="shot" data-index="0" aria-label="Enlarge Operate screenshot">
-          <img
-            src="img/ui-operate.jpeg"
-            alt="Operate tab calling CQ at 4.8 W, SWR 1.04, with link status, queue, and a live decode"
-            width="295"
-            height="640">
-        </button>
-        <figcaption>Operate — CQ out, power/SWR live, decodes still flowing.</figcaption>
-      </figure>
-      <figure>
-        <button type="button" class="shot" data-index="1" aria-label="Enlarge reply screenshot">
-          <img
-            src="img/ui-decodes.jpeg"
-            alt="Operate tab answering K8OCN with a report, the caller's decode flagged as addressed to me"
-            width="295"
-            height="640">
-        </button>
-        <figcaption>A caller answers — flagged <em>→&nbsp;ME</em>, queued, bearing &amp; distance.</figcaption>
-      </figure>
-      <figure>
-        <button type="button" class="shot" data-index="2" aria-label="Enlarge QSOs screenshot">
-          <img
-            src="img/ui-qsos.jpeg"
-            alt="QSOs tab grouped by day with a QSO count, per-day ADI download, grid, distance and bearing per contact"
-            width="295"
-            height="640">
-        </button>
-        <figcaption>QSOs — grouped by day, ADI per day or all.</figcaption>
-      </figure>
-      <figure>
-        <button type="button" class="shot" data-index="3" aria-label="Enlarge callsign screenshot">
-          <img
-            src="img/ui-callsign.jpeg"
-            alt="Callsign card with grid, distance, QSOs in log, heard this session, POTA/SOTA status, and View on QRZ.com"
-            width="295"
-            height="640">
-        </button>
-        <figcaption>Tap a callsign — grid, log history, spots, QRZ.com.</figcaption>
-      </figure>
-      <figure>
-        <button type="button" class="shot" data-index="4" aria-label="Enlarge Tools screenshot">
-          <img
-            src="img/ui-tools.jpeg"
-            alt="Tools tab with NOAA space weather: solar flux, A and K index, X-ray flux, solar wind"
-            width="295"
-            height="640">
-        </button>
-        <figcaption>Tools — space weather, and the way into the map.</figcaption>
-      </figure>
-      <figure>
-        <button type="button" class="shot" data-index="5" aria-label="Enlarge map screenshot">
-          <img
-            src="img/ui-map.jpeg"
-            alt="North America map with great-circle paths to worked grids, POTA and SOTA spots, and the grayline"
-            width="295"
-            height="640">
-        </button>
-        <figcaption>Map — QSO paths, POTA/SOTA spots, grayline.</figcaption>
-      </figure>
-      <figure>
-        <button type="button" class="shot" data-index="6" aria-label="Enlarge SWR sweep screenshot">
-          <img
-            class="uncropped"
-            src="img/ui-swr.jpeg"
-            alt="SWR sweep page after a run across 40, 30, 20, 17 and 15 m on a 40 m end-fed half-wave: SWR 1.09 to 1.56 on 40, 20 and 15 m, about 2.4 to 2.5 on 30 and 17 m, with band boundaries"
-            width="295"
-            height="504">
-        </button>
-        <figcaption>
-          SWR sweep — tick the bands, run it, and see the whole curve. A 40&nbsp;m
-          end-fed half-wave: low on 40, 20 and 15, high on 30 and 17, as it should be.
-        </figcaption>
+      <figure class="sketch">
+        <svg viewBox="0 34 480 296" role="img"
+          aria-label="Sketch of a summit: a mast and wire antenna with a small radio and two boards at its foot, and a few steps away an operator sitting on a rock with only a phone, Wi-Fi arcs between them">
+          <defs>
+            <filter id="rough" x="-5%" y="-5%" width="110%" height="110%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="4" result="n"/>
+              <feDisplacementMap in="SourceGraphic" in2="n" scale="3"/>
+            </filter>
+          </defs>
+          <g filter="url(#rough)" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path class="far" stroke-width="1.4" d="M0 214 C60 184 110 198 160 174 S260 152 320 188 S420 172 480 198"/>
+            <path class="far" stroke-width="1.4" d="M296 92 q7 -7 14 0 q7 -7 14 0 M340 72 q5 -5 10 0 q5 -5 10 0"/>
+            <path stroke-width="2.6" d="M0 300 C70 290 120 262 190 256 C260 250 300 268 360 272 C410 276 450 290 480 296"/>
+            <path stroke-width="1.3" d="M40 296 l3 -9 M46 295 l5 -8 M318 270 l2 -9 M325 271 l5 -8 M456 292 l3 -9"/>
+            <path stroke-width="2.6" d="M120 266 L120 58"/>
+            <path stroke-width="1.1" d="M120 150 L92 272 M120 150 L150 261"/>
+            <path stroke-width="1.5" d="M120 58 Q172 140 208 240 M120 58 Q62 118 6 196"/>
+            <rect x="196" y="240" width="36" height="16" rx="2"/>
+            <rect x="201" y="244" width="13" height="7" stroke-width="1.3"/>
+            <circle cx="224" cy="248" r="3" stroke-width="1.5"/>
+            <path stroke-width="1.5" d="M232 250 Q237 257 243 252 M257 253 L263 254"/>
+            <rect class="acc" x="243" y="246" width="14" height="10" rx="1.5"/>
+            <rect class="acc" x="263" y="249" width="9" height="8" rx="1.5"/>
+            <path class="acc" d="M287 229 A30 30 0 0 1 296 250 M300 216 A48 48 0 0 1 314 250 M313 203 A66 66 0 0 1 332 250"/>
+            <path d="M384 281 C384 262 392 250 408 248 C424 248 432 262 432 283"/>
+            <circle cx="398" cy="196" r="10"/>
+            <path d="M398 206 Q405 226 402 246 L378 250 L374 276 L363 277"/>
+            <path d="M399 215 L385 231 L373 224"/>
+            <rect class="acc" x="364" y="210" width="8" height="14" rx="1.5" transform="rotate(-12 368 217)"/>
+            <path d="M440 284 L440 258 Q440 250 449 250 L455 250 Q464 250 464 258 L464 288 M446 250 Q452 240 458 250"/>
+          </g>
+          <text x="232" y="290" text-anchor="middle">radio and boards</text>
+          <text x="404" y="312" text-anchor="middle">you</text>
+          <text class="acc" x="330" y="166" text-anchor="middle">Wi‑Fi</text>
+        </svg>
+        <figcaption>One cable from the boards to the radio. None to you.</figcaption>
       </figure>
     </div>
-  </section>
 
-  <section>
-    <h2>What it does</h2>
-    <ul>
-      <li>
-        <strong>An SWR sweep for tuning an antenna in the field.</strong> Tick the bands
-        (the ones you’ve enabled are ticked for you), see how long it will take, and run
-        it: the station sends a short carrier at each point and plots SWR from 1 to 6
-        across every band you chose, with the band edges marked and the lowest point on
-        each band named. Adjust the wire, run it again, and your last run stays faintly
-        behind the new one. Stop ends it at once. Needs the PoE‑P4 and a QMX; for a true
-        reading the QMX’s Tune power is 25% or more, which you can set in Settings ›
-        Radio &amp; bands, and each run is labelled with it.
-      </li>
-      <li>
-        <strong>A full browser UI.</strong> Operate, queue, tune, and download logs from
-        Safari or Chrome. Tap any callsign to see its grid, bearing and distance, your
-        past QSOs with it, and a link to <a href="https://www.qrz.com/">QRZ.com</a>.
-      </li>
-      <li>
-        <strong>An offline map.</strong> It shows great-circle paths to every grid you’ve
-        worked, plus the grayline. With internet, it adds live POTA/SOTA spots and NOAA
-        space weather.
-      </li>
-      <li>
-        <strong>You can still operate while transmitting.</strong> The decode list stays
-        live, so you can queue the next QSO, and shows each message you sent in its slot,
-        with whether it went out. Power and SWR are shown on screen.
-      </li>
-      <li>
-        <strong>A CQ calls as many times as you set, then stops.</strong> Stations that
-        answer are worked first, and every message in the queue goes out a set number of
-        times, which you can change on its row.
-      </li>
-      <li>
-        <strong>Logs are safer, and easier to get off the station.</strong> Download a
-        day’s <code>.adi</code> file straight to your phone and upload it to whatever
-        logging software you use. A QSO logs the
-        other station’s grid even when the exchange never carried one, from the last
-        grid it sent in the past four hours.
-      </li>
-      <li>
-        <strong>It never logs what didn’t go out.</strong> If the radio can’t be keyed when
-        your slot starts, nothing is sent, no try is used, and the message goes out in its
-        next slot once the radio is back. Stop ends a transmission on the air at once.
-      </li>
-      <li>
-        <strong>Plays well with an amplifier.</strong> Settings › Amplifier checks that
-        the QMX’s PTT outputs are set to key your amplifier on each band, and can set
-        them for you, sets how long
-        the radio waits after keying before RF, and can recover from the QMX’s SWR
-        protection tripping on an amplifier’s first transmission on a new band.
-      </li>
-    </ul>
-  </section>
+    <div class="steps">
+      <figure class="phone">
+        <img src="img/ui-reply-1.jpeg" alt="The decode list on 20 m: a column of CQ calls in green, each ending in a blue arrow" width="804" height="1748" loading="lazy">
+        <figcaption><b>1. Tap a station</b>A CQ, or someone finishing a contact.</figcaption>
+      </figure>
+      <figure class="phone">
+        <img src="img/ui-reply-2.jpeg" alt="After a tap: the CQ row tinted with a Queued badge, a toast reading Queued NY7X with Undo, and NY7X in the queue as Replying" width="804" height="1748" loading="lazy">
+        <figcaption><b>2. It is queued</b>Queue several. Each takes its turn.</figcaption>
+      </figure>
+      <figure class="phone">
+        <img src="img/ui-reply-3.jpeg" alt="The end of an FT4 contact: a line for the 73 just sent, the other station’s RR73 marked ME and Worked, and the queue row reading Signoff" width="804" height="1748" loading="lazy">
+        <figcaption><b>3. The station finishes it</b>Report, RR73, and into the log.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
 
-  <section>
-    <h2>What’s verified, and what isn’t yet</h2>
-    <p>
-      Here is what has been checked on the air, on real hardware, and what hasn’t.
-    </p>
-    <h3 class="sub">Verified on the air</h3>
-    <ul class="checks yes">
+<section class="deep">
+  <div class="wrap">
+    <div class="split narrow-media">
+      <div>
+        <p class="kicker">Two modes at once</p>
+        <h2>FT8 and FT4, at the same time, on one QMX.</h2>
+        <p class="lede">
+          The station hears both and you work whichever answers. Reply to a call or call CQ
+          in either mode. An FT4 exchange takes half the time of an FT8 one, which counts
+          when the weather is turning.
+        </p>
+        <ul class="points">
+          <li>
+            <h3>Both in one list, both in one log</h3>
+            <p>Each mode has its own slot bar, and the queue and the log name the mode of
+              every contact.</p>
+          </li>
+          <li>
+            <h3>Checked on the air</h3>
+            <p>On 20 m, 40 m and 15 m. On 20 m, a tap on an FT4 call completes the contact
+              in FT4 while FT8 keeps working alongside.</p>
+          </li>
+        </ul>
+        <p class="small" style="margin-top:1.4rem">
+          On 15 m and 10 m the two modes sit too far apart for the radio to hear both, so
+          you choose one. While the station transmits in one mode it cannot hear the other.
+        </p>
+      </div>
+      <figure class="phone">
+        <img src="img/ui-qsos.jpeg" alt="The QSOs list: contacts on 20 m in FT4 and on 40 m in FT4 and FT8, each with its time, band, mode, frequency, reports, distance and bearing" width="804" height="1748" loading="lazy">
+        <figcaption>One day’s log: FT8 and FT4 contacts, side by side.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="split flip">
+      <div>
+        <p class="kicker">Made for the summit</p>
+        <h2>Tune your antenna from your phone.</h2>
+        <p class="lede">
+          Stand at the wire, not at the radio. Tick the bands and run an SWR sweep: the
+          station sends a short carrier at each point and plots the whole curve, with the
+          lowest point on each band named.
+        </p>
+        <p>
+          Adjust the wire and run it again. Your last run stays faintly behind the new one.
+        </p>
+        <p class="small">
+          It reads SWR through the QMX’s own meter, inside the bands your radio has. For a
+          true reading, set the QMX’s Tune power to 25% or more; each run is labelled with it.
+        </p>
+      </div>
+      <figure class="wide">
+        <img src="img/ui-swr.jpeg" alt="An SWR sweep plotted across 40, 30, 20, 17 and 15 m: about 1.1 on 40 m, 1.4 on 20 m and 15 m, 1.9 on 17 m, and 2.8 on 30 m drawn in amber above a dashed line at 2, each band’s lowest point labelled" width="1748" height="804" loading="lazy">
+        <figcaption>A 40 m end-fed half-wave, swept on five bands in 51 seconds: low on 40, 20 and 15 m, 1.9 on 17 m, and 2.8 on 30 m, a band it is not cut for.</figcaption>
+      </figure>
+    </div>
+
+    <div class="split narrow-media" style="margin-top:4rem">
+      <div>
+        <h2>And the rest of an activation.</h2>
+        <ul class="points">
+          <li>
+            <h3>Four for the summit, ten for the park</h3>
+            <p>Set your summit or park and Operate counts the day’s contacts toward the
+              activation and flags stations you have already worked.</p>
+          </li>
+          <li>
+            <h3>Nothing on the summit needs a network</h3>
+            <p>The station runs its own Wi‑Fi: no router, no internet, no app store. The
+              app and the map are served by the station, so even the first setup needs no
+              network.</p>
+          </li>
+          <li>
+            <h3>One power bank, or your phone</h3>
+            <p>The boards run over USB‑C from the same power bank as the radio, or straight
+              from your phone’s USB‑C port.</p>
+          </li>
+          <li>
+            <h3>Logs ready to upload</h3>
+            <p>SOTA logs carry the summit reference. POTA logs download as <code>.adi</code>
+              files, one per park, with a two-fer split the way POTA asks, and have been
+              accepted by pota.app for credit.</p>
+          </li>
+        </ul>
+      </div>
+      <figure class="phone">
+        <img src="img/ui-summit.jpeg" alt="Operate with a summit reference set: under the slot bars a line reads 9N/KH-001 3/4, and the radio bar reads QMX ready, 1 ref, with the time to 0000Z" width="804" height="1748" loading="lazy">
+        <figcaption>Three of the four contacts a summit needs. The reference is our stand-in for
+          Mount Everest; we were not there.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="parts">
+  <div class="wrap">
+    <div class="split">
+      <figure class="photo-real">
+        <img
+          src="img/p4-sidekick-scale.jpeg"
+          alt="PoE-P4 and AtomS3 Lite on a scale reading 34.9 grams, with a US quarter for size"
+          width="480"
+          height="640"
+          loading="lazy">
+        <figcaption>Both boards on the scale: 34.9 g. Quarter for size.</figcaption>
+      </figure>
+      <div>
+        <p class="kicker">35 grams in the pack</p>
+        <h2>Two stock boards and one cable to the radio.</h2>
+        <p>
+          No screen, no keyboard, no soldering. The two boards plug into each other with
+          the cable that ships with the first, and into the QMX with one USB‑C cable.
+        </p>
+        <table>
+          <thead>
+            <tr><th>Part</th><th>What it does</th><th class="price">List</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="https://shop.m5stack.com/products/unit-poe-with-esp32-p4">M5Stack Unit PoE‑P4</a></td>
+              <td>The station: decodes, transmits, sequences and logs. Its cable to the other board is in the box.</td>
+              <td class="price">$21.50</td>
+            </tr>
+            <tr>
+              <td><a href="https://shop.m5stack.com/products/atoms3-lite-esp32s3-dev-kit">M5Stack AtomS3&nbsp;Lite</a></td>
+              <td>The Wi‑Fi: serves the app to your browser.</td>
+              <td class="price">$7.50</td>
+            </tr>
+            <tr class="total">
+              <td colspan="2">Both boards, list price, before shipping</td>
+              <td class="price">about $29</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="small" style="margin-top:0.9rem">
+          Prices from <a href="https://shop.m5stack.com/">shop.m5stack.com</a> (USD, checked
+          2026-09-18). You also need a QRP Labs QMX on firmware 1_04_010, a USB‑C cable to it,
+          and 5 V over USB‑C. Then: <a href="getting-started.html">Getting started</a>, which
+          fits on one printed sheet.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="walkthrough">
+  <div class="wrap">
+    <div class="split narrow-media flip">
+      <div>
+        <p class="kicker">Watch it work</p>
+        <h2>One tap, one contact.</h2>
+        <p class="lede">
+          A real FT4 contact on 20 m, from the tap on a CQ to the 73, at about four times
+          speed. No sound.
+        </p>
+        <p class="small">
+          A longer walkthrough is <a href="https://youtu.be/40ImE_t9rfw">on YouTube</a>. It shows
+          an earlier version of the app; a new one is coming soon.
+        </p>
+      </div>
+      <figure class="phone clip">
+        <video controls muted playsinline preload="metadata" width="540" height="1174" poster="img/ui-reply-1.jpeg">
+          <source src="img/reply-clip.mp4" type="video/mp4">
+        </video>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <div class="split narrow-media flip">
+      <div>
+        <p class="kicker">When phone has internet</p>
+        <h2>From the couch or the summit, see who heard you.</h2>
+        <p class="lede">
+          On your home Wi‑Fi or on a summit with mobile data, the same station does more.
+        </p>
+        <div class="cards">
+          <div class="card">
+            <h3>See who hears you</h3>
+            <p>Your spots from PSKReporter, as a list or on the map, while the phone has
+              internet and the app is open.</p>
+          </div>
+          <div class="card">
+            <h3>Spot who you hear</h3>
+            <p>Once you turn it on, the stations you decode are reported to PSKReporter
+              under your call, as WSJT-X does.</p>
+          </div>
+          <div class="card">
+            <h3>Your QRZ logbook, in step</h3>
+            <p>Add your QRZ key and new contacts go up by themselves, or with a tap.</p>
+          </div>
+          <div class="card">
+            <h3>Works with an amplifier</h3>
+            <p>It checks and sets the QMX’s keying outputs for each band and waits for the
+              amplifier before sending RF. Tested with a Micro&nbsp;PA‑100+.</p>
+          </div>
+        </div>
+      </div>
+      <figure class="phone">
+        <img src="img/ui-heard.jpeg" alt="A map of the Americas with a diamond at each station that reported hearing KB2SLO, lines to each from Texas, and the count 429 stations heard KB2SLO" width="804" height="1748" loading="lazy">
+        <figcaption>Who heard KB2SLO: a diamond at each station that reported it.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="prose">
+      <p class="kicker">The rest</p>
+      <h2>What else it does.</h2>
+    </div>
+    <div class="details">
+      <div>
+        <h3>You can operate while it transmits</h3>
+        <p>The decode list stays live, so you can queue the next contact. Each message you
+          sent shows in its slot, with whether it went out. Power and SWR are on screen.</p>
+      </div>
+      <div>
+        <h3>A CQ calls as many times as you set, then stops</h3>
+        <p>Stations that answer are worked first, and every message in the queue goes out a
+          set number of times, which you can change on its row.</p>
+      </div>
+      <div>
+        <h3>It never logs what did not go out</h3>
+        <p>If the radio cannot be keyed when your slot starts, nothing is sent, no try is
+          used, and the message goes out in its next slot. Stop ends a transmission at once.</p>
+      </div>
+      <div>
+        <h3>Tap any callsign</h3>
+        <p>Its grid, bearing and distance, your past contacts with it, and a link to
+          <a href="https://www.qrz.com/">QRZ.com</a>.</p>
+      </div>
+      <div>
+        <h3>An offline map</h3>
+        <p>Great-circle paths to every grid you have worked, plus the grayline. With
+          internet it adds live POTA and SOTA spots.</p>
+      </div>
+      <div>
+        <h3>Updates over the air</h3>
+        <p>From Settings, on a Stable or a Dev channel. Until 1.0 an update may reset your
+          settings or your log, so download your log first.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <div class="prose">
+      <p class="kicker">On the air</p>
+      <h2>What has been checked on real hardware.</h2>
+      <p>Each of these was checked on the air, on real hardware.</p>
+    </div>
+    <ul class="checks yes cols">
       <li>Real FT8 QSOs on the headless PoE-P4 build.</li>
       <li>
         The SWR sweep, on a PoE‑P4 with a QMX and a 40&nbsp;m end-fed half-wave: 40, 20
-        and 15&nbsp;m read 1.1 to 1.6, 30 and 17&nbsp;m read above 2, as that antenna
-        should.
+        and 15&nbsp;m read 1.1 to 1.6, and 30 and 17&nbsp;m read higher, about 1.9 to 2.8,
+        as that antenna should.
       </li>
       <li>
         Signal reports on WSJT-X’s scale, checked on the air at a POTA activation. Against
@@ -884,77 +755,35 @@
       <li>Keying an amplifier: tested with a Micro&nbsp;PA‑100+.</li>
       <li>The boards powered from a phone’s USB‑C port.</li>
     </ul>
-    <h3 class="sub">Not yet, or not claimed</h3>
-    <ul class="checks no">
-      <li>
-        <strong>Decode depth is about two thirds of WSJT-X’s.</strong> Scored against
-        WSJT-X’s own decoder (<code>jt9 -d 3</code>) on two recorded corpora, the station’s
-        decoder found 67% of its decodes (66.6% and 67.1%, measured 2026-09-23 and held by a
-        check on every change). That is the trade: size, portability, <a href="experiments/power/">low power</a> and low cost,
-        for decode depth. It decodes with Karlis Goba’s
-        <a href="https://github.com/kgoba/ft8_lib">ft8_lib</a>; how it is measured, and what is
-        planned to close the gap:
-        <a href="https://github.com/kb2slo/micro-ft8/blob/main/docs/architecture/decode.md">decode.md</a>.
-      </li>
-      <li>
-        <strong>Every QSO so far was on a QMX.</strong> The Hermes-Lite&nbsp;2 is
-        experimental: it receives and decodes, but can’t transmit yet. A station uses one
-        radio or the other, not both at once. The QDX and KH1 aren’t supported.
-      </li>
-      <li>
-        <strong>A park-to-park contact logs without the other station’s park.</strong>
-        Your own park or summit is on every QSO; the other activator’s is not recorded yet.
-      </li>
-      <li>
-        <strong>Nothing has been checked on an Android phone yet,</strong> including
-        <code>.local</code> names.
-      </li>
-      <li>
-        <strong>Until 1.0, an update may not keep your settings or your log.</strong>
-        Download your log first.
-      </li>
-    </ul>
-  </section>
+  </div>
+</section>
 
-  <section>
-    <h2>Coming soon</h2>
-    <ul>
-      <li>
-        <strong>Deeper decode</strong> — using more of the ESP32-P4’s headroom for better
-        recall on busy bands.
-      </li>
-    </ul>
-  </section>
+<section class="tight">
+  <div class="wrap trio">
+    <div>
+      <h3>Coming soon</h3>
+      <p><strong>Deeper decode.</strong> On recorded busy bands it finds about two thirds of
+        what WSJT-X’s decoder does: the trade for its size, power and cost
+        (<a href="https://github.com/kb2slo/micro-ft8/blob/main/docs/architecture/decode.md">how it is measured</a>).
+        More of the board’s headroom is going to closing that.</p>
+    </div>
+    <div id="experiments">
+      <h3>Experiments</h3>
+      <p>Measurements from the bench and the air, each dated and with its method:
+        <a href="experiments/">Experiments</a>. They are results as they ran, not features.</p>
+    </div>
+    <div id="contact">
+      <h3>Contact</h3>
+      <p>Questions, feedback, or a bug to report: reach me, Jeff&nbsp;KB2SLO, through my
+        <a href="https://www.qrz.com/db/KB2SLO">QRZ.com page</a>. For a bug, say what you
+        tapped and when, and copy the lines under <strong>Installed</strong> in Software
+        update, in the app’s Settings.</p>
+    </div>
+  </div>
+</section>
 
-  <section id="experiments">
-    <h2>Experiments</h2>
-    <p>
-      Measurements from the bench and the air, each dated and with its method:
-      <a href="experiments/">Experiments</a>. They are results as they ran, not features:
-      one says nothing about what the station does until it ships.
-    </p>
-  </section>
-
-  <section>
-    <h2>Downloads</h2>
-    <p>
-      Firmware images: <a href="downloads.html">Downloads</a>. The source:
-      <a href="https://github.com/kb2slo/micro-ft8">GitHub</a>. Setting up a station:
-      <a href="getting-started.html">Getting started</a>.
-    </p>
-  </section>
-
-  <section id="contact">
-    <h2>Contact</h2>
-    <p>
-      Questions, feedback, or a bug to report: reach me, Jeff&nbsp;KB2SLO, through my
-      <a href="https://www.qrz.com/db/KB2SLO">QRZ.com page</a>. For a bug, say what you
-      tapped and when, and copy the lines under <strong>Installed</strong> in Software
-      update, in the app’s Settings.
-    </p>
-  </section>
-
-  <footer>
+<footer>
+  <div class="wrap">
     <p>
       micro-FT8 began as a fork of Wei&nbsp;AG6AQ’s
       <a href="https://github.com/wcheng95/Mini-FT8">Mini-FT8</a> for the Cardputer ADV,
@@ -963,106 +792,16 @@
       <a href="https://wsjt.sourceforge.io/wsjtx.html">WSJT-X</a>. Credit for proving the P4
       could do this goes to
       <a href="https://github.com/SteffenLav/qmx-panadapter">SteffenLav’s qmx-panadapter</a>.
-      The source is on <a href="https://github.com/kb2slo/micro-ft8">GitHub</a>, and
-      contributions are welcome.
+      The source is on <a href="https://github.com/kb2slo/micro-ft8">GitHub</a>, under the MIT
+      licence, and contributions are welcome.
     </p>
-    <p>73, Jeff Kalikstein&nbsp;KB2SLO · September 2026</p>
-  </footer>
-</main>
-
-<div class="lightbox" id="lightbox" role="presentation">
-  <div class="lightbox-inner" role="dialog" aria-modal="true" aria-labelledby="lightbox-cap">
-    <button type="button" class="lightbox-close" id="lightbox-close" aria-label="Close">&times;</button>
-    <img id="lightbox-img" src="" alt="">
-    <p class="lightbox-cap" id="lightbox-cap"></p>
-    <div class="lightbox-nav">
-      <button type="button" id="lightbox-prev" aria-label="Previous screenshot">Prev</button>
-      <span class="lightbox-count" id="lightbox-count"></span>
-      <button type="button" id="lightbox-next" aria-label="Next screenshot">Next</button>
-    </div>
+    <p>
+      <a href="getting-started.html">Getting started</a> ·
+      <a href="downloads.html">Downloads</a> ·
+      <a href="experiments/">Experiments</a>
+    </p>
+    <p>73, Jeff Kalikstein&nbsp;KB2SLO</p>
   </div>
-</div>
-<script>
-(function () {
-  var gallery = document.getElementById("screen-gallery");
-  if (!gallery) return;
+</footer>
 
-  var figures = Array.prototype.slice.call(gallery.querySelectorAll("figure"));
-  var slides = figures.map(function (fig) {
-    var img = fig.querySelector("img");
-    var cap = fig.querySelector("figcaption");
-    return {
-      src: img.getAttribute("src"),
-      alt: img.getAttribute("alt") || "",
-      caption: cap ? cap.textContent.trim() : "",
-    };
-  });
-
-  var box = document.getElementById("lightbox");
-  var imgEl = document.getElementById("lightbox-img");
-  var capEl = document.getElementById("lightbox-cap");
-  var countEl = document.getElementById("lightbox-count");
-  var idx = 0;
-
-  function show(i) {
-    idx = (i + slides.length) % slides.length;
-    var s = slides[idx];
-    imgEl.src = s.src;
-    imgEl.alt = s.alt;
-    capEl.textContent = s.caption;
-    countEl.textContent = idx + 1 + " / " + slides.length;
-  }
-
-  function openAt(i) {
-    show(i);
-    box.classList.add("open");
-    document.body.style.overflow = "hidden";
-    document.getElementById("lightbox-close").focus();
-  }
-
-  function close() {
-    box.classList.remove("open");
-    imgEl.removeAttribute("src");
-    document.body.style.overflow = "";
-  }
-
-  gallery.addEventListener("click", function (e) {
-    var btn = e.target.closest("button.shot");
-    if (!btn || !gallery.contains(btn)) return;
-    openAt(parseInt(btn.getAttribute("data-index"), 10) || 0);
-  });
-
-  document.getElementById("lightbox-prev").addEventListener("click", function (e) {
-    e.stopPropagation();
-    show(idx - 1);
-  });
-  document.getElementById("lightbox-next").addEventListener("click", function (e) {
-    e.stopPropagation();
-    show(idx + 1);
-  });
-  document.getElementById("lightbox-close").addEventListener("click", function (e) {
-    e.stopPropagation();
-    close();
-  });
-  box.addEventListener("click", function (e) {
-    if (e.target === box) close();
-  });
-
-  var touchX = null;
-  box.addEventListener("touchstart", function (e) {
-    touchX = e.touches.length === 1 ? e.touches[0].clientX : null;
-  }, { passive: true });
-  box.addEventListener("touchend", function (e) {
-    if (touchX === null) return;
-    var dx = e.changedTouches[0].clientX - touchX;
-    touchX = null;
-    if (Math.abs(dx) > 40) show(dx < 0 ? idx + 1 : idx - 1);
-  });
-  document.addEventListener("keydown", function (e) {
-    if (!box.classList.contains("open")) return;
-    if (e.key === "Escape") close();
-    else if (e.key === "ArrowLeft") show(idx - 1);
-    else if (e.key === "ArrowRight") show(idx + 1);
-  });
-})();
-</script>
+</html>
