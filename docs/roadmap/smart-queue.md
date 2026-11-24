@@ -23,7 +23,7 @@ Spend each transmission where it can be answered: order the queue, and hold entr
 * **A pin outranks only our other unanswered calls,** never a station calling us or a QSO in progress. Manual moves are pin, up and down, and Next.
 * **One ladder,** easy to reorder, set on Settings › Station and stored on the main board.
 * **POTA and SOTA are rungs,** used at home too, in a later phase. Park to park ranks the same whoever initiated.
-* **"Needed" (DXCC, grid, park) waits** for the log database (row [I32](ideas.md#I32)).
+* **"Needed" (DXCC, grid, park) waits** for the log database (epic [I32](qso-store.md)).
 * **A station that calls CQ over our calls** gets no special treatment beyond the opening limit.
 
 ## Evidence
@@ -104,7 +104,7 @@ In order. None is next yet: the **Later** slices wait below, for the maintainer 
 * **Q3, manual order** (**Moving entries by hand**). Done-when: host tests for pin, up, down and Next, refusals across stages included; on the phone each action moves the row and changes what transmits next (field).
 * **Q5, POTA and SOTA rungs** and park to park. Done-when: host tests mark a call from `CQ POTA` and order by the rungs, and P2P ranks the same whoever called. Whether the ladder follows the CQ type, as Field Day does, is settled then.
 * **Live spots** as a second source for the activation rungs, once there is a path from the sidekick to the main board.
-* **"Needed" rungs** after row [I32](ideas.md#I32).
+* **"Needed" rungs** after epic [I32](qso-store.md).
 * **Do not deafen a waiting reply.** An FT4 transmission falls inside an FT8 slot (epic [u8mc](several-channels.md), **Deaf by overlap**), so FT4 entries transmit over an FT8 QSO's reply slots. On 20 m (2026-11-10), FT4 calls at 21:43:00, :15 and :30Z skipped the two FT8 slots where D2UY could have sent RR73. A hold: an entry does not transmit in a slot that deafens another entry's awaited reply.
 * **A tap on a parked QSO resumes it,** rather than calling again from our grid (KF0KBL, 2026-11-10: reports exchanged, parked, then tapped and called from the start).
 

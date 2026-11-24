@@ -63,7 +63,7 @@ Mockups, private to the operator: "Operate Dock Options" (https://claude.ai/arti
 
 ### The partner's reference (row [w5nj](#w5nj))
 
-A P2P or S2S contact counts for the hunter only if our log carries their reference. It reaches the record at log time from a live spot when online (`callinfo.js` already matches spots to callsigns), or from a reference the operator attaches to the queue entry, shown on its queue row. The record logs `POTA_REF`/`SOTA_REF`, and the n-fer export writes one `SIG_INFO` line per partner park ([logging.md](../architecture/logging.md), **What POTA and SOTA require**). Adding one *after* logging needs record editing (rows [I31](ideas.md#I31), [I32](ideas.md#I32)).
+A P2P or S2S contact counts for the hunter only if our log carries their reference. It reaches the record at log time from a live spot when online (`callinfo.js` already matches spots to callsigns), or from a reference the operator attaches to the queue entry, shown on its queue row. The record logs `POTA_REF`/`SOTA_REF`, and the n-fer export writes one `SIG_INFO` line per partner park ([logging.md](../architecture/logging.md), **What POTA and SOTA require**). Adding one *after* logging needs record editing (row [I31](ideas.md#I31), epic [I32](qso-store.md)).
 
 ### Planning (Later: A6)
 
