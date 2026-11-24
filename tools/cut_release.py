@@ -205,11 +205,20 @@ def require_ci_green(sha: str) -> None:
     unfinished = [r for r in runs if r.get("status") != "completed"]
     if unfinished:
         raise Abort(f"CI is still running for {sha[:7]}: {unfinished[0]['url']}")
-    failed = [r for r in runs if r.get("conclusion") != "success"]
+    # A cancelled run verified nothing either way: ci.yml cancels a branch's run when a newer one
+    # starts, as `gh workflow run CI --ref main` does to the push run it follows. So it is set
+    # aside, and the commit needs a run that passed.
+    finished = [r for r in runs if r.get("conclusion") != "cancelled"]
+    failed = [r for r in finished if r.get("conclusion") != "success"]
     if failed:
         raise Abort(
             f"CI is not green for {sha[:7]}: {failed[0]['conclusion']} "
             f"{failed[0]['url']}"
+        )
+    if not finished:
+        raise Abort(
+            f"every CI run for {sha[:7]} was cancelled: {runs[0]['url']}. Re-run one "
+            "and let it finish, or re-run with --skip-ci-check."
         )
 
 

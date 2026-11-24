@@ -180,7 +180,10 @@ mirror under their dated names (`tools/dev_build.py`, which asks the mirror). Th
 the tag's `release` job asks again before it publishes anything, so a tag pushed by hand does not pass. A
 commit that changed no firmware has no dev build, since CI built none: `gh workflow run CI --ref main` runs
 the firmware jobs and `release-main` on the tip of `main` whatever changed, and the tag can then be cut. Run
-it only for that: on a commit already published it uploads the two dated OTA images again.
+it only for that: on a commit already published it uploads the two dated OTA images again. Run it once the
+push run on that commit has finished, since starting it cancels a run still going on `main` (`ci.yml`'s
+`concurrency`); `tools/cut_release.py` sets a cancelled run aside, but wants every other run on the commit
+green and at least one of them.
 
 **The first release, `v0.1.0`, makes the project a beta.** A `0.x` release is for testers and promises nothing
 across an update, a station's settings and log included: [AGENTS.md](../AGENTS.md), **Before 1.0: do not

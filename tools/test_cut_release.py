@@ -36,6 +36,31 @@ class CutReleaseTest(unittest.TestCase):
             with self.assertRaisesRegex(cr.Abort, "not greater than v0.10.0"):
                 cr.require_newer(version, tags)
 
+    def ci(self, *conclusions):
+        """require_ci_green() against runs with these conclusions, "running" for one not finished."""
+        runs = [{"status": "in_progress" if c == "running" else "completed",
+                 "conclusion": "" if c == "running" else c, "url": f"https://ci/{i}"}
+                for i, c in enumerate(conclusions)]
+        with mock.patch.object(cr, "run", lambda *a, **k: cr.json.dumps(runs)):
+            cr.require_ci_green("c7ecd83" + "0" * 33)
+
+    def test_a_run_cancelled_by_a_newer_one_does_not_hold_a_green_commit(self):
+        # v0.4.0: `gh workflow run CI --ref main` cancelled the push run, and the dispatch passed.
+        self.ci("success", "cancelled")
+        self.ci("cancelled", "success", "success")
+
+    def test_ci_must_have_passed_and_failed_nowhere(self):
+        with self.assertRaisesRegex(cr.Abort, "not green for c7ecd83: failure https://ci/1"):
+            self.ci("success", "failure")
+        with self.assertRaisesRegex(cr.Abort, "not green for c7ecd83: failure"):
+            self.ci("cancelled", "failure")
+        with self.assertRaisesRegex(cr.Abort, "every CI run for c7ecd83 was cancelled"):
+            self.ci("cancelled", "cancelled")
+        with self.assertRaisesRegex(cr.Abort, "still running"):
+            self.ci("success", "running")
+        with self.assertRaisesRegex(cr.Abort, "no CI run found"):
+            self.ci()
+
     def test_the_version_pattern_is_build_versions(self):
         # A tag this script accepts is one tools/build_version.py gives a stable version for.
         import build_version as bv
