@@ -43,7 +43,7 @@ function extractVar(text, name) {
 const sandbox = {};
 vm.createContext(sandbox);
 // esc() as app.html has it; the extractor reads the quote in its regex as a string's start.
-vm.runInContext([extractVar(src, 'SENT_TX_MAX'), extractVar(src, 'SENT_FULL_MS')].join('\n') + '\n' +
+vm.runInContext([extractVar(src, 'SENT_TX_MAX'), extractVar(src, 'SENT_FULL_MS'), extractVar(src, 'SENT_RECENT_MS')].join('\n') + '\n' +
   "function esc(s) { return String(s == null ? '' : s).replace(/[&<>]/g, function (c) {" +
   " return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }\n" +
   ['noteSentTx', 'sentShown', 'sentLineModel', 'fmtUtcSecs', 'decodeListOrder', 'sentLineHtml']
@@ -226,9 +226,26 @@ check('lines shown: back to the oldest decode slot kept, or the newest max on a 
   const slot = (endS) => Object.assign([], { ts: endS * 1000 });
   const sent = [1, 2, 3, 4, 5].map((k) => ({ ts: (T0 + 30 * k) * 1000 }));
   const kept = [slot(T0 + 135), slot(T0 + 105), slot(T0 + 75)];
-  assert.deepStrictEqual(sentShown(sent, kept, 3).map((s) => s.ts / 1000 - T0), [90, 120, 150]);
-  assert.deepStrictEqual(sentShown(sent, [slot(T0 + 135)], 3).map((s) => s.ts / 1000 - T0), [90, 120, 150]);
-  assert.deepStrictEqual(sentShown(sent.slice(0, 2), [], 3).map((s) => s.ts / 1000 - T0), [30, 60]);
+  const now = (T0 + 150) * 1000;
+  assert.deepStrictEqual(sentShown(sent, kept, 3, now).map((s) => s.ts / 1000 - T0), [90, 120, 150]);
+  assert.deepStrictEqual(sentShown(sent, [slot(T0 + 135)], 3, now).map((s) => s.ts / 1000 - T0), [90, 120, 150]);
+  assert.deepStrictEqual(sentShown(sent.slice(0, 2), [], 3, now).map((s) => s.ts / 1000 - T0), [30, 60]);
+});
+
+check('with fewer decode slots than max, a line shows while recent or while a decode slot that old is kept', () => {
+  const slot = (endS) => Object.assign([], { ts: endS * 1000 });
+  const sent = [1, 2, 3].map((k) => ({ ts: (T0 + 30 * k) * 1000 }));  // slots ending at T0+30, +60, +90
+  const shown = (slots, nowS) => sentShown(sent, slots, 3, nowS * 1000).map((s) => s.ts / 1000 - T0);
+  // Three CQs nobody answers, every other slot: all three stay up to the fourth's end.
+  assert.deepStrictEqual(shown([], T0 + 120), [30, 60, 90]);
+  // The station goes quiet: each line leaves two minutes after its slot ended, and none is left.
+  assert.deepStrictEqual(shown([], T0 + 151), [60, 90]);
+  assert.deepStrictEqual(shown([], T0 + 211), []);
+  assert.deepStrictEqual(shown([], T0 + 8 * 3600), []);  // a phone back from a night's sleep
+  // A decode slot from then still on the page keeps the lines since it, however long ago.
+  assert.deepStrictEqual(shown([slot(T0 + 45)], T0 + 3600), [60, 90]);
+  // A fresh decode slot does not bring back a line from long before it.
+  assert.deepStrictEqual(shown([slot(T0 + 3600)], T0 + 3601), []);
 });
 
 check('decode slots and lines in one list, newest first, a line above a decode slot ending with it', () => {
