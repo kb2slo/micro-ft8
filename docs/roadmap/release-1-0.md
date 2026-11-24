@@ -44,4 +44,4 @@ In order. Only the next is a row in the index.
 ## Open
 
 * **The space-weather card** (before [pn83](#pn83)): replaced by per-band conditions ([B80](../ROADMAP.md#B80)), or removed (maintainer, 2026-11-13: its raw numbers are not what an operator uses).
-* **Bug reports from operators** (before [dfd7](#dfd7)): an issue template asking for both boards' versions and an offloaded log, or a report sent from the web app through the Worker to a GitHub issue. The Worker path needs a token on the Worker and spam protection, and an issue is public, so the app shows the operator exactly what it will send. Settled in its own session; becomes a child when designed.
+* **Bug reports from operators** (before [dfd7](#dfd7)): the issue template (`.github/ISSUE_TEMPLATE/bug_report.yml`) already asks for both boards' versions; left: whether it asks for an offloaded log, and whether a report sent from the web app through the Worker to a GitHub issue is wanted at all. The Worker path needs a token on the Worker and spam protection, and an issue is public, so the app shows the operator exactly what it will send. Settled in its own session; becomes a child when designed.
