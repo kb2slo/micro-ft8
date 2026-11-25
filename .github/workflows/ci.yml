@@ -47,6 +47,7 @@ jobs:
               - 'tools/**/*.cmake'
               - 'tools/build_version.py'
               - 'tools/check_ram_budget.py'
+              - 'tools/licences.py'
               # The web app ships inside the sidekick's image, so a change to it
               # is a firmware change, and on main publishes a dev build.
               - 'webapp/app/**'
@@ -199,6 +200,10 @@ jobs:
           extra_docker_args: -e MICROFT8_GIT_SHA=${{ env.MICROFT8_GIT_SHA }} -e MICROFT8_VERSION=${{ env.MICROFT8_VERSION }} -e MICROFT8_APP_PACK=webapp/dist/app.pack
           command: idf.py build
 
+      # Every library the image links is credited on Settings › Help & about › Licences.
+      - name: Check the sidekick's licences
+        run: python3 tools/licences.py --check sidekick/build/sidekick.map sidekick/build/bootloader/bootloader.map
+
       # One 0x0 image for desk esptool, merged from the build's four pieces
       # by the same script a local flash uses; and the app image by itself,
       # which is what an over-the-air update writes.
@@ -253,6 +258,10 @@ jobs:
           path: poe_p4
           extra_docker_args: -e MICROFT8_GIT_SHA=${{ env.MICROFT8_GIT_SHA }} -e MICROFT8_VERSION=${{ env.MICROFT8_VERSION }}
           command: idf.py build
+
+      # Every library the image links is credited on Settings › Help & about › Licences.
+      - name: Check the main board's licences
+        run: python3 tools/licences.py --check poe_p4/build/poe_p4.map poe_p4/build/bootloader/bootloader.map
 
       - name: Upload poe_p4 firmware
         uses: actions/upload-artifact@v6

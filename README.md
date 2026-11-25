@@ -103,6 +103,9 @@ Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md). C and C+
 
 ## Acknowledgements
 
+The app's **Settings › Help & about** credits these too, and its **Licences** page carries the notice of every
+project either firmware image links ([`tools/licences.py`](tools/licences.py) checks the list against each build).
+
 - **[Mini-FT8](https://github.com/wcheng95/Mini-FT8)**, by Wei Cheng AG6AQ, with Zhenxing N6HAN.
   micro-FT8 began as a fork of Mini-FT8, which ran on the M5Stack Cardputer ADV. The sequencer, ADIF
   logging and ft8_lib integration here grew from that code. Mini-FT8 was itself inspired by

@@ -49,15 +49,15 @@ triggers() {
     browser)         echo 'webapp/app/* webapp/tools/* webapp/tests/browser/* host_mock/sim_station.cpp host_mock/scenario.* host_mock/test_qso.json host_mock/Makefile components/station/* components/autoseq/* tools/serve_webapp_local.py sidekick/main/web/pairing.js' ;;
     tx_e2e)          echo 'components/* tests/tx_e2e/*' ;;
     decode_recall)   echo 'components/* tools/decode_recall/* tools/iq_convert/*' ;;
-    tools)           echo 'tools/qmx_record.py tools/hl2_record.py tools/hl2_pcap.py tools/p4_console.py tools/decode_bench/score_events.py tools/make_manifest.py tools/build_version.py tools/dev_build.py tools/cut_release.py tools/test_*.py test_apps/decode_bench/tools/run_on_device.py test_apps/decode_bench/tools/test_run_on_device.py webapp/tools/sidekick.py webapp/tools/install_firmware.py webapp/tools/install_app.py webapp/tools/app_pack.py sidekick/main/app_push.c sidekick/main/app_serve.c components/porta_proto/include/porta_proto.h sidekick/partitions.csv' ;;
+    tools)           echo 'tools/qmx_record.py tools/hl2_record.py tools/hl2_pcap.py tools/p4_console.py tools/decode_bench/score_events.py tools/make_manifest.py tools/build_version.py tools/dev_build.py tools/cut_release.py tools/licences.py tools/test_*.py test_apps/decode_bench/tools/run_on_device.py test_apps/decode_bench/tools/test_run_on_device.py webapp/tools/sidekick.py webapp/tools/install_firmware.py webapp/tools/install_app.py webapp/tools/app_pack.py sidekick/main/app_push.c sidekick/main/app_serve.c components/porta_proto/include/porta_proto.h sidekick/partitions.csv' ;;
     getting_started) echo 'webapp/app/* webapp/tools/* webapp/getting-started.md sidekick/main/* poe_p4/main/*' ;;
     # The paths filter of ci.yml's `changes` job, which gates CI's firmware jobs, but for the web
     # app's sources: CI builds firmware on a change to them because the sidekick's image carries
     # the app and a dev build must be published, while here an app edit is proved by the web
     # checks, and selecting the sidekick's build for it would ask every web change for ESP-IDF.
     # The sidekick's build does run the web build's packer, so those two files are its own.
-    sidekick)        echo 'components/* sidekick/* poe_p4/* idf_component.yml */idf_component.yml tools/*.cmake tools/build_version.py tools/check_ram_budget.py .github/workflows/ci.yml webapp/tools/build.py webapp/tools/app_pack.py' ;;
-    p4)              echo 'components/* sidekick/* poe_p4/* idf_component.yml */idf_component.yml tools/*.cmake tools/build_version.py tools/check_ram_budget.py .github/workflows/ci.yml' ;;
+    sidekick)        echo 'components/* sidekick/* poe_p4/* idf_component.yml */idf_component.yml tools/*.cmake tools/build_version.py tools/check_ram_budget.py tools/licences.py webapp/app/licences.json .github/workflows/ci.yml webapp/tools/build.py webapp/tools/app_pack.py' ;;
+    p4)              echo 'components/* sidekick/* poe_p4/* idf_component.yml */idf_component.yml tools/*.cmake tools/build_version.py tools/check_ram_budget.py tools/licences.py webapp/app/licences.json .github/workflows/ci.yml' ;;
   esac
 }
 NO_CHECK='*.md docs/* LICENSE *.jpeg *.jpg *.png *.svg .gitignore */.gitignore .cursor/*'
@@ -352,6 +352,7 @@ check_tools() {
   python3 tools/test_hl2_pcap.py
   python3 tools/test_p4_console.py
   python3 tools/test_sidekick_http.py
+  python3 tools/test_licences.py
   python3 test_apps/decode_bench/tools/test_run_on_device.py
 }
 
@@ -402,12 +403,14 @@ check_sidekick() {
   need_npm
   need_submodule
   idf.py -C sidekick build
+  python3 tools/licences.py --check sidekick/build/sidekick.map sidekick/build/bootloader/bootloader.map
 }
 
 check_p4() {
   need_idf
   need_submodule
   idf.py -C poe_p4 build
+  python3 tools/licences.py --check poe_p4/build/poe_p4.map poe_p4/build/bootloader/bootloader.map
 }
 
 # ---- run ------------------------------------------------------------------
