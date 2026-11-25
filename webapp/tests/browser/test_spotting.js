@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// Spotting (docs/architecture/webapp.md, Spotting), end to end in two browsers on one simulated station, the
+// Spotting (docs/architecture/webapp.md, Spotting), end to end in three browsers on one simulated station, the
 // site's /pskr/report route stood in for: the switch is the station's, off to start; turned on in one browser
 // the station holds it and the other shows it; each page then posts the decodes it saw, under the station's
-// call and grid, and the line under the switch says how it went; turned off, nothing more is posted.
+// call and grid, and the line under the switch says how it went; turned off, nothing more is posted; a
+// browser that is not paired cannot turn it on, and is put back.
 'use strict';
 const { run, check, until, sleep } = require('./harness');
 
@@ -44,4 +45,12 @@ run(async (st) => {
   const n = posts(A).length + posts(B).length;
   await sleep(25000);
   check('nothing more is posted', posts(A).length + posts(B).length === n);
+
+  // A browser that is not paired cannot turn it on: its switch goes back to what the station holds.
+  const C = await st.browser('C', { relay, paired: false });
+  await C.settings('station');
+  await C.selectOption('#pskr_report', '1');
+  check('not paired: put back to Off', await until(async () => (await C.inputValue('#pskr_report')) === '0', 8000),
+    await C.inputValue('#pskr_report'));
+  check('and the station still holds Off', (await st.station()).pskr_report === '0');
 });
