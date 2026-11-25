@@ -70,6 +70,8 @@ if (navigator.standalone === true || (window.matchMedia && matchMedia('(display-
   --info-bg:#dbeafe;       /* .qs-0 */
   --info-fg:#1e3a8a;       /* .qs-0 */
   --muted-strong:#787878;  /* .c-recent */
+  --tx-fill:#facc15;       /* .sentline -- what we sent, WSJT-X's Tx yellow; bright in red-green colour blindness */
+  --on-tx-fill:#111;       /* text on --tx-fill, both themes */
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]){
@@ -86,6 +88,7 @@ if (navigator.standalone === true || (window.matchMedia && matchMedia('(display-
     --good-bg:#0f2e1a;
     --good-fg:#86efac;
     --muted-strong:#a3a3a3;
+    --tx-fill:#fde047;
   }
 }
 :root[data-theme="light"]{
@@ -106,6 +109,7 @@ if (navigator.standalone === true || (window.matchMedia && matchMedia('(display-
   --good-bg:#0f2e1a;
   --good-fg:#86efac;
   --muted-strong:#a3a3a3;
+  --tx-fill:#fde047;
 }
 /* padding-bottom reserves the fixed tab bar. border-box so the column ends
    at the bar instead of running underneath it. Operate's pinned regions are
@@ -487,15 +491,17 @@ button{touch-action:manipulation}
 .drow .txt.c-cq{color:var(--good-hot)}
 .drow .me{font-size:.65rem;font-weight:700;color:var(--accent);border:1px solid var(--accent-border);border-radius:.3rem;padding:0 .3rem;margin-left:.3rem;white-space:nowrap}
 .dslotdiv{border-top:2px dashed color-mix(in srgb, GrayText 45%, transparent);margin:.35rem 1rem}
-/* What we sent (webapp.md, What we sent): one line in the transmit colour, a note under one that did not go out whole. */
-.sentline{display:flex;align-items:baseline;gap:.55rem;padding:.4rem 1rem .4rem calc(1rem - 3px);border-left:3px solid var(--danger);background:color-mix(in srgb, var(--danger) 7%, Canvas)}
-.sentline .sentlbl{font-size:.72rem;font-weight:700;color:var(--danger);white-space:nowrap;min-width:4.6em}
+/* What we sent (webapp.md, What we sent): a filled row in WSJT-X's Tx yellow, its time styled as a slot
+   header's; one not sent is an empty dashed box, so the two differ by fill, not by hue alone. */
+.sentline{display:flex;align-items:baseline;gap:.55rem;padding:.4rem 1rem .4rem calc(1rem - 3px);border-left:3px solid var(--tx-fill);background:var(--tx-fill);color:var(--on-tx-fill)}
+.sentline .sentlbl{font-size:.72rem;font-weight:700;white-space:nowrap;min-width:4.6em}
 .sentline .senttxt{flex:1;min-width:0;font-size:1.05rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sentline .senttime{font-family:ui-monospace,monospace;font-size:.68rem;color:GrayText;white-space:nowrap}
-.sentline.s-notkeyed{border-left-color:var(--warn);background:color-mix(in srgb, var(--warn) 9%, Canvas)}
+.sentline .senttime{font-size:.75rem;font-weight:700;white-space:nowrap}
+.sentline .senttime .ago{font-weight:400;font-size:.68rem}
+.sentnote{font-size:.72rem;color:var(--on-tx-fill);padding:0 1rem .4rem calc(1rem - 3px);border-left:3px solid var(--tx-fill);background:var(--tx-fill)}
+.sentline.s-notkeyed{background:none;color:CanvasText;border:2px dashed var(--warn);border-bottom:0;border-left:3px solid var(--warn);padding-right:calc(1rem - 2px)}
 .sentline.s-notkeyed .sentlbl{color:var(--warn)}
-.sentnote{font-size:.72rem;color:var(--danger);padding:0 1rem .4rem calc(1rem - 3px);border-left:3px solid var(--danger);background:color-mix(in srgb, var(--danger) 7%, Canvas)}
-.sentnote.s-notkeyed{color:var(--warn);border-left-color:var(--warn);background:color-mix(in srgb, var(--warn) 9%, Canvas)}
+.sentnote.s-notkeyed{background:none;color:var(--warn);border:2px dashed var(--warn);border-top:0;border-left:3px solid var(--warn);padding-right:calc(1rem - 2px)}
 
 /* ---- log ---- */
 #logList{padding-bottom:.5rem}
@@ -5429,7 +5435,9 @@ function decodeListOrder(slotEntries, sents) {
 function sentLineHtml(s, both) {
   var m = sentLineModel(s, both);
   return '<div class="sentline s-' + s.st + '"><span class=sentlbl>' + esc(m.label) + '</span>' +
-    '<span class=senttxt>' + esc(s.x) + '</span><span class=senttime>' + m.time + '</span></div>' +
+    '<span class=senttxt>' + esc(s.x) + '</span><span class=senttime>' + m.time + ' · ' +
+    // Its age counted from its slot's end, as a decode slot's header counts it; refreshVisibleAgo() ticks it.
+    '<span class=ago data-ts="' + s.ts + '">' + fmtAgo(s.ts) + '</span></span></div>' +
     (m.note ? '<div class="sentnote s-' + s.st + '">' + esc(m.note) + '</div>' : '');
 }
 

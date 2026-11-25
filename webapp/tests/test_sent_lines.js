@@ -46,7 +46,7 @@ vm.createContext(sandbox);
 vm.runInContext([extractVar(src, 'SENT_TX_MAX'), extractVar(src, 'SENT_FULL_MS'), extractVar(src, 'SENT_RECENT_MS')].join('\n') + '\n' +
   "function esc(s) { return String(s == null ? '' : s).replace(/[&<>]/g, function (c) {" +
   " return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }\n" +
-  ['noteSentTx', 'sentShown', 'sentLineModel', 'fmtUtcSecs', 'decodeListOrder', 'sentLineHtml']
+  ['noteSentTx', 'sentShown', 'sentLineModel', 'fmtUtcSecs', 'decodeListOrder', 'sentLineHtml', 'fmtDuration', 'fmtAgo']
     .map((n) => extractFunction(src, n)).join('\n'), sandbox);
 const { noteSentTx, sentShown, sentLineModel, decodeListOrder, sentLineHtml, SENT_TX_MAX } = sandbox;
 
@@ -260,6 +260,12 @@ check('the line\'s markup escapes the message and carries its state', () => {
   assert(html.indexOf('&lt;KB2SLO/P&gt;') !== -1, html);
   assert(/class="sentline s-stopped"/.test(html), html);
   assert(/class="sentnote s-stopped">Ended 4 s in</.test(html), html);
+});
+
+check('the line\'s time carries its age, counted from its slot\'s end as a decode slot\'s is', () => {
+  const end = Date.now() - 12000;
+  const html = sentLineHtml({ x: 'CQ KB2SLO EM10', md: 'FT8', ts: end, lenMs: 15000, st: 'sent' }, false);
+  assert(html.indexOf('<span class=ago data-ts="' + end + '">12s ago</span>') !== -1, html);
 });
 
 if (failed) { console.log(failed + ' failed'); process.exit(1); }
