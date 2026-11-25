@@ -41,7 +41,7 @@ const box = {
   sessionStorage: { getItem: (k) => (k in stored ? stored[k] : null), setItem: (k, v) => { stored[k] = String(v); } },
   location: { reload: () => { reloads++; } },
   fwRunning: {}, fwLink: { hostLinked: false, sidekickProto: 0, mainProto: 0 },
-  renderFwUpdates: () => {}, updateApInfo: () => {},
+  renderFwUpdates: () => {}, updateApInfo: () => {}, installedText: () => '', renderHelp: () => {},
   document: { getElementById: (id) => els[id] || (els[id] = { textContent: '', hidden: id === 'appSheet', focus() { els.focused = id; } }) },
 };
 vm.createContext(box);

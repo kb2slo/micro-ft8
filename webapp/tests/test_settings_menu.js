@@ -93,12 +93,16 @@ assert.deepStrictEqual(row(model({ fwChecked: false }).update), ['Not checked ye
 assert.strictEqual(model({ units: 'mi', theme: 'dark' }).device.text, 'Miles · Dark');
 assert.strictEqual(model({ theme: 'light' }).device.text, 'Kilometers · Light');
 
+// Help & about: its version, or what the page holds before one is known.
+assert.deepStrictEqual(row(model({ version: 'b1464 (33631f7)' }).about), ['Version b1464 (33631f7) · get help', '', '']);
+assert.strictEqual(model({}).about.text, 'Get help, versions and licences');
+
 // The markup: a row for every page and a page for every row, each page with a Back and a title,
 // and no id twice (the pages were one long form; a control moved is a control that could be left behind).
 const section = src.slice(src.indexOf('<section id=view-settings>'), src.indexOf("<!-- Operate's pinned bottom"));
 const rows = [...section.matchAll(/class=navrow data-page=(\w+)/g)].map((x) => x[1]);
 const pages = [...section.matchAll(/class="setpage sub" data-page=(\w+)/g)].map((x) => x[1]);
-assert.deepStrictEqual(rows, ['station', 'radio', 'amp', 'network', 'pairing', 'update', 'device', 'diag']);
+assert.deepStrictEqual(rows, ['station', 'radio', 'amp', 'network', 'pairing', 'update', 'device', 'diag', 'about', 'licences']);
 assert.deepStrictEqual(pages, rows);
 pages.forEach((p) => assert(section.includes('id=setp-' + p + ' '), 'page id for ' + p));
 assert.strictEqual((section.match(/class=setback/g) || []).length, pages.length);
