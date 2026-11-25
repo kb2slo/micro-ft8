@@ -199,6 +199,31 @@
     border-radius: 26px;
     background: #fff;
   }
+  /* The clip's own play button: a phone's built-in controls stay over the picture after a tap on play. */
+  .clip { position: relative; }
+  .clip video { cursor: pointer; }
+  .clip-play {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 4.5rem;
+    height: 4.5rem;
+    border: 0;
+    border-radius: 50%;
+    background: var(--band);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(26, 31, 28, 0.35);
+  }
+  .clip-play[hidden] { display: none; }
+  .clip-play::after {
+    content: "";
+    border-style: solid;
+    border-width: 0.8rem 0 0.8rem 1.3rem;
+    border-color: transparent transparent transparent var(--on-band);
+    margin-left: 0.3rem;
+  }
   .phone img, .clip video {
     display: block;
     width: 100%;
@@ -611,10 +636,11 @@
     <div class="split narrow-media flip">
       <div>
         <p class="kicker">Watch it work</p>
-        <h2>One tap, one contact.</h2>
+        <h2>One tap, one contact, and a look around.</h2>
         <p class="lede">
           A real FT4 contact on 20 m, from the tap on a CQ to the 73, at about four times
-          speed. No sound.
+          speed. Then a look around: the log, a station’s card, the map, a change to
+          40 m, the decode filters and an SWR sweep. Under two minutes, no sound.
         </p>
         <p class="small">
           A longer walkthrough is <a href="https://youtu.be/40ImE_t9rfw">on YouTube</a>. It shows
@@ -622,9 +648,10 @@
         </p>
       </div>
       <figure class="phone clip">
-        <video controls muted playsinline preload="metadata" width="540" height="1174" poster="img/ui-reply-1.jpeg">
+        <video id="clip" controls muted playsinline preload="metadata" width="540" height="1174" poster="img/ui-reply-1.jpeg">
           <source src="img/reply-clip.mp4" type="video/mp4">
         </video>
+        <button type="button" id="clip-play" class="clip-play" hidden aria-label="Play the clip"></button>
       </figure>
     </div>
   </div>
@@ -762,6 +789,8 @@
   <div class="wrap trio">
     <div>
       <h3>Coming soon</h3>
+      <p style="margin-bottom:0.8rem"><strong>Hermes-Lite&nbsp;2.</strong> A second radio, over Ethernet. Receiving and
+        decoding already work, as an experiment; transmit is next.</p>
       <p><strong>Deeper decode.</strong> On recorded busy bands it finds about two thirds of
         what WSJT-X’s decoder does: the trade for its size, power and cost
         (<a href="https://github.com/kb2slo/micro-ft8/blob/main/docs/architecture/decode.md">how it is measured</a>).
@@ -803,5 +832,20 @@
     <p>73, Jeff Kalikstein&nbsp;KB2SLO</p>
   </div>
 </footer>
+
+<script>
+// The clip plays on one tap and pauses on the next. With script its own button stands in for the browser's
+// controls, which on a phone stay drawn over the picture after play is tapped; without script they remain.
+(function () {
+  var clip = document.getElementById("clip"), play = document.getElementById("clip-play");
+  if (!clip || !play) return;
+  clip.controls = false;
+  function sync() { play.hidden = !clip.paused && !clip.ended; }
+  play.addEventListener("click", function () { clip.play(); });
+  clip.addEventListener("click", function () { if (clip.paused) clip.play(); else clip.pause(); });
+  ["play", "pause", "ended"].forEach(function (e) { clip.addEventListener(e, sync); });
+  sync();
+})();
+</script>
 
 </html>
