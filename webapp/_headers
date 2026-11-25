@@ -1,7 +1,7 @@
 # Response headers for the site's static files (docs/architecture/webapp.md, Serving the site).
 # Workers Static Assets applies these to every asset response, redirects and 404s included;
 # it never serves this file, and it applies none of it to what worker.js returns
-# (/download/* and /pskreporter set their own headers).
+# (/download/*, /qrz/* and /pskr/* set their own headers).
 
 # CORS on everything. The sidekick's plain-HTTP app (http://micro-ft8.local) fetches
 # /data/ne_10m_places.json cross-origin (map.html). Static Assets sends no CORS header by

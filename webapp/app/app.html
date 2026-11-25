@@ -1618,7 +1618,7 @@ a.navrow{text-decoration:none}
 var FIELDS = [
   'call','comment1',
   'radio','skiptx1','amp','tx_min_delay_ms','amp_ptt','amp_swr_guard',
-  'amp_prime_on_band_change', 'pskr_report'
+  'amp_prime_on_band_change'
 ];
 // The CQ's modifier (autoseq.md, The CQ's modifier): the word between CQ and the call, '' for a
 // plain CQ. These are the ones Type offers by name; Other takes any that cqModOk() accepts.
@@ -4881,6 +4881,10 @@ function enableWrites(on) {
 document.getElementById('dist_unit').onchange = function () { setDistUnit(this.value); };
 document.getElementById('show_bearing').onchange = function () { setShowBearing(this.checked); };
 document.getElementById('show_queue_marks').onchange = function () { setShowQueueMarks(this.checked); };
+// The station's, like the display switches: a write that does not land puts back what it holds.
+document.getElementById('pskr_report').onchange = function () {
+  putStationPref('pskr_report=' + (this.value === '1' ? '1' : '0'), 'Setting PSKReporter…');
+};
 document.getElementById('theme_pref').onchange = function () { setTheme(this.value); };
 document.getElementById('opRadioRetune').onclick = function () {
   radioPost('/api/radio/connect', undefined, 'Retuning the radio…')
@@ -7202,6 +7206,7 @@ function applyStationPrefs(cfg, quiet) {
   document.getElementById('dist_unit').value = distUnit;
   document.getElementById('show_bearing').checked = showBearing;
   document.getElementById('show_queue_marks').checked = showQueueMarks;
+  document.getElementById('pskr_report').value = cfg.pskr_report === '1' ? '1' : '0';
   if (cfg.cq_mode === 'FT8' || cfg.cq_mode === 'FT4') cqMode = cfg.cq_mode;
   if (changed && !quiet) {
     // Cheap, already-in-memory data; Log rows already on screen don't retroactively update.
