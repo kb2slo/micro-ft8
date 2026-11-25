@@ -38,7 +38,7 @@ const extractVar = (name) => {
 const box = { FwUpdates: { versionText: (v) => (v ? 'v(' + v + ')' : '') } };
 vm.createContext(box);
 vm.runInContext("var APP_NAME = 'micro-FT8';\n" + extractVar('HELP_EMAIL') + '\n' + extractVar('SHARE') + '\n' +
-  ['versionLines', 'helpEmail', 'radioReportText', 'installedText', 'reflowLicence', 'shareMethod'].map((n) => extractFunction(src, n)).join('\n'), box);
+  ['versionLines', 'helpEmail', 'radioReportText', 'fmtRadioFirmware', 'installedText', 'reflowLicence', 'shareMethod'].map((n) => extractFunction(src, n)).join('\n'), box);
 const { versionLines, helpEmail, radioReportText, installedText, reflowLicence, shareMethod } = box;
 
 let failed = 0;
@@ -71,7 +71,9 @@ check('a version not known is left out of the email', () => {
 });
 
 check('the radio as a report names it', () => {
-  assert.strictEqual(radioReportText('QMX', { radio: 1, radio_fw: '1_04_010QMX' }), 'QMX 1_04_010QMX');
+  // A QMX's VN; answer names its model (1_04_010QMX, read on the bench 2026-11-25): not "QMX 1_04_010QMX".
+  assert.strictEqual(radioReportText('QMX', { radio: 1, radio_fw: '1_04_010QMX' }), '1.04.010 (QMX)');
+  assert.strictEqual(radioReportText('QMX', { radio: 1, radio_fw: '1_04_010' }), 'QMX 1.04.010');
   assert.strictEqual(radioReportText('HL2', { radio: 6, hl2_gw: '74.2' }), 'HL2 gateware 74.2');
   assert.strictEqual(radioReportText('QMX', { radio: 1 }), 'QMX');
 });

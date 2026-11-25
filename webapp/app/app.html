@@ -3276,10 +3276,14 @@ function installedText(cfg) {
   return 'Sidekick ' + (sk || '\u2014') + ' \u00b7 Main board ' + host;
 }
 
-// The radio and its firmware as a report names them: "QMX 1_04_010", "HL2 gateware 74.2", or ''.
+// The radio and its firmware as a report names them, as Versions shows them: "1.04.010 (QMX)" (a QMX's
+// answer names its model, so the radio's name is not put before it again), "HL2 gateware 74.2", the name
+// alone before the firmware is read, or ''.
 function radioReportText(name, cfg) {
   if (String(cfg.radio) === '6' && cfg.hl2_gw) return (name || 'HL2') + ' gateware ' + cfg.hl2_gw;
-  return cfg.radio_fw ? ((name ? name + ' ' : '') + cfg.radio_fw) : (name || '');
+  if (!cfg.radio_fw) return name || '';
+  var fw = fmtRadioFirmware(cfg.radio_fw);
+  return /\(.+\)$/.test(fw) || !name ? fw : name + ' ' + fw;
 }
 
 // The ways to get help (webapp.md, Settings › Help & about). GitHub is one link, to its choice of a bug
