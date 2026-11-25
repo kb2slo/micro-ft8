@@ -37,6 +37,18 @@ run(async (st) => {
   const cq = sent.findIndex((x) => /^slot:.*CQ N6HAN CM87/.test(x));
   check('the answer sits above the slot that decoded the CQ it answers', cq > i, sent);
 
+  // Its age, as a decode slot's header shows one, counts up on the page's tick with no event (refreshVisibleAgo()).
+  // Read from the oldest line that reads Sent: its slot has ended, so it counts rather than reading "just now".
+  const ago = () => A.evaluate(() => {
+    const el = Array.from(document.querySelectorAll('#opDecodeRows .dsent'))
+      .filter((d) => d.querySelector('.sentlbl').textContent === 'Sent').pop();
+    const a = el && el.querySelector('.senttime .ago[data-ts]');
+    return a ? a.textContent : null;
+  });
+  const ago0 = await until(async () => { const a = await ago(); return /^\d+s ago$/.test(a || '') ? a : null; }, 20000);
+  const ago1 = ago0 && await until(async () => { const a = await ago(); return a && a !== ago0 ? a : null; }, 3000);
+  check('the Sent line shows its age, and it counts up with no event', !!ago0 && /ago$/.test(ago1 || ''), [ago0, ago1]);
+
   const lb = await until(async () => {
     const l = await listed(B);
     return l.indexOf('sent:Sent:' + FIRST) !== -1 ? l : null;
