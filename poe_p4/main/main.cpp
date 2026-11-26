@@ -22,6 +22,7 @@
 #include "porta_host.h"
 #include "protocol.h"
 #include "qmx_iq_channel.h"
+#include "qso_log_store.h"
 #include "station.h"
 #include "qmx_transport.h"
 #include "radio_control.h"
@@ -188,6 +189,8 @@ extern "C" void app_main(void) {
     if (storage_err != ESP_OK) {
         ESP_LOGE(TAG, "storage_service_init failed: %s", esp_err_to_name(storage_err));
     }
+    // Before decoding starts, so the journal's load does not share the P4 with it (docs/architecture/logging.md).
+    qso_log_store_start();
 
     hashtable_init();
     autoseq_init();
@@ -207,7 +210,6 @@ extern "C" void app_main(void) {
         porta_p4_tx_hud_tick();
         radio_control_dial_tick();
         porta_p4_radio_push_tick();
-        porta_p4_file_tick();
         // The decode task hands each slot here: this loop alone touches autoseq
         // and the armed TX (docs/architecture/main_board.md, P4).
         decode_pipeline_apply();

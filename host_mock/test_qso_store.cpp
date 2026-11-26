@@ -315,6 +315,14 @@ static void test_fields()
     CHECK(qso_store_worked(rig.store, "W1DUP", "40M", "FT8", 0, nullptr, nullptr) &&
               !qso_store_worked(rig.store, "W1DUP", "20M", "FT8", 0, nullptr, nullptr),
           "and indexed by it");
+    const std::string note = std::string(120, 'n');
+    const std::string with_note = "<call:5>K2LEN<comment:120>" + note;
+    CHECK(add(&rig.store, with_note.c_str(), 0, &id) == QsoStoreStatus::OK && qso_store_get(rig.store, id, &got) &&
+              got == with_note,
+          "a length of three digits is written back as it came: %s", got.substr(0, 30).c_str());
+    CHECK(patch(&rig.store, id, ("<comment:105>" + note.substr(0, 105)).c_str()) == QsoStoreStatus::OK &&
+              qso_store_get(rig.store, id, &got) && got == "<comment:105>" + note.substr(0, 105) + "<call:5>K2LEN",
+          "and rebuilt after a change: %s", got.substr(0, 30).c_str());
     const size_t end = rig.store.end;
     CHECK(add(&rig.store, "<band:3>20M<mode:3>FT8") == QsoStoreStatus::BAD_FIELDS, "no CALL");
     CHECK(add(&rig.store, "<call:0><band:3>20M") == QsoStoreStatus::BAD_FIELDS, "an empty CALL");

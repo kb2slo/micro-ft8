@@ -3,7 +3,7 @@
 # Two app slots, no factory: after the first flash over USB, the sidekick sends a new image over
 # Port A into the slot that is not running (docs/architecture/main_board.md (Firmware updates)).
 # With otadata erased the bootloader boots ota_0. 4 MB a slot is about four times the image.
-# `storage` is the LittleFS store for Station.txt and the daily .adi files.
+# `storage` is the LittleFS store for Station.txt and the QSO log's journal, qso.jrn.
 #
 # The table itself is only ever written over USB, and moving `storage` loses what is in it.
 #

@@ -1376,10 +1376,10 @@ static esp_err_t get_log_entries(httpd_req_t *req)
     return wait_message_reply(req, PORTA_MSG_FILE_READ);
 }
 
-// DELETE /api/log/files[?file=] — clear all daily QSO logs, or one basename.
+// DELETE /api/log/files[?file=] — delete every QSO, or one day's (YYYYMMDD.adi).
 // Token required: destructive, same category as TX/config writes. Empty
 // query matches the phone "Clear all ADI files" button (host LOCK still
-// protects the active day file during TX/decode).
+// protects today's QSOs during TX/decode).
 static esp_err_t delete_log_files(httpd_req_t *req)
 {
     char filename[PORTA_FILENAME_MAX + 1] = {0};
@@ -1405,7 +1405,7 @@ static esp_err_t delete_log_files(httpd_req_t *req)
 // Asks the main board to reset its own settings (and, with `logs`, delete its QSO logs) as the
 // first half of a sidekick factory reset (wifi_prov.c). Waits for the host's ACK/NAK itself
 // rather than answering a request, because the caller wipes this device only if the host did.
-// Longer than a plain action's wait: deleting many daily logs is a run of file removals.
+// Longer than a plain action's wait: clearing the log rewrites its journal.
 bool host_link_factory_reset(bool logs, char *why, size_t why_len)
 {
     const char *fail = NULL;

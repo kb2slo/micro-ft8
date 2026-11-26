@@ -1,11 +1,13 @@
 #include "adif_logger.h"
 
+#include <cinttypes>
 #include <cstdio>
 #include <ctime>
 
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "qso_log_store.h"
 #include "rtc_core.h"
-#include "storage_service.h"
 
 namespace {
 
@@ -104,8 +106,8 @@ std::string normalize_call_token(std::string s) {
 }  // namespace
 
 bool adif_log_qso(const AdifLogQsoInput& in, AdifLoggerDedupe* dedupe) {
-    if (!storage_service_firmware_available()) {
-        ESP_LOGW(TAG, "ADIF write skipped: storage not ready");
+    if (!qso_log_store_ready()) {
+        ESP_LOGW(TAG, "QSO not logged: the log is not ready");
         return false;
     }
 
@@ -123,9 +125,6 @@ bool adif_log_qso(const AdifLogQsoInput& in, AdifLoggerDedupe* dedupe) {
     char date[16];
     snprintf(date, sizeof(date), "%04d%02d%02d", (t.tm_year + 1900) % 10000,
              (t.tm_mon + 1) % 100, t.tm_mday % 100);
-    char path[64];
-    snprintf(path, sizeof(path), "%s.adi", date);
-
     char time_on[16];
     snprintf(time_on, sizeof(time_on), "%02d%02d%02d", t.tm_hour % 100, t.tm_min % 100,
              t.tm_sec % 100);
@@ -147,14 +146,20 @@ bool adif_log_qso(const AdifLogQsoInput& in, AdifLoggerDedupe* dedupe) {
     fields.my_sota_ref = in.my_sota_ref;
     const std::string line = adif_format_log_record(fields);
 
-    if (!storage_file_append(path, line, "ADIF EXPORT\n<eoh>\n", true)) {
-        ESP_LOGW(TAG, "ADIF write failed: %s", path);
+    // Timed for the QSO store's before-and-after (docs/architecture/logging.md, The store on the main board).
+    const int64_t write_start_us = esp_timer_get_time();
+    uint32_t id = 0;
+    const QsoStoreStatus status = qso_log_store_add(line, &id);
+    const int64_t write_us = esp_timer_get_time() - write_start_us;
+    if (status != QsoStoreStatus::OK) {
+        ESP_LOGW(TAG, "QSO with %s not logged: status %d in %lld us", call_norm.c_str(), (int)status,
+                 (long long)write_us);
         return false;
     }
     if (dedupe) {
         adif_logger_dedupe_remember(dedupe, key, now_ms);
     }
-    ESP_LOGI(TAG, "ADIF wrote %s -> %s", call_norm.c_str(), path);
+    ESP_LOGI(TAG, "ADIF wrote %s -> record %" PRIu32 " in %lld us", call_norm.c_str(), id, (long long)write_us);
     return true;
 }
 

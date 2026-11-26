@@ -1,7 +1,6 @@
 // A QSO record's fields as text: ADIF's `<name:length>value`, as callers hand them in and as the journal
 // keeps them.
 
-#include <cstdio>
 
 #include "qso_store_internal.h"
 
@@ -62,11 +61,22 @@ bool find_field(const std::string& fields, const char* name, Field* out)
     return find_field(fields.data(), fields.size(), name, strlen(name), out);
 }
 
+// Written by hand, not with snprintf: every record read rebuilds its fields through here, and on the P4
+// newlib's snprintf cost most of a read (test_apps/qso_store_bench, 2026-11-25).
 void append_field(std::string* fields, const char* name, size_t name_len, const char* value, size_t value_len)
 {
     char head[kMaxNameChars + 16];
-    const int n = snprintf(head, sizeof head, "<%.*s:%u>", (int)name_len, name, (unsigned)value_len);
-    fields->append(head, (size_t)n);
+    size_t n = 0;
+    head[n++] = '<';
+    memcpy(head + n, name, name_len);
+    n += name_len;
+    head[n++] = ':';
+    char digits[20];
+    size_t d = 0;
+    for (size_t rest = value_len; d == 0 || rest != 0; rest /= 10) digits[d++] = (char)('0' + rest % 10);
+    while (d != 0) head[n++] = digits[--d];
+    head[n++] = '>';
+    fields->append(head, n);
     fields->append(value, value_len);
 }
 

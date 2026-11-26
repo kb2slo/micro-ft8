@@ -110,6 +110,13 @@ bool qso_store_detail::current_fields(const QsoStore& store, const QsoStoreEntry
 {
     out->clear();
     if (entry.latest == 0) return false;
+    // A record never changed is its one entry, whose fields qso_store_add() wrote as canonical_fields()
+    // gives them: no name twice and none empty, so they are already what the walk below would build.
+    const uint8_t* newest = store.buffers.image + entry.latest;
+    if (newest[1] == kPut) {
+        out->assign((const char*)newest + kEntryHeaderBytes, rd16(newest + 2));
+        return true;
+    }
     Field f;
     Field seen;
     size_t at = entry.latest;
@@ -180,10 +187,17 @@ static void apply_fields(QsoStore* store, QsoStoreEntry* entry, const JournalEnt
         }
     }
     if (!mode_named) return;
-    // MODE and SUBMODE decide the mode together, so it is read from the whole record.
-    std::string now;
     Field mode;
     entry->mode = kQsoStoreNoName;
+    // MODE and SUBMODE decide the mode together. A record's first entry holds both, so they are read from it;
+    // a change may name one, so then the whole record is read.
+    if (j.kind == kPut) {
+        if (find_field(j.fields, j.len, "submode", 7, &mode) || find_field(j.fields, j.len, "mode", 4, &mode)) {
+            entry->mode = intern_name(&store->modes, mode.value, mode.value_len);
+        }
+        return;
+    }
+    std::string now;
     if (!current_fields(*store, *entry, &now)) return;
     if (find_field(now, "submode", &mode) || find_field(now, "mode", &mode)) {
         entry->mode = intern_name(&store->modes, mode.value, mode.value_len);

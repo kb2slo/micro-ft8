@@ -23,7 +23,7 @@ struct AdifLogQsoInput {
     std::string my_sota_ref; // comma list, no program prefix, e.g. "W7O/CC-001"
 };
 
-// Appends one record to YYYYMMDD.adi via storage_file_append.
+// Adds one record to the station's QSO log (qso_log_store_add()).
 // Returns true on success or intentional dedupe skip; false on write failure.
 bool adif_log_qso(const AdifLogQsoInput& in, AdifLoggerDedupe* dedupe);
 

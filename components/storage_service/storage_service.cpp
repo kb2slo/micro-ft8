@@ -402,10 +402,75 @@ bool storage_file_append(const std::string& name,
     if (!ok) {
         ESP_LOGE(TAG, "append failed %s errno=%d before=%ld after=%ld",
                  path.c_str(), errno, (long)size_before, (long)size_after);
+        // A reader that keeps its own copy of the file's length (the QSO store) must find the file as it was.
+        if (sized && size_after != size_before) {
+            const int cut = open(path.c_str(), O_WRONLY, 0);
+            const bool cut_ok = cut >= 0 && ftruncate(cut, size_before) == 0 && sync_fd(cut);
+            if (cut >= 0) close(cut);
+            ESP_LOGE(TAG, "append cut back %s to %ld: %s", path.c_str(), (long)size_before, cut_ok ? "ok" : "failed");
+        }
     } else {
         ESP_LOGI(TAG, "append ok %s %ld -> %ld", path.c_str(), (long)size_before,
                  (long)size_after);
     }
+    return ok;
+}
+
+bool storage_file_size(const std::string& name, size_t* size_out) {
+    StorageGuard guard;
+    std::string path;
+    struct stat info {};
+    if (!guard.held() || !firmware_owns_storage_locked() || !build_path(name, path) ||
+        stat(path.c_str(), &info) != 0 || !S_ISREG(info.st_mode)) {
+        return false;
+    }
+    *size_out = static_cast<size_t>(info.st_size);
+    return true;
+}
+
+bool storage_file_read_into(const std::string& name, uint8_t* buffer, size_t capacity, size_t* len_out) {
+    StorageGuard guard;
+    std::string path;
+    struct stat info {};
+    if (!guard.held() || !firmware_owns_storage_locked() || !build_path(name, path) ||
+        stat(path.c_str(), &info) != 0 || !S_ISREG(info.st_mode)) {
+        return false;
+    }
+    const size_t size = static_cast<size_t>(info.st_size);
+    if (size > capacity) {
+        ESP_LOGE(TAG, "read %s: %u bytes, more than the %u it is read into", path.c_str(), (unsigned)size,
+                 (unsigned)capacity);
+        return false;
+    }
+    const int fd = open(path.c_str(), O_RDONLY, 0);
+    if (fd < 0) {
+        return false;
+    }
+    size_t got = 0;
+    while (got < size) {
+        const ssize_t n = read(fd, buffer + got, size - got);
+        if (n <= 0) {
+            break;
+        }
+        got += static_cast<size_t>(n);
+    }
+    close(fd);
+    *len_out = got;
+    return got == size;
+}
+
+bool storage_file_truncate(const std::string& name, size_t size) {
+    StorageGuard guard;
+    std::string path;
+    if (!guard.held() || !firmware_owns_storage_locked() || !build_path(name, path)) {
+        return false;
+    }
+    const int fd = open(path.c_str(), O_WRONLY, 0);
+    if (fd < 0) {
+        return false;
+    }
+    const bool ok = ftruncate(fd, static_cast<off_t>(size)) == 0 && sync_fd(fd);
+    close(fd);
     return ok;
 }
 

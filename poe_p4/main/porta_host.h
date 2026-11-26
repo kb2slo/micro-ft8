@@ -11,7 +11,6 @@ void porta_p4_station_boot(void);
 // decodes. Shown on the phone as decoding=0 in the config snapshot.
 void porta_p4_set_decode_failed(bool failed);
 void porta_p4_adif_register(void);
-void porta_p4_file_tick(void);
 int porta_p4_station_freq_hz(void);
 // Push the Station band to the VFO. nullptr on success, else why not.
 const char *porta_p4_sync_vfo(const char *reason);
