@@ -4,6 +4,7 @@
 #include <ctime>
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "rtc_core.h"
 #include "storage_service.h"
 
@@ -147,14 +148,18 @@ bool adif_log_qso(const AdifLogQsoInput& in, AdifLoggerDedupe* dedupe) {
     fields.my_sota_ref = in.my_sota_ref;
     const std::string line = adif_format_log_record(fields);
 
-    if (!storage_file_append(path, line, "ADIF EXPORT\n<eoh>\n", true)) {
-        ESP_LOGW(TAG, "ADIF write failed: %s", path);
+    // Timed for the QSO store's before-and-after (docs/roadmap/qso-store.md, ehvs).
+    const int64_t write_start_us = esp_timer_get_time();
+    const bool written = storage_file_append(path, line, "ADIF EXPORT\n<eoh>\n", true);
+    const int64_t write_us = esp_timer_get_time() - write_start_us;
+    if (!written) {
+        ESP_LOGW(TAG, "ADIF write failed: %s in %lld us", path, (long long)write_us);
         return false;
     }
     if (dedupe) {
         adif_logger_dedupe_remember(dedupe, key, now_ms);
     }
-    ESP_LOGI(TAG, "ADIF wrote %s -> %s", call_norm.c_str(), path);
+    ESP_LOGI(TAG, "ADIF wrote %s -> %s in %lld us", call_norm.c_str(), path, (long long)write_us);
     return true;
 }
 

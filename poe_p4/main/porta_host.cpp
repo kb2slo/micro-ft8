@@ -1283,6 +1283,7 @@ const char *porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take
     if (take == 0) {
         return "take must be > 0";
     }
+    const int64_t start_us = esp_timer_get_time();  // timed for the QSO store's before-and-after
     // Sync list: LittleFS day-file counts stay small, so burst the whole list
     // and then ACK.
     std::vector<std::string> all_names;
@@ -1308,8 +1309,8 @@ const char *porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take
         porta_emit_file_name(files[i].c_str());
     }
     porta_emit_ack(PORTA_MSG_FILE_LIST);
-    ESP_LOGI(TAG, "FILE_LIST qso daily names=%u skip=%u take=%u", (unsigned)files.size(),
-             (unsigned)skip, (unsigned)take);
+    ESP_LOGI(TAG, "FILE_LIST qso daily names=%u skip=%u take=%u in %lld us", (unsigned)files.size(),
+             (unsigned)skip, (unsigned)take, (long long)(esp_timer_get_time() - start_us));
     return nullptr;
 }
 
@@ -1382,6 +1383,7 @@ StorageStream *s_porta_read_stream = nullptr;
 QsoBrowsePager s_porta_read_pager;
 std::vector<QsoBrowseBand> s_porta_read_bands;
 bool s_porta_read_active = false;
+int64_t s_porta_read_start_us = 0;  // timed for the QSO store's before-and-after
 
 void fill_browse_bands(void) {
     ensure_seeded();
@@ -1409,6 +1411,7 @@ const char *porta_host_file_read_begin(const char *filename, uint16_t skip, uint
     if (!s_porta_read_stream) {
         return "open failed";
     }
+    s_porta_read_start_us = esp_timer_get_time();
     qso_browse_pager_reset(&s_porta_read_pager, skip, take);
     fill_browse_bands();
     s_porta_read_active = true;
@@ -1464,5 +1467,7 @@ void porta_p4_file_tick(void) {
         porta_emit_file_entry(row);
     }
     porta_emit_ack(PORTA_MSG_FILE_READ);
-    ESP_LOGI(TAG, "FILE_READ done entries=%u", (unsigned)s_porta_read_pager.entries.size());
+    ESP_LOGI(TAG, "FILE_READ done entries=%u skip=%d take=%d in %lld us",
+             (unsigned)s_porta_read_pager.entries.size(), s_porta_read_pager.skip, s_porta_read_pager.take,
+             (long long)(esp_timer_get_time() - s_porta_read_start_us));
 }
