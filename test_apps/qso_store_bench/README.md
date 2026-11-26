@@ -14,14 +14,14 @@ QSO's station (5 QSOs). A `CHECK` line per size compares each answer with what t
 | Operation | What it is |
 | --- | --- |
 | `size` | Journal bytes, and bytes per record |
-| `add` | One `qso_store_add()`, the append itself free (the bytes are already in RAM) |
-| `load` | `qso_store_load()` over the whole journal |
+| `add` | 3.5 | 3.7 | 3.4 | 171 | 172 |
+| `load` | 1,377 | 10,829 | 25,164 | 56,273 | 1,042,018 |
 | `by_call_*` | The card: the call table's probe, then `qso_store_get()` for each of that call's records. `_probe` is the probe alone |
-| `worked_band_mode` | `qso_store_worked()` on a band and mode, as a decode would ask it |
-| `worked_at_park` | The same during an activation, which reads each of the call's records |
+| `worked_band_mode` | 0.4 | 1.6 | 2.9 | 20.0 | 528 |
+| `worked_at_park` | 60.0 | 253 | 417 | 3,474 | 30,129 |
 | `select_date`, `select_unsent` | `qso_store_select()`: one pass over the index |
-| `scan_grid_get` | A field with no index: every record read through `qso_store_get()`, as a grid search would be today |
-| `scan_grid_raw` | The floor under that scan: one `memmem` pass over the journal's bytes |
+| `scan_grid_get` | 79.0 | 623 | 1,511 | 7,570 | 153,489 |
+| `scan_grid_raw` | 24.3 | 167 | 402 | 5,258 | 99,723 |
 
 ## Host
 
@@ -50,18 +50,18 @@ off and on (row [f8u2](../../docs/ROADMAP.md#f8u2)).
 Microseconds per operation, except `size`. Host: x86-64 Linux, `-Og` (2026-11-25, `qso-store-link`). P4: U213, 360 MHz,
 PSRAM at 200 MHz (2026-11-25, the same tree).
 
-| Operation | n=1,000 host | n=8,000 host | n=19,000 host | n=19,000 P4 |
-| --- | --- | --- | --- | --- |
-| bytes per record | 209.2 | 209.4 | 209.5 | 209.5 |
-| `add` | 6.2 | 6.4 | 6.3 | 344 |
-| `load` | 3,466 | 28,541 | 68,521 | 3,624,828 |
-| `by_call_heavy` (133 / 598 / 1,035 QSOs) | 278 | 1,285 | 2,258 | 116,522 |
-| `by_call_heavy_probe` | 0.4 | 2.4 | 4.5 | 628 |
-| `by_call_typical` (5 QSOs) | 11.5 | 11.2 | 10.6 | 536 |
-| `by_call_miss_probe` | 0.0 | 0.0 | 0.0 | 0.5 |
-| `worked_band_mode` | 0.3 | 1.4 | 3.0 | 528 |
-| `worked_at_park` | 338 | 1,555 | 2,672 | 161,442 |
-| `select_date` | 0.8 | 6.0 | 15.1 | 7,318 |
-| `select_unsent` | 1.6 | 13.1 | 30.8 | 8,842 |
-| `scan_grid_get` | 2,165 | 17,319 | 41,810 | 2,173,085 |
-| `scan_grid_raw` | 22 | 175 | 407 | 133,270 |
+| Operation | n=1,000 host | n=8,000 host | n=19,000 host | n=1,000 P4 | n=19,000 P4 |
+| --- | --- | --- | --- | --- | --- |
+| bytes per record | 209.2 | 209.4 | 209.5 | 209.2 | 209.5 |
+| `add` | 3.5 | 3.7 | 3.4 | 171 | 172 |
+| `load` | 1,377 | 10,829 | 25,164 | 56,273 | 1,042,018 |
+| `by_call_heavy` (133 / 598 / 1,035 QSOs) | 3.5 | 13.9 | 29.8 | 247 | 6,559 |
+| `by_call_heavy_probe` | 0.6 | 2.4 | 4.5 | 29.9 | 629 |
+| `by_call_typical` (5 QSOs) | 0.1 | 0.2 | 0.1 | 9.7 | 11.3 |
+| `by_call_miss_probe` | 0.0 | 0.0 | 0.0 | 0.5 | 0.5 |
+| `worked_band_mode` | 0.4 | 1.6 | 2.9 | 20.0 | 528 |
+| `worked_at_park` | 60.0 | 253 | 417 | 3,474 | 30,129 |
+| `select_date` | 0.8 | 5.7 | 14.4 | 54.5 | 7,308 |
+| `select_unsent` | 1.6 | 12.4 | 30.6 | 115 | 8,856 |
+| `scan_grid_get` | 79.0 | 623 | 1,511 | 7,570 | 153,489 |
+| `scan_grid_raw` | 24.3 | 167 | 402 | 5,258 | 99,723 |
