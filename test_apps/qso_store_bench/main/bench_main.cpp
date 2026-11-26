@@ -22,13 +22,22 @@ EXT_RAM_BSS_ATTR uint32_t s_call_slots[kCallSlots];
 
 int64_t now_us() { return esp_timer_get_time(); }
 
+#ifdef BENCH_LOG
+extern "C" const uint8_t bench_log_start[] asm("_binary_bench_log_start");
+extern "C" const uint8_t bench_log_end[] asm("_binary_bench_log_end");
+#endif
+
 }  // namespace
 
 extern "C" void app_main(void)
 {
     vTaskDelay(pdMS_TO_TICKS(1000));  // let the runner's port open before the first line
     const BenchMemory memory{s_image, kImageBytes, s_entries, kEntries, s_call_slots, kCallSlots};
+#ifdef BENCH_LOG
+    bench_run_log(memory, now_us, "p4", (const char*)bench_log_start, (size_t)(bench_log_end - bench_log_start));
+#else
     bench_run(memory, now_us, "p4");
+#endif
     fflush(stdout);
     while (true) vTaskDelay(pdMS_TO_TICKS(1000));
 }

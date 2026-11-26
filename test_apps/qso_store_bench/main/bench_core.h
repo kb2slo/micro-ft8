@@ -21,3 +21,7 @@ using BenchClockFn = int64_t (*)();  // microseconds, monotonic
 // Prints `BENCH begin`, one `RESULT` line per log size and operation, a `CHECK` line per size, and `BENCH done`.
 // Returns false when a check failed.
 bool bench_run(const BenchMemory& memory, BenchClockFn now_us, const char* where);
+
+// The same reads over an operator's own log, `text` being a whole ADIF file (header, then records). Prints
+// `BENCH begin`, `RESULT` lines, one `CHECK` and `BENCH done`. Returns false when a check failed.
+bool bench_run_log(const BenchMemory& memory, BenchClockFn now_us, const char* where, const char* text, size_t text_len);

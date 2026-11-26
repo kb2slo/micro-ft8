@@ -8,6 +8,7 @@
 #include <cinttypes>
 #include <cstdio>
 #include <cstring>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -179,6 +180,8 @@ QsoStoreStatus fill(QsoStore* store, const BenchMemory& m, uint32_t n, Truth* tr
     return QsoStoreStatus::OK;
 }
 
+char to_upper_ascii(char c) { return (c >= 'a' && c <= 'z') ? (char)(c - 'a' + 'A') : c; }
+
 void result(const char* where, uint32_t n, const char* op, uint32_t hits, int reps, int64_t total_us)
 {
     printf("RESULT where=%s n=%" PRIu32 " op=%s hits=%" PRIu32 " reps=%d us=%.1f\n", where, n, op, hits, reps,
@@ -336,7 +339,145 @@ bool run_size(const BenchMemory& m, BenchClockFn now_us, const char* where, uint
     return ok;
 }
 
+// A field's value in one ADIF record as a file holds it: names in any case, values as given.
+std::string adif_value(const char* rec, size_t len, const char* name)
+{
+    const size_t name_len = strlen(name);
+    for (size_t i = 0; i + name_len + 3 < len; ++i) {
+        if (rec[i] != '<') continue;
+        size_t k = 0;
+        while (k < name_len && i + 1 + k < len && (rec[i + 1 + k] | 0x20) == name[k]) ++k;
+        if (k != name_len || rec[i + 1 + k] != ':') continue;
+        size_t at = i + 2 + k;
+        size_t value_len = 0;
+        while (at < len && rec[at] >= '0' && rec[at] <= '9') value_len = value_len * 10 + (size_t)(rec[at++] - '0');
+        while (at < len && rec[at] != '>') ++at;
+        if (at >= len || at + 1 + value_len > len) return std::string();
+        return std::string(rec + at + 1, value_len);
+    }
+    return std::string();
+}
+
+std::string upper(std::string s)
+{
+    for (char& c : s) c = to_upper_ascii(c);
+    return s;
+}
+
 }  // namespace
+
+// An operator's own log, as an ADIF file (README.md, Your own log): each record added as it comes, then the
+// same reads as the synthetic run, asked of the most-worked call and of the median record's call.
+bool bench_run_log(const BenchMemory& m, BenchClockFn now_us, const char* where, const char* text, size_t text_len)
+{
+    static QsoStore store;
+    printf("BENCH begin where=%s log_bytes=%u\n", where, (unsigned)text_len);
+    QsoStoreBuffers buffers{m.image, m.image_bytes, m.entries, m.entry_count, m.call_slots, m.call_slot_count};
+    if (qso_store_create(&store, buffers, 0x5EED, append_nothing, nullptr) != QsoStoreStatus::OK) return false;
+    // Records follow the header's <eoh>, each ended by <eor>, in any case.
+    const char* p = text;
+    const char* end = text + text_len;
+    for (const char* q = text; q + 5 <= end; ++q) {
+        if (q[0] == '<' && (q[1] | 0x20) == 'e' && (q[2] | 0x20) == 'o' && (q[3] | 0x20) == 'h' && q[4] == '>') {
+            p = q + 5;
+            break;
+        }
+    }
+    std::map<std::string, std::vector<uint32_t>> ids_of;
+    std::map<uint32_t, std::string> grid_of;
+    uint32_t added = 0, too_long = 0, refused = 0;
+    int64_t add_us = 0;
+    size_t largest = 0;
+    while (p < end) {
+        const char* q = p;
+        while (q + 5 <= end && !(q[0] == '<' && (q[1] | 0x20) == 'e' && (q[2] | 0x20) == 'o' && (q[3] | 0x20) == 'r' &&
+                                 q[4] == '>')) {
+            ++q;
+        }
+        if (q + 5 > end) break;
+        const size_t len = (size_t)(q - p) + 5;
+        uint32_t id = 0;
+        const int64_t t0 = now_us();
+        const QsoStoreStatus st = qso_store_add(&store, p, len, 0, &id);
+        add_us += now_us() - t0;
+        if (st == QsoStoreStatus::OK) {
+            ++added;
+            ids_of[upper(adif_value(p, len, "call"))].push_back(id);
+            grid_of[id] = adif_value(p, len, "gridsquare");
+            if (len > largest) largest = len;
+        } else if (st == QsoStoreStatus::TOO_LONG) {
+            ++too_long;
+        } else {
+            ++refused;
+        }
+        p = q + 5;
+    }
+    const uint32_t n = added;
+    bool ok = n != 0;
+    if (!ok) {
+        printf("CHECK where=%s log FAIL no record added\n", where);
+        return false;
+    }
+    const size_t journal = store.end;
+    printf("RESULT where=%s n=%" PRIu32 " op=log_size calls=%u too_long=%" PRIu32 " refused=%" PRIu32
+           " journal_bytes=%u bytes_per_record=%.1f\n",
+           where, n, (unsigned)ids_of.size(), too_long, refused, (unsigned)journal,
+           (double)(journal - kQsoStoreHeaderBytes) / n);
+    result(where, n, "add", n, (int)(n + too_long + refused), add_us);
+    {
+        const int64_t t0 = now_us();
+        const QsoStoreLoad load = qso_store_load(&store, buffers, journal, append_nothing, nullptr);
+        result(where, n, "load", (uint32_t)store.entries_used, 1, now_us() - t0);
+        ok = ok && load.status == QsoStoreStatus::OK && store.entries_used == n;
+    }
+    // The most-worked call, and the call of the median record by how often its call was worked.
+    std::string top;
+    std::vector<size_t> counts;
+    for (const auto& kv : ids_of) {
+        if (top.empty() || kv.second.size() > ids_of[top].size()) top = kv.first;
+        for (size_t i = 0; i < kv.second.size(); ++i) counts.push_back(kv.second.size());
+    }
+    std::sort(counts.begin(), counts.end());
+    const size_t median = counts[counts.size() / 2];
+    std::string typical;
+    for (const auto& kv : ids_of) {
+        if (kv.second.size() == median) {
+            typical = kv.first;
+            break;
+        }
+    }
+    std::string fields;
+    fields.reserve(2048);
+    const int reps = 200;
+    for (const auto& who : {std::make_pair("by_call_top", top), std::make_pair("by_call_typical", typical)}) {
+        const std::vector<uint32_t>& ids = ids_of[who.second];
+        uint32_t hits = 0;
+        const int64_t t0 = now_us();
+        for (int r = 0; r < reps; ++r) hits = by_call(store, who.second.c_str(), ids, &fields);
+        result(where, n, who.first, hits, reps, now_us() - t0);
+        ok = ok && hits == ids.size();
+    }
+    {
+        // The whole log read through the store, as a search on a field with no index would be.
+        const std::string grid = grid_of[ids_of[top].back()];
+        const std::string tag = "<gridsquare:" + std::to_string(grid.size()) + ">" + grid;
+        uint32_t truth = 0;
+        for (const auto& kv : grid_of) truth += kv.second == grid ? 1 : 0;
+        std::vector<uint32_t> all(n);
+        qso_store_select(store, QsoStoreFilter{}, 0, all.data(), all.size(), nullptr);
+        uint32_t hits = 0;
+        const int64_t t0 = now_us();
+        for (uint32_t id : all) {
+            if (qso_store_get(store, id, &fields) && fields.find(tag) != std::string::npos) ++hits;
+        }
+        result(where, n, "scan_grid_get", hits, 1, now_us() - t0);
+        ok = ok && (grid.empty() || hits == truth);
+    }
+    printf("CHECK where=%s log %s top=%s:%u typical=%s:%u largest_record=%u\n", where, ok ? "ok" : "FAIL", top.c_str(),
+           (unsigned)ids_of[top].size(), typical.c_str(), (unsigned)median, (unsigned)largest);
+    printf("BENCH done where=%s %s\n", where, ok ? "ok" : "FAIL");
+    return ok;
+}
 
 bool bench_run(const BenchMemory& memory, BenchClockFn now_us, const char* where)
 {
