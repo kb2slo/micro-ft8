@@ -177,7 +177,7 @@ async function loadOlder() {
 
 // A day's full rows, behind its download link: a read that failed or hung is not kept.
 async function dayRows() {
-  const p = page(['fetchAllEntries', 'dayFullRows'], { dayFullRowsCache: {} });
+  const p = page(['fetchAllEntries', 'dayFullRows'], { dayFullRowsCache: {}, LOG_ENTRY_FETCH: 10 });
   let failed = false;
   p.dayFullRows('20261111.adi').catch(() => { failed = true; });
   await p.advance(TIMEOUT_MS);

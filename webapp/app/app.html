@@ -8039,18 +8039,21 @@ function triggerAdifDownload(baseName, text) {
   URL.revokeObjectURL(url);
 }
 
-// Loops /api/log/entries past whatever page size it returns, for one file.
+// Every row of one day, a page of LOG_ENTRY_FETCH at a time, as the app's other log readers ask. A larger
+// page comes back short and gives no sign: the main board's Port A queue holds 48 frames and drops the oldest,
+// so a page of 50 loses its first rows, and the sidekick's reply holds about 18 (FILE_ENTRIES_JSON_MAX,
+// row ujtv). Asking for 50 made Download ADI stop at 18 QSOs a day (2026-11-26).
 async function fetchAllEntries(file) {
   var rows = [];
   var skip = 0;
   while (true) {
     var j = await logFetchJson('/api/log/entries?file=' + encodeURIComponent(file) +
-                               '&skip=' + skip + '&take=50');
+                               '&skip=' + skip + '&take=' + LOG_ENTRY_FETCH);
     if (!j.ok) throw new Error(j.why || 'entries failed');
     var page = j.entries || [];
     rows = rows.concat(page);
     skip += page.length;
-    if (page.length < 50) break;
+    if (page.length < LOG_ENTRY_FETCH) break;
   }
   return rows;
 }
