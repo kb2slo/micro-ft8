@@ -20,7 +20,7 @@ Every logged QSO a record with an ID on the main board, answered where the log l
 * **A sync service is** which records it takes, how each is written for it, how they match, and a transport. The QRZ sync built before the store ([webapp.md](../architecture/webapp.md), **QRZ sync**) matches against QRZ on every run and keeps nothing on the station; it gains the store's sent mark in [qtfj](#qtfj).
 * **Worked before counts only at the references it was worked from:** during an activation each park or summit is its own log, and an n-fer record counts at each.
 * **Awards are decode cues only.**
-* **The daily files are converted once, at the main board's first boot on the store** (by exception, maintainer, 2026-11-19, against **Before 1.0: do not carry the past**). When the conversion comes out is open.
+* **The daily files are converted once, at the main board's first boot on the store** (by exception, maintainer, 2026-11-19, against **Before 1.0: do not carry the past**), **and deleted once every record in them is taken** (maintainer, 2026-11-26): not kept as a fallback. One refused keeps them all. When the conversion comes out is open.
 
 ## Children
 
