@@ -31,6 +31,14 @@ bool storage_file_remove(const std::string& name);
 bool storage_file_list(std::vector<std::string>& files);
 bool storage_file_read_text(const std::string& name, std::string& content);
 bool storage_file_write_atomic(const std::string& name, const std::string& content);
+// A file's size in bytes. False when it is missing or storage is not the firmware's.
+bool storage_file_size(const std::string& name, size_t* size_out);
+// Reads a whole file into `buffer`. False when it is missing, unreadable, or longer than `capacity`.
+bool storage_file_read_into(const std::string& name, uint8_t* buffer, size_t capacity, size_t* len_out);
+// Cuts a file to its first `size` bytes, and makes that durable.
+bool storage_file_truncate(const std::string& name, size_t size);
+// Appends `content` to the end of `name`, creating it (with `header_if_new` first) when missing or empty.
+// All or nothing: when it fails, the file is cut back to its length before, so a partial write never stays.
 bool storage_file_append(const std::string& name,
                          const std::string& content,
                          const std::string& header_if_new = "",

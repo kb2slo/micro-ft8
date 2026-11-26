@@ -4,19 +4,17 @@
 #include <vector>
 
 #include "adif_logger.h"
+#include "qso_log_store.h"
 
-// adif_logger.cpp also calls storage_service_
-// firmware_available() and storage_file_append() (ESP-IDF storage), and
-// rtc_now_ms() (host_mocks.o, linked below) -- same stubbing pattern
-// test_adif_delete.cpp already uses, so this host binary links without
-// ESP-IDF. storage_file_append() records what it was asked to write so the
-// test can inspect the actual record line.
+// adif_logger.cpp logs into the station's QSO log (qso_log_store_add()) and reads rtc_now_ms()
+// (host_mocks.o, linked below). The log is stood in for here, recording each record it is handed so the
+// test can inspect the actual line.
 static std::vector<std::string> g_appended;
-bool storage_service_firmware_available() { return true; }
-bool storage_file_append(const std::string&, const std::string& content, const std::string&,
-                         bool) {
-    g_appended.push_back(content);
-    return true;
+bool qso_log_store_ready() { return true; }
+QsoStoreStatus qso_log_store_add(const std::string& record, uint32_t* id_out) {
+    g_appended.push_back(record);
+    if (id_out) *id_out = (uint32_t)g_appended.size();
+    return QsoStoreStatus::OK;
 }
 
 static int g_fails = 0;

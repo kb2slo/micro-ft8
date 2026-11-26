@@ -1,7 +1,7 @@
-# The ADIF QSO archive: live write, delete, and the Log tab's day-file browse
-# and list pagers.
+# The station's QSO log: the live write into the QSO store, and the QSOs tab's
+# day-shaped reads of it (qso_log_store.h), with the row pager they still go through.
 idf_component_register(
-    SRCS "adif_logger.cpp" "adif_delete.cpp" "qso_browse.cpp" "file_list.cpp"
+    SRCS "adif_logger.cpp" "qso_browse.cpp" "qso_log_store.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES adif storage_service rtc_core log esp_timer
+    REQUIRES adif qso_store storage_service rtc_core log esp_timer esp_hw_support
 )

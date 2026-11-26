@@ -52,8 +52,6 @@ ADIF_TARGET = host_test_adif_merge
 STATION_TARGET = host_test_station
 DECODE_SORT_TARGET = host_test_decode_sort
 QSO_BROWSE_TARGET = host_test_qso_browse
-ADIF_DELETE_TARGET = host_test_adif_delete
-FILE_LIST_TARGET = host_test_file_list
 PORTA_PROTO_TARGET = host_test_porta_proto
 PAIRING_TOKEN_TARGET = host_test_pairing_token
 WEB_PAGE_TARGET = host_test_web_page
@@ -99,8 +97,7 @@ HL2_FRONTEND_TARGET = host_test_hl2_frontend
 IQ_FRONTEND_TARGET = host_test_iq_frontend
 
 all: $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
-     $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) \
-     $(FILE_LIST_TARGET) \
+     $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) \
      $(PORTA_PROTO_TARGET) $(PAIRING_TOKEN_TARGET) \
      $(WEB_PAGE_TARGET) $(EVENT_STATE_TARGET) $(FW_POLICY_TARGET) $(AP_NAME_TARGET) $(APP_PACK_TARGET) $(APP_PUSH_TARGET) $(PORTA_FW_RX_TARGET) \
      $(RECENT_QSO_TARGET) $(QUEUE_HEAD_TARGET) $(CHANNEL_ENTRIES_TARGET) $(ROGERS_ONCE_TARGET) $(DIAL_HISTORY_TARGET) $(ADIF_LOGGER_TARGET) \
@@ -462,23 +459,30 @@ qso_browse.o: ../components/qso_log/qso_browse.cpp
 $(QSO_BROWSE_TARGET): $(QSO_BROWSE_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
-ADIF_DELETE_OBJ = qso_browse.o adif_delete.o test_adif_delete.o
-adif_delete.o: ../components/qso_log/adif_delete.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -I../components/storage_service/include -c $< -o $@
-$(ADIF_DELETE_TARGET): $(ADIF_DELETE_OBJ)
-	$(CXX) $(CXXFLAGS) -o $@ $^
-
 ADIF_LOGGER_OBJ = adif.o adif_logger.o host_mocks.o test_adif_logger.o
 adif_logger.o: ../components/qso_log/adif_logger.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -I../components/qso_store/include -c $< -o $@
+test_adif_logger.o: test_adif_logger.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -I../components/qso_store/include -c $< -o $@
 $(ADIF_LOGGER_TARGET): $(ADIF_LOGGER_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
-FILE_LIST_OBJ = qso_browse.o file_list.o test_file_list.o
-file_list.o: ../components/qso_log/file_list.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-$(FILE_LIST_TARGET): $(FILE_LIST_OBJ)
+# The station's QSO log on the store, with storage stood in for in memory. Its whole build is this block,
+# `all` and `clean` included.
+QSO_LOG_STORE_TARGET = host_test_qso_log_store
+QSO_LOG_STORE_OBJ = qso_log_store.o qso_browse.o qso_store.o qso_store_fields.o qso_store_journal.o qso_store_query.o \
+                    host_mocks.o test_qso_log_store.o
+all: $(QSO_LOG_STORE_TARGET)
+qso_log_store.o: ../components/qso_log/qso_log_store.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -I../components/qso_store/include -I../components/storage_service/include -c $< -o $@
+test_qso_log_store.o: test_qso_log_store.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -I../components/qso_store/include -I../components/storage_service/include -c $< -o $@
+$(QSO_LOG_STORE_TARGET): $(QSO_LOG_STORE_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
+clean: qso_log_store_clean
+qso_log_store_clean:
+	rm -f qso_log_store.o test_qso_log_store.o $(QSO_LOG_STORE_TARGET)
+.PHONY: qso_log_store_clean
 
 # The QSO store. Its whole build is this block, `all` and `clean` included.
 QSO_STORE_TARGET = host_test_qso_store
@@ -505,11 +509,9 @@ qso_store_clean:
 clean:
 	rm -f *.d $(OBJ) porta_event_json.o sim_station.o $(SIM_TARGET) \
 	      $(UNIQUE_OBJ) $(CQ_TRIES_OBJ) $(ADIF_OBJ) $(STATION_OBJ) \
-	      $(DECODE_SORT_OBJ) $(QSO_BROWSE_OBJ) $(ADIF_DELETE_OBJ) \
-	      $(FILE_LIST_OBJ) \
+	      $(DECODE_SORT_OBJ) $(QSO_BROWSE_OBJ) \
 	      $(TARGET) $(UNIQUE_TARGET) $(CQ_TRIES_TARGET) $(ADIF_TARGET) $(STATION_TARGET) \
-	      $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) $(ADIF_DELETE_TARGET) \
-	      $(FILE_LIST_TARGET) \
+	      $(DECODE_SORT_TARGET) $(QSO_BROWSE_TARGET) \
 	      $(PAIRING_TOKEN_OBJ) $(PAIRING_TOKEN_TARGET) \
 	      $(WEB_PAGE_OBJ) $(WEB_PAGE_TARGET) \
 	      $(EVENT_STATE_OBJ) $(EVENT_STATE_TARGET) \

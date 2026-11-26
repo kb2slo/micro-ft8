@@ -5,7 +5,6 @@
 #include <cstring>
 #include <string>
 
-#include "adif_delete.h"
 #include "adif_logger.h"
 #include "amp_band_prime.h"
 #include "app_name.h"
@@ -19,7 +18,6 @@
 #include "station_channel.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "file_list.h"
 #include "hl2_transport.h"
 #include "porta.h"
 #include "porta_proto.h"
@@ -33,6 +31,7 @@
 #include "tx_ready.h"
 #include "rtc_core.h"
 #include "station.h"
+#include "qso_log_store.h"
 #include "storage_service.h"
 #include "swr_sweep.h"
 #include "tx_scheduler.h"
@@ -1276,6 +1275,8 @@ const char *porta_host_queue_reply(uint32_t decode_id) {
     return nullptr;
 }
 
+// The day list is the store's days, named as the daily files were, so the wire and the QSOs tab are unchanged
+// (docs/architecture/logging.md, The store on the main board). Sent whole, then ACKed.
 const char *porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take) {
     if (kind != PORTA_FILE_LIST_QSO_DAILY) {
         return "unknown kind";
@@ -1283,33 +1284,17 @@ const char *porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take
     if (take == 0) {
         return "take must be > 0";
     }
-    const int64_t start_us = esp_timer_get_time();  // timed for the QSO store's before-and-after
-    // Sync list: LittleFS day-file counts stay small, so burst the whole list
-    // and then ACK.
-    std::vector<std::string> all_names;
-    if (!storage_file_list(all_names)) {
-        FileListFail fail = FileListFail::Failed;
-        switch (storage_service_owner()) {
-            case StorageOwner::TRANSITION:
-                fail = FileListFail::Busy;
-                break;
-            case StorageOwner::UNAVAILABLE:
-                fail = FileListFail::Unavailable;
-                break;
-            case StorageOwner::FIRMWARE:
-                fail = FileListFail::Failed;
-                break;
-        }
-        return file_list_fail_text(fail);
+    if (!qso_log_store_ready()) {
+        return "log unavailable";
     }
-    std::vector<std::string> files;
-    std::vector<std::string> lines_unused;
-    file_list_apply(FileListKind::QsoDaily, FileListFail::None, all_names, &files, &lines_unused);
-    for (size_t i = skip; i < files.size() && (i - skip) < take; ++i) {
-        porta_emit_file_name(files[i].c_str());
+    const int64_t start_us = esp_timer_get_time();  // timed for the QSO store's before-and-after
+    std::vector<std::string> days;
+    qso_log_store_days(&days);
+    for (size_t i = skip; i < days.size() && (i - skip) < take; ++i) {
+        porta_emit_file_name(days[i].c_str());
     }
     porta_emit_ack(PORTA_MSG_FILE_LIST);
-    ESP_LOGI(TAG, "FILE_LIST qso daily names=%u skip=%u take=%u in %lld us", (unsigned)files.size(),
+    ESP_LOGI(TAG, "FILE_LIST qso daily names=%u skip=%u take=%u in %lld us", (unsigned)days.size(),
              (unsigned)skip, (unsigned)take, (long long)(esp_timer_get_time() - start_us));
     return nullptr;
 }
@@ -1342,8 +1327,15 @@ bool p4_reject_active_log_mutation(const char *basename) {
 
 }  // namespace
 
+// An empty name is every QSO; otherwise one day's, refused for today's while transmitting, decoding or streaming.
 const char *porta_host_file_delete(const char *filename) {
-    return adif_delete_daily(filename, p4_reject_active_log_mutation);
+    if (!filename || filename[0] == '\0') {
+        return qso_log_store_clear();
+    }
+    if (p4_reject_active_log_mutation(filename)) {
+        return "active log locked";
+    }
+    return qso_log_store_delete_day(qso_log_day_of(filename));
 }
 
 // The host half of the sidekick's factory reset. No restart: a P4 reset can leave the QMX
@@ -1358,8 +1350,7 @@ const char *porta_host_factory_reset(uint8_t flags) {
         return "storage unavailable";
     }
     if (flags & PORTA_FACTORY_RESET_LOGS) {
-        // An empty name is "every daily log", which the lock callback never refuses.
-        if (const char *why = adif_delete_daily("", p4_reject_active_log_mutation)) {
+        if (const char *why = qso_log_store_clear()) {
             return why;
         }
     }
@@ -1377,13 +1368,7 @@ const char *porta_host_factory_reset(uint8_t flags) {
 
 namespace {
 
-constexpr int kQsoBrowseLinesPerTick = 16;
-
-StorageStream *s_porta_read_stream = nullptr;
-QsoBrowsePager s_porta_read_pager;
 std::vector<QsoBrowseBand> s_porta_read_bands;
-bool s_porta_read_active = false;
-int64_t s_porta_read_start_us = 0;  // timed for the QSO store's before-and-after
 
 void fill_browse_bands(void) {
     ensure_seeded();
@@ -1398,57 +1383,31 @@ void fill_browse_bands(void) {
 
 }  // namespace
 
+// One page of a day's QSOs from the store, sent at once, then ACKed. Each record goes through the same pager
+// the daily files did, so its row is what the QSOs tab has always read (docs/architecture/logging.md, The
+// four-place field chain).
 const char *porta_host_file_read_begin(const char *filename, uint16_t skip, uint8_t take) {
     if (!filename || filename[0] == '\0' || take == 0) {
         return "malformed";
     }
-    if (s_porta_read_stream) {
-        storage_stream_close(s_porta_read_stream);
-        s_porta_read_stream = nullptr;
-        s_porta_read_active = false;
-    }
-    s_porta_read_stream = storage_stream_open(filename, StorageOpenMode::READ);
-    if (!s_porta_read_stream) {
+    const uint32_t date = qso_log_day_of(filename);
+    if (date == 0) {
         return "open failed";
     }
-    s_porta_read_start_us = esp_timer_get_time();
-    qso_browse_pager_reset(&s_porta_read_pager, skip, take);
+    if (!qso_log_store_ready()) {
+        return "log unavailable";
+    }
+    const int64_t start_us = esp_timer_get_time();  // timed for the QSO store's before-and-after
+    std::vector<std::string> records;
+    qso_log_store_day_records(date, skip, take, &records);
+    QsoBrowsePager pager;
+    qso_browse_pager_reset(&pager, 0, take);
     fill_browse_bands();
-    s_porta_read_active = true;
-    ESP_LOGI(TAG, "FILE_READ begin %s skip=%u take=%u", filename, (unsigned)skip,
-             (unsigned)take);
-    return nullptr;
-}
-
-void porta_p4_file_tick(void) {
-    if (!s_porta_read_active || !s_porta_read_stream) {
-        return;
+    for (const std::string &fields : records) {
+        qso_browse_pager_feed(&pager, fields + "<eor>", s_porta_read_bands.data(),
+                              static_cast<int>(s_porta_read_bands.size()));
     }
-    char line[512];
-    int n = 0;
-    bool more = true;
-    while (n < kQsoBrowseLinesPerTick) {
-        if (!storage_stream_read_line(s_porta_read_stream, line, sizeof(line))) {
-            more = false;
-            break;
-        }
-        ++n;
-        if (!qso_browse_pager_feed(&s_porta_read_pager, std::string(line),
-                                   s_porta_read_bands.data(),
-                                   static_cast<int>(s_porta_read_bands.size()))) {
-            more = false;
-            break;
-        }
-    }
-    if (more) {
-        return;
-    }
-
-    storage_stream_close(s_porta_read_stream);
-    s_porta_read_stream = nullptr;
-    s_porta_read_active = false;
-
-    for (const QsoLogEntry &e : s_porta_read_pager.entries) {
+    for (const QsoLogEntry &e : pager.entries) {
         porta_qso_entry_row_t row = {};
         std::snprintf(row.time_on, sizeof(row.time_on), "%s", e.time_on.c_str());
         std::snprintf(row.band, sizeof(row.band), "%s", e.band.c_str());
@@ -1467,7 +1426,7 @@ void porta_p4_file_tick(void) {
         porta_emit_file_entry(row);
     }
     porta_emit_ack(PORTA_MSG_FILE_READ);
-    ESP_LOGI(TAG, "FILE_READ done entries=%u skip=%d take=%d in %lld us",
-             (unsigned)s_porta_read_pager.entries.size(), s_porta_read_pager.skip, s_porta_read_pager.take,
-             (long long)(esp_timer_get_time() - s_porta_read_start_us));
+    ESP_LOGI(TAG, "FILE_READ %s entries=%u skip=%u take=%u in %lld us", filename, (unsigned)pager.entries.size(),
+             (unsigned)skip, (unsigned)take, (long long)(esp_timer_get_time() - start_us));
+    return nullptr;
 }

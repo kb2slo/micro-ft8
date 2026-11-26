@@ -24,7 +24,7 @@ The daily station. Headless is the only mode: the module has no display, touch o
   * **The station call** is the main loop's (`g_call`). The decode task tests decodes against its own copy, which the main loop sets whenever the call changes (`decode_pipeline_set_my_call()`, under a mutex), never against `g_call` itself.
   * **The soft clock** is one atomic value, safe from any task ([time.md](time.md)). The decode task steps it; the main loop sets it from the phone.
   * **Still shared, unlocked:** the `decode_tx_state` flags, the designed hand-shake between the two tasks (one writer per field, none wider than one 32-bit write); and the callsign hash table, which decode fills and TX encoding reads, kept apart only because the TX trigger waits for the decode.
-* **Flash layout** (`poe_p4/partitions.csv`, 16 MB): `nvs`, `otadata`, `phy_init`, two 4 MB app slots (`ota_0` at `0x20000`, `ota_1`), and a 3 MB LittleFS `storage` partition, which holds `Station.txt` and the daily `.adi` files. There is no factory slot: a flash over USB writes `ota_0` and resets `otadata` to boot it, and an update over Port A writes whichever slot is not running (**Firmware updates**). The table is written only over USB.
+* **Flash layout** (`poe_p4/partitions.csv`, 16 MB): `nvs`, `otadata`, `phy_init`, two 4 MB app slots (`ota_0` at `0x20000`, `ota_1`), and a 3 MB LittleFS `storage` partition, which holds `Station.txt` and the QSO log's journal, `qso.jrn` ([logging.md](logging.md), **The store on the main board**). There is no factory slot: a flash over USB writes `ota_0` and resets `otadata` to boot it, and an update over Port A writes whichever slot is not running (**Firmware updates**). The table is written only over USB.
 
 ### Firmware updates
 

@@ -4,7 +4,7 @@ How a QSO becomes an ADIF record, how the record's fields cross Port A, and how 
 
 ## The writer
 
-`adif_log_entry()` (`components/qso_log/adif_logger.cpp`) is the one function that logs a completed QSO — `poe_p4/main/porta_host.cpp` builds an `AdifStationSnapshot` from `s_station` and hands it over. It:
+`adif_log_entry()` (`components/qso_log/adif_logger.cpp`) is the one function that logs a completed QSO, as a record in the station's QSO store (**The store on the main board**, below) — `poe_p4/main/porta_host.cpp` builds an `AdifStationSnapshot` from `s_station` and hands it over. It:
 
 * Expands `/Radio`/`/Grid` comment macros (`expand_comment_macros()`) against the radio's name and the station's grid. The name is the first word of the radio's own band version (`adif_radio_name()`, from `radio_config_t::model`: `QMX 60-15m` gives QMX, `QMX+ 160-6m` QMX+), and QMX before the radio has been read, since only the QMX transmits.
 * Takes the QSO's mode from its autoseq entry, FT8 or FT4 ([autoseq.md](autoseq.md), **The queue**), and its `FREQ` from that mode's dial, as WSJT-X logs the dial: an FT4 QSO beside FT8 logs FT4's (14.080 on 20 m), FT8's plus the band's FT4 offset (`porta_p4_station_ft4_dial_offset_hz()`). `adif_freq_mhz()` writes MHz with at least three decimals and more only where the dial has them, so 40 m FT4's 7.0475 is not rounded and every FT8 record reads as before.
@@ -16,12 +16,24 @@ How a QSO becomes an ADIF record, how the record's fields cross Port A, and how 
 
 **Not yet built** (epic [I18](../roadmap/activator-mode.md), **Later** and row [w5nj](../ROADMAP.md#w5nj)): `MY_GRIDSQUARE` still logs at 4 characters (`grid_ft8_4()`, `poe_p4/main/porta_host.cpp`), not the 6 or 8 ADIF allows. `MY_STATE` and the other station's reference (`POTA_REF`/`SOTA_REF`, for park-to-park and summit-to-summit) are not logged: neither has a data source yet.
 
+## The store on the main board
+
+Every QSO the station logs is a record with an ID in the QSO store (`components/qso_store/`, its format in `include/qso_store.h`): one append-only journal, `qso.jrn` on `storage`, held whole in PSRAM with an index beside it, so every read is answered from memory. `components/qso_log/qso_log_store.cpp` is the station's one copy of it, called only from the main loop (which logs QSOs and answers Port A) and at boot. The plan for what the store answers next: epic [I32](../roadmap/qso-store.md).
+
+* **At boot, before decoding starts** (`qso_log_store_start()`, `main.cpp`): the journal is read into its buffer and loaded. A write cut short leaves bytes after the last whole entry, and the file is cut back to it; damaged entries inside it are passed over and counted. A journal this build cannot read leaves the station not logging, and the file untouched, rather than written over. The boot log says what it did: `qso.jrn loaded: <n> QSOs, <bytes> bytes, in <ms> ms`.
+* **With no journal, the daily files are converted once** (by exception, [qso-store.md](../roadmap/qso-store.md), **Decided**): every `YYYYMMDD.adi`, oldest first so IDs follow the order QSOs were logged, each record through `qso_store_add()`. The journal is built in RAM and written once (temporary file, then rename), and only then are the daily files deleted, and only when every record in them was taken: one refused (no call, too long) keeps them all, and the log names it. Whether they were all taken is kept in the journal (`converted`), so a cut between the journal's write and the files' deletion is finished at the next start. With no daily files either, the journal starts empty.
+* **Logging a QSO** appends one entry (`qso_log_store_add()`). An append is all or nothing: one that fails partway is cut back to the file's length before (`storage_file_append()`), since the store's offsets must match the file's. A QSO not logged is a warning on the console, as a failed day-file write was.
+* **The QSOs tab still asks by day**, so the wire is unchanged: `FILE_LIST` answers the days holding the station's own QSOs, newest first, named as the daily files were (`20261125.adi`); `FILE_READ` a page of one day's in the order logged, each record put through the same row pager the daily files went through, so the row is byte for byte what it was. Both are answered whole in one pass of the main loop, and log how long (`FILE_READ <day> entries=<n> ... in <us> us`).
+* **Deletes:** a day's delete removes its QSOs (one journal entry each), refused for today's while transmitting, decoding or streaming, as before. Clearing the log (Clear all, and the factory reset's) writes a new, empty journal with a new identity in place of the old, and deletes any daily file a partial conversion left.
+* **Sizes:** the buffers are static in PSRAM ([memory.md](memory.md)), the journal's sized to `storage` (3 MB), so the flash fills before the buffer does, and the QSOs tab's free-space line is the limit's warning. A record is 209 to 235 bytes as the station writes it, about 13,000 QSOs.
+* **Measured** (`test_apps/qso_store_bench`, 2026-11-25, on the P4): load costs about 0.27 µs per journal byte, 56 ms for 1,000 of our QSOs; a call's QSOs read in 11 µs for one worked five times; one pass over the index, 54 µs at 1,000 QSOs, 7 ms at 19,000, when the index no longer fits the L2 cache.
+
 ## The four-place field chain
 
 **Export is rebuilt, not copied.** `FILE_READ` never ships raw ADIF (`components/porta_proto/include/porta_proto.h`'s own reasoning); the browser rebuilds each line from parsed fields. A field the operator needs in an exported file has to exist in all four places, in order:
 
 1. **The writer** — `adif_log_entry()`/`adif_format_log_record()` above.
-2. **The reader** — `components/qso_log/qso_browse.cpp`'s `parse_record_line()` re-parses each stored ADIF line (tag-by-tag, honoring ADIF's own declared byte length) into a `QsoLogEntry`, for both the Log tab's display and export.
+2. **The reader** — `components/qso_log/qso_browse.cpp`'s `parse_record_line()` re-parses each stored record (the store's fields, **The store on the main board**) (tag-by-tag, honoring ADIF's own declared byte length) into a `QsoLogEntry`, for both the Log tab's display and export.
 3. **The Port A wire row** — `porta_qso_entry_row_t` (`components/porta_proto/include/porta_proto.h`), a length-prefixed field list `porta_proto_encode_file_entry_row()`/`porta_proto_parse_file_entry_row()` (`components/porta_proto/porta_proto.c:880`/`:951`) carry over `FILE_READ`. Adding a field is a breaking wire change (`PORTA_PROTO_VERSION` bump, `porta_proto.h:63`'s own rule) since the field count is implicit in the byte stream's own order, not tagged.
 4. **The JS builder** — `webapp/app/app.html`'s `buildAdifRecord()` (`app.html:3674`) rebuilds the ADIF line from the row's fields, in the same order as `adif_format_log_record()`.
 

@@ -1,6 +1,6 @@
 # Time: one soft clock, set by whatever knows UTC
 
-FT8 needs UTC. Slots start on UTC boundaries (15 s for FT8, 7.5 s for FT4), and log stamps and daily log files are UTC dates. Decode tolerates only a couple of seconds of error: the candidate search looks for a signal between 1.6 s before and 3.2 s after capture starts (`time_offset` −10…20 blocks in `ft8_lib`'s `decode.c`). So a clock that is grossly wrong produces no decodes, and nothing on the air can correct it. This doc covers where the clock comes from and how it stays right. Code: `components/rtc_core/`, plus the callers named below.
+FT8 needs UTC. Slots start on UTC boundaries (15 s for FT8, 7.5 s for FT4), and log stamps and the log's days are UTC dates. Decode tolerates only a couple of seconds of error: the candidate search looks for a signal between 1.6 s before and 3.2 s after capture starts (`time_offset` −10…20 blocks in `ft8_lib`'s `decode.c`). So a clock that is grossly wrong produces no decodes, and nothing on the air can correct it. This doc covers where the clock comes from and how it stays right. Code: `components/rtc_core/`, plus the callers named below.
 
 ## One clock
 
