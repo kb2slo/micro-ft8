@@ -1,0 +1,5 @@
+# The scans run for tens of ms without yielding; the task watchdog would fire on the idle task.
+CONFIG_ESP_TASK_WDT_EN=n
+CONFIG_PARTITION_TABLE_CUSTOM=y
+# std::string per record read; the default main stack is tight for that.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384

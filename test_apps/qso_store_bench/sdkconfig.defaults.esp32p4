@@ -1,0 +1,13 @@
+# Mirrors poe_p4/sdkconfig.defaults: the U213 is v1.3 silicon (esptool, 2026-09-17), 16 MB flash.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+CONFIG_ESP32P4_REV_MIN_100=y
+# Same table as the firmware, so flashing only the app slot leaves nvs and the storage partition alone.
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="../../poe_p4/partitions.csv"
+
+# PSRAM as the firmware: the store's buffers in EXT_RAM_BSS, as the firmware's would be.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_HEX=y
+CONFIG_SPIRAM_SPEED_200M=y
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y

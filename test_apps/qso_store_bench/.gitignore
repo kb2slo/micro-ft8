@@ -1,0 +1,5 @@
+build*/
+sdkconfig
+sdkconfig.old
+host/qso_store_bench_host
+*.log
