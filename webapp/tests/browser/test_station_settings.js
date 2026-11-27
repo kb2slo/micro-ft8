@@ -5,7 +5,7 @@
 // change them and is put back; the QRZ key is masked on every open config read, read whole only with the
 // token, and sent whole to the relay, which is stood in for, by a paired browser alone.
 'use strict';
-const { run, check, until } = require('./harness');
+const { run, check, until, TOKEN } = require('./harness');
 
 const KEY1 = 'WXYZ-1234-5678-ABCD';
 const KEY2 = 'QQQQ-RRRR-SSSS-9876';
@@ -122,8 +122,14 @@ run(async (st) => {
   await A.evaluate(() => loadConfig());
   check('A\'s switch reads On', (await A.inputValue('#qrzLive')) === '1');
 
-  // The browser that is not paired has nothing to send QRZ.
+  // The browser that is not paired cannot reach QRZ. With nothing unsent it would read Up to date from the
+  // station alone (test_qrz_marks.js), so one QSO is marked unsent again, as a write-back that never reached
+  // the station leaves it.
+  const unmark = () => fetch(st.origin + '/api/log/entries?id=1', { method: 'PATCH', headers: { 'X-MicroFT8-Token': TOKEN },
+    body: '<app_qrzlog_logid:0><qrzcom_qso_upload_status:0>' });
+  await unmark();
   await C.evaluate(() => { qrz.result = null; showView('log'); return loadConfig().catch(() => {}); });
+  await until(() => C.evaluate(() => qrz.phase === 'idle'), 10000);
   await C.evaluate(() => qrzRun(false, true));
   check('C\'s row asks to pair', (await C.textContent('#qrzRowText')) === 'Pair this browser to reach QRZ', await C.textContent('#qrzRowText'));
   check('C made no relay call', C.relayCalls.length === 0, C.relayCalls);
@@ -139,6 +145,8 @@ run(async (st) => {
   check('the new key replaces the old, sending off', s2.qrz_key === 'xxxxxxxxxxxxxxx9876' && s2.qrz_live === '', s2);
   await A.evaluate(() => loadConfig());
   check('A\'s field shows the new mask', (await A.inputValue('#qrzKey')) === 'xxxxxxxxxxxxxxx9876', await A.inputValue('#qrzKey'));
+  // A run asks QRZ only for what the station holds unsent.
+  await unmark();
   const n = A.relayCalls.length;
   await A.evaluate(() => { qrz.result = null; return qrzRun(false, true); });
   const fresh = A.relayCalls.slice(n);

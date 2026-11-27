@@ -779,7 +779,8 @@ a.navrow{text-decoration:none}
       <a id=logClearAll class="dlink dlink-danger" href=#>Clear all ADI files</a>
     </div>
     <!-- The operator's QRZ logbook against this log (docs/architecture/webapp.md, QRZ sync): what
-         qrzRowModel() says, a tap to look again, a quiet Send when there is something to send, and
+         qrzRowModel() says (a tap opens the key or pairing when one is wanted, and otherwise does nothing:
+         it looks by itself), a quiet Send when there is something to send, and
          a gear to the key and the switch on Settings' Station page. Three buttons side by side, since
          a button cannot hold another. -->
     <div id=qrzLine>
@@ -8348,8 +8349,8 @@ function kickLogRefresh(loggedMs) {
 // The config read open to anyone carries the key masked; the key itself comes from GET /api/qrz_key,
 // with the token, once per key, and is held by this page only (qrzKeyWhole()).
 var QRZ_RELAY = 'https://micro-ft8.kalikstein.com';
-// { budget, clean: the last day a run left nothing unsent, for: the masked key that day is for }. Per
-// browser: the budget is this page's spending of the relay's calls.
+// { budget, for: the masked key the budget is for }. Per browser: the budget is this page's spending of the
+// relay's calls. What has gone to QRZ is the station's, marked on its records.
 var QRZ_STATE_STORE = 'microft8_qrz_state_v1';
 var QRZ_AFTER_QSO_MS = 6000;
 var QRZ_CALL_TIMEOUT_MS = 20000;
@@ -8369,9 +8370,10 @@ function qrzQsoSeen(loggedMs, readAtMs) {
   return loggedMs > 0 && readAtMs > loggedMs + QRZ_CLOCK_MARGIN_MS;
 }
 
-// What the QRZ row reads, whether it is amber, the button it shows and what a tap does:
-// 'setup' opens the key on Settings, 'send' sends, 'look' looks again. Pure, so
-// webapp/tests/test_qrz_row.js runs it.
+// What the QRZ row reads, whether it is amber, the button it shows and what a tap on the row does: 'setup'
+// opens the key on Settings, 'pair' the pairing page, and otherwise nothing, since the row looks by itself
+// and the gear beside it goes to Settings (maintainer, 2026-11-26). Pure, so webapp/tests/test_qrz_row.js
+// runs it.
 function qrzRowModel(s) {
   var row = function (text, tap, tone, glyph, act) {
     return { text: text, tap: tap || '', tone: tone || '', glyph: glyph || '', act: act || '', chev: tap === 'setup' };
@@ -8381,29 +8383,28 @@ function qrzRowModel(s) {
   if (s.phase === 'sending') return row('Sending ' + s.sending + '\u2026');
   if (s.phase === 'looking') return row('Checking\u2026');
   var r = s.result;
-  if (!r) return row('Not checked yet', 'look');
+  if (!r) return row('Not checked yet');
   if (!r.ok) {
     switch (r.error) {
       case 'auth': return amber('QRZ refused the key', 'setup');
       case 'pair': return amber('Pair this browser to reach QRZ', 'pair');
-      case 'unreachable': return amber('Cannot reach QRZ', 'look');
-      case 'station': return amber('No reply from the station', 'look');
-      case 'wait': return amber('Try again in ' + r.waitMin + ' min', 'look');
-      case 'too_many': return amber('Too many QSOs at QRZ to check', 'look');
-      case 'qrz': return amber('QRZ: ' + String(r.reason || 'refused').slice(0, 60), 'look');
-      default: return amber('Could not check', 'look');
+      case 'unreachable': return amber('Cannot reach QRZ');
+      case 'station': return amber('No reply from the station');
+      case 'wait': return amber('Try again in ' + r.waitMin + ' min');
+      case 'too_many': return amber('Too many QSOs at QRZ to check');
+      case 'qrz': return amber('QRZ: ' + String(r.reason || 'refused').slice(0, 60));
+      default: return amber('Could not check');
     }
   }
   // A key for another callsign's logbook: every QSO here is logged under a call that is not its own.
-  if (r.otherCall > 0 && r.held === 0 && r.left === 0) return amber('This key is ' + r.logbook + '\'s logbook', 'setup');
+  if (r.otherCall > 0 && !r.atQrz && r.left === 0) return amber('This key is ' + r.logbook + '\'s logbook', 'setup');
   // QSOs logged since the last run, waiting out the gap between runs: never "Up to date" while one waits.
-  // No Send: they go by themselves at the time said, and a tap on the row, a look, sends them sooner.
+  // No Send: they go by themselves at the time said.
   if (s.live && s.waiting > 0) {
-    return row(s.waiting + (s.waiting === 1 ? ' QSO waiting' : ' QSOs waiting') + (s.dueText ? ' \u00b7 sends at ' + s.dueText : ''),
-               'look');
+    return row(s.waiting + (s.waiting === 1 ? ' QSO waiting' : ' QSOs waiting') + (s.dueText ? ' \u00b7 sends at ' + s.dueText : ''));
   }
-  if (r.left > 0) return row(r.left + ' to send', 'look', '', '', 'Send');
-  return row(s.live ? 'Up to date \u00b7 sends as you log' : 'Up to date', 'look', '', '\u2713');
+  if (r.left > 0) return row(r.left + ' to send', '', '', '', 'Send');
+  return row(s.live ? 'Up to date \u00b7 sends as you log' : 'Up to date', '', '', '\u2713');
 }
 
 // The line under the key on Settings: what QRZ said of it. Pure, tested with qrzRowModel().
@@ -8484,6 +8485,7 @@ function renderQrzRow() {
   document.getElementById('qrzGear').hidden = !cred.key;  // with no key the row itself opens the key
   document.getElementById('qrzRowChev').hidden = !m.chev;
   rowEl.dataset.tap = m.tap;
+  if (m.tap) rowEl.removeAttribute('aria-disabled'); else rowEl.setAttribute('aria-disabled', 'true');
   var line = qrzKeyLineModel(qrz.keyLine);
   var lineEl = document.getElementById('qrzKeyLine');
   lineEl.hidden = !line.text;
@@ -8504,37 +8506,43 @@ async function qrzRelay(path, body, timeoutMs) {
   }
 }
 
-// The station's rows from the day files a run reads, each with its file's date. Its own walk of the
-// log, apart from the list's, so a sync neither waits on what the list has loaded nor moves it.
-async function qrzReadRows(sinceDay) {
-  var files = [];
-  for (var skip = 0; ;) {
-    var j = await logFetchJson('/api/log/files?skip=' + skip + '&take=30');
-    if (!j.ok) throw new Error(j.why || 'files failed');
-    var page = j.files || [];
-    files = files.concat(page);
-    skip += page.length;
-    if (page.length < 30) break;
-  }
+// The station's own records QRZ lacks, newest first, each with its ID and date (webapp.md, QRZ sync),
+// and how many records there are in all and unsent. Its own walk of the log, apart from the list's.
+async function qrzReadRows() {
+  var all = await logFetchJson('/api/log/entries?take=1');
+  if (!all.ok) throw new Error(all.why || 'entries failed');
   var rows = [];
-  var days = QrzSync.daysToRead(files, sinceDay);
-  for (var d = 0; d < days.length; d++) {
-    for (var at = 0; ;) {
-      var e = await logFetchJson('/api/log/entries?file=' + encodeURIComponent(days[d]) + '&skip=' + at + '&take=' + LOG_ENTRY_FETCH);
-      if (!e.ok) throw new Error(e.why || 'entries failed');
-      var got = e.entries || [];
-      for (var k = 0; k < got.length; k++) rows.push(Object.assign({}, got[k], { date: days[d].slice(0, 8) }));
-      at += got.length;
-      if (!got.length) break;  // not "fewer than asked": a page can come back short with more to follow
-    }
+  var unsent = 0;
+  for (var before = ''; ;) {
+    var e = await logFetchJson('/api/log/entries?unsent=1&take=' + LOG_ENTRY_FETCH + (before ? '&before=' + before : ''));
+    if (!e.ok) throw new Error(e.why || 'entries failed');
+    var got = e.entries || [];
+    unsent = e.total || 0;
+    rows = rows.concat(got);
+    // Not "fewer than asked": a page cut short says so, and carries on from its last row.
+    if (!got.length) break;
+    before = logCursorOf(got[got.length - 1]);
   }
-  return rows;
+  return { rows: rows, all: all.total || 0, unsent: unsent };
+}
+// The cursor after a row, for the next page: date, HHMM and ID.
+function logCursorOf(q) {
+  return (q.date || '0') + '.' + (String(q.time || '').replace(/\D/g, '').slice(0, 4) || '0') + '.' + q.id;
+}
+// Fields set on the station's record for a row: QRZ's ID and the upload mark (QrzSync.markFields()).
+async function qrzMark(q, fields) {
+  var r = await MicroFT8Pairing.authFetch('/api/log/entries?id=' + encodeURIComponent(q.id), { method: 'PATCH', body: fields, cache: 'no-store' });
+  if (r.status == 401) { MicroFT8Pairing.needsReauth(); throw new Error('pair'); }
+  var j = await r.json();
+  if (!r.ok || !j.ok) throw new Error(j.why || 'not marked');
 }
 
 // One run: a look, or with `send` a look and then the sending of everything QRZ lacks. With the
 // switch on, a look also sends the QSOs logged from the day it was turned on. `asked` is the
-// operator's tap, which does not wait out the gap between runs the app starts itself (QrzSync.mayRun()).
+// operator's Send, which does not wait out the gap between runs the app starts itself (QrzSync.mayRun()).
 // logged: started by a QSO just logged, which a run already under way may have read the log too early for.
+// The station is read first: when it holds nothing QRZ lacks under this logbook's call, the row says so
+// with no call to QRZ, the same on every browser.
 async function qrzRun(send, asked, logged) {
   var cred = qrzCred();
   if (cred.key && qrz.phase !== 'idle') {
@@ -8542,11 +8550,27 @@ async function qrzRun(send, asked, logged) {
     if (asked) qrz.queued = { send: !!send || !!(qrz.queued && qrz.queued.send) };
   }
   if (!cred.key || qrz.phase !== 'idle') { renderQrzRow(); return; }
+  qrz.phase = send ? 'sending' : 'looking';
+  qrz.readAt = Date.now();
+  qrz.sending = send && qrz.result ? qrz.result.left || 0 : 0;
+  renderQrzRow();
+  var read;
+  try {
+    read = await qrzReadRows();
+  } catch (e) {
+    return qrzFinish({ ok: false, error: 'station' });
+  }
+  var atStation = read.all - read.unsent;  // records the station already marks as at QRZ
+  if (cred.book && QrzSync.range(read.rows, cred.book) === null) {
+    return qrzFinish({ ok: true, left: 0, atQrz: atStation, logbook: cred.book,
+                       otherCall: read.rows.filter(function (q) { return String(q.station_callsign || '').toUpperCase() !== cred.book.toUpperCase(); }).length });
+  }
   var state = qrzState();
   // With nothing to show yet, the first look does not wait out the gap either: the row would otherwise
   // sit on "Not checked yet" for five minutes after the key's own check, or after a reload.
   var may = QrzSync.mayRun(state.budget, Date.now(), asked || !qrz.result);
   if (!may.ok) {
+    qrz.phase = 'idle';
     if (asked || !qrz.result) qrz.result = { ok: false, error: 'wait', waitMin: Math.max(1, Math.ceil(may.waitMs / 60000)) };
     // A QSO logged inside the gap is not left waiting for the next one: the run is made when the gap ends.
     if (cred.live && !asked && !qrz.timer) {
@@ -8556,44 +8580,42 @@ async function qrzRun(send, asked, logged) {
     renderQrzRow();
     return;
   }
-  qrz.phase = send ? 'sending' : 'looking';
-  qrz.readAt = Date.now();
-  qrz.sending = send && qrz.result ? qrz.result.left || 0 : 0;
-  renderQrzRow();
   var whole = await qrzKeyWhole();
   if (!whole.key) {
-    qrz.phase = 'idle';
-    qrz.result = { ok: false, error: whole.why };
     qrz.queued = null;  // it would find no key either
-    renderQrzRow();
-    return;
+    return qrzFinish({ ok: false, error: whole.why });
   }
   var r = await QrzSync.run({
     key: whole.key, logbook: cred.book || '', version: appServed,
     send: send || !!cred.live, sendFrom: send ? '' : cred.live || '',
     maxCalls: QrzSync.callsLeft(state.budget, Date.now()),
     relay: qrzRelay,
-    readRows: function () { return qrzReadRows(state.clean || ''); },
+    readRows: function () { return Promise.resolve(read.rows); },
+    mark: qrzMark,
+    today: utcDayFile().slice(0, 8),
     buildAdif: function (q) { return buildAdifRecord(q, q.date); }
   });
   state.budget = QrzSync.noteRun(state.budget, Date.now(), r.calls, r.ok);
-  if (r.ok && r.cleanThrough) state.clean = r.cleanThrough;
   qrzSaveState(state);
   if (r.error === 'budget') {
     var again = QrzSync.mayRun(state.budget, Date.now(), true);
     r = { ok: false, error: 'wait', waitMin: Math.max(1, Math.ceil(again.waitMs / 60000)) };
   } else {
     r.left = r.ok ? r.unsent : 0;
+    r.atQrz = atStation + r.held + r.sent + r.duplicates;
     r.otherCall = r.skipped.filter(function (x) { return x.why === 'callsign'; }).length;
     if (r.ok && !cred.book && r.logbook) {
       putConfigLine('qrz_book=' + r.logbook, 'Saving the QRZ logbook…', false).catch(function () { /* kept next run */ });
     }
     if (send && r.refused.length) failMsg('QRZ refused ' + r.refused[0].row.call + ': ' + (r.refused[0].reason || 'no reason given'));
   }
+  qrzFinish(r);
+}
+// A run's end: its result shown, and a run asked for meanwhile made now, as asked; it reads the log afresh,
+// so it also takes what `again` would have.
+function qrzFinish(r) {
   qrz.result = r;
   qrz.phase = 'idle';
-  // A run asked for meanwhile is made now, as asked; it reads the log afresh, so it also takes what `again`
-  // would have.
   if (qrz.queued) {
     var next = qrz.queued;
     qrz.queued = null;
@@ -8615,9 +8637,6 @@ document.getElementById('qrzRow').onclick = function () {
       showSetPage('station');
       showView('settings');
       document.getElementById('qrzKey').focus();
-      break;
-    case 'look':
-      qrzRun(false, true);
       break;
     case 'pair':
       showSetPage('pairing');

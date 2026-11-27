@@ -33,36 +33,36 @@ vm.runInContext(extractFunction(src, 'qrzRowModel'), ctx);
 vm.runInContext(extractFunction(src, 'qrzKeyLineModel'), ctx);
 vm.runInContext(/var QRZ_CLOCK_MARGIN_MS = \d+;/.exec(src)[0] + '\n' + extractFunction(src, 'qrzQsoSeen'), ctx);
 const row = (s) => JSON.parse(JSON.stringify(ctx.qrzRowModel(Object.assign({ key: true, live: false, phase: 'idle', sending: 0, result: null }, s))));
-const looked = (r) => ({ result: Object.assign({ ok: true, logbook: 'K1ABC', held: 92, left: 0, otherCall: 0 }, r) });
-const plain = { tone: '', glyph: '', act: '', chev: false };
+const looked = (r) => ({ result: Object.assign({ ok: true, logbook: 'K1ABC', atQrz: 92, left: 0, otherCall: 0 }, r) });
+const plain = { tap: '', tone: '', glyph: '', act: '', chev: false };
 
 // With no key the row leads to where one is typed, and is the only state with a chevron.
 assert.deepStrictEqual(row({ key: false }), Object.assign({}, plain, { text: 'Not set up', tap: 'setup', chev: true }));
 assert.deepStrictEqual(row({ key: false, phase: 'looking', result: looked({ left: 9 }).result }).text, 'Not set up', 'whatever else is held');
 
 // A key and nothing known yet; a look and a send in hand offer no tap.
-assert.deepStrictEqual(row({}), Object.assign({}, plain, { text: 'Not checked yet', tap: 'look' }));
+assert.deepStrictEqual(row({}), Object.assign({}, plain, { text: 'Not checked yet' }));
 assert.deepStrictEqual(row({ phase: 'looking' }), Object.assign({}, plain, { text: 'Checking…', tap: '' }));
 assert.deepStrictEqual(row({ phase: 'sending', sending: 55 }), Object.assign({}, plain, { text: 'Sending 55…', tap: '' }));
 assert.strictEqual(row(Object.assign({ phase: 'looking' }, looked({ left: 9 }))).act, '', 'no Send while a look runs');
 
 // What a look found: nothing to send, or how many, with the page's one button.
-assert.deepStrictEqual(row(looked({})), Object.assign({}, plain, { text: 'Up to date', tap: 'look', glyph: '✓' }));
-assert.deepStrictEqual(row(looked({ left: 55 })), Object.assign({}, plain, { text: '55 to send', tap: 'look', act: 'Send' }),
-  'Send is its own control beside the row; a tap on the row looks again');
+assert.deepStrictEqual(row(looked({})), Object.assign({}, plain, { text: 'Up to date', glyph: '✓' }));
+assert.deepStrictEqual(row(looked({ left: 55 })), Object.assign({}, plain, { text: '55 to send', act: 'Send' }),
+  'Send is its own control beside the row; a tap on the row does nothing');
 assert.deepStrictEqual(row(looked({ left: 1 })).text, '1 to send');
-assert.deepStrictEqual(row(looked({ held: 0, left: 0 })).text, 'Up to date', 'an empty log is up to date');
+assert.deepStrictEqual(row(looked({ atQrz: 0, left: 0 })).text, 'Up to date', 'an empty log is up to date');
 
 // With sending by itself on, an up-to-date row says so; anything older still shows its count and Send.
 assert.deepStrictEqual(row(Object.assign({ live: true }, looked({}))),
-  Object.assign({}, plain, { text: 'Up to date \u00b7 sends as you log', tap: 'look', glyph: '\u2713' }));
-assert.deepStrictEqual(row(Object.assign({ live: true }, looked({ left: 55 }))), Object.assign({}, plain, { text: '55 to send', tap: 'look', act: 'Send' }));
+  Object.assign({}, plain, { text: 'Up to date \u00b7 sends as you log', glyph: '\u2713' }));
+assert.deepStrictEqual(row(Object.assign({ live: true }, looked({ left: 55 }))), Object.assign({}, plain, { text: '55 to send', act: 'Send' }));
 assert.strictEqual(row({ live: true, result: { ok: false, error: 'unreachable' } }).text, 'Cannot reach QRZ', 'a problem reads the same');
 
 // A QSO logged with sending by itself on, waiting out the gap between runs, is never shown as up to date
 // (bench, 2026-11-20): the row counts what waits and when it goes, with no Send, since it goes by itself.
 const waiting = (n, extra) => row(Object.assign({ live: true, waiting: n, dueText: '9:08 AM' }, looked({}), extra || {}));
-assert.deepStrictEqual(waiting(1), Object.assign({}, plain, { text: '1 QSO waiting \u00b7 sends at 9:08 AM', tap: 'look' }));
+assert.deepStrictEqual(waiting(1), Object.assign({}, plain, { text: '1 QSO waiting \u00b7 sends at 9:08 AM' }));
 assert.strictEqual(waiting(3).text, '3 QSOs waiting \u00b7 sends at 9:08 AM');
 assert.strictEqual(waiting(1, { dueText: '' }).text, '1 QSO waiting', 'with no run waiting on the gap, no time is promised');
 assert.strictEqual(waiting(2, looked({ left: 55 })).text, '2 QSOs waiting \u00b7 sends at 9:08 AM', 'what waits is said before older QSOs');
@@ -81,23 +81,24 @@ assert.strictEqual(ctx.qrzQsoSeen(T, T + 11000), true, 'past the margin it is se
 assert.strictEqual(ctx.qrzQsoSeen(0, T), false, 'with no time from the station it counts as waiting');
 assert.strictEqual(ctx.qrzQsoSeen(T, 0), false, 'with no run yet it counts as waiting');
 
-// A problem is amber, in words and a glyph as well as the tint, and says what a tap will do about it.
-const amber = (text, tap) => Object.assign({}, plain, { text, tap, tone: 'amber', glyph: '!', chev: tap === 'setup' });
+// A problem is amber, in words and a glyph as well as the tint; a tap leads somewhere only when the fix is
+// there (the key, pairing), and otherwise the row looks again by itself.
+const amber = (text, tap) => Object.assign({}, plain, { text, tap: tap || '', tone: 'amber', glyph: '!', chev: tap === 'setup' });
 assert.deepStrictEqual(row({ result: { ok: false, error: 'auth' } }), amber('QRZ refused the key', 'setup'));
 // The key is on the station, and only a paired browser may read it whole: the row takes it to Pairing.
 assert.deepStrictEqual(row({ result: { ok: false, error: 'pair' } }), amber('Pair this browser to reach QRZ', 'pair'));
-assert.deepStrictEqual(row({ result: { ok: false, error: 'unreachable' } }), amber('Cannot reach QRZ', 'look'));
-assert.deepStrictEqual(row({ result: { ok: false, error: 'station' } }), amber('No reply from the station', 'look'));
-assert.deepStrictEqual(row({ result: { ok: false, error: 'wait', waitMin: 4 } }), amber('Try again in 4 min', 'look'));
-assert.deepStrictEqual(row({ result: { ok: false, error: 'too_many' } }), amber('Too many QSOs at QRZ to check', 'look'));
-assert.deepStrictEqual(row({ result: { ok: false, error: 'qrz', reason: 'invalid option' } }), amber('QRZ: invalid option', 'look'));
+assert.deepStrictEqual(row({ result: { ok: false, error: 'unreachable' } }), amber('Cannot reach QRZ'));
+assert.deepStrictEqual(row({ result: { ok: false, error: 'station' } }), amber('No reply from the station'));
+assert.deepStrictEqual(row({ result: { ok: false, error: 'wait', waitMin: 4 } }), amber('Try again in 4 min'));
+assert.deepStrictEqual(row({ result: { ok: false, error: 'too_many' } }), amber('Too many QSOs at QRZ to check'));
+assert.deepStrictEqual(row({ result: { ok: false, error: 'qrz', reason: 'invalid option' } }), amber('QRZ: invalid option'));
 assert.strictEqual(row({ result: { ok: false, error: 'qrz', reason: 'x'.repeat(200) } }).text.length, 'QRZ: '.length + 60, 'QRZ\'s words are kept to one line');
-assert.deepStrictEqual(row({ result: { ok: false, error: 'something new' } }), amber('Could not check', 'look'));
+assert.deepStrictEqual(row({ result: { ok: false, error: 'something new' } }), amber('Could not check'));
 
 // A key for another callsign's logbook: every QSO here is under a call that is not its own.
-assert.deepStrictEqual(row(looked({ logbook: 'W9OTHER', held: 0, left: 0, otherCall: 147 })), amber('This key is W9OTHER\'s logbook', 'setup'));
-assert.strictEqual(row(looked({ held: 80, left: 3, otherCall: 5 })).text, '3 to send', 'a few QSOs under another call do not make it the wrong logbook');
-assert.strictEqual(row(looked({ held: 80, left: 0, otherCall: 5 })).text, 'Up to date');
+assert.deepStrictEqual(row(looked({ logbook: 'W9OTHER', atQrz: 0, left: 0, otherCall: 147 })), amber('This key is W9OTHER\'s logbook', 'setup'));
+assert.strictEqual(row(looked({ atQrz: 80, left: 3, otherCall: 5 })).text, '3 to send', 'a few QSOs under another call do not make it the wrong logbook');
+assert.strictEqual(row(looked({ atQrz: 80, left: 0, otherCall: 5 })).text, 'Up to date');
 
 // The line under the key.
 const line = (s) => JSON.parse(JSON.stringify(ctx.qrzKeyLineModel(s)));

@@ -1408,6 +1408,8 @@ static void test_file_data_rows()
     }
 
     porta_qso_entry_row_t in = {};
+    in.id = 0xA1B2C3D4u;
+    in.date = 20261125;
     std::snprintf(in.time_on, sizeof(in.time_on), "19:04");
     std::snprintf(in.band, sizeof(in.band), "20m");
     std::snprintf(in.call, sizeof(in.call), "W1ABC");
@@ -1429,6 +1431,7 @@ static void test_file_data_rows()
     if (got.size() == 1) {
         porta_qso_entry_row_t out;
         check(porta_proto_parse_file_entry_row(&got[0], &out), "file_entry row parses");
+        check(out.id == 0xA1B2C3D4u && out.date == 20261125, "the record's ID and date round-trip");
         check(std::string(out.time_on) == "19:04", "time_on round-trips");
         check(std::string(out.band) == "20m", "band round-trips");
         check(std::string(out.call) == "W1ABC", "call round-trips");
@@ -1492,6 +1495,71 @@ static void test_file_data_rows()
     std::snprintf(bad_time.time_on, sizeof(bad_time.time_on), "1");
     check(porta_proto_encode_file_entry_row(&bad_time, buf, sizeof(buf)) == 0,
           "encode refuses a malformed time_on");
+}
+
+// A row with every field at its longest still fits one frame, and the page request, its total and the
+// field set round-trip.
+static void test_log_page_and_set()
+{
+    porta_decoder_t d;
+    porta_decoder_init(&d);
+    uint8_t buf[PORTA_PROTO_MAX_FRAME];
+    porta_qso_entry_row_t big = {};
+    big.id = 0xFFFFFFFFu;
+    big.date = 99991231;
+    std::snprintf(big.time_on, sizeof(big.time_on), "23:59");
+    std::memset(big.band, 'B', PORTA_BAND_MAX);
+    std::memset(big.call, 'C', PORTA_CALLSIGN_MAX);
+    std::memset(big.grid, 'G', PORTA_GRID_MAX);
+    std::memset(big.freq, '1', PORTA_FREQ_MAX);
+    std::memset(big.my_grid, 'M', PORTA_GRID_MAX);
+    std::memset(big.comment, 'x', PORTA_COMMENT_MAX);
+    std::memset(big.mode, 'F', PORTA_MODE_MAX);
+    std::memset(big.station_callsign, 'S', PORTA_CALLSIGN_MAX);
+    std::memset(big.my_pota_ref, 'P', PORTA_POTA_REF_MAX);
+    std::memset(big.my_sota_ref, 'T', PORTA_SOTA_REF_MAX);
+    size_t n = porta_proto_encode_file_entry_row(&big, buf, sizeof(buf));
+    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    porta_qso_entry_row_t out;
+    check(got.size() == 1 && porta_proto_parse_file_entry_row(&got[0], &out) && out.id == 0xFFFFFFFFu &&
+              std::string(out.my_sota_ref) == std::string(PORTA_SOTA_REF_MAX, 'T'),
+          "the longest row fits a frame and round-trips");
+
+    porta_log_page_req_t req = {PORTA_LOG_PAGE_UNSENT | PORTA_LOG_PAGE_DATE, 20261125, 20261124, 2359, 77, 40};
+    porta_decoder_init(&d);
+    n = porta_proto_encode_log_page_req(&req, buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    porta_log_page_req_t back = {};
+    check(got.size() == 1 && got[0].type == PORTA_MSG_LOG_PAGE && porta_proto_parse_log_page_req(&got[0], &back) &&
+              back.flags == req.flags && back.date == 20261125 && back.before_date == 20261124 &&
+              back.before_time == 2359 && back.before_id == 77 && back.take == 40,
+          "the page request round-trips");
+    req.take = 0;
+    check(porta_proto_encode_log_page_req(&req, buf, sizeof(buf)) == 0, "a page of none is refused");
+
+    porta_decoder_init(&d);
+    n = porta_proto_encode_file_total_row(1234, buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    uint32_t total = 0;
+    check(got.size() == 1 && porta_proto_parse_file_total_row(&got[0], &total) && total == 1234 &&
+              !porta_proto_parse_file_entry_row(&got[0], &out),
+          "the total round-trips and is not a row");
+
+    const std::string fields = "<app_qrzlog_logid:10>1234567890<qrzcom_qso_upload_status:1>Y";
+    porta_decoder_init(&d);
+    n = porta_proto_encode_log_set(42, fields.data(), fields.size(), buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    uint32_t id = 0;
+    char text[PORTA_LOG_SET_FIELDS_MAX + 1];
+    size_t len = 0;
+    check(got.size() == 1 && porta_proto_parse_log_set(&got[0], &id, text, &len) && id == 42 &&
+              std::string(text, len) == fields,
+          "the field set round-trips");
+    const std::string longest(PORTA_LOG_SET_FIELDS_MAX, 'x');
+    check(porta_proto_encode_log_set(42, longest.data(), longest.size(), buf, sizeof(buf)) != 0 &&
+              porta_proto_encode_log_set(42, longest.data(), longest.size() + 1, buf, sizeof(buf)) == 0,
+          "fields up to the frame, and no more");
+    check(porta_proto_encode_log_set(0, fields.data(), fields.size(), buf, sizeof(buf)) == 0, "record 0 is refused");
 }
 
 static void test_sweep_event()
@@ -2059,6 +2127,7 @@ int main()
     test_radio_state_event();
     test_activity_event();
     test_undecoded_event();
+    test_log_page_and_set();
     test_sweep_event();
     test_tx_hud_event();
     test_action_set_clock();

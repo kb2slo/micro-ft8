@@ -40,6 +40,9 @@ static const char* kToken = "sim-station-token";
 
 static std::map<std::string, std::string> g_cfg;
 static std::string g_log_file;
+// Fields set on a QSO by PATCH /api/log/entries, by its ID (its place in the log, from 1), as the QSO
+// store's patch keeps them: the newest value of each field wins.
+static std::map<uint32_t, std::map<std::string, std::string>> g_log_marks;
 static Scenario g_scenario;
 
 static std::string json_escape(const std::string& in)
@@ -154,6 +157,8 @@ static std::string log_files_json()
     return "{\"ok\":true,\"files\":[\"" + g_log_file + "\"]}";
 }
 
+static std::string log_row_json(uint32_t id);
+
 static std::string log_entries_json(const std::string& file, unsigned skip, unsigned take)
 {
     if (file != g_log_file) {
@@ -175,8 +180,20 @@ static std::string log_entries_json(const std::string& file, unsigned skip, unsi
         }
         first = false;
         emitted++;
-        const SimLogEntry& e = *it;
-        body += "{\"time\":\"" + json_escape(e.time_on) + "\",\"band\":\"20m\",\"call\":\"";
+        body += log_row_json((uint32_t)(it - g_scenario.log.begin()) + 1u);
+    }
+    body += "]}";
+    return body;
+}
+
+// One QSO as the sidekick's /api/log/entries row gives it, with its record's ID and date.
+static std::string log_row_json(uint32_t id)
+{
+    std::string body;
+    {
+        const SimLogEntry& e = g_scenario.log[id - 1];
+        body += "{\"id\":" + std::to_string(id) + ",\"date\":\"" + g_log_file.substr(0, 8) + "\",";
+        body += "\"time\":\"" + json_escape(e.time_on) + "\",\"band\":\"20m\",\"call\":\"";
         body += json_escape(e.call);
         body += "\",\"rst_sent\":";
         body += std::to_string(e.rst_sent);
@@ -188,8 +205,65 @@ static std::string log_entries_json(const std::string& file, unsigned skip, unsi
         body += json_escape(e.station_call);
         body += "\",\"my_pota_ref\":\"\",\"my_sota_ref\":\"\"}";
     }
-    body += "]}";
     return body;
+}
+
+// Whether QRZ holds a QSO by the station's marks, as the QSO store's unsent filter reads them.
+static bool log_sent(uint32_t id)
+{
+    const auto it = g_log_marks.find(id);
+    if (it == g_log_marks.end()) return false;
+    const auto logid = it->second.find("app_qrzlog_logid");
+    const auto up = it->second.find("qrzcom_qso_upload_status");
+    return (logid != it->second.end() && logid->second != "" && logid->second != "0") ||
+           (up != it->second.end() && (up->second == "Y" || up->second == "y"));
+}
+
+// A page of the log newest first by time and ID (every QSO is today's), older than `before`
+// ("<date>.<HHMM>.<id>"), only those QRZ lacks with `unsent`, with how many match in all: the sidekick's
+// LOG_PAGE route.
+static std::string log_page_json(bool unsent, const std::string& before, unsigned take)
+{
+    struct Key {
+        uint32_t when;
+        uint32_t id;
+    };
+    std::vector<Key> keys;
+    for (size_t i = 0; i < g_scenario.log.size(); ++i) {
+        const uint32_t id = (uint32_t)i + 1u;
+        if (unsent && log_sent(id)) continue;
+        const std::string& t = g_scenario.log[i].time_on;
+        const uint32_t hhmm = t.size() >= 5 ? (uint32_t)std::strtoul((t.substr(0, 2) + t.substr(3, 2)).c_str(), nullptr, 10) : 0;
+        keys.push_back({hhmm, id});
+    }
+    std::sort(keys.begin(), keys.end(), [](const Key& a, const Key& b) { return a.when != b.when ? a.when > b.when : a.id > b.id; });
+    const size_t total = keys.size();
+    unsigned long bd = 0, bt = 0, bid = 0;
+    const bool cursor = !before.empty() && std::sscanf(before.c_str(), "%lu.%lu.%lu", &bd, &bt, &bid) == 3;
+    std::string body = "{\"ok\":true,\"entries\":[";
+    unsigned emitted = 0;
+    for (const Key& k : keys) {
+        if (cursor && !(k.when < bt || (k.when == bt && k.id < bid))) continue;
+        if (emitted >= take) break;
+        body += (emitted++ ? "," : "") + log_row_json(k.id);
+    }
+    body += "],\"total\":" + std::to_string(total) + "}";
+    return body;
+}
+
+// The fields of `<name:len>value...`, names lower case.
+static void log_mark(uint32_t id, const std::string& fields)
+{
+    size_t i = 0;
+    while ((i = fields.find('<', i)) != std::string::npos) {
+        const size_t colon = fields.find(':', i), close = fields.find('>', i);
+        if (colon == std::string::npos || close == std::string::npos || colon > close) break;
+        std::string name = fields.substr(i + 1, colon - i - 1);
+        for (char& c : name) c = (char)std::tolower((unsigned char)c);
+        const size_t len = std::strtoul(fields.c_str() + colon + 1, nullptr, 10);
+        g_log_marks[id][name] = fields.substr(close + 1, len);
+        i = close + 1 + len;
+    }
 }
 
 static std::map<std::string, std::string> parse_query(const std::string& q)
@@ -370,7 +444,7 @@ static std::string handle(const std::string& method, const std::string& url,
         auto it = headers.find("x-microft8-token");
         return it != headers.end() && it->second == kToken;
     };
-    const bool write = method == "POST" || method == "PUT" || method == "DELETE";
+    const bool write = method == "POST" || method == "PUT" || method == "DELETE" || method == "PATCH";
     if (write && path != "/api/pairing-token" && !token_ok()) {
         *status = 401;
         return "{\"ok\":false,\"why\":\"unauthorized\"}";
@@ -485,7 +559,19 @@ static std::string handle(const std::string& method, const std::string& url,
             take = 6;
         }
         const std::string file = query.count("file") ? query.at("file") : "";
+        if (file.empty()) {
+            const bool unsent = query.count("unsent") && query.at("unsent") == "1";
+            return log_page_json(unsent, query.count("before") ? query.at("before") : "", query.count("take") ? take : 10);
+        }
         return log_entries_json(file, skip, take);
+    }
+    if (method == "PATCH" && path == "/api/log/entries") {
+        const uint32_t id = query.count("id") ? (uint32_t)std::strtoul(query.at("id").c_str(), nullptr, 10) : 0;
+        if (id == 0 || id > g_scenario.log.size()) {
+            return "{\"ok\":false,\"why\":\"no record\"}";
+        }
+        log_mark(id, body);
+        return "{\"ok\":true}";
     }
     *status = 404;
     return "{\"ok\":false,\"why\":\"not found\"}";

@@ -74,7 +74,7 @@ for (const [d, t] of [['19700101', '00:05'], ['19991231', '2359'], ['20261340', 
   assert.deepStrictEqual(plain(Q.match([], [rec(1, '20261116', '1012', 'W1AAA')], 'K1ABC')), { pairs: [], unsent: [], skipped: [], extra: [0] });
 }
 
-// --- range and daysToRead ---
+// --- range and markFields ---
 assert.deepStrictEqual(plain(Q.range([row('20261115', '23:58', 'A'), row('20261111', '00:01', 'B'), row('19700101', '00:00', 'C'),
   row('20261230', '12:00', 'D', '20m', 'FT8', 'OTHER')], 'K1ABC')), { from: '2026-11-10', to: '2026-11-16' },
 'a day either side of the usable QSOs under this logbook\'s call');
@@ -82,10 +82,13 @@ assert.deepStrictEqual(plain(Q.range([row('20260101', '00:00', 'A'), row('202612
   { from: '2025-12-31', to: '2027-01-01' });
 assert.strictEqual(Q.range([row('19700101', '00:00', 'C')], 'K1ABC'), null);
 assert.strictEqual(Q.range([], 'K1ABC'), null);
-const FILES = ['20261119.adi', '20261111.adi', 'Station.txt', '20261115.adi', '2026111.adi', '20261113.txt'];
-assert.deepStrictEqual(plain(Q.daysToRead(FILES, '')), ['20261111.adi', '20261115.adi', '20261119.adi']);
-assert.deepStrictEqual(plain(Q.daysToRead(FILES, '20261115')), ['20261115.adi', '20261119.adi'], 'the last clean day is read again');
-assert.deepStrictEqual(plain(Q.daysToRead(undefined, '')), []);
+assert.strictEqual(Q.markFields({ logid: '1531992047', status: 'c', qsldate: '20261120' }, '20261126'),
+  '<app_qrzlog_logid:10>1531992047<app_qrzlog_status:1>C<app_qrzlog_qsldate:8>20261120' +
+  '<qrzcom_qso_upload_status:1>Y<qrzcom_qso_upload_date:8>20261126', 'QRZ\'s ID, its confirmation and the upload mark');
+assert.strictEqual(Q.markFields({ logid: '' }, '20261126'), '<qrzcom_qso_upload_status:1>Y<qrzcom_qso_upload_date:8>20261126',
+  'a duplicate: QRZ holds it and names no ID, so the mark alone says so');
+assert.strictEqual(Q.markFields({ logid: '0', qsldate: 'soon' }, ''), '<qrzcom_qso_upload_status:1>Y',
+  'nothing that is not a real ID or date is written');
 
 // --- the call budget ---
 {
@@ -126,9 +129,15 @@ function station(rows, held, opts) {
   opts = opts || {};
   const asked = [];
   const inserted = [];
+  const marks = [];
   const deps = {
     key: 'ABCD-1234-EF56-7890',
+    today: '20261126',
     readRows: async () => rows,
+    mark: async (q, fields) => {
+      if (opts.markFails) throw new Error('no reply');
+      marks.push([q.call, fields]);
+    },
     buildAdif: (q) => '<call:' + q.call.length + '>' + q.call + '<eor>',
     relay: async (p, body) => {
       asked.push([p, plain(body)]);
@@ -150,7 +159,7 @@ function station(rows, held, opts) {
       throw new Error('no such path ' + p);
     },
   };
-  return { deps, asked, inserted };
+  return { deps, asked, inserted, marks };
 }
 
 (async function () {
@@ -164,8 +173,10 @@ function station(rows, held, opts) {
   assert.deepStrictEqual([r.ok, r.logbook, r.rows, r.held, r.extra, r.calls], [true, 'K1ABC', 4, 1, 1, 2]);
   assert.deepStrictEqual(r.plan.map((q) => q.call), ['KD6XYZ', 'W1AAA']);
   assert.deepStrictEqual(r.skipped.map((x) => [x.row.call, x.why]), [['ZZ9ZZ', 'date']]);
-  assert.deepStrictEqual([r.sent, r.unsent, r.cleanThrough, s.inserted.length], [0, 2, '', 0],
-    'a look sends nothing; the oldest unsent QSO is on the first day, so no day is settled');
+  assert.deepStrictEqual([r.sent, r.unsent, s.inserted.length], [0, 2, 0], 'a look sends nothing');
+  assert.deepStrictEqual(s.marks, [['VA3ABC', '<app_qrzlog_logid:3>101<app_qrzlog_status:1>N<qrzcom_qso_upload_status:1>Y' +
+    '<qrzcom_qso_upload_date:8>20261126']], 'but marks on the station the QSO QRZ already holds, with its ID');
+  assert.strictEqual(r.marked, 1);
   assert.deepStrictEqual(s.asked.map((a) => a[0]), ['/qrz/status', '/qrz/fetch']);
   assert.deepStrictEqual(s.asked[1][1], { from: '2026-11-14', to: '2026-11-17', after: 0, key: 'ABCD-1234-EF56-7890' },
     'with no version given, none is sent');
@@ -174,14 +185,21 @@ function station(rows, held, opts) {
   s = station(rows, held);
   r = plain(await Q.run(Object.assign(s.deps, { version: '0.2.0' })));
   assert.deepStrictEqual(s.asked.map((a) => a[1].app), ['0.2.0', '0.2.0', '0.2.0']);
-  assert.deepStrictEqual([r.ok, r.sent, r.duplicates, r.refused, r.unsent, r.calls, r.cleanThrough], [true, 2, 0, [], 0, 3, '20261116']);
+  assert.deepStrictEqual([r.ok, r.sent, r.duplicates, r.refused, r.unsent, r.calls, r.marked], [true, 2, 0, [], 0, 3, 3]);
   assert.deepStrictEqual(s.inserted, ['<call:6>KD6XYZ<eor>', '<call:5>W1AAA<eor>']);
+  assert.deepStrictEqual(s.marks.slice(1).map((m) => [m[0], /logid:\d+>(\d+)/.exec(m[1])[1]]), [['KD6XYZ', '902'], ['W1AAA', '903']],
+    'each QSO QRZ took is marked with the ID QRZ gave it');
 
   // Run again, with QRZ now holding them: nothing to send, and no insert call.
   const after = held.concat([rec(103, '20261115', '2213', 'KD6XYZ'), rec(104, '20261116', '1000', 'W1AAA')]);
   s = station(rows, after);
   r = plain(await Q.run(s.deps));
-  assert.deepStrictEqual([r.ok, r.held, r.plan.length, r.sent, r.calls, r.cleanThrough], [true, 3, 0, 0, 2, '20261116']);
+  assert.deepStrictEqual([r.ok, r.held, r.plan.length, r.sent, r.calls], [true, 3, 0, 0, 2]);
+
+  // With nothing unsent on the station, QRZ is asked nothing at all, not even for the logbook.
+  s = station([], after);
+  r = plain(await Q.run(s.deps));
+  assert.deepStrictEqual([r.ok, r.rows, r.unsent, r.calls, s.asked.length], [true, 0, 0, 0, 0]);
 
   // QRZ's pages are followed to the end.
   s = station(rows, after, { page: 2 });
@@ -199,8 +217,9 @@ function station(rows, held, opts) {
   // A duplicate is not a failure; a refusal is reported with its row, and the day is not settled.
   s = station(rows, held, { insert: () => ({ ok: true, results: [{ result: 'duplicate' }, { result: 'refused', reason: 'bad band' }] }) });
   r = plain(await Q.run(s.deps));
-  assert.deepStrictEqual([r.ok, r.sent, r.duplicates, r.unsent, r.cleanThrough], [true, 0, 1, 1, '20261115'],
-    'the refused QSO is still unsent, and the days before its own are settled');
+  assert.deepStrictEqual([r.ok, r.sent, r.duplicates, r.unsent], [true, 0, 1, 1], 'the refused QSO is still unsent');
+  assert.deepStrictEqual(s.marks.slice(1), [['KD6XYZ', '<qrzcom_qso_upload_status:1>Y<qrzcom_qso_upload_date:8>20261126']],
+    'the duplicate is marked uploaded with no ID; the refused one is not marked');
   assert.deepStrictEqual(r.refused.map((x) => [x.row.call, x.reason]), [['W1AAA', 'bad band']]);
 
   // Sending as QSOs are logged: only those from a day on go up, and older ones wait for the operator.
@@ -209,12 +228,11 @@ function station(rows, held, opts) {
   s = station(mixed, []);
   r = plain(await Q.run(Object.assign(s.deps, { sendFrom: '20261118' })));
   assert.deepStrictEqual(s.inserted, ['<call:4>NEW1<eor>', '<call:4>NEW2<eor>']);
-  assert.deepStrictEqual([r.ok, r.plan.length, r.sent, r.unsent, r.cleanThrough], [true, 4, 2, 2, ''],
-    'the two older ones are planned, not sent, and hold every day back');
+  assert.deepStrictEqual([r.ok, r.plan.length, r.sent, r.unsent], [true, 4, 2, 2], 'the two older ones are planned, not sent');
   s = station(mixed, [rec(1, '20261114', '1000', 'OLD1'), rec(2, '20261114', '1005', 'OLD2')]);
   r = plain(await Q.run(Object.assign(s.deps, { sendFrom: '20261119' })));
-  assert.deepStrictEqual([s.inserted, r.unsent, r.cleanThrough], [['<call:4>NEW2<eor>'], 1, '20261114'],
-    'with the older days at QRZ, they are settled up to the day before the one still waiting');
+  assert.deepStrictEqual([s.inserted, r.unsent, r.marked], [['<call:4>NEW2<eor>'], 1, 3],
+    'the older two QRZ holds are marked, and the one sent');
   s = station(mixed, []);
   r = plain(await Q.run(Object.assign(s.deps, { sendFrom: '20261120' })));
   assert.deepStrictEqual([r.ok, r.sent, r.unsent, r.calls, s.inserted.length], [true, 0, 4, 2, 0], 'nothing new: no insert call');
@@ -228,13 +246,13 @@ function station(rows, held, opts) {
   assert.deepStrictEqual([r.ok, r.error, r.reason, r.calls, s.asked.length], [false, 'auth', 'invalid api key', 1, 1]);
   s = station(rows, held, { insert: () => ({ ok: false, error: 'auth', reason: 'invalid api key', results: [{ result: 'inserted', logid: '7' }] }) });
   r = plain(await Q.run(s.deps));
-  assert.deepStrictEqual([r.ok, r.error, r.sent, r.cleanThrough], [false, 'auth', 1, ''], 'what went up before the refusal is counted');
+  assert.deepStrictEqual([r.ok, r.error, r.sent, r.marked], [false, 'auth', 1, 2], 'what went up before the refusal is counted, and marked, beside the one QRZ held');
 
   // The relay out of reach, at each step.
   for (const down of ['/qrz/status', '/qrz/fetch', '/qrz/insert']) {
     s = station(rows, held, { down });
     r = plain(await Q.run(s.deps));
-    assert.deepStrictEqual([r.ok, r.error, r.cleanThrough], [false, 'unreachable', ''], down);
+    assert.deepStrictEqual([r.ok, r.error], [false, 'unreachable'], down);
   }
 
   // A logbook already known is not asked for again; a station that does not answer is said so.
@@ -244,7 +262,12 @@ function station(rows, held, opts) {
   s = station(rows, held);
   s.deps.readRows = async () => { throw new Error('timeout'); };
   r = plain(await Q.run(s.deps));
-  assert.deepStrictEqual([r.ok, r.error, r.calls], [false, 'station', 1]);
+  assert.deepStrictEqual([r.ok, r.error, r.calls], [false, 'station', 0], 'the station is read before QRZ is asked');
+
+  // A mark the station does not take stops the run: QRZ holds the QSO, and the next run matches it again.
+  s = station(rows, held, { markFails: true });
+  r = plain(await Q.run(s.deps));
+  assert.deepStrictEqual([r.ok, r.error, r.marked, s.inserted.length], [false, 'station', 0, 0]);
 
   // The run stops at its call allowance instead of going over it.
   s = station(many, []);

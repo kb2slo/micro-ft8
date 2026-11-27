@@ -255,7 +255,7 @@ void qso_log_store_days(std::vector<std::string>* names_out)
     }
 }
 
-size_t qso_log_store_day_records(uint32_t date, size_t skip, size_t take, std::vector<std::string>* out)
+size_t qso_log_store_day_records(uint32_t date, size_t skip, size_t take, std::vector<QsoLogRecord>* out)
 {
     out->clear();
     if (!s_ready || date == 0) return 0;
@@ -267,9 +267,31 @@ size_t qso_log_store_day_records(uint32_t date, size_t skip, size_t take, std::v
     const size_t n = qso_store_select(s_store, filter, skip, ids.data(), ids.size(), &matched);
     std::string fields;
     for (size_t i = 0; i < n; ++i) {
-        if (qso_store_get(s_store, ids[i], &fields)) out->push_back(fields);
+        if (qso_store_get(s_store, ids[i], &fields)) out->push_back({ids[i], date, fields});
     }
     return matched;
+}
+
+size_t qso_log_store_page(const QsoStoreFilter& filter, const QsoStoreCursor& before, size_t take,
+                          std::vector<QsoLogRecord>* out)
+{
+    out->clear();
+    if (!s_ready) return 0;
+    std::vector<uint32_t> ids(take);
+    size_t matched = 0;
+    const size_t n = qso_store_page(s_store, filter, before, ids.data(), ids.size(), &matched);
+    std::string fields;
+    for (size_t i = 0; i < n; ++i) {
+        const QsoStoreEntry* e = qso_store_entry(s_store, ids[i]);
+        if (e != nullptr && qso_store_get(s_store, ids[i], &fields)) out->push_back({ids[i], e->date, fields});
+    }
+    return matched;
+}
+
+QsoStoreStatus qso_log_store_set(uint32_t id, const std::string& fields)
+{
+    if (!s_ready) return QsoStoreStatus::WRITE_FAILED;
+    return qso_store_patch(&s_store, id, fields.data(), fields.size());
 }
 
 const char* qso_log_store_delete_day(uint32_t date)
