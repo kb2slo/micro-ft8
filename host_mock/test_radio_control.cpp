@@ -28,6 +28,8 @@ static esp_err_t fake_begin_tx(int tx_dial, int, int rx_dial) { ++g_calls; g_tx_
 static esp_err_t fake_tone(float) { ++g_calls; return ESP_OK; }
 static esp_err_t fake_ok(void) { ++g_calls; return ESP_OK; }
 static esp_err_t fake_tune(bool, int, int) { ++g_calls; return ESP_OK; }
+static int g_power_offs = 0;
+static esp_err_t fake_power_off(void) { ++g_power_offs; return ESP_OK; }
 // What keys the radio and what un-keys it, counted apart for the hold (held()).
 static int g_keyed = 0, g_unkeyed = 0;
 static esp_err_t fake_cpfsk(float, const uint8_t*, size_t, float, uint32_t) { ++g_keyed; return ESP_OK; }
@@ -79,6 +81,7 @@ static radio_control_ops_t g_fake_qmx = [] {
     ops.swr_io = &k_fake_swr_io;
     ops.get_state = fake_get_state;
     ops.state_changes = fake_state_changes;
+    ops.power_off = fake_power_off;
     return ops;
 }();
 
@@ -255,9 +258,25 @@ static void keyed()
     radio_control_hold_tx(false);
 }
 
+// The radio switched off before a restart of our own (main_board.md, Firmware updates): only a radio that has the
+// command is sent it, and NONE (the HL2) is left alone.
+static void power_off()
+{
+    radio_control_set_backend(RADIO_CONTROL_QMX);
+    g_power_offs = 0;
+    expect(radio_control_power_off() == ESP_OK && g_power_offs == 1, "the QMX is switched off");
+    radio_control_set_backend(RADIO_CONTROL_NONE);
+    expect(radio_control_power_off() == ESP_ERR_NOT_SUPPORTED && g_power_offs == 1, "NONE has nothing to switch off");
+    radio_control_set_backend(RADIO_CONTROL_QMX);
+    g_fake_qmx.power_off = nullptr;
+    expect(radio_control_power_off() == ESP_ERR_NOT_SUPPORTED && g_power_offs == 1, "nor a radio without the command");
+    g_fake_qmx.power_off = fake_power_off;
+}
+
 int main()
 {
     keyed();
+    power_off();
     radio_control_set_backend(RADIO_CONTROL_QMX);
     expect(radio_control_ready() && radio_control_begin_tx(14074000, 1500, 14074000) == ESP_OK, "the QMX keys");
     radio_control_end_tx();

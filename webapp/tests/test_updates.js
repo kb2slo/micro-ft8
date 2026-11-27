@@ -188,19 +188,20 @@ assert(/main board/.test(U.unavailableText('no_host')) && /own network/.test(U.u
 assert.strictEqual(U.unavailableText(''), '');
 
 // The review: says once that nothing transmits, names nothing it ends (the band change's dialog
-// before it did), asks for the radio off, says the phone may lock, since no step is the page's, and
-// never promises receiving goes on.
+// before it did), says the main board's update switches the radio off, says the phone may lock, since
+// no step is the page's, and never promises receiving goes on.
 let rv = U.reviewText(pl);
 eq(rv, ['Takes about three minutes. Nothing transmits until the update is done.',
-  'Switch the radio off, or unplug its USB, before you update. If it stays connected it may need switching off and on afterwards.',
+  'At the end the main board switches the radio off, so that it connects again when you switch it back on.',
   'The update goes on if this phone locks.']);
 rv = U.reviewText(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: V }, linked));
-eq([rv[0], rv[2]], ['Takes about a minute. Nothing transmits until the update is done.', 'The update goes on if this phone locks.']);
+eq(rv, ['Takes about a minute. Nothing transmits until the update is done.', 'The update goes on if this phone locks.'],
+  'the sidekick alone: the main board does not restart, so the radio stays on');
 rv.forEach((t) => assert(!/receiv|decod|page open/i.test(t), 'no promise about receiving, and no page to keep open: ' + t));
 
-// The note under the offer: the radio off, as the review asks, or why the plan cannot run.
-eq(U.offerNote(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked)), 'Switch the radio off first.');
-eq(U.offerNote(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: V }, linked)), 'Switch the radio off first.');
+// The note under the offer: that the main board's update switches the radio off, or why the plan cannot run.
+eq(U.offerNote(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: '7e61488' }, linked)), 'It switches the radio off at the end.');
+eq(U.offerNote(U.plan(manifest(OTA15, P4OTA), { sidekick: '7e61488', main: V }, linked)), '', 'the sidekick alone leaves the radio on');
 eq(U.offerNote(U.plan(manifest(OTA16, P4OTA), { sidekick: 'a', main: V }, linked)), U.whyText('pair') + '.');
 
 // ---- the plan's channel, and a switch of channel ----
@@ -217,7 +218,7 @@ eq(U.switchLabel(pl), 'Switch to Stable (0.1.0)');
 rv = U.reviewText(pl);
 eq(rv[0], 'This station moves to the Stable channel, 0.1.0. That is an older build than the one it runs.');
 eq(rv[1], 'Takes about three minutes. Nothing transmits until the update is done.');
-assert(/Switch the radio off/.test(rv[2]));
+assert(/switches the radio off/.test(rv[2]));
 // The same code or later: not called older. A bench build's age is not known, and not guessed.
 eq(U.plan(stable('0.1.0', 1322), { sidekick: V, main: V }, linked, true).older, false);
 eq(U.plan(stable('0.1.0', 1330), { sidekick: V, main: V }, linked, true).older, false);

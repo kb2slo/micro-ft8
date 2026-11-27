@@ -1914,7 +1914,7 @@ function fwShow(mode, o) {
 }
 
 // Review, before anything happens, in the dialog a band change asks in: what stops (a running CQ
-// included), about how long, and the radio off. What is published is read again first, so the
+// included), about how long, and that the radio is switched off. What is published is read again first, so the
 // plan is the build on offer now, a Retry's included.
 async function openFwReview(target) {
   var msg = document.getElementById('updMsg');
@@ -2087,6 +2087,11 @@ async function followFw() {
 function fwResult(end, detail) {
   // The app is the sidekick's: there is a new one to open only when the sidekick was updated.
   var newApp = !!fwMine && fwMine.steps.some(function (o) { return o.board === 'sidekick'; });
+  // A page that did not start the update does not know its plan, so it says the radio may be off.
+  // A failed one that restarted the main board (a roll-back) switched it off too.
+  var mayBeOff = !fwMine || FwUpdates.updatesMain(fwMine);
+  var radioNote = !fwMine ? 'If the radio switched itself off, switch it back on.'
+    : FwUpdates.updatesMain(fwMine) ? 'Switch the radio back on. If it does not connect, switch it off and on.' : '';
   fwMine = null;
   var failed = !end || !end.ok;
   var fwFailedRows = end && !end.ok && fwStatus && fwStatus.state === 'failed' ? FwUpdates.stepRows(fwStatus, true) : [];
@@ -2094,9 +2099,9 @@ function fwResult(end, detail) {
     title: end ? end.text : 'No answer from the sidekick',
     steps: failed ? fwFailedRows : [],
     note: !end ? 'Check that this phone is on the sidekick’s network, then reload.'
-      : end.ok ? 'Switch the radio back on. If it was connected during the update and does not reconnect, switch it off and on.' +
-        (newApp ? ' Close opens the new app.' : '') + (fwStartNote ? ' ' + fwStartNote : '')
-      : detail || fwStartNote,
+      : end.ok ? [radioNote,
+        newApp ? 'Close opens the new app.' : '', fwStartNote].filter(Boolean).join(' ')
+      : [detail || fwStartNote, mayBeOff ? 'If the radio switched itself off, switch it back on.' : ''].filter(Boolean).join(' '),
     // Retry opens the review again, against what is published then.
     failed: failed, retry: failed && !!end, cancel: 'Close',
   });

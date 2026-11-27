@@ -18,7 +18,7 @@ a{color:#06c}
 </style>
 
 <h2>Install the published build</h2>
-<p>Puts this station back on its channel's published build, the app with it. Switch the radio off first.</p>
+<p>Puts this station back on its channel's published build, the app with it. An update of the main board switches the radio off at the end.</p>
 <button id=go type=button disabled>Install</button>
 <p id=m></p>
 <p><a href="/app.html">Open app</a></p>
@@ -91,7 +91,7 @@ async function follow() {
     if (s.state === 'done' || (seen && s.state === 'idle')) {
       var bad = s.last && s.last.result === 'rolled_back';
       setMsg(bad ? 'The sidekick went back to the build it ran before. Tap Install to try again.'
-        : 'Done. Switch the radio back on, then open the app.');
+        : 'Done. If the radio switched itself off, switch it back on, then open the app.');
       go.disabled = false;
       return;
     }

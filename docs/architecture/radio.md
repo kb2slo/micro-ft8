@@ -13,7 +13,7 @@ The core (slot loop, TX scheduler, HUD) talks to the radio only through `compone
 ## Rules
 
 * **No `if (QMX)` in the core** — not in `poe_p4/main` or the dispatcher in `radio_control.cpp`. Radio-specific behaviour is an operation or a capability.
-* **QMX-only features go through a capability flag.** The SWR sweep calls `MD8;` only where `can_md8_tune` is set; a CAT power-off (`PS0;`) only where `can_ps0` is set.
+* **QMX-only features go through a capability flag.** The SWR sweep calls `MD8;` only where `can_md8_tune` is set; a CAT power-off (`PS0;`, `radio_control_power_off()`, sent before a restart the board starts itself) only where `can_ps0` is set.
 * **Adding a radio** means filling in a new operations table and capabilities, — no edit to the slot loop. This is the design's test; no second radio family has been added yet to prove it.
 * **Why a table, not `class Radio`:** the variants are a closed set, and a C struct of function pointers is what the rest of this ESP-IDF tree already uses. [STYLE.md](../STYLE.md) (**Structure**) allows inheritance only for closed sets like this one, and the table is the lighter form of it.
 

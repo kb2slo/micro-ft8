@@ -700,10 +700,18 @@ void porta_host_update_hold(bool on) {
 // Before a restart the board starts itself (components/porta: into a new image, or back from one that never heard
 // the sidekick), whatever was or was not held before: autoseq re-arms at once after a cancel, so a slot of ours
 // starting before the restart keyed the radio and the board reset keyed (console log, 2026-11-11: "Fetch TX" and
-// "TX ready" right after the cancel).
+// "TX ready" right after the cancel). Then the radio is switched off: a QMX left on through the restart may not
+// enumerate again until it is switched off and on (main_board.md, Firmware updates), so the operator is asked only
+// to switch it back on. A radio not connected, or one with no such command, is left as it is.
 void porta_host_stop_for_restart(void) {
     radio_control_hold_tx(true);
     porta_host_tx_cancel();
+    const esp_err_t off = radio_control_power_off();
+    if (off == ESP_OK) {
+        ESP_LOGW(TAG, "radio switched off for the restart (PS0;)");
+    } else if (off != ESP_ERR_NOT_SUPPORTED) {
+        ESP_LOGW(TAG, "could not switch the radio off for the restart: %s", esp_err_to_name(off));
+    }
 }
 
 // Sweep events go to the phone as they happen. Runs on the main loop's task (swr_sweep_tick).

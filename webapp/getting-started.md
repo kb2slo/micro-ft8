@@ -73,7 +73,7 @@ Your log is kept on the main board. On **QSOs**, newest first, each day's **Down
 ## Home WiFi and updates
 
 - *Home WiFi* (2.4 GHz only): in **Settings**, tap **Network**, then **Join a network →**, pick it and tap **Save and join**. With the phone on that network too, the same address and Home Screen icon open the app, still paired. Away from that network, the sidekick's own comes back within a minute of power-up.
-- *Updates:* in **Settings**, **Software update**, then **Update** updates everything (needs internet; switch the radio off first). Flashing over USB, from the downloads page, erases the board: the sidekick starts again as a new unit.
+- *Updates:* in **Settings**, **Software update**, then **Update** updates everything (needs internet; it switches the radio off at the end, so switch it back on when it is done). Flashing over USB, from the downloads page, erases the board: the sidekick starts again as a new unit.
 
 ## Questions and feedback
 
