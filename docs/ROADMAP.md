@@ -8,7 +8,7 @@ How things work now: `architecture/` (start at [architecture/system.md](architec
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| r4cu | <a id="r4cu"></a>Import the operator's QRZ logbook | Epic [I32](roadmap/qso-store.md#r4cu). QRZ holds 1,218 of the maintainer's QSOs no longer on the station (2026-11-25), so the card and the QSOs list miss them, and a QSO missing a grid, as W4VPK's, could take QRZ's. Each record, cut to the fields the station reads, goes to `qso_store_import()`: one QRZ already marks on our record updates it, any other is added as foreign. **Done-when:** host tests hold the kept fields and an own record updated, not added; at home the 1,512 records import with none refused, a station worked only before 2026-11-11 shows those QSOs on its card, and boot load is measured after (field). |
+| w4kn | <a id="w4kn"></a>The main board marks worked decodes, over the whole log | Epic [I32](roadmap/qso-store.md#w4kn). Issue #36. Operate's **Worked** flag reads today's QSOs every 8 s, so a station worked on an earlier day, or imported from QRZ, is not flagged; the main board answers from `qso_store_worked()` and puts a worked bit on each DECODE event, and the app's read for it goes. **Done-when:** host tests cover band, mode, references and the 00:00 UTC rollover; at home a station worked on an earlier day is flagged in its next slot with no log read (field). |
 
 ## Backlog
 
@@ -52,7 +52,7 @@ Each epic is one row here and one file under `roadmap/`, read only when touching
 | I18 | <a id="I18"></a>Activator mode: POTA and SOTA | [roadmap/activator-mode.md](roadmap/activator-mode.md): a whole activation run offline, its log accepted by pota.app and the SOTA database unedited, and what helps an activator pick a reference, check the grid and plan. Children: [rrsp](roadmap/activator-mode.md#rrsp), [w5nj](roadmap/activator-mode.md#w5nj). |
 | qxy5 | <a id="qxy5"></a>Smart queue ordering | [roadmap/smart-queue.md](roadmap/smart-queue.md): spend each transmission where it can be answered, by ordering and holding what is already queued, never adding a station. Children: none in the index; its **Later** slices wait in the file. |
 | eu2t | <a id="eu2t"></a>Release 1.0 | [roadmap/release-1-0.md](roadmap/release-1-0.md): an operator who is not the maintainer unboxes it, sets up from the printed sheet, completes a QSO and updates over the air; then `v1.0.0`, from which an update keeps the operator's settings and log. Children: [n75z](roadmap/release-1-0.md#n75z), [dfd7](roadmap/release-1-0.md#dfd7), [pn83](roadmap/release-1-0.md#pn83). |
-| I32 | <a id="I32"></a>QSO store | [roadmap/qso-store.md](roadmap/qso-store.md): every QSO a record with an ID on the main board, in the journal built in `components/qso_store/`; the QRZ logbook and the station agree; the log outlives any one phone. Children: [r4cu](roadmap/qso-store.md#r4cu). |
+| I32 | <a id="I32"></a>QSO store | [roadmap/qso-store.md](roadmap/qso-store.md): every QSO a record with an ID on the main board, in the journal built in `components/qso_store/`; the QRZ logbook and the station agree; the log outlives any one phone. Children: [w4kn](roadmap/qso-store.md#w4kn). |
 
 ## Next groom
 

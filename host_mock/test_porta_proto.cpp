@@ -1360,6 +1360,7 @@ static void test_file_data_rows()
     porta_qso_entry_row_t in = {};
     in.id = 0xA1B2C3D4u;
     in.date = 20261125;
+    in.flags = PORTA_ROW_IMPORTED;
     std::snprintf(in.time_on, sizeof(in.time_on), "19:04");
     std::snprintf(in.band, sizeof(in.band), "20m");
     std::snprintf(in.call, sizeof(in.call), "W1ABC");
@@ -1381,7 +1382,8 @@ static void test_file_data_rows()
     if (got.size() == 1) {
         porta_qso_entry_row_t out;
         check(porta_proto_parse_file_entry_row(&got[0], &out), "file_entry row parses");
-        check(out.id == 0xA1B2C3D4u && out.date == 20261125, "the record's ID and date round-trip");
+        check(out.id == 0xA1B2C3D4u && out.date == 20261125 && out.flags == PORTA_ROW_IMPORTED,
+              "the record's ID, date and imported mark round-trip");
         check(std::string(out.time_on) == "19:04", "time_on round-trips");
         check(std::string(out.band) == "20m", "band round-trips");
         check(std::string(out.call) == "W1ABC", "call round-trips");
@@ -1544,6 +1546,19 @@ static void test_log_page_and_set()
               porta_proto_encode_log_set(42, longest.data(), longest.size() + 1, buf, sizeof(buf)) == 0,
           "fields up to the frame, and no more");
     check(porta_proto_encode_log_set(0, fields.data(), fields.size(), buf, sizeof(buf)) == 0, "record 0 is refused");
+
+    const std::string slice = "<app_qrzlog_logid:10>1531992047<call:6>VA3ABC<qso_date:8>20240301";
+    porta_decoder_init(&d);
+    n = porta_proto_encode_log_import(slice.data(), slice.size(), buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    char imp[PORTA_LOG_IMPORT_FIELDS_MAX + 1];
+    check(got.size() == 1 && porta_proto_parse_log_import(&got[0], imp, &len) && std::string(imp, len) == slice &&
+              !porta_proto_parse_log_set(&got[0], &id, text, &len),
+          "an import slice round-trips, and is not a field set");
+    const std::string full(PORTA_LOG_IMPORT_FIELDS_MAX, 'x');
+    check(porta_proto_encode_log_import(full.data(), full.size(), buf, sizeof(buf)) != 0 &&
+              porta_proto_encode_log_import(full.data(), full.size() + 1, buf, sizeof(buf)) == 0,
+          "an import slice fills a frame, and no more");
 }
 
 static void test_sweep_event()

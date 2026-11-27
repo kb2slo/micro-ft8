@@ -1,6 +1,6 @@
 # QSO store (epic I32)
 
-Every logged QSO a record with an ID on the main board, answered where the log lives instead of read a day file at a time into the browser. The store is the main board's log ([logging.md](../architecture/logging.md), **The store on the main board**; its format and calls in `components/qso_store/include/qso_store.h`). Rows: [r4cu](#r4cu) ([ROADMAP.md](../ROADMAP.md)).
+Every logged QSO a record with an ID on the main board, answered where the log lives instead of read a day file at a time into the browser. The store is the main board's log ([logging.md](../architecture/logging.md), **The store on the main board**; its format and calls in `components/qso_store/include/qso_store.h`). Rows: [w4kn](#w4kn) ([ROADMAP.md](../ROADMAP.md)).
 
 ## Goal
 
@@ -26,7 +26,6 @@ Every logged QSO a record with an ID on the main board, answered where the log l
 
 In order. Only the next is a row in the index.
 
-* <a id="r4cu"></a>**r4cu: import the operator's QRZ logbook.** The web app fetches it through its QRZ relay and sends each record, cut to the fields the station reads, to the main board's `qso_store_import()`: a record with a QRZ ID the store holds is updated, any other added as foreign. Kept: our logged fields, QRZ's ID and confirmation (`app_qrzlog_status`, `app_qrzlog_qsldate`), `dxcc`, `cont`, `state`, `cnty`, `cqz`, `ituz`, and a `gridsquare` ours lacks; not QRZ's copy of our station, nor the other operator's name, address or email. Measured 2026-11-25: QRZ held the board's 294 QSOs and 1,218 earlier ones no longer on it; 904 bytes a record, 340 cut, past one Port A frame. Our own records carry QRZ's ID once the sync has matched them, so they are updated, not added twice. **Open:** the transfer ([syb2](ideas.md#syb2), or chunks as a firmware image is sent); `name` for the card; foreign records in the QSOs list. **Done-when:** host tests hold the kept fields and an own record updated, not added; at home the maintainer's 1,512 records import with none refused, a station worked only before 2026-11-11 shows those QSOs on its card, and boot load is measured after (field). **Lands in:** [logging.md](../architecture/logging.md), [webapp.md](../architecture/webapp.md) (**QRZ sync**), [sidekick.md](../architecture/sidekick.md) (Port A); the site (its control); TEST_PLAN Pending.
 * <a id="w4kn"></a>**w4kn: the main board marks worked decodes, over the whole log.** Issue #36. Operate's **Worked** flag reads today's log every 8 s ([webapp.md](../architecture/webapp.md), **Worked and activation cues on decodes**), each read making every other request to the main board wait ([sidekick.md](../architecture/sidekick.md), **Tasks and cores**). The main board answers instead, from `qso_store_worked()`, and puts a worked bit on each DECODE event; the app's log read for it goes. Port A protocol change. **Later:** the progress line's and the QSOs tab's polls; the **Hide worked** filter then reads the bit. **Done-when:** host tests cover band, mode, references and the 00:00 UTC rollover; at home a station worked on an earlier day is flagged in its next slot with no log read (field). **Lands in:** [webapp.md](../architecture/webapp.md) (**Worked and activation cues on decodes**), [sidekick.md](../architecture/sidekick.md) (Port A); the site if the cue's wording changes.
 
 **Later:**
@@ -42,8 +41,7 @@ In order. Only the next is a row in the index.
 
 ## Open
 
-* **`storage` grown before 1.0** ([n75z](release-1-0.md#n75z)): a record is 209 to 235 bytes as the station writes it, QRZ's 904, 340 cut to [r4cu](#r4cu)'s fields (`test_apps/qso_store_bench`, 2026-11-25).
-* **A record missing a field** is marked incomplete rather than refused (for [r4cu](#r4cu)); today only one with no call is refused.
+* **`storage` grown before 1.0** ([n75z](release-1-0.md#n75z)): a record is 209 to 235 bytes as the station writes it, QRZ's 904, 340 cut to the import's fields (`test_apps/qso_store_bench`, 2026-11-25).
 * **When the conversion of daily files comes out** (`convert_or_create()`, `qso_log_store.cpp`).
 * **An ID reused after damage:** an ID is never reused in normal running, but if damage destroys the newest record its ID is given out again (`qso_store.cpp`); whether that matters now that the browser holds IDs (the QRZ sync's write-back names a record by one).
 

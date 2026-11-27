@@ -531,6 +531,7 @@ button{touch-action:manipulation}
    for one control. */
 button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:pointer}
 #logSummary{padding:.35rem 1rem 0;font-size:.85rem}
+.qtag{font-size:.65rem;padding:0 .3em;border:1px solid GrayText;border-radius:.3em;color:GrayText;font-family:system-ui,sans-serif}
 #logFree{padding:.35rem 1rem;font-size:.8rem;color:GrayText}
 #logFree.low{color:#b91c1c}
 #logToolbar{display:flex;justify-content:space-between;align-items:center;padding:.6rem 1rem;font-size:.85rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
@@ -969,6 +970,11 @@ a.navrow{text-decoration:none}
           </label>
         </div>
         <p class=setnote>As they are logged, while the app is open on a paired phone or computer, within about five minutes. QSOs logged before this was turned on wait for Send on the QSOs tab.</p>
+        <!-- The operator's QRZ logbook into the station's log (docs/architecture/webapp.md, QRZ sync), on a tap:
+             qrz_import_core.js says what comes in; qrzImport() runs it. -->
+        <div class=setrow><button id=qrzImport type=button class="dlink setlink" disabled>Import from QRZ &rarr;</button></div>
+        <p id=qrzImportLine class=setnote hidden></p>
+        <p class=setnote>Brings the FT8 and FT4 QSOs in your QRZ logbook into the station's log, marked QRZ, so a station you worked from another radio shows on its card. Again later, it brings what is new and any confirmations.</p>
 
         <!-- Spots of what the station decodes (docs/architecture/webapp.md, Spotting): pskr_report_core.js
              holds and posts them; pskrTick() runs it. -->
@@ -1608,6 +1614,7 @@ a.navrow{text-decoration:none}
 <script src=pskr_core.js></script>
 <script src=pskr_live.js></script>
 <script src=qrz_sync_core.js></script>
+<script src=qrz_import_core.js></script>
 <script src=pskr_report_core.js></script>
 <script src=geo_handoff.js></script>
 <script src=updates.js></script>
@@ -7802,7 +7809,8 @@ function appendLogRows(rows, atTop) {
         '<div><span><span class="call callink" data-call="' + esc(q.call) + '">' + esc(q.call) + '</span>' +
         (q.grid ? '<span class=grid>' + CallInfo.gridLink(q.grid) + (qShortLoc ? ' · ' + esc(qShortLoc) : '') + '</span>' : '') + '</span>' +
         (qts !== null ? '<span class=ago data-ts="' + qts + '">' + fmtAgo(qts) + '</span>' : '') + '</div>' +
-        '<span class=sub><span>' + esc(q.time) + '</span><span>' + esc(qsoBandText(q)) + '</span><span>' +
+        '<span class=sub><span>' + esc(q.time) + (q.imported ? ' <span class=qtag title="Imported from QRZ">QRZ</span>' : '') +
+        '</span><span>' + esc(qsoBandText(q)) + '</span><span>' +
         fmtRst(q.rst_sent) + '/' + fmtRst(q.rst_rcvd) + '</span></span>' +
       '</div>' +
       (function () {
@@ -7859,6 +7867,16 @@ function refreshDayLinkText(day, dlinkEl) {
 // either width, and seconds were never on the wire to begin with.
 function adifField(tag, value, trailingSpace) {
   return '<' + tag + ':' + value.length + '>' + value + (trailingSpace === false ? '' : ' ');
+}
+// A download's header (docs/architecture/logging.md, Export): what wrote it, as ADIF names a header's
+// PROGRAMID and PROGRAMVERSION, which loggers and TQSL read to say where a file came from, and the ADIF version
+// its fields follow (SUBMODE FT4, ADIF 3.1.1 on). The version is this page's build, or "dev" for a page served
+// unbuilt.
+var ADIF_VER = '3.1.4';
+function adifHeader() {
+  var ver = /^__/.test(APP_BUILD) || !APP_BUILD ? 'dev' : APP_BUILD;
+  return 'ADIF EXPORT\n' + adifField('adif_ver', ADIF_VER) + '\n' + adifField('programid', 'micro-FT8') + '\n' +
+    adifField('programversion', ver) + '\n<eoh>\n';
 }
 function adifFieldIfSet(tag, value) {
   return value ? adifField(tag, value) : '';
@@ -8014,6 +8032,10 @@ async function fetchAllEntries(day) {
   var got = await readLogPages('&date=' + day, '', 0, null);
   return got.rows.reverse();
 }
+// What a download holds of a day: what this station logged. QSOs imported from QRZ are QRZ's already.
+function ownRows(rows) {
+  return rows.filter(function (q) { return !q.imported; });
+}
 
 // Memoized: refreshDayLinkText() (appendLogRows(), above) and a tap on the day's own link both need the
 // day's complete row set, and must see the same data rather than racing two separate reads.
@@ -8032,10 +8054,10 @@ async function downloadDayAdif(day, linkEl) {
   linkEl.textContent = 'Preparing…';
   try {
     var dateStr = day;
-    var rows = await dayFullRows(day);
+    var rows = ownRows(await dayFullRows(day));
     var refs = dayActivationRefs(rows);
     if (!refs.pota.length && !refs.sota.length) {
-      var text = 'ADIF EXPORT\n<eoh>\n' +
+      var text = adifHeader() +
                 rows.map(function (q) { return buildAdifRecord(q, dateStr); }).join('');
       triggerAdifDownload(day, text);
     } else {
@@ -8059,7 +8081,7 @@ async function downloadDayNfer(rows, dateStr) {
   var callsign = (rows[0] && rows[0].station_callsign) || '';
   for (var i = 0; i < buckets.length; i++) {
     var bucket = buckets[i];
-    var text = 'ADIF EXPORT\n<eoh>\n' +
+    var text = adifHeader() +
               bucket.rows.map(function (q) { return buildAdifRecord(q, dateStr, bucket); }).join('');
     triggerAdifDownload(exportFileBaseName(callsign, bucket, dateStr), text);
     if (i < buckets.length - 1) {
@@ -8073,7 +8095,7 @@ async function downloadDayNfer(rows, dateStr) {
 async function downloadAllAdif(linkEl) {
   var origText = linkEl.textContent;
   try {
-    var got = await readLogPages('', '', 0, null, function (n, total) {
+    var got = await readLogPages('&own=1', '', 0, null, function (n, total) {
       linkEl.textContent = 'Preparing… ' + n + (total != null ? '/' + total : '');
     });
     var days = [], byDay = {};
@@ -8086,7 +8108,7 @@ async function downloadAllAdif(linkEl) {
     days.forEach(function (day) {
       byDay[day].reverse().forEach(function (q) { parts.push(buildAdifRecord(q, day)); });
     });
-    triggerAdifDownload('micro-ft8-log', 'ADIF EXPORT\n<eoh>\n' + parts.join(''));
+    triggerAdifDownload('micro-ft8-log', adifHeader() + parts.join(''));
   } catch (e) {
     failMsg(String(e && e.message ? e.message : e));
   } finally {
@@ -8116,20 +8138,26 @@ async function clearAllAdif() {
       failMsg('Clear failed: ' + (j.why || r.status));
       return;
     }
-    logCursor = '';
-    logShownIds = {};
-    logGroupEls = {};
-    renderLogSummary(null, null);
-    logRenderedAny = false;
-    logDone = false;
-    dayFullRowsCache = {};
-    document.getElementById('logList').innerHTML =
-      '<p style="padding:0 1rem;color:GrayText">Loading…</p>';
-    document.getElementById('logMore').hidden = false;
-    await loadMoreLog();
+    await logReload();
   } catch (e) {
     failMsg(String(e && e.message ? e.message : e));
   }
+}
+
+// The list read again from the top: after Clear all, and after an import brings QSOs in among the days shown.
+async function logReload() {
+  logCursor = '';
+  logShownIds = {};
+  logGroupEls = {};
+  renderLogSummary(null, null);
+  logRenderedAny = false;
+  logDone = false;
+  dayFullRowsCache = {};
+  if (!logLoadedOnce) return;
+  document.getElementById('logList').innerHTML =
+    '<p style="padding:0 1rem;color:GrayText">Loading…</p>';
+  document.getElementById('logMore').hidden = false;
+  await loadMoreLog();
 }
 
 // The next older page or so of the log, below what the list shows; then again while the end of the list is
@@ -8367,6 +8395,7 @@ function renderQrzRow() {
   document.getElementById('tabQrz').hidden = !(cred.live && m.tone === 'amber');
   document.getElementById('qrzLive').value = cred.live ? '1' : '0';
   document.getElementById('qrzLive').disabled = !cred.key;
+  if (!qrzImporting) document.getElementById('qrzImport').disabled = !cred.key;
   var rowEl = document.getElementById('qrzRow');
   document.getElementById('qrzLine').classList.toggle('t-amber', m.tone === 'amber');
   rowEl.classList.toggle('t-amber', m.tone === 'amber');
@@ -8400,7 +8429,7 @@ async function qrzRelay(path, body, timeoutMs) {
 // The station's own records QRZ lacks, newest first, each with its ID and date (webapp.md, QRZ sync),
 // and how many records there are in all and unsent. Its own walk of the log, apart from the list's.
 async function qrzReadRows() {
-  var all = await logFetchJson('/api/log/entries?take=1');
+  var all = await logFetchJson('/api/log/entries?take=1&own=1');
   if (!all.ok) throw new Error(all.why || 'entries failed');
   var got = await readLogPages('&unsent=1', '', 0, null);
   return { rows: got.rows, all: all.total || 0, unsent: got.total || 0 };
@@ -8590,6 +8619,75 @@ async function qrzKeyChange(key, seq) {
   renderQrzRow();
   if (reply && reply.ok) qrzRun(false, true);  // a key QRZ takes is looked with at once
 }
+
+// Import from QRZ (docs/architecture/webapp.md, QRZ sync): a look first, so each of our own QSOs QRZ holds
+// carries QRZ's ID and is updated rather than brought in twice; then the logbook, through the relay, into the
+// station's log a batch at a time (qrz_import_core.js). Its line says how it went.
+var qrzImporting = false;
+function qrzImportLineText(r) {
+  if (!r.ok) {
+    switch (r.error) {
+      case 'pair': return 'Pair this browser to import';
+      case 'auth': return 'QRZ refused the key';
+      case 'unreachable': return 'Cannot reach QRZ';
+      case 'station': return 'No reply from the station';
+      case 'budget': return 'Try again in a few minutes';
+      case 'too_many': return 'Too many QSOs at QRZ to import';
+      default: return 'QRZ: ' + String(r.reason || r.error || 'refused').slice(0, 60);
+    }
+  }
+  var parts = [r.imported.toLocaleString('en-US') + ' imported'];
+  if (r.leftOut.mode) parts.push(r.leftOut.mode.toLocaleString('en-US') + ' not FT8 or FT4');
+  if (r.leftOut.date) parts.push(r.leftOut.date + ' had no date');
+  if (r.refused.length) parts.push(r.refused.length + ' refused');
+  return parts.join(' · ');
+}
+async function qrzImportPost(lines) {
+  var ac = new AbortController();
+  var timer = setTimeout(function () { ac.abort(); }, 30000);
+  try {
+    var r = await MicroFT8Pairing.authFetch('/api/log/import', { method: 'POST', body: lines.join('\n'), cache: 'no-store', signal: ac.signal });
+    if (r.status == 401) { MicroFT8Pairing.needsReauth(); throw new Error('pair'); }
+    var j = await r.json();
+    if (!r.ok || !j.ok) throw new Error(j.why || 'refused');
+    return j;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+async function qrzImport() {
+  var cred = qrzCred();
+  if (!cred.key || qrzImporting) return;
+  var line = document.getElementById('qrzImportLine');
+  var btn = document.getElementById('qrzImport');
+  var show = function (text, warn) { line.hidden = !text; line.textContent = text; line.classList.toggle('warn', !!warn); };
+  qrzImporting = true;
+  btn.disabled = true;
+  try {
+    var whole = await qrzKeyWhole();
+    if (!whole.key) { show(qrzImportLineText({ ok: false, error: whole.why }), true); return; }
+    show('Matching your QSOs with QRZ…');
+    await qrzRun(false, true);
+    while (qrz.phase !== 'idle') await new Promise(function (res) { setTimeout(res, 300); });
+    var state = qrzState();
+    show('Reading your QRZ logbook…');
+    var r = await QrzImport.run({
+      key: whole.key, version: appServed, relay: qrzRelay, post: qrzImportPost,
+      today: new Date().toISOString().slice(0, 10),
+      maxCalls: QrzSync.callsLeft(state.budget, Date.now()),
+      progress: function (done, total) { show('Importing ' + done.toLocaleString('en-US') + ' of ' + total.toLocaleString('en-US') + '…'); }
+    });
+    state.budget = QrzSync.noteRun(state.budget, Date.now(), r.calls, r.ok || r.error === 'station');
+    qrzSaveState(state);
+    show(qrzImportLineText(r), !r.ok || r.refused.length > 0);
+    if (r.refused.length) failMsg('The station refused ' + r.refused[0].call + ': ' + r.refused[0].why);
+    if (r.imported) logReload();
+  } finally {
+    qrzImporting = false;
+    btn.disabled = !qrzCred().key;
+  }
+}
+document.getElementById('qrzImport').onclick = function () { qrzImport(); };
 
 // Sending by itself, from today on: the day is kept so that turning it on never sends what was logged before.
 document.getElementById('qrzLive').onchange = async function () {

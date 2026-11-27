@@ -1016,6 +1016,54 @@ static void test_summary_and_call()
     CHECK(qso_store_page(rig.store, none, QsoStoreCursor{}, ids, 4, &matched, nullptr) == 0, "a call is the whole call, not its start");
 }
 
+// An import keeps the station's own copy of its QSOs: only the named fields, and a grid it lacks.
+static void test_import_kept()
+{
+    Rig rig;
+    Disk disk;
+    qso_store_create(&rig.store, rig.buffers(), 1, disk_append, &disk);
+    const char* takes = "app_qrzlog_logid,app_qrzlog_status,dxcc,state";
+    uint32_t a = 0, b = 0, id = 0;
+    add(&rig.store, "<call:5>K1ABC<qso_date:8>20261110<band:3>20M<mode:3>FT8<gridsquare:4>FN42<rst_sent:3>-10", 0, &a);
+    add(&rig.store, "<call:4>W9XY<qso_date:8>20261111<band:3>40M<mode:3>FT8", 0, &b);
+    patch(&rig.store, a, "<app_qrzlog_logid:3>101");
+    patch(&rig.store, b, "<app_qrzlog_logid:3>102");
+    std::string got;
+    bool own = false;
+    const char* qrz_a = "<app_qrzlog_logid:3>101<call:5>K1XYZ<band:3>40M<rst_sent:3>+05<gridsquare:4>EM10<dxcc:3>291<app_qrzlog_status:1>C<name:4>John";
+    CHECK(qso_store_import_kept(&rig.store, qrz_a, strlen(qrz_a), takes, &id, &own) == QsoStoreStatus::OK && id == a && own,
+          "our own record is updated");
+    qso_store_get(rig.store, a, &got);
+    auto m = as_map(got);
+    CHECK(m.at("call") == "K1ABC" && m.at("band") == "20M" && m.at("rst_sent") == "-10" && m.at("gridsquare") == "FN42",
+          "keeping what the station logged, its grid included");
+    CHECK(m.at("dxcc") == "291" && m.at("app_qrzlog_status") == "C" && !m.count("name"), "taking only the fields named");
+    const char* qrz_b = "<app_qrzlog_logid:3>102<call:4>W9XY<gridsquare:4>EN52";
+    CHECK(qso_store_import_kept(&rig.store, qrz_b, strlen(qrz_b), takes, &id, &own) == QsoStoreStatus::OK && id == b,
+          "a grid our record lacks");
+    qso_store_get(rig.store, b, &got);
+    CHECK(as_map(got).at("gridsquare") == "EN52", "is taken");
+    CHECK(qso_store_import_kept(&rig.store, qrz_b, strlen(qrz_b), takes, &id, &own) == QsoStoreStatus::UNCHANGED,
+          "and sent again changes nothing");
+    const char* qrz_c = "<app_qrzlog_logid:3>103<call:5>DL1AA<qso_date:8>20240301<band:3>20M<mode:3>FT8<name:4>Hans";
+    CHECK(qso_store_import_kept(&rig.store, qrz_c, strlen(qrz_c), takes, &id, &own) == QsoStoreStatus::OK && !own,
+          "a record we do not hold is added");
+    const QsoStoreEntry* e = qso_store_entry(rig.store, id);
+    CHECK(e && (e->flags & kQsoStoreForeign) && e->qrz_logid == 103, "as foreign, with QRZ's ID");
+    const char* qrz_c2 = "<app_qrzlog_logid:3>103<gridsquare:4>JO62<app_qrzlog_status:1>C";
+    CHECK(qso_store_import_kept(&rig.store, qrz_c2, strlen(qrz_c2), takes, &id, &own) == QsoStoreStatus::OK && !own,
+          "a second slice of it, by QRZ's ID");
+    qso_store_get(rig.store, id, &got);
+    m = as_map(got);
+    CHECK(m.at("call") == "DL1AA" && m.at("gridsquare") == "JO62" && m.at("app_qrzlog_status") == "C",
+          "sets every field it carries on a foreign record");
+    const char* qrz_d = "<app_qrzlog_logid:3>104<gridsquare:4>JO62";
+    CHECK(qso_store_import_kept(&rig.store, qrz_d, strlen(qrz_d), takes, &id, &own) == QsoStoreStatus::BAD_FIELDS,
+          "a later slice whose first never came: refused, for the next run to send whole");
+    CHECK(qso_store_import_kept(&rig.store, "<call:5>K1ABC", 13, takes, &id, &own) == QsoStoreStatus::BAD_FIELDS,
+          "no QRZ ID: refused");
+}
+
 int main()
 {
     test_golden_bytes();
@@ -1029,6 +1077,7 @@ int main()
     test_many_records();
     test_page();
     test_summary_and_call();
+    test_import_kept();
     if (g_fails) {
         fprintf(stderr, "%d FAIL(s)\n", g_fails);
         return 1;

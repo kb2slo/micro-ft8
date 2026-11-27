@@ -289,6 +289,23 @@ static void test_pages_and_deletes()
     CHECK(qso_log_store_page(unsent, QsoStoreCursor{}, 10, &page) == 7, "and it is no longer unsent");
     CHECK(qso_log_store_start() && qso_log_store_page(unsent, QsoStoreCursor{}, 10, &page) == 7, "across a restart");
     CHECK(qso_log_store_set(99, "<comment:2>hi") == QsoStoreStatus::NOT_FOUND, "no such record");
+
+    // The QRZ logbook's copy of our QSO 8 (marked with QRZ's ID above) updates it without changing what we
+    // logged; one we never logged comes in imported, in the list's pages and not in our own.
+    CHECK(qso_log_store_import("<app_qrzlog_logid:4>4242<call:5>XX9XX<dxcc:3>291<app_qrzlog_status:1>C") == QsoStoreStatus::OK,
+          "our own QSO from QRZ");
+    std::string f8;
+    qso_store_get(*qso_log_store(), 8, &f8);
+    CHECK(call_of(f8) == "W9XY" && f8.find("<dxcc:3>291") != std::string::npos, "keeps its call and takes QRZ's region");
+    CHECK(qso_log_store_import("<app_qrzlog_logid:4>5000<call:5>DL1AA<qso_date:8>20240301<time_on:4>1200<band:3>20M<mode:3>FT8") ==
+              QsoStoreStatus::OK,
+          "a QSO we never logged");
+    QsoStoreFilter any;
+    std::vector<QsoLogRecord> all;
+    CHECK(qso_log_store_page(any, QsoStoreCursor{}, 20, &all) == 9 && all.back().imported && call_of(all.back().fields) == "DL1AA" &&
+              !all.front().imported,
+          "is in the whole log's pages, oldest, marked imported");
+    CHECK(qso_log_store_page(own, QsoStoreCursor{}, 20, &all) == 8, "and not in our own");
     CHECK(qso_log_store_delete_day(20261124) == nullptr && days().size() == 1 && days()[0] == "20261125.adi",
           "a day's QSOs deleted");
     CHECK(qso_log_store_delete_day(20261124) != nullptr, "a day with none says so");

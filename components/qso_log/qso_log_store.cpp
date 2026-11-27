@@ -248,13 +248,21 @@ size_t qso_log_store_page(const QsoStoreFilter& filter, const QsoStoreCursor& be
     std::string fields;
     for (size_t i = 0; i < n; ++i) {
         const QsoStoreEntry* e = qso_store_entry(s_store, ids[i]);
-        if (e != nullptr && qso_store_get(s_store, ids[i], &fields)) out->push_back({ids[i], e->date, fields});
+        if (e != nullptr && qso_store_get(s_store, ids[i], &fields)) {
+            out->push_back({ids[i], e->date, (e->flags & kQsoStoreForeign) != 0, fields});
+        }
     }
     return matched;
 }
 
 const char* qso_log_store_band_name(uint8_t band) { return qso_store_band_name(s_store, band); }
 const char* qso_log_store_mode_name(uint8_t mode) { return qso_store_mode_name(s_store, mode); }
+
+QsoStoreStatus qso_log_store_import(const std::string& fields)
+{
+    if (!s_ready) return QsoStoreStatus::WRITE_FAILED;
+    return qso_store_import_kept(&s_store, fields.data(), fields.size(), kQsoLogImportOwnTakes, nullptr, nullptr);
+}
 
 QsoStoreStatus qso_log_store_set(uint32_t id, const std::string& fields)
 {

@@ -2,6 +2,8 @@
 
 #include "qso_store_internal.h"
 
+#include <cstring>
+
 using namespace qso_store_detail;
 
 static constexpr uint16_t kVersion = 1;
@@ -431,6 +433,55 @@ QsoStoreStatus qso_store_import(QsoStore* store, const char* fields, size_t len,
     }
     if (id_out != nullptr) *id_out = id;
     return qso_store_patch(store, id, fields, len);
+}
+
+static bool listed(const char* list, const char* name, size_t name_len)
+{
+    for (const char* at = list; at && *at;) {
+        const char* comma = strchr(at, ',');
+        const size_t n = comma ? (size_t)(comma - at) : strlen(at);
+        if (n == name_len && strncmp(at, name, n) == 0) return true;
+        at = comma ? comma + 1 : nullptr;
+    }
+    return false;
+}
+
+QsoStoreStatus qso_store_import_kept(QsoStore* store, const char* fields, size_t len, const char* own_takes,
+                                     uint32_t* id_out, bool* own_out)
+{
+    if (own_out != nullptr) *own_out = false;
+    std::string canonical;
+    Field logid;
+    if (!canonical_fields(fields, len, true, &canonical) || !find_field(canonical, "app_qrzlog_logid", &logid)) {
+        return QsoStoreStatus::BAD_FIELDS;
+    }
+    const uint64_t qrz_logid = digits_value(logid.value, logid.value_len, 19);
+    if (qrz_logid == 0) return QsoStoreStatus::BAD_FIELDS;
+    uint32_t id = 0;
+    if (!qso_store_find_qrz(*store, qrz_logid, &id)) {
+        return qso_store_add(store, fields, len, kQsoStoreForeign, id_out);
+    }
+    if (id_out != nullptr) *id_out = id;
+    const QsoStoreEntry* entry = qso_store_entry(*store, id);
+    if (entry == nullptr) return QsoStoreStatus::NOT_FOUND;
+    if ((entry->flags & kQsoStoreForeign) != 0) return qso_store_patch(store, id, fields, len);
+    if (own_out != nullptr) *own_out = true;
+    std::string current;
+    Field have;
+    const bool has_grid = qso_store_get(*store, id, &current) && find_field(current, "gridsquare", &have) &&
+                          have.value_len > 0;
+    std::string kept;
+    const char* cursor = canonical.data();
+    const char* end = canonical.data() + canonical.size();
+    Field f;
+    while (next_field(&cursor, end, &f) == FieldRead::FIELD) {
+        const bool grid = f.name_len == 10 && strncmp(f.name, "gridsquare", 10) == 0;
+        if ((grid && !has_grid && f.value_len > 0) || (!grid && listed(own_takes, f.name, f.name_len))) {
+            append_field(&kept, f.name, f.name_len, f.value, f.value_len);
+        }
+    }
+    if (kept.empty()) return QsoStoreStatus::UNCHANGED;
+    return qso_store_patch(store, id, kept.data(), kept.size());
 }
 
 QsoStoreStatus qso_store_meta_set(QsoStore* store, const char* key, const char* value)

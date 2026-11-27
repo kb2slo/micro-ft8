@@ -139,7 +139,11 @@ extern "C" {
 // what its filter matches (how many, the oldest and newest date, how many days, each band and mode with its
 // count) in place of the bare TOTAL. A v24 peer's request and TOTAL are refused. Both ends are flashed
 // together.
-#define PORTA_PROTO_VERSION 25u
+// v26 (2026-11-27): the import of the operator's QRZ logbook. The LOG_IMPORT action carries a record's
+// fields, or a slice of them, under QRZ's ID; each QSO row says whether its record was imported (a flags
+// byte after its date); LOG_PAGE can ask for this station's own records alone. A v25 peer's shorter row is
+// refused. Both ends are flashed together.
+#define PORTA_PROTO_VERSION 26u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -594,6 +598,7 @@ typedef enum {
     PORTA_ACT_UPDATE_MODE  = 0x11,  // payload: u8 on: an update is running, or is over (the v18 note). Always ACKed. Frozen (the v15 note)
     PORTA_ACT_RADIO_SET_SETTING = 0x12, // payload: "<key>=<value>" text, such as radio_tune_pct=40; progress in the config snapshot
     PORTA_ACT_LOG_SET      = 0x13,  // payload: u32 record ID, then ADIF fields to set on it
+    PORTA_ACT_LOG_IMPORT   = 0x14,  // payload: ADIF fields of a record from the operator's QRZ logbook, by its QRZ ID
 } porta_action_verb_t;
 
 // FACTORY_RESET flags. Station settings are always reset; the QSO logs only when asked,
@@ -832,6 +837,7 @@ typedef enum {
 typedef struct {
     uint32_t id;    // the record's ID in the QSO store
     uint32_t date;  // its QSO_DATE as a number (20261125), 0 when it has none
+    uint8_t flags;  // PORTA_ROW_IMPORTED
     char    time_on[6];
     char    band[PORTA_BAND_MAX + 1];
     char    call[PORTA_CALLSIGN_MAX + 1];
@@ -847,6 +853,8 @@ typedef struct {
     char    my_sota_ref[PORTA_SOTA_REF_MAX + 1];   // <my_sota_ref>, empty if absent
 } porta_qso_entry_row_t;
 
+#define PORTA_ROW_IMPORTED 0x01u  // from the operator's QRZ logbook, not logged by this station
+
 size_t porta_proto_encode_file_entry_row(const porta_qso_entry_row_t *e,
                                          uint8_t *out, size_t out_cap);
 bool porta_proto_parse_file_entry_row(const porta_frame_t *f, porta_qso_entry_row_t *out);
@@ -856,6 +864,7 @@ bool porta_proto_parse_file_entry_row(const porta_frame_t *f, porta_qso_entry_ro
 #define PORTA_LOG_PAGE_UNSENT 0x01u  // only records QRZ holds no ID or upload mark for
 #define PORTA_LOG_PAGE_DATE   0x02u  // only records of `date`
 #define PORTA_LOG_PAGE_CALL   0x04u  // only records with `call`
+#define PORTA_LOG_PAGE_OWN    0x08u  // only records this station made, not imported ones
 typedef struct {
     uint8_t  flags;
     uint32_t date;
@@ -891,6 +900,13 @@ bool porta_proto_parse_file_summary_row(const porta_frame_t *f, porta_log_summar
 // LOG_SET: ADIF fields (`<app_qrzlog_logid:10>1234567890...`) to set on a record, as the QSO store's
 // patch takes them; a field of no length removes it. At most PORTA_LOG_SET_FIELDS_MAX bytes.
 #define PORTA_LOG_SET_FIELDS_MAX (PORTA_PROTO_MAX_PAYLOAD - 5u)
+// LOG_IMPORT: a record from the operator's QRZ logbook, or a slice of it, as ADIF fields naming its QRZ ID
+// (`<app_qrzlog_logid:10>…`); the first slice carries the call. At most PORTA_LOG_IMPORT_FIELDS_MAX bytes.
+#define PORTA_LOG_IMPORT_FIELDS_MAX (PORTA_PROTO_MAX_PAYLOAD - 1u)
+size_t porta_proto_encode_log_import(const char *fields, size_t len, uint8_t *out, size_t out_cap);
+// `fields_out` holds PORTA_LOG_IMPORT_FIELDS_MAX + 1 bytes; NUL-ended, its length `len_out`.
+bool porta_proto_parse_log_import(const porta_frame_t *f, char *fields_out, size_t *len_out);
+
 size_t porta_proto_encode_log_set(uint32_t id, const char *fields, size_t len, uint8_t *out, size_t out_cap);
 // `fields_out` holds PORTA_LOG_SET_FIELDS_MAX + 1 bytes; it is NUL-ended and its length is `len_out`.
 bool porta_proto_parse_log_set(const porta_frame_t *f, uint32_t *id_out, char *fields_out, size_t *len_out);

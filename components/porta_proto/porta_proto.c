@@ -1271,7 +1271,7 @@ bool porta_proto_parse_config_value(const porta_frame_t *f, char *key_out, char 
 
 // --- LOG_PAGE / FILE_DATA payloads ------------------------------------------
 
-// data_kind(1)=ENTRY | id(4) | date(4) | time_on(5, fixed "HH:MM") | band_len(1) | band... |
+// data_kind(1)=ENTRY | id(4) | date(4) | flags(1) | time_on(5, fixed "HH:MM") | band_len(1) | band... |
 // call_len(1) | call... | rst_sent(1) | rst_rcvd(1) | grid_len(1) | grid... |
 // freq_len(1) | freq... | my_grid_len(1) | my_grid... | comment_len(1) | comment... |
 // mode_len(1) | mode... | station_callsign_len(1) | station_callsign... |
@@ -1303,7 +1303,7 @@ size_t porta_proto_encode_file_entry_row(const porta_qso_entry_row_t *e,
         my_pota_ref_n > PORTA_POTA_REF_MAX || my_sota_ref_n > PORTA_SOTA_REF_MAX) {
         return 0;
     }
-    uint8_t payload[1 + 4 + 4 + 5 + 1 + PORTA_BAND_MAX + 1 + PORTA_CALLSIGN_MAX + 1 + 1 +
+    uint8_t payload[1 + 4 + 4 + 1 + 5 + 1 + PORTA_BAND_MAX + 1 + PORTA_CALLSIGN_MAX + 1 + 1 +
                     1 + PORTA_GRID_MAX + 1 + PORTA_FREQ_MAX +
                     1 + PORTA_GRID_MAX + 1 + PORTA_COMMENT_MAX +
                     1 + PORTA_MODE_MAX + 1 + PORTA_CALLSIGN_MAX +
@@ -1315,6 +1315,7 @@ size_t porta_proto_encode_file_entry_row(const porta_qso_entry_row_t *e,
     p += 4;
     put_u32(&payload[p], e->date);
     p += 4;
+    payload[p++] = e->flags;
     memcpy(&payload[p], e->time_on, 5);
     p += 5;
     payload[p++] = (uint8_t)band_n;
@@ -1355,7 +1356,7 @@ size_t porta_proto_encode_file_entry_row(const porta_qso_entry_row_t *e,
 bool porta_proto_parse_file_entry_row(const porta_frame_t *f, porta_qso_entry_row_t *out)
 {
     if (!f || !out || f->type != PORTA_MSG_FILE_DATA ||
-        f->len < 1 + 4 + 4 + 5 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 ||
+        f->len < 1 + 4 + 4 + 1 + 5 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 ||
         f->payload[0] != PORTA_FILE_DATA_ENTRY) {
         return false;
     }
@@ -1365,6 +1366,7 @@ bool porta_proto_parse_file_entry_row(const porta_frame_t *f, porta_qso_entry_ro
     p += 4;
     out->date = get_u32(&f->payload[p]);
     p += 4;
+    out->flags = f->payload[p++];
     memcpy(out->time_on, &f->payload[p], 5);
     out->time_on[5] = '\0';
     p += 5;
@@ -1586,6 +1588,30 @@ bool porta_proto_parse_file_summary_row(const porta_frame_t *f, porta_log_summar
         p += 2;
     }
     return p == f->len;
+}
+
+// verb(1)=LOG_IMPORT | fields...
+size_t porta_proto_encode_log_import(const char *fields, size_t len, uint8_t *out, size_t out_cap)
+{
+    if (!fields || len == 0 || len > PORTA_LOG_IMPORT_FIELDS_MAX) {
+        return 0;
+    }
+    uint8_t payload[PORTA_PROTO_MAX_PAYLOAD];
+    payload[0] = PORTA_ACT_LOG_IMPORT;
+    memcpy(&payload[1], fields, len);
+    return porta_proto_encode(PORTA_MSG_ACTION, payload, (uint8_t)(1 + len), out, out_cap);
+}
+
+bool porta_proto_parse_log_import(const porta_frame_t *f, char *fields_out, size_t *len_out)
+{
+    if (!f || !fields_out || !len_out || f->type != PORTA_MSG_ACTION || f->len < 2 ||
+        f->payload[0] != PORTA_ACT_LOG_IMPORT) {
+        return false;
+    }
+    *len_out = (size_t)f->len - 1u;
+    memcpy(fields_out, &f->payload[1], *len_out);
+    fields_out[*len_out] = '\0';
+    return true;
 }
 
 // verb(1)=LOG_SET | id(4) | fields...

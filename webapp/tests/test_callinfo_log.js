@@ -23,6 +23,8 @@ assert.strictEqual(C.logSummaryText(40, { first: '20251230', last: '20260102', d
   '40 QSOs · Dec 30, 2025 – Jan 2, 2026 · 3 days on the air', 'across a new year, both years');
 assert.strictEqual(C.logSummaryText(0, { first: '', last: '', days: 0 }), '', 'no QSO: no line');
 assert.strictEqual(C.logSummaryText(5, null), '5 QSOs', 'a station that sends no summary still gives the count');
+assert.strictEqual(C.logSummaryText(1540, { first: '20260528', last: '20261127', days: 119 }),
+  '1,540 QSOs · May 28 – Nov 27, 2026 · 119 days on the air', 'thousands with a comma, as the import\'s line counts them');
 assert.strictEqual(C.logSummaryText(5, { first: '', last: '', days: 0 }), '5 QSOs', 'nor dates when none has one');
 
 // The card.

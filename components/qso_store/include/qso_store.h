@@ -143,6 +143,13 @@ QsoStoreStatus qso_store_delete(QsoStore* store, uint32_t id);
 // is UNCHANGED.
 QsoStoreStatus qso_store_import(QsoStore* store, const char* fields, size_t len, uint32_t* id_out);
 
+// The same, for a record whose own copy this station keeps: a record this station made (not foreign) takes
+// only the fields `own_takes` names (a comma list, lower case) and `gridsquare` when it has none, since what
+// the station logged is the truth for what it logged; a foreign one, or a new one, takes every field. A
+// record that takes nothing is UNCHANGED. `own_out`, when given, says whether it was this station's.
+QsoStoreStatus qso_store_import_kept(QsoStore* store, const char* fields, size_t len, const char* own_takes,
+                                     uint32_t* id_out, bool* own_out);
+
 // A record's fields as they now stand, and its index entry. False and nullptr for an ID that was never
 // given out or is deleted.
 bool qso_store_get(const QsoStore& store, uint32_t id, std::string* fields_out);

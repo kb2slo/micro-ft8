@@ -53,6 +53,8 @@ function row(day, i) {
 }
 const LOG = [];
 for (const day of Object.keys(DAYS).sort()) for (let i = 0; i < DAYS[day]; i++) LOG.push(Object.assign(row(day, i), { id: LOG.length + 1, date: day }));
+// And one imported from QRZ on the busy day, which no download carries: QRZ has it already.
+LOG.push(Object.assign(row('20261114', 59), { id: LOG.length + 1, date: '20261114', call: 'QRZ1MP', imported: 1 }));
 const keyOf = (q) => [Number(q.date), Number(q.time.replace(':', '')), q.id];
 const older = (a, b) => a[0] !== b[0] ? a[0] < b[0] : a[1] !== b[1] ? a[1] < b[1] : a[2] < b[2];
 const MAIN_BOARD_ROWS = 32;      // kLogPageRows, poe_p4/main/porta_host.cpp: the most a page holds
@@ -61,8 +63,9 @@ function station(p) {
   const u = new URL('http://station' + p);
   assert.strictEqual(u.pathname, '/api/log/entries');
   const take = +u.searchParams.get('take'), date = u.searchParams.get('date'), before = u.searchParams.get('before');
+  const own = u.searchParams.get('own') === '1';
   const limit = before ? before.split('.').map(Number) : null;
-  const match = LOG.filter((q) => !date || q.date === date).sort((a, b) => (older(keyOf(a), keyOf(b)) ? 1 : -1));
+  const match = LOG.filter((q) => (!date || q.date === date) && (!own || !q.imported)).sort((a, b) => (older(keyOf(a), keyOf(b)) ? 1 : -1));
   // The main board answers at most MAIN_BOARD_ROWS, so its Port A queue never drops a page's newest rows;
   // the sidekick's buffer then holds what it can, and says when it held less.
   const page = match.filter((q) => !limit || older(keyOf(q), limit)).slice(0, Math.min(take, MAIN_BOARD_ROWS));
@@ -80,9 +83,9 @@ const ctx = {
 };
 vm.createContext(ctx);
 vm.runInContext(bandsSrc, ctx);
-vm.runInContext([extractVar('LOG_ENTRY_FETCH')].concat(
-  ['adifField', 'adifFieldIfSet', 'adifBandTag', 'buildAdifRecord', 'dayActivationRefs', 'groupRowsByReference',
-   'exportFileBaseName', 'logCursorOf', 'readLogPages', 'dayFullRows', 'fetchAllEntries', 'downloadDayNfer',
+vm.runInContext([extractVar('LOG_ENTRY_FETCH'), "var APP_BUILD = '0.4.0';", extractVar('ADIF_VER')].concat(
+  ['adifField', 'adifHeader', 'adifFieldIfSet', 'adifBandTag', 'buildAdifRecord', 'dayActivationRefs', 'groupRowsByReference',
+   'exportFileBaseName', 'logCursorOf', 'readLogPages', 'dayFullRows', 'fetchAllEntries', 'ownRows', 'downloadDayNfer',
    'downloadDayAdif', 'downloadAllAdif']
     .map(extract)).join('\n'), ctx);
 
@@ -92,10 +95,10 @@ function calls(text) { return (text.match(/<call:\d+>(\w+)/g) || []).map((c) => 
   // The stand-in cuts a page of 50 as the station does, or the test proves nothing.
   const big = station('/api/log/entries?take=50&date=20261114');
   assert.strictEqual(big.entries.length, SIDEKICK_ROWS, 'a page of 50 comes back as 18 rows');
-  assert.ok(big.cut && big.entries[0].time === '00:58', 'saying it was cut, the newest kept');
+  assert.ok(big.cut && big.entries[0].time === '00:59', 'saying it was cut, the newest kept');
 
   for (const day of Object.keys(DAYS)) {
-    const rows = await ctx.fetchAllEntries(day);
+    const rows = ctx.ownRows(await ctx.fetchAllEntries(day));
     assert.strictEqual(rows.length, DAYS[day], day + ': every row read');
     rows.forEach((q, i) => assert.strictEqual(q.time, row(day, i).time, day + ': row ' + i + ' in the order logged'));
   }
@@ -105,8 +108,10 @@ function calls(text) { return (text.match(/<call:\d+>(\w+)/g) || []).map((c) => 
   await ctx.downloadDayAdif('20261114', link);
   assert.strictEqual(downloads.length, 1, 'Download ADI makes one file');
   assert.strictEqual(downloads[0].name, '20261114', 'named for its day');
+  assert.ok(downloads[0].text.startsWith('ADIF EXPORT\n<adif_ver:5>3.1.4 \n<programid:9>micro-FT8 \n<programversion:5>0.4.0 \n<eoh>\n'),
+    'its header names the program and its version, and the ADIF version: ' + JSON.stringify(downloads[0].text.slice(0, 90)));
   assert.deepStrictEqual(calls(downloads[0].text), Array.from({ length: 59 }, (_, i) => row('20261114', i).call),
-                         'Download ADI holds the busy day\'s 59 QSOs, in order');
+                         'Download ADI holds the busy day\'s 59 QSOs, in order, and not the one imported from QRZ');
 
   downloads.length = 0;
   const seen = [];
@@ -114,12 +119,13 @@ function calls(text) { return (text.match(/<call:\d+>(\w+)/g) || []).map((c) => 
   await ctx.downloadAllAdif(watch);
   const want = Object.keys(DAYS).sort().reverse().flatMap((d) => Array.from({ length: DAYS[d] }, (_, i) => row(d, i).call));
   assert.deepStrictEqual(calls(downloads[0].text), want, 'Download full ADI holds all 87 QSOs, newest day first, each day in order');
+  assert.ok(/<programid:9>micro-FT8 [\s\S]*<eoh>/.test(downloads[0].text), 'and so does the full one\'s');
   assert.ok(seen.includes('Preparing… 87/87'), 'and counts them as it reads: ' + seen.slice(-2));
 
   // A page cut short, as a larger one is: the next page carries on from its last row, so nothing is lost.
   const saved = ctx.LOG_ENTRY_FETCH;
   vm.runInContext('LOG_ENTRY_FETCH = 50', ctx);
-  const cut = await ctx.fetchAllEntries('20261114');
+  const cut = ctx.ownRows(await ctx.fetchAllEntries('20261114'));
   vm.runInContext('LOG_ENTRY_FETCH = ' + saved, ctx);
   assert.deepStrictEqual(Array.from(cut, (q) => q.time), Array.from({ length: 59 }, (_, i) => row('20261114', i).time),
                          'pages of 50, each cut to 18, still read the day whole');

@@ -141,9 +141,9 @@ function fmtLogRange(first, last) {
 // QSO. `sum` is the summary /api/log/entries serves, with its `total`.
 function logSummaryText(total, sum) {
   if (!total) return '';
-  var parts = [total + (total === 1 ? ' QSO' : ' QSOs')];
+  var parts = [Number(total).toLocaleString('en-US') + (total === 1 ? ' QSO' : ' QSOs')];
   if (sum && sum.first) parts.push(fmtLogRange(sum.first, sum.last));
-  if (sum && sum.days) parts.push(sum.days + (sum.days === 1 ? ' day' : ' days') + ' on the air');
+  if (sum && sum.days) parts.push(Number(sum.days).toLocaleString('en-US') + (sum.days === 1 ? ' day' : ' days') + ' on the air');
   return parts.join(' · ');
 }
 // The card's line for one call: "20m FT8 ×3 · 40m FT4 ×1 · first Nov 11, 2026, last Nov 25, 2026", and

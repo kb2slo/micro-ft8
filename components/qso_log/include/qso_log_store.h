@@ -31,6 +31,7 @@ const QsoStore* qso_log_store();
 struct QsoLogRecord {
     uint32_t id;
     uint32_t date;
+    bool imported;  // from the operator's QRZ logbook (kQsoStoreForeign), not logged by this station
     std::string fields;
 };
 
@@ -42,6 +43,13 @@ size_t qso_log_store_page(const QsoStoreFilter& filter, const QsoStoreCursor& be
 // A band or mode index's name, as the store holds it ("20M", "FT8").
 const char* qso_log_store_band_name(uint8_t band);
 const char* qso_log_store_mode_name(uint8_t mode);
+
+// A record, or a slice of one, from the operator's QRZ logbook, named by its QRZ ID: added as imported, or set
+// on the record that carries that ID. A QSO this station logged takes only QRZ's ID and confirmation, the
+// region fields and a grid it lacks (kQsoLogImportOwnTakes); what the station logged stays as it logged it.
+inline constexpr char kQsoLogImportOwnTakes[] =
+    "app_qrzlog_logid,app_qrzlog_status,app_qrzlog_qsldate,dxcc,cont,state,cnty,cqz,ituz";
+QsoStoreStatus qso_log_store_import(const std::string& fields);
 
 // Sets fields on a record, as qso_store_patch() takes them: any field, one of no length removing it.
 QsoStoreStatus qso_log_store_set(uint32_t id, const std::string& fields);
