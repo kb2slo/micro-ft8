@@ -1184,7 +1184,8 @@ void porta_emit_log(const char* text) {
 
 void porta_emit_decode(uint32_t decode_id, const char* text, int snr, int offset_hz,
                        float dt_s, bool is_cq, bool is_to_me, bool is_recent_qso,
-                       uint32_t slot_idx, uint8_t slot_len_ds, uint32_t dial_hz) {
+                       uint32_t slot_idx, uint8_t slot_len_ds, uint32_t dial_hz,
+                       uint8_t worked) {
   if (!s_running || !text) return;
   porta_decode_event_t ev = {};
   ev.epoch_secs = host_epoch_secs();
@@ -1204,6 +1205,7 @@ void porta_emit_decode(uint32_t decode_id, const char* text, int snr, int offset
   ev.slot_idx = porta_proto_dated_slot_idx(ev.epoch_secs, slot_idx, slot_len_ds);
   ev.slot_len_ds = slot_len_ds;
   ev.dial_hz = dial_hz;
+  ev.worked = worked;
 
   uint8_t buf[PORTA_PROTO_MAX_FRAME];
   const size_t n = porta_proto_encode_decode(&ev, buf, sizeof(buf));

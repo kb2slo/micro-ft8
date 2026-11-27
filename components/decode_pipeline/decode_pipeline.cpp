@@ -54,9 +54,14 @@ static const char* TAG = "DECODE";
 void arm_from_autoseq();
 void porta_emit_decode(uint32_t decode_id, const char* text, int snr, int offset_hz,
                        float dt_s, bool is_cq, bool is_to_me, bool is_recent_qso,
-                       uint32_t slot_idx, uint8_t slot_len_ds, uint32_t dial_hz);
+                       uint32_t slot_idx, uint8_t slot_len_ds, uint32_t dial_hz,
+                       uint8_t worked);
 
 AdifLoggerDedupe s_adif_logger_dedupe;
+
+// What the log knows of a decode's sender (decode_pipeline_set_worked()); unset, nothing.
+static uint8_t (*s_worked_fn)(const char* call) = nullptr;
+void decode_pipeline_set_worked(uint8_t (*fn)(const char* call)) { s_worked_fn = fn; }
 
 // autoseq refuses a recently logged call a new QSO for this long, and expires
 // its parked entry after the same span; unequal, one outlives the other.
@@ -681,7 +686,8 @@ static void apply_slot_result(DecodeSlotResult& r) {
       porta_emit_decode(decode_id, e.text, e.snr, e.offset_hz, e.time_s,
                         e.is_cq, e.is_to_me, e.is_recent_qso,
                         (uint32_t)emit_slot_idx, (uint8_t)(emit_slot_ms / 100),
-                        dial_history_at(mid_ms) + (uint32_t)r.dial_offset_hz);
+                        dial_history_at(mid_ms) + (uint32_t)r.dial_offset_hz,
+                        s_worked_fn ? s_worked_fn(e.field2) : 0);
     }
   } else {
     ESP_LOGD(TAG, "No messages decoded; keeping RX list");

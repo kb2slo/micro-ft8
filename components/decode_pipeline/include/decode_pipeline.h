@@ -47,6 +47,10 @@ bool decode_pipeline_recently_logged(const std::string& dxcall_norm, RxChannel c
 // station's dial. Unset, every channel is listened to.
 void decode_pipeline_set_channel_listened(bool (*fn)(RxChannel channel));
 
+// What the station's log knows of a decode's sender (PORTA_WORKED_* bits, qso_log_store_worked()), asked as
+// each decode goes to the sidekick, on the main loop. Unset, every decode goes with none.
+void decode_pipeline_set_worked(uint8_t (*fn)(const char* call));
+
 // True while a station slot in the last two minutes showed the clock on its slots (decode_sync_phase_good()):
 // a browser clock set may then move it only by whole slots (clock_set_decide(), docs/architecture/time.md).
 bool decode_pipeline_phase_good(void);

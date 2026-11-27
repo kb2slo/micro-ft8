@@ -44,6 +44,16 @@ size_t qso_log_store_page(const QsoStoreFilter& filter, const QsoStoreCursor& be
 const char* qso_log_store_band_name(uint8_t band);
 const char* qso_log_store_mode_name(uint8_t mode);
 
+// What the log says of a station heard now (docs/architecture/webapp.md, Worked and activation cues on
+// decodes), as bits: a dupe (worked today on this band, at one of `refs` when the station has any), worked on
+// this band any day, worked on any band. FT8 and FT4 count as one mode; imported QSOs count too. `today` is
+// the UTC date (20261127), 0 while the clock is unset, which leaves out the dupe; `refs` as the station's
+// settings hold them (qso_store_worked()). 0 for no call, or while the log is not ready.
+inline constexpr uint8_t kQsoWorkedDupe = 0x01;
+inline constexpr uint8_t kQsoWorkedBand = 0x02;
+inline constexpr uint8_t kQsoWorkedEver = 0x04;
+uint8_t qso_log_store_worked(const char* call, const char* band, uint32_t today, const char* refs);
+
 // A record, or a slice of one, from the operator's QRZ logbook, named by its QRZ ID: added as imported, or set
 // on the record that carries that ID. A QSO this station logged takes only QRZ's ID and confirmation, the
 // region fields and a grid it lacks (kQsoLogImportOwnTakes); what the station logged stays as it logged it.

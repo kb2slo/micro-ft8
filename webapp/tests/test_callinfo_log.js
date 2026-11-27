@@ -36,6 +36,10 @@ assert.strictEqual(C.callSummaryText({ first: '20261125', last: '20261125', days
 assert.strictEqual(C.callSummaryText({ first: '20261111', last: '20261125', days: 3, pairs_total: 14, pairs }),
   '20m FT8 ×3 · 40m FT4 ×1 · and 12 more · first Nov 11, 2026, last Nov 25, 2026', 'bands and modes past what the summary names');
 assert.strictEqual(C.callSummaryText(null), '');
+assert.strictEqual(C.callSummaryText({ first: '20261111', last: '20261127', days: 2, pairs_total: 1, pairs: pairs.slice(0, 1) }, '20261127'),
+  '20m FT8 ×3 · first Nov 11, 2026, last Nov 27, 2026 · worked today', 'last worked today: says so');
+assert.ok(!/today/.test(C.callSummaryText({ first: '20261111', last: '20261126', days: 2, pairs_total: 1, pairs: pairs.slice(0, 1) }, '20261127')),
+  'not when the last was yesterday');
 
 assert.strictEqual(C.callQsoText({ date: '20261125', time: '21:54', band: '20m', mode: 'FT8', freq: '14.074', rst_sent: -8, rst_rcvd: 3 }),
   '2026-11-25 21:54 · 20m FT8 · 14.074 MHz · -8/+3');

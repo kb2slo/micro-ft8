@@ -147,14 +147,16 @@ function logSummaryText(total, sum) {
   return parts.join(' · ');
 }
 // The card's line for one call: "20m FT8 ×3 · 40m FT4 ×1 · first Nov 11, 2026, last Nov 25, 2026", and
-// "· and 2 more" when the summary named only some of the bands and modes.
-function callSummaryText(sum) {
+// "· and 2 more" when the summary named only some of the bands and modes; "· worked today" when the last was
+// `today` ('YYYYMMDD', UTC), which says why a decode of it may read Dupe.
+function callSummaryText(sum, today) {
   if (!sum || !sum.pairs) return '';
   var parts = sum.pairs.map(function (p) {
     return String(p.band || '').toLowerCase() + ' ' + (p.mode || '') + ' ×' + p.n;
   });
   if (sum.pairs_total > sum.pairs.length) parts.push('and ' + (sum.pairs_total - sum.pairs.length) + ' more');
   if (sum.first) parts.push(sum.first === sum.last ? fmtLogDate(sum.first) : 'first ' + fmtLogDate(sum.first) + ', last ' + fmtLogDate(sum.last));
+  if (today && sum.last === today) parts.push('worked today');
   return parts.join(' · ');
 }
 // One QSO of the card's list: "2026-11-25 21:54 · 20m FT8 · 14.074 MHz · -08/-12".
@@ -201,7 +203,7 @@ function fillCallQsos(call) {
       var total = j.total || 0;
       if (!shown) {
         section.innerHTML = '<div class=ci-label>QSOs in log (' + total + ')</div>' +
-          (total ? '<div class=ci-heard id=ciQsoSum>' + esc(callSummaryText(j.summary)) + '</div><div id=ciQsoRows></div>'
+          (total ? '<div class=ci-heard id=ciQsoSum>' + esc(callSummaryText(j.summary, new Date().toISOString().slice(0, 10).replace(/-/g, ''))) + '</div><div id=ciQsoRows></div>'
                  : 'No QSOs with this callsign in the log');
       }
       var list = document.getElementById('ciQsoRows');

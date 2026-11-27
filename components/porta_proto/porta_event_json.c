@@ -58,11 +58,11 @@ size_t porta_event_json_decode(char *out, size_t cap, uint32_t seq,
     json_escape(ev->text, esc, sizeof(esc));
     const int n = snprintf(out, cap,
                            "{\"s\":%" PRIu32 ",\"t\":%" PRIu32 ",\"d\":1,\"x\":\"%s\","
-                           "\"id\":%" PRIu32 ",\"snr\":%d,\"hz\":%u,\"dt\":%.2f,\"cq\":%d,\"me\":%d,\"rq\":%d,"
+                           "\"id\":%" PRIu32 ",\"snr\":%d,\"hz\":%u,\"dt\":%.2f,\"cq\":%d,\"me\":%d,\"rq\":%d,\"wk\":%u,"
                            "\"si\":%" PRIu32 ",\"sl\":%u,\"fq\":%" PRIu32 "}",
                            seq, ev->epoch_secs, esc, ev->decode_id, ev->snr,
                            ev->offset_hz, ev->dt_centis / 100.0, ev->is_cq ? 1 : 0,
-                           ev->is_to_me ? 1 : 0, ev->is_recent_qso ? 1 : 0,
+                           ev->is_to_me ? 1 : 0, ev->is_recent_qso ? 1 : 0, (unsigned)ev->worked,
                            ev->slot_idx, (unsigned)ev->slot_len_ds, ev->dial_hz);
     return finish(out, cap, n);
 }
