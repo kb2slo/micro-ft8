@@ -82,4 +82,26 @@ assert(/if \(e\.active && !\(txHud && txHud\.active\)\) \{\s*txKeyedAt = Date\.n
   'a transmission that logs a QSO starts a refresh as it begins');
 assert(/\} else if \(name === 'log'\) \{\s*refreshLogHead\(\);/.test(src), 'opening the QSOs tab refreshes it');
 
+// The QSOs tab tapped while it shows scrolls the list to the top, smoothly unless the phone asks for less
+// motion; tapped from another tab it only opens it, where it was.
+{
+  const calls = [];
+  const box = {
+    currentView: 'operate', showView: (n) => { box.currentView = n; }, showSetPage: () => {},
+    reduce: false,
+    window: { matchMedia: () => ({ matches: box.reduce }) },
+    document: { getElementById: (id) => ({ scrollTo: (o) => calls.push([id, o.top, o.behavior]) }) },
+  };
+  vm.createContext(box);
+  vm.runInContext(extractFunction(src, 'tabTap'), box);
+  box.tabTap('log');
+  assert.deepStrictEqual(calls, [], 'opening QSOs from another tab leaves its scroll where it was');
+  box.tabTap('log');
+  assert.deepStrictEqual(calls, [['view-log', 0, 'smooth']], 'tapped again, it scrolls to the top');
+  box.reduce = true;
+  box.tabTap('log');
+  assert.deepStrictEqual(calls[1], ['view-log', 0, 'auto'], 'at once when the phone asks for less motion');
+}
+assert(/b\.onclick = function \(\) \{ tabTap\(b\.getAttribute\('data-view'\)\); \};/.test(src), 'every tab goes through tabTap()');
+
 overlap().then(() => console.log('PASS: log refresh on a logged QSO'), (e) => { console.error(e); process.exit(1); });

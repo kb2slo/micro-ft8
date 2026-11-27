@@ -2220,13 +2220,18 @@ function showView(name) {
   if (name === 'tools') PskrLive.tick();
   if (name === 'settings') renderSettingsMenu();
 }
+// A tab tapped while it shows: Settings goes back to its menu, and QSOs scrolls its list to the top, since
+// it loads as it scrolls and runs long (webapp.md, QSOs), smoothly unless the phone asks for less motion.
+function tabTap(name) {
+  if (name === 'settings' && currentView === 'settings') showSetPage('root');
+  if (name === 'log' && currentView === 'log') {
+    var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.getElementById('view-log').scrollTo({ top: 0, behavior: still ? 'auto' : 'smooth' });
+  }
+  showView(name);
+}
 document.querySelectorAll('#tabbar button').forEach(function (b) {
-  b.onclick = function () {
-    var name = b.getAttribute('data-view');
-    // The Settings tab, tapped while on Settings, goes back to its menu.
-    if (name === 'settings' && currentView === 'settings') showSetPage('root');
-    showView(name);
-  };
+  b.onclick = function () { tabTap(b.getAttribute('data-view')); };
 });
 
 // The slot bar's row, on every tab: a tap goes to Operate, where Stop is, and on Operate brings
