@@ -50,6 +50,7 @@ async function overlap() {
     logLoadedOnce: true, logLoading: false, logRefreshing: false, logRefreshAgain: false, currentView: 'log',
     logRenderedAny: true, logDone: false, logShownIds: { 1: true }, LOG_ENTRY_FETCH: 10, rows: [],
     appendLogRows: (rows) => { box.rows.push(...rows); },
+    renderLogSummary: () => {},
     fetch: () => { fetches++; return new Promise((res) => { release = res; }); },
     // The read's own timeout (logFetchJson(), test_log_timeout.js) is not this test's: only the re-run is kept.
     setTimeout: (fn, ms) => { if (!ms) timers.push(fn); },

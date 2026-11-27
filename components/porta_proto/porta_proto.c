@@ -1455,53 +1455,137 @@ bool porta_proto_parse_file_entry_row(const porta_frame_t *f, porta_qso_entry_ro
     return true;
 }
 
-// flags(1) | date(4) | before_date(4) | before_time(2) | before_id(4) | take(1)
+// flags(1) | date(4) | before_date(4) | before_time(2) | before_id(4) | take(1) [| call_len(1) | call...]
 size_t porta_proto_encode_log_page_req(const porta_log_page_req_t *r, uint8_t *out, size_t out_cap)
 {
     if (!r || r->take == 0) {
         return 0;
     }
-    uint8_t payload[16];
+    uint8_t payload[17 + PORTA_CALLSIGN_MAX];
+    size_t n = 16;
     payload[0] = r->flags;
     put_u32(&payload[1], r->date);
     put_u32(&payload[5], r->before_date);
     put_u16(&payload[9], r->before_time);
     put_u32(&payload[11], r->before_id);
     payload[15] = r->take;
-    return porta_proto_encode(PORTA_MSG_LOG_PAGE, payload, sizeof(payload), out, out_cap);
+    if (r->flags & PORTA_LOG_PAGE_CALL) {
+        const size_t call_n = strnlen(r->call, PORTA_CALLSIGN_MAX + 1);
+        if (call_n == 0 || call_n > PORTA_CALLSIGN_MAX) {
+            return 0;
+        }
+        payload[n++] = (uint8_t)call_n;
+        memcpy(&payload[n], r->call, call_n);
+        n += call_n;
+    }
+    return porta_proto_encode(PORTA_MSG_LOG_PAGE, payload, (uint8_t)n, out, out_cap);
 }
 
 bool porta_proto_parse_log_page_req(const porta_frame_t *f, porta_log_page_req_t *out)
 {
-    if (!f || !out || f->type != PORTA_MSG_LOG_PAGE || f->len != 16 || f->payload[15] == 0) {
+    if (!f || !out || f->type != PORTA_MSG_LOG_PAGE || f->len < 16 || f->payload[15] == 0) {
         return false;
     }
+    memset(out, 0, sizeof(*out));
     out->flags = f->payload[0];
     out->date = get_u32(&f->payload[1]);
     out->before_date = get_u32(&f->payload[5]);
     out->before_time = get_u16(&f->payload[9]);
     out->before_id = get_u32(&f->payload[11]);
     out->take = f->payload[15];
-    return true;
+    if (out->flags & PORTA_LOG_PAGE_CALL) {
+        if (f->len < 17) {
+            return false;
+        }
+        const uint8_t call_n = f->payload[16];
+        if (call_n == 0 || call_n > PORTA_CALLSIGN_MAX || (size_t)17 + call_n != f->len) {
+            return false;
+        }
+        memcpy(out->call, &f->payload[17], call_n);
+        out->call[call_n] = '\0';
+        for (size_t i = 0; i < call_n; ++i) {
+            if (out->call[i] == '\0') {
+                return false;
+            }
+        }
+        return true;
+    }
+    return f->len == 16;
 }
 
-// data_kind(1)=TOTAL | total(4)
-size_t porta_proto_encode_file_total_row(uint32_t total, uint8_t *out, size_t out_cap)
+// data_kind(1)=SUMMARY | total(4) | first_date(4) | last_date(4) | days(2) | pairs_total(1) | pair_count(1) |
+// pair_count x (band_len(1) | band... | mode_len(1) | mode... | count(2))
+size_t porta_proto_encode_file_summary_row(const porta_log_summary_t *s, uint8_t *out, size_t out_cap)
 {
-    uint8_t payload[5];
-    payload[0] = PORTA_FILE_DATA_TOTAL;
-    put_u32(&payload[1], total);
-    return porta_proto_encode(PORTA_MSG_FILE_DATA, payload, sizeof(payload), out, out_cap);
+    if (!s || s->pair_count > PORTA_LOG_SUMMARY_PAIRS) {
+        return 0;
+    }
+    uint8_t payload[17 + PORTA_LOG_SUMMARY_PAIRS * (1 + PORTA_BAND_MAX + 1 + PORTA_MODE_MAX + 2)];
+    _Static_assert(sizeof(payload) <= PORTA_PROTO_MAX_PAYLOAD, "a summary fits one frame");
+    size_t p = 0;
+    payload[p++] = PORTA_FILE_DATA_SUMMARY;
+    put_u32(&payload[p], s->total);
+    p += 4;
+    put_u32(&payload[p], s->first_date);
+    p += 4;
+    put_u32(&payload[p], s->last_date);
+    p += 4;
+    put_u16(&payload[p], s->days);
+    p += 2;
+    payload[p++] = s->pairs_total;
+    payload[p++] = s->pair_count;
+    for (size_t i = 0; i < s->pair_count; ++i) {
+        const size_t band_n = strnlen(s->pairs[i].band, PORTA_BAND_MAX + 1);
+        const size_t mode_n = strnlen(s->pairs[i].mode, PORTA_MODE_MAX + 1);
+        if (band_n > PORTA_BAND_MAX || mode_n > PORTA_MODE_MAX) {
+            return 0;
+        }
+        payload[p++] = (uint8_t)band_n;
+        memcpy(&payload[p], s->pairs[i].band, band_n);
+        p += band_n;
+        payload[p++] = (uint8_t)mode_n;
+        memcpy(&payload[p], s->pairs[i].mode, mode_n);
+        p += mode_n;
+        put_u16(&payload[p], s->pairs[i].count);
+        p += 2;
+    }
+    return porta_proto_encode(PORTA_MSG_FILE_DATA, payload, (uint8_t)p, out, out_cap);
 }
 
-bool porta_proto_parse_file_total_row(const porta_frame_t *f, uint32_t *total_out)
+bool porta_proto_parse_file_summary_row(const porta_frame_t *f, porta_log_summary_t *out)
 {
-    if (!f || !total_out || f->type != PORTA_MSG_FILE_DATA || f->len != 5 ||
-        f->payload[0] != PORTA_FILE_DATA_TOTAL) {
+    if (!f || !out || f->type != PORTA_MSG_FILE_DATA || f->len < 17 || f->payload[0] != PORTA_FILE_DATA_SUMMARY) {
         return false;
     }
-    *total_out = get_u32(&f->payload[1]);
-    return true;
+    memset(out, 0, sizeof(*out));
+    size_t p = 1;
+    out->total = get_u32(&f->payload[p]);
+    p += 4;
+    out->first_date = get_u32(&f->payload[p]);
+    p += 4;
+    out->last_date = get_u32(&f->payload[p]);
+    p += 4;
+    out->days = get_u16(&f->payload[p]);
+    p += 2;
+    out->pairs_total = f->payload[p++];
+    out->pair_count = f->payload[p++];
+    if (out->pair_count > PORTA_LOG_SUMMARY_PAIRS) {
+        return false;
+    }
+    for (size_t i = 0; i < out->pair_count; ++i) {
+        if (p + 1 > f->len) return false;
+        const uint8_t band_n = f->payload[p++];
+        if (band_n > PORTA_BAND_MAX || p + band_n + 1 > f->len) return false;
+        memcpy(out->pairs[i].band, &f->payload[p], band_n);
+        p += band_n;
+        const uint8_t mode_n = f->payload[p++];
+        if (mode_n > PORTA_MODE_MAX || p + mode_n + 2 > f->len) return false;
+        memcpy(out->pairs[i].mode, &f->payload[p], mode_n);
+        p += mode_n;
+        out->pairs[i].count = get_u16(&f->payload[p]);
+        p += 2;
+    }
+    return p == f->len;
 }
 
 // verb(1)=LOG_SET | id(4) | fields...

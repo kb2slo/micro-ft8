@@ -185,7 +185,7 @@ static bool log_sent(uint32_t id)
 // A page of the log newest first by time and ID (every QSO is today's), older than `before`
 // ("<date>.<HHMM>.<id>"), only those QRZ lacks with `unsent`, only `date`'s with `date`, with how many match in all: the sidekick's
 // LOG_PAGE route.
-static std::string log_page_json(bool unsent, const std::string& date, const std::string& before, unsigned take)
+static std::string log_page_json(bool unsent, const std::string& date, const std::string& call, const std::string& before, unsigned take)
 {
     struct Key {
         uint32_t when;
@@ -196,6 +196,12 @@ static std::string log_page_json(bool unsent, const std::string& date, const std
         const uint32_t id = (uint32_t)i + 1u;
         if (unsent && log_sent(id)) continue;
         if (!date.empty() && date != g_log_file.substr(0, 8)) continue;
+        if (!call.empty()) {
+            std::string a = g_scenario.log[i].call, b = call;
+            for (char& c : a) c = (char)std::toupper((unsigned char)c);
+            for (char& c : b) c = (char)std::toupper((unsigned char)c);
+            if (a != b) continue;
+        }
         const std::string& t = g_scenario.log[i].time_on;
         const uint32_t hhmm = t.size() >= 5 ? (uint32_t)std::strtoul((t.substr(0, 2) + t.substr(3, 2)).c_str(), nullptr, 10) : 0;
         keys.push_back({hhmm, id});
@@ -211,7 +217,12 @@ static std::string log_page_json(bool unsent, const std::string& date, const std
         if (emitted >= take) break;
         body += (emitted++ ? "," : "") + log_row_json(k.id);
     }
-    body += "],\"total\":" + std::to_string(total) + "}";
+    // Every QSO the simulator logs is today's, on 20m in FT8 (log_row_json()).
+    const std::string day = g_log_file.substr(0, 8);
+    body += "],\"total\":" + std::to_string(total) + ",\"summary\":{\"first\":\"" + (total ? day : "") +
+            "\",\"last\":\"" + (total ? day : "") + "\",\"days\":" + (total ? "1" : "0") + ",\"pairs_total\":" +
+            (total ? "1" : "0") + ",\"pairs\":[" +
+            (total ? "{\"band\":\"20M\",\"mode\":\"FT8\",\"n\":" + std::to_string(total) + "}" : "") + "]}}";
     return body;
 }
 
@@ -520,7 +531,8 @@ static std::string handle(const std::string& method, const std::string& url,
         }
         const bool unsent = query.count("unsent") && query.at("unsent") == "1";
         const std::string date = query.count("date") ? query.at("date") : "";
-        return log_page_json(unsent, date, query.count("before") ? query.at("before") : "", take);
+        const std::string call = query.count("call") ? query.at("call") : "";
+        return log_page_json(unsent, date, call, query.count("before") ? query.at("before") : "", take);
     }
     if (method == "PATCH" && path == "/api/log/entries") {
         const uint32_t id = query.count("id") ? (uint32_t)std::strtoul(query.at("id").c_str(), nullptr, 10) : 0;

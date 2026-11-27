@@ -1419,6 +1419,9 @@ const char *porta_host_log_page(const porta_log_page_req_t &req) {
         }
         filter.date = req.date;
     }
+    if (req.flags & PORTA_LOG_PAGE_CALL) {
+        filter.call = req.call;
+    }
     QsoStoreCursor before;
     before.date = req.before_date;
     before.time = req.before_time;
@@ -1429,9 +1432,22 @@ const char *porta_host_log_page(const porta_log_page_req_t &req) {
     // from it, loses nothing (row ujtv).
     const size_t take = std::min<size_t>(req.take, kLogPageRows);
     std::vector<QsoLogRecord> records;
-    const size_t matched = qso_log_store_page(filter, before, take, &records);
+    QsoStoreSummary sum;
+    const size_t matched = qso_log_store_page(filter, before, take, &records, &sum);
     const size_t sent = emit_records(records);
-    porta_emit_file_total(static_cast<uint32_t>(matched));
+    porta_log_summary_t wire = {};
+    wire.total = static_cast<uint32_t>(sum.count);
+    wire.first_date = sum.first_date;
+    wire.last_date = sum.last_date;
+    wire.days = static_cast<uint16_t>(std::min<size_t>(sum.days, UINT16_MAX));
+    wire.pairs_total = static_cast<uint8_t>(std::min<size_t>(sum.pairs_total, UINT8_MAX));
+    wire.pair_count = static_cast<uint8_t>(std::min<size_t>(sum.pair_count, PORTA_LOG_SUMMARY_PAIRS));
+    for (size_t i = 0; i < wire.pair_count; ++i) {
+        std::snprintf(wire.pairs[i].band, sizeof(wire.pairs[i].band), "%s", qso_log_store_band_name(sum.pairs[i].band));
+        std::snprintf(wire.pairs[i].mode, sizeof(wire.pairs[i].mode), "%s", qso_log_store_mode_name(sum.pairs[i].mode));
+        wire.pairs[i].count = static_cast<uint16_t>(std::min<uint32_t>(sum.pairs[i].count, UINT16_MAX));
+    }
+    porta_emit_file_summary(wire);
     porta_emit_ack(PORTA_MSG_LOG_PAGE);
     ESP_LOGI(TAG, "LOG_PAGE flags=%u entries=%u of %u take=%u in %lld us", (unsigned)req.flags, (unsigned)sent,
              (unsigned)matched, (unsigned)take, (long long)(esp_timer_get_time() - start_us));

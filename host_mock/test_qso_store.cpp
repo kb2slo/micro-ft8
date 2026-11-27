@@ -6,6 +6,7 @@
 // A store loaded from a journal with some entries lost must then equal a replay without those entries.
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -913,6 +914,108 @@ static void test_page()
           "unsent leaves out a record with QRZ's ID");
 }
 
+static bool same_call(const std::string& a, const char* b)
+{
+    std::string u(b);
+    for (char& c : u) c = (char)toupper((unsigned char)c);
+    return a == u;
+}
+
+// A page by call through the call table, and what a filter's records add up to, against the same worked out
+// here from what was written.
+static void test_summary_and_call()
+{
+    Rig rig(256 * 1024, 600, 2048);
+    Disk disk;
+    qso_store_create(&rig.store, rig.buffers(), 1, disk_append, &disk);
+    const char* calls[] = {"W1AW", "K1ABC", "N0CALL", "VE3XYZ"};
+    const char* bands[] = {"20M", "40M", "20M", "15M"};
+    const char* modes[] = {"FT8", "FT8", "FT4", "FT8"};
+    struct Ref {
+        std::string call;
+        uint32_t date;
+        std::string band, mode;
+        uint64_t when;
+        uint32_t id;
+    };
+    std::vector<Ref> ref;
+    char fields[160];
+    for (int i = 0; i < 300; ++i) {
+        const char* call = calls[(i * 7) % 4];
+        const unsigned day = 1 + (i * 13) % 17, hhmm = (i * 37) % 24 * 100 + (i * 11) % 60;
+        const char* band = bands[i % 4];
+        const char* mode = modes[(i / 4) % 4];
+        const bool ft4 = std::string(mode) == "FT4";
+        snprintf(fields, sizeof fields, "<call:%u>%s<qso_date:8>202611%02u<time_on:4>%04u<band:3>%s<mode:%u>%s%s",
+                 (unsigned)strlen(call), call, day, hhmm, band, ft4 ? 4u : 3u, ft4 ? "MFSK" : mode,
+                 ft4 ? "<submode:3>FT4" : "");
+        uint32_t id = 0;
+        CHECK(qso_store_add(&rig.store, fields, strlen(fields), i % 9 == 0 ? kQsoStoreForeign : 0, &id) ==
+                  QsoStoreStatus::OK, "record %d", i);
+        if (i % 11 == 0) {
+            CHECK(qso_store_delete(&rig.store, id) == QsoStoreStatus::OK, "delete %d", i);
+            continue;
+        }
+        if (i % 9 != 0) ref.push_back({call, 20261100u + day, band, mode, (uint64_t)(20261100u + day) * 10000u + hhmm, id});
+    }
+    auto expect = [&](const char* call, const char* what) {
+        std::vector<Ref> want;
+        for (const Ref& r : ref) if (!call || same_call(r.call, call)) want.push_back(r);
+        std::sort(want.begin(), want.end(), [](const Ref& a, const Ref& b) { return a.when != b.when ? a.when > b.when : a.id > b.id; });
+        QsoStoreFilter f;
+        f.whose = QsoStoreWhose::OWN;
+        f.call = call;
+        // The whole of it, a page of 7 at a time.
+        std::vector<uint32_t> got;
+        QsoStoreCursor at;
+        QsoStoreSummary sum;
+        uint32_t ids[7];
+        size_t matched = 0;
+        for (;;) {
+            const size_t n = qso_store_page(rig.store, f, at, ids, 7, &matched, &sum);
+            if (n == 0) break;
+            got.insert(got.end(), ids, ids + n);
+            const QsoStoreEntry* last = qso_store_entry(rig.store, ids[n - 1]);
+            at = QsoStoreCursor{last->date, last->time, last->id};
+        }
+        bool same = got.size() == want.size();
+        for (size_t i = 0; same && i < got.size(); ++i) same = got[i] == want[i].id;
+        CHECK(same && matched == want.size(), "%s: every record, newest first (%u of %u)", what, (unsigned)got.size(), (unsigned)want.size());
+        std::set<uint32_t> days;
+        std::map<std::pair<std::string, std::string>, uint32_t> pairs;
+        uint32_t first = 0, last = 0;
+        for (const Ref& r : want) {
+            days.insert(r.date);
+            if (!first || r.date < first) first = r.date;
+            if (r.date > last) last = r.date;
+            ++pairs[{r.band, r.mode}];
+        }
+        CHECK(sum.count == want.size() && sum.first_date == first && sum.last_date == last && sum.days == days.size(),
+              "%s: count %u, %u to %u, %u days", what, (unsigned)sum.count, (unsigned)sum.first_date, (unsigned)sum.last_date, (unsigned)sum.days);
+        bool pairs_ok = sum.pair_count == pairs.size() && sum.pairs_total == pairs.size();
+        for (size_t i = 0; pairs_ok && i < sum.pair_count; ++i) {
+            const auto& q = sum.pairs[i];
+            const auto it = pairs.find({qso_store_band_name(rig.store, q.band), qso_store_mode_name(rig.store, q.mode)});
+            pairs_ok = it != pairs.end() && it->second == q.count && (i == 0 || sum.pairs[i - 1].count >= q.count);
+        }
+        CHECK(pairs_ok, "%s: each band and mode with its count, most first", what);
+    };
+    expect(nullptr, "the whole log");
+    expect("W1AW", "one call");
+    expect("k1abc", "a call in lower case");
+    expect("VE3XYZ", "another");
+    QsoStoreFilter none;
+    none.call = "DL1AA";
+    QsoStoreSummary sum;
+    uint32_t ids[4];
+    size_t matched = 9;
+    CHECK(qso_store_page(rig.store, none, QsoStoreCursor{}, ids, 4, &matched, &sum) == 0 && matched == 0 && sum.count == 0 &&
+              sum.days == 0 && sum.first_date == 0 && sum.pair_count == 0,
+          "a call never worked: nothing, and an empty summary");
+    none.call = "W1A";
+    CHECK(qso_store_page(rig.store, none, QsoStoreCursor{}, ids, 4, &matched, nullptr) == 0, "a call is the whole call, not its start");
+}
+
 int main()
 {
     test_golden_bytes();
@@ -925,6 +1028,7 @@ int main()
     test_limits_and_failures();
     test_many_records();
     test_page();
+    test_summary_and_call();
     if (g_fails) {
         fprintf(stderr, "%d FAIL(s)\n", g_fails);
         return 1;

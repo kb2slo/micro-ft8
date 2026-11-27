@@ -1048,7 +1048,6 @@ function drawGreatCirclePath(ctx, w, h, a, b, band, lonOffset) {
 // ---- QSOs: the whole log, read by page as app.html's downloadAllAdif() reads it, building map points
 // instead of an ADIF blob. This page has no list to stay in sync with. ----
 var qsoLocations = [];      // [{call, grid, myGrid, ts}], deduped by grid at render
-var qsoHistoryByCall = {};  // callsign -> [{ts, band, freq, rstSent, rstRcvd}], every QSO regardless of grid -- feeds the shared callsign-info card
 var qsoLoadState = 'idle';  // 'idle' | 'loading' | 'done' | 'error'
 // The log by record, newest first, a page of 10 at a time, each from the last row of the one before
 // (docs/architecture/webapp.md, QSOs): a larger page comes back short (row ujtv), and a page cut short loses
@@ -1083,13 +1082,6 @@ async function loadQsoLocations() {
         // decode, and a map-only session (never opening the QSOs tab in app.html) would otherwise never
         // learn it -- app.html's own appendLogRows() does the same, and this is an independent read.
         CallInfo.learnGrid(q.call, q.grid);
-        // Kept unconditionally (unlike locs above, which only wants plottable QSOs) -- the shared
-        // callsign-info card's QSO-history section wants every QSO with this call, grid or not.
-        var callKey = (q.call || '').toUpperCase();
-        if (callKey) {
-          if (!qsoHistoryByCall[callKey]) qsoHistoryByCall[callKey] = [];
-          qsoHistoryByCall[callKey].push({ ts: ts, band: q.band, freq: q.freq, rstSent: q.rst_sent, rstRcvd: q.rst_rcvd });
-        }
       });
       seen += rows.length;
       qsoLoadState = 'loading:' + seen + (total != null ? '/' + total : '');
@@ -1880,13 +1872,6 @@ setInterval(function () { renderLogMap(); }, 60000); // terminator drift, same i
 // session decode history or full QSO log to show on this page) -- just what
 // the tapped pin itself carries, plus distance/bearing from the operator's
 // own grid when both ends are known. ----
-// Every QSO regardless of grid validity (unlike qsoLocations, which only
-// ever kept plottable ones) -- see qsoHistoryByCall's own comment.
-function mapQsoHistoryFor(call) {
-  return (qsoHistoryByCall[call] || []).map(function (q) {
-    return { when: fmtAgo(q.ts), band: q.band, freq: q.freq, rstSent: q.rstSent, rstRcvd: q.rstRcvd };
-  });
-}
 // Official reference page -- POTA/SOTA only, the two programs this map
 // actually sources locations from. A SOTA summit code is itself two path
 // segments ("W7O/CC-001" == association/summit) -- see callinfo.js's own
@@ -1906,7 +1891,7 @@ function showMapPopup(pin) {
   if (pin.call) {
     // A receiver's own grid from its spot is a reliable pairing for the shared cache (callinfo.js, learnGrid()).
     if (pin.source === 'PSKReporter') CallInfo.learnGrid(pin.call, pin.grid);
-    CallInfo.show(pin.call, { myGrid: lastCfg.grid, qsoHistory: mapQsoHistoryFor,
+    CallInfo.show(pin.call, { myGrid: lastCfg.grid, qsoLog: true,
                               heardUs: function (c) { return PskrCore.heardBy(PskrLive.state(), c); } });
     return;
   }

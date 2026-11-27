@@ -136,8 +136,33 @@ static bool matches(const QsoStore& store, const QsoStoreEntry& entry, const Qso
             if (!foreign) return false;
             break;
     }
+    if (filter.call != nullptr) {
+        const char* a = entry.call;
+        const char* b = filter.call;
+        while (*a != '\0' && *a == to_upper(*b)) {
+            ++a;
+            ++b;
+        }
+        if (*a != '\0' || *b != '\0') return false;
+    }
     const bool at_refs = filter.my_refs != nullptr && filter.my_refs[0] != '\0';
     return !at_refs || logged_at(store, entry, filter.my_refs);
+}
+
+// Each entry that may match, once: with a call, the call table's slots for it; else the index, newest ID
+// first, since our own records were logged in date order and so mostly arrive in the order a page wants.
+template <typename Fn>
+static void each_candidate(const QsoStore& store, const QsoStoreFilter& filter, Fn fn)
+{
+    if (filter.call != nullptr) {
+        if (store.buffers.call_slots == nullptr) return;
+        const size_t mask = store.buffers.call_slot_count - 1;
+        for (size_t at = call_hash(filter.call) & mask; store.buffers.call_slots[at] != 0; at = (at + 1) & mask) {
+            fn(store.buffers.entries[store.buffers.call_slots[at] - 1]);
+        }
+        return;
+    }
+    for (size_t n = store.entries_used; n-- > 0;) fn(store.buffers.entries[n]);
 }
 
 size_t qso_store_select(const QsoStore& store, const QsoStoreFilter& filter, size_t skip, uint32_t* ids,
@@ -170,30 +195,69 @@ PageKey key_of(uint32_t date, uint16_t time, uint32_t id) { return PageKey{(uint
 }  // namespace
 
 size_t qso_store_page(const QsoStore& store, const QsoStoreFilter& filter, const QsoStoreCursor& before,
-                      uint32_t* ids, size_t take, size_t* matched_out)
+                      uint32_t* ids, size_t take, size_t* matched_out, QsoStoreSummary* summary_out)
 {
     const bool from_newest = qso_store_cursor_start(before);
     const PageKey limit = key_of(before.date, before.time, before.id);
     std::vector<PageKey> kept;  // newest first, at most `take`
     kept.reserve(take);
     size_t matched = 0;
-    // Newest ID first: our own records were logged in date order, so most land at the end of `kept` or not
-    // at all, and the insertion below rarely moves anything.
-    for (size_t n = store.entries_used; n-- > 0;) {
-        const QsoStoreEntry& entry = store.buffers.entries[n];
-        if (!matches(store, entry, filter)) continue;
+    // For the summary: the distinct dates, kept sorted, and a count for each band and mode seen.
+    std::vector<uint32_t> dates;
+    std::vector<QsoStoreSummary::Pair> pairs;
+    uint32_t first = 0, last = 0;
+    each_candidate(store, filter, [&](const QsoStoreEntry& entry) {
+        if (!matches(store, entry, filter)) return;
         ++matched;
-        if (take == 0) continue;
+        if (summary_out != nullptr) {
+            if (entry.date != 0) {
+                if (first == 0 || entry.date < first) first = entry.date;
+                if (entry.date > last) last = entry.date;
+                auto d = std::lower_bound(dates.begin(), dates.end(), entry.date);
+                if (d == dates.end() || *d != entry.date) dates.insert(d, entry.date);
+            }
+            auto p = std::find_if(pairs.begin(), pairs.end(), [&](const QsoStoreSummary::Pair& q) {
+                return q.band == entry.band && q.mode == entry.mode;
+            });
+            if (p == pairs.end()) pairs.push_back({entry.band, entry.mode, 1});
+            else ++p->count;
+        }
+        if (take == 0) return;
         const PageKey k = key_of(entry.date, entry.time, entry.id);
-        if (!from_newest && !newer(limit, k)) continue;
-        if (kept.size() == take && !newer(k, kept.back())) continue;
+        if (!from_newest && !newer(limit, k)) return;
+        if (kept.size() == take && !newer(k, kept.back())) return;
         auto at = std::upper_bound(kept.begin(), kept.end(), k, [](const PageKey& a, const PageKey& b) { return newer(a, b); });
         if (kept.size() == take) kept.pop_back();
         kept.insert(at, k);
-    }
+    });
     for (size_t i = 0; i < kept.size(); ++i) ids[i] = kept[i].id;
     if (matched_out != nullptr) *matched_out = matched;
+    if (summary_out != nullptr) {
+        QsoStoreSummary& s = *summary_out;
+        s = QsoStoreSummary{};
+        s.count = matched;
+        s.first_date = first;
+        s.last_date = last;
+        s.days = dates.size();
+        std::sort(pairs.begin(), pairs.end(), [](const QsoStoreSummary::Pair& a, const QsoStoreSummary::Pair& b) {
+            if (a.count != b.count) return a.count > b.count;
+            return a.band != b.band ? a.band < b.band : a.mode < b.mode;
+        });
+        s.pairs_total = pairs.size();
+        s.pair_count = std::min(pairs.size(), kQsoStoreSummaryPairs);
+        for (size_t i = 0; i < s.pair_count; ++i) s.pairs[i] = pairs[i];
+    }
     return kept.size();
+}
+
+const char* qso_store_band_name(const QsoStore& store, uint8_t band)
+{
+    return band < store.bands.used ? store.bands.name[band] : "";
+}
+
+const char* qso_store_mode_name(const QsoStore& store, uint8_t mode)
+{
+    return mode < store.modes.used ? store.modes.name[mode] : "";
 }
 
 bool qso_store_meta_get(const QsoStore& store, const char* key, std::string* value_out)

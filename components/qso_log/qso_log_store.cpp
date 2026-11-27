@@ -238,13 +238,13 @@ QsoStoreStatus qso_log_store_add(const std::string& record, uint32_t* id_out)
 }
 
 size_t qso_log_store_page(const QsoStoreFilter& filter, const QsoStoreCursor& before, size_t take,
-                          std::vector<QsoLogRecord>* out)
+                          std::vector<QsoLogRecord>* out, QsoStoreSummary* summary_out)
 {
     out->clear();
     if (!s_ready) return 0;
     std::vector<uint32_t> ids(take);
     size_t matched = 0;
-    const size_t n = qso_store_page(s_store, filter, before, ids.data(), ids.size(), &matched);
+    const size_t n = qso_store_page(s_store, filter, before, ids.data(), ids.size(), &matched, summary_out);
     std::string fields;
     for (size_t i = 0; i < n; ++i) {
         const QsoStoreEntry* e = qso_store_entry(s_store, ids[i]);
@@ -252,6 +252,9 @@ size_t qso_log_store_page(const QsoStoreFilter& filter, const QsoStoreCursor& be
     }
     return matched;
 }
+
+const char* qso_log_store_band_name(uint8_t band) { return qso_store_band_name(s_store, band); }
+const char* qso_log_store_mode_name(uint8_t mode) { return qso_store_mode_name(s_store, mode); }
 
 QsoStoreStatus qso_log_store_set(uint32_t id, const std::string& fields)
 {

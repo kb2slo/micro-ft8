@@ -1340,10 +1340,10 @@ void porta_emit_file_entry(const porta_qso_entry_row_t& row) {
   enqueue(buf, n);
 }
 
-void porta_emit_file_total(uint32_t total) {
+void porta_emit_file_summary(const porta_log_summary_t& summary) {
   if (!s_running) return;
   uint8_t buf[PORTA_PROTO_MAX_FRAME];
-  enqueue(buf, porta_proto_encode_file_total_row(total, buf, sizeof(buf)));
+  enqueue(buf, porta_proto_encode_file_summary_row(&summary, buf, sizeof(buf)));
 }
 
 void porta_emit_ack(uint8_t verb) {

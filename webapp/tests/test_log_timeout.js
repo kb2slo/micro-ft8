@@ -106,6 +106,7 @@ async function qsosRefresh() {
     logRenderedAny: true, logDone: false, logShownIds: { 1: true }, LOG_ENTRY_FETCH: 10, rows: [],
   });
   p.appendLogRows = (rows) => { p.rows.push(...rows); };
+  p.renderLogSummary = () => {};
   p.answers.push('hang');
   p.refreshLogHead();
   await settle();
@@ -157,6 +158,7 @@ async function loadOlder() {
     mainBoardAway: () => false, noMainText: () => '',
   });
   p.appendLogRows = (rows) => { p.rows.push(...rows); if (rows.length) p.logRenderedAny = true; };
+  p.renderLogSummary = () => {};
   p.loadMoreLog();
   await settle();
   assert.strictEqual(p.logLoading, true);

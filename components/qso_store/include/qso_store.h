@@ -170,6 +170,7 @@ struct QsoStoreFilter {
     bool unsent = false;                      // only records with no QRZ ID that are not marked uploaded
     bool newest_first = false;                // by ID: for own records, the order they were logged in
     const char* my_refs = nullptr;            // only records logged at one of these, as qso_store_worked() takes them
+    const char* call = nullptr;               // only records with this call, without regard to case
 };
 
 // The IDs of the records matching `filter`, after the first `skip` of them, at most `take`. Returns how
@@ -187,11 +188,35 @@ struct QsoStoreCursor {
 
 inline bool qso_store_cursor_start(const QsoStoreCursor& c) { return c.date == 0 && c.time == 0 && c.id == 0; }
 
+// What the records matching a filter add up to, whatever the cursor: how many, the oldest and newest
+// QSO_DATE (0 when none has one), how many distinct dates, and each band and mode worked with how many,
+// most first (ties by band, then mode), at most kQsoStoreSummaryPairs of them; `pairs_total` says how many
+// there were.
+inline constexpr size_t kQsoStoreSummaryPairs = 12;
+struct QsoStoreSummary {
+    size_t count = 0;
+    uint32_t first_date = 0;
+    uint32_t last_date = 0;
+    size_t days = 0;
+    struct Pair {
+        uint8_t band;  // index into the store's band names, kQsoStoreNoName for none
+        uint8_t mode;
+        uint32_t count;
+    } pairs[kQsoStoreSummaryPairs];
+    size_t pair_count = 0;
+    size_t pairs_total = 0;
+};
+
 // The IDs of at most `take` records matching `filter` and older than `before`, newest first by date, time
 // and ID (`filter.newest_first` is not read). Returns how many it wrote; `matched_out`, when given, is how
-// many match the filter in all, whatever the cursor. One pass over the index, keeping the newest `take`.
+// many match the filter in all, whatever the cursor, and `summary_out` what they add up to. One pass over the
+// index, keeping the newest `take`; with `filter.call`, over that call's records alone, by the call table.
 size_t qso_store_page(const QsoStore& store, const QsoStoreFilter& filter, const QsoStoreCursor& before,
-                      uint32_t* ids, size_t take, size_t* matched_out);
+                      uint32_t* ids, size_t take, size_t* matched_out, QsoStoreSummary* summary_out = nullptr);
+
+// A band or mode index's name ("20M", "FT8"), "" for kQsoStoreNoName.
+const char* qso_store_band_name(const QsoStore& store, uint8_t band);
+const char* qso_store_mode_name(const QsoStore& store, uint8_t mode);
 
 // A small value kept in the journal beside the records, such as how far a sync with the online logbook has
 // got. Keys are lower-case letters, digits and `_`, at most kQsoStoreMetaKeyChars; the newest value wins.

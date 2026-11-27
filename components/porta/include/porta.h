@@ -135,7 +135,7 @@ uint32_t porta_frames_ok();
 // ---------------------------------------------------------------------------
 
 void porta_emit_file_entry(const porta_qso_entry_row_t& row);
-// LOG_PAGE's count of records matching its filter, after its rows and before its ACK.
-void porta_emit_file_total(uint32_t total);
+// What LOG_PAGE's filter matches, after its rows and before its ACK.
+void porta_emit_file_summary(const porta_log_summary_t& summary);
 void porta_emit_ack(uint8_t verb);
 void porta_emit_nak(uint8_t verb, const char* reason);

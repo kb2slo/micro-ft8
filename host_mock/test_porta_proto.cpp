@@ -1475,25 +1475,59 @@ static void test_log_page_and_set()
               std::string(out.my_sota_ref) == std::string(PORTA_SOTA_REF_MAX, 'T'),
           "the longest row fits a frame and round-trips");
 
-    porta_log_page_req_t req = {PORTA_LOG_PAGE_UNSENT | PORTA_LOG_PAGE_DATE, 20261125, 20261124, 2359, 77, 40};
+    porta_log_page_req_t req = {PORTA_LOG_PAGE_UNSENT | PORTA_LOG_PAGE_DATE, 20261125, 20261124, 2359, 77, 40, ""};
     porta_decoder_init(&d);
     n = porta_proto_encode_log_page_req(&req, buf, sizeof(buf));
     got = run(&d, std::vector<uint8_t>(buf, buf + n));
     porta_log_page_req_t back = {};
     check(got.size() == 1 && got[0].type == PORTA_MSG_LOG_PAGE && porta_proto_parse_log_page_req(&got[0], &back) &&
               back.flags == req.flags && back.date == 20261125 && back.before_date == 20261124 &&
-              back.before_time == 2359 && back.before_id == 77 && back.take == 40,
+              back.before_time == 2359 && back.before_id == 77 && back.take == 40 && back.call[0] == '\0',
           "the page request round-trips");
+    porta_log_page_req_t by_call = {PORTA_LOG_PAGE_CALL, 0, 0, 0, 0, 10, "VK2/W1ABC"};
+    porta_decoder_init(&d);
+    n = porta_proto_encode_log_page_req(&by_call, buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1 && porta_proto_parse_log_page_req(&got[0], &back) && back.flags == PORTA_LOG_PAGE_CALL &&
+              std::string(back.call) == "VK2/W1ABC",
+          "a page by call carries the call");
+    std::snprintf(by_call.call, sizeof(by_call.call), "%s", "");
+    check(porta_proto_encode_log_page_req(&by_call, buf, sizeof(buf)) == 0, "a page by call with no call is refused");
     req.take = 0;
     check(porta_proto_encode_log_page_req(&req, buf, sizeof(buf)) == 0, "a page of none is refused");
 
+    // The summary, as full as it gets: every pair, every name at its longest, still one frame.
+    porta_log_summary_t sum = {};
+    sum.total = 13000;
+    sum.first_date = 20240101;
+    sum.last_date = 20261127;
+    sum.days = 700;
+    sum.pairs_total = 30;
+    sum.pair_count = PORTA_LOG_SUMMARY_PAIRS;
+    for (unsigned i = 0; i < PORTA_LOG_SUMMARY_PAIRS; ++i) {
+        std::memset(sum.pairs[i].band, 'B', PORTA_BAND_MAX);
+        std::memset(sum.pairs[i].mode, 'M', PORTA_MODE_MAX);
+        sum.pairs[i].count = (uint16_t)(1000 - i);
+    }
+    std::snprintf(sum.pairs[0].band, sizeof(sum.pairs[0].band), "20M");
+    std::snprintf(sum.pairs[0].mode, sizeof(sum.pairs[0].mode), "FT8");
     porta_decoder_init(&d);
-    n = porta_proto_encode_file_total_row(1234, buf, sizeof(buf));
+    n = porta_proto_encode_file_summary_row(&sum, buf, sizeof(buf));
     got = run(&d, std::vector<uint8_t>(buf, buf + n));
-    uint32_t total = 0;
-    check(got.size() == 1 && porta_proto_parse_file_total_row(&got[0], &total) && total == 1234 &&
+    porta_log_summary_t sb = {};
+    check(got.size() == 1 && porta_proto_parse_file_summary_row(&got[0], &sb) && sb.total == 13000 &&
+              sb.first_date == 20240101 && sb.last_date == 20261127 && sb.days == 700 && sb.pairs_total == 30 &&
+              sb.pair_count == PORTA_LOG_SUMMARY_PAIRS && std::string(sb.pairs[0].band) == "20M" &&
+              std::string(sb.pairs[0].mode) == "FT8" && sb.pairs[11].count == 989 &&
+              std::string(sb.pairs[11].mode) == std::string(PORTA_MODE_MAX, 'M') &&
               !porta_proto_parse_file_entry_row(&got[0], &out),
-          "the total round-trips and is not a row");
+          "the summary round-trips whole, in one frame, and is not a row");
+    porta_log_summary_t empty = {};
+    porta_decoder_init(&d);
+    n = porta_proto_encode_file_summary_row(&empty, buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1 && porta_proto_parse_file_summary_row(&got[0], &sb) && sb.total == 0 && sb.pair_count == 0,
+          "and so does an empty one");
 
     const std::string fields = "<app_qrzlog_logid:10>1234567890<qrzcom_qso_upload_status:1>Y";
     porta_decoder_init(&d);

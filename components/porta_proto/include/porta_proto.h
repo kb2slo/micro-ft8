@@ -135,7 +135,11 @@ extern "C" {
 // v24 (2026-11-27): the QSOs list and its downloads read by record (LOG_PAGE), so FILE_LIST and FILE_READ,
 // the day list and a day's page, go, and FILE_DATA's NAME row with them. A v23 peer asking for either is
 // answered nothing it parses. Both ends are flashed together.
-#define PORTA_PROTO_VERSION 24u
+// v25 (2026-11-27): LOG_PAGE takes a call to read that call's records alone, and ends with a SUMMARY of
+// what its filter matches (how many, the oldest and newest date, how many days, each band and mode with its
+// count) in place of the bare TOTAL. A v24 peer's request and TOTAL are refused. Both ends are flashed
+// together.
+#define PORTA_PROTO_VERSION 25u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -180,7 +184,7 @@ typedef enum {
     PORTA_MSG_LINK_TEST    = 0x13,  // start / set-rate / stop / result
     PORTA_MSG_LINK_DATA    = 0x14,  // one max-length stress payload
     // A page of the QSO log by record (sidekick -> host): FILE_DATA rows, one row each (so a short buffer can
-    // never leave a row half-written), then one TOTAL, then ACK/NAK with this type as verb, the "burst then
+    // never leave a row half-written), then one SUMMARY, then ACK/NAK with this type as verb, the "burst then
     // ACK" shape CONFIG_GET-all uses. See the LOG_PAGE payloads section.
     PORTA_MSG_LOG_PAGE     = 0x15,
 } porta_msg_type_t;
@@ -806,7 +810,7 @@ bool porta_proto_parse_config_value(const porta_frame_t *f, char *key_out, char 
 typedef enum {
     // 0x01 was a day-file name, FILE_LIST's row, until v24.
     PORTA_FILE_DATA_ENTRY = 0x02,  // one LOG_PAGE row: one parsed QSO
-    PORTA_FILE_DATA_TOTAL = 0x03,  // after LOG_PAGE's rows: u32 records matching its filter, whatever the cursor
+    PORTA_FILE_DATA_SUMMARY = 0x03,  // after LOG_PAGE's rows: what its filter matches, whatever the cursor
 } porta_file_data_kind_t;
 
 #define PORTA_FILENAME_MAX 32u
@@ -848,9 +852,10 @@ size_t porta_proto_encode_file_entry_row(const porta_qso_entry_row_t *e,
 bool porta_proto_parse_file_entry_row(const porta_frame_t *f, porta_qso_entry_row_t *out);
 
 // LOG_PAGE: a page of the log's records, newest first by date, time (HHMM) and ID, older than the cursor
-// (all zero for the newest). `take` 1..255. The host answers with up to `take` ENTRY rows, then TOTAL.
+// (all zero for the newest). `take` 1..255. The host answers with up to `take` ENTRY rows, then SUMMARY.
 #define PORTA_LOG_PAGE_UNSENT 0x01u  // only records QRZ holds no ID or upload mark for
 #define PORTA_LOG_PAGE_DATE   0x02u  // only records of `date`
+#define PORTA_LOG_PAGE_CALL   0x04u  // only records with `call`
 typedef struct {
     uint8_t  flags;
     uint32_t date;
@@ -858,12 +863,30 @@ typedef struct {
     uint16_t before_time;
     uint32_t before_id;
     uint8_t  take;
+    char     call[PORTA_CALLSIGN_MAX + 1];  // with PORTA_LOG_PAGE_CALL
 } porta_log_page_req_t;
 
 size_t porta_proto_encode_log_page_req(const porta_log_page_req_t *r, uint8_t *out, size_t out_cap);
 bool porta_proto_parse_log_page_req(const porta_frame_t *f, porta_log_page_req_t *out);
-size_t porta_proto_encode_file_total_row(uint32_t total, uint8_t *out, size_t out_cap);
-bool porta_proto_parse_file_total_row(const porta_frame_t *f, uint32_t *total_out);
+// What a LOG_PAGE filter matches: the QSO store's QsoStoreSummary with the band and mode names, at most
+// PORTA_LOG_SUMMARY_PAIRS pairs, most first; pairs_total says how many there were.
+#define PORTA_LOG_SUMMARY_PAIRS 12u
+typedef struct {
+    uint32_t total;
+    uint32_t first_date;  // 20261111, 0 when none has a date
+    uint32_t last_date;
+    uint16_t days;
+    uint8_t  pairs_total;
+    uint8_t  pair_count;
+    struct {
+        char     band[PORTA_BAND_MAX + 1];
+        char     mode[PORTA_MODE_MAX + 1];
+        uint16_t count;
+    } pairs[PORTA_LOG_SUMMARY_PAIRS];
+} porta_log_summary_t;
+
+size_t porta_proto_encode_file_summary_row(const porta_log_summary_t *s, uint8_t *out, size_t out_cap);
+bool porta_proto_parse_file_summary_row(const porta_frame_t *f, porta_log_summary_t *out);
 
 // LOG_SET: ADIF fields (`<app_qrzlog_logid:10>1234567890...`) to set on a record, as the QSO store's
 // patch takes them; a field of no length removes it. At most PORTA_LOG_SET_FIELDS_MAX bytes.
