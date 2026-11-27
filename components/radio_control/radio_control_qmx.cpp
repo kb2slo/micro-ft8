@@ -269,6 +269,12 @@ static const radio_swr_lock_t k_swr_lock = {
     .poll_with_meters = qmx_swr_lock_poll_with_meters,
 };
 
+// PS0; switches the QMX off: it sends no reply and its USB is gone within a second (bench, 2026-11-27,
+// a QMX on a PC's USB). Only its power button brings it back.
+static esp_err_t qmx_power_off(void) {
+    return qmx_send_cmd("PS0;", 50);
+}
+
 static esp_err_t qmx_query_state(void) {
     cat_cdc_reset_parsed_if();
     return qmx_send_cmd("IF;", 50);
@@ -621,6 +627,7 @@ static const radio_control_ops_t k_ops = {
     .begin_cpfsk_tx = nullptr,
     .swr_io = &k_swr_io,
     .swr_lock = &k_swr_lock,
+    .power_off = qmx_power_off,
     .query_state = qmx_query_state,
     .get_state = qmx_get_state,
     .query_version = qmx_query_version,

@@ -31,6 +31,7 @@ typedef struct {
                                 uint32_t samples_per_symbol);
     const radio_swr_io_t* swr_io;  // null = cannot sweep
     const radio_swr_lock_t* swr_lock;  // null = no SWR-protection lock to read
+    esp_err_t (*power_off)(void);      // null = cannot be switched off over CAT (QMX PS0;; can_ps0)
     esp_err_t (*query_state)(void);    // null = the radio cannot report its state
     bool (*get_state)(radio_state_t* out);
     esp_err_t (*query_version)(void);  // null = the radio cannot report its firmware

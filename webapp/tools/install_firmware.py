@@ -9,8 +9,9 @@ sidekick its URL, size, SHA-256 and built-in version behind the pairing token
 sidekick must be on the same network as this machine, joined to WiFi (not on
 its own access point).
 
-Switch the radio off first, or unplug its USB: nothing checks, and a QMX left
-connected through a main board's update may need switching off and on after.
+A main board's update ends by switching the QMX off over CAT (PS0;), since one
+left on through the restart may not connect again until switched off and on:
+switch it back on when the update is done.
 
 Usage:
   python3 webapp/tools/install_firmware.py                    # sidekick/build/sidekick.bin

@@ -84,7 +84,7 @@ const st = (o) => Object.assign({}, base, o);
   assert.strictEqual(w.posts.length, 1, 'one request');
   assert.strictEqual(w.posts[0][0], '/api/fw/start');
   assert.deepStrictEqual(w.posts[0][1].split('\n').filter((l) => /^board=|^next$/.test(l)), ['board=main', 'next', 'board=sidekick']);
-  assert.strictEqual(end, 'Done. Switch the radio back on, then open the app.', 'ends on Done with no failed poll');
+  assert.strictEqual(end, 'Done. If the radio switched itself off, switch it back on, then open the app.', 'ends on Done with no failed poll');
   assert.deepStrictEqual(w.said.filter((t) => !/^(Reading|Started)/.test(t)).slice(0, -1), ['Downloading the main board’s image 50%',
     'Sending the image to the main board 50%', 'Restarting the main board',
     'Downloading the sidekick’s image 50%', 'Restarting the sidekick']);
@@ -92,7 +92,7 @@ const st = (o) => Object.assign({}, base, o);
   // The restart seen as no answer, then idle.
   w = world([st({ state: 'idle' }), st({ state: 'restarting', board: 'sidekick' }), 'down',
     st({ state: 'idle', last: { result: 'ok' } })]);
-  assert.strictEqual(await w.tap(), 'Done. Switch the radio back on, then open the app.');
+  assert.strictEqual(await w.tap(), 'Done. If the radio switched itself off, switch it back on, then open the app.');
 
   // Rolled back, and failed.
   w = world([st({ state: 'idle' }), st({ state: 'restarting', board: 'sidekick' }), st({ state: 'idle', last: { result: 'rolled_back' } })]);

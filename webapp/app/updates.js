@@ -170,7 +170,8 @@ var FwUpdates = (function () {
   // update together, and a sidekick alone is updated over USB) or 'ap' (no internet to download
   // from). blocked: '' or why this plan must not run: 'pair', afterwards the two boards would speak
   // different Port A protocol versions, and a main board the sidekick cannot talk to can only be
-  // recovered over USB. Nothing checks for a radio: the review asks for it to be off.
+  // recovered over USB. Nothing checks for a radio: a main board's update ends by switching it off
+  // (main_board.md, Firmware updates), and the review says so.
   function plan(manifest, running, link, switching) {
     var steps = offers(manifest, running, !!switching);
     var channel = channelOf(running);
@@ -198,9 +199,14 @@ var FwUpdates = (function () {
     };
   }
 
-  // The note under an offered update: why it cannot run, or the radio off, which every update asks.
+  // Whether the plan updates the main board, whose restart ends with the radio switched off.
+  function updatesMain(p) {
+    return !!p && (p.steps || []).some(function (o) { return o.board === 'main'; });
+  }
+
+  // The note under an offered update: why it cannot run, or that it switches the radio off.
   function offerNote(p) {
-    return p.blocked ? whyText(p.blocked) + '.' : 'Switch the radio off first.';
+    return p.blocked ? whyText(p.blocked) + '.' : updatesMain(p) ? 'It switches the radio off at the end.' : '';
   }
 
   // Why Software update is unavailable, from plan().unavailable.
@@ -226,8 +232,10 @@ var FwUpdates = (function () {
       });
     });
     out.push('Takes ' + p.time + '. Nothing transmits until the update is done.');
-    out.push('Switch the radio off, or unplug its USB, before you update. If it stays connected it may ' +
-      'need switching off and on afterwards.');
+    if (updatesMain(p)) {
+      out.push('At the end the main board switches the radio off, so that it connects again when you ' +
+        'switch it back on.');
+    }
     out.push('The update goes on if this phone locks.');
     return out;
   }
@@ -384,6 +392,7 @@ var FwUpdates = (function () {
     reviewText: reviewText,
     notesFor: notesFor,
     offerNote: offerNote,
+    updatesMain: updatesMain,
     stepRows: stepRows,
     busy: busy,
     startCheck: startCheck,

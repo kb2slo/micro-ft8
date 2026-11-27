@@ -11,14 +11,14 @@ After the first install over USB, every update of either board is over the air, 
 ## Constraints
 
 * **No TLS and no signing on the device.** Trust comes from the browser's HTTPS fetch of the manifest ([system.md](system.md), **The inversion** and **Why not signing**).
-* **An update starts only by an operator's action in the app,** never remotely and never by itself (maintainer, 2026-11-12). The operator is asked to switch the radio off first and back on when it is done.
+* **An update starts only by an operator's action in the app,** never remotely and never by itself (maintainer, 2026-11-12). An update of the main board switches the radio off before its restart, and the operator switches it back on.
 * **One update, as the operator sees it** (maintainer, 2026-11-12). The app, the main board and the sidekick are parts of it, named in its progress and in a failure, and nowhere else offered or described apart.
 * **The main board has no network.** Its image reaches it over Port A.
 
 ## Decided
 
 * **The sidekick downloads images itself,** not the phone: one path, not two (**Why not**).
-* **The operator is asked to switch the radio off for a firmware update, and nothing checks.** One left connected may need switching off and on afterwards; that is all a check would prevent, and two attempts at one cost more than it is worth ([main_board.md](main_board.md), **Firmware updates**).
+* **The main board switches the radio off before it restarts, and nothing checks for one.** A QMX left on through the restart may not connect again until switched off and on, so the board sends `PS0;` first and the operator switches it back on (maintainer, 2026-11-27); a check for a radio cost more than it was worth, twice ([main_board.md](main_board.md), **Firmware updates**).
 * **Nothing transmits during any step of an update** (maintainer, 2026-11-12, at the bench: a CQ went out through a 79 s transfer). From the tap to the end the main board holds transmit off and ends its queue; it goes on receiving, and the operator starts again afterwards.
 * **The boards update together** (maintainer, 2026-11-12). **Update** is offered only when a main board is linked and the sidekick has internet, and takes every part that differs to the published build; nothing is offered for part of a station, and a sidekick with no main board is not updated over the air at all (USB is the way out). Two boards cannot be made atomic, since each installs and restarts by itself: the main board goes first, so its failure changes nothing, and if the sidekick's then fails, the next **Update** finishes it. The app enforces this; the sidekick still takes a one-board request, which is how `install_firmware.py` sends a bench build.
 * **When both boards need updating, the main board goes first,** while the sidekick still speaks its protocol. **The `FW_*` messages are frozen across `PORTA_PROTO_VERSION` bumps,** so any two builds can always carry an update between them.

@@ -195,6 +195,11 @@ esp_err_t radio_control_set_time(int hour, int minute, int second);
 // transmission off only to the end of its slot, and autoseq re-arms at once.
 void radio_control_hold_tx(bool on);
 bool radio_control_tx_held(void);
+// Switches the radio off (QMX PS0;), before a restart the board starts itself: a QMX left on through a P4
+// restart may not enumerate again until it is switched off and on, a fault of the QMX's (main_board.md,
+// Firmware updates). Sent and not waited on; the radio answers nothing and drops its USB within a second.
+// Nothing over USB switches it back on. ESP_ERR_NOT_SUPPORTED where the radio has no such command (no can_ps0).
+esp_err_t radio_control_power_off(void);
 esp_err_t radio_control_begin_cpfsk_tx(float base_hz,
                                        const uint8_t* symbols,
                                        size_t symbol_count,
