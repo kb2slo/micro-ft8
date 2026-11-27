@@ -80,8 +80,8 @@ const ctx = {
 };
 vm.createContext(ctx);
 vm.runInContext(bandsSrc, ctx);
-vm.runInContext([extractVar('LOG_ENTRY_FETCH')].concat(
-  ['adifField', 'adifFieldIfSet', 'adifBandTag', 'buildAdifRecord', 'dayActivationRefs', 'groupRowsByReference',
+vm.runInContext([extractVar('LOG_ENTRY_FETCH'), "var APP_BUILD = '0.4.0';", extractVar('ADIF_VER')].concat(
+  ['adifField', 'adifHeader', 'adifFieldIfSet', 'adifBandTag', 'buildAdifRecord', 'dayActivationRefs', 'groupRowsByReference',
    'exportFileBaseName', 'logCursorOf', 'readLogPages', 'dayFullRows', 'fetchAllEntries', 'downloadDayNfer',
    'downloadDayAdif', 'downloadAllAdif']
     .map(extract)).join('\n'), ctx);
@@ -105,6 +105,8 @@ function calls(text) { return (text.match(/<call:\d+>(\w+)/g) || []).map((c) => 
   await ctx.downloadDayAdif('20261114', link);
   assert.strictEqual(downloads.length, 1, 'Download ADI makes one file');
   assert.strictEqual(downloads[0].name, '20261114', 'named for its day');
+  assert.ok(downloads[0].text.startsWith('ADIF EXPORT\n<adif_ver:5>3.1.4 \n<programid:9>micro-FT8 \n<programversion:5>0.4.0 \n<eoh>\n'),
+    'its header names the program and its version, and the ADIF version: ' + JSON.stringify(downloads[0].text.slice(0, 90)));
   assert.deepStrictEqual(calls(downloads[0].text), Array.from({ length: 59 }, (_, i) => row('20261114', i).call),
                          'Download ADI holds the busy day\'s 59 QSOs, in order');
 
@@ -114,6 +116,7 @@ function calls(text) { return (text.match(/<call:\d+>(\w+)/g) || []).map((c) => 
   await ctx.downloadAllAdif(watch);
   const want = Object.keys(DAYS).sort().reverse().flatMap((d) => Array.from({ length: DAYS[d] }, (_, i) => row(d, i).call));
   assert.deepStrictEqual(calls(downloads[0].text), want, 'Download full ADI holds all 87 QSOs, newest day first, each day in order');
+  assert.ok(/<programid:9>micro-FT8 [\s\S]*<eoh>/.test(downloads[0].text), 'and so does the full one\'s');
   assert.ok(seen.includes('Preparing… 87/87'), 'and counts them as it reads: ' + seen.slice(-2));
 
   // A page cut short, as a larger one is: the next page carries on from its last row, so nothing is lost.

@@ -7860,6 +7860,16 @@ function refreshDayLinkText(day, dlinkEl) {
 function adifField(tag, value, trailingSpace) {
   return '<' + tag + ':' + value.length + '>' + value + (trailingSpace === false ? '' : ' ');
 }
+// A download's header (docs/architecture/logging.md, Export): what wrote it, as ADIF names a header's
+// PROGRAMID and PROGRAMVERSION, which loggers and TQSL read to say where a file came from, and the ADIF version
+// its fields follow (SUBMODE FT4, ADIF 3.1.1 on). The version is this page's build, or "dev" for a page served
+// unbuilt.
+var ADIF_VER = '3.1.4';
+function adifHeader() {
+  var ver = /^__/.test(APP_BUILD) || !APP_BUILD ? 'dev' : APP_BUILD;
+  return 'ADIF EXPORT\n' + adifField('adif_ver', ADIF_VER) + '\n' + adifField('programid', 'micro-FT8') + '\n' +
+    adifField('programversion', ver) + '\n<eoh>\n';
+}
 function adifFieldIfSet(tag, value) {
   return value ? adifField(tag, value) : '';
 }
@@ -8035,7 +8045,7 @@ async function downloadDayAdif(day, linkEl) {
     var rows = await dayFullRows(day);
     var refs = dayActivationRefs(rows);
     if (!refs.pota.length && !refs.sota.length) {
-      var text = 'ADIF EXPORT\n<eoh>\n' +
+      var text = adifHeader() +
                 rows.map(function (q) { return buildAdifRecord(q, dateStr); }).join('');
       triggerAdifDownload(day, text);
     } else {
@@ -8059,7 +8069,7 @@ async function downloadDayNfer(rows, dateStr) {
   var callsign = (rows[0] && rows[0].station_callsign) || '';
   for (var i = 0; i < buckets.length; i++) {
     var bucket = buckets[i];
-    var text = 'ADIF EXPORT\n<eoh>\n' +
+    var text = adifHeader() +
               bucket.rows.map(function (q) { return buildAdifRecord(q, dateStr, bucket); }).join('');
     triggerAdifDownload(exportFileBaseName(callsign, bucket, dateStr), text);
     if (i < buckets.length - 1) {
@@ -8086,7 +8096,7 @@ async function downloadAllAdif(linkEl) {
     days.forEach(function (day) {
       byDay[day].reverse().forEach(function (q) { parts.push(buildAdifRecord(q, day)); });
     });
-    triggerAdifDownload('micro-ft8-log', 'ADIF EXPORT\n<eoh>\n' + parts.join(''));
+    triggerAdifDownload('micro-ft8-log', adifHeader() + parts.join(''));
   } catch (e) {
     failMsg(String(e && e.message ? e.message : e));
   } finally {
