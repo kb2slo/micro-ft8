@@ -372,6 +372,7 @@ static void test_decode_event()
     in.slot_idx = 119267489u;  // a real 2026 FT8 slot, above 2^24 to catch a narrow width
     in.slot_len_ds = 150;
     in.dial_hz = 14074000u;    // above 2^16, likewise
+    in.worked = PORTA_WORKED_DUPE | PORTA_WORKED_EVER;  // not every bit, to catch one read as another
 
     size_t n = porta_proto_encode_decode(&in, buf, sizeof(buf));
     auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
@@ -389,6 +390,8 @@ static void test_decode_event()
         check(out.slot_idx == 119267489u, "slot index round-trips");
         check(out.slot_len_ds == 150, "slot length round-trips");
         check(out.dial_hz == 14074000u, "dial frequency round-trips");
+        check(out.worked == (PORTA_WORKED_DUPE | PORTA_WORKED_EVER) && out.is_cq && !out.is_to_me,
+              "the worked marks round-trip beside the other flags");
 
         char text[PORTA_EVENT_TEXT_MAX + 1] = {};
         check(!porta_proto_parse_log(&got[0], nullptr, text), "a decode event is not a log event");
@@ -1692,10 +1695,11 @@ static void test_event_json()
     dec.slot_idx = 113333333;
     dec.slot_len_ds = 150;
     dec.dial_hz = 14074000;
+    dec.worked = PORTA_WORKED_BAND | PORTA_WORKED_EVER;
     check(porta_event_json_decode(row, sizeof(row), 3, &dec) > 0, "decode row encodes");
     check_row(row,
               "{\"s\":3,\"t\":1700000000,\"d\":1,\"x\":\"CQ N6HAN CM87\","
-              "\"id\":7,\"snr\":-5,\"hz\":1200,\"dt\":-0.15,\"cq\":1,\"me\":0,\"rq\":1,"
+              "\"id\":7,\"snr\":-5,\"hz\":1200,\"dt\":-0.15,\"cq\":1,\"me\":0,\"rq\":1,\"wk\":6,"
               "\"si\":113333333,\"sl\":150,\"fq\":14074000}",
               "decode row");
 

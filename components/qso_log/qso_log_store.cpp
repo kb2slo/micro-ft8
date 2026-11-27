@@ -258,6 +258,19 @@ size_t qso_log_store_page(const QsoStoreFilter& filter, const QsoStoreCursor& be
 const char* qso_log_store_band_name(uint8_t band) { return qso_store_band_name(s_store, band); }
 const char* qso_log_store_mode_name(uint8_t mode) { return qso_store_mode_name(s_store, mode); }
 
+uint8_t qso_log_store_worked(const char* call, const char* band, uint32_t today, const char* refs)
+{
+    if (!s_ready || call == nullptr || call[0] == '\0' || call[0] == '<') return 0;
+    if (!qso_store_worked(s_store, call, nullptr, nullptr, 0, nullptr, nullptr)) return 0;
+    uint8_t bits = kQsoWorkedEver;
+    const bool on_band = band != nullptr && band[0] != '\0';
+    if (on_band && qso_store_worked(s_store, call, band, nullptr, 0, nullptr, nullptr)) {
+        bits |= kQsoWorkedBand;
+        if (today != 0 && qso_store_worked(s_store, call, band, nullptr, today, refs, nullptr)) bits |= kQsoWorkedDupe;
+    }
+    return bits;
+}
+
 QsoStoreStatus qso_log_store_import(const std::string& fields)
 {
     if (!s_ready) return QsoStoreStatus::WRITE_FAILED;

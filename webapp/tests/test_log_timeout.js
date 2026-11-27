@@ -128,11 +128,12 @@ async function qsosRefresh() {
   assert.strictEqual(p.logRefreshing, false);
 }
 
-// Operate's read of today's file, for the Worked flag and the activation line.
+// The read of today's QSOs for the activation line, at a park: the marks on decodes are the main board's.
 async function operateLog() {
   const p = page(['logCursorOf', 'readLogPages', 'refreshOpLog'], {
     opLog: { day: '', rows: [], ids: {}, busy: false }, currentView: 'operate', lastCfg: {}, drawn: 0, LOG_ENTRY_FETCH: 10,
-    utcDayFile: () => '20261111.adi', parseActRefs: () => [],
+    utcDayFile: () => '20261111.adi', parseActRefs: () => [{ program: 'POTA', ref: 'US-1234', token: 'POTA:US-1234' }],
+    CallInfo: { loadActiveSpots: () => new Promise(() => {}) },  // its spots' own redraw is not this test's
   });
   p.renderDecodes = () => { p.drawn++; };
   p.renderActLine = () => {};
@@ -144,7 +145,7 @@ async function operateLog() {
   p.answers.push({ ok: true, entries: [{ id: 1, date: '20261111', time: '10:00', call: 'K1ABC' }] }, { ok: true, entries: [] });
   await p.refreshOpLog();
   assert.deepStrictEqual(Array.from(p.opLog.rows, (r) => r.call), ['K1ABC'], 'and the next tick reads the QSO');
-  assert.strictEqual(p.drawn, 1, 'which redraws the decodes for the Worked flag');
+  assert.strictEqual(p.drawn, 1, 'which redraws the decodes and the activation line');
 }
 
 // Loading older QSOs as the list scrolls: a read given up frees the loader, and the list says why it is empty.

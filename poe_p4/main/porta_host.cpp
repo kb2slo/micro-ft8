@@ -383,6 +383,25 @@ StationDials porta_p4_station_dials(void) {
     return d;
 }
 
+// What the log knows of a decode's sender (docs/architecture/webapp.md, Worked and activation cues on decodes):
+// on the station's band, today's UTC date for a dupe, its references at an activation.
+static uint8_t station_worked(const char *call) {
+    ensure_seeded();
+    const int idx = s_station.band_sel;
+    const char *band = (idx >= 0 && idx < kStationBandCount) ? kBandNames[idx] : "";
+    uint32_t today = 0;
+    if (rtc_is_set()) {
+        const time_t now = static_cast<time_t>(rtc_now_ms() / 1000);
+        struct tm t {};
+        gmtime_r(&now, &t);
+        today = static_cast<uint32_t>((t.tm_year + 1900) * 10000 + (t.tm_mon + 1) * 100 + t.tm_mday);
+    }
+    static_assert(kQsoWorkedDupe == PORTA_WORKED_DUPE && kQsoWorkedBand == PORTA_WORKED_BAND &&
+                      kQsoWorkedEver == PORTA_WORKED_EVER,
+                  "the log's marks are the wire's");
+    return qso_log_store_worked(call, band, today, s_station.act_refs.c_str());
+}
+
 static bool station_listens_now(RxChannel channel) {
     return station_listens(porta_p4_station_dials(), channel);
 }
@@ -390,6 +409,7 @@ static bool station_listens_now(RxChannel channel) {
 void porta_p4_adif_register(void) {
     autoseq_set_adif_callback(log_adif_entry);
     decode_pipeline_set_channel_listened(station_listens_now);
+    decode_pipeline_set_worked(station_worked);
     autoseq_set_recent_qso_callback(decode_pipeline_recently_logged);
     autoseq_set_heard_grid_callback(decode_pipeline_heard_grid);
     ESP_LOGI(TAG, "ADIF archive callback registered");

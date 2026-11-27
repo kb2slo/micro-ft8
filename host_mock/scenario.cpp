@@ -74,6 +74,11 @@ static void emit_decode(Scenario& s, const UiRxLine& rx)
     ev.slot_idx = s.slot_idx;
     ev.slot_len_ds = 150;
     ev.dial_hz = s.dial_hz ? s.dial_hz : kDialHz;
+    // What the log knows of the sender, as the main board's qso_log_store_worked() says it: every QSO the scenario
+    // logs is today's, on its one band, so a sender in the log is a dupe.
+    for (const SimLogEntry& q : s.log) {
+        if (!rx.field2.empty() && q.call == rx.field2) ev.worked = PORTA_WORKED_DUPE | PORTA_WORKED_BAND | PORTA_WORKED_EVER;
+    }
     char row[1024];
     const size_t n = porta_event_json_decode(row, sizeof(row), s.next_seq, &ev);
     if (n > 0) {

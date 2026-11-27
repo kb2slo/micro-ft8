@@ -1,6 +1,6 @@
 # QSO store (epic I32)
 
-Every logged QSO a record with an ID on the main board, answered where the log lives instead of read a day file at a time into the browser. The store is the main board's log ([logging.md](../architecture/logging.md), **The store on the main board**; its format and calls in `components/qso_store/include/qso_store.h`). Rows: [w4kn](#w4kn) ([ROADMAP.md](../ROADMAP.md)).
+Every logged QSO a record with an ID on the main board, answered where the log lives instead of read a day file at a time into the browser. The store is the main board's log ([logging.md](../architecture/logging.md), **The store on the main board**; its format and calls in `components/qso_store/include/qso_store.h`). Rows: none in the index; the **Later** slices below wait for the maintainer to pick the next.
 
 ## Goal
 
@@ -24,9 +24,8 @@ Every logged QSO a record with an ID on the main board, answered where the log l
 
 ## Children
 
-In order. Only the next is a row in the index.
+None yet: the next is picked from **Later**.
 
-* <a id="w4kn"></a>**w4kn: the main board marks worked decodes, over the whole log.** Issue #36. Operate's **Worked** flag reads today's log every 8 s ([webapp.md](../architecture/webapp.md), **Worked and activation cues on decodes**), each read making every other request to the main board wait ([sidekick.md](../architecture/sidekick.md), **Tasks and cores**). The main board answers instead, from `qso_store_worked()`, and puts a worked bit on each DECODE event; the app's log read for it goes. Port A protocol change. **Later:** the progress line's and the QSOs tab's polls; the **Hide worked** filter then reads the bit. **Done-when:** host tests cover band, mode, references and the 00:00 UTC rollover; at home a station worked on an earlier day is flagged in its next slot with no log read (field). **Lands in:** [webapp.md](../architecture/webapp.md) (**Worked and activation cues on decodes**), [sidekick.md](../architecture/sidekick.md) (Port A); the site if the cue's wording changes.
 
 **Later:**
 

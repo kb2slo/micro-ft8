@@ -85,6 +85,11 @@
       "expect": {
         "tx": ""
       }
+    },
+    {
+      "comment": "Period 7 (odd): DX calls CQ again; logged, it is a dupe (webapp/tests/browser/test_worked_marks.js), and nothing is sent",
+      "messages": [{"call_to": "CQ", "call_from": "${DX_CALLSIGN}", "locator": "${DX_GRID}", "snr": -6, "slot": 1, "freq_hz": 1200}],
+      "expect": {"tx": ""}
     }
   ]
 }

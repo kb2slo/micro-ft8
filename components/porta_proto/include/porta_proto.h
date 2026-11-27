@@ -143,7 +143,10 @@ extern "C" {
 // fields, or a slice of them, under QRZ's ID; each QSO row says whether its record was imported (a flags
 // byte after its date); LOG_PAGE can ask for this station's own records alone. A v25 peer's shorter row is
 // refused. Both ends are flashed together.
-#define PORTA_PROTO_VERSION 26u
+// v27 (2026-11-27): DECODE says what the log knows of its sender, in its flags byte's spare bits
+// (PORTA_WORKED_*): a dupe, worked on this band, worked at all. A v26 peer reads the bits as unset, so it
+// shows no marks. Both ends are flashed together.
+#define PORTA_PROTO_VERSION 27u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -321,7 +324,13 @@ typedef struct {
     uint8_t  slot_len_ds;  // slot length in tenths of a second: 150 FT8, 75 FT4
     uint32_t dial_hz;      // the radio's dial frequency at the middle of this
                            // decode's signal; 0 when no tune is on record
+    uint8_t  worked;       // PORTA_WORKED_*: what the log knows of the sender
 } porta_decode_event_t;
+
+// What the station's log knows of a decode's sender (qso_log_store_worked(), the same bits).
+#define PORTA_WORKED_DUPE 0x01u  // worked today on this band (at the station's references, at an activation)
+#define PORTA_WORKED_BAND 0x02u  // worked on this band, any day
+#define PORTA_WORKED_EVER 0x04u  // worked on any band
 
 size_t porta_proto_encode_decode(const porta_decode_event_t *d, uint8_t *out, size_t out_cap);
 bool porta_proto_parse_decode(const porta_frame_t *f, porta_decode_event_t *out);

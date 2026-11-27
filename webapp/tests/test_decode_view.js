@@ -33,13 +33,14 @@ function extractFunction(text, name) {
 
 const sandbox = {};
 vm.createContext(sandbox);
-vm.runInContext("var DV_FILTERS = ['reply', 'park', 'worked'];\nvar DV_MODES = ['all', 'FT8', 'FT4'];\n" +
+vm.runInContext("var DV_FILTERS = ['reply', 'park'];\nvar DV_MODES = ['all', 'FT8', 'FT4'];\n" +
+  ['DV_NEEDS', 'DV_NEED_HIDES', 'DV_NEED_LABELS'].map((n) => src.match(new RegExp('var ' + n + ' = [^;]*;'))[0]).join('\n') + '\n' +
   // listenedChannels() stands in for the drawer's channels: the test sets `listening` to what it needs.
   "var listening = [];\nfunction listenedChannels(cfg) { return listening; }\n" +
-  ['decodeIsPark', 'isReplyableDecode', 'decodePassesView', 'decodeViewOf', 'decodeFiltersOn', 'decodeFilterLabel',
+  ['workedMark', 'decodeIsPark', 'isReplyableDecode', 'decodePassesView', 'decodeViewOf', 'decodeFiltersOn', 'decodeFilterLabel',
    'decodeViewWithFilters', 'decodeBarShown', 'decodeModeFilterOn', 'decodeViewInForce']
   .map((n) => extractFunction(src, n)).join('\n'), sandbox);
-assert(src.includes("var DV_FILTERS = ['reply', 'park', 'worked'];"), 'DV_FILTERS changed: update this test');
+assert(src.includes("var DV_FILTERS = ['reply', 'park'];"), 'DV_FILTERS changed: update this test');
 
 const km = { A: 4000, B: 800, C: 12000, D: null, ME: 100 };
 const distKmOf = (d) => km[d.call];
@@ -51,7 +52,7 @@ const slot = [
   { id: 6, call: 'A', cq: false, snr: 0, x: 'W2AAA W3BBB RR73' },
   { id: 5, call: 'D', cq: true, snr: -3, x: 'CQ SOTA N0DDD' },
 ];
-const view = (o) => Object.assign({ sort: 'default', reply: false, park: false, worked: false }, o);
+const view = (o) => Object.assign({ sort: 'default', reply: false, park: false, need: 'all' }, o);
 const ids = (v) => sandbox.decodeViewOf(slot, v, distKmOf).map((d) => d.id);
 const eq = (got, want, msg) => assert.deepStrictEqual(got, want, msg);
 
@@ -69,29 +70,36 @@ eq(idsQ(view()), [1, 4, 2, 3, 6, 5], 'the queued station\'s row moves up under t
 eq(idsQ(view({ reply: true })), [1, 4, 2, 3, 6, 5], 'Replyable does not hide it');
 eq(idsQ(view({ park: true })), [1, 4, 3, 5], 'nor does POTA/SOTA');
 eq(idsQ(view({ sort: 'far' })), [1, 4, 2, 6, 3, 5], 'any sort: after the message to us');
-// Hide worked: the rows whose sender the Worked flag marks go, except the message to us and a
-// queued station's row; off, the flag hides nothing.
-const worked = (d) => d.id === 1 || d.id === 2 || d.id === 4;
-const idsW = (v, inv) => sandbox.decodeViewOf(slot, v, distKmOf, inv, worked).map((d) => d.id);
-eq(idsW(view()), [1, 2, 3, 4, 6, 5], 'Hide worked off: the flag hides nothing');
-eq(idsW(view({ worked: true })), [1, 3, 6, 5], 'Hide worked drops worked senders, never the message to us');
-eq(idsW(view({ worked: true }), involves), [1, 4, 3, 6, 5], 'nor a queued station\'s row');
-eq(idsW(view({ worked: true, reply: true })), [1, 3, 6, 5], 'it combines with Replyable');
-eq(idsW(view({ worked: true, sort: 'snr' })), [1, 3, 6, 5], 'and with a sort');
-eq(sandbox.decodeViewOf(slot, view({ worked: true }), distKmOf).map((d) => d.id), [1, 2, 3, 4, 6, 5],
-  'with no Worked lookup, nothing is worked');
+// The marks (workedMark()), from the main board's worked bits: 1 dupe, 2 this band, 4 any band; the first that holds.
+eq([undefined, null, 0, 4, 6, 7, 3].map((wk) => sandbox.workedMark(wk)), ['', '', 'new', 'newband', 'worked', 'dupe', 'dupe'],
+  'none known; New; New on band; Worked; Dupe');
+// The filter on them: each choice hides what the one before hid, never the message to us or a queued station's
+// row, nor a decode whose mark is not known.
+const marks = { 1: 'dupe', 2: 'dupe', 3: 'new', 4: 'worked', 6: 'newband', 5: '' };
+const idsW = (v, inv) => sandbox.decodeViewOf(slot, v, distKmOf, inv, (d) => marks[d.id]).map((d) => d.id);
+eq(idsW(view()), [1, 2, 3, 4, 6, 5], 'All: the marks hide nothing');
+eq(idsW(view({ need: 'nodupes' })), [1, 3, 4, 6, 5], 'No dupes drops the dupe, never the message to us');
+eq(idsW(view({ need: 'needed' })), [1, 3, 6, 5], 'Needed drops the worked too, keeps New and New on band');
+eq(idsW(view({ need: 'new' })), [1, 3, 5], 'New only keeps the never worked, and the unknown');
+eq(idsW(view({ need: 'new' }), involves), [1, 4, 3, 5], 'a queued station\'s row stays whatever its mark');
+eq(idsW(view({ need: 'needed', reply: true })), [1, 3, 6, 5], 'it combines with Replyable');
+eq(idsW(view({ need: 'needed', sort: 'snr' })), [1, 3, 6, 5], 'and with a sort');
+eq(sandbox.decodeViewOf(slot, view({ need: 'new' }), distKmOf).map((d) => d.id), [1, 2, 3, 4, 6, 5],
+  'with no marks known, nothing is hidden');
 // The closed menu names what is on.
 assert.strictEqual(sandbox.decodeFilterLabel(view()), 'Filter');
-assert.strictEqual(sandbox.decodeFilterLabel(view({ worked: true })), 'Hide worked');
+assert.strictEqual(sandbox.decodeFilterLabel(view({ need: 'nodupes' })), 'No dupes');
+assert.strictEqual(sandbox.decodeFilterLabel(view({ need: 'needed' })), 'Needed');
+assert.strictEqual(sandbox.decodeFilterLabel(view({ need: 'new' })), 'New only');
 assert.strictEqual(sandbox.decodeFilterLabel(view({ reply: true })), 'Replyable');
 assert.strictEqual(sandbox.decodeFilterLabel(view({ park: true })), 'POTA/SOTA');
-assert.strictEqual(sandbox.decodeFilterLabel(view({ reply: true, worked: true })), 'Filters · 2');
+assert.strictEqual(sandbox.decodeFilterLabel(view({ reply: true, need: 'needed' })), 'Filters · 2');
 // Apply: the filters become exactly what is ticked, sort and mode kept; the view it started from
 // is not changed, so Cancel (which never calls it) leaves the list as it was.
 const before = view({ sort: 'snr', mode: 'FT8', reply: true });
-const applied = sandbox.decodeViewWithFilters(before, { reply: false, park: true, worked: true });
+const applied = sandbox.decodeViewWithFilters(before, { reply: false, park: true, need: 'needed' });
 eq(JSON.parse(JSON.stringify(applied)),
-  { sort: 'snr', reply: false, park: true, worked: true, mode: 'FT8' }, 'Apply sets what is ticked, keeps sort and mode');
+  { sort: 'snr', reply: false, park: true, need: 'needed', mode: 'FT8' }, 'Apply sets what is picked, keeps sort and mode');
 eq(before.reply, true, 'the view Apply started from is untouched');
 eq(sandbox.decodeViewWithFilters(before, {}).reply, false, 'nothing ticked: every filter off');
 // The bar shows once a decode is listed, whatever the filters hide, so a filter that hides every row
@@ -121,12 +129,14 @@ assert.strictEqual(sandbox.decodeViewInForce(view({ mode: 'FT4' }), {}).mode, 'a
 assert.strictEqual(sandbox.decodeModeFilterOn({}), false, 'and not offered');
 // The pill's label, and the sheet's pick.
 assert.strictEqual(sandbox.decodeFilterLabel(view({ mode: 'FT4' })), 'FT4 only');
-assert.strictEqual(sandbox.decodeFilterLabel(view({ mode: 'FT8', worked: true })), 'Filters · 2');
+assert.strictEqual(sandbox.decodeFilterLabel(view({ mode: 'FT8', need: 'nodupes' })), 'Filters · 2');
 assert.strictEqual(sandbox.decodeFilterLabel(view({ mode: 'all' })), 'Filter');
 eq(sandbox.decodeViewWithFilters(view({ mode: 'FT4' }), { reply: true }).mode, 'FT4', 'a sheet without the mode rows keeps it');
 eq(sandbox.decodeViewWithFilters(view({ mode: 'FT4' }), { mode: 'all' }).mode, 'all', 'a pick of Both clears it');
 // The mode rows sit in the Filter sheet, after the filters, and are hidden until both channels are listened to.
 const fs4 = src.indexOf('<div id=dvFilterMode role=radiogroup aria-label=Mode hidden>');
-assert(fs4 > src.indexOf('data-key=worked') && fs4 < src.indexOf('<div class=dvfbtns>', fs4), 'the mode row, in the Filter sheet');
+assert(fs4 > src.indexOf('<div id=dvFilterNeed') && fs4 < src.indexOf('<div class=dvfbtns>', fs4), 'the mode row, in the Filter sheet, after the marks');
+const fn = src.indexOf('<div id=dvFilterNeed');
+assert.strictEqual((src.slice(fn, src.indexOf('</div>', fn)).match(/class="dvfopt dvfseg" data-need=/g) || []).length, 4, 'the marks: one row of four');
 assert.strictEqual((src.slice(fs4, src.indexOf('</div>', fs4)).match(/class="dvfopt dvfseg"/g) || []).length, 3, 'one row of three segments');
 console.log('PASS: decode sort and filter');

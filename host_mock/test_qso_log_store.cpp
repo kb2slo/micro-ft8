@@ -306,6 +306,21 @@ static void test_pages_and_deletes()
               !all.front().imported,
           "is in the whole log's pages, oldest, marked imported");
     CHECK(qso_log_store_page(own, QsoStoreCursor{}, 20, &all) == 8, "and not in our own");
+
+    // Worked marks: K6ABC is 2026-11-25's on 20m (record() logs 20m FT8), DL1AA was imported, worked on 20m in 2024.
+    CHECK(qso_log_store_worked("K6ABC", "20m", 20261125, nullptr) == (kQsoWorkedDupe | kQsoWorkedBand | kQsoWorkedEver),
+          "worked today on this band: a dupe");
+    CHECK(qso_log_store_worked("k6abc", "20M", 20261126, nullptr) == (kQsoWorkedBand | kQsoWorkedEver),
+          "the next day: worked on this band, not a dupe");
+    CHECK(qso_log_store_worked("K6ABC", "40m", 20261125, nullptr) == kQsoWorkedEver, "on another band: new on band");
+    CHECK(qso_log_store_worked("DL1AA", "20m", 20261125, nullptr) == (kQsoWorkedBand | kQsoWorkedEver),
+          "an imported QSO counts");
+    CHECK(qso_log_store_worked("ZZ9ZZZ", "20m", 20261125, nullptr) == 0, "never worked: new");
+    CHECK(qso_log_store_worked("K6ABC", "20m", 0, nullptr) == (kQsoWorkedBand | kQsoWorkedEver), "no clock: no dupe");
+    CHECK(qso_log_store_worked("K6ABC", "20m", 20261125, "POTA:US-1234") == (kQsoWorkedBand | kQsoWorkedEver),
+          "at a park, a QSO logged elsewhere today is no dupe");
+    CHECK(qso_log_store_worked("<...>", "20m", 20261125, nullptr) == 0 && qso_log_store_worked("", "20m", 20261125, nullptr) == 0,
+          "a hashed or empty call: nothing");
     CHECK(qso_log_store_delete_day(20261124) == nullptr && days().size() == 1 && days()[0] == "20261125.adi",
           "a day's QSOs deleted");
     CHECK(qso_log_store_delete_day(20261124) != nullptr, "a day with none says so");

@@ -243,7 +243,7 @@ bool porta_proto_parse_log(const porta_frame_t *f, uint32_t *epoch_secs_out,
     return true;
 }
 
-// subtype | epoch(4) | flags | snr | offset(2) | dt(2) | decode_id(4) |
+// subtype | epoch(4) | flags (cq, to me, recent, then worked's three bits) | snr | offset(2) | dt(2) | decode_id(4) |
 // slot_idx(4) | slot_len_ds | dial_hz(4) | text...
 #define DECODE_BODY_OFFSET (EVENT_HEADER_LEN + 6u + 4u + 9u)
 
@@ -257,7 +257,8 @@ size_t porta_proto_encode_decode(const porta_decode_event_t *d, uint8_t *out, si
     put_u32(&payload[1], d->epoch_secs);
     payload[5] = (uint8_t)((d->is_cq ? 0x01u : 0u) |
                            (d->is_to_me ? 0x02u : 0u) |
-                           (d->is_recent_qso ? 0x04u : 0u));
+                           (d->is_recent_qso ? 0x04u : 0u) |
+                           ((d->worked & 0x07u) << 3));
     payload[6] = (uint8_t)d->snr;
     payload[7] = (uint8_t)(d->offset_hz & 0xFFu);
     payload[8] = (uint8_t)(d->offset_hz >> 8);
@@ -287,6 +288,7 @@ bool porta_proto_parse_decode(const porta_frame_t *f, porta_decode_event_t *out)
     out->is_cq         = (f->payload[5] & 0x01u) != 0;
     out->is_to_me      = (f->payload[5] & 0x02u) != 0;
     out->is_recent_qso = (f->payload[5] & 0x04u) != 0;
+    out->worked        = (uint8_t)((f->payload[5] >> 3) & 0x07u);
     out->snr           = (int8_t)f->payload[6];
     out->offset_hz     = (uint16_t)(f->payload[7] | ((uint16_t)f->payload[8] << 8));
     out->dt_centis     = (int16_t)(uint16_t)(f->payload[9] | ((uint16_t)f->payload[10] << 8));

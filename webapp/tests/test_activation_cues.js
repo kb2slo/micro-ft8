@@ -33,29 +33,14 @@ function extractFunction(text, name) {
 
 const sandbox = { lastCfg: {} };
 vm.createContext(sandbox);
-vm.runInContext(['parseActRefs', 'refsOverlap', 'dupeKey', 'dupeIndex', 'spotBadgeLabel', 'slotMode', 'activationCounts']
+vm.runInContext(['parseActRefs', 'refsOverlap', 'dupeKey', 'spotBadgeLabel', 'slotMode', 'activationCounts']
   .map((n) => extractFunction(src, n)).join('\n'), sandbox);
 
 const refs = sandbox.parseActRefs({ act_refs: 'POTA:US-1234' });
-const rows = [
-  { call: 'W1AW', band: '20m', mode: 'FT8', my_pota_ref: 'US-1234' },
-  { call: 'K9XYZ', band: '20m', mode: 'FT8', my_pota_ref: 'US-9999' },
-  { call: 'N0ABC', band: '40m', mode: 'FT8', my_pota_ref: 'US-1234,US-5678' },
-];
-const dupe = (idx, call, band, mode) => !!idx[sandbox.dupeKey(call, band, mode)];
-let idx = sandbox.dupeIndex(rows, refs);
-assert(dupe(idx, 'W1AW', '20m', 'FT8'), 'same call, band, mode, reference');
-assert(!dupe(idx, 'W1AW', '40m', 'FT8'), 'another band is not a dupe');
-assert(!dupe(idx, 'W1AW', '20m', 'FT4'), 'another mode is not a dupe');
-assert(!dupe(idx, 'K9XYZ', '20m', 'FT8'), 'logged at another reference');
-assert(dupe(idx, 'N0ABC', '40m', 'FT8'), 'an n-fer record counts for each of its references');
-assert(dupe(idx, 'n0abc', '40m', 'ft8'), 'case does not matter');
-idx = sandbox.dupeIndex(rows, []);
-assert(dupe(idx, 'W1AW', '20m', 'FT8'), 'no references: any QSO in today\'s file is a dupe');
-assert(dupe(idx, 'K9XYZ', '20m', 'FT8'), 'no references: the reference it was logged at does not matter');
-assert(!dupe(idx, 'K9XYZ', '40m', 'FT8'), 'no references: another band is still not a dupe');
-assert(dupe(sandbox.dupeIndex([{ call: 'KB2SLO', band: '20m', mode: 'FT4' }], []), 'KB2SLO', '20m', 'FT4'),
-       'no references: a QSO logged with no reference at all');
+// A call on a band: FT8 and FT4 count as one mode, as POTA counts every digital mode as DATA. Whether a decode is a
+// dupe is the main board's (qso_log_store_worked(), host_mock/test_qso_log_store.cpp); this key is the progress line's.
+assert.strictEqual(sandbox.dupeKey('n0abc', '40M'), sandbox.dupeKey('N0ABC', '40m'), 'case does not matter');
+assert.notStrictEqual(sandbox.dupeKey('N0ABC', '40m'), sandbox.dupeKey('N0ABC', '20m'), 'another band is another key');
 
 // The poll interval is assigned before the timer reads it; read while undefined it was 0, and
 // Operate re-read today's log back to back (85 reads in 25 s on the bench, 2026-11-09).
@@ -78,10 +63,11 @@ const log = [
   { call: 'W1AW', band: '40m', mode: 'FT8', my_pota_ref: 'US-1234', my_sota_ref: 'W2/XX-001' },
   { call: 'K9XYZ', band: '20m', mode: 'FT8', my_pota_ref: 'US-1234,US-5678' },
   { call: 'N0ABC', band: '20m', mode: 'FT8', my_pota_ref: 'US-9999' },
+  { call: 'W1AW', band: '20m', mode: 'FT4', my_pota_ref: 'US-1234' },
 ];
 assert.strictEqual(progress(log, 'POTA:US-1234,POTA:US-5678,SOTA:W2/XX-001'),
   'US-1234 3/10, US-5678 1/10, W2/XX-001 1/4',
-  'a repeat on the same band and mode counts once; another band counts for a park; an n-fer counts for each; ' +
+  'a repeat on the same band counts once, in FT8 or FT4 alike (DATA); another band counts for a park; an n-fer counts for each; ' +
   'a summit counts the call once across bands; another reference does not count');
 assert.strictEqual(progress([], 'POTA:US-1234'), 'US-1234 0/10');
 assert.strictEqual(progress(log, ''), '', 'no references, no line');
