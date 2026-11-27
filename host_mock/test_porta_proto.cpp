@@ -1348,64 +1348,14 @@ static void test_config_kv()
           "set refuses null value");
 }
 
-// FILE_LIST / FILE_READ page like components/qso_log/include/qso_browse.h's QsoBrowsePager
-// (skip/take), and FILE_DATA carries one row per frame -- a NAME row for
-// FILE_LIST, an ENTRY row for FILE_READ, discriminated by the same
-// first-payload-byte pattern EVENT and ACTION already use.
-static void test_file_list_and_read_requests()
-{
-    porta_decoder_t d;
-    porta_decoder_init(&d);
-    uint8_t buf[PORTA_PROTO_MAX_FRAME];
-
-    size_t n = porta_proto_encode_file_list_req(PORTA_FILE_LIST_QSO_DAILY, 3, 6, buf, sizeof(buf));
-    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
-    check(got.size() == 1, "file_list request encodes");
-    if (got.size() == 1) {
-        uint8_t kind = 0; uint16_t skip = 0; uint8_t take = 0;
-        check(porta_proto_parse_file_list_req(&got[0], &kind, &skip, &take),
-              "file_list request parses");
-        check(kind == PORTA_FILE_LIST_QSO_DAILY, "kind round-trips");
-        check(skip == 3 && take == 6, "skip/take round-trip");
-    }
-
-    porta_decoder_init(&d);
-    n = porta_proto_encode_file_read_req("20260914.adi", 12, 6, buf, sizeof(buf));
-    got = run(&d, std::vector<uint8_t>(buf, buf + n));
-    check(got.size() == 1, "file_read request encodes");
-    if (got.size() == 1) {
-        char name[PORTA_FILENAME_MAX + 1] = {};
-        uint16_t skip = 0; uint8_t take = 0;
-        check(porta_proto_parse_file_read_req(&got[0], name, &skip, &take),
-              "file_read request parses");
-        check(std::string(name) == "20260914.adi", "filename round-trips");
-        check(skip == 12 && take == 6, "file_read skip/take round-trip");
-    }
-
-    check(porta_proto_encode_file_read_req("", 0, 6, buf, sizeof(buf)) == 0,
-          "file_read refuses an empty filename");
-    check(porta_proto_encode_file_read_req(nullptr, 0, 6, buf, sizeof(buf)) == 0,
-          "file_read refuses a null filename");
-}
-
 static void test_file_data_rows()
 {
     porta_decoder_t d;
     porta_decoder_init(&d);
     uint8_t buf[PORTA_PROTO_MAX_FRAME];
 
-    size_t n = porta_proto_encode_file_name_row("20260914.adi", buf, sizeof(buf));
-    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
-    check(got.size() == 1, "file_name row encodes");
-    if (got.size() == 1) {
-        char name[PORTA_FILENAME_MAX + 1] = {};
-        check(porta_proto_parse_file_name_row(&got[0], name), "file_name row parses");
-        check(std::string(name) == "20260914.adi", "name round-trips");
-
-        porta_qso_entry_row_t entry;
-        check(!porta_proto_parse_file_entry_row(&got[0], &entry),
-              "a name row is not an entry row");
-    }
+    size_t n = 0;
+    std::vector<porta_frame_t> got;
 
     porta_qso_entry_row_t in = {};
     in.id = 0xA1B2C3D4u;
@@ -2146,7 +2096,6 @@ int main()
     test_action_sweep_start();
     test_ack_and_nak();
     test_config_kv();
-    test_file_list_and_read_requests();
     test_file_data_rows();
     test_event_json();
     test_link_patterns();

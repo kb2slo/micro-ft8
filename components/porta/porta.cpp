@@ -59,13 +59,6 @@ void porta_host_link_test(bool active, bool tune);
 // Cancel/reply by the stable ids QUEUE_ENTRY and EVENT DECODE hand out.
 const char* porta_host_queue_cancel(uint16_t entry_id);
 const char* porta_host_queue_reply(uint32_t decode_id);
-// Both start an async FS operation and return immediately: nullptr means
-// "accepted, rows and the terminal ACK/NAK arrive later via
-// porta_emit_file_name()/porta_emit_file_entry()/porta_emit_ack()/
-// porta_emit_nak()", not "done". A non-null return is a synchronous refusal
-// (bad request, open failed) with no async reply to follow.
-const char* porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take);
-const char* porta_host_file_read_begin(const char* filename, uint16_t skip, uint8_t take);
 const char* porta_host_file_delete(const char* filename);
 // A page of the log by record: rows, a TOTAL and the ACK are sent before it returns nullptr; a non-null
 // return is a refusal with nothing sent.
@@ -1095,42 +1088,7 @@ void handle_config_set(const porta_frame_t& f) {
   }
 }
 
-// Unlike every handler above, success here does not enqueue a reply: the
-// operation just started (a background listing, or a multi-tick file read)
-// and main.cpp's async FS pump emits the rows and the terminal ACK/NAK once
-// it actually finishes -- see porta_host_file_list_begin()'s comment.
-void handle_file_list(const porta_frame_t& f) {
-  uint8_t kind = 0;
-  uint16_t skip = 0;
-  uint8_t take = 0;
-  if (!porta_proto_parse_file_list_req(&f, &kind, &skip, &take)) {
-    uint8_t buf[PORTA_PROTO_MAX_FRAME];
-    enqueue(buf, porta_proto_encode_nak(PORTA_MSG_FILE_LIST, "malformed", buf, sizeof(buf)));
-    return;
-  }
-  const char* why = porta_host_file_list_begin(kind, skip, take);
-  if (why) {
-    uint8_t buf[PORTA_PROTO_MAX_FRAME];
-    enqueue(buf, porta_proto_encode_nak(PORTA_MSG_FILE_LIST, why, buf, sizeof(buf)));
-  }
-}
-
-void handle_file_read(const porta_frame_t& f) {
-  char filename[PORTA_FILENAME_MAX + 1] = {};
-  uint16_t skip = 0;
-  uint8_t take = 0;
-  if (!porta_proto_parse_file_read_req(&f, filename, &skip, &take)) {
-    uint8_t buf[PORTA_PROTO_MAX_FRAME];
-    enqueue(buf, porta_proto_encode_nak(PORTA_MSG_FILE_READ, "malformed", buf, sizeof(buf)));
-    return;
-  }
-  const char* why = porta_host_file_read_begin(filename, skip, take);
-  if (why) {
-    uint8_t buf[PORTA_PROTO_MAX_FRAME];
-    enqueue(buf, porta_proto_encode_nak(PORTA_MSG_FILE_READ, why, buf, sizeof(buf)));
-  }
-}
-
+// LOG_PAGE's rows, TOTAL and ACK are sent by porta_host_log_page() itself; a refusal is answered here.
 void handle_log_page(const porta_frame_t& f) {
   porta_log_page_req_t req = {};
   uint8_t buf[PORTA_PROTO_MAX_FRAME];
@@ -1150,8 +1108,6 @@ void handle_frame(const porta_frame_t& f) {
   case PORTA_MSG_ACTION:      handle_action(f);      break;
   case PORTA_MSG_CONFIG_GET:  handle_config_get(f);  break;
   case PORTA_MSG_CONFIG_SET:  handle_config_set(f);  break;
-  case PORTA_MSG_FILE_LIST:   handle_file_list(f);   break;
-  case PORTA_MSG_FILE_READ:   handle_file_read(f);   break;
   case PORTA_MSG_LOG_PAGE:    handle_log_page(f);    break;
   case PORTA_MSG_FW_BEGIN:
   case PORTA_MSG_FW_CHUNK:
@@ -1374,13 +1330,6 @@ void porta_emit_tx_not_keyed(const char* text, int offset_hz, const char* reason
   }
   uint8_t buf[PORTA_PROTO_MAX_FRAME];
   const size_t n = porta_proto_encode_tx_hud(&h, buf, sizeof(buf));
-  enqueue(buf, n);
-}
-
-void porta_emit_file_name(const char* name) {
-  if (!s_running || !name) return;
-  uint8_t buf[PORTA_PROTO_MAX_FRAME];
-  const size_t n = porta_proto_encode_file_name_row(name, buf, sizeof(buf));
   enqueue(buf, n);
 }
 

@@ -149,43 +149,6 @@ static std::string events_json(uint32_t since)
     return body;
 }
 
-static std::string log_files_json()
-{
-    if (g_scenario.log.empty()) {
-        return "{\"ok\":true,\"files\":[]}";
-    }
-    return "{\"ok\":true,\"files\":[\"" + g_log_file + "\"]}";
-}
-
-static std::string log_row_json(uint32_t id);
-
-static std::string log_entries_json(const std::string& file, unsigned skip, unsigned take)
-{
-    if (file != g_log_file) {
-        return "{\"ok\":false,\"why\":\"no such file\"}";
-    }
-    std::string body = "{\"ok\":true,\"entries\":[";
-    bool first = true;
-    unsigned seen = 0;
-    unsigned emitted = 0;
-    for (auto it = g_scenario.log.begin(); it != g_scenario.log.end(); ++it) {
-        if (seen++ < skip) {
-            continue;
-        }
-        if (emitted >= take) {
-            break;
-        }
-        if (!first) {
-            body += ",";
-        }
-        first = false;
-        emitted++;
-        body += log_row_json((uint32_t)(it - g_scenario.log.begin()) + 1u);
-    }
-    body += "]}";
-    return body;
-}
-
 // One QSO as the sidekick's /api/log/entries row gives it, with its record's ID and date.
 static std::string log_row_json(uint32_t id)
 {
@@ -220,9 +183,9 @@ static bool log_sent(uint32_t id)
 }
 
 // A page of the log newest first by time and ID (every QSO is today's), older than `before`
-// ("<date>.<HHMM>.<id>"), only those QRZ lacks with `unsent`, with how many match in all: the sidekick's
+// ("<date>.<HHMM>.<id>"), only those QRZ lacks with `unsent`, only `date`'s with `date`, with how many match in all: the sidekick's
 // LOG_PAGE route.
-static std::string log_page_json(bool unsent, const std::string& before, unsigned take)
+static std::string log_page_json(bool unsent, const std::string& date, const std::string& before, unsigned take)
 {
     struct Key {
         uint32_t when;
@@ -232,6 +195,7 @@ static std::string log_page_json(bool unsent, const std::string& before, unsigne
     for (size_t i = 0; i < g_scenario.log.size(); ++i) {
         const uint32_t id = (uint32_t)i + 1u;
         if (unsent && log_sent(id)) continue;
+        if (!date.empty() && date != g_log_file.substr(0, 8)) continue;
         const std::string& t = g_scenario.log[i].time_on;
         const uint32_t hhmm = t.size() >= 5 ? (uint32_t)std::strtoul((t.substr(0, 2) + t.substr(3, 2)).c_str(), nullptr, 10) : 0;
         keys.push_back({hhmm, id});
@@ -549,21 +513,14 @@ static std::string handle(const std::string& method, const std::string& url,
     if (method == "POST" && path == "/api/swr/start") {
         return sim_sweep_start(body);
     }
-    if (method == "GET" && path == "/api/log/files") {
-        return log_files_json();
-    }
     if (method == "GET" && path == "/api/log/entries") {
-        const unsigned skip = query.count("skip") ? (unsigned)std::strtoul(query.at("skip").c_str(), nullptr, 10) : 0;
-        unsigned take = query.count("take") ? (unsigned)std::strtoul(query.at("take").c_str(), nullptr, 10) : 6;
+        unsigned take = query.count("take") ? (unsigned)std::strtoul(query.at("take").c_str(), nullptr, 10) : 10;
         if (take == 0) {
-            take = 6;
+            take = 10;
         }
-        const std::string file = query.count("file") ? query.at("file") : "";
-        if (file.empty()) {
-            const bool unsent = query.count("unsent") && query.at("unsent") == "1";
-            return log_page_json(unsent, query.count("before") ? query.at("before") : "", query.count("take") ? take : 10);
-        }
-        return log_entries_json(file, skip, take);
+        const bool unsent = query.count("unsent") && query.at("unsent") == "1";
+        const std::string date = query.count("date") ? query.at("date") : "";
+        return log_page_json(unsent, date, query.count("before") ? query.at("before") : "", take);
     }
     if (method == "PATCH" && path == "/api/log/entries") {
         const uint32_t id = query.count("id") ? (uint32_t)std::strtoul(query.at("id").c_str(), nullptr, 10) : 0;

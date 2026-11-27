@@ -48,9 +48,8 @@ async function overlap() {
   const timers = [];
   const box = {
     logLoadedOnce: true, logLoading: false, logRefreshing: false, logRefreshAgain: false, currentView: 'log',
-    logFiles: ['20261109.adi'], logFileLoadedCount: {}, LOG_ENTRY_FETCH: 10, rows: [],
-    checkForNewDayFiles: async () => {},
-    appendLogRows: (file, rows) => { box.rows.push(...rows); },
+    logRenderedAny: true, logDone: false, logShownIds: { 1: true }, LOG_ENTRY_FETCH: 10, rows: [],
+    appendLogRows: (rows) => { box.rows.push(...rows); },
     fetch: () => { fetches++; return new Promise((res) => { release = res; }); },
     // The read's own timeout (logFetchJson(), test_log_timeout.js) is not this test's: only the re-run is kept.
     setTimeout: (fn, ms) => { if (!ms) timers.push(fn); },
@@ -59,10 +58,10 @@ async function overlap() {
     encodeURIComponent,
   };
   vm.createContext(box);
-  vm.runInContext(extractFunction(src, 'logFetchJson') + '\n' + extractFunction(src, 'refreshLogHead'), box);
+  vm.runInContext(['logFetchJson', 'logCursorOf', 'readLogPages', 'refreshLogHead'].map((n) => extractFunction(src, n)).join('\n'), box);
   const first = box.refreshLogHead();
   await new Promise((r) => setImmediate(r));
-  assert.strictEqual(fetches, 1, 'the first refresh reads today\'s file');
+  assert.strictEqual(fetches, 1, 'the first refresh reads the newest page');
   box.refreshLogHead();  // the QSO is written while the first read is in flight
   assert.strictEqual(fetches, 1, 'no second read at once');
   release({ json: async () => ({ ok: true, entries: [] }) });
@@ -70,8 +69,8 @@ async function overlap() {
   assert.strictEqual(timers.length, 1, 'the refresh asked for meanwhile is run again after');
   timers[0]();
   await new Promise((r) => setImmediate(r));
-  assert.strictEqual(fetches, 2, 'and reads the file again');
-  release({ json: async () => ({ ok: true, entries: [{ call: 'K1ABC' }] }) });
+  assert.strictEqual(fetches, 2, 'and reads the newest page again');
+  release({ json: async () => ({ ok: true, entries: [{ id: 2, date: '20261109', time: '10:01', call: 'K1ABC' }, { id: 1, date: '20261109', time: '10:00', call: 'W9XY' }] }) });
   await new Promise((r) => setImmediate(r));
   await new Promise((r) => setImmediate(r));
   assert.deepStrictEqual(box.rows.map((r) => r.call), ['K1ABC'], 'so the QSO written meanwhile shows');
@@ -82,5 +81,27 @@ async function overlap() {
 assert(/if \(e\.active && !\(txHud && txHud\.active\)\) \{\s*txKeyedAt = Date\.now\(\);\s*if \(txLogsQso\(e\.x\)\) kickLogRefresh\(e\.t \? e\.t \* 1000 : 0\);/.test(src),
   'a transmission that logs a QSO starts a refresh as it begins');
 assert(/\} else if \(name === 'log'\) \{\s*refreshLogHead\(\);/.test(src), 'opening the QSOs tab refreshes it');
+
+// The QSOs tab tapped while it shows scrolls the list to the top, smoothly unless the phone asks for less
+// motion; tapped from another tab it only opens it, where it was.
+{
+  const calls = [];
+  const box = {
+    currentView: 'operate', showView: (n) => { box.currentView = n; }, showSetPage: () => {},
+    reduce: false,
+    window: { matchMedia: () => ({ matches: box.reduce }) },
+    document: { getElementById: (id) => ({ scrollTo: (o) => calls.push([id, o.top, o.behavior]) }) },
+  };
+  vm.createContext(box);
+  vm.runInContext(extractFunction(src, 'tabTap'), box);
+  box.tabTap('log');
+  assert.deepStrictEqual(calls, [], 'opening QSOs from another tab leaves its scroll where it was');
+  box.tabTap('log');
+  assert.deepStrictEqual(calls, [['view-log', 0, 'smooth']], 'tapped again, it scrolls to the top');
+  box.reduce = true;
+  box.tabTap('log');
+  assert.deepStrictEqual(calls[1], ['view-log', 0, 'auto'], 'at once when the phone asks for less motion');
+}
+assert(/b\.onclick = function \(\) \{ tabTap\(b\.getAttribute\('data-view'\)\); \};/.test(src), 'every tab goes through tabTap()');
 
 overlap().then(() => console.log('PASS: log refresh on a logged QSO'), (e) => { console.error(e); process.exit(1); });

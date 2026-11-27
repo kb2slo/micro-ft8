@@ -26,10 +26,6 @@ QsoStoreStatus qso_log_store_add(const std::string& record, uint32_t* id_out);
 // The store, for reads; nullptr when not ready.
 const QsoStore* qso_log_store();
 
-// The UTC days that hold QSOs this station made, newest first, named as the daily files were
-// (`20261125.adi`), which is how the QSOs tab still asks for them (FILE_LIST / FILE_READ).
-void qso_log_store_days(std::vector<std::string>* names_out);
-
 // A record as a page of the log hands it out: its ID, its QSO_DATE as the index holds it (20261125, 0 for
 // none) and its fields.
 struct QsoLogRecord {
@@ -37,10 +33,6 @@ struct QsoLogRecord {
     uint32_t date;
     std::string fields;
 };
-
-// A day's QSOs in the order they were logged, after the first `skip`, at most `take`. `date` is 20261125.
-// Returns how many that day holds in all.
-size_t qso_log_store_day_records(uint32_t date, size_t skip, size_t take, std::vector<QsoLogRecord>* out);
 
 // A page of records matching `filter`, newest first by date, time and ID, older than `before` (all zero
 // for the newest), at most `take`. Returns how many match the filter in all.

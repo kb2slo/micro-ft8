@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "adif_logger.h"
+#include "host_mocks.h"
 #include "qso_log_store.h"
 
 // adif_logger.cpp logs into the station's QSO log (qso_log_store_add()) and reads rtc_now_ms()
@@ -140,10 +141,6 @@ int main() {
         expect_true(g_appended[0].find("my_sota_ref") == std::string::npos, "no my_sota_ref tag when empty");
     }
 
-    if (g_fails) {
-        fprintf(stderr, "%d FAIL(s)\n", g_fails);
-        return 1;
-    }
     // "/Radio" names the radio as it names itself: the first word of its band version, so a QMX+
     // logs as one; "QMX" before the radio has been read.
     expect_true(adif_radio_name("QMX 60-15m") == "QMX", "a QMX");
@@ -152,6 +149,26 @@ int main() {
     expect_true(adif_radio_name(nullptr) == "QMX", "no model at all");
     expect_true(adif_radio_name("QMX") == "QMX", "a model of one word");
 
+    // With the clock unset the QSO would be dated in 1970: it is not logged, and once the clock is set it is.
+    {
+        g_appended.clear();
+        AdifStationSnapshot station;
+        station.call = "KB2SLO";
+        station.my_gridsquare = "FN30";
+        station.mode = "FT8";
+        station.freq_mhz = "14.074";
+        mock_clock_set_valid(false);
+        expect_true(!adif_log_entry("W9XY", "EN52", -5, -7, station, nullptr), "unset clock: not logged");
+        expect_true(g_appended.empty(), "and nothing reaches the log");
+        mock_clock_set_valid(true);
+        expect_true(adif_log_entry("W9XY", "EN52", -5, -7, station, nullptr) && g_appended.size() == 1,
+                    "set clock: logged");
+    }
+
+    if (g_fails) {
+        fprintf(stderr, "%d FAIL(s)\n", g_fails);
+        return 1;
+    }
     printf("PASS: adif_log_entry expands comment macros the same way on both boards\n");
     return 0;
 }

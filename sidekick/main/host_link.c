@@ -603,70 +603,10 @@ static esp_err_t send_config_reply(httpd_req_t *req, const char *why)
     return httpd_resp_send_chunk(req, NULL, 0);
 }
 
-// FILE_LIST / FILE_READ (I28d, docs/architecture/webapp.md (Screens)): the reply is a burst of
-// FILE_DATA rows followed by ACK, same shape as CONFIG_GET-all above --
-// gathered here into a complete JSON response body, so wait_message_reply()
-// can send it as-is once the ACK for PORTA_MSG_FILE_LIST/PORTA_MSG_FILE_READ
-// arrives. Each buffer starts as its own complete `{"ok":true,...` wrapper,
-// same trick config_json_begin() uses, so there is nothing to assemble later.
-#define FILE_LIST_JSON_MAX 2048
-static char s_file_list_json[FILE_LIST_JSON_MAX];
-static size_t s_file_list_json_len;
-static bool s_file_list_json_first;
-static bool s_file_list_gathering;
-
-static void file_list_json_begin(void)
-{
-    lock_take();
-    s_file_list_gathering = true;
-    s_file_list_json_first = true;
-    strcpy(s_file_list_json, "{\"ok\":true,\"files\":[");
-    s_file_list_json_len = strlen(s_file_list_json);
-    lock_give();
-}
-
-static void file_list_json_add(const char *name)
-{
-    if (!name) {
-        return;
-    }
-    // Static scratch, same reasoning as file_entries_json_add() below and
-    // config_json_add() above: porta_rx task, 4 KB stack. Smaller than
-    // either of those today (~400 B), but the same shape of landmine --
-    // fixed alongside them rather than left for the next field to grow.
-    // Escaping stays outside the lock; the append is the shared part.
-    static char esc[PORTA_FILENAME_MAX * 6 + 1];
-    json_escape(name, esc, sizeof(esc));
-    static char piece[sizeof(esc) + 8];
-    lock_take();
-    if (!s_file_list_gathering) {
-        lock_give();
-        return;
-    }
-    const int n = snprintf(piece, sizeof(piece), "%s\"%s\"",
-                           s_file_list_json_first ? "" : ",", esc);
-    if (n > 0 && s_file_list_json_len + (size_t)n + 3 < FILE_LIST_JSON_MAX) {
-        memcpy(s_file_list_json + s_file_list_json_len, piece, (size_t)n + 1);
-        s_file_list_json_len += (size_t)n;
-        s_file_list_json_first = false;
-    }
-    lock_give();
-}
-
-// Caller holds s_lock. The verb is published before that hold ends.
-static void file_list_json_end_locked(void)
-{
-    if (!s_file_list_gathering) {
-        return;
-    }
-    if (s_file_list_json_len + 3 < FILE_LIST_JSON_MAX) {
-        s_file_list_json[s_file_list_json_len++] = ']';
-        s_file_list_json[s_file_list_json_len++] = '}';
-        s_file_list_json[s_file_list_json_len] = '\0';
-    }
-    s_file_list_gathering = false;
-}
-
+// LOG_PAGE (docs/architecture/logging.md, The store on the main board): the reply is a burst of FILE_DATA
+// rows, a TOTAL and the ACK, the shape CONFIG_GET-all has -- gathered here into a complete JSON body, so
+// wait_message_reply() can send it as it is once the ACK arrives. The buffer starts as its own complete
+// `{"ok":true,...` wrapper, the trick config_json_begin() uses, so there is nothing to assemble later.
 #define FILE_ENTRIES_JSON_MAX 4096
 static char s_file_entries_json[FILE_ENTRIES_JSON_MAX];
 static size_t s_file_entries_json_len;
@@ -835,13 +775,12 @@ static void reply_reset(void)
     lock_give();
 }
 
-// Drops every in-progress gather. One action is outstanding, so clearing all
-// three is the same as clearing the one this request started.
+// Drops every in-progress gather. One action is outstanding, so clearing both
+// is the same as clearing the one this request started.
 static void gather_abandon(void)
 {
     lock_take();
     s_config_gathering = false;
-    s_file_list_gathering = false;
     s_file_entries_gathering = false;
     lock_give();
 }
@@ -851,9 +790,8 @@ static void gather_abandon(void)
 // told what happened rather than assuming success.
 //
 // An ACK names what it answers by one byte, which is a message type for
-// CONFIG_GET, FILE_LIST and FILE_READ and an action verb for everything else,
-// and the two numberings overlap (PORTA_ACT_CQ_CALL and PORTA_MSG_FILE_READ are
-// both 0x0C). So `message` says which this is: only a message gets a gathered
+// CONFIG_GET and LOG_PAGE and an action verb for everything else, and the two
+// numberings share one byte's range. So `message` says which this is: only a message gets a gathered
 // body or a longer wait. One request is outstanding at a time (every route that
 // waits here runs on the main-board worker, http_worker.h), so the byte alone
 // matches the reply to its request.
@@ -861,10 +799,7 @@ static esp_err_t wait_reply(httpd_req_t *req, uint8_t verb, bool message)
 {
     // CONFIG_GET-all can enqueue many VALUE frames (one per tick on the host),
     // so allow longer than a single ACTION. CONNECT may wait on USB enum.
-    // FILE_LIST/FILE_READ are genuinely async on the host (a background
-    // listing, or a file read paced across many main-loop ticks -- see
-    // porta_host_file_read_begin()'s comment in main.cpp), so they get the
-    // same generous budget as CONFIG_GET-all rather than a single ACTION's.
+    // LOG_PAGE is a burst of rows too, so it gets the same budget.
     int tries = 40;
     if (message) {
         tries = 200;
@@ -876,10 +811,8 @@ static esp_err_t wait_reply(httpd_req_t *req, uint8_t verb, bool message)
     // CONFIG_GET is a pure read -- resending it duplicates nothing, unlike an
     // ACTION verb (TUNE, QUEUE_REPLY, ...) where a duplicate could double up
     // a real side effect on the radio, so only this verb gets an automatic
-    // retry. FILE_LIST/FILE_READ are excluded even though they share this
-    // verb's longer budget: they are genuinely async on the host (a paced
-    // background listing/read), so resending would restart that from
-    // scratch rather than just re-ask for a lost ACK. Halfway through the
+    // retry. LOG_PAGE is not retried: its caller asks again from the last row
+    // it got. Halfway through the
     // wait, not at the end: a lost request or a lost ACK/VALUE frame (CRC
     // failure, or the main board's outbound queue dropping it under load -- exactly
     // what the link-health counters below exist to measure) then costs one
@@ -919,8 +852,7 @@ static esp_err_t wait_reply(httpd_req_t *req, uint8_t verb, bool message)
         reply_capture_locked(verb, &got);
         if (!got.ready) {
             s_config_gathering = false;
-            s_file_list_gathering = false;
-            s_file_entries_gathering = false;
+                    s_file_entries_gathering = false;
         }
         lock_give();
     }
@@ -946,17 +878,14 @@ static esp_err_t wait_reply(httpd_req_t *req, uint8_t verb, bool message)
         if (config_get) {
             return send_config_reply(req, NULL);
         }
-        if (message && (verb == PORTA_MSG_FILE_LIST || verb == PORTA_MSG_FILE_READ || verb == PORTA_MSG_LOG_PAGE)) {
+        if (message && verb == PORTA_MSG_LOG_PAGE) {
             static char body[FILE_ENTRIES_JSON_MAX];
-            const bool list = verb == PORTA_MSG_FILE_LIST;
-            const char *src = list ? s_file_list_json : s_file_entries_json;
-            const size_t cap = list ? FILE_LIST_JSON_MAX : FILE_ENTRIES_JSON_MAX;
             lock_take();
-            size_t n = list ? s_file_list_json_len : s_file_entries_json_len;
-            if (n >= cap) {
-                n = cap - 1;
+            size_t n = s_file_entries_json_len;
+            if (n >= FILE_ENTRIES_JSON_MAX) {
+                n = FILE_ENTRIES_JSON_MAX - 1;
             }
-            memcpy(body, src, n);
+            memcpy(body, s_file_entries_json, n);
             lock_give();
             return httpd_resp_send(req, body, n);
         }
@@ -976,7 +905,7 @@ static esp_err_t wait_action_reply(httpd_req_t *req, uint8_t verb)
     return wait_reply(req, verb, false);
 }
 
-// CONFIG_GET, FILE_LIST or FILE_READ: the body gathered from the frames before the ACK.
+// CONFIG_GET or LOG_PAGE: the body gathered from the frames before the ACK.
 static esp_err_t wait_message_reply(httpd_req_t *req, uint8_t type)
 {
     return wait_reply(req, type, true);
@@ -1342,50 +1271,20 @@ static bool query_uint(httpd_req_t *req, const char *key, unsigned long dflt, un
     return true;
 }
 
-// GET /api/log/files?skip=&take=  -- day-file names, newest first, paged.
-// Open read: QSO log browsing is the same category docs/architecture/system.md (Who may key the transmitter) already opened up for
+// GET /api/log/entries?unsent=1&date=YYYYMMDD&before=<date>.<HHMM>.<id>&take=  -- parsed QSO rows: our own
+// records newest first by date, time and ID, older than `before` (none: the newest), only those QRZ lacks
+// with `unsent`, only `date`'s with `date`; the reply carries `total`, how many match in all. Open read:
+// QSO log browsing is the category docs/architecture/system.md (Who may key the transmitter) opened up for
 // the viewer and the event feed.
-static esp_err_t get_log_files(httpd_req_t *req)
-{
-    unsigned long skip = 0, take = 30;
-    query_uint(req, "skip", 0, &skip);
-    query_uint(req, "take", 30, &take);
-    if (take == 0 || take > 255) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad take");
-        return ESP_FAIL;
-    }
-
-    file_list_json_begin();
-    reply_reset();
-    uint8_t frame[PORTA_PROTO_MAX_FRAME];
-    const size_t n = porta_proto_encode_file_list_req(PORTA_FILE_LIST_QSO_DAILY,
-                                                       (uint16_t)skip, (uint8_t)take,
-                                                       frame, sizeof(frame));
-    if (!porta_send(frame, n)) {
-        gather_abandon();
-        httpd_resp_set_type(req, "application/json");
-        return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
-    }
-    return wait_message_reply(req, PORTA_MSG_FILE_LIST);
-}
-
-// GET /api/log/entries  -- parsed QSO rows. Open read, same reasoning as get_log_files.
-//   ?file=YYYYMMDD.adi&skip=&take=   one day's, in the order logged
-//   ?unsent=1&date=YYYYMMDD&before=<date>.<HHMM>.<id>&take=
-//                                    our own records newest first by date, time and ID, older than
-//                                    `before` (none: the newest), only those QRZ lacks with `unsent`, only
-//                                    `date`'s with `date`; the reply carries `total`, how many match in all.
 // Each row carries its record's `id` and `date`. A reply that ran out of room says `"cut":true`: ask again
 // from its last row.
 static esp_err_t get_log_entries(httpd_req_t *req)
 {
     char query[160];
-    char filename[PORTA_FILENAME_MAX + 1] = {0};
     char before[40] = {0};
     char val[16];
     porta_log_page_req_t page = {0};
     if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
-        httpd_query_key_value(query, "file", filename, sizeof(filename));
         httpd_query_key_value(query, "before", before, sizeof(before));
         if (httpd_query_key_value(query, "unsent", val, sizeof(val)) == ESP_OK && strcmp(val, "1") == 0) {
             page.flags |= PORTA_LOG_PAGE_UNSENT;
@@ -1395,8 +1294,7 @@ static esp_err_t get_log_entries(httpd_req_t *req)
             page.date = (uint32_t)strtoul(val, NULL, 10);
         }
     }
-    unsigned long skip = 0, take = filename[0] ? 6 : 10;
-    query_uint(req, "skip", 0, &skip);
+    unsigned long take = 10;
     query_uint(req, "take", take, &take);
     if (take == 0 || take > 255) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad take");
@@ -1423,21 +1321,13 @@ static esp_err_t get_log_entries(httpd_req_t *req)
     file_entries_json_begin();
     reply_reset();
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
-    const bool by_day = filename[0] != '\0';
-    const size_t n = by_day ? porta_proto_encode_file_read_req(filename, (uint16_t)skip, (uint8_t)take,
-                                                               frame, sizeof(frame))
-                            : porta_proto_encode_log_page_req(&page, frame, sizeof(frame));
-    if (n == 0) {
-        gather_abandon();
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad filename");
-        return ESP_FAIL;
-    }
+    const size_t n = porta_proto_encode_log_page_req(&page, frame, sizeof(frame));
     if (!porta_send(frame, n)) {
         gather_abandon();
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
     }
-    return wait_message_reply(req, by_day ? PORTA_MSG_FILE_READ : PORTA_MSG_LOG_PAGE);
+    return wait_message_reply(req, PORTA_MSG_LOG_PAGE);
 }
 
 // PATCH /api/log/entries?id=N  body: ADIF fields (`<app_qrzlog_logid:10>1234567890...`) to set on record N;
@@ -1865,7 +1755,6 @@ static void porta_rx_task(void *arg)
 
     uint8_t buf[256];
     porta_frame_t frame;
-    char file_name[PORTA_FILENAME_MAX + 1];
     porta_qso_entry_row_t qrow;
     uint32_t file_total = 0;
     uint32_t reported_crc = 0;
@@ -1974,8 +1863,6 @@ static void porta_rx_task(void *arg)
             } else if (porta_proto_parse_sweep_event(&frame, &e.u.sweep)) {
                 e.kind = PORTA_EVT_SWEEP;
                 ring_push(&e);
-            } else if (porta_proto_parse_file_name_row(&frame, file_name)) {
-                file_list_json_add(file_name);
             } else if (porta_proto_parse_file_entry_row(&frame, &qrow)) {
                 file_entries_json_add(&qrow);
             } else if (porta_proto_parse_file_total_row(&frame, &file_total)) {
@@ -1996,10 +1883,6 @@ static void porta_rx_task(void *arg)
                         // at reply time (send_config_reply()), not here.
                         config_json_stop_locked();
                         break;
-                    case PORTA_MSG_FILE_LIST:
-                        file_list_json_end_locked();
-                        break;
-                    case PORTA_MSG_FILE_READ:
                     case PORTA_MSG_LOG_PAGE:
                         file_entries_json_end_locked();
                         break;
@@ -2011,8 +1894,7 @@ static void porta_rx_task(void *arg)
                 } else if (porta_proto_parse_nak(&frame, &reply_verb, reply_reason)) {
                     lock_take();
                     s_config_gathering = false;
-                    s_file_list_gathering = false;
-                    s_file_entries_gathering = false;
+                                    s_file_entries_gathering = false;
                     reply_publish_locked(reply_verb, false, reply_reason);
                     lock_give();
                     ESP_LOGW("adv", "refused action 0x%02x: %s", reply_verb, reply_reason);
@@ -2240,9 +2122,6 @@ void host_link_register_uris(httpd_handle_t server)
     static const httpd_uri_t queue_reply = {
         .uri = "/api/queue/reply", .method = HTTP_POST, .handler = post_queue_reply,
     };
-    static const httpd_uri_t log_files = {
-        .uri = "/api/log/files", .method = HTTP_GET, .handler = get_log_files,
-    };
     static const httpd_uri_t log_files_delete = {
         .uri = "/api/log/files", .method = HTTP_DELETE, .handler = delete_log_files,
     };
@@ -2292,7 +2171,6 @@ void host_link_register_uris(httpd_handle_t server)
         { &queue_reply, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
         { &queue_tries, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
         { &queue_parity, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
-        { &log_files, PAIRING_OPEN, HTTP_WORKER_MAIN_BOARD },
         { &log_files_delete, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
         { &log_entries, PAIRING_OPEN, HTTP_WORKER_MAIN_BOARD },
         { &log_entry_patch, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },

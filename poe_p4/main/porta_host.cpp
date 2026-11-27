@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -20,6 +21,7 @@
 #include "esp_timer.h"
 #include "hl2_transport.h"
 #include "porta.h"
+#include "porta_out_queue.h"
 #include "porta_proto.h"
 #include "swr_trip.h"
 #include "porta_host.h"
@@ -1275,30 +1277,6 @@ const char *porta_host_queue_reply(uint32_t decode_id) {
     return nullptr;
 }
 
-// The day list is the store's days, named as the daily files were, so the wire and the QSOs tab are unchanged
-// (docs/architecture/logging.md, The store on the main board). Sent whole, then ACKed.
-const char *porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take) {
-    if (kind != PORTA_FILE_LIST_QSO_DAILY) {
-        return "unknown kind";
-    }
-    if (take == 0) {
-        return "take must be > 0";
-    }
-    if (!qso_log_store_ready()) {
-        return "log unavailable";
-    }
-    const int64_t start_us = esp_timer_get_time();  // timed for the QSO store's before-and-after
-    std::vector<std::string> days;
-    qso_log_store_days(&days);
-    for (size_t i = skip; i < days.size() && (i - skip) < take; ++i) {
-        porta_emit_file_name(days[i].c_str());
-    }
-    porta_emit_ack(PORTA_MSG_FILE_LIST);
-    ESP_LOGI(TAG, "FILE_LIST qso daily names=%u skip=%u take=%u in %lld us", (unsigned)days.size(),
-             (unsigned)skip, (unsigned)take, (long long)(esp_timer_get_time() - start_us));
-    return nullptr;
-}
-
 namespace {
 
 std::string today_qso_file_name() {
@@ -1422,27 +1400,8 @@ size_t emit_records(const std::vector<QsoLogRecord> &records) {
 
 }  // namespace
 
-// One page of a day's QSOs from the store, sent at once, then ACKed.
-const char *porta_host_file_read_begin(const char *filename, uint16_t skip, uint8_t take) {
-    if (!filename || filename[0] == '\0' || take == 0) {
-        return "malformed";
-    }
-    const uint32_t date = qso_log_day_of(filename);
-    if (date == 0) {
-        return "open failed";
-    }
-    if (!qso_log_store_ready()) {
-        return "log unavailable";
-    }
-    const int64_t start_us = esp_timer_get_time();  // timed for the QSO store's before-and-after
-    std::vector<QsoLogRecord> records;
-    qso_log_store_day_records(date, skip, take, &records);
-    const size_t sent = emit_records(records);
-    porta_emit_ack(PORTA_MSG_FILE_READ);
-    ESP_LOGI(TAG, "FILE_READ %s entries=%u skip=%u take=%u in %lld us", filename, (unsigned)sent,
-             (unsigned)skip, (unsigned)take, (long long)(esp_timer_get_time() - start_us));
-    return nullptr;
-}
+constexpr size_t kLogPageRows = 32;
+static_assert(kLogPageRows + 2 + 8 <= PORTA_OUT_QUEUE_LEN, "a page, its TOTAL and ACK, and room for events, fit the queue");
 
 // A page of our own records newest first by date, time and ID, sent at once with how many match, then ACKed
 // (docs/architecture/logging.md, The store on the main board).
@@ -1464,13 +1423,18 @@ const char *porta_host_log_page(const porta_log_page_req_t &req) {
     before.date = req.before_date;
     before.time = req.before_time;
     before.id = req.before_id;
+    // At most kLogPageRows rows: the reply goes out through the Port A queue (PORTA_OUT_QUEUE_LEN frames,
+    // events sent alongside it included), which drops its oldest frames when full, and those would be the
+    // page's newest rows, lost with no sign. A page cut here ends at its oldest row, so the next page, asked
+    // from it, loses nothing (row ujtv).
+    const size_t take = std::min<size_t>(req.take, kLogPageRows);
     std::vector<QsoLogRecord> records;
-    const size_t matched = qso_log_store_page(filter, before, req.take, &records);
+    const size_t matched = qso_log_store_page(filter, before, take, &records);
     const size_t sent = emit_records(records);
     porta_emit_file_total(static_cast<uint32_t>(matched));
     porta_emit_ack(PORTA_MSG_LOG_PAGE);
     ESP_LOGI(TAG, "LOG_PAGE flags=%u entries=%u of %u take=%u in %lld us", (unsigned)req.flags, (unsigned)sent,
-             (unsigned)matched, (unsigned)req.take, (long long)(esp_timer_get_time() - start_us));
+             (unsigned)matched, (unsigned)take, (long long)(esp_timer_get_time() - start_us));
     return nullptr;
 }
 
