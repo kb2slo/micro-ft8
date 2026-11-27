@@ -177,6 +177,22 @@ struct QsoStoreFilter {
 size_t qso_store_select(const QsoStore& store, const QsoStoreFilter& filter, size_t skip, uint32_t* ids,
                         size_t take, size_t* matched_out);
 
+// Where a page of records newest first by QSO_DATE, TIME_ON and ID ends: the next page holds those older than
+// it. All zero is the newest, before any page. A record with no date sorts oldest.
+struct QsoStoreCursor {
+    uint32_t date = 0;
+    uint16_t time = 0;
+    uint32_t id = 0;
+};
+
+inline bool qso_store_cursor_start(const QsoStoreCursor& c) { return c.date == 0 && c.time == 0 && c.id == 0; }
+
+// The IDs of at most `take` records matching `filter` and older than `before`, newest first by date, time
+// and ID (`filter.newest_first` is not read). Returns how many it wrote; `matched_out`, when given, is how
+// many match the filter in all, whatever the cursor. One pass over the index, keeping the newest `take`.
+size_t qso_store_page(const QsoStore& store, const QsoStoreFilter& filter, const QsoStoreCursor& before,
+                      uint32_t* ids, size_t take, size_t* matched_out);
+
 // A small value kept in the journal beside the records, such as how far a sync with the online logbook has
 // got. Keys are lower-case letters, digits and `_`, at most kQsoStoreMetaKeyChars; the newest value wins.
 QsoStoreStatus qso_store_meta_set(QsoStore* store, const char* key, const char* value);

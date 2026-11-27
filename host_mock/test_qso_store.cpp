@@ -5,6 +5,7 @@
 // header's description: replay() applies the changes qso_store_feed() hands out, as a browser's copy would.
 // A store loaded from a journal with some entries lost must then equal a replay without those entries.
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -837,6 +838,81 @@ static void test_many_records()
     verify(again.store, replay(changes), "many records, reloaded");
 }
 
+// Pages newest first by date, time and ID, against a sort of the same records: imported records come in
+// with new IDs and old dates, so ID order is not date order.
+static void test_page()
+{
+    Rig rig(256 * 1024, 600, 2048);
+    Disk disk;
+    qso_store_create(&rig.store, rig.buffers(), 1, disk_append, &disk);
+    struct Ref {
+        uint64_t when;
+        uint32_t id;
+    };
+    std::vector<Ref> ref;
+    char fields[128];
+    unsigned seed = 7;
+    for (int i = 0; i < 500; ++i) {
+        seed = seed * 1103515245u + 12345u;
+        const unsigned day = 1 + (seed >> 8) % 28, hhmm = ((seed >> 16) % 24) * 100 + (seed >> 4) % 60;
+        // Every seventh has no date; some share a minute, so the ID decides.
+        if (i % 7 == 6)
+            snprintf(fields, sizeof fields, "<call:5>K%04d<band:3>20M<mode:3>FT8", i);
+        else
+            snprintf(fields, sizeof fields, "<call:5>K%04d<qso_date:8>202611%02u<time_on:4>%04u<band:3>20M<mode:3>FT8",
+                     i, day, i % 5 == 0 ? 1200u : hhmm);
+        uint32_t id = 0;
+        CHECK(qso_store_add(&rig.store, fields, strlen(fields), i % 11 == 0 ? kQsoStoreForeign : 0, &id) ==
+                  QsoStoreStatus::OK, "record %d", i);
+        const QsoStoreEntry* e = qso_store_entry(rig.store, id);
+        if (i % 13 == 0) {
+            CHECK(qso_store_delete(&rig.store, id) == QsoStoreStatus::OK, "delete %d", i);
+            continue;
+        }
+        if (i % 11 != 0) ref.push_back({(uint64_t)e->date * 10000u + e->time, id});
+    }
+    std::sort(ref.begin(), ref.end(), [](const Ref& a, const Ref& b) { return a.when != b.when ? a.when > b.when : a.id > b.id; });
+
+    QsoStoreFilter own;
+    own.whose = QsoStoreWhose::OWN;
+    std::vector<uint32_t> got;
+    QsoStoreCursor at;
+    uint32_t ids[37];
+    size_t matched = 0, pages = 0;
+    for (;;) {
+        const size_t n = qso_store_page(rig.store, own, at, ids, 37, &matched);
+        CHECK(matched == ref.size(), "every page counts every match: %u", (unsigned)matched);
+        if (n == 0) break;
+        ++pages;
+        got.insert(got.end(), ids, ids + n);
+        const QsoStoreEntry* last = qso_store_entry(rig.store, ids[n - 1]);
+        at.date = last->date;
+        at.time = last->time;
+        at.id = last->id;
+    }
+    CHECK(got.size() == ref.size() && pages == (ref.size() + 36) / 37, "pages cover the log once: %u of %u",
+          (unsigned)got.size(), (unsigned)ref.size());
+    bool same = got.size() == ref.size();
+    for (size_t i = 0; same && i < got.size(); ++i) same = got[i] == ref[i].id;
+    CHECK(same, "in date, time and ID order, newest first, undated last");
+
+    QsoStoreFilter day = own;
+    day.date = 20261115;
+    size_t want = 0;
+    for (const Ref& r : ref) want += r.when / 10000u == 20261115u;
+    CHECK(qso_store_page(rig.store, day, QsoStoreCursor{}, ids, 37, &matched) == std::min<size_t>(want, 37) &&
+              matched == want,
+          "one day");
+    CHECK(qso_store_page(rig.store, own, QsoStoreCursor{}, nullptr, 0, &matched) == 0 && matched == ref.size(),
+          "a page of none still counts");
+    CHECK(patch(&rig.store, ref[0].id, "<app_qrzlog_logid:3>123") == QsoStoreStatus::OK, "mark the newest sent");
+    QsoStoreFilter unsent = own;
+    unsent.unsent = true;
+    CHECK(qso_store_page(rig.store, unsent, QsoStoreCursor{}, ids, 1, &matched) == 1 && ids[0] == ref[1].id &&
+              matched == ref.size() - 1,
+          "unsent leaves out a record with QRZ's ID");
+}
+
 int main()
 {
     test_golden_bytes();
@@ -848,6 +924,7 @@ int main()
     test_feed_cursor();
     test_limits_and_failures();
     test_many_records();
+    test_page();
     if (g_fails) {
         fprintf(stderr, "%d FAIL(s)\n", g_fails);
         return 1;

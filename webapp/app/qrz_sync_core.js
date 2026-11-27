@@ -4,8 +4,9 @@
 //
 // QRZ is read before anything is written to it. An insert there cannot be taken back by us, and QRZ's
 // own duplicate check is not documented, so a QSO goes up only when no record of QRZ's matches it here.
-// That also makes QRZ's logbook the record of what has been sent: nothing is kept on the station, and a
-// run that is cut short is put right by the next one.
+// What a run learns is written back to the station's record (markFields()): QRZ's ID, its confirmation and
+// the upload mark, so the next run reads only the records QRZ still lacks, from any browser. A run cut
+// short between QRZ taking a QSO and the station marking it is put right by the next, which matches it.
 //
 // Plain global, like swr_core.js: no module system.
 var QrzSync = (function () {
@@ -116,14 +117,20 @@ var QrzSync = (function () {
     return { from: isoDay(lo * 60000 - dayMs), to: isoDay(hi * 60000 + dayMs) };
   }
 
-  // The day files a run reads: every one from `sinceDay` ('YYYYMMDD', the last day a run finished clean)
-  // on, or all of them when there is none. That day is read again, since QSOs may have been logged in it
-  // since.
-  function daysToRead(files, sinceDay) {
-    return (files || []).filter(function (name) {
-      var m = /^(\d{8})\.adi$/.exec(name);
-      return m && (!sinceDay || m[1] >= sinceDay);
-    }).sort();
+  function adifField(name, value) {
+    value = String(value == null ? '' : value);
+    return value ? '<' + name + ':' + value.length + '>' + value : '';
+  }
+  // The fields a run writes back to a record QRZ holds: QRZ's ID when it named one, its confirmation when
+  // it said, and the upload mark, which alone says QRZ holds it when there is no ID (a duplicate).
+  //   info: { logid, status, qsldate }, any of them empty; today 'YYYYMMDD'
+  function markFields(info, today) {
+    info = info || {};
+    var id = String(info.logid || '').replace(/\D/g, '');
+    var qsl = /^\d{8}$/.test(String(info.qsldate || '')) ? info.qsldate : '';
+    return adifField('app_qrzlog_logid', id === '0' ? '' : id) + adifField('app_qrzlog_status', upper(info.status)) +
+      adifField('app_qrzlog_qsldate', qsl) + adifField('qrzcom_qso_upload_status', 'Y') +
+      adifField('qrzcom_qso_upload_date', /^\d{8}$/.test(String(today || '')) ? today : '');
   }
 
   function newBudget() { return { lastRunMs: 0, fails: 0, hourStartMs: 0, hourCalls: 0 }; }
@@ -165,23 +172,25 @@ var QrzSync = (function () {
   //   logbook        the logbook's callsign when it is already known, which saves the status call
   //   version        the web app's version, which the relay names to QRZ
   //   relay(path, body)  -> Promise of the relay's JSON reply (worker.js, /qrz/*); rejects when unreachable
-  //   readRows()     -> Promise of the station's rows, each with its `date`; rejects when the station
-  //                     does not answer
+  //   readRows()     -> Promise of the station's records QRZ lacks (its unsent ones), each a log row with
+  //                     its `id` and `date`; rejects when the station does not answer
+  //   mark(row, fields) -> Promise, resolved once the station has set `fields` (markFields()) on the
+  //                     row's record; rejects when it has not
+  //   today          'YYYYMMDD', UTC: the upload date written back
   //   buildAdif(row) -> the ADIF record to send for a row
   //   maxCalls       relay calls this run may make (callsLeft())
   //   send           false to stop once the plan is known and send nothing
   //   sendFrom       'YYYYMMDD': with send, only QSOs dated that day or later go up, and older ones wait
   // Resolves to { ok, error, reason, calls, logbook, rows, held, extra, skipped, plan, sent, duplicates,
-  // refused, cleanThrough }. error is the relay's ('auth', 'qrz', ...), or 'unreachable', 'station',
-  // 'budget' or 'too_many':
+  // refused, marked }. error is the relay's ('auth', 'qrz', ...), or 'unreachable', 'station', 'budget' or
+  // 'too_many':
+  //   held     rows QRZ already held, each marked on the station with QRZ's ID
   //   plan     the rows QRZ lacked; sent, duplicates, refused: what became of those that went
   //   unsent   how many of them QRZ still lacks: not sent, held back by sendFrom, or refused
-  //   cleanThrough  the last day ('YYYYMMDD') up to which every QSO is now at QRZ, for daysToRead(): the
-  //                 day before the oldest unsent QSO's, or the newest row's when none is unsent; '' when
-  //                 there is no such day or the run failed
+  //   marked   records the station has marked this run
   function run(deps) {
     var out = { ok: false, error: '', reason: '', calls: 0, logbook: '', rows: 0, held: 0, extra: 0, skipped: [],
-      plan: [], sent: 0, duplicates: 0, refused: [], unsent: 0, cleanThrough: '' };
+      plan: [], sent: 0, duplicates: 0, refused: [], unsent: 0, marked: 0 };
     var atQrz = [];  // by place in the plan: the rows this run put there
     var maxCalls = deps.maxCalls === undefined ? HOUR_CALLS : deps.maxCalls;
     var rows = [];
@@ -202,13 +211,21 @@ var QrzSync = (function () {
       else out.error = 'unreachable';
       return out;
     }
-    var book = deps.logbook ? Promise.resolve({ callsign: deps.logbook }) : call('/qrz/status', {});
-    return book.then(function (status) {
-      out.logbook = upper(status.callsign);
-      return deps.readRows().then(null, function () { throw { station: true }; });
-    }).then(function (read) {
+    function mark(q, info) {
+      return deps.mark(q, markFields(info, deps.today)).then(function () { out.marked += 1; },
+        function () { throw { station: true }; });
+    }
+    function markEach(list) {  // [{ row, info }], one after another: each is a write on the main board
+      return list.reduce(function (p, m) { return p.then(function () { return mark(m.row, m.info); }); }, Promise.resolve());
+    }
+    // The station is read first: with nothing unsent, QRZ is not asked anything.
+    return deps.readRows().then(null, function () { throw { station: true }; }).then(function (read) {
       rows = read || [];
       out.rows = rows.length;
+      if (rows.length === 0) return { callsign: deps.logbook || '' };
+      return deps.logbook ? { callsign: deps.logbook } : call('/qrz/status', {});
+    }).then(function (status) {
+      out.logbook = upper(status.callsign);
       var days = range(rows, out.logbook);
       if (!days) return [];
       var theirs = [];
@@ -227,42 +244,44 @@ var QrzSync = (function () {
       out.extra = m.extra.length;
       out.skipped = m.skipped.map(function (s) { return { row: rows[s.ours], why: s.why }; });
       out.plan = m.unsent.map(function (i) { return rows[i]; });
+      return markEach(m.pairs.map(function (pr) {
+        var r = theirs[pr.theirs];
+        return { row: rows[pr.ours], info: { logid: r.app_qrzlog_logid, status: r.app_qrzlog_status, qsldate: r.app_qrzlog_qsldate } };
+      }));
+    }).then(function () {
       if (deps.send === false) return;
       var left = [];  // places in the plan
       out.plan.forEach(function (q, k) { if (!deps.sendFrom || q.date >= deps.sendFrom) left.push(k); });
+      // What QRZ took is marked on the station before the next batch goes: a duplicate too, which QRZ
+      // holds but names no ID for.
       function tally(results, places) {
+        var marks = [];
         (results || []).forEach(function (r, k) {
           if (r.result === 'inserted') out.sent += 1;
           else if (r.result === 'duplicate') out.duplicates += 1;
           else out.refused.push({ row: out.plan[places[k]], reason: r.reason || '' });
-          if (r.result === 'inserted' || r.result === 'duplicate') atQrz[places[k]] = true;
+          if (r.result === 'inserted' || r.result === 'duplicate') {
+            atQrz[places[k]] = true;
+            marks.push({ row: out.plan[places[k]], info: { logid: r.result === 'inserted' ? r.logid : '' } });
+          }
         });
+        return markEach(marks);
       }
       function batch() {
         if (left.length === 0) return;
         var now = left.splice(0, BATCH);
         return call('/qrz/insert', { records: now.map(function (k) { return deps.buildAdif(out.plan[k]); }) }).then(function (reply) {
-          tally(reply.results, now);
-          return batch();
+          return tally(reply.results, now).then(batch);
         }, function (e) {
           // A batch the relay stopped part way (a refused key) still says what went before it.
-          if (e && e.reply) tally(e.reply.results, now);
-          throw e;
+          if (!(e && e.reply)) throw e;
+          return tally(e.reply.results, now).then(function () { throw e; });
         });
       }
       return batch();
     }).then(function () {
       out.ok = true;
-      var oldestUnsent = '';
-      out.plan.forEach(function (q, k) {
-        if (atQrz[k]) return;
-        out.unsent += 1;
-        if (!oldestUnsent || q.date < oldestUnsent) oldestUnsent = q.date;
-      });
-      rows.forEach(function (q) {
-        if (minuteOf(q.date, q.time) === null || (oldestUnsent && q.date >= oldestUnsent)) return;
-        if (q.date > out.cleanThrough) out.cleanThrough = q.date;
-      });
+      out.plan.forEach(function (q, k) { if (!atQrz[k]) out.unsent += 1; });
       return out;
     }, fail);
   }
@@ -270,7 +289,7 @@ var QrzSync = (function () {
   return {
     WINDOW_MIN: WINDOW_MIN, FIRST_YEAR: FIRST_YEAR, BATCH: BATCH, MAX_PAGES: MAX_PAGES,
     MIN_GAP_MS: MIN_GAP_MS, HOUR_CALLS: HOUR_CALLS, BACKOFF_MS: BACKOFF_MS,
-    minuteOf: minuteOf, match: match, range: range, daysToRead: daysToRead,
+    minuteOf: minuteOf, match: match, range: range, markFields: markFields,
     newBudget: newBudget, mayRun: mayRun, noteRun: noteRun, callsLeft: callsLeft, run: run
   };
 })();

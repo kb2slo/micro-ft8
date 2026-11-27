@@ -2,6 +2,9 @@
 
 #include "qso_store_internal.h"
 
+#include <algorithm>
+#include <vector>
+
 using namespace qso_store_detail;
 
 bool qso_store_get(const QsoStore& store, uint32_t id, std::string* fields_out)
@@ -118,6 +121,25 @@ bool qso_store_worked(const QsoStore& store, const char* call, const char* band,
     return best != 0;
 }
 
+static bool matches(const QsoStore& store, const QsoStoreEntry& entry, const QsoStoreFilter& filter)
+{
+    if (entry.latest == 0 || (filter.date != 0 && entry.date != filter.date)) return false;
+    if (filter.unsent && (entry.qrz_logid != 0 || entry.uploaded)) return false;
+    const bool foreign = (entry.flags & kQsoStoreForeign) != 0;
+    switch (filter.whose) {
+        case QsoStoreWhose::ANY:
+            break;
+        case QsoStoreWhose::OWN:
+            if (foreign) return false;
+            break;
+        case QsoStoreWhose::FOREIGN:
+            if (!foreign) return false;
+            break;
+    }
+    const bool at_refs = filter.my_refs != nullptr && filter.my_refs[0] != '\0';
+    return !at_refs || logged_at(store, entry, filter.my_refs);
+}
+
 size_t qso_store_select(const QsoStore& store, const QsoStoreFilter& filter, size_t skip, uint32_t* ids,
                         size_t take, size_t* matched_out)
 {
@@ -125,28 +147,53 @@ size_t qso_store_select(const QsoStore& store, const QsoStoreFilter& filter, siz
     size_t written = 0;
     for (size_t n = 0; n < store.entries_used; ++n) {
         const QsoStoreEntry& entry = store.buffers.entries[filter.newest_first ? store.entries_used - 1 - n : n];
-        if (entry.latest == 0 || (filter.date != 0 && entry.date != filter.date)) continue;
-        if (filter.unsent && (entry.qrz_logid != 0 || entry.uploaded)) continue;
-        const bool foreign = (entry.flags & kQsoStoreForeign) != 0;
-        bool wanted = true;
-        switch (filter.whose) {
-            case QsoStoreWhose::ANY:
-                break;
-            case QsoStoreWhose::OWN:
-                wanted = !foreign;
-                break;
-            case QsoStoreWhose::FOREIGN:
-                wanted = foreign;
-                break;
-        }
-        if (!wanted) continue;
-        const bool at_refs = filter.my_refs != nullptr && filter.my_refs[0] != '\0';
-        if (at_refs && !logged_at(store, entry, filter.my_refs)) continue;
+        if (!matches(store, entry, filter)) continue;
         if (matched >= skip && written < take) ids[written++] = entry.id;
         ++matched;
     }
     if (matched_out != nullptr) *matched_out = matched;
     return written;
+}
+
+namespace {
+
+// A record's place in date, time and ID order, as one number: larger is newer.
+struct PageKey {
+    uint64_t when;  // date and time, 202611251432
+    uint32_t id;
+};
+
+bool newer(const PageKey& a, const PageKey& b) { return a.when != b.when ? a.when > b.when : a.id > b.id; }
+
+PageKey key_of(uint32_t date, uint16_t time, uint32_t id) { return PageKey{(uint64_t)date * 10000u + time, id}; }
+
+}  // namespace
+
+size_t qso_store_page(const QsoStore& store, const QsoStoreFilter& filter, const QsoStoreCursor& before,
+                      uint32_t* ids, size_t take, size_t* matched_out)
+{
+    const bool from_newest = qso_store_cursor_start(before);
+    const PageKey limit = key_of(before.date, before.time, before.id);
+    std::vector<PageKey> kept;  // newest first, at most `take`
+    kept.reserve(take);
+    size_t matched = 0;
+    // Newest ID first: our own records were logged in date order, so most land at the end of `kept` or not
+    // at all, and the insertion below rarely moves anything.
+    for (size_t n = store.entries_used; n-- > 0;) {
+        const QsoStoreEntry& entry = store.buffers.entries[n];
+        if (!matches(store, entry, filter)) continue;
+        ++matched;
+        if (take == 0) continue;
+        const PageKey k = key_of(entry.date, entry.time, entry.id);
+        if (!from_newest && !newer(limit, k)) continue;
+        if (kept.size() == take && !newer(k, kept.back())) continue;
+        auto at = std::upper_bound(kept.begin(), kept.end(), k, [](const PageKey& a, const PageKey& b) { return newer(a, b); });
+        if (kept.size() == take) kept.pop_back();
+        kept.insert(at, k);
+    }
+    for (size_t i = 0; i < kept.size(); ++i) ids[i] = kept[i].id;
+    if (matched_out != nullptr) *matched_out = matched;
+    return kept.size();
 }
 
 bool qso_store_meta_get(const QsoStore& store, const char* key, std::string* value_out)

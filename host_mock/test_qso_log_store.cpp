@@ -143,9 +143,9 @@ static void test_convert()
     CHECK(g_files.count("Station.txt"), "leaving the settings alone");
     const std::vector<std::string> d = days();
     CHECK(d.size() == 2 && d[0] == "20261125.adi" && d[1] == "20261124.adi", "days newest first, as the files were");
-    std::vector<std::string> recs;
+    std::vector<QsoLogRecord> recs;
     CHECK(qso_log_store_day_records(20261124, 0, 10, &recs) == 2 && recs.size() == 2, "a day's QSOs");
-    CHECK(recs.size() == 2 && call_of(recs[0]) == "K1ABC" && call_of(recs[1]) == "W9XY", "in the order logged");
+    CHECK(recs.size() == 2 && call_of(recs[0].fields) == "K1ABC" && call_of(recs[1].fields) == "W9XY", "in the order logged");
     const QsoStore* store = qso_log_store();
     uint32_t id = 0;
     CHECK(qso_store_worked(*store, "DL1AA", "40M", "FT8", 0, nullptr, &id) && id == 3,
@@ -157,7 +157,7 @@ static void test_convert()
     qso_browse_pager_reset(&from_file, 0, 10);
     qso_browse_pager_reset(&from_store, 0, 10);
     qso_browse_pager_feed(&from_file, record("K1ABC", "20261124", "101500"), nullptr, 0);
-    qso_browse_pager_feed(&from_store, recs[0] + "<eor>", nullptr, 0);
+    qso_browse_pager_feed(&from_store, recs[0].fields + "<eor>", nullptr, 0);
     const QsoLogEntry& a = from_file.entries.at(0);
     const QsoLogEntry& b = from_store.entries.at(0);
     CHECK(a.call == b.call && a.time_on == b.time_on && a.band == b.band && a.grid == b.grid && a.freq == b.freq &&
@@ -191,7 +191,7 @@ static void test_cut_between_write_and_delete()
     g_fail_removes = false;
     CHECK(qso_log_store_start() && !g_files.count("20261124.adi"), "the next start deletes the files it converted");
     CHECK(days().size() == 1, "with the QSO there once: %u days", (unsigned)days().size());
-    std::vector<std::string> recs;
+    std::vector<QsoLogRecord> recs;
     CHECK(qso_log_store_day_records(20261124, 0, 10, &recs) == 1, "once");
 }
 
@@ -210,7 +210,7 @@ static void test_log_and_restart()
     CHECK(qso_log_store_start() && g_files[kQsoLogJournal].size() == size, "a torn tail is cut off at start");
     CHECK(qso_log_store_add(record("W9XY", "20261125", "121000"), &id) == QsoStoreStatus::OK, "and logging goes on");
     CHECK(qso_log_store_start(), "start");
-    std::vector<std::string> recs;
+    std::vector<QsoLogRecord> recs;
     CHECK(qso_log_store_day_records(20261125, 0, 10, &recs) == 2, "with both QSOs kept: %u", (unsigned)recs.size());
 
     // A failed append leaves the file and the store as they were.
@@ -240,9 +240,27 @@ static void test_pages_and_deletes()
         qso_log_store_add(record(call, "20261125", t), nullptr);
     }
     qso_log_store_add(record("W9XY", "20261124", "100000"), nullptr);
-    std::vector<std::string> recs;
-    CHECK(qso_log_store_day_records(20261125, 5, 4, &recs) == 7 && recs.size() == 2 && call_of(recs[0]) == "K5ABC",
+    std::vector<QsoLogRecord> recs;
+    CHECK(qso_log_store_day_records(20261125, 5, 4, &recs) == 7 && recs.size() == 2 && call_of(recs[0].fields) == "K5ABC",
           "a page: skip and take, and how many in all");
+    // A page across days, newest first, with each record's ID and date; then a field set and kept.
+    std::vector<QsoLogRecord> page;
+    QsoStoreFilter own;
+    own.whose = QsoStoreWhose::OWN;
+    CHECK(qso_log_store_page(own, QsoStoreCursor{}, 3, &page) == 8 && page.size() == 3 && call_of(page[0].fields) == "K6ABC" &&
+              page[0].date == 20261125 && page[0].id == 7,
+          "a page of the whole log, newest first");
+    QsoStoreCursor after{20261125, 1000, 1};
+    CHECK(qso_log_store_page(own, after, 3, &page) == 8 && page.size() == 1 && call_of(page[0].fields) == "W9XY" &&
+              page[0].date == 20261124,
+          "the next page after a cursor reaches the day before");
+    CHECK(qso_log_store_set(8, "<app_qrzlog_logid:4>4242<qrzcom_qso_upload_status:1>Y") == QsoStoreStatus::OK,
+          "fields set on a record");
+    QsoStoreFilter unsent = own;
+    unsent.unsent = true;
+    CHECK(qso_log_store_page(unsent, QsoStoreCursor{}, 10, &page) == 7, "and it is no longer unsent");
+    CHECK(qso_log_store_start() && qso_log_store_page(unsent, QsoStoreCursor{}, 10, &page) == 7, "across a restart");
+    CHECK(qso_log_store_set(99, "<comment:2>hi") == QsoStoreStatus::NOT_FOUND, "no such record");
     CHECK(qso_log_store_delete_day(20261124) == nullptr && days().size() == 1 && days()[0] == "20261125.adi",
           "a day's QSOs deleted");
     CHECK(qso_log_store_delete_day(20261124) != nullptr, "a day with none says so");

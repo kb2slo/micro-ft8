@@ -30,9 +30,25 @@ const QsoStore* qso_log_store();
 // (`20261125.adi`), which is how the QSOs tab still asks for them (FILE_LIST / FILE_READ).
 void qso_log_store_days(std::vector<std::string>* names_out);
 
-// A day's QSOs in the order they were logged, after the first `skip`, at most `take`: each record's fields.
-// `date` is 20261125. Returns how many that day holds in all.
-size_t qso_log_store_day_records(uint32_t date, size_t skip, size_t take, std::vector<std::string>* out);
+// A record as a page of the log hands it out: its ID, its QSO_DATE as the index holds it (20261125, 0 for
+// none) and its fields.
+struct QsoLogRecord {
+    uint32_t id;
+    uint32_t date;
+    std::string fields;
+};
+
+// A day's QSOs in the order they were logged, after the first `skip`, at most `take`. `date` is 20261125.
+// Returns how many that day holds in all.
+size_t qso_log_store_day_records(uint32_t date, size_t skip, size_t take, std::vector<QsoLogRecord>* out);
+
+// A page of records matching `filter`, newest first by date, time and ID, older than `before` (all zero
+// for the newest), at most `take`. Returns how many match the filter in all.
+size_t qso_log_store_page(const QsoStoreFilter& filter, const QsoStoreCursor& before, size_t take,
+                          std::vector<QsoLogRecord>* out);
+
+// Sets fields on a record, as qso_store_patch() takes them: any field, one of no length removing it.
+QsoStoreStatus qso_log_store_set(uint32_t id, const std::string& fields);
 
 // Deletes a day's QSOs. Returns nullptr, or why not.
 const char* qso_log_store_delete_day(uint32_t date);

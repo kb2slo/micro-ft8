@@ -672,12 +672,20 @@ static char s_file_entries_json[FILE_ENTRIES_JSON_MAX];
 static size_t s_file_entries_json_len;
 static bool s_file_entries_json_first;
 static bool s_file_entries_gathering;
+// LOG_PAGE's TOTAL, -1 until one arrives; and whether a row was left out for want of room, so the browser
+// knows to carry on from the last row it got rather than take the page as the end.
+static int64_t s_file_entries_total;
+static bool s_file_entries_cut;
+// Room kept at the end of the body for `],"total":4294967295,"cut":true}`.
+#define FILE_ENTRIES_JSON_TAIL 48
 
 static void file_entries_json_begin(void)
 {
     lock_take();
     s_file_entries_gathering = true;
     s_file_entries_json_first = true;
+    s_file_entries_total = -1;
+    s_file_entries_cut = false;
     strcpy(s_file_entries_json, "{\"ok\":true,\"entries\":[");
     s_file_entries_json_len = strlen(s_file_entries_json);
     lock_give();
@@ -719,40 +727,64 @@ static void file_entries_json_add(const porta_qso_entry_row_t *e)
     json_escape(e->my_sota_ref, esc_my_sota_ref, sizeof(esc_my_sota_ref));
     static char piece[sizeof(esc_band) + sizeof(esc_call) + sizeof(esc_grid) + sizeof(esc_freq) +
               sizeof(esc_my_grid) + sizeof(esc_comment) + sizeof(esc_mode) +
-              sizeof(esc_station_callsign) + sizeof(esc_my_pota_ref) + sizeof(esc_my_sota_ref) + 160];
+              sizeof(esc_station_callsign) + sizeof(esc_my_pota_ref) + sizeof(esc_my_sota_ref) + 200];
     lock_take();
     if (!s_file_entries_gathering) {
         lock_give();
         return;
     }
+    char date[12] = "";
+    if (e->date != 0) {
+        snprintf(date, sizeof(date), "%08lu", (unsigned long)e->date);
+    }
     const int n = snprintf(piece, sizeof(piece),
-                           "%s{\"time\":\"%s\",\"band\":\"%s\",\"call\":\"%s\","
+                           "%s{\"id\":%lu,\"date\":\"%s\",\"time\":\"%s\",\"band\":\"%s\",\"call\":\"%s\","
                            "\"rst_sent\":%d,\"rst_rcvd\":%d,\"grid\":\"%s\",\"freq\":\"%s\","
                            "\"my_grid\":\"%s\",\"comment\":\"%s\",\"mode\":\"%s\","
                            "\"station_callsign\":\"%s\",\"my_pota_ref\":\"%s\","
                            "\"my_sota_ref\":\"%s\"}",
-                           s_file_entries_json_first ? "" : ",", e->time_on, esc_band,
+                           s_file_entries_json_first ? "" : ",", (unsigned long)e->id, date, e->time_on, esc_band,
                            esc_call, e->rst_sent, e->rst_rcvd, esc_grid, esc_freq,
                            esc_my_grid, esc_comment, esc_mode, esc_station_callsign,
                            esc_my_pota_ref, esc_my_sota_ref);
-    if (n > 0 && s_file_entries_json_len + (size_t)n + 3 < FILE_ENTRIES_JSON_MAX) {
+    if (n > 0 && s_file_entries_json_len + (size_t)n + FILE_ENTRIES_JSON_TAIL < FILE_ENTRIES_JSON_MAX) {
         memcpy(s_file_entries_json + s_file_entries_json_len, piece, (size_t)n + 1);
         s_file_entries_json_len += (size_t)n;
         s_file_entries_json_first = false;
+    } else {
+        s_file_entries_cut = true;
     }
     lock_give();
 }
 
-// Caller holds s_lock. The verb is published before that hold ends.
+static void file_entries_json_total(uint32_t total)
+{
+    lock_take();
+    if (s_file_entries_gathering) {
+        s_file_entries_total = total;
+    }
+    lock_give();
+}
+
+// Caller holds s_lock. The verb is published before that hold ends. Room for the tail is kept by
+// file_entries_json_add(), so it always fits.
 static void file_entries_json_end_locked(void)
 {
     if (!s_file_entries_gathering) {
         return;
     }
-    if (s_file_entries_json_len + 3 < FILE_ENTRIES_JSON_MAX) {
-        s_file_entries_json[s_file_entries_json_len++] = ']';
-        s_file_entries_json[s_file_entries_json_len++] = '}';
-        s_file_entries_json[s_file_entries_json_len] = '\0';
+    char tail[FILE_ENTRIES_JSON_TAIL];
+    int n = snprintf(tail, sizeof(tail), "]");
+    if (s_file_entries_total >= 0) {
+        n += snprintf(tail + n, sizeof(tail) - (size_t)n, ",\"total\":%lu", (unsigned long)s_file_entries_total);
+    }
+    if (s_file_entries_cut) {
+        n += snprintf(tail + n, sizeof(tail) - (size_t)n, ",\"cut\":true");
+    }
+    n += snprintf(tail + n, sizeof(tail) - (size_t)n, "}");
+    if (s_file_entries_json_len + (size_t)n < FILE_ENTRIES_JSON_MAX) {
+        memcpy(s_file_entries_json + s_file_entries_json_len, tail, (size_t)n + 1);
+        s_file_entries_json_len += (size_t)n;
     }
     s_file_entries_gathering = false;
 }
@@ -914,7 +946,7 @@ static esp_err_t wait_reply(httpd_req_t *req, uint8_t verb, bool message)
         if (config_get) {
             return send_config_reply(req, NULL);
         }
-        if (message && (verb == PORTA_MSG_FILE_LIST || verb == PORTA_MSG_FILE_READ)) {
+        if (message && (verb == PORTA_MSG_FILE_LIST || verb == PORTA_MSG_FILE_READ || verb == PORTA_MSG_LOG_PAGE)) {
             static char body[FILE_ENTRIES_JSON_MAX];
             const bool list = verb == PORTA_MSG_FILE_LIST;
             const char *src = list ? s_file_list_json : s_file_entries_json;
@@ -1337,32 +1369,64 @@ static esp_err_t get_log_files(httpd_req_t *req)
     return wait_message_reply(req, PORTA_MSG_FILE_LIST);
 }
 
-// GET /api/log/entries?file=&skip=&take=  -- parsed QSO rows from one day
-// file, paged the same way. Open read, same reasoning as get_log_files.
+// GET /api/log/entries  -- parsed QSO rows. Open read, same reasoning as get_log_files.
+//   ?file=YYYYMMDD.adi&skip=&take=   one day's, in the order logged
+//   ?unsent=1&date=YYYYMMDD&before=<date>.<HHMM>.<id>&take=
+//                                    our own records newest first by date, time and ID, older than
+//                                    `before` (none: the newest), only those QRZ lacks with `unsent`, only
+//                                    `date`'s with `date`; the reply carries `total`, how many match in all.
+// Each row carries its record's `id` and `date`. A reply that ran out of room says `"cut":true`: ask again
+// from its last row.
 static esp_err_t get_log_entries(httpd_req_t *req)
 {
-    char query[96];
+    char query[160];
     char filename[PORTA_FILENAME_MAX + 1] = {0};
+    char before[40] = {0};
+    char val[16];
+    porta_log_page_req_t page = {0};
     if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
         httpd_query_key_value(query, "file", filename, sizeof(filename));
+        httpd_query_key_value(query, "before", before, sizeof(before));
+        if (httpd_query_key_value(query, "unsent", val, sizeof(val)) == ESP_OK && strcmp(val, "1") == 0) {
+            page.flags |= PORTA_LOG_PAGE_UNSENT;
+        }
+        if (httpd_query_key_value(query, "date", val, sizeof(val)) == ESP_OK) {
+            page.flags |= PORTA_LOG_PAGE_DATE;
+            page.date = (uint32_t)strtoul(val, NULL, 10);
+        }
     }
-    if (filename[0] == '\0') {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing file");
-        return ESP_FAIL;
-    }
-    unsigned long skip = 0, take = 6;
+    unsigned long skip = 0, take = filename[0] ? 6 : 10;
     query_uint(req, "skip", 0, &skip);
-    query_uint(req, "take", 6, &take);
+    query_uint(req, "take", take, &take);
     if (take == 0 || take > 255) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad take");
         return ESP_FAIL;
     }
+    if (before[0] != '\0') {
+        unsigned long d = 0, t = 0, id = 0;
+        char tail = 0;
+        if (sscanf(before, "%lu.%lu.%lu%c", &d, &t, &id, &tail) != 3 || t > 2359 || id > 0xFFFFFFFFul ||
+            d > 99991231ul) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad before");
+            return ESP_FAIL;
+        }
+        page.before_date = (uint32_t)d;
+        page.before_time = (uint16_t)t;
+        page.before_id = (uint32_t)id;
+    }
+    if ((page.flags & PORTA_LOG_PAGE_DATE) && page.date == 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad date");
+        return ESP_FAIL;
+    }
+    page.take = (uint8_t)take;
 
     file_entries_json_begin();
     reply_reset();
     uint8_t frame[PORTA_PROTO_MAX_FRAME];
-    const size_t n = porta_proto_encode_file_read_req(filename, (uint16_t)skip, (uint8_t)take,
-                                                       frame, sizeof(frame));
+    const bool by_day = filename[0] != '\0';
+    const size_t n = by_day ? porta_proto_encode_file_read_req(filename, (uint16_t)skip, (uint8_t)take,
+                                                               frame, sizeof(frame))
+                            : porta_proto_encode_log_page_req(&page, frame, sizeof(frame));
     if (n == 0) {
         gather_abandon();
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad filename");
@@ -1373,7 +1437,32 @@ static esp_err_t get_log_entries(httpd_req_t *req)
         httpd_resp_set_type(req, "application/json");
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
     }
-    return wait_message_reply(req, PORTA_MSG_FILE_READ);
+    return wait_message_reply(req, by_day ? PORTA_MSG_FILE_READ : PORTA_MSG_LOG_PAGE);
+}
+
+// PATCH /api/log/entries?id=N  body: ADIF fields (`<app_qrzlog_logid:10>1234567890...`) to set on record N;
+// a field of no length removes it. Token required: it changes the log.
+static esp_err_t patch_log_entry(httpd_req_t *req)
+{
+    unsigned long id = 0;
+    if (!query_uint(req, "id", 0, &id) || id == 0 || id > 0xFFFFFFFFul) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad id");
+        return ESP_FAIL;
+    }
+    static char body[PORTA_LOG_SET_FIELDS_MAX + 2];  // static: the main-board worker's stack is small
+    const int received = httpd_req_recv(req, body, sizeof(body) - 1);
+    if (received <= 0 || (size_t)received > PORTA_LOG_SET_FIELDS_MAX) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, received <= 0 ? "no body" : "too long");
+        return ESP_FAIL;
+    }
+    uint8_t frame[PORTA_PROTO_MAX_FRAME];
+    const size_t n = porta_proto_encode_log_set((uint32_t)id, body, (size_t)received, frame, sizeof(frame));
+    reply_reset();
+    if (!porta_send(frame, n)) {
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
+    }
+    return wait_action_reply(req, PORTA_ACT_LOG_SET);
 }
 
 // DELETE /api/log/files[?file=] — delete every QSO, or one day's (YYYYMMDD.adi).
@@ -1778,6 +1867,7 @@ static void porta_rx_task(void *arg)
     porta_frame_t frame;
     char file_name[PORTA_FILENAME_MAX + 1];
     porta_qso_entry_row_t qrow;
+    uint32_t file_total = 0;
     uint32_t reported_crc = 0;
 
     while (1) {
@@ -1888,6 +1978,8 @@ static void porta_rx_task(void *arg)
                 file_list_json_add(file_name);
             } else if (porta_proto_parse_file_entry_row(&frame, &qrow)) {
                 file_entries_json_add(&qrow);
+            } else if (porta_proto_parse_file_total_row(&frame, &file_total)) {
+                file_entries_json_total(file_total);
             } else {
                 char cfg_key[PORTA_CONFIG_KEY_MAX + 1];
                 char cfg_val[PORTA_CONFIG_VALUE_MAX + 1];
@@ -1908,6 +2000,7 @@ static void porta_rx_task(void *arg)
                         file_list_json_end_locked();
                         break;
                     case PORTA_MSG_FILE_READ:
+                    case PORTA_MSG_LOG_PAGE:
                         file_entries_json_end_locked();
                         break;
                     default:
@@ -2156,6 +2249,9 @@ void host_link_register_uris(httpd_handle_t server)
     static const httpd_uri_t log_entries = {
         .uri = "/api/log/entries", .method = HTTP_GET, .handler = get_log_entries,
     };
+    static const httpd_uri_t log_entry_patch = {
+        .uri = "/api/log/entries", .method = HTTP_PATCH, .handler = patch_log_entry,
+    };
     // The event feed (and /api/state, the same events) is a read of radio data: open on principle, since anyone
     // may listen to what is on the air. Setting the host clock or keying the
     // transmitter changes the device, so those need the token. Station config
@@ -2199,6 +2295,7 @@ void host_link_register_uris(httpd_handle_t server)
         { &log_files, PAIRING_OPEN, HTTP_WORKER_MAIN_BOARD },
         { &log_files_delete, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
         { &log_entries, PAIRING_OPEN, HTTP_WORKER_MAIN_BOARD },
+        { &log_entry_patch, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
     };
     _Static_assert(sizeof(routes) / sizeof(routes[0]) == PAIRING_ROUTES_HOST_LINK,
                    "host_link route count");

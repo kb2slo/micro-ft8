@@ -20,7 +20,7 @@ const FETCHED = esc([
   '<eor>', '',
   '<mode:4>MFSK', '<submode:3>FT4', '<band:3>20M', '<call:6>VA3ABC', '<station_callsign:5>K1ABC',
   '<app_qrzlog_logid:10>1531992047', '<qso_date:8>20261115', '<time_on:4>2210', '<app_qrzlog_status:1>C',
-  '<name:9>SOMEBODY', '<eor>', '',
+  '<app_qrzlog_qsldate:8>20261120', '<name:9>SOMEBODY', '<eor>', '',
 ].join('\n'));
 
 const calls = [];
@@ -97,7 +97,7 @@ globalThis.fetch = async (url, init) => {
     { app_qrzlog_logid: '1458502669', call: 'N5XYZ', qso_date: '20260528', time_on: '2354', band: '20m', mode: 'FT8',
       station_callsign: 'K1ABC', app_qrzlog_status: 'N' },
     { app_qrzlog_logid: '1531992047', call: 'VA3ABC', qso_date: '20261115', time_on: '2210', band: '20M', mode: 'MFSK',
-      submode: 'FT4', station_callsign: 'K1ABC', app_qrzlog_status: 'C' },
+      submode: 'FT4', station_callsign: 'K1ABC', app_qrzlog_status: 'C', app_qrzlog_qsldate: '20261120' },
   ], 'QRZ\'s fields under QRZ\'s names; a comment\'s own <eor> ends no record, a name with an accent shifts nothing');
   assert.strictEqual(page.more, false, 'a short page is the last');
   assert.strictEqual(page.next, 1531992048, 'the next page starts after the highest ID');

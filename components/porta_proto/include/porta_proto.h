@@ -128,7 +128,11 @@ extern "C" {
 // (docs/architecture/autoseq.md, The queue), SLOT_STATE carries the armed TX's mode, and ACTIVITY its
 // channel's mode, every channel now sending it. A v21 peer's verb-only CQ_CALL and shorter SLOT_STATE
 // and ACTIVITY are refused. Both ends are flashed together.
-#define PORTA_PROTO_VERSION 22u
+// v23 (2026-11-26): the QSO log by record (docs/architecture/logging.md, The store on the main board):
+// LOG_PAGE asks a page of records newest first by date, time and ID, older than a cursor, and is
+// answered by FILE_DATA rows and a TOTAL; every QSO row carries its record's ID and date; the LOG_SET
+// action sets fields on a record. A v22 peer's shorter row is refused. Both ends are flashed together.
+#define PORTA_PROTO_VERSION 23u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -176,6 +180,9 @@ typedef enum {
     // are their own types: ACTION is sidekick -> host only.
     PORTA_MSG_LINK_TEST    = 0x13,  // start / set-rate / stop / result
     PORTA_MSG_LINK_DATA    = 0x14,  // one max-length stress payload
+    // A page of the QSO log by record (sidekick -> host), answered as FILE_READ is: FILE_DATA rows,
+    // then one TOTAL, then ACK/NAK with this type as verb. See the FILE_* payloads section.
+    PORTA_MSG_LOG_PAGE     = 0x15,
 } porta_msg_type_t;
 
 typedef struct {
@@ -582,6 +589,7 @@ typedef enum {
     PORTA_ACT_RADIO_SET_PTT = 0x10, // payload: u8 keying (1 TX PTT grounded, 2 TX PTT +5V); progress in the config snapshot
     PORTA_ACT_UPDATE_MODE  = 0x11,  // payload: u8 on: an update is running, or is over (the v18 note). Always ACKed. Frozen (the v15 note)
     PORTA_ACT_RADIO_SET_SETTING = 0x12, // payload: "<key>=<value>" text, such as radio_tune_pct=40; progress in the config snapshot
+    PORTA_ACT_LOG_SET      = 0x13,  // payload: u32 record ID, then ADIF fields to set on it
 } porta_action_verb_t;
 
 // FACTORY_RESET flags. Station settings are always reset; the QSO logs only when asked,
@@ -816,7 +824,8 @@ typedef enum {
 
 typedef enum {
     PORTA_FILE_DATA_NAME  = 0x01,  // one FILE_LIST row: a day-file name
-    PORTA_FILE_DATA_ENTRY = 0x02,  // one FILE_READ row: one parsed QSO
+    PORTA_FILE_DATA_ENTRY = 0x02,  // one FILE_READ or LOG_PAGE row: one parsed QSO
+    PORTA_FILE_DATA_TOTAL = 0x03,  // after LOG_PAGE's rows: u32 records matching its filter, whatever the cursor
 } porta_file_data_kind_t;
 
 #define PORTA_FILENAME_MAX 32u
@@ -851,6 +860,8 @@ bool porta_proto_parse_file_name_row(const porta_frame_t *f, char *name_out);
 // rst_sent/rst_rcvd use -99 for "no report", the same sentinel
 // QsoContext::snr_tx/snr_rx already use, rather than a separate has-flag.
 typedef struct {
+    uint32_t id;    // the record's ID in the QSO store
+    uint32_t date;  // its QSO_DATE as a number (20261125), 0 when it has none
     char    time_on[6];
     char    band[PORTA_BAND_MAX + 1];
     char    call[PORTA_CALLSIGN_MAX + 1];
@@ -869,6 +880,31 @@ typedef struct {
 size_t porta_proto_encode_file_entry_row(const porta_qso_entry_row_t *e,
                                          uint8_t *out, size_t out_cap);
 bool porta_proto_parse_file_entry_row(const porta_frame_t *f, porta_qso_entry_row_t *out);
+
+// LOG_PAGE: a page of the log's records, newest first by date, time (HHMM) and ID, older than the cursor
+// (all zero for the newest). `take` 1..255. The host answers with up to `take` ENTRY rows, then TOTAL.
+#define PORTA_LOG_PAGE_UNSENT 0x01u  // only records QRZ holds no ID or upload mark for
+#define PORTA_LOG_PAGE_DATE   0x02u  // only records of `date`
+typedef struct {
+    uint8_t  flags;
+    uint32_t date;
+    uint32_t before_date;
+    uint16_t before_time;
+    uint32_t before_id;
+    uint8_t  take;
+} porta_log_page_req_t;
+
+size_t porta_proto_encode_log_page_req(const porta_log_page_req_t *r, uint8_t *out, size_t out_cap);
+bool porta_proto_parse_log_page_req(const porta_frame_t *f, porta_log_page_req_t *out);
+size_t porta_proto_encode_file_total_row(uint32_t total, uint8_t *out, size_t out_cap);
+bool porta_proto_parse_file_total_row(const porta_frame_t *f, uint32_t *total_out);
+
+// LOG_SET: ADIF fields (`<app_qrzlog_logid:10>1234567890...`) to set on a record, as the QSO store's
+// patch takes them; a field of no length removes it. At most PORTA_LOG_SET_FIELDS_MAX bytes.
+#define PORTA_LOG_SET_FIELDS_MAX (PORTA_PROTO_MAX_PAYLOAD - 5u)
+size_t porta_proto_encode_log_set(uint32_t id, const char *fields, size_t len, uint8_t *out, size_t out_cap);
+// `fields_out` holds PORTA_LOG_SET_FIELDS_MAX + 1 bytes; it is NUL-ended and its length is `len_out`.
+bool porta_proto_parse_log_set(const porta_frame_t *f, uint32_t *id_out, char *fields_out, size_t *len_out);
 
 // --- Link stress test (docs/architecture/sidekick.md, Port A) -------------
 // One direction's payloads. The sequence starts at 0 when that direction

@@ -317,7 +317,7 @@ export function trimQrzRecords(escaped) {
 // the name is added here and nothing else about the reply changes. Never a name that says who the other
 // operator is.
 const QRZ_PASS = ["app_qrzlog_logid", "call", "qso_date", "time_on", "band", "mode", "submode",
-  "station_callsign", "app_qrzlog_status"];
+  "station_callsign", "app_qrzlog_status", "app_qrzlog_qsldate"];
 
 function trimmedQrzRecord(f) {
   const out = {};

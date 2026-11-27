@@ -8,7 +8,7 @@ How things work now: `architecture/` (start at [architecture/system.md](architec
 
 | ID | Item | Why / constraint |
 | --- | --- | --- |
-| qtfj | <a id="qtfj"></a>Set fields on a record, and the record's ID in the browser | Epic [I32](roadmap/qso-store.md#qtfj). The QRZ sync re-matches every day since the oldest unsent on each run and keeps nothing on the station; with the record's ID and a "set fields" message it writes QRZ's ID and the confirmed flag back, which the QRZ import ([r4cu](roadmap/qso-store.md#r4cu)) then matches on. **Done-when:** host tests hold the message and the sync's write-back; a QSO sent to QRZ reads as sent on a second phone with no QRZ call (field). |
+| dbua | <a id="dbua"></a>The QSOs list in pages by date and time | Epic [I32](roadmap/qso-store.md#dbua). The list reads a UTC day at a time, so it scrolls by days and a day comes back cut short (row [ujtv](#ujtv)); the log by record, newest first by date and time, built for the QRZ sync, serves the list and both downloads, and the day list and day read go. **Done-when:** host tests hold the cursor across a page cut short, a 42-QSO day downloaded whole and no QSO logged while the clock is unset; the list scrolls from today to the first QSO, each day headed once (field). |
 
 ## Backlog
 
@@ -53,7 +53,7 @@ Each epic is one row here and one file under `roadmap/`, read only when touching
 | I18 | <a id="I18"></a>Activator mode: POTA and SOTA | [roadmap/activator-mode.md](roadmap/activator-mode.md): a whole activation run offline, its log accepted by pota.app and the SOTA database unedited, and what helps an activator pick a reference, check the grid and plan. Children: [rrsp](roadmap/activator-mode.md#rrsp), [w5nj](roadmap/activator-mode.md#w5nj). |
 | qxy5 | <a id="qxy5"></a>Smart queue ordering | [roadmap/smart-queue.md](roadmap/smart-queue.md): spend each transmission where it can be answered, by ordering and holding what is already queued, never adding a station. Children: none in the index; its **Later** slices wait in the file. |
 | eu2t | <a id="eu2t"></a>Release 1.0 | [roadmap/release-1-0.md](roadmap/release-1-0.md): an operator who is not the maintainer unboxes it, sets up from the printed sheet, completes a QSO and updates over the air; then `v1.0.0`, from which an update keeps the operator's settings and log. Children: [n75z](roadmap/release-1-0.md#n75z), [dfd7](roadmap/release-1-0.md#dfd7), [pn83](roadmap/release-1-0.md#pn83). |
-| I32 | <a id="I32"></a>QSO store | [roadmap/qso-store.md](roadmap/qso-store.md): every QSO a record with an ID on the main board, in the journal built in `components/qso_store/`; the QRZ logbook and the station agree; the log outlives any one phone. Children: [qtfj](roadmap/qso-store.md#qtfj). |
+| I32 | <a id="I32"></a>QSO store | [roadmap/qso-store.md](roadmap/qso-store.md): every QSO a record with an ID on the main board, in the journal built in `components/qso_store/`; the QRZ logbook and the station agree; the log outlives any one phone. Children: [dbua](roadmap/qso-store.md#dbua). |
 
 ## Next groom
 

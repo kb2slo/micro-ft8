@@ -106,6 +106,12 @@ class Handler(SimpleHTTPRequestHandler):
             return
         self.send_error(404, "Not found")
 
+    def do_PATCH(self) -> None:  # noqa: N802
+        if SIM and urlparse(self.path).path.startswith("/api/"):
+            self._proxy_sim()
+            return
+        self.send_error(404, "Not found")
+
     def _proxy_sim(self) -> None:
         length = int(self.headers.get("Content-Length", "0") or 0)
         body = self.rfile.read(length) if length else b""

@@ -1383,32 +1383,23 @@ void fill_browse_bands(void) {
 
 }  // namespace
 
-// One page of a day's QSOs from the store, sent at once, then ACKed. Each record goes through the same pager
-// the daily files did, so its row is what the QSOs tab has always read (docs/architecture/logging.md, The
-// four-place field chain).
-const char *porta_host_file_read_begin(const char *filename, uint16_t skip, uint8_t take) {
-    if (!filename || filename[0] == '\0' || take == 0) {
-        return "malformed";
-    }
-    const uint32_t date = qso_log_day_of(filename);
-    if (date == 0) {
-        return "open failed";
-    }
-    if (!qso_log_store_ready()) {
-        return "log unavailable";
-    }
-    const int64_t start_us = esp_timer_get_time();  // timed for the QSO store's before-and-after
-    std::vector<std::string> records;
-    qso_log_store_day_records(date, skip, take, &records);
+namespace {
+
+// Each record goes through the same pager the daily files did, so its row is what the QSOs tab has always
+// read (docs/architecture/logging.md, The four-place field chain), with the record's ID and date.
+size_t emit_records(const std::vector<QsoLogRecord> &records) {
     QsoBrowsePager pager;
-    qso_browse_pager_reset(&pager, 0, take);
     fill_browse_bands();
-    for (const std::string &fields : records) {
-        qso_browse_pager_feed(&pager, fields + "<eor>", s_porta_read_bands.data(),
+    size_t sent = 0;
+    for (const QsoLogRecord &r : records) {
+        qso_browse_pager_reset(&pager, 0, 1);
+        qso_browse_pager_feed(&pager, r.fields + "<eor>", s_porta_read_bands.data(),
                               static_cast<int>(s_porta_read_bands.size()));
-    }
-    for (const QsoLogEntry &e : pager.entries) {
+        if (pager.entries.empty()) continue;
+        const QsoLogEntry &e = pager.entries[0];
         porta_qso_entry_row_t row = {};
+        row.id = r.id;
+        row.date = r.date;
         std::snprintf(row.time_on, sizeof(row.time_on), "%s", e.time_on.c_str());
         std::snprintf(row.band, sizeof(row.band), "%s", e.band.c_str());
         std::snprintf(row.call, sizeof(row.call), "%s", e.call.c_str());
@@ -1424,9 +1415,83 @@ const char *porta_host_file_read_begin(const char *filename, uint16_t skip, uint
         std::snprintf(row.my_pota_ref, sizeof(row.my_pota_ref), "%s", e.my_pota_ref.c_str());
         std::snprintf(row.my_sota_ref, sizeof(row.my_sota_ref), "%s", e.my_sota_ref.c_str());
         porta_emit_file_entry(row);
+        ++sent;
     }
+    return sent;
+}
+
+}  // namespace
+
+// One page of a day's QSOs from the store, sent at once, then ACKed.
+const char *porta_host_file_read_begin(const char *filename, uint16_t skip, uint8_t take) {
+    if (!filename || filename[0] == '\0' || take == 0) {
+        return "malformed";
+    }
+    const uint32_t date = qso_log_day_of(filename);
+    if (date == 0) {
+        return "open failed";
+    }
+    if (!qso_log_store_ready()) {
+        return "log unavailable";
+    }
+    const int64_t start_us = esp_timer_get_time();  // timed for the QSO store's before-and-after
+    std::vector<QsoLogRecord> records;
+    qso_log_store_day_records(date, skip, take, &records);
+    const size_t sent = emit_records(records);
     porta_emit_ack(PORTA_MSG_FILE_READ);
-    ESP_LOGI(TAG, "FILE_READ %s entries=%u skip=%u take=%u in %lld us", filename, (unsigned)pager.entries.size(),
+    ESP_LOGI(TAG, "FILE_READ %s entries=%u skip=%u take=%u in %lld us", filename, (unsigned)sent,
              (unsigned)skip, (unsigned)take, (long long)(esp_timer_get_time() - start_us));
     return nullptr;
+}
+
+// A page of our own records newest first by date, time and ID, sent at once with how many match, then ACKed
+// (docs/architecture/logging.md, The store on the main board).
+const char *porta_host_log_page(const porta_log_page_req_t &req) {
+    if (!qso_log_store_ready()) {
+        return "log unavailable";
+    }
+    const int64_t start_us = esp_timer_get_time();
+    QsoStoreFilter filter;
+    filter.whose = QsoStoreWhose::OWN;
+    filter.unsent = (req.flags & PORTA_LOG_PAGE_UNSENT) != 0;
+    if (req.flags & PORTA_LOG_PAGE_DATE) {
+        if (req.date == 0) {
+            return "malformed";
+        }
+        filter.date = req.date;
+    }
+    QsoStoreCursor before;
+    before.date = req.before_date;
+    before.time = req.before_time;
+    before.id = req.before_id;
+    std::vector<QsoLogRecord> records;
+    const size_t matched = qso_log_store_page(filter, before, req.take, &records);
+    const size_t sent = emit_records(records);
+    porta_emit_file_total(static_cast<uint32_t>(matched));
+    porta_emit_ack(PORTA_MSG_LOG_PAGE);
+    ESP_LOGI(TAG, "LOG_PAGE flags=%u entries=%u of %u take=%u in %lld us", (unsigned)req.flags, (unsigned)sent,
+             (unsigned)matched, (unsigned)req.take, (long long)(esp_timer_get_time() - start_us));
+    return nullptr;
+}
+
+// Fields set on a record, as the store's patch takes them: any field, from any paired browser.
+const char *porta_host_log_set(uint32_t id, const char *fields, size_t len) {
+    switch (qso_log_store_set(id, std::string(fields, len))) {
+        case QsoStoreStatus::OK:
+        case QsoStoreStatus::UNCHANGED:
+            ESP_LOGI(TAG, "LOG_SET %lu: %.*s", (unsigned long)id, (int)len, fields);
+            return nullptr;
+        case QsoStoreStatus::NOT_FOUND:
+            return "no record";
+        case QsoStoreStatus::BAD_FIELDS:
+            return "bad fields";
+        case QsoStoreStatus::TOO_LONG:
+            return "too long";
+        case QsoStoreStatus::FULL:
+            return "log full";
+        case QsoStoreStatus::WRITE_FAILED:
+            return qso_log_store_ready() ? "write failed" : "log unavailable";
+        default:
+            return "refused";
+    }
 }

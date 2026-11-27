@@ -67,6 +67,11 @@ const char* porta_host_queue_reply(uint32_t decode_id);
 const char* porta_host_file_list_begin(uint8_t kind, uint16_t skip, uint8_t take);
 const char* porta_host_file_read_begin(const char* filename, uint16_t skip, uint8_t take);
 const char* porta_host_file_delete(const char* filename);
+// A page of the log by record: rows, a TOTAL and the ACK are sent before it returns nullptr; a non-null
+// return is a refusal with nothing sent.
+const char* porta_host_log_page(const porta_log_page_req_t& req);
+// Sets ADIF fields on a record. nullptr on success, else why not.
+const char* porta_host_log_set(uint32_t id, const char* fields, size_t len);
 // Reset the main board's Station settings (and, with PORTA_FACTORY_RESET_LOGS, delete the QSO
 // logs). nullptr on success, else why not; nothing is restarted.
 const char* porta_host_factory_reset(uint8_t flags);
@@ -931,6 +936,22 @@ void handle_action(const porta_frame_t& f) {
     }
     return;
   }
+  case PORTA_ACT_LOG_SET: {
+    uint32_t id = 0;
+    char fields[PORTA_LOG_SET_FIELDS_MAX + 1];
+    size_t len = 0;
+    if (!porta_proto_parse_log_set(&f, &id, fields, &len)) {
+      enqueue(buf, porta_proto_encode_nak(verb, "malformed", buf, sizeof(buf)));
+      return;
+    }
+    const char* why = porta_host_log_set(id, fields, len);
+    if (why) {
+      enqueue(buf, porta_proto_encode_nak(verb, why, buf, sizeof(buf)));
+    } else {
+      enqueue(buf, porta_proto_encode_ack(verb, buf, sizeof(buf)));
+    }
+    return;
+  }
   case PORTA_ACT_FILE_DELETE: {
     char filename[PORTA_FILENAME_MAX + 1];
     if (!porta_proto_parse_file_delete(&f, filename)) {
@@ -1110,6 +1131,19 @@ void handle_file_read(const porta_frame_t& f) {
   }
 }
 
+void handle_log_page(const porta_frame_t& f) {
+  porta_log_page_req_t req = {};
+  uint8_t buf[PORTA_PROTO_MAX_FRAME];
+  if (!porta_proto_parse_log_page_req(&f, &req)) {
+    enqueue(buf, porta_proto_encode_nak(PORTA_MSG_LOG_PAGE, "malformed", buf, sizeof(buf)));
+    return;
+  }
+  const char* why = porta_host_log_page(req);
+  if (why) {
+    enqueue(buf, porta_proto_encode_nak(PORTA_MSG_LOG_PAGE, why, buf, sizeof(buf)));
+  }
+}
+
 void handle_frame(const porta_frame_t& f) {
   switch (f.type) {
   case PORTA_MSG_HELLO:       handle_hello(f);       break;
@@ -1118,6 +1152,7 @@ void handle_frame(const porta_frame_t& f) {
   case PORTA_MSG_CONFIG_SET:  handle_config_set(f);  break;
   case PORTA_MSG_FILE_LIST:   handle_file_list(f);   break;
   case PORTA_MSG_FILE_READ:   handle_file_read(f);   break;
+  case PORTA_MSG_LOG_PAGE:    handle_log_page(f);    break;
   case PORTA_MSG_FW_BEGIN:
   case PORTA_MSG_FW_CHUNK:
   case PORTA_MSG_FW_END:
@@ -1354,6 +1389,12 @@ void porta_emit_file_entry(const porta_qso_entry_row_t& row) {
   uint8_t buf[PORTA_PROTO_MAX_FRAME];
   const size_t n = porta_proto_encode_file_entry_row(&row, buf, sizeof(buf));
   enqueue(buf, n);
+}
+
+void porta_emit_file_total(uint32_t total) {
+  if (!s_running) return;
+  uint8_t buf[PORTA_PROTO_MAX_FRAME];
+  enqueue(buf, porta_proto_encode_file_total_row(total, buf, sizeof(buf)));
 }
 
 void porta_emit_ack(uint8_t verb) {
