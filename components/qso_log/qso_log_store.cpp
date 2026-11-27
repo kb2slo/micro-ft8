@@ -237,41 +237,6 @@ QsoStoreStatus qso_log_store_add(const std::string& record, uint32_t* id_out)
     return qso_store_add(&s_store, record.data(), record.size(), 0, id_out);
 }
 
-void qso_log_store_days(std::vector<std::string>* names_out)
-{
-    names_out->clear();
-    if (!s_ready) return;
-    std::vector<uint32_t> dates;
-    for (size_t i = 0; i < s_store.entries_used; ++i) {
-        const QsoStoreEntry& e = s_entries[i];
-        if (e.latest != 0 && (e.flags & kQsoStoreForeign) == 0 && e.date != 0) dates.push_back(e.date);
-    }
-    std::sort(dates.begin(), dates.end(), std::greater<uint32_t>());
-    dates.erase(std::unique(dates.begin(), dates.end()), dates.end());
-    char name[16];
-    for (uint32_t d : dates) {
-        snprintf(name, sizeof(name), "%08" PRIu32 ".adi", d);
-        names_out->push_back(name);
-    }
-}
-
-size_t qso_log_store_day_records(uint32_t date, size_t skip, size_t take, std::vector<QsoLogRecord>* out)
-{
-    out->clear();
-    if (!s_ready || date == 0) return 0;
-    QsoStoreFilter filter;
-    filter.date = date;
-    filter.whose = QsoStoreWhose::OWN;
-    std::vector<uint32_t> ids(take);
-    size_t matched = 0;
-    const size_t n = qso_store_select(s_store, filter, skip, ids.data(), ids.size(), &matched);
-    std::string fields;
-    for (size_t i = 0; i < n; ++i) {
-        if (qso_store_get(s_store, ids[i], &fields)) out->push_back({ids[i], date, fields});
-    }
-    return matched;
-}
-
 size_t qso_log_store_page(const QsoStoreFilter& filter, const QsoStoreCursor& before, size_t take,
                           std::vector<QsoLogRecord>* out)
 {

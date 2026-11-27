@@ -64,7 +64,7 @@ extern "C" {
 // carries -- they answer different questions, and conflating them is how a
 // cosmetic rebuild reads as a protocol change.
 // v2 (2026-09-28): DECODE carries its slot and the radio's dial frequency.
-// v3 (2026-09-29): the FILE_READ QSO row carries my_pota_ref/my_sota_ref
+// v3 (2026-09-29): the QSO row carries my_pota_ref/my_sota_ref
 // (architecture/logging.md); band now rides the row's own field too,
 // unchanged in shape (still PORTA_BAND_MAX), so only the two new fields
 // are a break.
@@ -132,7 +132,10 @@ extern "C" {
 // LOG_PAGE asks a page of records newest first by date, time and ID, older than a cursor, and is
 // answered by FILE_DATA rows and a TOTAL; every QSO row carries its record's ID and date; the LOG_SET
 // action sets fields on a record. A v22 peer's shorter row is refused. Both ends are flashed together.
-#define PORTA_PROTO_VERSION 23u
+// v24 (2026-11-27): the QSOs list and its downloads read by record (LOG_PAGE), so FILE_LIST and FILE_READ,
+// the day list and a day's page, go, and FILE_DATA's NAME row with them. A v23 peer asking for either is
+// answered nothing it parses. Both ends are flashed together.
+#define PORTA_PROTO_VERSION 24u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -160,13 +163,9 @@ typedef enum {
     PORTA_MSG_CONFIG_VALUE = 0x08,
     PORTA_MSG_ACTION       = 0x09,  // namespace: verb in the payload
     PORTA_MSG_EVENT        = 0x0A,  // namespace: subtype in the payload
-    // FILE_LIST / FILE_READ (sidekick -> host) request one page (skip/take)
-    // of day-file names or parsed QSO rows; the reply is zero or more
-    // FILE_DATA frames -- one row each -- followed by ACK/NAK carrying the
-    // request's own type as verb. See the FILE_* payloads section.
-    PORTA_MSG_FILE_LIST    = 0x0B,
-    PORTA_MSG_FILE_READ    = 0x0C,
-    PORTA_MSG_FILE_DATA    = 0x0D,
+    // 0x0B and 0x0C were FILE_LIST and FILE_READ, the day list and a day's page, until v24. Do not reuse
+    // without a flag day.
+    PORTA_MSG_FILE_DATA    = 0x0D,  // one row of a LOG_PAGE reply
     PORTA_MSG_ACK          = 0x0E,
     PORTA_MSG_NAK          = 0x0F,  // payload carries the reason
     // Firmware push toward the host (sidekick -> host), each answered by a
@@ -180,8 +179,9 @@ typedef enum {
     // are their own types: ACTION is sidekick -> host only.
     PORTA_MSG_LINK_TEST    = 0x13,  // start / set-rate / stop / result
     PORTA_MSG_LINK_DATA    = 0x14,  // one max-length stress payload
-    // A page of the QSO log by record (sidekick -> host), answered as FILE_READ is: FILE_DATA rows,
-    // then one TOTAL, then ACK/NAK with this type as verb. See the FILE_* payloads section.
+    // A page of the QSO log by record (sidekick -> host): FILE_DATA rows, one row each (so a short buffer can
+    // never leave a row half-written), then one TOTAL, then ACK/NAK with this type as verb, the "burst then
+    // ACK" shape CONFIG_GET-all uses. See the LOG_PAGE payloads section.
     PORTA_MSG_LOG_PAGE     = 0x15,
 } porta_msg_type_t;
 
@@ -686,8 +686,8 @@ bool porta_proto_parse_update_mode(const porta_frame_t *f, bool *on_out);
 size_t porta_proto_encode_factory_reset(uint8_t flags, uint8_t *out, size_t out_cap);
 bool porta_proto_parse_factory_reset(const porta_frame_t *f, uint8_t *flags_out);
 
-// File delete: verb + basename (0..PORTA_FILENAME_MAX). Empty = clear all
-// daily QSO logs (FILE_LIST set / phone "Clear all ADI files"). Active-day
+// File delete: verb + basename (0..PORTA_FILENAME_MAX), a day named as its daily file was
+// (`20261125.adi`). Empty = every QSO (phone "Clear all ADI files"). Active-day
 // LOCK is host policy. `filename_out` needs PORTA_FILENAME_MAX + 1 bytes.
 size_t porta_proto_encode_file_delete(const char *filename, uint8_t *out, size_t out_cap);
 bool porta_proto_parse_file_delete(const porta_frame_t *f, char *filename_out);
@@ -796,35 +796,16 @@ bool porta_proto_parse_config_get(const porta_frame_t *f, char *key_out);
 bool porta_proto_parse_config_set(const porta_frame_t *f, char *key_out, char *value_out);
 bool porta_proto_parse_config_value(const porta_frame_t *f, char *key_out, char *value_out);
 
-// --- FILE_LIST / FILE_READ / FILE_DATA payloads ---------------------------
-// FILE_LIST and FILE_READ (sidekick -> host) request one page -- skip/take,
-// the same shape components/qso_log/include/qso_browse.h's QsoBrowsePager already uses --
-// reusing that pager instead of inventing wire-level pagination a second
-// time. The reply is zero or more FILE_DATA frames, one row each (so a short
-// buffer can never leave a row half-written), followed by ACK/NAK carrying
-// the request's own message type as verb -- the same "burst then ACK" shape
-// CONFIG_GET-all already established. Fewer rows than `take` arriving before
-// the ACK means end of list/file; the caller pages further with a higher
-// `skip`, exactly like the pager's own `has_next`.
-//
-// FILE_READ ships *parsed* QSO rows (QsoLogEntry), never raw ADIF bytes --
-// ADIF is verbose text and the parser already exists and is host-tested
-// (qso_browse_pager_feed); re-parsing it in JavaScript would cost wire
-// budget and correctness for nothing.
-//
-// mode/station_callsign (added for the browser's "Download ADI" button)
-// exist for the same reason as every other field here: the browser
-// reconstructs a real per-record ADIF line client-side from these rows, and
-// both are required ADIF fields the record can't omit -- unlike grid/freq/
-// comment, which are genuinely optional per QSO.
+// --- LOG_PAGE / FILE_DATA payloads ------------------------------------------
+// LOG_PAGE's rows are *parsed* QSO rows (QsoLogEntry), never raw ADIF bytes -- ADIF is verbose text and
+// the parser already exists and is host-tested (qso_browse_pager_feed); re-parsing it in JavaScript would
+// cost wire budget and correctness for nothing. mode/station_callsign exist for the browser's
+// "Download ADI": it rebuilds each record's ADIF line from these rows, and both are fields a record cannot
+// omit.
 
 typedef enum {
-    PORTA_FILE_LIST_QSO_DAILY = 0x01,  // matches FileListKind::QsoDaily
-} porta_file_list_kind_t;
-
-typedef enum {
-    PORTA_FILE_DATA_NAME  = 0x01,  // one FILE_LIST row: a day-file name
-    PORTA_FILE_DATA_ENTRY = 0x02,  // one FILE_READ or LOG_PAGE row: one parsed QSO
+    // 0x01 was a day-file name, FILE_LIST's row, until v24.
+    PORTA_FILE_DATA_ENTRY = 0x02,  // one LOG_PAGE row: one parsed QSO
     PORTA_FILE_DATA_TOTAL = 0x03,  // after LOG_PAGE's rows: u32 records matching its filter, whatever the cursor
 } porta_file_data_kind_t;
 
@@ -840,21 +821,6 @@ typedef enum {
 // simplicity.
 #define PORTA_POTA_REF_MAX 40u
 #define PORTA_SOTA_REF_MAX 40u
-
-size_t porta_proto_encode_file_list_req(uint8_t kind, uint16_t skip, uint8_t take,
-                                        uint8_t *out, size_t out_cap);
-bool porta_proto_parse_file_list_req(const porta_frame_t *f, uint8_t *kind_out,
-                                     uint16_t *skip_out, uint8_t *take_out);
-
-// `filename_out` must hold PORTA_FILENAME_MAX + 1 bytes.
-size_t porta_proto_encode_file_read_req(const char *filename, uint16_t skip, uint8_t take,
-                                        uint8_t *out, size_t out_cap);
-bool porta_proto_parse_file_read_req(const porta_frame_t *f, char *filename_out,
-                                     uint16_t *skip_out, uint8_t *take_out);
-
-// `name_out` must hold PORTA_FILENAME_MAX + 1 bytes.
-size_t porta_proto_encode_file_name_row(const char *name, uint8_t *out, size_t out_cap);
-bool porta_proto_parse_file_name_row(const porta_frame_t *f, char *name_out);
 
 // time_on is "HH:MM" (qso_browse.cpp's own width -- "??:??" when unknown).
 // rst_sent/rst_rcvd use -99 for "no report", the same sentinel

@@ -2,6 +2,7 @@
 // what survives a cut, the day-shaped reads the QSOs tab still asks for, and deletes. Storage is stood in for
 // here by a map of file names to bytes, so every start reads back exactly what the last one wrote.
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -100,11 +101,38 @@ static std::string record(const char* call, const char* date, const char* time_o
     return buf;
 }
 
+// The days that hold our own QSOs, newest first and named as the daily files were, read by page as the QSOs
+// list reads them.
 static std::vector<std::string> days()
 {
     std::vector<std::string> d;
-    qso_log_store_days(&d);
+    QsoStoreFilter own;
+    own.whose = QsoStoreWhose::OWN;
+    QsoStoreCursor at;
+    std::vector<QsoLogRecord> page;
+    for (;;) {
+        qso_log_store_page(own, at, 4, &page);
+        if (page.empty()) break;
+        for (const QsoLogRecord& r : page) {
+            char name[16];
+            snprintf(name, sizeof name, "%08u.adi", (unsigned)r.date);
+            if (d.empty() || d.back() != name) d.push_back(name);
+        }
+        const QsoStoreEntry* last = qso_store_entry(*qso_log_store(), page.back().id);
+        at = QsoStoreCursor{last->date, last->time, last->id};
+    }
     return d;
+}
+
+// A day's QSOs in the order they were logged (the page is newest first); returns how many it holds.
+static size_t day_records(uint32_t date, std::vector<QsoLogRecord>* out)
+{
+    QsoStoreFilter day;
+    day.whose = QsoStoreWhose::OWN;
+    day.date = date;
+    const size_t n = qso_log_store_page(day, QsoStoreCursor{}, 255, out);
+    std::reverse(out->begin(), out->end());
+    return n;
 }
 
 static std::string call_of(const std::string& fields)
@@ -144,7 +172,7 @@ static void test_convert()
     const std::vector<std::string> d = days();
     CHECK(d.size() == 2 && d[0] == "20261125.adi" && d[1] == "20261124.adi", "days newest first, as the files were");
     std::vector<QsoLogRecord> recs;
-    CHECK(qso_log_store_day_records(20261124, 0, 10, &recs) == 2 && recs.size() == 2, "a day's QSOs");
+    CHECK(day_records(20261124, &recs) == 2 && recs.size() == 2, "a day's QSOs");
     CHECK(recs.size() == 2 && call_of(recs[0].fields) == "K1ABC" && call_of(recs[1].fields) == "W9XY", "in the order logged");
     const QsoStore* store = qso_log_store();
     uint32_t id = 0;
@@ -192,7 +220,7 @@ static void test_cut_between_write_and_delete()
     CHECK(qso_log_store_start() && !g_files.count("20261124.adi"), "the next start deletes the files it converted");
     CHECK(days().size() == 1, "with the QSO there once: %u days", (unsigned)days().size());
     std::vector<QsoLogRecord> recs;
-    CHECK(qso_log_store_day_records(20261124, 0, 10, &recs) == 1, "once");
+    CHECK(day_records(20261124, &recs) == 1, "once");
 }
 
 static void test_log_and_restart()
@@ -211,7 +239,7 @@ static void test_log_and_restart()
     CHECK(qso_log_store_add(record("W9XY", "20261125", "121000"), &id) == QsoStoreStatus::OK, "and logging goes on");
     CHECK(qso_log_store_start(), "start");
     std::vector<QsoLogRecord> recs;
-    CHECK(qso_log_store_day_records(20261125, 0, 10, &recs) == 2, "with both QSOs kept: %u", (unsigned)recs.size());
+    CHECK(day_records(20261125, &recs) == 2, "with both QSOs kept: %u", (unsigned)recs.size());
 
     // A failed append leaves the file and the store as they were.
     const std::string before = g_files[kQsoLogJournal];
@@ -219,10 +247,10 @@ static void test_log_and_restart()
     CHECK(qso_log_store_add(record("DL1AA", "20261125", "122000"), &id) == QsoStoreStatus::WRITE_FAILED,
           "a failed write is reported");
     g_fail_appends = false;
-    CHECK(g_files[kQsoLogJournal] == before && qso_log_store_day_records(20261125, 0, 10, &recs) == 2,
+    CHECK(g_files[kQsoLogJournal] == before && day_records(20261125, &recs) == 2,
           "and nothing of it stays");
     CHECK(qso_log_store_add(record("DL1AA", "20261125", "122000"), &id) == QsoStoreStatus::OK &&
-              qso_log_store_start() && qso_log_store_day_records(20261125, 0, 10, &recs) == 3,
+              qso_log_store_start() && day_records(20261125, &recs) == 3,
           "the next write lands, and loads");
     g_files["qso.tmp"] = "half a journal";
     CHECK(qso_log_store_start() && !g_files.count("qso.tmp"), "a temporary journal left by a cut is removed");
@@ -241,8 +269,8 @@ static void test_pages_and_deletes()
     }
     qso_log_store_add(record("W9XY", "20261124", "100000"), nullptr);
     std::vector<QsoLogRecord> recs;
-    CHECK(qso_log_store_day_records(20261125, 5, 4, &recs) == 7 && recs.size() == 2 && call_of(recs[0].fields) == "K5ABC",
-          "a page: skip and take, and how many in all");
+    CHECK(day_records(20261125, &recs) == 7 && recs.size() == 7 && call_of(recs[5].fields) == "K5ABC",
+          "a day's page: every QSO, and how many in all");
     // A page across days, newest first, with each record's ID and date; then a field set and kept.
     std::vector<QsoLogRecord> page;
     QsoStoreFilter own;
@@ -281,9 +309,10 @@ static void test_unreadable_journal()
     const std::string kept = g_files[kQsoLogJournal];
     CHECK(!qso_log_store_start() && !qso_log_store_ready(), "a journal this build cannot read: not ready");
     CHECK(g_files[kQsoLogJournal] == kept, "and it is left as it is, not written over");
-    std::vector<std::string> d;
-    qso_log_store_days(&d);
-    CHECK(d.empty() && qso_log_store_delete_day(20261125) != nullptr, "nothing is answered from it");
+    std::vector<QsoLogRecord> page;
+    CHECK(qso_log_store_page(QsoStoreFilter{}, QsoStoreCursor{}, 10, &page) == 0 && page.empty() &&
+              qso_log_store_delete_day(20261125) != nullptr && qso_log_store_set(1, "<comment:2>hi") != QsoStoreStatus::OK,
+          "nothing is answered from it, or written to it");
 }
 
 static void test_day_of()

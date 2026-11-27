@@ -83,14 +83,14 @@ function page(names, extra) {
 async function helper() {
   const p = page([]);
   // An answer in time: the JSON, and no timer left to abort a later read.
-  p.answers.push({ ok: true, files: ['20261111.adi'] });
-  assert.deepStrictEqual((await p.logFetchJson('/api/log/files?skip=0&take=5')).files, ['20261111.adi']);
+  p.answers.push({ ok: true, entries: [{ id: 1 }] });
+  assert.strictEqual((await p.logFetchJson('/api/log/entries?take=10')).entries[0].id, 1);
   assert.strictEqual(p.pendingTimers(), 0, 'an answered read leaves no timer running');
   // No answer at all, and headers with no body: each rejects at the timeout, not before.
   for (const mode of ['hang', 'body']) {
     p.answers.push(mode);
     let outcome = 'pending';
-    p.logFetchJson('/api/log/files?skip=0&take=5').then(() => { outcome = 'answered'; }, () => { outcome = 'rejected'; });
+    p.logFetchJson('/api/log/entries?take=10').then(() => { outcome = 'answered'; }, () => { outcome = 'rejected'; });
     await p.advance(TIMEOUT_MS - 1);
     assert.strictEqual(outcome, 'pending', mode + ': still waiting just before the timeout');
     await p.advance(1);
@@ -99,43 +99,38 @@ async function helper() {
   }
 }
 
-// The QSOs list's 8 s refresh: the 2026-11-11 freeze. checkForNewDayFiles() reads first, so it is the
-// read that hangs; then the entries read hangs on a later tick.
+// The QSOs list's 8 s refresh: the 2026-11-11 freeze. The first page read hangs.
 async function qsosRefresh() {
-  for (const hungRead of ['files', 'entries']) {
-    const p = page(['checkForNewDayFiles', 'refreshLogHead'], {
-      logLoadedOnce: true, logLoading: false, logRefreshing: false, logRefreshAgain: false, currentView: 'log',
-      logFiles: ['20261111.adi'], logFileIdx: 0, logFilesSkip: 1, logFileLoadedCount: {}, LOG_ENTRY_FETCH: 10,
-      rows: [],
-    });
-    p.appendLogRows = (file, rows) => { p.rows.push(...rows); };
-    if (hungRead === 'entries') p.answers.push({ ok: true, files: ['20261111.adi'] });
-    p.answers.push('hang');
-    p.refreshLogHead();
-    await settle();
-    assert.strictEqual(p.logRefreshing, true, hungRead + ': a refresh is waiting on its read');
-    const asked = p.urls.length;
-    await p.advance(8000);
-    p.refreshLogHead();           // the next 8 s tick, while the read still hangs
-    await settle();
-    assert.strictEqual(p.urls.length, asked, hungRead + ': no second read while one is in flight');
-    await p.advance(TIMEOUT_MS);  // the read is given up, and the tick that asked meanwhile runs again
-    assert(p.urls.length > asked, hungRead + ': the refresh asked for meanwhile reads again');
-    // That read hangs too (nothing scripted): give it up, then the sidekick is back.
-    await p.advance(TIMEOUT_MS);
-    assert.strictEqual(p.logRefreshing, false, hungRead + ': the flag is clear once the read is given up');
-    p.answers.push({ ok: true, files: ['20261111.adi'] }, { ok: true, entries: [{ call: 'K1ABC' }] });
-    p.refreshLogHead();
-    await settle();
-    assert.deepStrictEqual(p.rows.map((r) => r.call), ['K1ABC'], hungRead + ': a QSO logged after the restart shows');
-    assert.strictEqual(p.logRefreshing, false);
-  }
+  const p = page(['logCursorOf', 'readLogPages', 'refreshLogHead'], {
+    logLoadedOnce: true, logLoading: false, logRefreshing: false, logRefreshAgain: false, currentView: 'log',
+    logRenderedAny: true, logDone: false, logShownIds: { 1: true }, LOG_ENTRY_FETCH: 10, rows: [],
+  });
+  p.appendLogRows = (rows) => { p.rows.push(...rows); };
+  p.answers.push('hang');
+  p.refreshLogHead();
+  await settle();
+  assert.strictEqual(p.logRefreshing, true, 'a refresh is waiting on its read');
+  const asked = p.urls.length;
+  await p.advance(8000);
+  p.refreshLogHead();           // the next 8 s tick, while the read still hangs
+  await settle();
+  assert.strictEqual(p.urls.length, asked, 'no second read while one is in flight');
+  await p.advance(TIMEOUT_MS);  // the read is given up, and the tick that asked meanwhile runs again
+  assert(p.urls.length > asked, 'the refresh asked for meanwhile reads again');
+  // That read hangs too (nothing scripted): give it up, then the sidekick is back.
+  await p.advance(TIMEOUT_MS);
+  assert.strictEqual(p.logRefreshing, false, 'the flag is clear once the read is given up');
+  p.answers.push({ ok: true, entries: [{ id: 2, date: '20261111', time: '10:01', call: 'K1ABC' }, { id: 1, date: '20261111', time: '10:00', call: 'W9XY' }] });
+  p.refreshLogHead();
+  await settle();
+  assert.deepStrictEqual(p.rows.map((r) => r.call), ['K1ABC'], 'a QSO logged after the restart shows, down to the one already shown');
+  assert.strictEqual(p.logRefreshing, false);
 }
 
 // Operate's read of today's file, for the Worked flag and the activation line.
 async function operateLog() {
-  const p = page(['refreshOpLog'], {
-    opLog: { file: '', rows: [], busy: false }, currentView: 'operate', lastCfg: {}, drawn: 0,
+  const p = page(['logCursorOf', 'readLogPages', 'refreshOpLog'], {
+    opLog: { day: '', rows: [], ids: {}, busy: false }, currentView: 'operate', lastCfg: {}, drawn: 0, LOG_ENTRY_FETCH: 10,
     utcDayFile: () => '20261111.adi', parseActRefs: () => [],
   });
   p.renderDecodes = () => { p.drawn++; };
@@ -145,53 +140,54 @@ async function operateLog() {
   assert.strictEqual(p.opLog.busy, true);
   await p.advance(TIMEOUT_MS);
   assert.strictEqual(p.opLog.busy, false, 'Operate\'s log read is given up at the timeout');
-  p.answers.push({ ok: true, entries: [{ call: 'K1ABC' }] });
+  p.answers.push({ ok: true, entries: [{ id: 1, date: '20261111', time: '10:00', call: 'K1ABC' }] }, { ok: true, entries: [] });
   await p.refreshOpLog();
   assert.deepStrictEqual(Array.from(p.opLog.rows, (r) => r.call), ['K1ABC'], 'and the next tick reads the QSO');
   assert.strictEqual(p.drawn, 1, 'which redraws the decodes for the Worked flag');
 }
 
-// Load older QSOs: the button comes back, and the list says why it is empty.
+// Loading older QSOs as the list scrolls: a read given up frees the loader, and the list says why it is empty.
 async function loadOlder() {
-  const el = { logMoreBtn: { disabled: false }, logMore: { hidden: false }, logList: { innerHTML: '' } };
-  const p = page(['ensureLogFiles', 'loadMoreLog'], {
-    logLoading: false, logDone: false, logRenderedAny: false, LOG_ENTRY_GOAL: 40, LOG_ENTRY_FETCH: 10,
-    logFiles: [], logFileIdx: 0, logFilesSkip: 0, logFilesExhausted: false, logFileLoadedCount: {}, rows: [],
+  const el = { logMore: { hidden: false }, logList: { innerHTML: '' } };
+  const p = page(['logCursorOf', 'readLogPages', 'loadMoreLog'], {
+    logLoading: false, logDone: false, logRenderedAny: false, LOG_ENTRY_GOAL: 15, LOG_ENTRY_FETCH: 10,
+    logCursor: '', logMoreInView: false, rows: [],
     document: { getElementById: (id) => el[id] },
     // What the list says when the sidekick has no main board is another change's, and its test's.
     mainBoardAway: () => false, noMainText: () => '',
   });
-  p.appendLogRows = (file, rows) => { p.rows.push(...rows); p.logRenderedAny = true; };
+  p.appendLogRows = (rows) => { p.rows.push(...rows); if (rows.length) p.logRenderedAny = true; };
   p.loadMoreLog();
   await settle();
   assert.strictEqual(p.logLoading, true);
-  assert.strictEqual(el.logMoreBtn.disabled, true);
   await p.advance(TIMEOUT_MS);
   assert.strictEqual(p.logLoading, false, 'the load is given up at the timeout');
-  assert.strictEqual(el.logMoreBtn.disabled, false, 'and its button works again');
   assert(/no reply from sidekick/.test(el.logList.innerHTML));
-  p.answers.push({ ok: true, files: ['20261111.adi'] }, { ok: true, entries: [{ call: 'K1ABC' }] });
+  p.answers.push({ ok: true, entries: [{ id: 1, date: '20261111', time: '10:00', call: 'K1ABC' }] }, { ok: true, entries: [] });
   await p.loadMoreLog();
-  assert.deepStrictEqual(p.rows.map((r) => r.call), ['K1ABC'], 'a second tap loads the list');
+  assert.deepStrictEqual(p.rows.map((r) => r.call), ['K1ABC'], 'the next scroll loads the list');
+  assert.strictEqual(p.logDone, true, 'to its end');
+  assert.strictEqual(el.logMore.hidden, true, 'and the line at its end goes');
 }
 
 // A day's full rows, behind its download link: a read that failed or hung is not kept.
 async function dayRows() {
-  const p = page(['fetchAllEntries', 'dayFullRows'], { dayFullRowsCache: {}, LOG_ENTRY_FETCH: 10 });
+  const p = page(['logCursorOf', 'readLogPages', 'fetchAllEntries', 'dayFullRows'], { dayFullRowsCache: {}, LOG_ENTRY_FETCH: 10 });
   let failed = false;
-  p.dayFullRows('20261111.adi').catch(() => { failed = true; });
+  p.dayFullRows('20261111').catch(() => { failed = true; });
   await p.advance(TIMEOUT_MS);
   assert.strictEqual(failed, true, 'the hung read fails at the timeout');
-  assert.strictEqual(p.dayFullRowsCache['20261111.adi'], undefined, 'and is not kept');
-  p.answers.push({ ok: true, entries: [{ call: 'K1ABC' }] });
-  assert.deepStrictEqual(Array.from(await p.dayFullRows('20261111.adi'), (r) => r.call), ['K1ABC'], 'the next ask reads again');
-  assert.strictEqual(p.dayFullRows('20261111.adi'), p.dayFullRowsCache['20261111.adi'], 'a read that worked is kept');
-  assert.strictEqual(p.urls.length, 2);
+  assert.strictEqual(p.dayFullRowsCache['20261111'], undefined, 'and is not kept');
+  p.answers.push({ ok: true, entries: [{ id: 1, date: '20261111', time: '10:00', call: 'K1ABC' }] }, { ok: true, entries: [] });
+  assert.deepStrictEqual(Array.from(await p.dayFullRows('20261111'), (r) => r.call), ['K1ABC'], 'the next ask reads again');
+  assert.strictEqual(p.dayFullRows('20261111'), p.dayFullRowsCache['20261111'], 'a read that worked is kept');
+  assert.strictEqual(p.urls.length, 3, 'the hung read, then a page and the empty one after it');
 }
 
 // No log read in the app goes around the helper.
-assert(!/fetch\(\s*'\/api\/log\/(files|entries)\?/.test(src.replace(/logFetchJson\(/g, 'L(')),
-  'every read of /api/log/files and /api/log/entries in app.html goes through logFetchJson()');
+assert(!/fetch\(\s*'\/api\/log\/entries\?/.test(src.replace(/logFetchJson\(/g, 'L(')),
+  'every read of /api/log/entries in app.html goes through logFetchJson()');
+assert(!/\/api\/log\/files\?/.test(src), 'nothing reads the day list, which is gone');
 
 helper().then(qsosRefresh).then(operateLog).then(loadOlder).then(dayRows)
   .then(() => console.log('PASS: a log read that never settles is given up'), (e) => { console.error(e); process.exit(1); });

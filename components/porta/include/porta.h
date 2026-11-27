@@ -129,17 +129,11 @@ uint32_t porta_crc_errors();
 uint32_t porta_frames_ok();
 
 // ---------------------------------------------------------------------------
-// FILE_LIST / FILE_READ row emitters (I28d, docs/architecture/webapp.md (Screens)). The request/reply
-// itself is asynchronous -- a directory listing runs on a background task
-// and a file read is paced across many main-loop ticks, so neither can
-// answer in the same call that received the request the way every other
-// ACTION does. main.cpp's async FS pump calls these as rows become ready,
-// then porta_emit_ack()/porta_emit_nak() (verb = PORTA_MSG_FILE_LIST or
-// PORTA_MSG_FILE_READ) once done -- the same "burst then ACK" shape
-// CONFIG_GET-all already uses, just spread across ticks instead of one call.
+// LOG_PAGE's reply (docs/architecture/logging.md, The store on the main board): porta_host_log_page() sends
+// a row each, then the TOTAL, then porta_emit_ack() with PORTA_MSG_LOG_PAGE -- the "burst then ACK" shape
+// CONFIG_GET-all uses.
 // ---------------------------------------------------------------------------
 
-void porta_emit_file_name(const char* name);
 void porta_emit_file_entry(const porta_qso_entry_row_t& row);
 // LOG_PAGE's count of records matching its filter, after its rows and before its ACK.
 void porta_emit_file_total(uint32_t total);

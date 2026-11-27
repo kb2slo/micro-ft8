@@ -11,6 +11,10 @@ int64_t mock_clock_get()                  { return s_mock_ms; }
 void mock_clock_advance(int64_t delta_ms) { s_mock_ms += delta_ms; }
 
 int64_t rtc_now_ms() { return s_mock_ms; }
+// Set unless a test says otherwise, as on a station a browser has synced.
+static bool s_mock_clock_valid = true;
+void mock_clock_set_valid(bool valid)     { s_mock_clock_valid = valid; }
+bool rtc_is_set() { return s_mock_clock_valid; }
 
 // ============== CAT/CDC stubs ==============
 bool cat_cdc_ready(void) { return false; }

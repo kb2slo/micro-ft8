@@ -111,6 +111,13 @@ bool adif_log_qso(const AdifLogQsoInput& in, AdifLoggerDedupe* dedupe) {
         return false;
     }
 
+    // Until a browser sets it the clock reads uptime, so the QSO would be dated in 1970 and sort first
+    // forever (docs/architecture/time.md, Unset is a real state). The transmit gate keeps one from getting
+    // this far today; this keeps it so whatever else logs.
+    if (!rtc_is_set()) {
+        ESP_LOGW(TAG, "QSO with %s not logged: the clock is not set", in.dxcall.c_str());
+        return false;
+    }
     const int64_t now_ms = rtc_now_ms();
     const std::string call_norm = normalize_call_token(in.dxcall);
     const std::string key = adif_logger_dedupe_key(call_norm, in.band, in.mode);

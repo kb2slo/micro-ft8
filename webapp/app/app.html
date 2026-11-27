@@ -769,10 +769,8 @@ a.navrow{text-decoration:none}
   </section>
 
   <!-- ================= LOG ================= -->
-  <!-- One continuous list spanning every day file (docs/architecture/webapp.md (Screens)) -- day
-       dividers, lazy-loaded older entries, no file picker. loadMoreLog()
-       walks logFiles transparently: file boundaries are an implementation
-       detail, not something the operator navigates. -->
+  <!-- One continuous list, newest first (docs/architecture/webapp.md, QSOs): a header where the date
+       changes, older QSOs loaded as the list scrolls to #logMore. -->
   <section id=view-log>
     <div id=logToolbar>
       <a id=logDownloadAll class=dlink href=#>Download full ADI</a>
@@ -796,7 +794,7 @@ a.navrow{text-decoration:none}
     </div>
     <div id=logFree hidden></div>
     <div id=logList></div>
-    <div id=logMore hidden><button id=logMoreBtn type=button>Load older QSOs</button></div>
+    <div id=logMore hidden>Loading older QSOs…</div>
   </section>
 
   <!-- ================= TOOLS ================= -->
@@ -6157,7 +6155,7 @@ function slotMode(slot) {
   return slot.lenMs && slot.lenMs < 10000 ? 'FT4' : 'FT8';
 }
 
-var opLog = { file: '', rows: [], busy: false };
+var opLog = { day: '', rows: [], ids: {}, busy: false };
 // How often Operate (refreshOpLog()) and the open Log tab (refreshLogHead()) check today's file
 // for new QSOs: a QSO just logged shows without a reload, and steady polling stays modest on the
 // sidekick's one-request server. Assigned before either setInterval() below reads it: read while
@@ -6187,25 +6185,22 @@ function utcDayFile() {
          String(t.getUTCDate()).padStart(2, '0') + '.adi';
 }
 
-// Follows today's file for new QSOs: on Operate, for the Worked flag, and while the station has
-// references on any tab too, since the activation line under the slot bar is on every tab;
-// activationCounts() counts from opLog.rows too. A day with no file yet reads as no rows.
+// Follows today's QSOs: on Operate, for the Worked flag, and while the station has references on any tab
+// too, since the activation line under the slot bar is on every tab; activationCounts() counts from
+// opLog.rows too. Each read takes the newest pages of today's until one holds a QSO already held.
 async function refreshOpLog() {
   if (opLog.busy || (currentView !== 'operate' && !parseActRefs(lastCfg).length)) return;
   opLog.busy = true;
   try {
-    var file = utcDayFile();
-    if (file !== opLog.file) { opLog.file = file; opLog.rows = []; }
-    var before = opLog.rows.length;
-    while (true) {
-      var j = await logFetchJson('/api/log/entries?file=' + encodeURIComponent(file) +
-                                 '&skip=' + opLog.rows.length + '&take=50');
-      if (!j.ok) break;
-      var page = j.entries || [];
-      opLog.rows = opLog.rows.concat(page);
-      if (page.length < 50) break;
+    var day = utcDayFile().slice(0, 8);
+    if (day !== opLog.day) { opLog.day = day; opLog.rows = []; opLog.ids = {}; }
+    var got = await readLogPages('&date=' + day, '', 0, opLog.ids);
+    got.rows.forEach(function (q) { opLog.ids[q.id] = true; });
+    if (got.rows.length) {
+      opLog.rows = got.rows.concat(opLog.rows);
+      renderDecodes();
+      renderActLine();
     }
-    if (opLog.rows.length !== before) { renderDecodes(); renderActLine(); }
   } catch (e) { /* next tick */ } finally {
     opLog.busy = false;
   }
@@ -7065,42 +7060,53 @@ async function pollEvents() {
 }
 
 // ===================== Log =====================
-// One continuous list of QSOs spanning every day file (docs/architecture/webapp.md (Screens)): day
-// dividers, lazy-loaded, file boundaries invisible to the operator. Built
-// entirely on the existing per-file /api/log/files and /api/log/entries
-// endpoints -- loadMoreLog() walks day files in order and stitches their
-// entries into one scroll, fetching another file's worth whenever the
-// current one runs out.
+// One continuous list of QSOs (docs/architecture/webapp.md, QSOs): the log read by record, newest first by
+// date, time and ID, a page at a time as the list scrolls (loadMoreLog()), with a header wherever a row's
+// date differs from the row above it. New QSOs are read from the newest down to one already shown
+// (refreshLogHead()) and go on top.
 
 var logLoadedOnce = false;
-var logFiles = [];           // known day filenames, newest first
-var logFilesSkip = 0;        // pagination cursor into the file listing itself
-var logFilesExhausted = false;
-var logFileIdx = 0;          // logFiles[] index of the file loadMoreLog() is draining
-var logFileLoadedCount = {}; // filename -> rows already loaded for it, persists across
-                             // logFileIdx moving on -- refreshLogHead() below needs to
-                             // keep polling today's file (logFiles[0]) for new QSOs
-                             // appended after we've moved on to older days
-var logGroupEls = {};        // filename -> its <div class=daygroup> DOM container, so
-                             // appending new rows to a file lands in that file's own
-                             // section regardless of what's been loaded after it
-var logEntriesByCall = {};  // callsign -> [{file,time,band,freq,rst_sent,rst_rcvd}], built
-                             // up in appendLogRows() as the Log tab pages through day
-                             // files -- only covers what's been loaded so far this
+var logCursor = '';          // before= for the next older page; '' before the first
+var logShownIds = {};        // record id -> true, for every row in the list
+var logGroupEls = {};        // 'YYYYMMDD' -> its <div class=daygroup>, so a row lands under its own day
+var logEntriesByCall = {};   // callsign -> [{day,time,band,freq,rst_sent,rst_rcvd}], built up in
+                             // appendLogRows() as the list loads -- only what is loaded so far this
                              // session, not necessarily the whole log (see showCallInfo)
-var logDone = false;         // every file drained, nothing left anywhere
+var logDone = false;         // the oldest record is in the list
 var logLoading = false;
 var logRefreshing = false;
 var logRefreshAgain = false; // a refresh asked for while one runs: run it again after, or it misses a QSO written meanwhile
 var logRenderedAny = false;
-var dayFullRowsCache = {};  // filename -> Promise<full day's rows> (fetchAllEntries()),
-                             // memoized per file so the activation-count link text and a
-                             // click on it never issue two separate fetches of the same
-                             // day -- appendLogRows() below clears a file's entry whenever
-                             // it gets new rows, so the count stays live without polling.
+var dayFullRowsCache = {};   // 'YYYYMMDD' -> Promise<every row of that day> (fetchAllEntries()), so the
+                             // header's count and POTA/SOTA link and a tap on Download ADI read a day once
 
 var LOG_ENTRY_FETCH = 10;    // rows per /api/log/entries call
 var LOG_ENTRY_GOAL = 15;     // rows to append per loadMoreLog() batch
+
+// Pages of the log by record, newest first, from the newest or after `before` (logCursorOf()), until a page
+// comes back empty, `want` rows are in (0 for no limit), or a row `held` names (id -> true) is reached:
+// the list is shown newest first without a gap, so everything past it is held too. `params` narrows it
+// ('&date=20261125', '&unsent=1'). A page cut short says so, and the next carries on from its last row.
+async function readLogPages(params, before, want, held, onPage) {
+  var rows = [], cursor = before || '', total = null, end = false;
+  for (;;) {
+    var j = await logFetchJson('/api/log/entries?take=' + LOG_ENTRY_FETCH + (params || '') +
+                               (cursor ? '&before=' + cursor : ''));
+    if (!j.ok) throw new Error(j.why || 'entries failed');
+    if (total === null && j.total != null) total = j.total;
+    var page = j.entries || [];
+    if (!page.length) { end = true; break; }
+    var reached = false;
+    for (var k = 0; k < page.length; k++) {
+      if (held && held[page[k].id]) { reached = true; break; }
+      rows.push(page[k]);
+    }
+    cursor = logCursorOf(page[page.length - 1]);
+    if (onPage) onPage(rows.length, total);
+    if (reached || (want && rows.length >= want)) break;
+  }
+  return { rows: rows, cursor: cursor, end: end, total: total };
+}
 
 function dayLabel(name) {
   // name is "YYYYMMDD.adi" (qso_browse.cpp / file_list.cpp). Always renders
@@ -7122,7 +7128,7 @@ function dayLabel(name) {
 // own "unknown" placeholder ("??:??") rather than a real time.
 function qsoEpochMs(file, timeStr) {
   var m = /^(\d{2}):(\d{2})$/.exec(timeStr || '');
-  if (!m) return null;
+  if (!m || !/^\d{8}/.test(file || '')) return null;
   var y = parseInt(file.slice(0, 4), 10), mo = parseInt(file.slice(4, 6), 10), d = parseInt(file.slice(6, 8), 10);
   return Date.UTC(y, mo - 1, d, parseInt(m[1], 10), parseInt(m[2], 10));
 }
@@ -7699,7 +7705,7 @@ function highlightCallInText(text, calls, strong) {
 // (grid/distance/bearing, and now live POTA/SOTA spot lookup).
 function qsoHistoryFor(call) {
   return (logEntriesByCall[call] || []).map(function (q) {
-    return { when: dayLabel(q.file).replace(' (Today)', '') + (q.time ? ' ' + q.time : ''),
+    return { when: dayLabel(q.day).replace(' (Today)', '') + (q.time ? ' ' + q.time : ''),
              band: q.band, freq: q.freq, rstSent: q.rst_sent, rstRcvd: q.rst_rcvd };
   });
 }
@@ -7719,87 +7725,82 @@ function showCallInfo(call) {
                                       heardUs: function (c) { return PskrCore.heardBy(PskrLive.state(), c); } });
 }
 
-// Appends to `file`'s own persistent container rather than the end of
-// #logList, so a later call for a file that already has rows (either
-// loadMoreLog() continuing to page through it, or refreshLogHead() finding
-// new QSOs logged since) lands them in the right place regardless of what
-// has been appended after it in the meantime.
-function appendLogRows(file, rows, prependGroup) {
+// The day's group, made the first time a row of that day arrives: on top for a new QSO's day, at the end
+// for an older day reached by scrolling. Every day opens (maintainer, 2026-11-26: one stream, dated as it
+// goes); a tap on its header folds it.
+function logGroupFor(day, atTop) {
+  var group = logGroupEls[day];
+  if (group) return group;
   var list = document.getElementById('logList');
-  if (!logRenderedAny) list.innerHTML = ''; // clear the "Loading…" placeholder
-  var group = logGroupEls[file];
-  if (!group) {
-    group = document.createElement('div');
-    group.className = 'daygroup';
-    // Operator-requested 2026-09-22: today open, every older day collapsed
-    // by default. Reuses dayLabel()'s own "(Today)" determination rather
-    // than re-deriving the date match a second way.
-    if (dayLabel(file).indexOf('(Today)') === -1) {
-      group.classList.add('collapsed');
-    }
-    var day = document.createElement('div');
-    day.className = 'day';
-    // Tapping the header toggles collapse; Download ADI is a different
-    // action and stops the click from also reaching this handler below.
-    day.onclick = function () { group.classList.toggle('collapsed'); };
-    var toggle = document.createElement('span');
-    toggle.className = 'daytoggle';
-    toggle.innerHTML = '<svg class=daychevron viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>';
-    var dayText = document.createElement('span');
-    dayText.className = 'daydate'; // stable lookup for the count update below
-    toggle.appendChild(dayText);
-    day.appendChild(toggle);
-    var dlink = document.createElement('a');
-    dlink.className = 'dlink';
-    dlink.href = '#';
-    dlink.textContent = 'Download ADI';
-    dlink.onclick = function (ev) {
-      ev.preventDefault();
-      ev.stopPropagation();
-      downloadDayAdif(file, dlink);
-    };
-    day.appendChild(dlink);
-    group.appendChild(day);
-    // Rows live in their own grid/overflow wrapper, not directly under
-    // .daygroup -- that's what lets the collapse animate to/from the
-    // content's real height (grid-template-rows 1fr<->0fr) instead of a
-    // guessed max-height.
-    var daybody = document.createElement('div');
-    daybody.className = 'daybody';
-    var daybodyInner = document.createElement('div');
-    daybodyInner.className = 'daybody-inner';
-    daybody.appendChild(daybodyInner);
-    group.appendChild(daybody);
-    // loadMoreLog() walks files oldest-of-what's-known-so-far last, so a
-    // plain append keeps newest-first order there. checkForNewDayFiles()
-    // below discovers a file *newer* than anything rendered yet, which has
-    // to land above the existing groups instead.
-    if (prependGroup && list.firstChild) {
-      list.insertBefore(group, list.firstChild);
-    } else {
-      list.appendChild(group);
-    }
-    logGroupEls[file] = group;
-  }
-  var daybodyInnerEl = group.querySelector('.daybody-inner');
-  rows.forEach(function (q) {
+  group = document.createElement('div');
+  group.className = 'daygroup';
+  var head = document.createElement('div');
+  head.className = 'day';
+  // Tapping the header toggles collapse; Download ADI is a different action and stops the click from also
+  // reaching this handler below.
+  head.onclick = function () { group.classList.toggle('collapsed'); };
+  var toggle = document.createElement('span');
+  toggle.className = 'daytoggle';
+  toggle.innerHTML = '<svg class=daychevron viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>';
+  var dayText = document.createElement('span');
+  dayText.className = 'daydate';
+  toggle.appendChild(dayText);
+  head.appendChild(toggle);
+  var dlink = document.createElement('a');
+  dlink.className = 'dlink';
+  dlink.href = '#';
+  dlink.textContent = 'Download ADI';
+  dlink.onclick = function (ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    downloadDayAdif(day, dlink);
+  };
+  head.appendChild(dlink);
+  group.appendChild(head);
+  // Rows live in their own grid/overflow wrapper, not directly under .daygroup -- that's what lets the
+  // collapse animate to/from the content's real height (grid-template-rows 1fr<->0fr) instead of a guessed
+  // max-height.
+  var daybody = document.createElement('div');
+  daybody.className = 'daybody';
+  var inner = document.createElement('div');
+  inner.className = 'daybody-inner';
+  daybody.appendChild(inner);
+  group.appendChild(daybody);
+  if (atTop && list.firstChild) list.insertBefore(group, list.firstChild);
+  else list.appendChild(group);
+  logGroupEls[day] = group;
+  return group;
+}
+
+// The header's count: the rows shown, until the day's full read says how many it holds (refreshDayLinkText()).
+function setDayCount(day, n) {
+  var group = logGroupEls[day];
+  if (group) group.querySelector('.daydate').textContent = dayLabel(day) + ' · ' + n + ' QSO' + (n === 1 ? '' : 's');
+}
+
+// Rows newest first, each under its day: at the end as the list scrolls, or on top for QSOs logged since
+// (atTop), newest on top either way. A row already shown is not shown twice.
+function appendLogRows(rows, atTop) {
+  var list = document.getElementById('logList');
+  if (!logRenderedAny && rows.length) list.innerHTML = ''; // clear the "Loading…" placeholder
+  var days = {};
+  (atTop ? rows.slice().reverse() : rows).forEach(function (q) {
+    if (logShownIds[q.id]) return;
+    logShownIds[q.id] = true;
+    var day = q.date || '';
+    days[day] = true;
+    var group = logGroupFor(day, atTop);
+    var inner = group.querySelector('.daybody-inner');
     var row = document.createElement('div');
     row.className = 'frow';
-    // Field-found 2026-09-22: a logged QSO carries the other station's own
-    // <gridsquare> right here, but nothing was ever caching it -- opening
-    // that same callsign's info card right after logging them still said
-    // "not seen sending a grid yet this session". A completed QSO is at
-    // least as trustworthy a source as a bare decode, so it belongs in the
-    // same shared cache.
+    // Field-found 2026-09-22: a logged QSO carries the other station's own <gridsquare> right here, but
+    // nothing was caching it, so opening that callsign's card right after logging said "not seen sending a
+    // grid yet this session". A completed QSO is at least as trustworthy a source as a bare decode.
     CallInfo.learnGrid(q.call, q.grid);
-    // data-ts, not just the rendered text -- refreshVisibleAgo() (tick()
-    // below) re-reads it every second while Log is the visible view, same
-    // as Operate's decode-ago, so a QSO logged minutes ago doesn't sit there
-    // showing a stale age for however long the operator keeps the tab open.
-    var qts = qsoEpochMs(file, q.time);
-    // Best-effort -- geo data may still be loading on a cold page (this
-    // runs once per row, at log-load time, not live), and shortLocation()
-    // just returns '' rather than blocking the row on its own fetch.
+    // data-ts, not just the rendered text -- refreshVisibleAgo() re-reads it every second while QSOs is
+    // the visible view, so a QSO logged minutes ago does not show a stale age.
+    var qts = qsoEpochMs(day, q.time);
+    // Best-effort: geo data may still be loading on a cold page, and shortLocation() returns '' then.
     var qShortLoc = q.grid ? CallInfo.shortLocation(q.grid) : '';
     row.innerHTML =
       '<div class=frow-main>' +
@@ -7818,16 +7819,8 @@ function appendLogRows(file, rows, prependGroup) {
           (q.comment ? '<span class=comment>' + esc(q.comment) + '</span>' : '') +
         '</div>';
       })();
-    // Day files are written oldest-first (log_adif_entry() appends), and
-    // skip/take pages forward through that same order -- so within one
-    // day, each fetched batch is itself oldest-to-newest, and a plain
-    // append would put the newest QSO at the *bottom*. Inserting right
-    // after the day header instead means: processing a batch in its given
-    // (oldest-first) order naturally lands the newest row on top, since
-    // each later (newer) row gets inserted above the one before it. Same
-    // logic makes a QSO refreshLogHead() catches live land at the very
-    // top of Today, which is the point -- it just happened.
-    daybodyInnerEl.insertBefore(row, daybodyInnerEl.firstChild || null);
+    if (atTop) inner.insertBefore(row, inner.firstChild || null);
+    else inner.appendChild(row);
     logRenderedAny = true;
     var callEl = row.querySelector('.callink');
     if (callEl) {
@@ -7836,41 +7829,26 @@ function appendLogRows(file, rows, prependGroup) {
     var callKey = (q.call || '').toUpperCase();
     if (callKey) {
       if (!logEntriesByCall[callKey]) logEntriesByCall[callKey] = [];
-      logEntriesByCall[callKey].push({ file: file, time: q.time, band: q.band, freq: q.freq,
+      logEntriesByCall[callKey].push({ day: day, time: q.time, band: q.band, freq: q.freq,
                                        rst_sent: q.rst_sent, rst_rcvd: q.rst_rcvd });
     }
   });
-  // Operator-requested 2026-09-22: how many QSOs that day. Recomputed from
-  // the rendered rows rather than kept as a running counter, because
-  // there's no API-provided per-file total to check it against
-  // (/api/log/files returns bare filenames, no record count) and a busy
-  // day can span more than one loadMoreLog() batch -- counting what's
-  // actually in the DOM is correct by construction whether this is a
-  // brand-new group, a pagination continuation, or a live QSO
-  // refreshLogHead() just prepended, instead of a separate count that
-  // could drift out of sync with what's on screen.
-  var dayTextEl = group.querySelector('.daydate');
-  var dayCount = group.querySelectorAll('.frow').length;
-  dayTextEl.textContent = dayLabel(file) + ' · ' + dayCount + ' QSO' + (dayCount === 1 ? '' : 's');
-  // A brand-new, still-empty day file (checkForNewDayFiles()'s UTC-rollover
-  // case, rows === []) has nothing to count -- skip the fetch, the plain
-  // "Download ADI" text is already correct. Any real batch (first load,
-  // pagination, or a live QSO from refreshLogHead()) can only ever add
-  // references, never remove one, but re-deriving from the full day is
-  // simpler than trying to merge counts incrementally and this is not a
-  // hot path.
-  if (rows.length) {
-    delete dayFullRowsCache[file];
-    refreshDayLinkText(file, group.querySelector('.dlink'));
-  }
+  Object.keys(days).forEach(function (day) {
+    var group = logGroupEls[day];
+    setDayCount(day, group.querySelectorAll('.frow').length);
+    // A QSO logged since changes the day it lands in; a day reached by scrolling is read once.
+    if (atTop) delete dayFullRowsCache[day];
+    refreshDayLinkText(day, group.querySelector('.dlink'));
+  });
 }
 
 // Best-effort: fills in a day's POTA/SOTA reference counts once its full row
 // set is fetched. A failed fetch just leaves the plain "Download ADI" text
 // -- the exact single-file download in downloadDayAdif() below still works
 // either way, it only loses the n-fer split.
-function refreshDayLinkText(file, dlinkEl) {
-  dayFullRows(file).then(function (rows) {
+function refreshDayLinkText(day, dlinkEl) {
+  dayFullRows(day).then(function (rows) {
+    setDayCount(day, rows.length);
     var refs = dayActivationRefs(rows);
     var parts = [];
     if (refs.pota.length) parts.push(refs.pota.length + ' POTA');
@@ -8040,49 +8018,37 @@ function triggerAdifDownload(baseName, text) {
   URL.revokeObjectURL(url);
 }
 
-// Every row of one day, a page of LOG_ENTRY_FETCH at a time, as the app's other log readers ask. A larger
-// page comes back short and gives no sign: the main board's Port A queue holds 48 frames and drops the oldest,
-// so a page of 50 loses its first rows, and the sidekick's reply holds about 18 (FILE_ENTRIES_JSON_MAX,
-// row ujtv). Asking for 50 made Download ADI stop at 18 QSOs a day (2026-11-26).
-async function fetchAllEntries(file) {
-  var rows = [];
-  var skip = 0;
-  while (true) {
-    var j = await logFetchJson('/api/log/entries?file=' + encodeURIComponent(file) +
-                               '&skip=' + skip + '&take=' + LOG_ENTRY_FETCH);
-    if (!j.ok) throw new Error(j.why || 'entries failed');
-    var page = j.entries || [];
-    rows = rows.concat(page);
-    skip += page.length;
-    if (page.length < LOG_ENTRY_FETCH) break;
-  }
-  return rows;
+// Every row of one day, in the order logged (the pages come newest first), a page of LOG_ENTRY_FETCH at a
+// time, each from the last row of the one before: a page the main board's Port A queue or the sidekick's
+// reply cut short (row ujtv) loses nothing.
+async function fetchAllEntries(day) {
+  var got = await readLogPages('&date=' + day, '', 0, null);
+  return got.rows.reverse();
 }
 
-// Memoized wrapper: refreshDayLinkText() (appendLogRows(), above) and a
-// click on the day's own link both need this file's complete row set, and
-// must see the same data rather than racing two separate fetches.
-function dayFullRows(file) {
-  if (!dayFullRowsCache[file]) {
-    var p = fetchAllEntries(file);
-    dayFullRowsCache[file] = p;
+// Memoized: refreshDayLinkText() (appendLogRows(), above) and a tap on the day's own link both need the
+// day's complete row set, and must see the same data rather than racing two separate reads.
+function dayFullRows(day) {
+  if (!dayFullRowsCache[day]) {
+    var p = fetchAllEntries(day);
+    dayFullRowsCache[day] = p;
     // A read that failed is not kept: the next ask reads again.
-    p.catch(function () { if (dayFullRowsCache[file] === p) delete dayFullRowsCache[file]; });
+    p.catch(function () { if (dayFullRowsCache[day] === p) delete dayFullRowsCache[day]; });
   }
-  return dayFullRowsCache[file];
+  return dayFullRowsCache[day];
 }
 
-async function downloadDayAdif(file, linkEl) {
+async function downloadDayAdif(day, linkEl) {
   var origText = linkEl.textContent;
   linkEl.textContent = 'Preparing…';
   try {
-    var dateStr = file.slice(0, 8);
-    var rows = await dayFullRows(file);
+    var dateStr = day;
+    var rows = await dayFullRows(day);
     var refs = dayActivationRefs(rows);
     if (!refs.pota.length && !refs.sota.length) {
       var text = 'ADIF EXPORT\n<eoh>\n' +
                 rows.map(function (q) { return buildAdifRecord(q, dateStr); }).join('');
-      triggerAdifDownload(file, text);
+      triggerAdifDownload(day, text);
     } else {
       await downloadDayNfer(rows, dateStr);
     }
@@ -8113,31 +8079,24 @@ async function downloadDayNfer(rows, dateStr) {
   }
 }
 
-// Independent of logFiles/logFilesSkip (the lazy-loading Log-tab state) --
-// walks its own cursor through every day file rather than reusing whatever
-// the visible list has paged through so far, so this is correct whether or
-// not the operator has scrolled the tab at all.
+// Its own walk of the whole log, apart from the list's, so it is whole whether or not the operator has
+// scrolled the tab at all: newest day first, each day in the order logged.
 async function downloadAllAdif(linkEl) {
   var origText = linkEl.textContent;
   try {
-    var files = [];
-    var skip = 0;
-    while (true) {
-      var j = await logFetchJson('/api/log/files?skip=' + skip + '&take=30');
-      if (!j.ok) throw new Error(j.why || 'file list failed');
-      var page = j.files || [];
-      files = files.concat(page);
-      skip += page.length;
-      if (page.length < 30) break;
-    }
+    var got = await readLogPages('', '', 0, null, function (n, total) {
+      linkEl.textContent = 'Preparing… ' + n + (total != null ? '/' + total : '');
+    });
+    var days = [], byDay = {};
+    got.rows.forEach(function (q) {
+      var day = q.date || '';
+      if (!byDay[day]) { byDay[day] = []; days.push(day); }
+      byDay[day].push(q);
+    });
     var parts = [];
-    for (var i = 0; i < files.length; i++) {
-      linkEl.textContent = 'Preparing… ' + (i + 1) + '/' + files.length;
-      var file = files[i];
-      var dateStr = file.slice(0, 8);
-      var rows = await fetchAllEntries(file);
-      rows.forEach(function (q) { parts.push(buildAdifRecord(q, dateStr)); });
-    }
+    days.forEach(function (day) {
+      byDay[day].reverse().forEach(function (q) { parts.push(buildAdifRecord(q, day)); });
+    });
     triggerAdifDownload('micro-ft8-log', 'ADIF EXPORT\n<eoh>\n' + parts.join(''));
   } catch (e) {
     failMsg(String(e && e.message ? e.message : e));
@@ -8146,7 +8105,7 @@ async function downloadAllAdif(linkEl) {
   }
 }
 
-// Clears every daily QSO log the host will delete (same set as FILE_LIST).
+// Clears every QSO the main board holds.
 // Confirms first — destructive. Reloads the Log list on success. Active-day
 // LOCK during TX/decode leaves today's file; the host NAKs only when nothing
 // could be removed.
@@ -8168,11 +8127,8 @@ async function clearAllAdif() {
       failMsg('Clear failed: ' + (j.why || r.status));
       return;
     }
-    logFiles = [];
-    logFileIdx = 0;
-    logFilesSkip = 0;
-    logFilesExhausted = false;
-    logFileLoadedCount = {};
+    logCursor = '';
+    logShownIds = {};
     logGroupEls = {};
     logRenderedAny = false;
     logDone = false;
@@ -8190,44 +8146,16 @@ async function clearAllAdif() {
   }
 }
 
-// Fetches the next page of day filenames the first time (or another page
-// once logFileIdx runs off the end of what's been fetched so far). A no-op
-// once every file the main board has is known.
-async function ensureLogFiles() {
-  if (logFileIdx < logFiles.length || logFilesExhausted) return;
-  var j = await logFetchJson('/api/log/files?skip=' + logFilesSkip + '&take=30');
-  if (!j.ok) throw new Error(j.why || 'file list failed');
-  var files = j.files || [];
-  logFiles = logFiles.concat(files);
-  logFilesSkip += files.length;
-  if (files.length < 30) logFilesExhausted = true;
-}
-
+// The next older page or so of the log, below what the list shows; then again while the end of the list is
+// still in view, so a tall screen fills.
 async function loadMoreLog() {
   if (logLoading || logDone) return;
   logLoading = true;
-  document.getElementById('logMoreBtn').disabled = true;
-  var appended = 0;
   try {
-    while (appended < LOG_ENTRY_GOAL) {
-      await ensureLogFiles();
-      if (logFileIdx >= logFiles.length) { logDone = true; break; }
-      var file = logFiles[logFileIdx];
-      var skip = logFileLoadedCount[file] || 0;
-      var j = await logFetchJson('/api/log/entries?file=' + encodeURIComponent(file) +
-                                 '&skip=' + skip + '&take=' + LOG_ENTRY_FETCH);
-      if (!j.ok) throw new Error(j.why || 'entries failed');
-      var rows = j.entries || [];
-      if (rows.length) {
-        appendLogRows(file, rows);
-        appended += rows.length;
-        logFileLoadedCount[file] = skip + rows.length;
-      }
-      if (rows.length < LOG_ENTRY_FETCH) {
-        // This file is exhausted for now -- move on to the next one.
-        logFileIdx++;
-      }
-    }
+    var got = await readLogPages('', logCursor, LOG_ENTRY_GOAL, null);
+    appendLogRows(got.rows, false);
+    logCursor = got.cursor;
+    if (got.end) logDone = true;
   } catch (e) {
     if (!logRenderedAny) {
       document.getElementById('logList').innerHTML =
@@ -8240,10 +8168,17 @@ async function loadMoreLog() {
         '<p style="padding:0 1rem;color:GrayText">No QSOs</p>';
     }
     document.getElementById('logMore').hidden = logDone;
-    document.getElementById('logMoreBtn').disabled = false;
   }
+  if (logMoreInView && !logDone && logRenderedAny) setTimeout(loadMoreLog, 0);
 }
-document.getElementById('logMoreBtn').onclick = function () { loadMoreLog(); };
+// The line at the end of the list: in view, or within a screen of it, the next page loads.
+var logMoreInView = false;
+if (typeof IntersectionObserver === 'function') {
+  new IntersectionObserver(function (entries) {
+    logMoreInView = entries.some(function (e) { return e.isIntersecting; });
+    if (logMoreInView && logLoadedOnce) loadMoreLog();
+  }, { root: document.getElementById('view-log'), rootMargin: '0px 0px 100% 0px' }).observe(document.getElementById('logMore'));
+}
 document.getElementById('logDownloadAll').onclick = function (ev) {
   ev.preventDefault();
   downloadAllAdif(this);
@@ -8252,58 +8187,17 @@ document.getElementById('logClearAll').onclick = function (ev) {
   ev.preventDefault();
   clearAllAdif();
 };
-// ensureLogFiles() only ever looks *past* the end of what it has fetched
-// (older files); a file newer than logFiles[0] -- the main board's day rollover at
-// UTC midnight -- is otherwise never noticed short of a page reload, since
-// nothing else re-checks the front of the listing. Prepends any such file(s)
-// in newest-first order, ahead of everything already rendered, then leaves
-// logFiles[0] pointing at the true latest file so refreshLogHead() below
-// polls the right one.
-async function checkForNewDayFiles() {
-  if (!logFiles.length) return;
-  var j = await logFetchJson('/api/log/files?skip=0&take=5');
-  if (!j.ok) return;
-  var files = j.files || [];
-  var known = logFiles[0];
-  var fresh = [];
-  for (var i = 0; i < files.length; i++) {
-    if (files[i] === known) break; // caught up to what we already know
-    fresh.push(files[i]);
-  }
-  if (!fresh.length) return;
-  for (var k = fresh.length - 1; k >= 0; k--) {
-    logFiles.unshift(fresh[k]);
-    appendLogRows(fresh[k], [], true);
-  }
-  logFileIdx += fresh.length;
-  logFilesSkip += fresh.length;
-}
-
-// Today's file (logFiles[0]) is the only one still growing -- a QSO logged
-// while the tab is open lands at its end. Re-checks it on a timer, only
-// while the Log tab is actually visible, and only picks up rows beyond
-// what's already loaded (so this also backfills today's file if the
-// operator never paged all the way through it via "Load older QSOs").
-// checkForNewDayFiles() runs first so a midnight rollover mid-session
-// retargets logFiles[0] before this fetches its entries.
+// QSOs logged since the list was read: the newest pages down to a QSO already shown, on top. Only while the
+// QSOs tab is the one showing; Operate follows today's with refreshOpLog().
 async function refreshLogHead() {
   if (logRefreshing) { logRefreshAgain = true; return; }
   if (!logLoadedOnce || logLoading) return;
   if (currentView !== 'log') return;
-  if (!logFiles.length) return; // first loadMoreLog() hasn't run yet
+  if (!logRenderedAny && !logDone) return; // the first page has not come yet
   logRefreshing = true;
   try {
-    await checkForNewDayFiles();
-    var file = logFiles[0];
-    var skip = logFileLoadedCount[file] || 0;
-    var j = await logFetchJson('/api/log/entries?file=' + encodeURIComponent(file) +
-                               '&skip=' + skip + '&take=' + LOG_ENTRY_FETCH);
-    if (!j.ok) return;
-    var rows = j.entries || [];
-    if (rows.length) {
-      appendLogRows(file, rows);
-      logFileLoadedCount[file] = skip + rows.length;
-    }
+    var got = await readLogPages('', '', 0, logShownIds);
+    if (got.rows.length) appendLogRows(got.rows, true);
   } catch (e) { /* next tick */ } finally {
     logRefreshing = false;
     if (logRefreshAgain) { logRefreshAgain = false; setTimeout(refreshLogHead, 0); }
@@ -8511,19 +8405,8 @@ async function qrzRelay(path, body, timeoutMs) {
 async function qrzReadRows() {
   var all = await logFetchJson('/api/log/entries?take=1');
   if (!all.ok) throw new Error(all.why || 'entries failed');
-  var rows = [];
-  var unsent = 0;
-  for (var before = ''; ;) {
-    var e = await logFetchJson('/api/log/entries?unsent=1&take=' + LOG_ENTRY_FETCH + (before ? '&before=' + before : ''));
-    if (!e.ok) throw new Error(e.why || 'entries failed');
-    var got = e.entries || [];
-    unsent = e.total || 0;
-    rows = rows.concat(got);
-    // Not "fewer than asked": a page cut short says so, and carries on from its last row.
-    if (!got.length) break;
-    before = logCursorOf(got[got.length - 1]);
-  }
-  return { rows: rows, all: all.total || 0, unsent: unsent };
+  var got = await readLogPages('&unsent=1', '', 0, null);
+  return { rows: got.rows, all: all.total || 0, unsent: got.total || 0 };
 }
 // The cursor after a row, for the next page: date, HHMM and ID.
 function logCursorOf(q) {

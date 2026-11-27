@@ -15,6 +15,8 @@ void     mock_clock_advance(int64_t delta_ms);
 // rtc_now_ms() — used by main.cpp scheduling; not called by autoseq directly,
 // but we provide it so test harness can call it.
 int64_t rtc_now_ms();
+bool rtc_is_set();
+void mock_clock_set_valid(bool valid);
 
 // CAT/CDC stubs
 bool       cat_cdc_ready(void);
