@@ -37,7 +37,11 @@ struct QsoLogRecord {
 // A page of records matching `filter`, newest first by date, time and ID, older than `before` (all zero
 // for the newest), at most `take`. Returns how many match the filter in all.
 size_t qso_log_store_page(const QsoStoreFilter& filter, const QsoStoreCursor& before, size_t take,
-                          std::vector<QsoLogRecord>* out);
+                          std::vector<QsoLogRecord>* out, QsoStoreSummary* summary_out = nullptr);
+
+// A band or mode index's name, as the store holds it ("20M", "FT8").
+const char* qso_log_store_band_name(uint8_t band);
+const char* qso_log_store_mode_name(uint8_t mode);
 
 // Sets fields on a record, as qso_store_patch() takes them: any field, one of no length removing it.
 QsoStoreStatus qso_log_store_set(uint32_t id, const std::string& fields);

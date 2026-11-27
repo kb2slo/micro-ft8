@@ -122,6 +122,118 @@ function parseUtcIso(s) {
 function fmtRst(v) {
   return (v === -99 || v == null) ? '—' : (v > 0 ? '+' + v : String(v));
 }
+// ---- the log on the main board (docs/architecture/webapp.md, QSOs and the callsign card) ----
+// 'YYYYMMDD' as "Nov 11, 2026"; without the year when `noYear`.
+var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function fmtLogDate(d, noYear) {
+  var m = /^(\d{4})(\d{2})(\d{2})$/.exec(String(d || ''));
+  if (!m || +m[2] < 1 || +m[2] > 12) return '';
+  return MONTHS[+m[2] - 1] + ' ' + (+m[3]) + (noYear ? '' : ', ' + m[1]);
+}
+// From one date to another: "Nov 11 – Nov 27, 2026", the year once when both share it; one day alone.
+function fmtLogRange(first, last) {
+  if (!first) return '';
+  if (!last || first === last) return fmtLogDate(first);
+  var sameYear = String(first).slice(0, 4) === String(last).slice(0, 4);
+  return fmtLogDate(first, sameYear) + ' – ' + fmtLogDate(last);
+}
+// The QSOs tab's line over the whole log: "303 QSOs · Nov 11 – Nov 27, 2026 · 16 days on the air". '' with no
+// QSO. `sum` is the summary /api/log/entries serves, with its `total`.
+function logSummaryText(total, sum) {
+  if (!total) return '';
+  var parts = [total + (total === 1 ? ' QSO' : ' QSOs')];
+  if (sum && sum.first) parts.push(fmtLogRange(sum.first, sum.last));
+  if (sum && sum.days) parts.push(sum.days + (sum.days === 1 ? ' day' : ' days') + ' on the air');
+  return parts.join(' · ');
+}
+// The card's line for one call: "20m FT8 ×3 · 40m FT4 ×1 · first Nov 11, 2026, last Nov 25, 2026", and
+// "· and 2 more" when the summary named only some of the bands and modes.
+function callSummaryText(sum) {
+  if (!sum || !sum.pairs) return '';
+  var parts = sum.pairs.map(function (p) {
+    return String(p.band || '').toLowerCase() + ' ' + (p.mode || '') + ' ×' + p.n;
+  });
+  if (sum.pairs_total > sum.pairs.length) parts.push('and ' + (sum.pairs_total - sum.pairs.length) + ' more');
+  if (sum.first) parts.push(sum.first === sum.last ? fmtLogDate(sum.first) : 'first ' + fmtLogDate(sum.first) + ', last ' + fmtLogDate(sum.last));
+  return parts.join(' · ');
+}
+// One QSO of the card's list: "2026-11-25 21:54 · 20m FT8 · 14.074 MHz · -08/-12".
+function callQsoText(q) {
+  var d = /^(\d{4})(\d{2})(\d{2})$/.exec(String(q.date || ''));
+  var head = [String(q.band || '').toLowerCase(), q.mode].filter(function (x) { return x; }).join(' ');
+  var when = [d ? d[1] + '-' + d[2] + '-' + d[3] : '', q.time || ''].filter(function (x) { return x; }).join(' ');
+  return [when, head, q.freq ? q.freq + ' MHz' : '', fmtRst(q.rst_sent) + '/' + fmtRst(q.rst_rcvd)]
+    .filter(function (x) { return x; }).join(' \u00b7 ');
+}
+// A page of one call's QSOs from the station, newest first, from after `before` ('' for the newest), with the
+// summary of all of them. Given up after 10 s, as the app's other log reads are (logFetchJson(), app.html).
+var CALL_QSO_PAGE = 10;
+async function fetchCallQsos(call, before) {
+  var ac = new AbortController();
+  var timer = setTimeout(function () { ac.abort(); }, 10000);
+  try {
+    var r = await fetch('/api/log/entries?take=' + CALL_QSO_PAGE + '&call=' + encodeURIComponent(call) +
+                        (before ? '&before=' + before : ''), { cache: 'no-store', signal: ac.signal });
+    var j = await r.json();
+    if (!j.ok) throw new Error(j.why || 'entries failed');
+    return j;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function callQsoCursor(q) {
+  return (q.date || '0') + '.' + (String(q.time || '').replace(/\D/g, '').slice(0, 4) || '0') + '.' + q.id;
+}
+// Fills the card's QSO section for `call` once the station answers: the summary, then a page of QSOs and
+// Show more while there are more. Touches the card only while it is still open on the same call.
+function fillCallQsos(call) {
+  var shown = 0, cursor = '';
+  function stillOpen() {
+    var modal = document.getElementById('callInfoModal');
+    return !modal.hidden && document.getElementById('callInfoCallName').textContent === call &&
+      document.getElementById('ciQsos');
+  }
+  function more() {
+    return fetchCallQsos(call, cursor).then(function (j) {
+      if (!stillOpen()) return;
+      var section = document.getElementById('ciQsos');
+      var rows = j.entries || [];
+      var total = j.total || 0;
+      if (!shown) {
+        section.innerHTML = '<div class=ci-label>QSOs in log (' + total + ')</div>' +
+          (total ? '<div class=ci-heard id=ciQsoSum>' + esc(callSummaryText(j.summary)) + '</div><div id=ciQsoRows></div>'
+                 : 'No QSOs with this callsign in the log');
+      }
+      var list = document.getElementById('ciQsoRows');
+      if (!list) return;
+      rows.forEach(function (q) {
+        var el = document.createElement('div');
+        el.className = 'ci-heard';
+        el.textContent = callQsoText(q);
+        list.appendChild(el);
+      });
+      shown += rows.length;
+      if (rows.length) cursor = callQsoCursor(rows[rows.length - 1]);
+      var old = document.getElementById('ciQsoMore');
+      if (old) old.remove();
+      if (rows.length && shown < total) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.id = 'ciQsoMore';
+        btn.className = 'ci-more';
+        btn.textContent = 'Show more (' + (total - shown) + ')';
+        btn.onclick = function () { btn.disabled = true; more(); };
+        section.appendChild(btn);
+      }
+    }, function () {
+      if (!stillOpen() || shown) return;
+      document.getElementById('ciQsos').innerHTML = '<div class=ci-label>QSOs in log</div>' +
+        '<span style="color:GrayText">No reply from the station</span>';
+    });
+  }
+  return more();
+}
+
 // Same {grid, ts} shape app.html's learnCallsignGrid() writes -- read
 // directly from the shared localStorage key rather than depending on the
 // host page to hand it over, since this is exactly the kind of "same
@@ -466,6 +578,7 @@ var STYLE = '#callInfoModal{position:fixed;inset:0;z-index:20;display:flex;align
   '.ci-row{padding:.5rem 0;border-top:1px solid color-mix(in srgb, GrayText 20%, transparent);font-size:.85rem}' +
   '.ci-label{font-size:.7rem;color:GrayText;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.15rem}' +
   '.ci-heard{font-family:ui-monospace,monospace;font-size:.75rem;padding:.15rem 0}' +
+  '.ci-more{margin-top:.35rem;font-size:.8rem;padding:.3rem .7rem}' +
   '.ci-link{display:inline-block;margin-top:.3rem;color:var(--accent, #1d4ed8);font-size:.8rem}' +
   // Same affordance app.html's own .callink already uses for a clickable
   // callsign (dotted underline, no color shift) -- a grid square link is
@@ -500,7 +613,7 @@ function hide() { document.getElementById('callInfoModal').hidden = true; }
 // opts (all optional -- a section is simply omitted when the host page
 // can't supply it, e.g. map.html has no session decode history at all):
 //   myGrid            operator's own grid (string)
-//   qsoHistory(call)  -> [{when, band, freq, rstSent, rstRcvd}] | null
+//   qsoLog            true: the section of this call's QSOs, read from the station's whole log (fillCallQsos())
 //   heardThisSession(call) -> [{when, band, snr, text}] | null
 //   heardUs(call)     -> [{band, snr, t, count, grid}]: PSKReporter reports of this station hearing us
 //                        (PskrCore.heardBy(), docs/architecture/webapp.md, Who hears me); the section shows only
@@ -533,18 +646,9 @@ async function show(call, opts) {
       : 'Not seen sending a grid yet this session') +
     '</div>';
 
-  if (typeof opts.qsoHistory === 'function') {
-    var qsoHist = opts.qsoHistory(call) || [];
-    body += '<div class=ci-row><div class=ci-label>QSOs in log (' + qsoHist.length + ')</div>' +
-      (qsoHist.length
-        ? qsoHist.slice(0, 6).map(function (q) {
-            return '<div class=ci-heard>' + esc(q.when) +
-              (q.band ? ' · ' + esc(q.band) : '') + (q.freq ? ' · ' + esc(q.freq) + ' MHz' : '') +
-              ' · ' + fmtRst(q.rstSent) + '/' + fmtRst(q.rstRcvd) + '</div>';
-          }).join('') +
-          ' <span style="color:GrayText;font-size:.75rem">(only what has loaded so far)</span>'
-        : 'No QSOs with this callsign in the loaded log') +
-      '</div>';
+  if (opts.qsoLog) {
+    body += '<div class=ci-row id=ciQsos><div class=ci-label>QSOs in log</div>' +
+      '<span style="color:GrayText">reading the log…</span></div>';
   }
 
   if (typeof opts.heardThisSession === 'function') {
@@ -588,6 +692,7 @@ async function show(call, opts) {
   document.getElementById('callInfoBody').innerHTML = body;
   document.getElementById('callInfoQrz').href = qrzUrl(call);
   document.getElementById('callInfoModal').hidden = false;
+  if (opts.qsoLog) fillCallQsos(call);
 
   if (grid) {
     locateGrid(grid).then(function (text) {
@@ -658,5 +763,6 @@ if (document.readyState === 'loading') {
 // silently going without it until whatever happens to open the modal first.
 loadGeoData();
 
-window.CallInfo = { setDistUnit: setDistUnit, learnCq: learnCq, heardCqFor: heardCqFor, loadActiveSpots: loadActiveSpots, activeSpotFor: activeSpotFor, show: show, hide: hide, learnGrid: learnGrid, cachedGrid: cachedGrid, shortLocation: shortLocation, countryCode: countryCode, gridLink: gridLink, qrzUrl: qrzUrl };
+window.CallInfo = { logSummaryText: logSummaryText, callSummaryText: callSummaryText, callQsoText: callQsoText,
+                    setDistUnit: setDistUnit, learnCq: learnCq, heardCqFor: heardCqFor, loadActiveSpots: loadActiveSpots, activeSpotFor: activeSpotFor, show: show, hide: hide, learnGrid: learnGrid, cachedGrid: cachedGrid, shortLocation: shortLocation, countryCode: countryCode, gridLink: gridLink, qrzUrl: qrzUrl };
 })();

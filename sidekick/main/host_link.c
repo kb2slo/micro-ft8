@@ -4,6 +4,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <string.h>
 
 #include "driver/uart.h"
@@ -612,19 +613,20 @@ static char s_file_entries_json[FILE_ENTRIES_JSON_MAX];
 static size_t s_file_entries_json_len;
 static bool s_file_entries_json_first;
 static bool s_file_entries_gathering;
-// LOG_PAGE's TOTAL, -1 until one arrives; and whether a row was left out for want of room, so the browser
+// LOG_PAGE's SUMMARY, once it arrives; and whether a row was left out for want of room, so the browser
 // knows to carry on from the last row it got rather than take the page as the end.
-static int64_t s_file_entries_total;
+static porta_log_summary_t s_file_entries_summary;
+static bool s_file_entries_have_summary;
 static bool s_file_entries_cut;
-// Room kept at the end of the body for `],"total":4294967295,"cut":true}`.
-#define FILE_ENTRIES_JSON_TAIL 48
+// Room kept at the end of the body for `],"total":…,"summary":{…},"cut":true}`, its pairs at their longest.
+#define FILE_ENTRIES_JSON_TAIL (160 + PORTA_LOG_SUMMARY_PAIRS * (PORTA_BAND_MAX + PORTA_MODE_MAX + 40))
 
 static void file_entries_json_begin(void)
 {
     lock_take();
     s_file_entries_gathering = true;
     s_file_entries_json_first = true;
-    s_file_entries_total = -1;
+    s_file_entries_have_summary = false;
     s_file_entries_cut = false;
     strcpy(s_file_entries_json, "{\"ok\":true,\"entries\":[");
     s_file_entries_json_len = strlen(s_file_entries_json);
@@ -697,11 +699,12 @@ static void file_entries_json_add(const porta_qso_entry_row_t *e)
     lock_give();
 }
 
-static void file_entries_json_total(uint32_t total)
+static void file_entries_json_summary(const porta_log_summary_t *sum)
 {
     lock_take();
     if (s_file_entries_gathering) {
-        s_file_entries_total = total;
+        s_file_entries_summary = *sum;
+        s_file_entries_have_summary = true;
     }
     lock_give();
 }
@@ -713,10 +716,26 @@ static void file_entries_json_end_locked(void)
     if (!s_file_entries_gathering) {
         return;
     }
-    char tail[FILE_ENTRIES_JSON_TAIL];
+    // Static: this runs on the porta_rx task's 4 KB stack (file_entries_json_add()'s note).
+    static char tail[FILE_ENTRIES_JSON_TAIL];
+    static char esc_band[PORTA_BAND_MAX * 6 + 1];
+    static char esc_mode[PORTA_MODE_MAX * 6 + 1];
     int n = snprintf(tail, sizeof(tail), "]");
-    if (s_file_entries_total >= 0) {
-        n += snprintf(tail + n, sizeof(tail) - (size_t)n, ",\"total\":%lu", (unsigned long)s_file_entries_total);
+    if (s_file_entries_have_summary) {
+        const porta_log_summary_t *m = &s_file_entries_summary;
+        char first[12] = "", last[12] = "";
+        if (m->first_date) snprintf(first, sizeof(first), "%08lu", (unsigned long)m->first_date);
+        if (m->last_date) snprintf(last, sizeof(last), "%08lu", (unsigned long)m->last_date);
+        n += snprintf(tail + n, sizeof(tail) - (size_t)n,
+                      ",\"total\":%lu,\"summary\":{\"first\":\"%s\",\"last\":\"%s\",\"days\":%u,\"pairs_total\":%u,\"pairs\":[",
+                      (unsigned long)m->total, first, last, (unsigned)m->days, (unsigned)m->pairs_total);
+        for (size_t i = 0; i < m->pair_count && i < PORTA_LOG_SUMMARY_PAIRS; ++i) {
+            json_escape(m->pairs[i].band, esc_band, sizeof(esc_band));
+            json_escape(m->pairs[i].mode, esc_mode, sizeof(esc_mode));
+            n += snprintf(tail + n, sizeof(tail) - (size_t)n, "%s{\"band\":\"%s\",\"mode\":\"%s\",\"n\":%u}",
+                          i ? "," : "", esc_band, esc_mode, (unsigned)m->pairs[i].count);
+        }
+        n += snprintf(tail + n, sizeof(tail) - (size_t)n, "]}");
     }
     if (s_file_entries_cut) {
         n += snprintf(tail + n, sizeof(tail) - (size_t)n, ",\"cut\":true");
@@ -1271,9 +1290,10 @@ static bool query_uint(httpd_req_t *req, const char *key, unsigned long dflt, un
     return true;
 }
 
-// GET /api/log/entries?unsent=1&date=YYYYMMDD&before=<date>.<HHMM>.<id>&take=  -- parsed QSO rows: our own
-// records newest first by date, time and ID, older than `before` (none: the newest), only those QRZ lacks
-// with `unsent`, only `date`'s with `date`; the reply carries `total`, how many match in all. Open read:
+// GET /api/log/entries?unsent=1&date=YYYYMMDD&call=K1ABC&before=<date>.<HHMM>.<id>&take=  -- parsed QSO rows:
+// our own records newest first by date, time and ID, older than `before` (none: the newest), only those QRZ
+// lacks with `unsent`, only `date`'s with `date`, only `call`'s with `call`; the reply carries `total`, how
+// many match in all, and `summary`, what they add up to (first and last date, days, each band and mode). Open read:
 // QSO log browsing is the category docs/architecture/system.md (Who may key the transmitter) opened up for
 // the viewer and the event feed.
 // Each row carries its record's `id` and `date`. A reply that ran out of room says `"cut":true`: ask again
@@ -1288,6 +1308,21 @@ static esp_err_t get_log_entries(httpd_req_t *req)
         httpd_query_key_value(query, "before", before, sizeof(before));
         if (httpd_query_key_value(query, "unsent", val, sizeof(val)) == ESP_OK && strcmp(val, "1") == 0) {
             page.flags |= PORTA_LOG_PAGE_UNSENT;
+        }
+        char call[PORTA_CALLSIGN_MAX + 2] = {0};
+        if (httpd_query_key_value(query, "call", call, sizeof(call)) == ESP_OK) {
+            // A callsign: letters, digits and '/', as the store keeps one.
+            const size_t call_n = strlen(call);
+            bool ok = call_n > 0 && call_n <= PORTA_CALLSIGN_MAX;
+            for (size_t i = 0; ok && i < call_n; ++i) {
+                ok = isalnum((unsigned char)call[i]) || call[i] == '/';
+            }
+            if (!ok) {
+                httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad call");
+                return ESP_FAIL;
+            }
+            page.flags |= PORTA_LOG_PAGE_CALL;
+            memcpy(page.call, call, call_n + 1);
         }
         if (httpd_query_key_value(query, "date", val, sizeof(val)) == ESP_OK) {
             page.flags |= PORTA_LOG_PAGE_DATE;
@@ -1756,7 +1791,7 @@ static void porta_rx_task(void *arg)
     uint8_t buf[256];
     porta_frame_t frame;
     porta_qso_entry_row_t qrow;
-    uint32_t file_total = 0;
+    static porta_log_summary_t file_summary;  // static: the porta_rx task's stack is small
     uint32_t reported_crc = 0;
 
     while (1) {
@@ -1865,8 +1900,8 @@ static void porta_rx_task(void *arg)
                 ring_push(&e);
             } else if (porta_proto_parse_file_entry_row(&frame, &qrow)) {
                 file_entries_json_add(&qrow);
-            } else if (porta_proto_parse_file_total_row(&frame, &file_total)) {
-                file_entries_json_total(file_total);
+            } else if (porta_proto_parse_file_summary_row(&frame, &file_summary)) {
+                file_entries_json_summary(&file_summary);
             } else {
                 char cfg_key[PORTA_CONFIG_KEY_MAX + 1];
                 char cfg_val[PORTA_CONFIG_VALUE_MAX + 1];

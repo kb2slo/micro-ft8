@@ -530,6 +530,7 @@ button{touch-action:manipulation}
    .dlink's own color/weight rather than adding a second visual language
    for one control. */
 button.dlink{border:0;background:transparent;padding:0;font:inherit;cursor:pointer}
+#logSummary{padding:.35rem 1rem 0;font-size:.85rem}
 #logFree{padding:.35rem 1rem;font-size:.8rem;color:GrayText}
 #logFree.low{color:#b91c1c}
 #logToolbar{display:flex;justify-content:space-between;align-items:center;padding:.6rem 1rem;font-size:.85rem;border-bottom:1px solid color-mix(in srgb, GrayText 30%, transparent)}
@@ -792,6 +793,7 @@ a.navrow{text-decoration:none}
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 01-4 0v-.09A1.7 1.7 0 009 19.4a1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.7 1.7 0 004.6 15a1.7 1.7 0 00-1.55-1H3a2 2 0 010-4h.09A1.7 1.7 0 004.6 9a1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06A1.7 1.7 0 009 4.6a1.7 1.7 0 001-1.55V3a2 2 0 014 0v.09A1.7 1.7 0 0015 4.6a1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06A1.7 1.7 0 0019.4 9a1.7 1.7 0 001.55 1H21a2 2 0 010 4h-.09a1.7 1.7 0 00-1.55 1z"/></svg>
       </button>
     </div>
+    <div id=logSummary hidden></div>
     <div id=logFree hidden></div>
     <div id=logList></div>
     <div id=logMore hidden>Loading older QSOs…</div>
@@ -7074,9 +7076,6 @@ var logLoadedOnce = false;
 var logCursor = '';          // before= for the next older page; '' before the first
 var logShownIds = {};        // record id -> true, for every row in the list
 var logGroupEls = {};        // 'YYYYMMDD' -> its <div class=daygroup>, so a row lands under its own day
-var logEntriesByCall = {};   // callsign -> [{day,time,band,freq,rst_sent,rst_rcvd}], built up in
-                             // appendLogRows() as the list loads -- only what is loaded so far this
-                             // session, not necessarily the whole log (see showCallInfo)
 var logDone = false;         // the oldest record is in the list
 var logLoading = false;
 var logRefreshing = false;
@@ -7093,12 +7092,12 @@ var LOG_ENTRY_GOAL = 15;     // rows to append per loadMoreLog() batch
 // the list is shown newest first without a gap, so everything past it is held too. `params` narrows it
 // ('&date=20261125', '&unsent=1'). A page cut short says so, and the next carries on from its last row.
 async function readLogPages(params, before, want, held, onPage) {
-  var rows = [], cursor = before || '', total = null, end = false;
+  var rows = [], cursor = before || '', total = null, summary = null, end = false;
   for (;;) {
     var j = await logFetchJson('/api/log/entries?take=' + LOG_ENTRY_FETCH + (params || '') +
                                (cursor ? '&before=' + cursor : ''));
     if (!j.ok) throw new Error(j.why || 'entries failed');
-    if (total === null && j.total != null) total = j.total;
+    if (total === null && j.total != null) { total = j.total; summary = j.summary || null; }
     var page = j.entries || [];
     if (!page.length) { end = true; break; }
     var reached = false;
@@ -7110,7 +7109,7 @@ async function readLogPages(params, before, want, held, onPage) {
     if (onPage) onPage(rows.length, total);
     if (reached || (want && rows.length >= want)) break;
   }
-  return { rows: rows, cursor: cursor, end: end, total: total };
+  return { rows: rows, cursor: cursor, end: end, total: total, summary: summary };
 }
 
 function dayLabel(name) {
@@ -7702,18 +7701,9 @@ function highlightCallInText(text, calls, strong) {
 
 // Card itself lives in callinfo.js (shared with map.html, operator-
 // requested 2026-09-22: "a common experience any time we select a
-// callsign anywhere in the web app"). These two adapters hand it this
-// page's own session state -- decodeSlots (session decode history) and
-// logEntriesByCall (loaded-log QSO history) are app.html-only concepts
-// map.html has no equivalent of, so they stay here rather than inside the
-// shared module, which only owns what's genuinely the same everywhere
-// (grid/distance/bearing, and now live POTA/SOTA spot lookup).
-function qsoHistoryFor(call) {
-  return (logEntriesByCall[call] || []).map(function (q) {
-    return { when: dayLabel(q.day).replace(' (Today)', '') + (q.time ? ' ' + q.time : ''),
-             band: q.band, freq: q.freq, rstSent: q.rst_sent, rstRcvd: q.rst_rcvd };
-  });
-}
+// callsign anywhere in the web app"). It reads the call's QSOs from the station's whole log itself
+// (qsoLog). This adapter hands it this page's own session state, decodeSlots, which map.html has no
+// equivalent of.
 function heardThisSessionFor(call) {
   var heard = [];
   decodeSlots.forEach(function (slot) {
@@ -7726,7 +7716,7 @@ function heardThisSessionFor(call) {
 }
 function showCallInfo(call) {
   if (!call) return;
-  CallInfo.show(call.toUpperCase(), { myGrid: lastCfg.grid, qsoHistory: qsoHistoryFor, heardThisSession: heardThisSessionFor,
+  CallInfo.show(call.toUpperCase(), { myGrid: lastCfg.grid, qsoLog: true, heardThisSession: heardThisSessionFor,
                                       heardUs: function (c) { return PskrCore.heardBy(PskrLive.state(), c); } });
 }
 
@@ -7830,12 +7820,6 @@ function appendLogRows(rows, atTop) {
     var callEl = row.querySelector('.callink');
     if (callEl) {
       callEl.onclick = function () { showCallInfo(callEl.getAttribute('data-call')); };
-    }
-    var callKey = (q.call || '').toUpperCase();
-    if (callKey) {
-      if (!logEntriesByCall[callKey]) logEntriesByCall[callKey] = [];
-      logEntriesByCall[callKey].push({ day: day, time: q.time, band: q.band, freq: q.freq,
-                                       rst_sent: q.rst_sent, rst_rcvd: q.rst_rcvd });
     }
   });
   Object.keys(days).forEach(function (day) {
@@ -8135,12 +8119,9 @@ async function clearAllAdif() {
     logCursor = '';
     logShownIds = {};
     logGroupEls = {};
+    renderLogSummary(null, null);
     logRenderedAny = false;
     logDone = false;
-    // Field-found 2026-09-22: logEntriesByCall was never reset here, so a
-    // worked/new flag or the callsign info modal's QSO history could keep
-    // showing pre-clear data as if the clear never happened.
-    logEntriesByCall = {};
     dayFullRowsCache = {};
     document.getElementById('logList').innerHTML =
       '<p style="padding:0 1rem;color:GrayText">Loading…</p>';
@@ -8158,6 +8139,7 @@ async function loadMoreLog() {
   logLoading = true;
   try {
     var got = await readLogPages('', logCursor, LOG_ENTRY_GOAL, null);
+    if (!logCursor) renderLogSummary(got.total, got.summary);
     appendLogRows(got.rows, false);
     logCursor = got.cursor;
     if (got.end) logDone = true;
@@ -8192,6 +8174,15 @@ document.getElementById('logClearAll').onclick = function (ev) {
   ev.preventDefault();
   clearAllAdif();
 };
+// The line at the top of QSOs: how many QSOs, over what dates, on how many days, from the summary every page
+// of the whole log carries (webapp.md, QSOs). Hidden with no QSO, and until the first page.
+function renderLogSummary(total, summary) {
+  var el = document.getElementById('logSummary');
+  var text = total == null ? '' : CallInfo.logSummaryText(total, summary);
+  el.textContent = text;
+  el.hidden = !text;
+}
+
 // QSOs logged since the list was read: the newest pages down to a QSO already shown, on top. Only while the
 // QSOs tab is the one showing; Operate follows today's with refreshOpLog().
 async function refreshLogHead() {
@@ -8202,6 +8193,7 @@ async function refreshLogHead() {
   logRefreshing = true;
   try {
     var got = await readLogPages('', '', 0, logShownIds);
+    renderLogSummary(got.total, got.summary);
     if (got.rows.length) appendLogRows(got.rows, true);
   } catch (e) { /* next tick */ } finally {
     logRefreshing = false;
