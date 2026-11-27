@@ -286,7 +286,7 @@ async function qrzFetch(ask) {
   return { ok: true, records, more: records.length >= QRZ_PAGE, next: last + 1 };
 }
 
-// QRZ's records, each cut down to what a sync matches on and its ID. A field's value is taken by its
+// QRZ's records, each cut down to what a sync matches on, what an import keeps, and its ID. A field's value is taken by its
 // declared length, which counts characters (measured 2026-11-19, on names with accents), so a value that
 // holds a < or an <eor> of its own is passed over whole.
 export function trimQrzRecords(escaped) {
@@ -316,8 +316,11 @@ export function trimQrzRecords(escaped) {
 // is named fields from end to end: the app reads the names it needs, and when it comes to need another
 // the name is added here and nothing else about the reply changes. Never a name that says who the other
 // operator is.
+// The import (qrz_import_core.js) takes the contact's own fields too: its frequency, grid and reports, and
+// the region QRZ works out for it.
 const QRZ_PASS = ["app_qrzlog_logid", "call", "qso_date", "time_on", "band", "mode", "submode",
-  "station_callsign", "app_qrzlog_status", "app_qrzlog_qsldate"];
+  "station_callsign", "app_qrzlog_status", "app_qrzlog_qsldate", "freq", "gridsquare", "rst_sent", "rst_rcvd",
+  "dxcc", "cont", "state", "cnty", "cqz", "ituz"];
 
 function trimmedQrzRecord(f) {
   const out = {};

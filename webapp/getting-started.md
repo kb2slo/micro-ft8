@@ -68,7 +68,7 @@ A new or reset station is set to `YOURCALL` in grid `CM97`, and will not transmi
 
 ## Your log
 
-Your log is kept on the main board. On **QSOs**, newest first, each day's **Download ADI** saves that day and **Download full ADI** saves them all, for your logger or LoTW. With a **QRZ logbook key** in Settings, **Send** uploads what QRZ lacks.
+Your log is kept on the main board. On **QSOs**, newest first, each day's **Download ADI** saves that day and **Download full ADI** saves them all, for your logger or LoTW. With a **QRZ logbook key** in Settings, **Send** uploads what QRZ lacks, and **Import from QRZ** brings in the FT8 and FT4 QSOs you logged elsewhere.
 
 ## Home WiFi and updates
 

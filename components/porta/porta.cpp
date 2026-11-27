@@ -65,6 +65,8 @@ const char* porta_host_file_delete(const char* filename);
 const char* porta_host_log_page(const porta_log_page_req_t& req);
 // Sets ADIF fields on a record. nullptr on success, else why not.
 const char* porta_host_log_set(uint32_t id, const char* fields, size_t len);
+// A record, or a slice of one, from the operator's QRZ logbook. nullptr on success, else why not.
+const char* porta_host_log_import(const char* fields, size_t len);
 // Reset the main board's Station settings (and, with PORTA_FACTORY_RESET_LOGS, delete the QSO
 // logs). nullptr on success, else why not; nothing is restarted.
 const char* porta_host_factory_reset(uint8_t flags);
@@ -938,6 +940,21 @@ void handle_action(const porta_frame_t& f) {
       return;
     }
     const char* why = porta_host_log_set(id, fields, len);
+    if (why) {
+      enqueue(buf, porta_proto_encode_nak(verb, why, buf, sizeof(buf)));
+    } else {
+      enqueue(buf, porta_proto_encode_ack(verb, buf, sizeof(buf)));
+    }
+    return;
+  }
+  case PORTA_ACT_LOG_IMPORT: {
+    char fields[PORTA_LOG_IMPORT_FIELDS_MAX + 1];
+    size_t len = 0;
+    if (!porta_proto_parse_log_import(&f, fields, &len)) {
+      enqueue(buf, porta_proto_encode_nak(verb, "malformed", buf, sizeof(buf)));
+      return;
+    }
+    const char* why = porta_host_log_import(fields, len);
     if (why) {
       enqueue(buf, porta_proto_encode_nak(verb, why, buf, sizeof(buf)));
     } else {

@@ -32,6 +32,7 @@
 #include <cstring>
 #include <ctime>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -150,24 +151,82 @@ static std::string events_json(uint32_t since)
 }
 
 // One QSO as the sidekick's /api/log/entries row gives it, with its record's ID and date.
-static std::string log_row_json(uint32_t id)
+// The fields of `<name:len>value...`, names lower case.
+static std::map<std::string, std::string> adif_fields(const std::string& fields)
 {
-    std::string body;
-    {
-        const SimLogEntry& e = g_scenario.log[id - 1];
-        body += "{\"id\":" + std::to_string(id) + ",\"date\":\"" + g_log_file.substr(0, 8) + "\",";
-        body += "\"time\":\"" + json_escape(e.time_on) + "\",\"band\":\"20m\",\"call\":\"";
-        body += json_escape(e.call);
-        body += "\",\"rst_sent\":";
-        body += std::to_string(e.rst_sent);
-        body += ",\"rst_rcvd\":";
-        body += std::to_string(e.rst_rcvd);
-        body += ",\"grid\":\"" + json_escape(e.grid) + "\",\"freq\":\"14.074\",\"my_grid\":\"";
-        body += json_escape(e.my_grid);
-        body += "\",\"comment\":\"\",\"mode\":\"FT8\",\"station_callsign\":\"";
-        body += json_escape(e.station_call);
-        body += "\",\"my_pota_ref\":\"\",\"my_sota_ref\":\"\"}";
+    std::map<std::string, std::string> out;
+    size_t i = 0;
+    while ((i = fields.find('<', i)) != std::string::npos) {
+        const size_t colon = fields.find(':', i), close = fields.find('>', i);
+        if (colon == std::string::npos || close == std::string::npos || colon > close) break;
+        std::string name = fields.substr(i + 1, colon - i - 1);
+        for (char& c : name) c = (char)std::tolower((unsigned char)c);
+        const size_t len = std::strtoul(fields.c_str() + colon + 1, nullptr, 10);
+        out[name] = fields.substr(close + 1, len);
+        i = close + 1 + len;
     }
+    return out;
+}
+
+static void log_mark(uint32_t id, const std::string& fields)
+{
+    for (const auto& kv : adif_fields(fields)) g_log_marks[id][kv.first] = kv.second;
+}
+
+// Records imported from the operator's QRZ logbook (POST /api/log/import), by their ID here, which starts past
+// any the scenario will log.
+static constexpr uint32_t kImportedFirstId = 100000;
+static std::map<uint32_t, std::map<std::string, std::string>> g_imported;
+
+// One record as the list reads it: the scenario's QSO with its marks, or an imported one.
+struct SimRow {
+    uint32_t id;
+    std::string date, time, call, band, mode, freq, grid;
+    int rst_sent, rst_rcvd;
+    bool imported;
+};
+
+static std::string upper(std::string s)
+{
+    for (char& c : s) c = (char)std::toupper((unsigned char)c);
+    return s;
+}
+
+static std::vector<SimRow> sim_rows()
+{
+    std::vector<SimRow> out;
+    for (size_t i = 0; i < g_scenario.log.size(); ++i) {
+        const SimLogEntry& e = g_scenario.log[i];
+        const uint32_t id = (uint32_t)i + 1u;
+        std::string grid = e.grid;
+        const auto m = g_log_marks.find(id);
+        if (grid.empty() && m != g_log_marks.end() && m->second.count("gridsquare")) grid = m->second.at("gridsquare");
+        out.push_back({id, g_log_file.substr(0, 8), e.time_on, e.call, "20m", "FT8", "14.074", grid, e.rst_sent, e.rst_rcvd, false});
+    }
+    for (const auto& kv : g_imported) {
+        const auto& f = kv.second;
+        auto get = [&](const char* k) { const auto it = f.find(k); return it == f.end() ? std::string() : it->second; };
+        const std::string t = get("time_on");
+        const std::string mode = get("submode").empty() ? get("mode") : get("submode");
+        std::string band = get("band");
+        for (char& c : band) c = (char)std::tolower((unsigned char)c);
+        const std::string rs = get("rst_sent"), rr = get("rst_rcvd");
+        out.push_back({kv.first, get("qso_date"), t.size() >= 4 ? t.substr(0, 2) + ":" + t.substr(2, 2) : "??:??", get("call"), band, mode,
+                       get("freq"), get("gridsquare"), rs.empty() ? -99 : std::atoi(rs.c_str()), rr.empty() ? -99 : std::atoi(rr.c_str()), true});
+    }
+    return out;
+}
+
+// One QSO as the sidekick's /api/log/entries row gives it, with its record's ID, date and whether it was imported.
+static std::string log_row_json(const SimRow& r)
+{
+    std::string body = "{\"id\":" + std::to_string(r.id) + ",\"date\":\"" + json_escape(r.date) + "\"," +
+                       (r.imported ? "\"imported\":1," : "") + "\"time\":\"" + json_escape(r.time) + "\",\"band\":\"" +
+                       json_escape(r.band) + "\",\"call\":\"" + json_escape(r.call) + "\",\"rst_sent\":" +
+                       std::to_string(r.rst_sent) + ",\"rst_rcvd\":" + std::to_string(r.rst_rcvd) + ",\"grid\":\"" +
+                       json_escape(r.grid) + "\",\"freq\":\"" + json_escape(r.freq) + "\",\"my_grid\":\"\",\"comment\":\"\",\"mode\":\"" +
+                       json_escape(r.mode) + "\",\"station_callsign\":\"" + json_escape(g_cfg["call"]) +
+                       "\",\"my_pota_ref\":\"\",\"my_sota_ref\":\"\"}";
     return body;
 }
 
@@ -182,63 +241,111 @@ static bool log_sent(uint32_t id)
            (up != it->second.end() && (up->second == "Y" || up->second == "y"));
 }
 
-// A page of the log newest first by time and ID (every QSO is today's), older than `before`
-// ("<date>.<HHMM>.<id>"), only those QRZ lacks with `unsent`, only `date`'s with `date`, with how many match in all: the sidekick's
-// LOG_PAGE route.
-static std::string log_page_json(bool unsent, const std::string& date, const std::string& call, const std::string& before, unsigned take)
+// A page of the log newest first by date, time and ID, older than `before` ("<date>.<HHMM>.<id>"), only
+// those QRZ lacks with `unsent` (our own), only `date`'s, only `call`'s, only our own with `own`, with what
+// they add up to: the sidekick's LOG_PAGE route.
+static std::string log_page_json(bool unsent, bool own, const std::string& date, const std::string& call,
+                                 const std::string& before, unsigned take)
 {
     struct Key {
-        uint32_t when;
+        uint64_t when;
         uint32_t id;
+        SimRow row;
     };
     std::vector<Key> keys;
-    for (size_t i = 0; i < g_scenario.log.size(); ++i) {
-        const uint32_t id = (uint32_t)i + 1u;
-        if (unsent && log_sent(id)) continue;
-        if (!date.empty() && date != g_log_file.substr(0, 8)) continue;
-        if (!call.empty()) {
-            std::string a = g_scenario.log[i].call, b = call;
-            for (char& c : a) c = (char)std::toupper((unsigned char)c);
-            for (char& c : b) c = (char)std::toupper((unsigned char)c);
-            if (a != b) continue;
-        }
-        const std::string& t = g_scenario.log[i].time_on;
-        const uint32_t hhmm = t.size() >= 5 ? (uint32_t)std::strtoul((t.substr(0, 2) + t.substr(3, 2)).c_str(), nullptr, 10) : 0;
-        keys.push_back({hhmm, id});
+    for (const SimRow& r : sim_rows()) {
+        if ((unsent || own) && r.imported) continue;
+        if (unsent && log_sent(r.id)) continue;
+        if (!date.empty() && date != r.date) continue;
+        if (!call.empty() && upper(r.call) != upper(call)) continue;
+        const uint32_t hhmm = r.time.size() >= 5 && r.time[0] != '?'
+                                  ? (uint32_t)std::strtoul((r.time.substr(0, 2) + r.time.substr(3, 2)).c_str(), nullptr, 10) : 0;
+        keys.push_back({(uint64_t)std::strtoull(r.date.c_str(), nullptr, 10) * 10000u + hhmm, r.id, r});
     }
     std::sort(keys.begin(), keys.end(), [](const Key& a, const Key& b) { return a.when != b.when ? a.when > b.when : a.id > b.id; });
     const size_t total = keys.size();
-    unsigned long bd = 0, bt = 0, bid = 0;
-    const bool cursor = !before.empty() && std::sscanf(before.c_str(), "%lu.%lu.%lu", &bd, &bt, &bid) == 3;
+    unsigned long long bd = 0, bt = 0, bid = 0;
+    const bool cursor = !before.empty() && std::sscanf(before.c_str(), "%llu.%llu.%llu", &bd, &bt, &bid) == 3;
+    const uint64_t limit = bd * 10000u + bt;
     std::string body = "{\"ok\":true,\"entries\":[";
     unsigned emitted = 0;
+    std::set<std::string> days;
+    std::map<std::pair<std::string, std::string>, unsigned> pairs;
+    std::string first, last;
     for (const Key& k : keys) {
-        if (cursor && !(k.when < bt || (k.when == bt && k.id < bid))) continue;
-        if (emitted >= take) break;
-        body += (emitted++ ? "," : "") + log_row_json(k.id);
+        days.insert(k.row.date);
+        if (first.empty() || k.row.date < first) first = k.row.date;
+        if (k.row.date > last) last = k.row.date;
+        ++pairs[{upper(k.row.band), k.row.mode}];
+        if (cursor && !(k.when < limit || (k.when == limit && k.id < bid))) continue;
+        if (emitted >= take) continue;
+        body += (emitted++ ? "," : "") + log_row_json(k.row);
     }
-    // Every QSO the simulator logs is today's, on 20m in FT8 (log_row_json()).
-    const std::string day = g_log_file.substr(0, 8);
-    body += "],\"total\":" + std::to_string(total) + ",\"summary\":{\"first\":\"" + (total ? day : "") +
-            "\",\"last\":\"" + (total ? day : "") + "\",\"days\":" + (total ? "1" : "0") + ",\"pairs_total\":" +
-            (total ? "1" : "0") + ",\"pairs\":[" +
-            (total ? "{\"band\":\"20M\",\"mode\":\"FT8\",\"n\":" + std::to_string(total) + "}" : "") + "]}}";
+    std::vector<std::pair<std::pair<std::string, std::string>, unsigned>> by(pairs.begin(), pairs.end());
+    std::sort(by.begin(), by.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
+    body += "],\"total\":" + std::to_string(total) + ",\"summary\":{\"first\":\"" + first + "\",\"last\":\"" + last +
+            "\",\"days\":" + std::to_string(days.size()) + ",\"pairs_total\":" + std::to_string(by.size()) + ",\"pairs\":[";
+    for (size_t i = 0; i < by.size(); ++i) {
+        body += (i ? "," : "") + std::string("{\"band\":\"") + by[i].first.first + "\",\"mode\":\"" + by[i].first.second +
+                "\",\"n\":" + std::to_string(by[i].second) + "}";
+    }
+    body += "]}}";
     return body;
 }
 
-// The fields of `<name:len>value...`, names lower case.
-static void log_mark(uint32_t id, const std::string& fields)
+// POST /api/log/import: each line a record or a slice of one under its QRZ ID, as the main board takes them
+// (qso_log_store_import()): one of our own QSOs marked with that ID takes QRZ's confirmation, region and a
+// grid it lacks; an imported one takes every field; a QRZ ID never seen needs a call.
+static std::string log_import_json(const std::string& body)
 {
-    size_t i = 0;
-    while ((i = fields.find('<', i)) != std::string::npos) {
-        const size_t colon = fields.find(':', i), close = fields.find('>', i);
-        if (colon == std::string::npos || close == std::string::npos || colon > close) break;
-        std::string name = fields.substr(i + 1, colon - i - 1);
-        for (char& c : name) c = (char)std::tolower((unsigned char)c);
-        const size_t len = std::strtoul(fields.c_str() + colon + 1, nullptr, 10);
-        g_log_marks[id][name] = fields.substr(close + 1, len);
-        i = close + 1 + len;
+    static const std::set<std::string> kOwnTakes = {"app_qrzlog_logid", "app_qrzlog_status", "app_qrzlog_qsldate", "dxcc",
+                                                    "cont", "state", "cnty", "cqz", "ituz"};
+    std::string refused;
+    unsigned taken = 0, line = 0;
+    size_t at = 0;
+    while (at <= body.size()) {
+        size_t nl = body.find('\n', at);
+        if (nl == std::string::npos) nl = body.size();
+        const std::string text = body.substr(at, nl - at);
+        at = nl + 1;
+        if (text.empty()) {
+            if (nl >= body.size()) break;
+            continue;
+        }
+        const auto f = adif_fields(text);
+        const auto logid = f.find("app_qrzlog_logid");
+        const char* why = nullptr;
+        if (logid == f.end() || logid->second.empty()) {
+            why = "bad fields";
+        } else {
+            uint32_t own = 0;
+            for (const auto& m : g_log_marks) {
+                const auto it = m.second.find("app_qrzlog_logid");
+                if (it != m.second.end() && it->second == logid->second) own = m.first;
+            }
+            uint32_t imported = 0;
+            for (const auto& r : g_imported) {
+                if (r.second.count("app_qrzlog_logid") && r.second.at("app_qrzlog_logid") == logid->second) imported = r.first;
+            }
+            if (own) {
+                const bool has_grid = !g_scenario.log[own - 1].grid.empty() || g_log_marks[own].count("gridsquare");
+                for (const auto& kv : f) {
+                    if (kOwnTakes.count(kv.first) || (kv.first == "gridsquare" && !has_grid)) g_log_marks[own][kv.first] = kv.second;
+                }
+            } else if (imported) {
+                for (const auto& kv : f) g_imported[imported][kv.first] = kv.second;
+            } else if (!f.count("call")) {
+                why = "bad fields";
+            } else {
+                g_imported[kImportedFirstId + (uint32_t)g_imported.size()] = f;
+            }
+        }
+        if (why) refused += (refused.empty() ? "" : ",") + std::string("{\"line\":") + std::to_string(line) + ",\"why\":\"" + why + "\"}";
+        else ++taken;
+        ++line;
+        if (nl >= body.size()) break;
     }
+    return "{\"ok\":true,\"refused\":[" + refused + "],\"taken\":" + std::to_string(taken) + ",\"lines\":" + std::to_string(line) + "}";
 }
 
 static std::map<std::string, std::string> parse_query(const std::string& q)
@@ -532,7 +639,11 @@ static std::string handle(const std::string& method, const std::string& url,
         const bool unsent = query.count("unsent") && query.at("unsent") == "1";
         const std::string date = query.count("date") ? query.at("date") : "";
         const std::string call = query.count("call") ? query.at("call") : "";
-        return log_page_json(unsent, date, call, query.count("before") ? query.at("before") : "", take);
+        const bool own = query.count("own") && query.at("own") == "1";
+        return log_page_json(unsent, own, date, call, query.count("before") ? query.at("before") : "", take);
+    }
+    if (method == "POST" && path == "/api/log/import") {
+        return log_import_json(body);
     }
     if (method == "PATCH" && path == "/api/log/entries") {
         const uint32_t id = query.count("id") ? (uint32_t)std::strtoul(query.at("id").c_str(), nullptr, 10) : 0;

@@ -1378,6 +1378,7 @@ size_t emit_records(const std::vector<QsoLogRecord> &records) {
         porta_qso_entry_row_t row = {};
         row.id = r.id;
         row.date = r.date;
+        row.flags = r.imported ? PORTA_ROW_IMPORTED : 0;
         std::snprintf(row.time_on, sizeof(row.time_on), "%s", e.time_on.c_str());
         std::snprintf(row.band, sizeof(row.band), "%s", e.band.c_str());
         std::snprintf(row.call, sizeof(row.call), "%s", e.call.c_str());
@@ -1410,9 +1411,11 @@ const char *porta_host_log_page(const porta_log_page_req_t &req) {
         return "log unavailable";
     }
     const int64_t start_us = esp_timer_get_time();
+    // Imported records too, unless asked for this station's own: the QSOs list, its summary and the card
+    // show them; the downloads and the QRZ sync ask for our own alone (docs/architecture/logging.md).
     QsoStoreFilter filter;
-    filter.whose = QsoStoreWhose::OWN;
     filter.unsent = (req.flags & PORTA_LOG_PAGE_UNSENT) != 0;
+    filter.whose = (filter.unsent || (req.flags & PORTA_LOG_PAGE_OWN)) ? QsoStoreWhose::OWN : QsoStoreWhose::ANY;
     if (req.flags & PORTA_LOG_PAGE_DATE) {
         if (req.date == 0) {
             return "malformed";
@@ -1452,6 +1455,25 @@ const char *porta_host_log_page(const porta_log_page_req_t &req) {
     ESP_LOGI(TAG, "LOG_PAGE flags=%u entries=%u of %u take=%u in %lld us", (unsigned)req.flags, (unsigned)sent,
              (unsigned)matched, (unsigned)take, (long long)(esp_timer_get_time() - start_us));
     return nullptr;
+}
+
+// A record from the operator's QRZ logbook, or a slice of it (qso_log_store_import()).
+const char *porta_host_log_import(const char *fields, size_t len) {
+    switch (qso_log_store_import(std::string(fields, len))) {
+        case QsoStoreStatus::OK:
+        case QsoStoreStatus::UNCHANGED:
+            return nullptr;
+        case QsoStoreStatus::BAD_FIELDS:
+            return "bad fields";
+        case QsoStoreStatus::TOO_LONG:
+            return "too long";
+        case QsoStoreStatus::FULL:
+            return "log full";
+        case QsoStoreStatus::WRITE_FAILED:
+            return qso_log_store_ready() ? "write failed" : "log unavailable";
+        default:
+            return "refused";
+    }
 }
 
 // Fields set on a record, as the store's patch takes them: any field, from any paired browser.

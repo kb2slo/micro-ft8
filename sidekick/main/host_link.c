@@ -680,12 +680,13 @@ static void file_entries_json_add(const porta_qso_entry_row_t *e)
         snprintf(date, sizeof(date), "%08lu", (unsigned long)e->date);
     }
     const int n = snprintf(piece, sizeof(piece),
-                           "%s{\"id\":%lu,\"date\":\"%s\",\"time\":\"%s\",\"band\":\"%s\",\"call\":\"%s\","
+                           "%s{\"id\":%lu,\"date\":\"%s\",%s\"time\":\"%s\",\"band\":\"%s\",\"call\":\"%s\","
                            "\"rst_sent\":%d,\"rst_rcvd\":%d,\"grid\":\"%s\",\"freq\":\"%s\","
                            "\"my_grid\":\"%s\",\"comment\":\"%s\",\"mode\":\"%s\","
                            "\"station_callsign\":\"%s\",\"my_pota_ref\":\"%s\","
                            "\"my_sota_ref\":\"%s\"}",
-                           s_file_entries_json_first ? "" : ",", (unsigned long)e->id, date, e->time_on, esc_band,
+                           s_file_entries_json_first ? "" : ",", (unsigned long)e->id, date,
+                           (e->flags & PORTA_ROW_IMPORTED) ? "\"imported\":1," : "", e->time_on, esc_band,
                            esc_call, e->rst_sent, e->rst_rcvd, esc_grid, esc_freq,
                            esc_my_grid, esc_comment, esc_mode, esc_station_callsign,
                            esc_my_pota_ref, esc_my_sota_ref);
@@ -1292,8 +1293,9 @@ static bool query_uint(httpd_req_t *req, const char *key, unsigned long dflt, un
 
 // GET /api/log/entries?unsent=1&date=YYYYMMDD&call=K1ABC&before=<date>.<HHMM>.<id>&take=  -- parsed QSO rows:
 // our own records newest first by date, time and ID, older than `before` (none: the newest), only those QRZ
-// lacks with `unsent`, only `date`'s with `date`, only `call`'s with `call`; the reply carries `total`, how
-// many match in all, and `summary`, what they add up to (first and last date, days, each band and mode). Open read:
+// lacks with `unsent`, only `date`'s with `date`, only `call`'s with `call`, only this station's own with
+// `own=1` (imported records otherwise too, each row of one carrying "imported":1); the reply carries `total`,
+// how many match in all, and `summary`, what they add up to (first and last date, days, each band and mode). Open read:
 // QSO log browsing is the category docs/architecture/system.md (Who may key the transmitter) opened up for
 // the viewer and the event feed.
 // Each row carries its record's `id` and `date`. A reply that ran out of room says `"cut":true`: ask again
@@ -1308,6 +1310,9 @@ static esp_err_t get_log_entries(httpd_req_t *req)
         httpd_query_key_value(query, "before", before, sizeof(before));
         if (httpd_query_key_value(query, "unsent", val, sizeof(val)) == ESP_OK && strcmp(val, "1") == 0) {
             page.flags |= PORTA_LOG_PAGE_UNSENT;
+        }
+        if (httpd_query_key_value(query, "own", val, sizeof(val)) == ESP_OK && strcmp(val, "1") == 0) {
+            page.flags |= PORTA_LOG_PAGE_OWN;
         }
         char call[PORTA_CALLSIGN_MAX + 2] = {0};
         if (httpd_query_key_value(query, "call", call, sizeof(call)) == ESP_OK) {
@@ -1414,6 +1419,87 @@ static esp_err_t delete_log_files(httpd_req_t *req)
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
     }
     return wait_action_reply(req, PORTA_ACT_FILE_DELETE);
+}
+
+// POST /api/log/import  body: records from the operator's QRZ logbook, or slices of them, one a line, each
+// ADIF fields naming its QRZ ID (docs/architecture/webapp.md, QRZ sync). Each line goes to the main board as a
+// LOG_IMPORT, one after another, each waiting for its answer, so the browser pays one round trip a batch.
+// Token required: it changes the log. Answers how many were taken, and why each refused one was, by line.
+#define LOG_IMPORT_BODY_MAX 3072
+#define LOG_IMPORT_POLL_TICKS pdMS_TO_TICKS(10)
+#define LOG_IMPORT_WAIT_TICKS pdMS_TO_TICKS(2000)
+_Static_assert(LOG_IMPORT_POLL_TICKS >= 1, "the import's wait for each answer is at least a tick");
+static esp_err_t post_log_import(httpd_req_t *req)
+{
+    static char body[LOG_IMPORT_BODY_MAX + 1];  // static: the main-board worker's stack is small
+    if (req->content_len == 0 || req->content_len > LOG_IMPORT_BODY_MAX) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, req->content_len ? "too long" : "no body");
+        return ESP_FAIL;
+    }
+    size_t got_n = 0;
+    while (got_n < req->content_len) {
+        const int r = httpd_req_recv(req, body + got_n, req->content_len - got_n);
+        if (r <= 0) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "body cut short");
+            return ESP_FAIL;
+        }
+        got_n += (size_t)r;
+    }
+    body[got_n] = '\0';
+    static char out[640];
+    size_t o = (size_t)snprintf(out, sizeof(out), "{\"ok\":true,\"refused\":[");
+    unsigned taken = 0, line = 0, refused = 0;
+    char *at = body;
+    while (*at) {
+        char *nl = strchr(at, '\n');
+        const size_t len = nl ? (size_t)(nl - at) : strlen(at);
+        const char *why = NULL;
+        if (len > 0) {
+            uint8_t frame[PORTA_PROTO_MAX_FRAME];
+            const size_t n = porta_proto_encode_log_import(at, len, frame, sizeof(frame));
+            reply_reset();
+            if (n == 0) {
+                why = "too long";
+            } else if (!porta_send(frame, n)) {
+                why = "host link busy";
+            } else {
+                // A tick at a time (10 ms here, CONFIG_FREERTOS_HZ 100), up to 2 s: the main board's write of a
+                // record is about 40 ms. A wait shorter than a tick rounds to none, and every line was then given
+                // up at once while the main board was still writing (bench, 2026-11-27).
+                struct reply_view got = {0};
+                for (TickType_t waited = 0; waited < LOG_IMPORT_WAIT_TICKS && !got.ready; waited += LOG_IMPORT_POLL_TICKS) {
+                    reply_read(PORTA_ACT_LOG_IMPORT, &got);
+                    if (!got.ready) {
+                        vTaskDelay(LOG_IMPORT_POLL_TICKS);
+                    }
+                }
+                if (!got.ready) {
+                    reply_read(PORTA_ACT_LOG_IMPORT, &got);
+                }
+                if (!got.ready) {
+                    why = "no reply from host";
+                } else if (!got.ok) {
+                    static char reason[PORTA_EVENT_TEXT_MAX + 1];
+                    snprintf(reason, sizeof(reason), "%s", got.reason[0] ? got.reason : "refused");
+                    why = reason;
+                } else {
+                    ++taken;
+                }
+            }
+            if (why && o + 48 < sizeof(out)) {
+                o += (size_t)snprintf(out + o, sizeof(out) - o, "%s{\"line\":%u,\"why\":\"%s\"}", refused ? "," : "", line, why);
+                ++refused;
+            }
+            ++line;
+        }
+        if (!nl) {
+            break;
+        }
+        at = nl + 1;
+    }
+    snprintf(out + o, sizeof(out) - o, "],\"taken\":%u,\"lines\":%u}", taken, line);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, out);
 }
 
 // Asks the main board to reset its own settings (and, with `logs`, delete its QSO logs) as the
@@ -2166,6 +2252,9 @@ void host_link_register_uris(httpd_handle_t server)
     static const httpd_uri_t log_entry_patch = {
         .uri = "/api/log/entries", .method = HTTP_PATCH, .handler = patch_log_entry,
     };
+    static const httpd_uri_t log_import = {
+        .uri = "/api/log/import", .method = HTTP_POST, .handler = post_log_import,
+    };
     // The event feed (and /api/state, the same events) is a read of radio data: open on principle, since anyone
     // may listen to what is on the air. Setting the host clock or keying the
     // transmitter changes the device, so those need the token. Station config
@@ -2209,6 +2298,7 @@ void host_link_register_uris(httpd_handle_t server)
         { &log_files_delete, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
         { &log_entries, PAIRING_OPEN, HTTP_WORKER_MAIN_BOARD },
         { &log_entry_patch, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
+        { &log_import, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
     };
     _Static_assert(sizeof(routes) / sizeof(routes[0]) == PAIRING_ROUTES_HOST_LINK,
                    "host_link route count");
