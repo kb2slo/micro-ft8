@@ -7753,22 +7753,11 @@ function highlightCallInText(text, calls, strong) {
 
 // Card itself lives in callinfo.js (shared with map.html, operator-
 // requested 2026-09-22: "a common experience any time we select a
-// callsign anywhere in the web app"). It reads the call's QSOs from the station's whole log itself
-// (qsoLog). This adapter hands it this page's own session state, decodeSlots, which map.html has no
-// equivalent of.
-function heardThisSessionFor(call) {
-  var heard = [];
-  decodeSlots.forEach(function (slot) {
-    slot.forEach(function (d) {
-      if (extractSenderCall(d.x) === call) heard.push({ x: d.x, snr: d.snr, hz: d.hz, ts: slot.ts, band: slot.band });
-    });
-  });
-  // Each decode's audio offset (hz) shows here, since decode rows do not carry it (webapp.md, Decode rows and tap to reply).
-  return heard.map(function (h) { return { when: fmtSlotDateTime(h.ts), band: h.band, snr: h.snr, hz: h.hz, text: h.x }; });
-}
+// callsign anywhere in the web app"). It reads the call's QSOs from the station's whole log (qsoLog) and what
+// the station heard of it (heardLog) itself.
 function showCallInfo(call) {
   if (!call) return;
-  CallInfo.show(call.toUpperCase(), { myGrid: lastCfg.grid, qsoLog: true, heardThisSession: heardThisSessionFor,
+  CallInfo.show(call.toUpperCase(), { myGrid: lastCfg.grid, qsoLog: true, heardLog: true,
                                       heardUs: function (c) { return PskrCore.heardBy(PskrLive.state(), c); } });
 }
 

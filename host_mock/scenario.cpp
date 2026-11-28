@@ -85,6 +85,7 @@ static void emit_decode(Scenario& s, const UiRxLine& rx)
         push_raw(s, row);
     }
     s.decodes[ev.decode_id] = rx;
+    if (s.on_decode) s.on_decode(ev, rx.field2);
 }
 
 static std::string time_on_for(int period)

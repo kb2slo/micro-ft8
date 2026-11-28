@@ -138,5 +138,9 @@ uint32_t porta_frames_ok();
 void porta_emit_file_entry(const porta_qso_entry_row_t& row);
 // What LOG_PAGE's filter matches, after its rows and before its ACK.
 void porta_emit_file_summary(const porta_log_summary_t& summary);
+// HEARD_PAGE's rows, groups and summary (porta_host_heard_page()).
+void porta_emit_heard_row(const porta_heard_row_t& row);
+void porta_emit_heard_group(const porta_heard_group_t& group);
+void porta_emit_heard_summary(const porta_heard_summary_t& summary);
 void porta_emit_ack(uint8_t verb);
 void porta_emit_nak(uint8_t verb, const char* reason);

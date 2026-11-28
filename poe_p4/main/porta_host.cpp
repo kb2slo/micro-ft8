@@ -5,7 +5,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <strings.h>
 
+#include "adif.h"
 #include "adif_logger.h"
 #include "amp_band_prime.h"
 #include "app_name.h"
@@ -410,6 +412,9 @@ void porta_p4_adif_register(void) {
     autoseq_set_adif_callback(log_adif_entry);
     decode_pipeline_set_channel_listened(station_listens_now);
     decode_pipeline_set_worked(station_worked);
+    // The heard ring's 4.4 MB is cleared here, at boot before decoding starts, not on the main loop at the
+    // first slot's decodes (docs/architecture/decode.md, The heard ring).
+    (void)decode_pipeline_heard();
     autoseq_set_recent_qso_callback(decode_pipeline_recently_logged);
     autoseq_set_heard_grid_callback(decode_pipeline_heard_grid);
     ESP_LOGI(TAG, "ADIF archive callback registered");
@@ -1482,6 +1487,80 @@ const char *porta_host_log_page(const porta_log_page_req_t &req) {
     porta_emit_ack(PORTA_MSG_LOG_PAGE);
     ESP_LOGI(TAG, "LOG_PAGE flags=%u entries=%u of %u take=%u in %lld us", (unsigned)req.flags, (unsigned)sent,
              (unsigned)matched, (unsigned)take, (long long)(esp_timer_get_time() - start_us));
+    return nullptr;
+}
+
+// The heard ring's band index for a dial: kBandNames' index, kStationBandCount for none
+// (heard_ring_summary()'s band_of).
+static uint8_t heard_band_of(uint32_t dial_hz) {
+    const char *name = adif_band_for_hz(dial_hz);
+    for (int i = 0; name && i < kStationBandCount; ++i) {
+        if (strcasecmp(kBandNames[i], name) == 0) {
+            return static_cast<uint8_t>(i);
+        }
+    }
+    return static_cast<uint8_t>(kStationBandCount);
+}
+
+constexpr size_t kHeardPageRows = 24;
+static_assert(kHeardPageRows + kHeardSummaryGroups + 2 + 8 <= PORTA_OUT_QUEUE_LEN,
+              "a heard page, its groups, summary and ACK, and room for events, fit the queue");
+static_assert(PORTA_HEARD_TEXT_MAX == kHeardTextChars && PORTA_HEARD_HOURS == kHeardHours &&
+                  PORTA_HEARD_NO_SNR == kHeardNoSnr && PORTA_HEARD_CQ == kHeardCq &&
+                  PORTA_HEARD_GROUPS_MAX == kHeardSummaryGroups,
+              "the wire's heard rows are the ring's");
+
+// A page of the heard ring newest first, of one sender or of every decode, with what the filter adds up to,
+// then ACKed (docs/architecture/decode.md, The heard ring). The ring is the main loop's, as this is.
+const char *porta_host_heard_page(const porta_heard_page_req_t &req) {
+    const HeardRing *ring = decode_pipeline_heard();
+    const int64_t start_us = esp_timer_get_time();
+    const char *call = (req.flags & PORTA_HEARD_PAGE_CALL) ? req.call : "";
+    // At most kHeardPageRows, for the queue (porta_host_log_page()'s note): a page cut here ends at its oldest
+    // row, and the next, asked from it, loses nothing.
+    const size_t take = std::min<size_t>(req.take, kHeardPageRows);
+    const HeardRecord *rows[kHeardPageRows];
+    const HeardPage page = heard_ring_page(ring, call, req.before, rows, take);
+    for (size_t i = 0; i < page.count; ++i) {
+        const HeardRecord &r = *rows[i];
+        porta_heard_row_t wire = {};
+        wire.seq = r.seq;
+        wire.slot_idx = r.slot_idx;
+        wire.dial_hz = r.dial_hz;
+        wire.offset_hz = r.offset_hz;
+        wire.dt_centis = r.dt_centis;
+        wire.snr = r.snr;
+        wire.slot_len_ds = r.slot_len_ds;
+        wire.flags = r.flags & PORTA_HEARD_CQ;
+        std::snprintf(wire.text, sizeof(wire.text), "%s", r.text);
+        porta_emit_heard_row(wire);
+    }
+    const HeardSummary sum = heard_ring_summary(ring, call, heard_band_of);
+    for (size_t g = 0; g < sum.groups; ++g) {
+        const HeardGroupSummary &src = sum.group[g];
+        porta_heard_group_t wire = {};
+        std::snprintf(wire.band, sizeof(wire.band), "%s", src.band < kStationBandCount ? kBandNames[src.band] : "");
+        wire.slot_len_ds = src.slot_len_ds;
+        wire.count = src.count;
+        wire.first_secs = src.first_secs;
+        wire.last_secs = src.last_secs;
+        wire.snr_now = src.snr_now;
+        wire.snr_median = src.snr_median;
+        wire.snr_best = src.snr_best;
+        std::memcpy(wire.hourly, src.hourly, sizeof(wire.hourly));
+        porta_emit_heard_group(wire);
+    }
+    porta_heard_summary_t wire = {};
+    wire.count = sum.count;
+    wire.since_secs = sum.since_secs;
+    wire.hour_end = sum.hour_end;
+    wire.flags = static_cast<uint8_t>((sum.wrapped ? PORTA_HEARD_WRAPPED : 0) |
+                                      (sum.more_groups ? PORTA_HEARD_MORE_GROUPS : 0) |
+                                      (page.more ? PORTA_HEARD_MORE : 0) | (page.lost ? PORTA_HEARD_LOST : 0));
+    porta_emit_heard_summary(wire);
+    porta_emit_ack(PORTA_MSG_HEARD_PAGE);
+    ESP_LOGI(TAG, "HEARD_PAGE flags=%u rows=%u of %u groups=%u in %lld us", (unsigned)req.flags, (unsigned)page.count,
+             (unsigned)sum.count, (unsigned)sum.groups, (long long)(esp_timer_get_time() - start_us));
     return nullptr;
 }
 

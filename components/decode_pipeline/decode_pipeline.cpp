@@ -597,6 +597,27 @@ void decode_slot(const ft8_slot_t* slot) {
   log_slot_summary(slot, &core, num_candidates, dc.count, tome, sync_ms, decode_t0_us);
 }
 
+// ---- The heard ring: every decode since boot (heard_ring.h; docs/architecture/memory.md). Static in
+// PSRAM, its one owner the main loop, which adds each decode as it goes to the sidekick and answers every
+// read of it, so it takes no lock. 65,536 records of 64 bytes, about 9 h of a busy FT8 band. ----
+static constexpr size_t kHeardRecords = 65536;
+static constexpr size_t kHeardCalls = 16384;
+static DECODE_PSRAM_BSS HeardRecord s_heard_records[kHeardRecords];
+static DECODE_PSRAM_BSS HeardCallSlot s_heard_calls[kHeardCalls];
+static DECODE_PSRAM_BSS uint16_t s_heard_scratch[kHeardRecords];
+
+static HeardRing* heard_ring() {
+  static HeardRing ring{};
+  static bool ready = false;
+  if (!ready) {
+    ready = heard_ring_init(&ring, {s_heard_records, kHeardRecords, s_heard_calls, kHeardCalls, s_heard_scratch});
+    if (!ready) ESP_LOGE(TAG, "heard ring: buffers refused");
+  }
+  return &ring;
+}
+
+const HeardRing* decode_pipeline_heard(void) { return heard_ring(); }
+
 // One channel's slot, on the main loop.
 static void apply_slot_result(DecodeSlotResult& r) {
   const int64_t wait_ms = (esp_timer_get_time() - r.published_us) / 1000;
@@ -678,17 +699,39 @@ static void apply_slot_result(DecodeSlotResult& r) {
     const int64_t emit_slot_ms = r.mode->slot_time_ms;
     const int64_t half_signal_ms =
         (int64_t)(r.mode->total_symbols * r.mode->symbol_period * 500.0f);
+    HeardRing* heard = heard_ring();
+    int64_t heard_us = 0;
     for (int i = 0; i < r.count; ++i) {
       const RxDecodeEntry& e = r.dec[i];
       uint32_t decode_id = remember_decode_for_reply(e, rx_channel);
       const int64_t mid_ms =
           emit_slot_idx * emit_slot_ms + (int64_t)(e.time_s * 1000.0f) + half_signal_ms;
+      const uint32_t dial_hz = dial_history_at(mid_ms) + (uint32_t)r.dial_offset_hz;
       porta_emit_decode(decode_id, e.text, e.snr, e.offset_hz, e.time_s,
                         e.is_cq, e.is_to_me, e.is_recent_qso,
                         (uint32_t)emit_slot_idx, (uint8_t)(emit_slot_ms / 100),
-                        dial_history_at(mid_ms) + (uint32_t)r.dial_offset_hz,
+                        dial_hz,
                         s_worked_fn ? s_worked_fn(e.field2) : 0);
+      // What the sidekick was sent, kept (docs/architecture/decode.md, The heard ring): DT and SNR as porta_emit_decode() puts them on DECODE.
+      const int64_t t0 = esp_timer_get_time();
+      HeardDecode h{};
+      h.text = e.text;
+      h.sender = e.field2;
+      h.slot_idx = (uint32_t)emit_slot_idx;
+      h.dial_hz = dial_hz;
+      h.offset_hz = (uint16_t)(e.offset_hz < 0 ? 0 : (e.offset_hz > 65535 ? 65535 : e.offset_hz));
+      const long centis = (long)(e.time_s * 100.0f);
+      h.dt_centis = (int16_t)(centis < -32768 ? -32768 : (centis > 32767 ? 32767 : centis));
+      h.snr = (int8_t)(e.snr < -128 ? -128 : (e.snr > 127 ? 127 : e.snr));
+      h.slot_len_ds = (uint8_t)(emit_slot_ms / 100);
+      h.is_cq = e.is_cq;
+      heard_ring_add(heard, h);
+      heard_us += esp_timer_get_time() - t0;
     }
+    // The ring's cost on the main loop, on the console beside SLOT and BDRY (docs/architecture/decode.md,
+    // Slot lines); not a Port A log, which would take the sidekick's ring from decodes.
+    ESP_LOGI(TAG, "HEARD%s %lld n%d us%lld", rx_mode_of(r.mode) == RxMode::FT4 ? "/FT4" : "", (long long)emit_slot_idx,
+             r.count, (long long)heard_us);
   } else {
     ESP_LOGD(TAG, "No messages decoded; keeping RX list");
   }

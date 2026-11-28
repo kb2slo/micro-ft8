@@ -6,6 +6,7 @@
 #include "decode_types.h"
 
 #include "ft8_audio_pipeline.h"
+#include "heard_ring.h"
 
 // The decode/autoseq-arm/RTC-auto-sync pipeline (docs/architecture/main_board.md (P4 (M5Stack Unit PoE-P4, U213)) -- extracted
 // out of main.cpp; this is what P4's "RX decode" milestone build-forces into
@@ -59,3 +60,7 @@ bool decode_pipeline_phase_good(void);
 // registers it with autoseq_set_heard_grid_callback(), which consults it only
 // when a QSO logs with no grid of its own.
 bool decode_pipeline_heard_grid(const std::string& dxcall_norm, std::string* grid_out);
+
+// Every decode the main board has made since boot, newest last (heard_ring.h; docs/architecture/decode.md, The heard ring). The main loop's:
+// decode_pipeline_apply() adds to it, and only the main loop may read it.
+const HeardRing* decode_pipeline_heard(void);

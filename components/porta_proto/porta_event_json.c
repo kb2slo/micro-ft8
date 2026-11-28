@@ -202,3 +202,60 @@ size_t porta_event_json_undecoded(char *out, size_t cap, uint32_t seq,
                            seq, ev->epoch_secs, ev->slot_idx, ev->slot_len_ds, ev->why);
     return finish(out, cap, n);
 }
+
+// GET /api/heard's rows: /api/events' decode shape, `s` the ring's seq, `t` 0 (the slot names the time).
+size_t porta_event_json_heard_row(char *out, size_t cap, const porta_heard_row_t *r)
+{
+    char esc[PORTA_HEARD_TEXT_MAX * 6 + 1];
+    if (!r) {
+        return 0;
+    }
+    json_escape(r->text, esc, sizeof(esc));
+    const int n = snprintf(out, cap,
+                           "{\"s\":%" PRIu32 ",\"d\":1,\"x\":\"%s\",\"snr\":%d,\"hz\":%u,\"dt\":%.2f,\"cq\":%d,"
+                           "\"si\":%" PRIu32 ",\"sl\":%u,\"fq\":%" PRIu32 "}",
+                           r->seq, esc, r->snr, (unsigned)r->offset_hz, r->dt_centis / 100.0,
+                           (r->flags & PORTA_HEARD_CQ) ? 1 : 0, r->slot_idx, (unsigned)r->slot_len_ds, r->dial_hz);
+    return finish(out, cap, n);
+}
+
+// A group: `hourly` with null for an hour with nothing heard.
+size_t porta_event_json_heard_group(char *out, size_t cap, const porta_heard_group_t *g)
+{
+    char esc[PORTA_BAND_MAX * 6 + 1];
+    if (!g) {
+        return 0;
+    }
+    json_escape(g->band, esc, sizeof(esc));
+    int n = snprintf(out, cap,
+                     "{\"band\":\"%s\",\"sl\":%u,\"n\":%" PRIu32 ",\"first\":%" PRIu32 ",\"last\":%" PRIu32
+                     ",\"now\":%d,\"median\":%d,\"best\":%d,\"hourly\":[",
+                     esc, (unsigned)g->slot_len_ds, g->count, g->first_secs, g->last_secs, g->snr_now,
+                     g->snr_median, g->snr_best);
+    for (size_t i = 0; i < PORTA_HEARD_HOURS && n > 0 && (size_t)n < cap; ++i) {
+        if (g->hourly[i] == PORTA_HEARD_NO_SNR) {
+            n += snprintf(out + n, cap - (size_t)n, "%snull", i ? "," : "");
+        } else {
+            n += snprintf(out + n, cap - (size_t)n, "%s%d", i ? "," : "", g->hourly[i]);
+        }
+    }
+    if (n > 0 && (size_t)n < cap) {
+        n += snprintf(out + n, cap - (size_t)n, "]}");
+    }
+    return finish(out, cap, n);
+}
+
+// The summary's members, to follow the rows' array: `"total":…,"since":…,…` with no braces.
+size_t porta_event_json_heard_summary(char *out, size_t cap, const porta_heard_summary_t *s)
+{
+    if (!s) {
+        return 0;
+    }
+    const int n = snprintf(out, cap,
+                           "\"total\":%" PRIu32 ",\"since\":%" PRIu32 ",\"hour_end\":%" PRIu32
+                           ",\"wrapped\":%d,\"more_groups\":%d,\"more\":%d,\"lost\":%d",
+                           s->count, s->since_secs, s->hour_end, (s->flags & PORTA_HEARD_WRAPPED) ? 1 : 0,
+                           (s->flags & PORTA_HEARD_MORE_GROUPS) ? 1 : 0, (s->flags & PORTA_HEARD_MORE) ? 1 : 0,
+                           (s->flags & PORTA_HEARD_LOST) ? 1 : 0);
+    return finish(out, cap, n);
+}

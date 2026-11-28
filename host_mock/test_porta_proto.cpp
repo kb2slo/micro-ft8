@@ -1454,6 +1454,104 @@ static void test_file_data_rows()
 
 // A row with every field at its longest still fits one frame, and the page request, its total and the
 // field set round-trip.
+// HEARD_PAGE (v28): the request, a row, a group and the summary round-trip, the longest in one frame, and each
+// kind is read only as itself; and their JSON for GET /api/heard.
+static void test_heard_page()
+{
+    porta_decoder_t d;
+    uint8_t buf[PORTA_PROTO_MAX_FRAME];
+    porta_heard_page_req_t req = {PORTA_HEARD_PAGE_CALL, 123456, 10, "VK2/W1ABC"};
+    porta_decoder_init(&d);
+    size_t n = porta_proto_encode_heard_page_req(&req, buf, sizeof(buf));
+    auto got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    porta_heard_page_req_t back = {};
+    check(got.size() == 1 && got[0].type == PORTA_MSG_HEARD_PAGE && porta_proto_parse_heard_page_req(&got[0], &back) &&
+              back.flags == PORTA_HEARD_PAGE_CALL && back.before == 123456 && back.take == 10 &&
+              std::string(back.call) == "VK2/W1ABC",
+          "a heard page by call round-trips");
+    porta_heard_page_req_t all = {0, 0, 32, ""};
+    porta_decoder_init(&d);
+    n = porta_proto_encode_heard_page_req(&all, buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1 && porta_proto_parse_heard_page_req(&got[0], &back) && back.flags == 0 && back.call[0] == '\0' &&
+              back.take == 32,
+          "a heard page of every decode carries no call");
+    req.call[0] = '\0';
+    check(porta_proto_encode_heard_page_req(&req, buf, sizeof(buf)) == 0, "by call with no call is refused");
+    all.take = 0;
+    check(porta_proto_encode_heard_page_req(&all, buf, sizeof(buf)) == 0, "a page of none is refused");
+
+    porta_heard_row_t row = {};
+    row.seq = 0xFFFFFFF0u;
+    row.slot_idx = 119721033;
+    row.dial_hz = 14074000;
+    row.offset_hz = 2428;
+    row.dt_centis = -8;
+    row.snr = -24;
+    row.slot_len_ds = 150;
+    row.flags = PORTA_HEARD_CQ;
+    std::memset(row.text, 'A', PORTA_HEARD_TEXT_MAX);
+    porta_decoder_init(&d);
+    n = porta_proto_encode_heard_row(&row, buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    porta_heard_row_t rb = {};
+    porta_qso_entry_row_t qrow;
+    porta_heard_summary_t sb = {};
+    check(got.size() == 1 && porta_proto_parse_heard_row(&got[0], &rb) && rb.seq == row.seq && rb.slot_idx == row.slot_idx &&
+              rb.dial_hz == row.dial_hz && rb.offset_hz == 2428 && rb.dt_centis == -8 && rb.snr == -24 &&
+              rb.slot_len_ds == 150 && rb.flags == PORTA_HEARD_CQ && std::string(rb.text) == std::string(PORTA_HEARD_TEXT_MAX, 'A') &&
+              !porta_proto_parse_file_entry_row(&got[0], &qrow) && !porta_proto_parse_heard_summary(&got[0], &sb),
+          "the longest heard row round-trips, and is no other row");
+    row.text[PORTA_HEARD_TEXT_MAX] = 'A';  // 38 characters: unterminated within the field
+    check(porta_proto_encode_heard_row(&row, buf, sizeof(buf)) == 0, "a text past WSJT-X's longest is refused");
+
+    porta_heard_group_t g = {};
+    std::memset(g.band, 'B', PORTA_BAND_MAX);
+    g.slot_len_ds = 75;
+    g.count = 70000;
+    g.first_secs = 1795800000;
+    g.last_secs = 1795815509;
+    g.snr_now = -7;
+    g.snr_median = -12;
+    g.snr_best = 20;
+    for (unsigned i = 0; i < PORTA_HEARD_HOURS; ++i) g.hourly[i] = (int8_t)(i % 3 == 0 ? PORTA_HEARD_NO_SNR : -20 + (int)i);
+    porta_decoder_init(&d);
+    n = porta_proto_encode_heard_group(&g, buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    porta_heard_group_t gb = {};
+    check(got.size() == 1 && porta_proto_parse_heard_group(&got[0], &gb) && std::string(gb.band) == std::string(PORTA_BAND_MAX, 'B') &&
+              gb.slot_len_ds == 75 && gb.count == 70000 && gb.first_secs == g.first_secs && gb.last_secs == g.last_secs &&
+              gb.snr_now == -7 && gb.snr_median == -12 && gb.snr_best == 20 &&
+              std::memcmp(gb.hourly, g.hourly, sizeof(g.hourly)) == 0 && !porta_proto_parse_heard_row(&got[0], &rb),
+          "a group round-trips, its gaps kept");
+
+    porta_heard_summary_t sum = {4000, 1795800000, 498837, PORTA_HEARD_WRAPPED | PORTA_HEARD_MORE};
+    porta_decoder_init(&d);
+    n = porta_proto_encode_heard_summary(&sum, buf, sizeof(buf));
+    got = run(&d, std::vector<uint8_t>(buf, buf + n));
+    check(got.size() == 1 && porta_proto_parse_heard_summary(&got[0], &sb) && sb.count == 4000 && sb.since_secs == 1795800000 &&
+              sb.hour_end == 498837 && sb.flags == (PORTA_HEARD_WRAPPED | PORTA_HEARD_MORE) &&
+              !porta_proto_parse_heard_group(&got[0], &gb),
+          "the summary round-trips");
+
+    char json[512];
+    std::snprintf(row.text, sizeof(row.text), "%s", "CQ \"K1ABC\" FN42");
+    check(porta_event_json_heard_row(json, sizeof(json), &row) > 0 &&
+              std::string(json) == "{\"s\":4294967280,\"d\":1,\"x\":\"CQ \\\"K1ABC\\\" FN42\",\"snr\":-24,\"hz\":2428,"
+                                   "\"dt\":-0.08,\"cq\":1,\"si\":119721033,\"sl\":150,\"fq\":14074000}",
+          "a heard row's JSON is a decode's, escaped");
+    std::snprintf(g.band, sizeof(g.band), "%s", "20m");
+    check(porta_event_json_heard_group(json, sizeof(json), &g) > 0 &&
+              std::string(json) == "{\"band\":\"20m\",\"sl\":75,\"n\":70000,\"first\":1795800000,\"last\":1795815509,"
+                                   "\"now\":-7,\"median\":-12,\"best\":20,\"hourly\":[null,-19,-18,null,-16,-15,null,-13,-12,null]}",
+          "a group's JSON, null for an hour with nothing");
+    check(porta_event_json_heard_summary(json, sizeof(json), &sum) > 0 &&
+              std::string(json) == "\"total\":4000,\"since\":1795800000,\"hour_end\":498837,\"wrapped\":1,\"more_groups\":0,"
+                                   "\"more\":1,\"lost\":0",
+          "the summary's members");
+    check(porta_event_json_heard_group(json, 40, &g) == 0, "a group that does not fit writes nothing");
+}
+
 static void test_log_page_and_set()
 {
     porta_decoder_t d;
@@ -2131,6 +2229,7 @@ int main()
     test_activity_event();
     test_undecoded_event();
     test_log_page_and_set();
+    test_heard_page();
     test_sweep_event();
     test_tx_hud_event();
     test_action_set_clock();

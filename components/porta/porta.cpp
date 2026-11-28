@@ -63,6 +63,9 @@ const char* porta_host_file_delete(const char* filename);
 // A page of the log by record: rows, a TOTAL and the ACK are sent before it returns nullptr; a non-null
 // return is a refusal with nothing sent.
 const char* porta_host_log_page(const porta_log_page_req_t& req);
+// A page of the heard ring: rows, groups, the summary and the ACK are sent before it returns nullptr; a
+// non-null return is a refusal with nothing sent.
+const char* porta_host_heard_page(const porta_heard_page_req_t& req);
 // Sets ADIF fields on a record. nullptr on success, else why not.
 const char* porta_host_log_set(uint32_t id, const char* fields, size_t len);
 // A record, or a slice of one, from the operator's QRZ logbook. nullptr on success, else why not.
@@ -1119,6 +1122,20 @@ void handle_log_page(const porta_frame_t& f) {
   }
 }
 
+// HEARD_PAGE's reply is sent by porta_host_heard_page() itself; a refusal is answered here.
+void handle_heard_page(const porta_frame_t& f) {
+  porta_heard_page_req_t req = {};
+  uint8_t buf[PORTA_PROTO_MAX_FRAME];
+  if (!porta_proto_parse_heard_page_req(&f, &req)) {
+    enqueue(buf, porta_proto_encode_nak(PORTA_MSG_HEARD_PAGE, "malformed", buf, sizeof(buf)));
+    return;
+  }
+  const char* why = porta_host_heard_page(req);
+  if (why) {
+    enqueue(buf, porta_proto_encode_nak(PORTA_MSG_HEARD_PAGE, why, buf, sizeof(buf)));
+  }
+}
+
 void handle_frame(const porta_frame_t& f) {
   switch (f.type) {
   case PORTA_MSG_HELLO:       handle_hello(f);       break;
@@ -1126,6 +1143,7 @@ void handle_frame(const porta_frame_t& f) {
   case PORTA_MSG_CONFIG_GET:  handle_config_get(f);  break;
   case PORTA_MSG_CONFIG_SET:  handle_config_set(f);  break;
   case PORTA_MSG_LOG_PAGE:    handle_log_page(f);    break;
+  case PORTA_MSG_HEARD_PAGE:  handle_heard_page(f);  break;
   case PORTA_MSG_FW_BEGIN:
   case PORTA_MSG_FW_CHUNK:
   case PORTA_MSG_FW_END:
@@ -1363,6 +1381,24 @@ void porta_emit_file_summary(const porta_log_summary_t& summary) {
   if (!s_running) return;
   uint8_t buf[PORTA_PROTO_MAX_FRAME];
   enqueue(buf, porta_proto_encode_file_summary_row(&summary, buf, sizeof(buf)));
+}
+
+void porta_emit_heard_row(const porta_heard_row_t& row) {
+  if (!s_running) return;
+  uint8_t buf[PORTA_PROTO_MAX_FRAME];
+  enqueue(buf, porta_proto_encode_heard_row(&row, buf, sizeof(buf)));
+}
+
+void porta_emit_heard_group(const porta_heard_group_t& group) {
+  if (!s_running) return;
+  uint8_t buf[PORTA_PROTO_MAX_FRAME];
+  enqueue(buf, porta_proto_encode_heard_group(&group, buf, sizeof(buf)));
+}
+
+void porta_emit_heard_summary(const porta_heard_summary_t& summary) {
+  if (!s_running) return;
+  uint8_t buf[PORTA_PROTO_MAX_FRAME];
+  enqueue(buf, porta_proto_encode_heard_summary(&summary, buf, sizeof(buf)));
 }
 
 void porta_emit_ack(uint8_t verb) {
