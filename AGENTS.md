@@ -236,7 +236,11 @@ the only place every agent and every person can see them — see "Memory lives i
   **mermaid in the markdown**: GitHub renders it for humans, its source *is* the graph semantics rather than
   coordinates an agent has to re-derive, and a changed edge is a one-line diff instead of two pictures to
   compare. Do not commit SVG or raster diagrams to `docs/` — SVG costs an agent far more to read than the
-  content is worth, and images diff and grep not at all.
+  content is worth, and images diff and grep not at all. **The one exception is a board's schematic under
+  `hardware/`:** SVG drawn by a committed script beside it, showing nothing its README's netlist does not say.
+  The netlist is the source, and a change edits the netlist, the script and the drawings in the same commit.
+  `hardware/` holds a board that is built or on the bench, its status at the top of its README; a board only
+  planned stays in its epic.
 
 ## Before 1.0: do not carry the past
 
