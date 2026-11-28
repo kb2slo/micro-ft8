@@ -125,8 +125,17 @@ async function start(opts) {
         try { configReads.push(await r.text()); } catch (e) { /* the page went */ }
       }
     });
+    // init: a script run before each load's own (to stand in for the Home Screen, say); route(ctx): routes of
+    // the test's own. wait false: return as soon as the page has started loading, without waiting for it to boot.
+    if (bopts.init) await ctx.addInitScript(bopts.init);
+    if (bopts.route) await bopts.route(ctx);
     const page = await ctx.newPage();
     page.on('pageerror', (e) => errors.push(name + ': ' + e.message));
+    if (bopts.wait === false) {
+      await page.goto(origin + '/app/app.html', { waitUntil: 'commit' });
+      pages.push(page);
+      return page;
+    }
     await page.goto(origin + '/app/app.html');
     await page.waitForFunction(() => typeof lastCfg === 'object' && lastCfg.call !== undefined, null, { timeout: 15000 });
     // Toasts, as the operator would read them.
