@@ -500,6 +500,21 @@ qso_store_clean:
 	rm -f $(QSO_STORE_OBJ) $(QSO_STORE_TARGET)
 .PHONY: qso_store_clean
 
+# The sidekick's query decoding. Its whole build is this block, `all` and `clean` included.
+URL_QUERY_TARGET = host_test_url_query
+URL_QUERY_OBJ = url_query.o test_url_query.o
+all: $(URL_QUERY_TARGET)
+url_query.o: ../sidekick/main/url_query.c
+	$(CC) $(CFLAGS) -I../sidekick/main -c $< -o $@
+test_url_query.o: test_url_query.cpp
+	$(CXX) $(CXXFLAGS) -I../sidekick/main -c $< -o $@
+$(URL_QUERY_TARGET): $(URL_QUERY_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+clean: url_query_clean
+url_query_clean:
+	rm -f $(URL_QUERY_OBJ) $(URL_QUERY_TARGET)
+.PHONY: url_query_clean
+
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 

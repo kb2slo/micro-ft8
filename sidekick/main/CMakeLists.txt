@@ -52,7 +52,7 @@ endif()
 
 set(WEB_SEED_GEN "${CMAKE_CURRENT_BINARY_DIR}/web_seed_table.c")
 set(WEB_SEED_SRCS "main.c" "wifi_prov.c" "host_link.c" "event_state.c" "pairing_token.c" "pairing_http.c" "http_worker.c" "net_health.c"
-                  "web_page.c"
+                  "web_page.c" "url_query.c"
                   "app_pack.c" "app_push.c" "app_serve.c"
                   "fw_policy.c" "fw_update.c" "ap_name.c")
 if(NOT CMAKE_BUILD_EARLY_EXPANSION)

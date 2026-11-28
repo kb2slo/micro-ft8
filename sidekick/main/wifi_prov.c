@@ -1,4 +1,5 @@
 #include "wifi_prov.h"
+#include "url_query.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -530,25 +531,8 @@ static esp_err_t send_error(httpd_req_t *req, const char *status, const char *ms
     return ESP_FAIL;
 }
 
-// Minimal application/x-www-form-urlencoded field extractor. httpd_query_key_value
-// works on this encoding and handles the key matching; the only thing it leaves
-// is percent- and plus-decoding, which a WiFi password very much needs.
-static void url_decode(char *s)
-{
-    char *w = s;
-    for (char *r = s; *r; ++r) {
-        if (*r == '+') {
-            *w++ = ' ';
-        } else if (*r == '%' && r[1] && r[2]) {
-            char hex[3] = {r[1], r[2], 0};
-            *w++ = (char)strtol(hex, NULL, 16);
-            r += 2;
-        } else {
-            *w++ = *r;
-        }
-    }
-    *w = '\0';
-}
+// Form fields: httpd_query_key_value() matches the key and leaves percent- and plus-decoding, which a WiFi
+// password very much needs, to url_decode() (url_query.h).
 
 // Refresh the cached list. Safe to call with a client connected, but it may
 // briefly interrupt them — see the note above.

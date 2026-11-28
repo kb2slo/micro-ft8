@@ -15,6 +15,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "http_worker.h"
+#include "url_query.h"
 #include "net_health.h"
 #include "pairing_http.h"
 #include "pairing_http_cap.h"
@@ -1314,20 +1315,16 @@ static esp_err_t get_log_entries(httpd_req_t *req)
         if (httpd_query_key_value(query, "own", val, sizeof(val)) == ESP_OK && strcmp(val, "1") == 0) {
             page.flags |= PORTA_LOG_PAGE_OWN;
         }
-        char call[PORTA_CALLSIGN_MAX + 2] = {0};
-        if (httpd_query_key_value(query, "call", call, sizeof(call)) == ESP_OK) {
-            // A callsign: letters, digits and '/', as the store keeps one.
-            const size_t call_n = strlen(call);
-            bool ok = call_n > 0 && call_n <= PORTA_CALLSIGN_MAX;
-            for (size_t i = 0; ok && i < call_n; ++i) {
-                ok = isalnum((unsigned char)call[i]) || call[i] == '/';
-            }
-            if (!ok) {
+        // A callsign: letters, digits and '/', as the store keeps one, decoded (the page sends `/` as `%2F`).
+        // Read whole however it was encoded: a value cut short to fit would read as no call at all.
+        char raw[3 * PORTA_CALLSIGN_MAX + 2];
+        const esp_err_t got = httpd_query_key_value(query, "call", raw, sizeof(raw));
+        if (got != ESP_ERR_NOT_FOUND) {
+            if (got != ESP_OK || !url_query_callsign(raw, page.call, sizeof(page.call), PORTA_CALLSIGN_MAX)) {
                 httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad call");
                 return ESP_FAIL;
             }
             page.flags |= PORTA_LOG_PAGE_CALL;
-            memcpy(page.call, call, call_n + 1);
         }
         if (httpd_query_key_value(query, "date", val, sizeof(val)) == ESP_OK) {
             page.flags |= PORTA_LOG_PAGE_DATE;
