@@ -146,7 +146,12 @@ extern "C" {
 // v27 (2026-11-27): DECODE says what the log knows of its sender, in its flags byte's spare bits
 // (PORTA_WORKED_*): a dupe, worked on this band, worked at all. A v26 peer reads the bits as unset, so it
 // shows no marks. Both ends are flashed together.
-#define PORTA_PROTO_VERSION 27u
+// v28 (2026-11-27): HEARD_PAGE reads the main board's heard ring, every decode since it started
+// (docs/architecture/decode.md, The heard ring):
+// a page newest first, of one sender's or of every decode, older than a cursor, answered by FILE_DATA's
+// HEARD rows, a HEARD_GROUP per band and mode, a HEARD_SUMMARY and the ACK. A v27 host NAKs it as unknown.
+// Both ends are flashed together.
+#define PORTA_PROTO_VERSION 28u
 
 #define PORTA_PROTO_MAX_PAYLOAD 255u
 #define PORTA_PROTO_MAX_FRAME (1u + 1u + 1u + PORTA_PROTO_MAX_PAYLOAD + 1u)  // 259
@@ -194,6 +199,9 @@ typedef enum {
     // never leave a row half-written), then one SUMMARY, then ACK/NAK with this type as verb, the "burst then
     // ACK" shape CONFIG_GET-all uses. See the LOG_PAGE payloads section.
     PORTA_MSG_LOG_PAGE     = 0x15,
+    // A page of the heard ring (sidekick -> host): FILE_DATA's HEARD rows, a HEARD_GROUP each, one
+    // HEARD_SUMMARY, then ACK/NAK with this type as verb, as LOG_PAGE. See the HEARD_PAGE payloads section.
+    PORTA_MSG_HEARD_PAGE   = 0x16,
 } porta_msg_type_t;
 
 typedef struct {
@@ -825,6 +833,9 @@ typedef enum {
     // 0x01 was a day-file name, FILE_LIST's row, until v24.
     PORTA_FILE_DATA_ENTRY = 0x02,  // one LOG_PAGE row: one parsed QSO
     PORTA_FILE_DATA_SUMMARY = 0x03,  // after LOG_PAGE's rows: what its filter matches, whatever the cursor
+    PORTA_FILE_DATA_HEARD = 0x04,          // one HEARD_PAGE row: one decode
+    PORTA_FILE_DATA_HEARD_GROUP = 0x05,    // after them: one band and mode of what the call matches
+    PORTA_FILE_DATA_HEARD_SUMMARY = 0x06,  // last: the totals, and where the page stands
 } porta_file_data_kind_t;
 
 #define PORTA_FILENAME_MAX 32u
@@ -919,6 +930,81 @@ bool porta_proto_parse_log_import(const porta_frame_t *f, char *fields_out, size
 size_t porta_proto_encode_log_set(uint32_t id, const char *fields, size_t len, uint8_t *out, size_t out_cap);
 // `fields_out` holds PORTA_LOG_SET_FIELDS_MAX + 1 bytes; it is NUL-ended and its length is `len_out`.
 bool porta_proto_parse_log_set(const porta_frame_t *f, uint32_t *id_out, char *fields_out, size_t *len_out);
+
+// --- HEARD_PAGE payloads ----------------------------------------------------
+// The main board's heard ring (components/heard_ring/include/heard_ring.h): every decode since it started,
+// each numbered (`seq`) in the order it was heard. A page is newest first, older than `before` (0: from
+// the newest), of `call`'s decodes as sender or, without PORTA_HEARD_PAGE_CALL, of every decode. `take`
+// 1..255. The host answers with up to `take` HEARD rows, a HEARD_GROUP per band and mode the filter
+// matches, one HEARD_SUMMARY, then the ACK.
+#define PORTA_HEARD_PAGE_CALL 0x01u
+typedef struct {
+    uint8_t  flags;
+    uint32_t before;
+    uint8_t  take;
+    char     call[PORTA_CALLSIGN_MAX + 1];  // with PORTA_HEARD_PAGE_CALL
+} porta_heard_page_req_t;
+
+size_t porta_proto_encode_heard_page_req(const porta_heard_page_req_t *r, uint8_t *out, size_t out_cap);
+bool porta_proto_parse_heard_page_req(const porta_frame_t *f, porta_heard_page_req_t *out);
+
+// One decode, with what DECODE carries of it (`slot_idx`, `slot_len_ds`, `dial_hz` as there).
+#define PORTA_HEARD_TEXT_MAX 37u  // WSJT-X's longest message (heard_ring.h, kHeardTextChars)
+#define PORTA_HEARD_CQ 0x01u
+typedef struct {
+    uint32_t seq;
+    uint32_t slot_idx;
+    uint32_t dial_hz;
+    uint16_t offset_hz;
+    int16_t  dt_centis;
+    int8_t   snr;
+    uint8_t  slot_len_ds;
+    uint8_t  flags;  // PORTA_HEARD_CQ
+    char     text[PORTA_HEARD_TEXT_MAX + 1];
+} porta_heard_row_t;
+
+size_t porta_proto_encode_heard_row(const porta_heard_row_t *r, uint8_t *out, size_t out_cap);
+bool porta_proto_parse_heard_row(const porta_frame_t *f, porta_heard_row_t *out);
+
+// One band and mode of what the filter matches (heard_ring.h, HeardGroupSummary), newest first.
+#define PORTA_HEARD_HOURS 10u
+#define PORTA_HEARD_GROUPS_MAX 8u  // groups a reply carries at most (heard_ring.h, kHeardSummaryGroups)
+#define PORTA_HEARD_NO_SNR (-128)  // an hour with nothing heard
+typedef struct {
+    char     band[PORTA_BAND_MAX + 1];  // "20m"; empty when the dial is on no band
+    uint8_t  slot_len_ds;
+    uint32_t count;
+    uint32_t first_secs;  // UTC seconds; 0 with no clock
+    uint32_t last_secs;
+    int8_t   snr_now;
+    int8_t   snr_median;
+    int8_t   snr_best;
+    int8_t   hourly[PORTA_HEARD_HOURS];  // oldest first, the last the summary's hour_end
+} porta_heard_group_t;
+
+size_t porta_proto_encode_heard_group(const porta_heard_group_t *g, uint8_t *out, size_t out_cap);
+bool porta_proto_parse_heard_group(const porta_frame_t *f, porta_heard_group_t *out);
+
+#define PORTA_HEARD_WRAPPED     0x01u  // older decodes were written over: `since` is where the ring begins
+#define PORTA_HEARD_MORE_GROUPS 0x02u  // more bands and modes than the groups sent; they only count
+#define PORTA_HEARD_MORE        0x04u  // older matching decodes than the page's rows
+#define PORTA_HEARD_LOST        0x08u  // `before` reached past the oldest, and older ones were written over
+typedef struct {
+    uint32_t count;       // every decode the filter matches
+    uint32_t since_secs;  // UTC seconds of the oldest timed decode the ring holds, any call; 0 with none
+    uint32_t hour_end;    // the UTC hour (seconds / 3600) the groups' hourly series end on
+    uint8_t  flags;
+} porta_heard_summary_t;
+
+size_t porta_proto_encode_heard_summary(const porta_heard_summary_t *s, uint8_t *out, size_t out_cap);
+bool porta_proto_parse_heard_summary(const porta_frame_t *f, porta_heard_summary_t *out);
+
+// JSON for GET /api/heard (porta_event_json.c), shared by the sidekick and the simulator: a row in
+// /api/events' decode shape, its `s` the ring's seq; a group; and the summary's members, written after the
+// rows' array.
+size_t porta_event_json_heard_row(char *out, size_t cap, const porta_heard_row_t *r);
+size_t porta_event_json_heard_group(char *out, size_t cap, const porta_heard_group_t *g);
+size_t porta_event_json_heard_summary(char *out, size_t cap, const porta_heard_summary_t *s);
 
 // --- Link stress test (docs/architecture/sidekick.md, Port A) -------------
 // One direction's payloads. The sequence starts at 0 when that direction

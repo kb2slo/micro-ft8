@@ -1,8 +1,10 @@
 #pragma once
 
 #include "json_parser.h"
+#include "porta_proto.h"
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -45,6 +47,9 @@ struct Scenario {
     std::vector<uint16_t> last_ids;
     std::vector<SimLogEntry> log;
     int failures = 0;
+    // Each decode as it is emitted, with its sender (field2): the live server keeps a heard ring of them,
+    // as the main board does. Unset in host_test.
+    std::function<void(const porta_decode_event_t&, const std::string& sender)> on_decode;
 };
 
 void scenario_begin(Scenario& s, const TestData& data);

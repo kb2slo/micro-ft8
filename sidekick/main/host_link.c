@@ -806,6 +806,99 @@ static void gather_abandon(void)
     lock_give();
 }
 
+// HEARD_PAGE (docs/architecture/decode.md, The heard ring): its rows, groups and summary gathered into the same buffer as LOG_PAGE's, which is
+// free while this runs since one main-board request runs at a time, as `{"ok":true,"decodes":[rows],
+// "groups":[...],"total":…,…}`. A row past the room kept for the tail is left out and the body says
+// `"cut":true`: ask again from its last row.
+static porta_heard_group_t s_heard_groups[PORTA_HEARD_GROUPS_MAX];
+static size_t s_heard_group_count;
+static porta_heard_summary_t s_heard_summary;
+static bool s_heard_have_summary;
+// The tail's longest: every group at its longest and the summary's members.
+#define HEARD_JSON_GROUP_MAX 200
+#define HEARD_JSON_TAIL (200 + PORTA_HEARD_GROUPS_MAX * HEARD_JSON_GROUP_MAX)
+
+static void heard_json_begin(void)
+{
+    lock_take();
+    s_file_entries_gathering = true;
+    s_file_entries_json_first = true;
+    s_file_entries_cut = false;
+    s_heard_group_count = 0;
+    s_heard_have_summary = false;
+    strcpy(s_file_entries_json, "{\"ok\":true,\"decodes\":[");
+    s_file_entries_json_len = strlen(s_file_entries_json);
+    lock_give();
+}
+
+// On the porta_rx task's 4 KB stack: the scratch is static (file_entries_json_add()'s note).
+static void heard_json_add(const porta_heard_row_t *r)
+{
+    static char piece[PORTA_HEARD_TEXT_MAX * 6 + 200];
+    lock_take();
+    if (s_file_entries_gathering) {
+        size_t n = porta_event_json_heard_row(piece + 1, sizeof(piece) - 1, r);
+        if (n > 0) {
+            piece[0] = ',';
+            const char *at = s_file_entries_json_first ? piece + 1 : piece;
+            n += s_file_entries_json_first ? 0 : 1;
+            if (s_file_entries_json_len + n + HEARD_JSON_TAIL < FILE_ENTRIES_JSON_MAX) {
+                memcpy(s_file_entries_json + s_file_entries_json_len, at, n + 1);
+                s_file_entries_json_len += n;
+                s_file_entries_json_first = false;
+            } else {
+                s_file_entries_cut = true;
+            }
+        }
+    }
+    lock_give();
+}
+
+static void heard_json_group(const porta_heard_group_t *g)
+{
+    lock_take();
+    if (s_file_entries_gathering && s_heard_group_count < PORTA_HEARD_GROUPS_MAX) {
+        s_heard_groups[s_heard_group_count++] = *g;
+    }
+    lock_give();
+}
+
+static void heard_json_summary(const porta_heard_summary_t *sum)
+{
+    lock_take();
+    if (s_file_entries_gathering) {
+        s_heard_summary = *sum;
+        s_heard_have_summary = true;
+    }
+    lock_give();
+}
+
+// Caller holds s_lock. Room for the tail is kept by heard_json_add(), so it always fits.
+static void heard_json_end_locked(void)
+{
+    if (!s_file_entries_gathering) {
+        return;
+    }
+    static char tail[HEARD_JSON_TAIL];
+    size_t n = (size_t)snprintf(tail, sizeof(tail), "],\"groups\":[");
+    for (size_t i = 0; i < s_heard_group_count; ++i) {
+        if (i) tail[n++] = ',';
+        n += porta_event_json_heard_group(tail + n, sizeof(tail) - n, &s_heard_groups[i]);
+    }
+    tail[n++] = ']';
+    tail[n] = '\0';
+    if (s_heard_have_summary) {
+        tail[n++] = ',';
+        n += porta_event_json_heard_summary(tail + n, sizeof(tail) - n, &s_heard_summary);
+    }
+    n += (size_t)snprintf(tail + n, sizeof(tail) - n, "%s}", s_file_entries_cut ? ",\"cut\":true" : "");
+    if (s_file_entries_json_len + n < FILE_ENTRIES_JSON_MAX) {
+        memcpy(s_file_entries_json + s_file_entries_json_len, tail, n + 1);
+        s_file_entries_json_len += n;
+    }
+    s_file_entries_gathering = false;
+}
+
 // Wait briefly for the host's ACK/NAK. One frame at PORTA_BAUD, answered
 // from the main loop, so this is milliseconds -- but the browser should be
 // told what happened rather than assuming success.
@@ -899,7 +992,7 @@ static esp_err_t wait_reply(httpd_req_t *req, uint8_t verb, bool message)
         if (config_get) {
             return send_config_reply(req, NULL);
         }
-        if (message && verb == PORTA_MSG_LOG_PAGE) {
+        if (message && (verb == PORTA_MSG_LOG_PAGE || verb == PORTA_MSG_HEARD_PAGE)) {
             static char body[FILE_ENTRIES_JSON_MAX];
             lock_take();
             size_t n = s_file_entries_json_len;
@@ -1365,6 +1458,51 @@ static esp_err_t get_log_entries(httpd_req_t *req)
         return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
     }
     return wait_message_reply(req, PORTA_MSG_LOG_PAGE);
+}
+
+// GET /api/heard?call=K1ABC&before=<seq>&take=  -- the main board's heard ring (docs/architecture/decode.md,
+// The heard ring): every decode since it started, newest first, `call`'s as sender alone with `call`, older than `before` (a row's `s`; none: the
+// newest). `decodes` are rows in /api/events' decode shape, `s` the ring's seq; `groups` each band and mode
+// of what the filter matches, with its count, times, SNR now, median and best and the hourly medians; and
+// `total`, `since`, `hour_end`, `wrapped`, `more_groups`, `more` and `lost`. Open read: it is what was heard
+// on the air, as /api/events is. A reply out of room says `"cut":true`: ask again from its last row.
+static esp_err_t get_heard(httpd_req_t *req)
+{
+    char query[96];
+    porta_heard_page_req_t page = {0};
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        // A callsign, as /api/log/entries takes one.
+        char raw[3 * PORTA_CALLSIGN_MAX + 2];
+        const esp_err_t got = httpd_query_key_value(query, "call", raw, sizeof(raw));
+        if (got != ESP_ERR_NOT_FOUND) {
+            if (got != ESP_OK || !url_query_callsign(raw, page.call, sizeof(page.call), PORTA_CALLSIGN_MAX)) {
+                httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad call");
+                return ESP_FAIL;
+            }
+            page.flags |= PORTA_HEARD_PAGE_CALL;
+        }
+    }
+    unsigned long before = 0;
+    unsigned long take = 10;
+    query_uint(req, "before", before, &before);
+    query_uint(req, "take", take, &take);
+    if (take == 0 || take > 255 || before > 0xFFFFFFFFul) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad take or before");
+        return ESP_FAIL;
+    }
+    page.before = (uint32_t)before;
+    page.take = (uint8_t)take;
+
+    heard_json_begin();
+    reply_reset();
+    uint8_t frame[PORTA_PROTO_MAX_FRAME];
+    const size_t n = porta_proto_encode_heard_page_req(&page, frame, sizeof(frame));
+    if (!porta_send(frame, n)) {
+        gather_abandon();
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_sendstr(req, "{\"ok\":false,\"why\":\"host link busy\"}");
+    }
+    return wait_message_reply(req, PORTA_MSG_HEARD_PAGE);
 }
 
 // PATCH /api/log/entries?id=N  body: ADIF fields (`<app_qrzlog_logid:10>1234567890...`) to set on record N;
@@ -1875,6 +2013,9 @@ static void porta_rx_task(void *arg)
     porta_frame_t frame;
     porta_qso_entry_row_t qrow;
     static porta_log_summary_t file_summary;  // static: the porta_rx task's stack is small
+    static porta_heard_row_t heard_row;
+    static porta_heard_group_t heard_group;
+    static porta_heard_summary_t heard_summary;
     uint32_t reported_crc = 0;
 
     while (1) {
@@ -1985,6 +2126,12 @@ static void porta_rx_task(void *arg)
                 file_entries_json_add(&qrow);
             } else if (porta_proto_parse_file_summary_row(&frame, &file_summary)) {
                 file_entries_json_summary(&file_summary);
+            } else if (porta_proto_parse_heard_row(&frame, &heard_row)) {
+                heard_json_add(&heard_row);
+            } else if (porta_proto_parse_heard_group(&frame, &heard_group)) {
+                heard_json_group(&heard_group);
+            } else if (porta_proto_parse_heard_summary(&frame, &heard_summary)) {
+                heard_json_summary(&heard_summary);
             } else {
                 char cfg_key[PORTA_CONFIG_KEY_MAX + 1];
                 char cfg_val[PORTA_CONFIG_VALUE_MAX + 1];
@@ -2003,6 +2150,9 @@ static void porta_rx_task(void *arg)
                         break;
                     case PORTA_MSG_LOG_PAGE:
                         file_entries_json_end_locked();
+                        break;
+                    case PORTA_MSG_HEARD_PAGE:
+                        heard_json_end_locked();
                         break;
                     default:
                         break;
@@ -2249,6 +2399,9 @@ void host_link_register_uris(httpd_handle_t server)
     static const httpd_uri_t log_entry_patch = {
         .uri = "/api/log/entries", .method = HTTP_PATCH, .handler = patch_log_entry,
     };
+    static const httpd_uri_t heard = {
+        .uri = "/api/heard", .method = HTTP_GET, .handler = get_heard,
+    };
     static const httpd_uri_t log_import = {
         .uri = "/api/log/import", .method = HTTP_POST, .handler = post_log_import,
     };
@@ -2294,6 +2447,7 @@ void host_link_register_uris(httpd_handle_t server)
         { &queue_parity, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
         { &log_files_delete, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
         { &log_entries, PAIRING_OPEN, HTTP_WORKER_MAIN_BOARD },
+        { &heard, PAIRING_OPEN, HTTP_WORKER_MAIN_BOARD },
         { &log_entry_patch, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
         { &log_import, PAIRING_REQUIRED, HTTP_WORKER_MAIN_BOARD },
     };

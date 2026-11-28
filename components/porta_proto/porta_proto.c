@@ -1592,6 +1592,207 @@ bool porta_proto_parse_file_summary_row(const porta_frame_t *f, porta_log_summar
     return p == f->len;
 }
 
+// flags(1) | before(4) | take(1) [| call_len(1) | call...]
+size_t porta_proto_encode_heard_page_req(const porta_heard_page_req_t *r, uint8_t *out, size_t out_cap)
+{
+    if (!r || r->take == 0) {
+        return 0;
+    }
+    uint8_t payload[7 + PORTA_CALLSIGN_MAX];
+    size_t n = 6;
+    payload[0] = r->flags;
+    put_u32(&payload[1], r->before);
+    payload[5] = r->take;
+    if (r->flags & PORTA_HEARD_PAGE_CALL) {
+        const size_t call_n = strnlen(r->call, PORTA_CALLSIGN_MAX + 1);
+        if (call_n == 0 || call_n > PORTA_CALLSIGN_MAX) {
+            return 0;
+        }
+        payload[n++] = (uint8_t)call_n;
+        memcpy(&payload[n], r->call, call_n);
+        n += call_n;
+    }
+    return porta_proto_encode(PORTA_MSG_HEARD_PAGE, payload, (uint8_t)n, out, out_cap);
+}
+
+bool porta_proto_parse_heard_page_req(const porta_frame_t *f, porta_heard_page_req_t *out)
+{
+    if (!f || !out || f->type != PORTA_MSG_HEARD_PAGE || f->len < 6 || f->payload[5] == 0) {
+        return false;
+    }
+    memset(out, 0, sizeof(*out));
+    out->flags = f->payload[0];
+    out->before = get_u32(&f->payload[1]);
+    out->take = f->payload[5];
+    if (!(out->flags & PORTA_HEARD_PAGE_CALL)) {
+        return f->len == 6;
+    }
+    if (f->len < 7) {
+        return false;
+    }
+    const uint8_t call_n = f->payload[6];
+    if (call_n == 0 || call_n > PORTA_CALLSIGN_MAX || (size_t)7 + call_n != f->len) {
+        return false;
+    }
+    memcpy(out->call, &f->payload[7], call_n);
+    out->call[call_n] = '\0';
+    return strlen(out->call) == call_n;
+}
+
+// data_kind(1)=HEARD | seq(4) | slot_idx(4) | dial_hz(4) | offset_hz(2) | dt_centis(2) | snr(1) |
+// slot_len_ds(1) | flags(1) | text_len(1) | text...
+size_t porta_proto_encode_heard_row(const porta_heard_row_t *r, uint8_t *out, size_t out_cap)
+{
+    if (!r) {
+        return 0;
+    }
+    const size_t text_n = strnlen(r->text, PORTA_HEARD_TEXT_MAX + 1);
+    if (text_n > PORTA_HEARD_TEXT_MAX) {
+        return 0;
+    }
+    uint8_t payload[22 + PORTA_HEARD_TEXT_MAX];
+    size_t p = 0;
+    payload[p++] = PORTA_FILE_DATA_HEARD;
+    put_u32(&payload[p], r->seq);
+    p += 4;
+    put_u32(&payload[p], r->slot_idx);
+    p += 4;
+    put_u32(&payload[p], r->dial_hz);
+    p += 4;
+    put_u16(&payload[p], r->offset_hz);
+    p += 2;
+    put_u16(&payload[p], (uint16_t)r->dt_centis);
+    p += 2;
+    payload[p++] = (uint8_t)r->snr;
+    payload[p++] = r->slot_len_ds;
+    payload[p++] = r->flags;
+    payload[p++] = (uint8_t)text_n;
+    memcpy(&payload[p], r->text, text_n);
+    p += text_n;
+    return porta_proto_encode(PORTA_MSG_FILE_DATA, payload, (uint8_t)p, out, out_cap);
+}
+
+bool porta_proto_parse_heard_row(const porta_frame_t *f, porta_heard_row_t *out)
+{
+    if (!f || !out || f->type != PORTA_MSG_FILE_DATA || f->len < 22 || f->payload[0] != PORTA_FILE_DATA_HEARD) {
+        return false;
+    }
+    memset(out, 0, sizeof(*out));
+    size_t p = 1;
+    out->seq = get_u32(&f->payload[p]);
+    p += 4;
+    out->slot_idx = get_u32(&f->payload[p]);
+    p += 4;
+    out->dial_hz = get_u32(&f->payload[p]);
+    p += 4;
+    out->offset_hz = get_u16(&f->payload[p]);
+    p += 2;
+    out->dt_centis = (int16_t)get_u16(&f->payload[p]);
+    p += 2;
+    out->snr = (int8_t)f->payload[p++];
+    out->slot_len_ds = f->payload[p++];
+    out->flags = f->payload[p++];
+    const uint8_t text_n = f->payload[p++];
+    if (text_n > PORTA_HEARD_TEXT_MAX || p + text_n != f->len) {
+        return false;
+    }
+    memcpy(out->text, &f->payload[p], text_n);
+    out->text[text_n] = '\0';
+    return strlen(out->text) == text_n;
+}
+
+// data_kind(1)=HEARD_GROUP | band_len(1) | band... | slot_len_ds(1) | count(4) | first_secs(4) | last_secs(4) |
+// snr_now(1) | snr_median(1) | snr_best(1) | hourly(PORTA_HEARD_HOURS)
+size_t porta_proto_encode_heard_group(const porta_heard_group_t *g, uint8_t *out, size_t out_cap)
+{
+    if (!g) {
+        return 0;
+    }
+    const size_t band_n = strnlen(g->band, PORTA_BAND_MAX + 1);
+    if (band_n > PORTA_BAND_MAX) {
+        return 0;
+    }
+    uint8_t payload[18 + PORTA_BAND_MAX + PORTA_HEARD_HOURS];
+    size_t p = 0;
+    payload[p++] = PORTA_FILE_DATA_HEARD_GROUP;
+    payload[p++] = (uint8_t)band_n;
+    memcpy(&payload[p], g->band, band_n);
+    p += band_n;
+    payload[p++] = g->slot_len_ds;
+    put_u32(&payload[p], g->count);
+    p += 4;
+    put_u32(&payload[p], g->first_secs);
+    p += 4;
+    put_u32(&payload[p], g->last_secs);
+    p += 4;
+    payload[p++] = (uint8_t)g->snr_now;
+    payload[p++] = (uint8_t)g->snr_median;
+    payload[p++] = (uint8_t)g->snr_best;
+    for (size_t i = 0; i < PORTA_HEARD_HOURS; ++i) {
+        payload[p++] = (uint8_t)g->hourly[i];
+    }
+    return porta_proto_encode(PORTA_MSG_FILE_DATA, payload, (uint8_t)p, out, out_cap);
+}
+
+bool porta_proto_parse_heard_group(const porta_frame_t *f, porta_heard_group_t *out)
+{
+    if (!f || !out || f->type != PORTA_MSG_FILE_DATA || f->len < 2 || f->payload[0] != PORTA_FILE_DATA_HEARD_GROUP) {
+        return false;
+    }
+    memset(out, 0, sizeof(*out));
+    size_t p = 1;
+    const uint8_t band_n = f->payload[p++];
+    if (band_n > PORTA_BAND_MAX || (size_t)18 + band_n + PORTA_HEARD_HOURS != f->len) {
+        return false;
+    }
+    memcpy(out->band, &f->payload[p], band_n);
+    out->band[band_n] = '\0';
+    p += band_n;
+    out->slot_len_ds = f->payload[p++];
+    out->count = get_u32(&f->payload[p]);
+    p += 4;
+    out->first_secs = get_u32(&f->payload[p]);
+    p += 4;
+    out->last_secs = get_u32(&f->payload[p]);
+    p += 4;
+    out->snr_now = (int8_t)f->payload[p++];
+    out->snr_median = (int8_t)f->payload[p++];
+    out->snr_best = (int8_t)f->payload[p++];
+    for (size_t i = 0; i < PORTA_HEARD_HOURS; ++i) {
+        out->hourly[i] = (int8_t)f->payload[p++];
+    }
+    return strlen(out->band) == band_n;
+}
+
+// data_kind(1)=HEARD_SUMMARY | count(4) | since_secs(4) | hour_end(4) | flags(1)
+size_t porta_proto_encode_heard_summary(const porta_heard_summary_t *s, uint8_t *out, size_t out_cap)
+{
+    if (!s) {
+        return 0;
+    }
+    uint8_t payload[14];
+    payload[0] = PORTA_FILE_DATA_HEARD_SUMMARY;
+    put_u32(&payload[1], s->count);
+    put_u32(&payload[5], s->since_secs);
+    put_u32(&payload[9], s->hour_end);
+    payload[13] = s->flags;
+    return porta_proto_encode(PORTA_MSG_FILE_DATA, payload, sizeof(payload), out, out_cap);
+}
+
+bool porta_proto_parse_heard_summary(const porta_frame_t *f, porta_heard_summary_t *out)
+{
+    if (!f || !out || f->type != PORTA_MSG_FILE_DATA || f->len != 14 ||
+        f->payload[0] != PORTA_FILE_DATA_HEARD_SUMMARY) {
+        return false;
+    }
+    memset(out, 0, sizeof(*out));
+    out->count = get_u32(&f->payload[1]);
+    out->since_secs = get_u32(&f->payload[5]);
+    out->hour_end = get_u32(&f->payload[9]);
+    out->flags = f->payload[13];
+    return true;
+}
+
 // verb(1)=LOG_IMPORT | fields...
 size_t porta_proto_encode_log_import(const char *fields, size_t len, uint8_t *out, size_t out_cap)
 {

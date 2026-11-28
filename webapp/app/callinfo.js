@@ -236,6 +236,157 @@ function fillCallQsos(call) {
   return more();
 }
 
+// ---- What the station heard of a call (docs/architecture/webapp.md, the callsign card): the main board's heard ring, GET /api/heard ----
+// Its rows are /api/events' decodes (`s` the ring's seq, the page's cursor); its groups each band and mode with
+// the median SNR of each UTC hour, oldest first, null for an hour with nothing heard.
+function heardModeName(sl) { return sl === 75 ? 'FT4' : 'FT8'; }
+function fmtUtcHm(secs) {
+  var d = new Date(secs * 1000);
+  return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0') + 'z';
+}
+var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function fmtUtcDayHm(secs) {
+  var d = new Date(secs * 1000);
+  return MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate() + ' ' + fmtUtcHm(secs);
+}
+function fmtDb(n) { return (n > 0 ? '+' : '') + n + ' dB'; }
+// When a span ran: "14:02–16:41z" in one UTC day, each end with its date across midnight, the time alone for one.
+function heardSpanText(first, last) {
+  if (!first) return '';
+  if (fmtUtcDayHm(first) === fmtUtcDayHm(last)) return fmtUtcHm(first);
+  if (Math.floor(first / 86400) !== Math.floor(last / 86400)) return fmtUtcDayHm(first) + ' – ' + fmtUtcDayHm(last);
+  return fmtUtcHm(first).slice(0, 5) + '–' + fmtUtcHm(last);
+}
+// One band and mode: "20m FT8 ×40 · 14:02–16:41z · -7 dB now, median -12, best -3".
+function heardGroupText(g) {
+  if (!g) return '';
+  var head = [g.band, heardModeName(g.sl)].filter(function (x) { return x; }).join(' ') + ' ×' + g.n;
+  var parts = [head];
+  var span = heardSpanText(g.first, g.last);
+  if (span) parts.push(span);
+  parts.push(fmtDb(g.now) + ' now, median ' + fmtDb(g.median).replace(' dB', '') + ', best ' + fmtDb(g.best).replace(' dB', ''));
+  return parts.join(' · ');
+}
+// One decode: "16:41:15z · 20m FT8 · -7 dB · 1500 Hz · CQ K1ABC FN42", the time its slot started.
+function heardRowText(r) {
+  var start = r.si ? r.si * (r.sl || 150) / 10 : 0;
+  var when = '';
+  if (start) {
+    var d = new Date(start * 1000);
+    when = String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0') + ':' +
+      String(d.getUTCSeconds()).padStart(2, '0') + 'z';
+  }
+  var band = r.fq ? khzToBandName(r.fq / 1000) : '';
+  return [when, [band, heardModeName(r.sl)].filter(function (x) { return x; }).join(' '), fmtDb(r.snr),
+          r.hz ? r.hz + ' Hz' : '', r.x].filter(function (x) { return x; }).join(' · ');
+}
+// The section's label: "Heard (46) · since 14:02z", since being where the ring's history starts (a restart, or
+// its oldest decode once it has wrapped), dated when not today (UTC).
+function heardLabelText(j, nowMs) {
+  var label = 'Heard (' + (j.total || 0) + ')';
+  if (!j.since) return label;
+  var today = Math.floor((nowMs || Date.now()) / 86400000) === Math.floor(j.since / 86400);
+  return label + ' · since ' + (today ? fmtUtcHm(j.since) : fmtUtcDayHm(j.since));
+}
+// The hourly medians as a small line, oldest left, broken where an hour had nothing; an hour alone between gaps
+// is a dot. The values are written out for a screen reader. '' with fewer than two hours heard: one point is no
+// trend.
+var HEARD_SPARK_W = 120, HEARD_SPARK_H = 20;
+function heardSparkSvg(hourly) {
+  var vals = (hourly || []).filter(function (v) { return v !== null && v !== undefined; });
+  if (vals.length < 2) return '';
+  var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+  if (hi - lo < 6) { var mid = (hi + lo) / 2; lo = mid - 3; hi = mid + 3; }  // a flat line is drawn flat, not as noise
+  var n = hourly.length, step = n > 1 ? (HEARD_SPARK_W - 4) / (n - 1) : 0;
+  function x(i) { return (2 + i * step).toFixed(1); }
+  function y(v) { return (2 + (hi - v) / (hi - lo) * (HEARD_SPARK_H - 4)).toFixed(1); }
+  var paths = [], dots = [], run = [];
+  function flush() {
+    if (run.length === 1) dots.push('<circle cx="' + run[0][0] + '" cy="' + run[0][1] + '" r="1.6"/>');
+    else if (run.length > 1) paths.push('<path d="M' + run.map(function (p) { return p.join(' '); }).join(' L') + '"/>');
+    run = [];
+  }
+  hourly.forEach(function (v, i) {
+    if (v === null || v === undefined) flush(); else run.push([x(i), y(v)]);
+  });
+  flush();
+  var said = hourly.map(function (v) { return v === null || v === undefined ? 'none' : String(v); }).join(', ');
+  return '<svg class=ci-spark width="' + HEARD_SPARK_W + '" height="' + HEARD_SPARK_H + '" viewBox="0 0 ' +
+    HEARD_SPARK_W + ' ' + HEARD_SPARK_H + '" role=img aria-label="Hourly median SNR, oldest first: ' + esc(said) + ' dB">' +
+    // A faint rule the width of the series, so an hour with nothing reads as a gap in it.
+    '<line x1="2" y1="' + (HEARD_SPARK_H - 0.5) + '" x2="' + (HEARD_SPARK_W - 2) + '" y2="' + (HEARD_SPARK_H - 0.5) +
+    '" stroke=GrayText stroke-opacity=.35 stroke-width=1 />' +
+    '<g fill=none stroke=currentColor stroke-width=1.5 stroke-linejoin=round stroke-linecap=round>' + paths.join('') +
+    '</g><g fill=currentColor stroke=none>' + dots.join('') + '</g></svg>';
+}
+var CALL_HEARD_PAGE = 10;
+async function fetchCallHeard(call, before) {
+  var ac = new AbortController();
+  var timer = setTimeout(function () { ac.abort(); }, 10000);
+  try {
+    var r = await fetch('/api/heard?take=' + CALL_HEARD_PAGE + '&call=' + encodeURIComponent(call) +
+                        (before ? '&before=' + before : ''), { cache: 'no-store', signal: ac.signal });
+    var j = await r.json();
+    if (!j.ok) throw new Error(j.why || 'heard failed');
+    return j;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+// Fills the card's heard section for `call` once the station answers: the label, a line and a trend per band and
+// mode, then a page of decodes and Show more while there are more. Touches the card only while it is still open
+// on the same call.
+function fillCallHeard(call) {
+  var shown = 0, cursor = 0;
+  function stillOpen() {
+    var modal = document.getElementById('callInfoModal');
+    return !modal.hidden && document.getElementById('callInfoCallName').textContent === call &&
+      document.getElementById('ciHeard');
+  }
+  function more() {
+    return fetchCallHeard(call, cursor).then(function (j) {
+      if (!stillOpen()) return;
+      var section = document.getElementById('ciHeard');
+      var rows = j.decodes || [];
+      var total = j.total || 0;
+      if (!shown) {
+        var groups = (j.groups || []).map(function (g) {
+          return '<div class=ci-heard>' + esc(heardGroupText(g)) + '</div>' + heardSparkSvg(g.hourly);
+        }).join('');
+        section.innerHTML = '<div class=ci-label>' + esc(heardLabelText(j)) + '</div>' +
+          (total ? groups + '<div id=ciHeardRows></div>'
+                 : 'No decodes from this callsign' + (j.since ? ' since ' + esc(fmtUtcHm(j.since)) : ''));
+      }
+      var list = document.getElementById('ciHeardRows');
+      if (!list) return;
+      rows.forEach(function (r) {
+        var el = document.createElement('div');
+        el.className = 'ci-heard';
+        el.textContent = heardRowText(r);
+        list.appendChild(el);
+      });
+      shown += rows.length;
+      if (rows.length) cursor = rows[rows.length - 1].s;
+      var old = document.getElementById('ciHeardMore');
+      if (old) old.remove();
+      if (rows.length && (j.more || j.cut) && shown < total) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.id = 'ciHeardMore';
+        btn.className = 'ci-more';
+        btn.textContent = 'Show more (' + (total - shown) + ')';
+        btn.onclick = function () { btn.disabled = true; more(); };
+        section.appendChild(btn);
+      }
+    }, function () {
+      if (!stillOpen() || shown) return;
+      document.getElementById('ciHeard').innerHTML = '<div class=ci-label>Heard</div>' +
+        '<span style="color:GrayText">No reply from the station</span>';
+    });
+  }
+  return more();
+}
+
 // Same {grid, ts} shape app.html's learnCallsignGrid() writes -- read
 // directly from the shared localStorage key rather than depending on the
 // host page to hand it over, since this is exactly the kind of "same
@@ -581,6 +732,7 @@ var STYLE = '#callInfoModal{position:fixed;inset:0;z-index:20;display:flex;align
   '.ci-label{font-size:.7rem;color:GrayText;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.15rem}' +
   '.ci-heard{font-family:ui-monospace,monospace;font-size:.75rem;padding:.15rem 0}' +
   '.ci-more{margin-top:.35rem;font-size:.8rem;padding:.3rem .7rem}' +
+  '.ci-spark{display:block;color:var(--accent, #1d4ed8);margin:.05rem 0 .25rem}' +
   '.ci-link{display:inline-block;margin-top:.3rem;color:var(--accent, #1d4ed8);font-size:.8rem}' +
   // Same affordance app.html's own .callink already uses for a clickable
   // callsign (dotted underline, no color shift) -- a grid square link is
@@ -616,7 +768,7 @@ function hide() { document.getElementById('callInfoModal').hidden = true; }
 // can't supply it, e.g. map.html has no session decode history at all):
 //   myGrid            operator's own grid (string)
 //   qsoLog            true: the section of this call's QSOs, read from the station's whole log (fillCallQsos())
-//   heardThisSession(call) -> [{when, band, snr, text}] | null
+//   heardLog          true: the section of what the station heard of this call (fillCallHeard())
 //   heardUs(call)     -> [{band, snr, t, count, grid}]: PSKReporter reports of this station hearing us
 //                        (PskrCore.heardBy(), docs/architecture/webapp.md, Who hears me); the section shows only
 //                        when there are some
@@ -653,17 +805,9 @@ async function show(call, opts) {
       '<span style="color:GrayText">reading the log…</span></div>';
   }
 
-  if (typeof opts.heardThisSession === 'function') {
-    var heard = opts.heardThisSession(call) || [];
-    body += '<div class=ci-row><div class=ci-label>Heard this session (' + heard.length + ')</div>' +
-      (heard.length
-        ? heard.slice(0, 6).map(function (h) {
-            return '<div class=ci-heard>' + esc(h.when) + (h.band ? ' · ' + esc(h.band) : '') +
-              ' · ' + (h.snr > 0 ? '+' : '') + h.snr + ' dB' + (h.hz ? ' · ' + h.hz + ' Hz' : '') +
-              ' · ' + esc(h.text) + '</div>';
-          }).join('')
-        : 'No decodes from this callsign in the current decode history') +
-      '</div>';
+  if (opts.heardLog) {
+    body += '<div class=ci-row id=ciHeard><div class=ci-label>Heard</div>' +
+      '<span style="color:GrayText">reading what the station heard…</span></div>';
   }
 
   if (heardUs.length) {
@@ -695,6 +839,7 @@ async function show(call, opts) {
   document.getElementById('callInfoQrz').href = qrzUrl(call);
   document.getElementById('callInfoModal').hidden = false;
   if (opts.qsoLog) fillCallQsos(call);
+  if (opts.heardLog) fillCallHeard(call);
 
   if (grid) {
     locateGrid(grid).then(function (text) {
@@ -765,6 +910,7 @@ if (document.readyState === 'loading') {
 // silently going without it until whatever happens to open the modal first.
 loadGeoData();
 
-window.CallInfo = { logSummaryText: logSummaryText, callSummaryText: callSummaryText, callQsoText: callQsoText,
+window.CallInfo = { logSummaryText: logSummaryText, heardGroupText: heardGroupText, heardRowText: heardRowText,
+  heardLabelText: heardLabelText, heardSparkSvg: heardSparkSvg, callSummaryText: callSummaryText, callQsoText: callQsoText,
                     setDistUnit: setDistUnit, learnCq: learnCq, heardCqFor: heardCqFor, loadActiveSpots: loadActiveSpots, activeSpotFor: activeSpotFor, show: show, hide: hide, learnGrid: learnGrid, cachedGrid: cachedGrid, shortLocation: shortLocation, countryCode: countryCode, gridLink: gridLink, qrzUrl: qrzUrl };
 })();

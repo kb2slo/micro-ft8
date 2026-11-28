@@ -3,7 +3,7 @@ idf_component_register(
          "decode_sync.c" "decode_snr.c" "decode_fields.cpp" "heard_grid.cpp"
     INCLUDE_DIRS "include"
     REQUIRES decode_types ft8_lib ft8_audio_pipeline autoseq callsign_hashtable decode_tx_state pthread
-             debug_log protocol rtc_core adif dial_history
+             debug_log protocol rtc_core adif dial_history heard_ring
 )
 
 # B89: decode loop at -O2, as ft8_lib (docs/architecture/decode.md, Build).

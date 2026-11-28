@@ -19,6 +19,7 @@
 #include "porta_proto.h"
 #include "station.h"
 #include "swr_sweep.h"
+#include "heard_ring.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -291,6 +292,88 @@ static std::string log_page_json(bool unsent, bool own, const std::string& date,
     }
     body += "]}}";
     return body;
+}
+
+// The heard ring, as the main board keeps it (heard_ring.h): every decode the scenario emits, served as the
+// sidekick's GET /api/heard writes it (porta_event_json_heard_*).
+static std::vector<HeardRecord> g_heard_records(4096);
+static std::vector<HeardCallSlot> g_heard_calls(1024);
+static std::vector<uint16_t> g_heard_scratch(4096);
+static HeardRing g_heard;
+
+static void heard_note(const porta_decode_event_t& ev, const std::string& sender)
+{
+    HeardDecode d{};
+    d.text = ev.text;
+    d.sender = sender.c_str();
+    d.slot_idx = ev.slot_idx;
+    d.dial_hz = ev.dial_hz;
+    d.offset_hz = ev.offset_hz;
+    d.dt_centis = ev.dt_centis;
+    d.snr = ev.snr;
+    d.slot_len_ds = ev.slot_len_ds;
+    d.is_cq = ev.is_cq;
+    heard_ring_add(&g_heard, d);
+}
+
+static const char* const kSimBands[] = {"160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m"};
+static const uint32_t kSimBandLowKhz[] = {1800, 3500, 5330, 7000, 10100, 14000, 18068, 21000, 24890, 28000, 50000};
+static const uint32_t kSimBandHighKhz[] = {2000, 4000, 5410, 7300, 10150, 14350, 18168, 21450, 24990, 29700, 54000};
+static const size_t kSimBandCount = sizeof(kSimBands) / sizeof(kSimBands[0]);
+
+static uint8_t sim_band_of(uint32_t dial_hz)
+{
+    for (size_t i = 0; i < kSimBandCount; ++i) {
+        if (dial_hz / 1000 >= kSimBandLowKhz[i] && dial_hz / 1000 <= kSimBandHighKhz[i]) return (uint8_t)i;
+    }
+    return (uint8_t)kSimBandCount;
+}
+
+static std::string heard_json(const std::string& call, uint32_t before, unsigned take)
+{
+    if (take > 24) take = 24;  // the main board's kHeardPageRows
+    std::vector<const HeardRecord*> rows(take);
+    const HeardPage page = heard_ring_page(&g_heard, call.c_str(), before, rows.data(), take);
+    std::string body = "{\"ok\":true,\"decodes\":[";
+    char piece[512];
+    for (size_t i = 0; i < page.count; ++i) {
+        const HeardRecord& r = *rows[i];
+        porta_heard_row_t w = {};
+        w.seq = r.seq;
+        w.slot_idx = r.slot_idx;
+        w.dial_hz = r.dial_hz;
+        w.offset_hz = r.offset_hz;
+        w.dt_centis = r.dt_centis;
+        w.snr = r.snr;
+        w.slot_len_ds = r.slot_len_ds;
+        w.flags = r.flags & PORTA_HEARD_CQ;
+        std::snprintf(w.text, sizeof(w.text), "%s", r.text);
+        if (porta_event_json_heard_row(piece, sizeof(piece), &w)) body += (i ? "," : "") + std::string(piece);
+    }
+    const HeardSummary sum = heard_ring_summary(&g_heard, call.c_str(), sim_band_of);
+    body += "],\"groups\":[";
+    for (size_t g = 0; g < sum.groups; ++g) {
+        const HeardGroupSummary& src = sum.group[g];
+        porta_heard_group_t w = {};
+        std::snprintf(w.band, sizeof(w.band), "%s", src.band < kSimBandCount ? kSimBands[src.band] : "");
+        w.slot_len_ds = src.slot_len_ds;
+        w.count = src.count;
+        w.first_secs = src.first_secs;
+        w.last_secs = src.last_secs;
+        w.snr_now = src.snr_now;
+        w.snr_median = src.snr_median;
+        w.snr_best = src.snr_best;
+        std::memcpy(w.hourly, src.hourly, sizeof(w.hourly));
+        if (porta_event_json_heard_group(piece, sizeof(piece), &w)) body += (g ? "," : "") + std::string(piece);
+    }
+    porta_heard_summary_t ws = {};
+    ws.count = sum.count;
+    ws.since_secs = sum.since_secs;
+    ws.hour_end = sum.hour_end;
+    ws.flags = (uint8_t)((sum.wrapped ? PORTA_HEARD_WRAPPED : 0) | (sum.more_groups ? PORTA_HEARD_MORE_GROUPS : 0) |
+                         (page.more ? PORTA_HEARD_MORE : 0) | (page.lost ? PORTA_HEARD_LOST : 0));
+    porta_event_json_heard_summary(piece, sizeof(piece), &ws);
+    return body + "]," + piece + "}";
 }
 
 // POST /api/log/import: each line a record or a slice of one under its QRZ ID, as the main board takes them
@@ -642,6 +725,15 @@ static std::string handle(const std::string& method, const std::string& url,
         const bool own = query.count("own") && query.at("own") == "1";
         return log_page_json(unsent, own, date, call, query.count("before") ? query.at("before") : "", take);
     }
+    if (method == "GET" && path == "/api/heard") {
+        const unsigned take = query.count("take") ? (unsigned)std::strtoul(query.at("take").c_str(), nullptr, 10) : 10;
+        const uint32_t before = query.count("before") ? (uint32_t)std::strtoul(query.at("before").c_str(), nullptr, 10) : 0;
+        if (take == 0 || take > 255) {
+            *status = 400;
+            return "{\"ok\":false,\"why\":\"bad take or before\"}";
+        }
+        return heard_json(query.count("call") ? query.at("call") : "", before, take);
+    }
     if (method == "POST" && path == "/api/log/import") {
         return log_import_json(body);
     }
@@ -784,7 +876,10 @@ int main(int argc, char** argv)
         return 1;
     }
     seed_config(td);
+    heard_ring_init(&g_heard, {g_heard_records.data(), g_heard_records.size(), g_heard_calls.data(),
+                               g_heard_calls.size(), g_heard_scratch.data()});
     scenario_begin(g_scenario, td);
+    g_scenario.on_decode = heard_note;
     g_scenario.wall_slots = true;
     g_scenario.check_expect = false;
     scenario_emit_usb(g_scenario, true);

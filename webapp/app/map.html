@@ -1891,7 +1891,7 @@ function showMapPopup(pin) {
   if (pin.call) {
     // A receiver's own grid from its spot is a reliable pairing for the shared cache (callinfo.js, learnGrid()).
     if (pin.source === 'PSKReporter') CallInfo.learnGrid(pin.call, pin.grid);
-    CallInfo.show(pin.call, { myGrid: lastCfg.grid, qsoLog: true,
+    CallInfo.show(pin.call, { myGrid: lastCfg.grid, qsoLog: true, heardLog: true,
                               heardUs: function (c) { return PskrCore.heardBy(PskrLive.state(), c); } });
     return;
   }

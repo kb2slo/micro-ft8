@@ -29,6 +29,7 @@ INCLUDES = -I. \
            -I../components/ft8_lib -I../components/ft8_lib/vendor \
            -I../components/ft8_lib/vendor/ft8 \
            -I../components/porta_proto/include \
+           -I../components/heard_ring/include \
            -I../components/hl2_proto/include
 
 CORE_SRC   = ../components/autoseq/autoseq.cpp
@@ -115,7 +116,7 @@ porta_event_json.o: ../components/porta_proto/porta_event_json.c
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 SIM_OBJ = sim_station.o scenario.o host_mocks.o json_parser.o \
-          ../components/autoseq/autoseq.o porta_proto.o porta_event_json.o swr_sweep.o heard_grid.o station.o
+          ../components/autoseq/autoseq.o porta_proto.o porta_event_json.o swr_sweep.o heard_grid.o station.o heard_ring.o
 $(SIM_TARGET): $(SIM_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
@@ -514,6 +515,21 @@ clean: url_query_clean
 url_query_clean:
 	rm -f $(URL_QUERY_OBJ) $(URL_QUERY_TARGET)
 .PHONY: url_query_clean
+
+# The heard ring. Its whole build is this block, `all` and `clean` included.
+HEARD_RING_TARGET = host_test_heard_ring
+HEARD_RING_OBJ = heard_ring.o test_heard_ring.o
+all: $(HEARD_RING_TARGET)
+heard_ring.o: ../components/heard_ring/heard_ring.cpp
+	$(CXX) $(CXXFLAGS) -I../components/heard_ring/include -c $< -o $@
+test_heard_ring.o: test_heard_ring.cpp
+	$(CXX) $(CXXFLAGS) -I../components/heard_ring/include -c $< -o $@
+$(HEARD_RING_TARGET): $(HEARD_RING_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+clean: heard_ring_clean
+heard_ring_clean:
+	rm -f $(HEARD_RING_OBJ) $(HEARD_RING_TARGET)
+.PHONY: heard_ring_clean
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
