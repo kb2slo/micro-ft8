@@ -11,6 +11,11 @@ if (navigator.standalone === true || (window.matchMedia && matchMedia('(display-
   document.querySelector('meta[name=viewport]').content = 'width=device-width,initial-scale=1,viewport-fit=cover';
   document.documentElement.classList.add('standalone');
 }
+// The chosen theme, before anything paints, so the loading screen below is in it (applyTheme() holds the rule).
+try {
+  var t0 = localStorage.getItem('microft8_theme_v1');
+  if (t0 === 'light' || t0 === 'dark') document.documentElement.setAttribute('data-theme', t0);
+} catch (e) { /* the system theme stands */ }
 </script>
 <meta name=apple-mobile-web-app-capable content=yes>
 <meta name=mobile-web-app-capable content=yes>
@@ -138,6 +143,16 @@ button:disabled{opacity:.45}
 #appHead{display:none}
 .standalone #appHead{display:flex;flex:none;position:sticky;top:0;z-index:6;background:Canvas;align-items:baseline;width:100%;max-width:26rem;margin:0 auto;align-self:center;box-sizing:border-box;padding:calc(env(safe-area-inset-top) + var(--standalone-top)) calc(max(1rem, env(safe-area-inset-right)) + 1rem) .1rem calc(max(1rem, env(safe-area-inset-left)) + 1rem)}
 .standalone .wrap{padding-top:.4rem}
+/* The loading screen, from the Home Screen only (maintainer, 2026-11-28): iOS reloads a Home Screen app it put away
+   in the background, and until the app's scripts had come from the sidekick and run, the screen was blank white.
+   It covers the page from its first bytes until the main script's last line removes it (bootDone()); if that has
+   not happened in BOOT_SLOW_MS, it offers Retry, a reload. A browser tab has its own progress bar and no screen. */
+#bootSplash{display:none}
+.standalone #bootSplash{display:flex;position:fixed;inset:0;z-index:60;flex-direction:column;align-items:center;justify-content:center;gap:1rem;background:Canvas;color:CanvasText;padding:1.5rem;text-align:center}
+#bootSplash .wordmark{font-size:2rem;animation:bootpulse 1.4s ease-in-out infinite}
+@keyframes bootpulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion: reduce){#bootSplash .wordmark{animation:none}}
+#bootSlow{display:flex;flex-direction:column;align-items:center;gap:.75rem;color:GrayText}
 .standalone #pskrListHead{padding-top:calc(.75rem + env(safe-area-inset-top) + var(--standalone-top))}
 .wordmark{font-family:'micro-FT8 Wordmark','Inter',system-ui,sans-serif;font-size:1.3rem;line-height:1.2;letter-spacing:-.02em;white-space:nowrap;color:CanvasText;margin:0}
 .wordmark .wm-m{font-weight:500}
@@ -728,6 +743,20 @@ a.navrow{text-decoration:none}
    time we select a callsign anywhere in the web app"), not defined here. */
 </style>
 
+<div id=bootSplash role=status aria-label="Loading micro-FT8">
+<h1 class=wordmark aria-hidden=true><span class=wm-m>micro-</span><span class=wm-f>FT8</span></h1>
+<div id=bootSlow hidden><span>Taking longer than usual.</span><button id=bootRetry type=button class=btn-primary>Retry</button></div>
+</div>
+<script>
+var BOOT_SLOW_MS = 8000;
+document.getElementById('bootRetry').addEventListener('click', function () { location.reload(); });
+var bootSlowTimer = setTimeout(function () { document.getElementById('bootSlow').hidden = false; }, BOOT_SLOW_MS);
+function bootDone() {
+  clearTimeout(bootSlowTimer);
+  var el = document.getElementById('bootSplash');
+  if (el) el.remove();
+}
+</script>
 <header id=appHead><h1 class=wordmark aria-label=micro-FT8><span class=wm-m>micro-</span><span class=wm-f>FT8</span></h1></header>
 <div class=wrap>
 <div id=viewport>
@@ -8968,4 +8997,5 @@ tick();
 // rate for no real reason.
 setInterval(pollLiveStatus, 5000);
 pollLiveStatus();
+bootDone();
 </script>
